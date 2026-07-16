@@ -2525,6 +2525,9 @@ function shortcutIdentity(item) {
   if (item.kind === "favorite" && item.deviceId != null && item.commandId != null) {
     return `favorite:${item.deviceId}:${item.commandId}`;
   }
+  if (item.kind === "macro" && String(item.label || "").trim()) {
+    return `macro:${String(item.label).trim()}`;
+  }
   return `${item.kind}:${item.buttonId}`;
 }
 function diffShortcuts(buckets, baseline, edited, activityId) {
@@ -2680,6 +2683,36 @@ test("diffActivityForReview reports a shortcut reorder despite positional button
   activity.favorite_slots = [
     { button_id: 1, device_id: 2, command_id: 20, name: "Bar Power" },
     { button_id: 2, device_id: 1, command_id: 10, name: "TV Power" }
+  ];
+  const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
+  assert.match(allText(groups), /Reordered/);
+  assert.doesNotMatch(allText(groups), /Added|Removed/);
+});
+test("diffActivityForReview reports a macro move as a reorder, not add+remove", () => {
+  const base = baseBundle();
+  const baseActivity = base.activities.find(
+    (a3) => Number(a3.device?.device_id) === ACTIVITY_ID
+  );
+  baseActivity.macros.push({
+    button_id: 3,
+    name: "Combo",
+    steps: [
+      { device_id: 1, command_id: 10, button_code: 0, duration: 0, delay: 255 }
+    ]
+  });
+  const edited = structuredClone(base);
+  const activity = edited.activities.find(
+    (a3) => Number(a3.device?.device_id) === ACTIVITY_ID
+  );
+  activity.macros = [
+    { button_id: 1, name: "Combo", steps: [
+      { device_id: 1, command_id: 10, button_code: 0, duration: 0, delay: 255 }
+    ] },
+    ...activity.macros.filter((m3) => Number(m3.button_id) >= 198)
+  ];
+  activity.favorite_slots = [
+    { button_id: 2, device_id: 1, command_id: 10, name: "TV Power" },
+    { button_id: 3, device_id: 2, command_id: 20, name: "Bar Power" }
   ];
   const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
   assert.match(allText(groups), /Reordered/);

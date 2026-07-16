@@ -899,3 +899,52 @@ creation order with display order carried by the per-row sort token
 both meaning "unpositioned"; non-erase device restore is additive
 (erase mode is the replace path); the wifi-commands sensor pulse resets
 after 0.3 s by design.
+
+## Validated: quick-access reorder with macro shortcuts (X1 + X1S, 2026-07-16)
+
+The live Activities editor's quick-access list mixes command favorites and
+macro shortcuts, which share **one** fav-id/key-id namespace on the hub. The
+reorder fix (matches editable macros baseline↔edit by content, so a pure move
+emits no macro rewrite; carries the whole mixed order through the family-0x61
+sort page) is validated end-to-end. Plan:
+`docs/internal/macro-reorder-bench-plan.md`. Benches
+`bench_108_macro_order_probe.py` (protocol probe) and
+`bench_109_macro_reorder_sync.py` (`sync_activity` S1–S5), on the sacrificial
+Bench Test activity (`0x68`).
+
+- **Mixed family-0x61 sort page is accepted written by us.** A page listing a
+  macro **key id** alongside favorite **fav_ids** (`reorder_favorites(act,
+  [macro, fav1, fav2])`) → `STATUS_ACK 0x00` + `0x65` commit. The 0x0162
+  order read-back is `[(macro,1),(fav1,2),(fav2,3)]` on BOTH hubs — the macro
+  takes slot 1. Our writer previously sent favorite-only pages, silently
+  dropping macros from the order table; it no longer does.
+- **0x61 is slot-table, NOT renumber (ids stable).** Across a non-identity
+  reorder the macro key id and the favorite fav_ids are unchanged; only the
+  slot assignment moves. Cached macro key ids and macro-target binding refs
+  therefore stay valid after our reorder — **no cache-refresh / binding-rewrite
+  follow-up is needed.** (0x0162 returns only favorites, so a *macro-only*
+  single-entry page reads back as an empty favorites order — and an empty
+  order makes `request_favorites_order` return `None`, which trips the
+  order-fetch guard in `reorder_favorites`/`delete_favorite`; only reachable by
+  writing a macro-only page, benign for the fix, worked around in the benches.)
+- **Single-entry 0x61 page is accepted** (new-macro registration when the macro
+  is the only editable quick-access entry).
+- **`sync_activity` engine (S1–S5, X1 + X1S), asserted at plan and hub level:**
+  - *Pure move* — no `macro_write`/`macro_delete`; only `favorite_order` +
+    `remote_sync`; the macro record is byte-identical (key id, label slot, step
+    count unchanged).
+  - *Move + rename* — exactly one `macro_write` at the **baseline** key id (not
+    a delete+recreate at a new id), no delete; steps byte-identical.
+  - *New macro mid-list at a proposal id already held by a live favorite* — the
+    executor allocates a **free** id (never the favorite's), the record is
+    readable, and the `new` order entry follows the allocator's remap to its
+    slot.
+  - *Macro-target binding* (`command_to_button` UP→macro) survives a reorder:
+    no `binding_write`, the hub row still reads `device_id=activity,
+    command_id=<macro key>`.
+  - *Stale regression (the reported symptom)* — a move followed immediately by
+    a recapture + second sync no longer fails at `stale_check`; the old
+    delete+recreate that mutated the activity is gone.
+- **X1 quirk:** `command_to_favorite`/`delete_favorite` occasionally return
+  `None` even though the write lands — verify favorite ops by re-read on X1,
+  not by the return value.

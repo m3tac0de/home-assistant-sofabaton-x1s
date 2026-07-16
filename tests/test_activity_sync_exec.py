@@ -220,6 +220,65 @@ def test_favorite_reorder_resolves_content_to_current_fav_ids():
     assert order_call[1][1] == [7, 3]
 
 
+def test_macro_move_reorders_by_baseline_key_id_without_rewrite():
+    """A quick-access move of a macro must not delete/recreate the macro
+    record; the executor receives the combined order (favorites as content,
+    the macro by its baseline hub key id) and writes one 0x61 sort page."""
+    base = base_bundle()
+    _activity(base)["macros"].append(
+        {"button_id": 3, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"] = [
+        {"button_id": 1, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]},
+        *[m for m in _activity(edited)["macros"] if m["button_id"] in (198, 199)],
+    ]
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: {(1, 10): 1, (2, 20): 2}
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    kinds = _kinds(proxy.calls)
+    assert "macro_write" not in kinds
+    assert "delete_key" not in kinds
+    order_call = next(c for c in proxy.calls if c[0] == "favorite_order")
+    # Macro key 3 first, then the favorites' live fav_ids.
+    assert order_call[1][1] == [3, 1, 2]
+
+
+def test_new_macro_enters_order_at_allocated_id():
+    """A NEW macro's order entry follows the id the allocator assigned (the
+    editor's proposal may be occupied by a live favorite) and is registered
+    in the sort table even when appended at the tail."""
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"].append(
+        {"button_id": 2, "name": "Bench macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    # Proposal 2 is occupied by a live favorite → allocator lands on 3.
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: {(1, 10): 1, (2, 20): 2}
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    macro_write = next(c for c in proxy.calls if c[0] == "macro_write")
+    assert macro_write[1][0] == 3  # allocated, not the proposal
+    order_call = next(c for c in proxy.calls if c[0] == "favorite_order")
+    assert order_call[1][1] == [1, 2, 3]
+
+
 def test_step_rejection_stops_and_reports_failed_at():
     base = base_bundle()
     edited = copy.deepcopy(base)

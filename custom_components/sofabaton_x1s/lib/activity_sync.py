@@ -123,6 +123,73 @@ def _macro_steps_signature(macro: Mapping[str, Any]) -> str:
     return _canonical(steps)
 
 
+def _editable_macro_rows(activity: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Non-power macro rows in display order (button_id ascending)."""
+    rows = [
+        dict(row)
+        for row in activity.get("macros") or []
+        if isinstance(row, Mapping) and _int(row.get("button_id")) not in _POWER_MACRO_BUTTON_IDS
+    ]
+    rows.sort(key=lambda row: _int(row.get("button_id")))
+    return rows
+
+
+class MacroPairing:
+    """Baseline↔edit identity mapping for an activity's editable macros.
+
+    On the hub a macro shortcut's stable identity is its key id (captured
+    into ``button_id``), but the editor renumbers quick-access button_ids
+    positionally on every reorder — the same reality favorites deal with.
+    Favorites recover identity through their content ``(device_id,
+    command_id)``; macros have no single command, so identity is recovered
+    by matching content in passes: exact (name + steps) first, then
+    steps-only (a rename), then name-only (a steps edit). Whatever remains
+    unmatched is genuinely new (edit side) or deleted (baseline side).
+    """
+
+    def __init__(self, base_activity: Mapping[str, Any], edit_activity: Mapping[str, Any]) -> None:
+        base_rows = _editable_macro_rows(base_activity)
+        edit_rows = _editable_macro_rows(edit_activity)
+        unmatched_base = list(base_rows)
+        remaining_edit = list(edit_rows)
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+        def _take(key_fn: Any, key: Any) -> dict[str, Any] | None:
+            for index, candidate in enumerate(unmatched_base):
+                if key_fn(candidate) == key:
+                    return unmatched_base.pop(index)
+            return None
+
+        key_fns = (
+            lambda row: (str(row.get("name") or ""), _macro_steps_signature(row)),
+            _macro_steps_signature,
+            lambda row: str(row.get("name") or "") or None,
+        )
+        for key_fn in key_fns:
+            still: list[dict[str, Any]] = []
+            for edit_row in remaining_edit:
+                key = key_fn(edit_row)
+                match = None if key is None else _take(key_fn, key)
+                if match is None:
+                    still.append(edit_row)
+                else:
+                    pairs.append((match, edit_row))
+            remaining_edit = still
+
+        pairs.sort(key=lambda pair: _int(pair[0].get("button_id")))
+        self.pairs = pairs
+        self.new_rows = remaining_edit
+        self.deleted_rows = unmatched_base
+        # Edit-side positional id → baseline hub id, for matched macros.
+        # Macro-target binding rows and the quick-access order resolve
+        # through this so positional renumbering never leaks to the wire.
+        self.edit_to_base_id = {
+            _int(edit_row.get("button_id")): _int(base_row.get("button_id"))
+            for base_row, edit_row in pairs
+        }
+        self.new_edit_ids = {_int(row.get("button_id")) for row in remaining_edit}
+
+
 def _member_device_ids(activity: Mapping[str, Any]) -> set[int]:
     """Devices this activity references (power refs, favorites, bindings,
     real macro command steps) — excluding the activity's own id."""
@@ -249,11 +316,16 @@ def build_activity_sync_plan(
     idle: list[SyncStep] = []
     rename: list[SyncStep] = []
 
+    # Macro identity is positional in the edited bundle (the editor renumbers
+    # quick-access button_ids on every reorder); recover it once by content
+    # and share the pairing with every planner that references macro ids.
+    pairing = MacroPairing(base_activity, edit_activity)
+
     _plan_device_side(baseline, edited, activity_id, prereq, idle)
     _plan_membership(base_activity, edit_activity, _devices_by_id(edited), members)
-    _plan_macros(base_activity, edit_activity, activity_id, macros)
-    _plan_bindings(base_activity, edit_activity, activity_id, bindings)
-    _plan_favorites(base_activity, edit_activity, activity_id, favorites)
+    _plan_macros(base_activity, edit_activity, activity_id, macros, macro_pairing=pairing)
+    _plan_bindings(base_activity, edit_activity, activity_id, bindings, macro_pairing=pairing)
+    _plan_favorites(base_activity, edit_activity, activity_id, favorites, macro_pairing=pairing)
     _plan_rename(base_activity, edit_activity, activity_id, rename)
 
     plan = [*prereq, *members, *macros, *bindings, *favorites, *idle, *rename]
@@ -680,55 +752,104 @@ def _plan_membership(
         )
 
 
+def _macro_write_step(
+    activity_id: int,
+    button_id: int,
+    macro: Mapping[str, Any],
+    *,
+    new: bool = False,
+) -> SyncStep:
+    payload: dict[str, Any] = {
+        "activity_id": activity_id,
+        "button_id": button_id,
+        "name": str(macro.get("name") or ""),
+        "steps": list(macro.get("steps") or []),
+    }
+    if new:
+        payload["new"] = True
+    return SyncStep(kind="macro_write", label=_macro_label(button_id), payload=payload)
+
+
+def _macro_rows_differ(base_macro: Mapping[str, Any], edit_macro: Mapping[str, Any]) -> bool:
+    steps_changed = _macro_steps_signature(base_macro) != _macro_steps_signature(edit_macro)
+    # A rename changes only the macro's label (steps untouched), so the
+    # name must be compared too — a name-only edit still needs a write.
+    name_changed = str(base_macro.get("name") or "") != str(edit_macro.get("name") or "")
+    return steps_changed or name_changed
+
+
 def _plan_macros(
     base_activity: Mapping[str, Any],
     edit_activity: Mapping[str, Any],
     activity_id: int,
     out: list[SyncStep],
+    *,
+    macro_pairing: MacroPairing | None = None,
 ) -> None:
     base_macros = _rows_by_button(base_activity.get("macros"))
     edit_macros = _rows_by_button(edit_activity.get("macros"))
-    for button_id in sorted(edit_macros):
+
+    if macro_pairing is None:
+        # Device scope: nothing renumbers a device's macro key ids, so
+        # button_id is a stable identity and the plain by-id diff applies.
+        for button_id in sorted(edit_macros):
+            macro = edit_macros[button_id]
+            base_macro = base_macros.get(button_id)
+            if base_macro is not None and not _macro_rows_differ(base_macro, macro):
+                continue
+            out.append(_macro_write_step(activity_id, button_id, macro))
+        for button_id in sorted(set(base_macros) - set(edit_macros)):
+            if button_id in _POWER_MACRO_BUTTON_IDS:
+                continue
+            out.append(
+                SyncStep(
+                    kind="macro_delete",
+                    label="Removing a custom action…",
+                    payload={"activity_id": activity_id, "button_id": button_id},
+                )
+            )
+        return
+
+    # Activity scope. Power macros (198/199) are fixed wire ids outside the
+    # editor's positional renumbering, so they keep the by-id diff. A fresh
+    # activity's baseline legitimately lacks them and they are never flagged
+    # ``new`` — diverting their write to an allocated quick-access id broke
+    # the from-scratch power-on overwrite (BUG #8).
+    for button_id in sorted(set(edit_macros) & _POWER_MACRO_BUTTON_IDS):
         macro = edit_macros[button_id]
         base_macro = base_macros.get(button_id)
-        if base_macro is not None:
-            steps_changed = _macro_steps_signature(base_macro) != _macro_steps_signature(macro)
-            # A rename changes only the macro's label (steps untouched), so the
-            # name must be compared too — a name-only edit still needs a write.
-            name_changed = str(base_macro.get("name") or "") != str(macro.get("name") or "")
-            if not steps_changed and not name_changed:
-                continue
-        label = _macro_label(button_id)
-        payload: dict[str, Any] = {
-            "activity_id": activity_id,
-            "button_id": button_id,
-            "name": str(macro.get("name") or ""),
-            "steps": list(macro.get("steps") or []),
-        }
-        if base_macro is None and button_id not in _POWER_MACRO_BUTTON_IDS:
-            # A macro the baseline never had. Its button_id is a *proposal*
-            # from the editor's renumbered client view; on the hub, favorites
-            # and macro shortcuts share one fav-id namespace, so the executor
-            # must allocate the real id against live hub occupancy (BUG #5:
-            # a proposed id landing on a surviving favorite's fav_id silently
-            # overwrites that favorite). Power macros are exempt: 198/199 are
-            # fixed wire ids outside the fav-id namespace, and a fresh
-            # activity's baseline legitimately lacks them — flagging them new
-            # would divert the write to an allocated quick-access id (BUG #8
-            # repro: the from-scratch member_replay rows survived because the
-            # power-on overwrite never landed at 198).
-            payload["new"] = True
-        out.append(SyncStep(kind="macro_write", label=label, payload=payload))
-    for button_id in sorted(set(base_macros) - set(edit_macros)):
-        # Power macros are mandatory and never removed; a removed user macro
-        # is a key-row delete (0x0210), same primitive as favorite delete.
-        if button_id in _POWER_MACRO_BUTTON_IDS:
+        if base_macro is not None and not _macro_rows_differ(base_macro, macro):
             continue
+        out.append(_macro_write_step(activity_id, button_id, macro))
+
+    # Editable macros are matched by content (see MacroPairing): a pure
+    # quick-access move is a no-op for the macro record — the baseline key
+    # id stays the macro's wire identity and only the order step moves it.
+    for base_macro, edit_macro in macro_pairing.pairs:
+        if not _macro_rows_differ(base_macro, edit_macro):
+            continue
+        out.append(_macro_write_step(activity_id, _int(base_macro.get("button_id")), edit_macro))
+
+    for macro in macro_pairing.new_rows:
+        # A macro the baseline never had. Its button_id is a *proposal*
+        # from the editor's renumbered client view; on the hub, favorites
+        # and macro shortcuts share one fav-id namespace, so the executor
+        # must allocate the real id against live hub occupancy (BUG #5:
+        # a proposed id landing on a surviving favorite's fav_id silently
+        # overwrites that favorite).
+        out.append(
+            _macro_write_step(activity_id, _int(macro.get("button_id")), macro, new=True)
+        )
+
+    for macro in macro_pairing.deleted_rows:
+        # A removed user macro is a key-row delete (0x0210), same primitive
+        # as favorite delete. Power macros never reach here (filtered out of
+        # the pairing).
         out.append(
             SyncStep(
                 kind="macro_delete",
                 label="Removing a custom action…",
-                payload={"activity_id": activity_id, "button_id": button_id},
+                payload={"activity_id": activity_id, "button_id": _int(macro.get("button_id"))},
             )
         )
 
@@ -741,6 +862,27 @@ def _macro_label(button_id: int) -> str:
     return "Updating a custom action…"
 
 
+def _normalize_binding_macro_refs(
+    row: Mapping[str, Any],
+    activity_id: int,
+    edit_to_base_id: Mapping[int, int],
+) -> dict[str, Any]:
+    """Rewrite a binding row's macro references from the editor's positional
+    macro ids back to the baseline hub key ids. A macro-target binding stores
+    ``device_id = the activity's own id`` and ``command_id = the macro's
+    button_id`` — which, in an edited bundle, is a display position."""
+    updated = dict(row)
+    if _int(updated.get("device_id")) == activity_id:
+        command_id = _int(updated.get("command_id"))
+        if command_id in edit_to_base_id:
+            updated["command_id"] = edit_to_base_id[command_id]
+    if _int(updated.get("long_press_device_id")) == activity_id:
+        lp_command_id = _int(updated.get("long_press_command_id"))
+        if lp_command_id in edit_to_base_id:
+            updated["long_press_command_id"] = edit_to_base_id[lp_command_id]
+    return updated
+
+
 def _plan_bindings(
     base_activity: Mapping[str, Any],
     edit_activity: Mapping[str, Any],
@@ -748,11 +890,17 @@ def _plan_bindings(
     out: list[SyncStep],
     *,
     default_device_id: int | None = None,
+    macro_pairing: MacroPairing | None = None,
 ) -> None:
     # Device-scope binding rows carry no device_id — the source device is
     # implicitly the device itself; ``default_device_id`` supplies it.
     base_bindings = _rows_by_button(base_activity.get("button_bindings"))
     edit_bindings = _rows_by_button(edit_activity.get("button_bindings"))
+    if macro_pairing is not None and macro_pairing.edit_to_base_id:
+        edit_bindings = {
+            button_id: _normalize_binding_macro_refs(row, activity_id, macro_pairing.edit_to_base_id)
+            for button_id, row in edit_bindings.items()
+        }
     for button_id in sorted(edit_bindings):
         binding = edit_bindings[button_id]
         base_binding = base_bindings.get(button_id)
@@ -815,6 +963,8 @@ def _plan_favorites(
     edit_activity: Mapping[str, Any],
     activity_id: int,
     out: list[SyncStep],
+    *,
+    macro_pairing: MacroPairing | None = None,
 ) -> None:
     # Favorites are matched by content, then mapped back to the hub fav_id via
     # the baseline (whose button_id == the hub fav_id at capture). The editor's
@@ -866,24 +1016,78 @@ def _plan_favorites(
                     },
                 )
             )
-    # Reorder: the hub assigns fav_ids to added favorites, so the desired final
-    # order is expressed as *content* and resolved to live fav_ids by the
-    # executor after the adds land (re-read). Emit it only when the edited order
-    # differs from what add/delete alone would produce — survivors kept in their
-    # baseline order with adds appended — i.e. a genuine reorder or a
-    # non-tail insertion.
-    added_contents = [content for _bid, content, _row in edit if content not in base_fav_id_by_content]
-    natural_order = [content for _bid, content, _row in base if content in edit_content_set] + added_contents
-    desired_order = edit_contents
-    if len(desired_order) > 1 and desired_order != natural_order:
+    # Reorder: the desired final order covers the WHOLE quick-access list —
+    # favorites and macro shortcuts share one fav-id namespace, and the
+    # family-0x61 sort page rewrites the entire order table, so an order
+    # step naming only the favorites would drop every macro from the table.
+    # Favorites are expressed as content (the hub assigns fav_ids to added
+    # favorites; the executor resolves content to live fav_ids after the
+    # adds land). Macros are expressed by their baseline hub key id (the
+    # editor's positional ids are recovered via the pairing); NEW macros
+    # carry the editor's proposal plus ``new`` so the executor follows the
+    # id the allocator actually assigned.
+    #
+    # Ordering identity tokens: position in the edited bundle is the
+    # (renumbered) button_id for favorites and macros alike.
+    macro_pairing = macro_pairing or MacroPairing({}, {})
+    base_id_by_edit_id = macro_pairing.edit_to_base_id
+    deleted_macro_ids = {_int(row.get("button_id")) for row in macro_pairing.deleted_rows}
+
+    def _macro_token(edit_button_id: int) -> tuple[str, Any]:
+        if edit_button_id in base_id_by_edit_id:
+            return ("macro", base_id_by_edit_id[edit_button_id])
+        return ("macro_new", edit_button_id)
+
+    edit_entries: list[tuple[int, tuple[str, Any]]] = [
+        (bid, ("favorite", content)) for bid, content, _row in edit
+    ]
+    for row in _editable_macro_rows(edit_activity):
+        edit_entries.append((_int(row.get("button_id")), _macro_token(_int(row.get("button_id")))))
+    edit_entries.sort(key=lambda item: item[0])
+    desired_order = [token for _bid, token in edit_entries]
+
+    # What add/delete alone would produce: survivors kept in their baseline
+    # order, additions appended in edited order.
+    base_entries: list[tuple[int, tuple[str, Any]]] = [
+        (bid, ("favorite", content)) for bid, content, _row in base if content in edit_content_set
+    ]
+    for row in _editable_macro_rows(base_activity):
+        base_id = _int(row.get("button_id"))
+        if base_id not in deleted_macro_ids:
+            base_entries.append((base_id, ("macro", base_id)))
+    base_entries.sort(key=lambda item: item[0])
+    survivor_tokens = [token for _bid, token in base_entries]
+    added_tokens = [
+        token
+        for _bid, token in edit_entries
+        if (token[0] == "favorite" and token[1] not in base_fav_id_by_content)
+        or token[0] == "macro_new"
+    ]
+    natural_order = survivor_tokens + added_tokens
+
+    # A NEW macro always forces an order write even at the natural tail
+    # position: the activity-scope macro save registers the key row but not
+    # its sort-table entry (the vendor app follows every macro create with a
+    # family-0x61 sort page + commit), so without it the new shortcut has no
+    # slot in the hub's order table.
+    has_new_macro = bool(macro_pairing.new_rows)
+    if desired_order and (desired_order != natural_order or has_new_macro):
+        order_payload: list[dict[str, Any]] = []
+        for token in desired_order:
+            if token[0] == "favorite":
+                device_id, command_id = token[1]
+                order_payload.append(
+                    {"kind": "favorite", "device_id": device_id, "command_id": command_id}
+                )
+            elif token[0] == "macro":
+                order_payload.append({"kind": "macro", "button_id": token[1]})
+            else:
+                order_payload.append({"kind": "macro", "button_id": token[1], "new": True})
         out.append(
             SyncStep(
                 kind="favorite_order",
                 label="Reordering shortcuts…",
-                payload={
-                    "activity_id": activity_id,
-                    "order_content": [[dev, cmd] for dev, cmd in desired_order],
-                },
+                payload={"activity_id": activity_id, "order": order_payload},
             )
         )
 

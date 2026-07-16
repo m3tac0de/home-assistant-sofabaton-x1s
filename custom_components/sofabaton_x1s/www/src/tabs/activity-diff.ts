@@ -292,10 +292,16 @@ function diffButtons(
 function shortcutIdentity(item: BackupActivityQuickAccessItem): string {
   // The editor reassigns quick-access button_ids positionally on every edit,
   // so button_id is a display position, not a stable identity. A favorite's
-  // durable identity is its content (device + command); fall back to button_id
-  // only for macros, which have no single command.
+  // durable identity is its content (device + command). A macro has no single
+  // command, so its label is the nearest durable identity (mirroring the sync
+  // planner's content matching) — falling back to button_id would make every
+  // move of a macro read as an add + remove pair. Unnamed macros keep the
+  // button_id fallback.
   if (item.kind === "favorite" && item.deviceId != null && item.commandId != null) {
     return `favorite:${item.deviceId}:${item.commandId}`;
+  }
+  if (item.kind === "macro" && String(item.label || "").trim()) {
+    return `macro:${String(item.label).trim()}`;
   }
   return `${item.kind}:${item.buttonId}`;
 }

@@ -742,6 +742,11 @@ class ActivityOpsMixin:
             for macro in self.state.get_activity_macros(act_lo)
         ):
             return fav_lo
+        # Key ids handed out by this sync run's macro allocator: a macro
+        # written NEW moments ago is a valid sort target but is not yet in
+        # the hub order table nor in the cached keymap/macro views.
+        if fav_lo in (getattr(self, "_activity_sync_session_key_ids", None) or ()):
+            return fav_lo
         return None
 
     def reorder_favorites(

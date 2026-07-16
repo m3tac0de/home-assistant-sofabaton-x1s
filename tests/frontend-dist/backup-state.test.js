@@ -1541,11 +1541,17 @@ function reorderBundleActivityQuickAccess(bundle2, activityId, orderedItems) {
   );
   const macroRows = [];
   const favoriteRows = [];
+  const macroIdRemap = /* @__PURE__ */ new Map();
   orderedItems.forEach((item, index) => {
     const nextButtonId = index + 1;
     if (item.kind === "macro") {
       const row2 = macrosByButtonId.get(Number(item.buttonId));
-      if (row2) macroRows.push({ ...row2, button_id: nextButtonId });
+      if (row2) {
+        macroRows.push({ ...row2, button_id: nextButtonId });
+        if (Number(item.buttonId) !== nextButtonId) {
+          macroIdRemap.set(Number(item.buttonId), nextButtonId);
+        }
+      }
       return;
     }
     const row = favoritesByButtonId.get(Number(item.buttonId));
@@ -1559,8 +1565,38 @@ function reorderBundleActivityQuickAccess(bundle2, activityId, orderedItems) {
   return updateActivity(bundle2, normalizedActivityId, (current) => ({
     ...current,
     macros: macroRows,
-    favorite_slots: favoriteRows
+    favorite_slots: favoriteRows,
+    // Macro-target bindings reference a macro by its button_id (with
+    // device_id = the activity's own id). Renumbering the macros without
+    // following those references would leave the bundle internally
+    // inconsistent — a later reorder, or the sync planner, would resolve
+    // them against the wrong macro.
+    button_bindings: remapMacroTargetBindings(
+      current.button_bindings,
+      normalizedActivityId,
+      macroIdRemap
+    )
   }));
+}
+function remapMacroTargetBindings(bindings, activityId, macroIdRemap) {
+  if (!bindings || macroIdRemap.size === 0) return bindings;
+  let changed = false;
+  const next = bindings.map((row) => {
+    let updated = row;
+    if (Number(row?.device_id || 0) === activityId && macroIdRemap.has(Number(row?.command_id || 0))) {
+      updated = { ...updated, command_id: macroIdRemap.get(Number(row?.command_id || 0)) };
+      changed = true;
+    }
+    if (Number(updated?.long_press_device_id || 0) === activityId && macroIdRemap.has(Number(updated?.long_press_command_id || 0))) {
+      updated = {
+        ...updated === row ? { ...row } : updated,
+        long_press_command_id: macroIdRemap.get(Number(updated?.long_press_command_id || 0))
+      };
+      changed = true;
+    }
+    return updated;
+  });
+  return changed ? next : bindings;
 }
 function stepMatchesDevice(step, deviceId) {
   return Number(step?.device_id || 0) === deviceId;
@@ -3121,6 +3157,23 @@ test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
   assert.deepEqual(power?.steps, [{ device_id: 1, command_id: 10 }]);
   assert.equal(act.macros?.find((m3) => m3.name === "Combo")?.button_id, 1);
   assert.deepEqual(act.favorite_slots?.map((s4) => s4.button_id), [2, 3]);
+});
+test("reorderBundleActivityQuickAccess follows macro-target binding refs", () => {
+  const bundle2 = editableBundle();
+  bundle2.activities[0].button_bindings = [
+    { button_id: 177, device_id: 101, command_id: 3 },
+    { button_id: 178, device_id: 1, command_id: 10, long_press_device_id: 101, long_press_command_id: 3 },
+    { button_id: 179, device_id: 1, command_id: 3 }
+  ];
+  const next = reorderBundleActivityQuickAccess(bundle2, 101, [
+    { kind: "macro", buttonId: 3 },
+    { kind: "favorite", buttonId: 1 },
+    { kind: "favorite", buttonId: 2 }
+  ]);
+  const bindings = activity101(next).button_bindings;
+  assert.equal(bindings[0].command_id, 1);
+  assert.equal(bindings[1].long_press_command_id, 1);
+  assert.equal(bindings[2].command_id, 3);
 });
 test("applyBundleDelete dispatches by target kind", () => {
   const next = applyBundleDelete(editableBundle(), { kind: "command", deviceId: 1, commandId: 10 });

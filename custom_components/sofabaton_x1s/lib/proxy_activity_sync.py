@@ -389,26 +389,34 @@ class ActivitySyncMixin:
 
         self._activity_sync_reset_run_state()
 
-        # Stale pre-flight (§4.5): re-read the activity block and compare with
-        # the baseline the session captured. A mismatch means the hub changed
-        # (e.g. a vendor-app edit through the proxy) — fail fast, don't write.
-        _progress(phase="stale_check", message="Checking the activity hasn't changed…",
-                  completed_steps=0, total_steps=len(plan), current_activity_id=activity_id)
-        if self._activity_sync_is_stale(baseline, activity_id):
-            return {"status": "failed", "failed_at": "stale_check",
-                    "message": "This activity changed on the hub after you loaded it."}
+        try:
+            # Stale pre-flight (§4.5): re-read the activity block and compare with
+            # the baseline the session captured. A mismatch means the hub changed
+            # (e.g. a vendor-app edit through the proxy) — fail fast, don't write.
+            _progress(phase="stale_check", message="Checking the activity hasn't changed…",
+                      completed_steps=0, total_steps=len(plan), current_activity_id=activity_id)
+            if self._activity_sync_is_stale(baseline, activity_id):
+                return {"status": "failed", "failed_at": "stale_check",
+                        "message": "This activity changed on the hub after you loaded it."}
 
-        total = len(plan)
-        counters: dict[str, int] = {}
-        for index, step in enumerate(plan):
-            _progress(phase="writing", message=step.label, completed_steps=index,
-                      total_steps=total, current_activity_id=activity_id)
-            ok = self._dispatch_activity_sync_step(step)
-            if not ok:
-                target = "" if step.target_device_id is None else f" (device {step.target_device_id})"
-                return {"status": "failed", "failed_at": f"{step.kind}{target}",
-                        "message": f"The hub rejected: {step.label}", "completed_steps": index}
-            counters[step.kind] = counters.get(step.kind, 0) + 1
+            total = len(plan)
+            counters: dict[str, int] = {}
+            for index, step in enumerate(plan):
+                _progress(phase="writing", message=step.label, completed_steps=index,
+                          total_steps=total, current_activity_id=activity_id)
+                ok = self._dispatch_activity_sync_step(step)
+                if not ok:
+                    target = "" if step.target_device_id is None else f" (device {step.target_device_id})"
+                    return {"status": "failed", "failed_at": f"{step.kind}{target}",
+                            "message": f"The hub rejected: {step.label}", "completed_steps": index}
+                counters[step.kind] = counters.get(step.kind, 0) + 1
+        finally:
+            # Run state (allocator remaps, session key ids, live fav cache) is
+            # meaningful only while this run's steps execute. Clear it so no
+            # later flow — restore, HA services, the next editor session —
+            # can resolve against this run's leftovers (e.g. the fav-id
+            # validator accepting a session key id that no longer exists).
+            self._activity_sync_reset_run_state()
 
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_activity_id=activity_id)
@@ -487,23 +495,27 @@ class ActivitySyncMixin:
 
         self._activity_sync_reset_run_state()
 
-        _progress(phase="stale_check", message="Checking the device hasn't changed…",
-                  completed_steps=0, total_steps=len(plan), current_device_id=device_id)
-        if self._device_sync_is_stale(baseline, device_id):
-            return {"status": "failed", "failed_at": "stale_check",
-                    "message": "This device changed on the hub after you loaded it."}
+        try:
+            _progress(phase="stale_check", message="Checking the device hasn't changed…",
+                      completed_steps=0, total_steps=len(plan), current_device_id=device_id)
+            if self._device_sync_is_stale(baseline, device_id):
+                return {"status": "failed", "failed_at": "stale_check",
+                        "message": "This device changed on the hub after you loaded it."}
 
-        total = len(plan)
-        counters: dict[str, int] = {}
-        for index, step in enumerate(plan):
-            _progress(phase="writing", message=step.label, completed_steps=index,
-                      total_steps=total, current_device_id=device_id)
-            ok = self._dispatch_activity_sync_step(step)
-            if not ok:
-                target = "" if step.target_device_id is None else f" (device {step.target_device_id})"
-                return {"status": "failed", "failed_at": f"{step.kind}{target}",
-                        "message": f"The hub rejected: {step.label}", "completed_steps": index}
-            counters[step.kind] = counters.get(step.kind, 0) + 1
+            total = len(plan)
+            counters: dict[str, int] = {}
+            for index, step in enumerate(plan):
+                _progress(phase="writing", message=step.label, completed_steps=index,
+                          total_steps=total, current_device_id=device_id)
+                ok = self._dispatch_activity_sync_step(step)
+                if not ok:
+                    target = "" if step.target_device_id is None else f" (device {step.target_device_id})"
+                    return {"status": "failed", "failed_at": f"{step.kind}{target}",
+                            "message": f"The hub rejected: {step.label}", "completed_steps": index}
+                counters[step.kind] = counters.get(step.kind, 0) + 1
+        finally:
+            # See sync_activity: run state must not outlive the step walk.
+            self._activity_sync_reset_run_state()
 
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_device_id=device_id)
@@ -687,22 +699,50 @@ class ActivitySyncMixin:
         ) is not None
 
     def _sync_step_favorite_order(self, payload: Mapping[str, Any]) -> bool:
-        # The desired order is carried as content pairs; resolve them to the
-        # hub's *current* fav_ids (which now include any favorites added earlier
-        # in this sync) so add-then-reorder positions the new favorite too.
+        # The desired order covers the whole quick-access namespace. Favorite
+        # entries are carried as content and resolved to the hub's *current*
+        # fav_ids (which now include any favorites added earlier in this sync,
+        # so add-then-reorder positions the new favorite too). Macro entries
+        # carry a hub key id — the baseline id for surviving macros, or the
+        # editor's proposal for macros written NEW earlier in this run, which
+        # must follow the id the allocator actually assigned.
         activity_id = int(payload["activity_id"])
-        desired = payload.get("order_content") or []
+        entries: list[Mapping[str, Any]] = []
+        raw_entries = payload.get("order")
+        if raw_entries is None:
+            # Legacy favorites-only payload shape.
+            for pair in payload.get("order_content") or []:
+                if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                    entries.append(
+                        {"kind": "favorite", "device_id": pair[0], "command_id": pair[1]}
+                    )
+        else:
+            entries = [entry for entry in raw_entries if isinstance(entry, Mapping)]
         fav_id_by_content = self._activity_sync_current_favorite_fav_ids(activity_id)
+        remap = getattr(self, "_activity_sync_macro_id_remap", None) or {}
+        session_ids = set(getattr(self, "_activity_sync_session_key_ids", ()) or ())
         order: list[int] = []
-        for pair in desired:
-            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+        for entry in entries:
+            if str(entry.get("kind") or "favorite") == "macro":
+                key_id = _int(entry.get("button_id")) & 0xFF
+                resolved = remap.get(key_id, key_id)
+                if entry.get("new") and resolved not in session_ids:
+                    # The new-macro write never landed (or was skipped); a
+                    # sort entry for a nonexistent key would be rejected.
+                    self._log.warning(
+                        "[ACTIVITY_SYNC] favorite_order: new macro id 0x%02X was never "
+                        "allocated this run; leaving it out of the order",
+                        key_id,
+                    )
+                    continue
+                order.append(resolved)
                 continue
-            content = (_int(pair[0]) & 0xFF, _int(pair[1]) & 0xFF)
+            content = (_int(entry.get("device_id")) & 0xFF, _int(entry.get("command_id")) & 0xFF)
             fav_id = fav_id_by_content.get(content)
             if fav_id is not None:
                 order.append(fav_id)
-        if len(order) < 2:
-            # Nothing resolvable (or a single item) — no reorder to perform.
+        if not order:
+            # Nothing resolvable — no reorder to perform.
             return True
         return self.reorder_favorites(activity_id, order, refresh_after_write=False) is not None
 

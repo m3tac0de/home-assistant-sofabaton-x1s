@@ -128,6 +128,37 @@ test("diffActivityForReview reports a shortcut reorder despite positional button
   assert.doesNotMatch(allText(groups), /Added|Removed/);
 });
 
+test("diffActivityForReview reports a macro move as a reorder, not add+remove", () => {
+  const base = baseBundle();
+  const baseActivity = base.activities.find(
+    (a) => Number(a.device?.device_id) === ACTIVITY_ID,
+  )!;
+  baseActivity.macros!.push({
+    button_id: 3, name: "Combo", steps: [
+      { device_id: 1, command_id: 10, button_code: 0, duration: 0, delay: 255 },
+    ],
+  } as any);
+  const edited = structuredClone(base);
+  const activity = edited.activities.find(
+    (a) => Number(a.device?.device_id) === ACTIVITY_ID,
+  )!;
+  // Editor moves the macro to the front; positional renumbering makes it
+  // macro 1 and shifts both favorites down.
+  activity.macros = [
+    { button_id: 1, name: "Combo", steps: [
+      { device_id: 1, command_id: 10, button_code: 0, duration: 0, delay: 255 },
+    ] } as any,
+    ...activity.macros!.filter((m) => Number(m.button_id) >= 198),
+  ];
+  activity.favorite_slots = [
+    { button_id: 2, device_id: 1, command_id: 10, name: "TV Power" },
+    { button_id: 3, device_id: 2, command_id: 20, name: "Bar Power" },
+  ];
+  const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
+  assert.match(allText(groups), /Reordered/);
+  assert.doesNotMatch(allText(groups), /Added|Removed/);
+});
+
 test("diffActivityForReview flags idle-behavior changes as device-wide/global", () => {
   const base = baseBundle();
   const edited = updateBundleDeviceIdleBehavior(base, 1, IDLE_BEHAVIOR_AUTO_OFF);

@@ -441,6 +441,30 @@ test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
   assert.deepEqual(act.favorite_slots?.map((s) => s.button_id), [2, 3]);
 });
 
+test("reorderBundleActivityQuickAccess follows macro-target binding refs", () => {
+  // A binding that plays the macro stores device_id = the activity's own id
+  // and command_id = the macro's button_id. Renumbering the macro (3 → 1)
+  // must rewrite the reference, or the bundle points the binding at the
+  // wrong quick-access slot.
+  const bundle = editableBundle() as any;
+  bundle.activities[0].button_bindings = [
+    { button_id: 0xb1, device_id: 101, command_id: 3 },
+    { button_id: 0xb2, device_id: 1, command_id: 10, long_press_device_id: 101, long_press_command_id: 3 },
+    { button_id: 0xb3, device_id: 1, command_id: 3 },
+  ];
+  const next = reorderBundleActivityQuickAccess(bundle, 101, [
+    { kind: "macro", buttonId: 3 },
+    { kind: "favorite", buttonId: 1 },
+    { kind: "favorite", buttonId: 2 },
+  ]);
+  const bindings = activity101(next)!.button_bindings!;
+  // Macro-target refs follow the renumbering…
+  assert.equal(bindings[0].command_id, 1);
+  assert.equal(bindings[1].long_press_command_id, 1);
+  // …but a device command that merely shares the numeric id does not.
+  assert.equal(bindings[2].command_id, 3);
+});
+
 test("applyBundleDelete dispatches by target kind", () => {
   const next = applyBundleDelete(editableBundle(), { kind: "command", deviceId: 1, commandId: 10 });
   assert.deepEqual(

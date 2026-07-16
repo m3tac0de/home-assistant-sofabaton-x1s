@@ -1100,11 +1100,17 @@ export function reorderBundleActivityQuickAccess(
   );
   const macroRows: BackupBundleMacroRow[] = [];
   const favoriteRows: BackupBundleFavoriteSlot[] = [];
+  const macroIdRemap = new Map<number, number>();
   orderedItems.forEach((item, index) => {
     const nextButtonId = index + 1;
     if (item.kind === "macro") {
       const row = macrosByButtonId.get(Number(item.buttonId));
-      if (row) macroRows.push({ ...row, button_id: nextButtonId });
+      if (row) {
+        macroRows.push({ ...row, button_id: nextButtonId });
+        if (Number(item.buttonId) !== nextButtonId) {
+          macroIdRemap.set(Number(item.buttonId), nextButtonId);
+        }
+      }
       return;
     }
     const row = favoritesByButtonId.get(Number(item.buttonId));
@@ -1125,7 +1131,48 @@ export function reorderBundleActivityQuickAccess(
     ...current,
     macros: macroRows,
     favorite_slots: favoriteRows,
+    // Macro-target bindings reference a macro by its button_id (with
+    // device_id = the activity's own id). Renumbering the macros without
+    // following those references would leave the bundle internally
+    // inconsistent — a later reorder, or the sync planner, would resolve
+    // them against the wrong macro.
+    button_bindings: remapMacroTargetBindings(
+      current.button_bindings,
+      normalizedActivityId,
+      macroIdRemap,
+    ),
   }));
+}
+
+/** Rewrite macro-target binding references through `macroIdRemap`
+ * (old macro button_id → new). Rows that don't reference a renumbered
+ * macro pass through unchanged (same array if nothing changed). */
+function remapMacroTargetBindings(
+  bindings: BackupBundleButtonBinding[] | null | undefined,
+  activityId: number,
+  macroIdRemap: Map<number, number>,
+): BackupBundleButtonBinding[] | null | undefined {
+  if (!bindings || macroIdRemap.size === 0) return bindings;
+  let changed = false;
+  const next = bindings.map((row) => {
+    let updated = row;
+    if (Number(row?.device_id || 0) === activityId && macroIdRemap.has(Number(row?.command_id || 0))) {
+      updated = { ...updated, command_id: macroIdRemap.get(Number(row?.command_id || 0)) };
+      changed = true;
+    }
+    if (
+      Number(updated?.long_press_device_id || 0) === activityId
+      && macroIdRemap.has(Number(updated?.long_press_command_id || 0))
+    ) {
+      updated = {
+        ...(updated === row ? { ...row } : updated),
+        long_press_command_id: macroIdRemap.get(Number(updated?.long_press_command_id || 0)),
+      };
+      changed = true;
+    }
+    return updated;
+  });
+  return changed ? next : bindings;
 }
 
 /**

@@ -170,10 +170,13 @@ def test_favorite_reorder_emits_content_order_despite_positional_button_ids() ->
     assert "favorite_order" in kinds
     assert "favorite_add" not in kinds
     assert "favorite_delete" not in kinds
-    # The desired order is carried as content (device, command); the executor
-    # resolves it to live fav_ids. New order: Bar Power then TV Power.
-    order_content = next(s for s in plan if s.kind == "favorite_order").payload["order_content"]
-    assert order_content == [[2, 20], [1, 10]]
+    # The desired order carries favorites as content (device, command); the
+    # executor resolves it to live fav_ids. New order: Bar Power then TV Power.
+    order = next(s for s in plan if s.kind == "favorite_order").payload["order"]
+    assert order == [
+        {"kind": "favorite", "device_id": 2, "command_id": 20},
+        {"kind": "favorite", "device_id": 1, "command_id": 10},
+    ]
 
 
 def test_favorite_append_does_not_emit_reorder() -> None:
@@ -205,8 +208,12 @@ def test_favorite_add_then_reorder_emits_full_content_order() -> None:
     assert "favorite_order" in kinds
     # Add is dispatched before the reorder so the new fav_id exists to reorder.
     assert kinds.index("favorite_add") < kinds.index("favorite_order")
-    order_content = next(s for s in plan if s.kind == "favorite_order").payload["order_content"]
-    assert order_content == [[3, 31], [1, 10], [2, 20]]
+    order = next(s for s in plan if s.kind == "favorite_order").payload["order"]
+    assert order == [
+        {"kind": "favorite", "device_id": 3, "command_id": 31},
+        {"kind": "favorite", "device_id": 1, "command_id": 10},
+        {"kind": "favorite", "device_id": 2, "command_id": 20},
+    ]
 
 
 def test_macro_rename_only_still_emits_macro_write() -> None:
@@ -233,6 +240,158 @@ def test_macro_change_produces_macro_write_with_ordering() -> None:
     assert macro.payload["button_id"] == 198
     # macro_write precedes bindings/favorites which precede remote_sync.
     assert kinds.index("macro_write") < kinds.index("remote_sync")
+
+
+def _bundle_with_user_macro() -> dict:
+    """Baseline whose quick access is [fav 1, fav 2, macro 3 "Combo"]."""
+    base = base_bundle()
+    _activity(base)["macros"].append(
+        {"button_id": 3, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+            {"device_id": 2, "command_id": 21, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    return base
+
+
+def test_macro_move_is_pure_reorder_no_macro_rewrite() -> None:
+    """Moving a macro in the quick-access list must not delete/recreate the
+    macro record: the editor renumbers button_ids positionally, but the
+    planner recovers the macro's baseline hub id by content and expresses
+    the move purely through the order step (which names the macro so the
+    family-0x61 sort rewrite cannot drop it from the hub order table)."""
+    base = _bundle_with_user_macro()
+    edited = copy.deepcopy(base)
+    # The editor moves "Combo" to the front: positional renumbering makes it
+    # macro 1 and shifts both favorites down.
+    _activity(edited)["macros"] = [
+        {"button_id": 1, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+            {"device_id": 2, "command_id": 21, "button_code": 0, "duration": 0, "delay": 255},
+        ]},
+        *[m for m in _activity(edited)["macros"] if m["button_id"] in (198, 199)],
+    ]
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    kinds = _kinds(plan)
+    assert "macro_write" not in kinds
+    assert "macro_delete" not in kinds
+    assert "favorite_add" not in kinds
+    assert "favorite_delete" not in kinds
+    order = next(s for s in plan if s.kind == "favorite_order").payload["order"]
+    # The macro is addressed by its BASELINE hub key id (3), not the
+    # editor's positional id (1).
+    assert order == [
+        {"kind": "macro", "button_id": 3},
+        {"kind": "favorite", "device_id": 1, "command_id": 10},
+        {"kind": "favorite", "device_id": 2, "command_id": 20},
+    ]
+
+
+def test_macro_rename_after_move_writes_at_baseline_id() -> None:
+    base = _bundle_with_user_macro()
+    edited = copy.deepcopy(base)
+    # Move "Combo" to the front AND rename it (steps untouched): the write
+    # must address the baseline id 3, and there must be no delete.
+    _activity(edited)["macros"] = [
+        {"button_id": 1, "name": "Movie combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+            {"device_id": 2, "command_id": 21, "button_code": 0, "duration": 0, "delay": 255},
+        ]},
+        *[m for m in _activity(edited)["macros"] if m["button_id"] in (198, 199)],
+    ]
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    assert "macro_delete" not in _kinds(plan)
+    write = next(s for s in plan if s.kind == "macro_write")
+    assert write.payload["button_id"] == 3
+    assert write.payload["name"] == "Movie combo"
+    assert "new" not in write.payload
+
+
+def test_macro_steps_edit_after_move_writes_at_baseline_id() -> None:
+    base = _bundle_with_user_macro()
+    edited = copy.deepcopy(base)
+    # Same name, different steps, moved position: matched by name (pass 3).
+    _activity(edited)["macros"] = [
+        {"button_id": 1, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]},
+        *[m for m in _activity(edited)["macros"] if m["button_id"] in (198, 199)],
+    ]
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    assert "macro_delete" not in _kinds(plan)
+    write = next(s for s in plan if s.kind == "macro_write")
+    assert write.payload["button_id"] == 3
+    assert len(write.payload["steps"]) == 1
+
+
+def test_new_macro_forces_order_registration() -> None:
+    """A NEW macro always emits an order step (vendor-app parity: every
+    macro create is followed by a family-0x61 sort page), even appended at
+    the natural tail position, and the order entry carries ``new`` so the
+    executor follows the allocator."""
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"].append(
+        {"button_id": 3, "name": "Bench macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    kinds = _kinds(plan)
+    assert kinds.index("macro_write") < kinds.index("favorite_order")
+    order = next(s for s in plan if s.kind == "favorite_order").payload["order"]
+    assert order == [
+        {"kind": "favorite", "device_id": 1, "command_id": 10},
+        {"kind": "favorite", "device_id": 2, "command_id": 20},
+        {"kind": "macro", "button_id": 3, "new": True},
+    ]
+
+
+def test_binding_to_moved_macro_stays_untouched() -> None:
+    """A binding that targets a macro (device_id = the activity itself,
+    command_id = the macro's button_id) references the renumbered positional
+    id after a reorder. The planner must resolve it back to the baseline hub
+    id — here that makes the binding a no-op, not a rewrite."""
+    base = _bundle_with_user_macro()
+    _activity(base)["button_bindings"].append(
+        {"button_id": 0xB1, "device_id": ACTIVITY_ID, "command_id": 3}
+    )
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"] = [
+        {"button_id": 1, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+            {"device_id": 2, "command_id": 21, "button_code": 0, "duration": 0, "delay": 255},
+        ]},
+        *[m for m in _activity(edited)["macros"] if m["button_id"] in (198, 199)],
+    ]
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    # The frontend keeps the bundle self-consistent: the macro-target binding
+    # follows the renumbering (command_id 3 → 1).
+    binding = next(
+        b for b in _activity(edited)["button_bindings"] if b["button_id"] == 0xB1
+    )
+    binding["command_id"] = 1
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    kinds = _kinds(plan)
+    assert "binding_write" not in kinds
+    assert "binding_delete" not in kinds
+    assert "macro_write" not in kinds
+    assert "macro_delete" not in kinds
 
 
 def test_idle_behavior_change_is_ordered_after_favorites() -> None:
