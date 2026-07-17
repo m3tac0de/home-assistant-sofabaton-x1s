@@ -262,6 +262,96 @@ def test_device_id_mismatch_falls_back():
     assert "device id changed" in plan.fallback_reason
 
 
+# ── reference ownership (deployed expansion scopes deletes) ───────────────
+
+
+def test_foreign_favorite_survives_when_deployed_is_passed():
+    baseline = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, favorites={4: 20}, member_count=3)})
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    deployed = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})  # we never deployed fav 4
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert plan.steps == ()  # no favorite_delete: fav 4 is foreign
+
+
+def test_our_stale_favorite_is_garbage_collected():
+    baseline = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, favorites={2: 12, 4: 20}, member_count=3)})
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    deployed = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, favorites={2: 0}, member_count=3)})
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert kinds(plan) == ["favorite_delete"]
+    assert plan.steps[0].payload == {"activity_id": ACT_A, "device_id": DEV, "command_id": 2, "button_id": 12}
+
+
+def test_our_favorite_already_gone_from_hub_needs_no_step():
+    baseline = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    deployed = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, favorites={2: 0}, member_count=3)})
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert plan.steps == ()
+
+
+def test_foreign_binding_survives_but_named_button_is_overwritten():
+    baseline = snapshot(activities={ACT_A: WifiActivityRefs(
+        ACT_A, bindings=((0xB8, 9, None), (0xBE, 9, None)), member_count=3)})  # both foreign
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(
+        ACT_A, bindings=((0xBE, 3, None),), member_count=3)})  # config claims RED only
+    deployed = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    # MUTE (0xB8, foreign, unnamed) survives; RED is overwritten to cmd 3.
+    assert kinds(plan) == ["binding_write"]
+    assert plan.steps[0].payload["button_id"] == 0xBE
+    assert plan.steps[0].payload["command_id"] == 3
+
+
+def test_our_stale_binding_is_garbage_collected():
+    baseline = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, bindings=((0xBE, 1, None),), member_count=3)})
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    deployed = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, bindings=((0xBE, 1, None),), member_count=3)})
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert kinds(plan) == ["binding_delete"]
+    assert plan.steps[0].payload == {"activity_id": ACT_A, "button_id": 0xBE}
+
+
+def test_foreign_membership_survives():
+    # the user added the device to ACT_B via the app; config never referenced it
+    baseline = snapshot(activities={
+        ACT_A: WifiActivityRefs(ACT_A, member_count=3),
+        ACT_B: WifiActivityRefs(ACT_B, favorites={1: 7}, member_count=4),
+    })
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    deployed = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert plan.steps == ()  # no membership_remove, no favorite_delete on ACT_B
+
+
+def test_our_dropped_membership_is_removed():
+    baseline = snapshot(activities={
+        ACT_A: WifiActivityRefs(ACT_A, member_count=3),
+        ACT_B: WifiActivityRefs(ACT_B, member_count=4),
+    })
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    deployed = snapshot(activities={
+        ACT_A: WifiActivityRefs(ACT_A, member_count=3),
+        ACT_B: WifiActivityRefs(ACT_B, member_count=4),
+    })
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert kinds(plan) == ["membership_remove"]
+    assert plan.steps[0].payload == {"device_id": DEV, "activity_id": ACT_B}
+
+
+def test_last_member_fallback_only_applies_to_owned_memberships():
+    # foreign single-member activity must NOT trigger the fallback
+    baseline = snapshot(activities={
+        ACT_A: WifiActivityRefs(ACT_A, member_count=3),
+        ACT_B: WifiActivityRefs(ACT_B, member_count=1),  # foreign, last member
+    })
+    desired = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    deployed = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert not plan.is_fallback
+    assert plan.steps == ()
+
+
 # ══ adapters ══════════════════════════════════════════════════════════════
 
 HARD_BUTTONS = {"red": 0xBE, "green": 0xBF, "mute": 0xB8}

@@ -869,6 +869,34 @@ export function bundleDeviceClass(
 }
 
 /**
+ * Read a device's `brand` from the bundle's device head. A managed Wifi
+ * Commands device carries an `m3-<key>-<hash>` (or legacy `m3tac0de-…`)
+ * brand; the live editor uses this to lock managed devices to read-only.
+ */
+export function bundleDeviceBrand(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): string {
+  if (!bundle) return "";
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+  );
+  return String(device?.device?.brand ?? "").trim();
+}
+
+/** True when a brand string identifies a managed Wifi Commands device. */
+export function isManagedWifiBrand(brand: string): boolean {
+  const text = String(brand ?? "").trim();
+  // Mirrors hub._parse_managed_wifi_brand: `m3-<key>-<hash>` / `m3tac0de-…`
+  // with a non-empty suffix after the prefix.
+  for (const prefix of ["m3-", "m3tac0de-"]) {
+    if (text.startsWith(prefix) && text.slice(prefix.length).trim()) return true;
+  }
+  return false;
+}
+
+/**
  * Read a device's `ip_address` from the bundle's device head. Returns
  * `null` for missing devices and empty / unset values (so the UI can
  * treat "no IP" uniformly regardless of whether the field was absent

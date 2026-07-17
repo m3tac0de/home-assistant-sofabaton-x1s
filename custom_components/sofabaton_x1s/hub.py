@@ -3252,7 +3252,23 @@ class SofabatonHub:
                 "[%s] in-place sync resuming an interrupted apply (command ids %s "
                 "already match the desired config)", self.entry_id, sorted(resumed),
             )
-        plan = build_wifi_inplace_plan(baseline, desired)
+        # The deployed expansion scopes reference OWNERSHIP: only favorites /
+        # bindings / memberships the last deploy created may be cleaned up;
+        # references made outside the config (the app, the activity editor)
+        # are never planned away. Desired values are written regardless.
+        deployed_config = {
+            "commands": deployed_slots,
+            "power_on_command_id": None,
+            "power_off_command_id": None,
+        }
+        deployed_snapshot = desired_snapshot_from_config(
+            deployed_config,
+            device_id=dev_id,
+            device_name="",
+            brand="",
+            hard_button_codes=_HARD_BUTTON_TO_CODE,
+        )
+        plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed_snapshot)
         if plan.is_fallback:
             _LOGGER.info(
                 "[%s] in-place sync declined by planner: %s",

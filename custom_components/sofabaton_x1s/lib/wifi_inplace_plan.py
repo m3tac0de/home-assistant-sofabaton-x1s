@@ -164,9 +164,34 @@ def _fallback(reason: str) -> WifiInplacePlan:
 def build_wifi_inplace_plan(
     baseline: ManagedWifiSnapshot,
     desired: ManagedWifiSnapshot,
+    *,
+    deployed: ManagedWifiSnapshot | None = None,
 ) -> WifiInplacePlan:
     """Diff ``baseline`` (current live device state) against ``desired``
-    (target from the store config) and return the in-place write plan."""
+    (target from the store config) and return the in-place write plan.
+
+    ``deployed`` — the expansion of the store's frozen last-deployed config —
+    scopes the OWNERSHIP of per-activity references (favorites, hard-button
+    bindings, activity memberships):
+
+    * **desired wins where it speaks** — a reference the desired config names
+      is written regardless of the live value (a foreign edit on that exact
+      spot is deliberately overwritten: the user just issued a newer
+      instruction for it);
+    * **deployed history decides what we clean up** — a reference is only
+      *deleted* when the deployed expansion shows we created it and the
+      desired config no longer wants it;
+    * **everything else is untouchable** — references made outside the
+      Wifi Commands config (the Sofabaton app, the live activity editor)
+      are never planned away.
+
+    With ``deployed=None`` the diff is symmetric (baseline-minus-desired
+    deletes) — the pure two-snapshot comparison for standalone library use.
+    The integration always passes the deployed expansion.
+
+    The device's own substance (command records, power rows, the input
+    record, the head) is exclusively ours regardless of ``deployed``.
+    """
 
     if baseline.device_id != desired.device_id:
         return _fallback(
@@ -268,11 +293,18 @@ def build_wifi_inplace_plan(
     # ── 4. per-activity refs ─────────────────────────────────────────────
     base_acts = baseline.activities
     des_acts = desired.activities
+    # Ownership scope for deletes: with a deployed expansion, only references
+    # WE created are ever cleaned up; without one (pure two-snapshot use) the
+    # baseline itself is the scope (symmetric diff).
+    owned_acts = deployed.activities if deployed is not None else base_acts
 
     def _input_cmd_for(ordinal: int) -> int | None:
         if ordinal <= 0 or ordinal > len(desired.input_command_ids):
             return None
         return desired.input_command_ids[ordinal - 1]
+
+    def _owned_refs(act_id: int) -> WifiActivityRefs:
+        return owned_acts.get(act_id) or WifiActivityRefs(activity_id=act_id)
 
     # kept activities — diff refs in place
     for act_id in sorted(set(base_acts) & set(des_acts)):
@@ -296,8 +328,11 @@ def build_wifi_inplace_plan(
                 )
             )
 
-        _diff_favorites(dev, act_id, b.favorites, d.favorites, favorite_steps)
-        _diff_bindings(dev, act_id, b.bindings, d.bindings, binding_steps)
+        owned = _owned_refs(act_id)
+        _diff_favorites(dev, act_id, b.favorites, d.favorites, favorite_steps,
+                        owned_command_ids=set(owned.favorites))
+        _diff_bindings(dev, act_id, b.bindings, d.bindings, binding_steps,
+                       owned_buttons={row[0] for row in owned.bindings})
 
     # added activities — join + set refs
     for act_id in sorted(set(des_acts) - set(base_acts)):
@@ -314,12 +349,16 @@ def build_wifi_inplace_plan(
                 },
             )
         )
-        _diff_favorites(dev, act_id, {}, d.favorites, favorite_steps)
-        _diff_bindings(dev, act_id, (), d.bindings, binding_steps)
+        _diff_favorites(dev, act_id, {}, d.favorites, favorite_steps,
+                        owned_command_ids=set())
+        _diff_bindings(dev, act_id, (), d.bindings, binding_steps,
+                       owned_buttons=set())
 
     # removed activities — drop membership (favorites/bindings cascade
-    # hub-side; bench chunk 3)
-    for act_id in sorted(set(base_acts) - set(des_acts)):
+    # hub-side; bench chunk 3). Only memberships WE deployed are removed:
+    # an activity the user added the device to outside the config is foreign
+    # and stays untouched.
+    for act_id in sorted((set(base_acts) & set(owned_acts)) - set(des_acts)):
         b = base_acts[act_id]
         if b.member_count <= 1:
             # Removing the last member empties the activity → hub GCs it.
@@ -374,8 +413,13 @@ def _diff_favorites(
     base: Mapping[int, int],
     desired: Mapping[int, int],
     out: list[SyncStep],
+    *,
+    owned_command_ids: set[int] | None = None,
 ) -> None:
-    for cid in sorted(set(base) - set(desired)):
+    # Deletes are scoped to OUR favorites (the deployed expansion) so that
+    # favorites created outside the config survive; None = symmetric diff.
+    delete_scope = set(base) if owned_command_ids is None else (owned_command_ids & set(base))
+    for cid in sorted(delete_scope - set(desired)):
         out.append(
             SyncStep(
                 kind="favorite_delete",
@@ -408,10 +452,20 @@ def _diff_bindings(
     base: Sequence[tuple[int, int, int | None]],
     desired: Sequence[tuple[int, int, int | None]],
     out: list[SyncStep],
+    *,
+    owned_buttons: set[int] | None = None,
 ) -> None:
     base_by_button = {row[0]: row for row in base}
     des_by_button = {row[0]: row for row in desired}
-    for button in sorted(set(base_by_button) - set(des_by_button)):
+    # Deletes are scoped to OUR buttons (the deployed expansion); a foreign
+    # binding on an unclaimed button survives. A button the desired config
+    # names is always written below — desired wins where it speaks.
+    delete_scope = (
+        set(base_by_button)
+        if owned_buttons is None
+        else (owned_buttons & set(base_by_button))
+    )
+    for button in sorted(delete_scope - set(des_by_button)):
         out.append(
             SyncStep(
                 kind="binding_delete",

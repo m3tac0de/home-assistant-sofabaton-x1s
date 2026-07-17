@@ -38,6 +38,8 @@ import {
   backupUsesWholeHub,
   bundleButtonCatalog,
   bundleDeleteImpact,
+  bundleDeviceBrand,
+  isManagedWifiBrand,
   deleteActivityButtonBinding,
   deleteBundleActivity,
   deleteBundleActivityQuickAccess,
@@ -1498,4 +1500,31 @@ test("reconcileRestoreSelection pulls chained activities and their devices in", 
   assert.deepEqual(selection.forcedActivityIds, [102, 103]);
   // Device 2 is linked only to the FORCED activity 102 — it must come along.
   assert.deepEqual(selection.forcedDeviceIds, [1, 2]);
+});
+
+test("isManagedWifiBrand recognizes managed brands and rejects others", () => {
+  assert.equal(isManagedWifiBrand("m3-benchwifi-abc123"), true);
+  assert.equal(isManagedWifiBrand("m3-default-0ff"), true);
+  assert.equal(isManagedWifiBrand("m3tac0de-legacyhash"), true);
+  assert.equal(isManagedWifiBrand("m3-"), false); // empty suffix
+  assert.equal(isManagedWifiBrand("Samsung"), false);
+  assert.equal(isManagedWifiBrand(""), false);
+  assert.equal(isManagedWifiBrand("m3thing"), false); // no prefix delimiter
+});
+
+test("bundleDeviceBrand reads the device head brand", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { name: "H", version: "X1S" },
+    devices: [
+      { device: { device_id: 8, name: "Lights", brand: "m3-key-hash" }, commands: [] },
+      { device: { device_id: 9, name: "TV" }, commands: [] },
+    ],
+    activities: [],
+  } as any;
+  assert.equal(bundleDeviceBrand(bundle, 8), "m3-key-hash");
+  assert.equal(bundleDeviceBrand(bundle, 9), ""); // no brand field
+  assert.equal(bundleDeviceBrand(bundle, 99), ""); // missing device
+  assert.equal(bundleDeviceBrand(null, 8), "");
 });

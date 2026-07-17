@@ -557,3 +557,57 @@ test("payload test hint shows only when editing an IR command", () => {
   text = templateText(element._renderCommandPayloadDialog());
   assert.ok(!text.includes("Verify a changed payload"));
 });
+
+function managedWifiBundle(): BackupBundlePayload {
+  const bundle = editorBundle("X1S");
+  bundle.devices = [
+    ...(bundle.devices ?? []),
+    {
+      device: { device_id: 8, name: "Lights", device_class: "wifi_ip", brand: "m3-benchwifi-abc123" },
+      commands: [{ command_id: 1, name: "Dim" }],
+    },
+  ];
+  return bundle;
+}
+
+test("live editor locks a managed Wifi Device to read-only (rename kept, delete + sections gone)", () => {
+  const element = new EditDetailViewElement() as EditorElement;
+  element.bundle = managedWifiBundle();
+  element.kind = "device";
+  element.entityId = 8;
+  element.mode = "live";
+
+  assert.equal(element._isManagedWifiLiveDevice(), true);
+  assert.deepEqual(element._editDetailSectionItems("device"), []);
+
+  const body = templateText(element._renderManagedWifiLockNotice());
+  assert.ok(body.includes("Managed by Wifi Commands"));
+
+  const buttons = templateText(element._renderDetailRenameDeleteButtons("device"));
+  assert.ok(buttons.includes("mdi:pencil")); // rename kept
+  assert.ok(!buttons.includes("mdi:trash-can-outline")); // delete removed
+});
+
+test("live editor leaves an unmanaged device fully editable", () => {
+  const element = new EditDetailViewElement() as EditorElement;
+  element.bundle = managedWifiBundle();
+  element.kind = "device";
+  element.entityId = 2; // plain wifi_roku, no managed brand
+  element.mode = "live";
+
+  assert.equal(element._isManagedWifiLiveDevice(), false);
+  assert.ok(element._editDetailSectionItems("device").length > 0);
+  const buttons = templateText(element._renderDetailRenameDeleteButtons("device"));
+  assert.ok(buttons.includes("mdi:trash-can-outline")); // delete present
+});
+
+test("the offline backup editor never locks a managed Wifi Device", () => {
+  const element = new EditDetailViewElement() as EditorElement;
+  element.bundle = managedWifiBundle();
+  element.kind = "device";
+  element.entityId = 8;
+  element.mode = "backup"; // restore-time editing stays available
+
+  assert.equal(element._isManagedWifiLiveDevice(), false);
+  assert.ok(element._editDetailSectionItems("device").length > 0);
+});

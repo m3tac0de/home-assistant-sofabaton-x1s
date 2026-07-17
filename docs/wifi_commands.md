@@ -40,6 +40,8 @@ Devices are managed in the **Wifi Commands** tab of the Control Panel card. Each
 
 Renaming a deployed Wifi Device through the device editor (**Hub tab → Devices → Edit**) carries over automatically: the Wifi Commands configuration picks up the new name and the device stays in sync — no redeploy needed.
 
+The rest of a managed Wifi Device is **read-only in the live device editor** — its commands, power/input, and button assignments are owned by the Wifi Commands tab, and editing them elsewhere would be overwritten on the next sync. Opening one in **Hub tab → Devices → Edit** shows a *Managed by Wifi Commands* notice; make those changes in the Wifi Commands tab instead. (References you add to the device *outside* Wifi Commands — an extra favorite, a hard-button binding, or adding it to another Activity through the Sofabaton app — are left alone by re-syncs and keep working.)
+
 ## Power control
 
 Each Wifi Device can have a dedicated power **on** and power **off** command. These are configured at the top of the device's slot page:

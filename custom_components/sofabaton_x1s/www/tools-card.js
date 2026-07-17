@@ -6544,6 +6544,21 @@ function bundleDeviceClass(bundle, deviceId) {
   if (!device) return null;
   return String(device.device?.device_class ?? "").trim().toLowerCase() || null;
 }
+function bundleDeviceBrand(bundle, deviceId) {
+  if (!bundle) return "";
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  return String(device?.device?.brand ?? "").trim();
+}
+function isManagedWifiBrand(brand) {
+  const text = String(brand ?? "").trim();
+  for (const prefix of ["m3-", "m3tac0de-"]) {
+    if (text.startsWith(prefix) && text.slice(prefix.length).trim()) return true;
+  }
+  return false;
+}
 function deviceIpAddress(bundle, deviceId) {
   if (!bundle) return null;
   const normalizedId = Number(deviceId);
@@ -8757,17 +8772,39 @@ var SofabatonEditDetailView = class extends i4 {
   // delete executes immediately on the hub through the host (see
   // _confirmDelete).
   _renderDetailRenameDeleteButtons(kind) {
+    const managed = this._isManagedWifiLiveDevice();
     return b2`
       <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${kind}`}>
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
-      <button
-        class="icon-btn icon-btn--danger"
-        @click=${this._openDetailDeleteConfirm}
-        aria-label=${kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-      >
-        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-      </button>
+      ${managed ? A : b2`
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${this._openDetailDeleteConfirm}
+              aria-label=${kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
+          `}
+    `;
+  }
+  _renderManagedWifiLockNotice() {
+    return b2`
+      <div class="managed-wifi-lock">
+        <div class="managed-wifi-lock-chip">
+          <ha-icon icon="mdi:wifi-cog"></ha-icon>
+          <span>Managed by Wifi Commands</span>
+        </div>
+        <p class="managed-wifi-lock-copy">
+          This device was deployed from the <strong>Wifi Commands</strong> tab.
+          Its commands, power, input, and button assignments are configured
+          there — editing them here would be overwritten on the next sync.
+        </p>
+        <p class="managed-wifi-lock-copy">
+          You can still rename it here; the new name stays in sync with your
+          Wifi Commands configuration.
+        </p>
+      </div>
     `;
   }
   render() {
@@ -8815,12 +8852,12 @@ var SofabatonEditDetailView = class extends i4 {
                   ${this._renderPowerSetupSection("activity", Number(this.entityId))}
                   ${this._renderButtonBindingsSection("activity")}
                   ${this._renderActivityQuickAccessSection(activityQuickAccess)}
-                ` : b2`
-                  ${this._renderPowerSetupSection("device", Number(this.entityId))}
-                  ${this._renderDeviceNetworkSection()}
-                  ${this._renderDeviceCommandsSection(deviceCommands2)}
-                  ${this._renderButtonBindingsSection("device")}
-                `}
+                ` : this._isManagedWifiLiveDevice() ? this._renderManagedWifiLockNotice() : b2`
+                    ${this._renderPowerSetupSection("device", Number(this.entityId))}
+                    ${this._renderDeviceNetworkSection()}
+                    ${this._renderDeviceCommandsSection(deviceCommands2)}
+                    ${this._renderButtonBindingsSection("device")}
+                  `}
           </div>
         </div>
         ${this._renderEditRenameDialog()}
@@ -8832,8 +8869,22 @@ var SofabatonEditDetailView = class extends i4 {
       </div>
     `;
   }
+  /**
+   * True when the LIVE editor is showing a managed Wifi Commands device.
+   * Such a device's records (commands, power, input, bindings) are owned by
+   * the Wifi Commands tab — editing them here would silently diverge and be
+   * overwritten on the next sync — so the live editor locks everything but
+   * the device name (renaming is coordinated with the Wifi Commands store).
+   * The offline Backup editor is unaffected (mode !== "live").
+   */
+  _isManagedWifiLiveDevice() {
+    return this.mode === "live" && this.kind === "device" && this.entityId != null && isManagedWifiBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)));
+  }
   _editDetailSectionItems(kind) {
     if (kind === "activity") {
+      return [];
+    }
+    if (this._isManagedWifiLiveDevice()) {
       return [];
     }
     const hasNetworkSection = this.entityId != null && this.bundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "") : false;
@@ -11071,6 +11122,17 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, i`
       color: var(--primary-text-color);
       background: color-mix(in srgb, var(--primary-color) 12%, transparent);
     }
+    .managed-wifi-lock { padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+    .managed-wifi-lock-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 999px;
+      font-size: 13px; font-weight: 600;
+      color: var(--primary-color);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
+    .managed-wifi-lock-chip ha-icon { --mdc-icon-size: 18px; }
+    .managed-wifi-lock-copy { margin: 0; color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; max-width: 46ch; }
   `];
 if (!customElements.get("sofabaton-edit-detail-view")) {
   customElements.define("sofabaton-edit-detail-view", SofabatonEditDetailView);

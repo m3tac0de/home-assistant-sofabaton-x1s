@@ -1514,6 +1514,21 @@ function activityQuickAccessItems(bundle2, activityId) {
     return delta !== 0 ? delta : left.buttonId - right.buttonId;
   });
 }
+function bundleDeviceBrand(bundle2, deviceId) {
+  if (!bundle2) return "";
+  const normalizedId = Number(deviceId);
+  const device = (bundle2.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  return String(device?.device?.brand ?? "").trim();
+}
+function isManagedWifiBrand(brand) {
+  const text = String(brand ?? "").trim();
+  for (const prefix of ["m3-", "m3tac0de-"]) {
+    if (text.startsWith(prefix) && text.slice(prefix.length).trim()) return true;
+  }
+  return false;
+}
 var IDLE_BEHAVIOR_DISABLED = 4;
 function deviceIdleBehavior(bundle2, deviceId) {
   if (!bundle2) return null;
@@ -4139,4 +4154,29 @@ test("reconcileRestoreSelection pulls chained activities and their devices in", 
   assert.deepEqual(selection.selectedActivityIds, [101, 102, 103]);
   assert.deepEqual(selection.forcedActivityIds, [102, 103]);
   assert.deepEqual(selection.forcedDeviceIds, [1, 2]);
+});
+test("isManagedWifiBrand recognizes managed brands and rejects others", () => {
+  assert.equal(isManagedWifiBrand("m3-benchwifi-abc123"), true);
+  assert.equal(isManagedWifiBrand("m3-default-0ff"), true);
+  assert.equal(isManagedWifiBrand("m3tac0de-legacyhash"), true);
+  assert.equal(isManagedWifiBrand("m3-"), false);
+  assert.equal(isManagedWifiBrand("Samsung"), false);
+  assert.equal(isManagedWifiBrand(""), false);
+  assert.equal(isManagedWifiBrand("m3thing"), false);
+});
+test("bundleDeviceBrand reads the device head brand", () => {
+  const bundle2 = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { name: "H", version: "X1S" },
+    devices: [
+      { device: { device_id: 8, name: "Lights", brand: "m3-key-hash" }, commands: [] },
+      { device: { device_id: 9, name: "TV" }, commands: [] }
+    ],
+    activities: []
+  };
+  assert.equal(bundleDeviceBrand(bundle2, 8), "m3-key-hash");
+  assert.equal(bundleDeviceBrand(bundle2, 9), "");
+  assert.equal(bundleDeviceBrand(bundle2, 99), "");
+  assert.equal(bundleDeviceBrand(null, 8), "");
 });
