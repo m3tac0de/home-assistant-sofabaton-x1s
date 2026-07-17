@@ -4910,7 +4910,7 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
 
     delete_calls: list[int] = []
 
-    async def _delete(dev_id):
+    async def _delete(dev_id, *_args, **_kwargs):
         delete_calls.append(dev_id)
         return {"status": "success"}
 
@@ -4972,7 +4972,7 @@ def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
 
     delete_calls: list[int] = []
 
-    async def _delete(dev_id):
+    async def _delete(dev_id, *_args, **_kwargs):
         delete_calls.append(dev_id)
         return {"status": "success"}
 
@@ -5194,7 +5194,7 @@ def test_sync_command_config_ignores_orphaned_activities(monkeypatch):
     loop.close()
 
 
-def _make_event_hook_hub(monkeypatch):
+def _make_event_hook_hub(monkeypatch, activity_actions=None):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     hass = FakeHass(loop)
@@ -5235,6 +5235,9 @@ def _make_event_hook_hub(monkeypatch):
                 "redundant_off": {"action": "perform-action", "perform_action": "script.still_off"},
                 "activity_start": {"action": "perform-action", "perform_action": "script.started"},
             }
+
+        def get_activity_event_actions(self, _entry_id):
+            return dict(activity_actions or {})
 
     async def _fake_store(_hass):
         return _EventStore()
@@ -5282,6 +5285,146 @@ def test_hub_event_actions_redundant_off_press(monkeypatch):
         loop.close()
 
 
+_ACTIVITY_EVENT_ACTIONS = {
+    "5": {
+        "start": {"action": "perform-action", "perform_action": "script.movie_start"},
+        "stop": {"action": "perform-action", "perform_action": "script.movie_stop"},
+    },
+    "7": {
+        "start": {"action": "perform-action", "perform_action": "script.music_start"},
+        "stop": {"action": "perform-action", "perform_action": "script.music_stop"},
+    },
+}
+
+
+def test_activity_event_actions_fire_on_start_stop_and_switch(monkeypatch):
+    hub, loop, executed, drain = _make_event_hook_hub(
+        monkeypatch, activity_actions=_ACTIVITY_EVENT_ACTIONS
+    )
+    try:
+        # First resolution after startup only arms the hooks.
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert executed == []
+
+        # Direct switch 5 -> 7: the old activity stops before the new one
+        # starts, then the global activity-start hook runs.
+        hub._on_activity_change(7, 5, "Music")
+        drain()
+        assert [a.get("perform_action") for a in executed] == [
+            "script.movie_stop",
+            "script.music_start",
+            "script.started",
+        ]
+
+        # Power off from 7: its stop hook runs alongside the global one.
+        executed.clear()
+        hub._on_activity_change(None, 7, None)
+        drain()
+        assert [a.get("perform_action") for a in executed] == [
+            "script.music_stop",
+            "script.hub_off",
+        ]
+
+        # Power on into an activity with no configured entry: only the
+        # global hook fires.
+        executed.clear()
+        hub._on_activity_change(9, None, "Sports")
+        drain()
+        assert [a.get("perform_action") for a in executed] == ["script.started"]
+    finally:
+        loop.close()
+
+
+def test_hub_event_notify_records_transitions(monkeypatch):
+    hub, loop, _executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        # The arming resolution must not surface as a firing.
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert hub.get_last_hub_event() is None
+
+        hub._on_activity_change(7, 5, "Music")
+        drain()
+        event = hub.get_last_hub_event()
+        assert event is not None
+        assert event["type"] == "activity_change"
+        assert event["from_activity_id"] == 5
+        assert event["to_activity_id"] == 7
+        assert isinstance(event["timestamp"], float)
+
+        hub._on_activity_change(None, 7, None)
+        drain()
+        event = hub.get_last_hub_event()
+        assert event["type"] == "activity_change"
+        assert event["from_activity_id"] == 7
+        assert event["to_activity_id"] is None
+
+        hub._on_redundant_off_press()
+        drain()
+        assert hub.get_last_hub_event()["type"] == "redundant_off"
+    finally:
+        loop.close()
+
+
+def test_activities_burst_prunes_stale_activity_event_actions(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+    )
+
+    prune_calls: list[tuple[str, list[int]]] = []
+
+    class _PruneStore:
+        async def async_prune_activity_event_actions(self, entry_id, activity_ids):
+            prune_calls.append((entry_id, sorted(int(a) for a in activity_ids)))
+            return True
+
+    async def _fake_store(_hass):
+        return _PruneStore()
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_get_command_config_store", _fake_store
+    )
+
+    hub.activities = {101: {"name": "Movie", "active": False, "needs_confirm": False}}
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({102: {"name": "Music", "active": False, "needs_confirm": False}}, True),
+    )
+
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert prune_calls == [("entry-id", [102])]
+
+    # An identical follow-up burst (no catalog change) must not prune again.
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+    loop.run_until_complete(asyncio.sleep(0))
+    assert prune_calls == [("entry-id", [102])]
+
+    loop.close()
+
+
 def _make_delete_device_hub(monkeypatch, *, proxy_result):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -5312,12 +5455,19 @@ def _make_delete_device_hub(monkeypatch, *, proxy_result):
         return True
 
     monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _record_persist)
-    return hub, loop, persisted
+
+    warmed: list[int] = []
+
+    async def _record_warm(act_id):
+        warmed.append(int(act_id))
+
+    monkeypatch.setattr(hub, "_async_fetch_activity_commands", _record_warm)
+    return hub, loop, persisted, warmed
 
 
 def test_delete_device_drops_hub_snapshot_and_bumps_generation(monkeypatch):
     dev_lo = 0x14
-    hub, loop, persisted = _make_delete_device_hub(
+    hub, loop, persisted, warmed = _make_delete_device_hub(
         monkeypatch,
         proxy_result={"device_id": dev_lo, "confirmed_activities": [], "status": "success"},
     )
@@ -5342,7 +5492,7 @@ def test_delete_device_drops_hub_snapshot_and_bumps_generation(monkeypatch):
 
 def test_delete_device_failure_keeps_snapshot_and_generation(monkeypatch):
     dev_lo = 0x14
-    hub, loop, persisted = _make_delete_device_hub(monkeypatch, proxy_result=None)
+    hub, loop, persisted, warmed = _make_delete_device_hub(monkeypatch, proxy_result=None)
     try:
         hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
         generation_before = hub.cache_generation
@@ -5353,13 +5503,14 @@ def test_delete_device_failure_keeps_snapshot_and_generation(monkeypatch):
         assert dev_lo in hub.devices
         assert hub.cache_generation == generation_before
         assert persisted == []
+        assert warmed == []
     finally:
         loop.close()
 
 
 def test_delete_activity_id_bumps_generation_without_touching_devices(monkeypatch):
     act_id = 0x66
-    hub, loop, persisted = _make_delete_device_hub(
+    hub, loop, persisted, warmed = _make_delete_device_hub(
         monkeypatch,
         proxy_result={"device_id": act_id, "confirmed_activities": [], "status": "success"},
     )
@@ -5374,6 +5525,57 @@ def test_delete_activity_id_bumps_generation_without_touching_devices(monkeypatc
         assert 0x14 in hub.devices
         assert hub._devices_generation == devices_generation_before
         assert hub.cache_generation == generation_before + 1
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_delete_device_rewarms_confirmed_activities(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={
+            "device_id": dev_lo,
+            "confirmed_activities": [0x65, 0x66],
+            "status": "success",
+        },
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result and result.get("status") == "success"
+        # The proxy delete gutted these activities' cached keymap/favorites/
+        # macros; the hub-level delete must refetch them so the structural
+        # cache stays bundle-grade without a manual full refresh.
+        assert warmed == [0x65, 0x66]
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_delete_device_skips_rewarm_when_disabled(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={
+            "device_id": dev_lo,
+            "confirmed_activities": [0x65],
+            "status": "success",
+        },
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+
+        result = loop.run_until_complete(
+            hub.async_delete_device(dev_lo, refresh_impacted_activities=False)
+        )
+
+        assert result and result.get("status") == "success"
+        assert warmed == []
+        # Generation bump + persist still run: the deploy pipeline that opts
+        # out does its own re-warm before relying on the persisted cache.
         assert persisted == [True]
     finally:
         loop.close()

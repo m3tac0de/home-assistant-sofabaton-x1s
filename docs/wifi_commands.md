@@ -1,8 +1,8 @@
-# Automation Assist: Wifi Commands
+# Automation
 
 Run Home Assistant Actions when buttons are pressed on the physical remote.
 
-In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to **5 Wifi Devices** can be created per hub, each with 10 command slots.
+In the **Sofabaton Control Panel** card, open **Automation → Wifi Commands**. Up to **5 Wifi Devices** can be created per hub, each with 10 command slots.
 
 1. **Add a Wifi Device**: Give it a name. Multiple devices are useful if you want separate logical groups of commands or separate power/input configurations per device.
 2. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
@@ -36,7 +36,7 @@ Up to **5 Wifi Devices** can be created per hub. Each device has its own name, i
 - Separating commands by logical group (e.g. one device for lighting scenes, another for audio presets).
 - Assigning different power-on/off commands to different activities.
 
-Devices are managed in the **Wifi Commands** tab of the Control Panel card. Each device is independent: syncing one device does not affect the others.
+Devices are managed under **Automation → Wifi Commands** in the Control Panel card. Each device is independent: syncing one device does not affect the others.
 
 Renaming a deployed Wifi Device through the device editor (**Hub tab → Devices → Edit**) carries over automatically: the Wifi Commands configuration picks up the new name and the device stays in sync — no redeploy needed.
 
@@ -74,13 +74,20 @@ If two commands claim the same button (for different Activities), no device-page
 
 ## Hub Events
 
-At the bottom of the Wifi Devices list you can attach a Home Assistant Action to hub state changes:
+The **Events** sub-tab (next to **Wifi Commands**) contains separate **Hub Events** and **Activity Events** sections. Under **Hub Events**, you can attach a Home Assistant Action to hub state changes:
 
 - **When the hub is switched OFF** — the hub left an Activity and is now powered off.
 - **When OFF is pressed while the hub is already OFF** — the OFF button was pressed with nothing left to turn off. Useful as a "force everything off" hook.
 - **When an Activity starts** — the hub switched into any Activity.
 
-Each line shows its configured Action; click it to change, or use the small ✕ to reset it to *do nothing*.
+Below those, **Activity Events** list every Activity on the hub with a start and a stop hook:
+
+- **When \<Activity\> starts** — the hub switched into that Activity.
+- **and when it stops** — the hub left that Activity, either by powering off or by switching directly into another Activity (the old Activity's stop hook runs before the new one's start hook).
+
+Each line shows its configured Action; click it to change, or use the small ✕ to reset it to *do nothing*. When an event fires, its row briefly lights up — the same live indicator the Wifi Device cards show for incoming command presses.
+
+Activity Events are tied to the hub's Activity **id** only; no name matching is attempted. If you delete an Activity, its configured hooks are cleaned up automatically the next time the integration refreshes the Activity list, and if the hub later reuses that id for a new Activity, a hook configured before the cleanup would simply apply to the new Activity.
 
 Unlike Wifi Commands, these hooks live entirely in Home Assistant: they are never synced to the hub and no sync is needed after changing them. They also require no Wifi Device or command slots — they work purely from the hub's reported activity state.
 

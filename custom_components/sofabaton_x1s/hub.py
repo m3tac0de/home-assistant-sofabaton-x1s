@@ -33,6 +33,7 @@ from .const import (
     format_hub_entry_title,
     signal_activity,
     signal_app_activations,
+    signal_hub_events,
     signal_ip_commands,
     signal_wifi_device,
     signal_buttons,
@@ -231,6 +232,7 @@ class SofabatonHub:
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
         self._app_activations: list[dict[str, Any]] = []
         self._last_ip_command: dict[str, Any] | None = None
+        self._last_hub_event: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
         self._command_sync_progress: dict[str, dict[str, Any]] = {}
@@ -550,15 +552,33 @@ class SofabatonHub:
             if new_id is not None:
                 # ask for buttons, but dedup
                 self.hass.async_create_task(self._async_prime_buttons_for(new_id))
-                if hooks_armed:
+            if hooks_armed and (new_id is not None or old_id is not None):
+                # Per-activity hooks first: the old activity stopped (also on
+                # a switch straight into another activity), then the new one
+                # started. Task-creation order keeps scheduling deterministic.
+                if old_id is not None and old_id != new_id:
+                    self.hass.async_create_task(
+                        self._async_run_activity_event_action(old_id, "stop")
+                    )
+                if new_id is not None:
+                    self.hass.async_create_task(
+                        self._async_run_activity_event_action(new_id, "start")
+                    )
                     # Hub-level hook: an activity started.
                     self.hass.async_create_task(
                         self._async_run_hub_event_action("activity_start")
                     )
-            elif old_id is not None and hooks_armed:
-                # Hub-level hook: the hub switched into POWERED OFF.
-                self.hass.async_create_task(
-                    self._async_run_hub_event_action("power_off")
+                elif old_id is not None:
+                    # Hub-level hook: the hub switched into POWERED OFF.
+                    self.hass.async_create_task(
+                        self._async_run_hub_event_action("power_off")
+                    )
+                self._notify_hub_event(
+                    {
+                        "type": "activity_change",
+                        "from_activity_id": old_id,
+                        "to_activity_id": new_id,
+                    }
                 )
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -571,6 +591,7 @@ class SofabatonHub:
             self.hass.async_create_task(
                 self._async_run_hub_event_action("redundant_off")
             )
+            self._notify_hub_event({"type": "redundant_off"})
         self.hass.loop.call_soon_threadsafe(_inner)
 
     async def _async_run_hub_event_action(self, event_key: str) -> None:
@@ -591,6 +612,71 @@ class SofabatonHub:
                 self.entry_id,
                 event_key,
                 err,
+            )
+
+    async def _async_run_activity_event_action(
+        self, activity_id: int, phase: str
+    ) -> None:
+        """Execute the user-configured action for a per-activity event hook.
+
+        Keyed strictly by activity id — no name matching. Missing entries
+        (or unset phases, which carry the default no-op payload) execute
+        nothing.
+        """
+
+        try:
+            store = await async_get_command_config_store(self.hass)
+            entry = store.get_activity_event_actions(self.entry_id).get(
+                str(int(activity_id))
+            )
+            if not entry:
+                return
+            await self._async_execute_action_config(entry.get(phase) or {})
+        except Exception as err:  # pragma: no cover - service boundary
+            self._log.warning(
+                "[%s] Failed executing activity %s event action '%s': %s",
+                self.entry_id,
+                activity_id,
+                phase,
+                err,
+            )
+
+    def _notify_hub_event(self, event: dict[str, Any]) -> None:
+        """Record a hub-event firing and fan it out to subscribed cards.
+
+        Purely a UI feed (drives the transient row glow in the Hub Events
+        tab); fires whenever the event happens, whether or not an action is
+        configured. Must be called from the event loop.
+        """
+
+        self._last_hub_event = {
+            **event,
+            "timestamp": datetime.now(timezone.utc).timestamp(),
+        }
+        async_dispatcher_send(self.hass, signal_hub_events(self.entry_id))
+
+    def get_last_hub_event(self) -> dict[str, Any] | None:
+        if self._last_hub_event is None:
+            return None
+        return dict(self._last_hub_event)
+
+    async def _async_prune_activity_event_actions(self) -> None:
+        """Drop per-activity event actions for ids no longer on the hub.
+
+        Runs after an authoritative activity-catalog refresh so persistent
+        configuration never accumulates entries for deleted activities.
+        """
+
+        try:
+            store = await async_get_command_config_store(self.hass)
+            await store.async_prune_activity_event_actions(
+                self.entry_id, list(self.activities.keys())
+            )
+        except Exception:  # noqa: BLE001 - housekeeping must never break sync
+            self._log.warning(
+                "[%s] Failed pruning stale activity event actions",
+                self.entry_id,
+                exc_info=True,
             )
 
 
@@ -629,6 +715,14 @@ class SofabatonHub:
                 self._activities_generation += 1
                 if activities_changed:
                     self._bump_cache_generation()
+                    if acts:
+                        # Housekeeping: activity ids that left the catalog take
+                        # their configured start/stop event actions with them.
+                        # Skipped on an empty catalog so a transient empty read
+                        # can never wipe the whole configuration.
+                        self.hass.async_create_task(
+                            self._async_prune_activity_event_actions()
+                        )
                 self._sync_current_activity_from_cache(clear_when_unknown=True)
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -2024,8 +2118,21 @@ class SofabatonHub:
             )
         )
 
-    async def async_delete_device(self, device_id: int) -> dict[str, Any] | None:
-        """Delete a device and confirm impacted activities on the selected hub."""
+    async def async_delete_device(
+        self,
+        device_id: int,
+        *,
+        refresh_impacted_activities: bool = True,
+    ) -> dict[str, Any] | None:
+        """Delete a device and confirm impacted activities on the selected hub.
+
+        The proxy delete clears the cached keymap/favorites/macros of every
+        activity the hub rewrote when it dropped the device, so by default
+        those activities are re-warmed here before the cache is persisted.
+        Callers that run their own re-warm pass afterwards (the wifi deploy
+        pipeline) pass ``refresh_impacted_activities=False`` and fold the
+        result's ``confirmed_activities`` into that pass instead.
+        """
 
         result = await self.hass.async_add_executor_job(
             self._proxy.delete_device,
@@ -2040,6 +2147,17 @@ class SofabatonHub:
             # proxy delete already ran keeps that side current.
             if self.devices.pop(device_id & 0xFF, None) is not None:
                 self._devices_generation += 1
+            if refresh_impacted_activities:
+                for act_id in result.get("confirmed_activities") or []:
+                    try:
+                        await self._async_fetch_activity_commands(int(act_id))
+                    except Exception:  # noqa: BLE001 - the delete itself succeeded
+                        self._log.warning(
+                            "[%s] failed re-warming activity 0x%02X after device delete",
+                            self.entry_id,
+                            int(act_id) & 0xFF,
+                            exc_info=True,
+                        )
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
             await self._async_persist_cache_if_enabled()
@@ -3727,8 +3845,16 @@ class SofabatonHub:
                     current_step=4,
                     message="Deleting existing managed Wifi Device",
                 )
+                # Activities the hub rewrote while deleting the old managed
+                # device. Their per-activity cache is cleared by the delete;
+                # the step-7 re-warm below refetches them (including ones the
+                # new config no longer references, which would otherwise stay
+                # cold until a full cache refresh).
+                delete_confirmed_acts: set[int] = set()
                 for dev_id, _managed_key, _managed_hash, _brand in managed:
-                    result = await self.async_delete_device(dev_id)
+                    result = await self.async_delete_device(
+                        dev_id, refresh_impacted_activities=False
+                    )
                     if not result:
                         # Roll back to the pre-sync hub state: the store still
                         # points at the old device id, so leaving the new
@@ -3737,6 +3863,10 @@ class SofabatonHub:
                         raise HomeAssistantError(
                             f"Failed deleting managed device {dev_id}"
                         )
+                    delete_confirmed_acts.update(
+                        int(act) & 0xFF
+                        for act in (result.get("confirmed_activities") or [])
+                    )
 
                 # Warm the wifi-device command cache before activity refreshes
                 # so favorite-label resolution can reuse the full REQ_COMMANDS
@@ -3882,9 +4012,11 @@ class SofabatonHub:
                 # invalidate parts of the per-activity cache, and a partial
                 # refetch here used to leave favorites and buttons cold after
                 # every deploy.
+                warmed_act_los: set[int] = set()
                 for act_id in sorted(activity_ids):
                     if not add_results.get(act_id, False):
                         continue
+                    warmed_act_los.add(int(act_id) & 0xFF)
                     await self._async_fetch_activity_commands(act_id)
                     if act_id in activities_with_favorites:
                         # reorder_favorites dropped the cached family-0x61
@@ -3892,7 +4024,16 @@ class SofabatonHub:
                         # favorites the way the remote now shows them.
                         await self.async_request_favorites_order(act_id)
 
-                if activity_ids:
+                # Activities the managed-device delete rewrote but the new
+                # config no longer references: their cache was cleared by the
+                # delete, so re-warm them too. Skip ids the hub's delete sweep
+                # purged (single-member activities no longer in the catalog).
+                for act_lo in sorted(delete_confirmed_acts - warmed_act_los):
+                    if act_lo not in self.activities:
+                        continue
+                    await self._async_fetch_activity_commands(act_lo)
+
+                if activity_ids or delete_confirmed_acts:
                     self._bump_cache_generation()
                     async_dispatcher_send(self.hass, signal_commands(self.entry_id))
                     try:

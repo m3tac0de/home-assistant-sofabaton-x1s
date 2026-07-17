@@ -1196,13 +1196,13 @@ var TOOLS_CARD_STRINGS = {
   },
   tabs: {
     cache: "Hub",
-    wifiCommands: "Wifi Commands",
+    wifiCommands: "Automation",
     backup: "Backup",
     settings: "Settings",
     logs: "Logs"
   },
   tabDocs: {
-    wifi_commands: "Wifi Commands documentation",
+    wifi_commands: "Automation documentation",
     backup: "Backup documentation"
   },
   backend: {
@@ -1600,7 +1600,7 @@ var TOOLS_CARD_STRINGS = {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Choose a Wifi Device to edit its command slots, or add a new one.",
+    sectionSubtitle: "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
@@ -1665,6 +1665,16 @@ var TOOLS_CARD_STRINGS = {
     hubEventPerform: (service) => `perform ${service}`,
     hubEventClearTitle: "Reset to do nothing",
     hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Events",
+    activityEventsTitle: "Activity Events",
+    activityEventsSubtitle: "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
+    activityEventStarts: (name) => `When ${name} starts`,
+    activityEventStops: "and when it stops",
+    activityEventStartModalTitle: (name) => `When ${name} starts`,
+    activityEventStopModalTitle: (name) => `When ${name} stops`,
+    activityEventFallbackName: (id) => `Activity ${id}`,
+    noActivitiesForEvents: "No Activities on this hub yet.",
     favorite: "Set as Favorite",
     physicalButtonAssignment: "Physical Button Assignment",
     enableLongPress: "Enable long-press",
@@ -2073,6 +2083,15 @@ var ControlPanelApi = class {
     return this.hass.connection.subscribeMessage(
       onMessage,
       { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId }
+    );
+  }
+  subscribeHubEvents(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/hub_events/subscribe", entry_id: entryId }
     );
   }
 };

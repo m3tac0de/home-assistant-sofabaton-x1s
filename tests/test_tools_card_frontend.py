@@ -36,7 +36,9 @@ def test_tools_card_tabs_use_live_state_refresh() -> None:
     )
 
     assert ".refreshControlPanelState=" in source
-    assert "this._store.loadControlPanelState()" in source
+    # The tab-facing refresh must stay backed by a real (silent) store
+    # state reload rather than a stubbed no-op.
+    assert "this._store.loadState({ silent: true" in source
 
 
 def test_tools_card_empty_dock_branch_renders_no_placeholder_status_node() -> None:

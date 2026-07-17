@@ -7,13 +7,13 @@ export const TOOLS_CARD_STRINGS = {
   },
   tabs: {
     cache: "Hub",
-    wifiCommands: "Wifi Commands",
+    wifiCommands: "Automation",
     backup: "Backup",
     settings: "Settings",
     logs: "Logs",
   },
   tabDocs: {
-    wifi_commands: "Wifi Commands documentation",
+    wifi_commands: "Automation documentation",
     backup: "Backup documentation",
   } satisfies Partial<Record<TabId, string>>,
   backend: {
@@ -430,7 +430,8 @@ export const TOOLS_CARD_STRINGS = {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Choose a Wifi Device to edit its command slots, or add a new one.",
+    sectionSubtitle:
+      "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName: string) => `Syncing ${deviceName}...`,
@@ -495,6 +496,17 @@ export const TOOLS_CARD_STRINGS = {
     hubEventPerform: (service: string) => `perform ${service}`,
     hubEventClearTitle: "Reset to do nothing",
     hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Events",
+    activityEventsTitle: "Activity Events",
+    activityEventsSubtitle:
+      "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
+    activityEventStarts: (name: string) => `When ${name} starts`,
+    activityEventStops: "and when it stops",
+    activityEventStartModalTitle: (name: string) => `When ${name} starts`,
+    activityEventStopModalTitle: (name: string) => `When ${name} stops`,
+    activityEventFallbackName: (id: string) => `Activity ${id}`,
+    noActivitiesForEvents: "No Activities on this hub yet.",
     favorite: "Set as Favorite",
     physicalButtonAssignment: "Physical Button Assignment",
     enableLongPress: "Enable long-press",

@@ -238,6 +238,15 @@ var ControlPanelApi = class {
       { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId }
     );
   }
+  subscribeHubEvents(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/hub_events/subscribe", entry_id: entryId }
+    );
+  }
 };
 
 // node_modules/@lit-labs/ssr-dom-shim/lib/element-internals.js
@@ -1572,7 +1581,9 @@ var INITIAL_SNAPSHOT = {
   logsScrollBehavior: "auto",
   pendingScrollEntityKey: null,
   lastWifiPress: null,
-  wifiPressSubscribedEntryId: null
+  wifiPressSubscribedEntryId: null,
+  lastHubEvent: null,
+  hubEventsSubscribedEntryId: null
 };
 var ControlPanelStore = class {
   constructor(onChange, options = {}) {
@@ -1597,6 +1608,8 @@ var ControlPanelStore = class {
     this._runtimeCompletionTimers = /* @__PURE__ */ new Map();
     this._wifiPressUnsub = null;
     this._wifiPressSubscribeSeq = 0;
+    this._hubEventsUnsub = null;
+    this._hubEventsSubscribeSeq = 0;
     // Hub to pre-select when the card was created from a hub-specific entity (via
     // the card picker). Applied once when the hub becomes available; the user can
     // freely switch hubs afterwards.
@@ -1621,6 +1634,7 @@ var ControlPanelStore = class {
     }
     void this._syncBackupOperationFeed();
     void this._syncWifiPressFeed();
+    void this._syncHubEventsFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -1632,13 +1646,15 @@ var ControlPanelStore = class {
       ...this._snapshot,
       externalHubCommandByHub: {},
       runtimeCompletionNoticeByHub: {},
-      lastWifiPress: null
+      lastWifiPress: null,
+      lastHubEvent: null
     };
     this._clearRuntimeStatePoll();
     this._clearRuntimeCompletionTimers();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
+    void this._teardownHubEventsFeed();
     void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
@@ -1752,17 +1768,20 @@ var ControlPanelStore = class {
       logsError: null,
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
-      lastWifiPress: null
+      lastWifiPress: null,
+      lastHubEvent: null
     };
     this.persistViewState();
     this.emit();
     void (async () => {
       await this._teardownBackupOperationFeed();
       await this._teardownWifiPressFeed();
+      await this._teardownHubEventsFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -1884,6 +1903,7 @@ var ControlPanelStore = class {
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
         await this._syncWifiPressFeed();
+        await this._syncHubEventsFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -1909,6 +1929,7 @@ var ControlPanelStore = class {
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -2493,6 +2514,71 @@ var ControlPanelStore = class {
     const unsub = this._wifiPressUnsub;
     this._wifiPressUnsub = null;
     this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: null };
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
+  }
+  async _syncHubEventsFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownHubEventsFeed();
+      return;
+    }
+    if (this._snapshot.hubEventsSubscribedEntryId === entryId && this._hubEventsUnsub) {
+      return;
+    }
+    await this._teardownHubEventsFeed();
+    const subscribeSeq = ++this._hubEventsSubscribeSeq;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: entryId };
+    try {
+      const unsubscribe = await this.api().subscribeHubEvents(entryId, (payload) => {
+        if (subscribeSeq !== this._hubEventsSubscribeSeq) return;
+        if (this._snapshot.hubEventsSubscribedEntryId !== entryId) return;
+        this._handleHubEventMessage(entryId, payload);
+      });
+      if (subscribeSeq !== this._hubEventsSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+        return;
+      }
+      this._hubEventsUnsub = unsubscribe;
+    } catch {
+      if (subscribeSeq === this._hubEventsSubscribeSeq) {
+        this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
+      }
+    }
+  }
+  _handleHubEventMessage(entryId, payload) {
+    const message = payload && typeof payload === "object" ? payload : null;
+    if (!message) return;
+    const timestamp = Number(message.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+    const type = message.type === "redundant_off" ? "redundant_off" : message.type === "activity_change" ? "activity_change" : null;
+    if (!type) return;
+    const activityId = (value) => typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null;
+    const event = {
+      entryId,
+      type,
+      fromActivityId: activityId(message.from_activity_id),
+      toActivityId: activityId(message.to_activity_id),
+      timestamp,
+      // Same split as wifi presses: the server timestamp is identity, the
+      // local receipt time drives the glow animation epoch.
+      receivedAt: Date.now()
+    };
+    this._snapshot = { ...this._snapshot, lastHubEvent: event };
+    this.emit();
+  }
+  async _teardownHubEventsFeed() {
+    this._hubEventsSubscribeSeq++;
+    const unsub = this._hubEventsUnsub;
+    this._hubEventsUnsub = null;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
     if (!unsub) return;
     try {
       await unsub();

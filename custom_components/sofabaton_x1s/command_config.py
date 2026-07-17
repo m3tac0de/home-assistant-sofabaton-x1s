@@ -33,6 +33,12 @@ DEFAULT_COMMAND_ACTION = {"action": "perform-action"}
 #   activity_start - the hub switched into an activity
 HUB_EVENT_ACTION_KEYS = ("power_off", "redundant_off", "activity_start")
 
+# Per-activity event hooks (also HA-side only). Keyed by the hub activity id;
+# no matching beyond the id is attempted — if the hub reuses an id for a new
+# activity the hook simply applies to the new activity, and ids that leave
+# the hub's catalog are pruned so the store stays clean over time.
+ACTIVITY_EVENT_PHASES = ("start", "stop")
+
 _SPACE_RE = re.compile(r"\s+")
 
 
@@ -164,6 +170,35 @@ def normalize_hub_event_actions(raw: Any) -> dict[str, dict[str, Any]]:
         key: _normalize_action(source.get(key))
         for key in HUB_EVENT_ACTION_KEYS
     }
+
+
+def normalize_activity_event_actions(raw: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    """Normalize the per-activity event-action mapping.
+
+    Keys are hub activity ids as strings; values carry one action per phase
+    in :data:`ACTIVITY_EVENT_PHASES`. Entries whose phases are all the
+    default (no-op) action are dropped entirely so unset activities never
+    accumulate in the store.
+    """
+
+    source = raw if isinstance(raw, dict) else {}
+    normalized: dict[str, dict[str, dict[str, Any]]] = {}
+    for key, value in source.items():
+        try:
+            activity_id = int(str(key).strip())
+        except (TypeError, ValueError):
+            continue
+        if activity_id < 0:
+            continue
+        phases = value if isinstance(value, dict) else {}
+        entry = {
+            phase: _normalize_action(phases.get(phase))
+            for phase in ACTIVITY_EVENT_PHASES
+        }
+        if all(entry[phase] == DEFAULT_COMMAND_ACTION for phase in ACTIVITY_EVENT_PHASES):
+            continue
+        normalized[str(activity_id)] = entry
+    return normalized
 
 
 def normalize_commands(raw: Any) -> list[dict[str, Any]]:
@@ -448,6 +483,7 @@ class CommandConfigStore:
                     entry_id: {
                         "devices": deepcopy(devices),
                         "event_actions": self.get_hub_event_actions(entry_id),
+                        "activity_event_actions": self.get_activity_event_actions(entry_id),
                     }
                 }
             },
@@ -729,6 +765,50 @@ class CommandConfigStore:
         hub["event_actions"] = normalize_hub_event_actions(actions)
         await self._store.async_save(self._data)
         return normalize_hub_event_actions(hub.get("event_actions"))
+
+    def get_activity_event_actions(self, entry_id: str) -> dict[str, dict[str, dict[str, Any]]]:
+        """Return the per-activity event actions (HA-side only, never synced)."""
+
+        hub = self._hub_record(entry_id)
+        return normalize_activity_event_actions(hub.get("activity_event_actions"))
+
+    async def async_set_activity_event_actions(
+        self,
+        entry_id: str,
+        actions: Any,
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        hub = self._hub_record(entry_id)
+        hub["activity_event_actions"] = normalize_activity_event_actions(actions)
+        await self._store.async_save(self._data)
+        return normalize_activity_event_actions(hub.get("activity_event_actions"))
+
+    async def async_prune_activity_event_actions(
+        self,
+        entry_id: str,
+        valid_activity_ids: Any,
+    ) -> bool:
+        """Drop per-activity actions whose activity id left the hub catalog.
+
+        Called with the authoritative activity-id set after a catalog
+        refresh; saves only when something was actually removed.
+        """
+
+        hub = self._hub_record(entry_id)
+        current = normalize_activity_event_actions(hub.get("activity_event_actions"))
+        if not current:
+            return False
+        valid: set[str] = set()
+        for value in valid_activity_ids or []:
+            try:
+                valid.add(str(int(value)))
+            except (TypeError, ValueError):
+                continue
+        pruned = {key: entry for key, entry in current.items() if key in valid}
+        if pruned == current:
+            return False
+        hub["activity_event_actions"] = pruned
+        await self._store.async_save(self._data)
+        return True
 
     async def async_set_hub_commands(
         self,

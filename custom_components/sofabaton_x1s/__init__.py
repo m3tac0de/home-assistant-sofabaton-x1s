@@ -40,6 +40,7 @@ from .const import (
     DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
     signal_command_sync,
+    signal_hub_events,
     signal_ip_commands,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
@@ -59,6 +60,7 @@ from .command_config import (
     async_get_command_config_store,
     compute_commands_hash,
     count_configured_command_slots,
+    normalize_activity_event_actions,
     normalize_hub_event_actions,
     normalize_command_id_list,
     normalize_power_command_id,
@@ -982,7 +984,13 @@ async def _ws_get_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
         return
 
     store = await _async_get_command_config_store(hass)
-    connection.send_result(msg["id"], {"actions": store.get_hub_event_actions(hub.entry_id)})
+    connection.send_result(
+        msg["id"],
+        {
+            "actions": store.get_hub_event_actions(hub.entry_id),
+            "activity_actions": store.get_activity_event_actions(hub.entry_id),
+        },
+    )
 
 
 @websocket_api.websocket_command(
@@ -990,6 +998,7 @@ async def _ws_get_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
         vol.Required("type"): f"{DOMAIN}/hub_event_actions/set",
         vol.Required("entity_id"): cv.entity_id,
         vol.Required("actions"): dict,
+        vol.Optional("activity_actions"): dict,
     }
 )
 @websocket_api.async_response
@@ -1003,7 +1012,25 @@ async def _ws_set_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
     actions = await store.async_set_hub_event_actions(
         hub.entry_id, normalize_hub_event_actions(msg["actions"])
     )
-    connection.send_result(msg["id"], {"actions": actions})
+    if "activity_actions" in msg:
+        activity_actions = normalize_activity_event_actions(msg["activity_actions"])
+        if hub.activities_ready and hub.activities:
+            # Ids the hub no longer knows never make it into the store; the
+            # burst-time prune covers ids that disappear later.
+            valid = {str(int(act_id)) for act_id in hub.activities}
+            activity_actions = {
+                key: entry
+                for key, entry in activity_actions.items()
+                if key in valid
+            }
+        activity_actions = await store.async_set_activity_event_actions(
+            hub.entry_id, activity_actions
+        )
+    else:
+        activity_actions = store.get_activity_event_actions(hub.entry_id)
+    connection.send_result(
+        msg["id"], {"actions": actions, "activity_actions": activity_actions}
+    )
 
 
 @websocket_api.websocket_command(
@@ -2709,6 +2736,71 @@ async def _ws_subscribe_wifi_presses(
     connection.send_result(msg["id"])
 
 
+def _build_hub_event_payload(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Project a hub-event record into the payload pushed to the card.
+
+    ``activity_change`` describes the full transition (either side may be
+    None: None -> id is a power-on, id -> None a power-off) so a single
+    frame can light every affected row at once; ``redundant_off`` carries
+    no activity ids.
+    """
+
+    if not isinstance(record, dict):
+        return None
+    timestamp = record.get("timestamp")
+    event_type = record.get("type")
+    if not isinstance(timestamp, (int, float)) or event_type not in (
+        "activity_change",
+        "redundant_off",
+    ):
+        return None
+
+    def _activity_id(value: Any) -> int | None:
+        return int(value) if isinstance(value, int) else None
+
+    return {
+        "type": event_type,
+        "from_activity_id": _activity_id(record.get("from_activity_id")),
+        "to_activity_id": _activity_id(record.get("to_activity_id")),
+        "timestamp": float(timestamp),
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub_events/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_subscribe_hub_events(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Forward hub-event firings (activity transitions, redundant OFF) to a card.
+
+    Mirrors the wifi-press subscription: the event drives a transient row
+    glow in the Hub Events tab and fires whether or not an action is
+    configured for the event.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    @callback
+    def _forward() -> None:
+        payload = _build_hub_event_payload(hub.get_last_hub_event())
+        if payload is None:
+            return
+        connection.send_message(websocket_api.event_message(msg["id"], payload))
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(
+        hass, signal_hub_events(hub.entry_id), _forward
+    )
+    connection.send_result(msg["id"])
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/persistent_cache/get",
@@ -2886,6 +2978,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_wifi_presses)
+    websocket_api.async_register_command(hass, _ws_subscribe_hub_events)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
     websocket_api.async_register_command(hass, _ws_set_persistent_cache)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)

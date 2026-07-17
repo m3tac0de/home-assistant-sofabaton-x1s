@@ -652,7 +652,7 @@ class SofabatonControlPanelCard extends LitElement {
   private renderPreview() {
     const features: Array<{ icon: string; label: string }> = [
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
-      { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
+      { icon: "mdi:robot-outline", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
       { icon: "mdi:cog-outline", label: TOOLS_CARD_STRINGS.tabs.settings },
       { icon: "mdi:text-box-outline", label: TOOLS_CARD_STRINGS.tabs.logs },
@@ -663,7 +663,7 @@ class SofabatonControlPanelCard extends LitElement {
           <div class="sb-preview-header">
             <div class="sb-preview-logo">${hubIcon("hero", "sb-preview-hub")}</div>
             <div class="sb-preview-sub">
-              Tools, cache, backups, logs &amp; Wi-Fi commands for your hub
+              Tools, cache, backups, logs &amp; automations for your hub
             </div>
           </div>
           <div class="sb-preview-grid">
@@ -744,6 +744,7 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
+          .lastHubEvent=${this._snapshot.lastHubEvent}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-wifi-commands-tab>

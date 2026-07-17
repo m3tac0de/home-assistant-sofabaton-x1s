@@ -1915,7 +1915,7 @@
           hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 19, group: "WiFi Commands",
@@ -1926,7 +1926,7 @@
           hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: WIFI_DEVICES_SYNC_NEEDED,
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 20, group: "WiFi Commands",
@@ -1943,7 +1943,7 @@
             devices: WIFI_DEVICES_SYNC_RUNNING, max_devices: 5,
           }),
         },
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 21, group: "WiFi Commands",
@@ -1957,7 +1957,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_IDLE },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
         },
       },
@@ -1973,7 +1973,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_IDLE },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
           await clickFirstConfiguredSlot(card);
         },
@@ -1990,7 +1990,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_NEEDED },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
         },
       },
@@ -2004,7 +2004,7 @@
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiAddDevice(card);
         },
       },
@@ -2018,7 +2018,7 @@
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDeleteDevice(card, "Bedroom Remote");
         },
       },
@@ -2034,7 +2034,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_POWER },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_IDLE },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
         },
       },
@@ -2047,7 +2047,7 @@
           hubs: [{ ...HUB_1, version: "", settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 28, group: "WiFi Commands",
@@ -2058,7 +2058,7 @@
           hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: [],
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
 
     ];

@@ -91,6 +91,10 @@ def signal_ip_commands(entry_id: str) -> str:
     return f"sofabaton_x1s_ip_commands_{entry_id}"
 
 
+def signal_hub_events(entry_id: str) -> str:
+    return f"sofabaton_x1s_hub_events_{entry_id}"
+
+
 def signal_wifi_device(entry_id: str) -> str:
     return f"sofabaton_x1s_wifi_device_{entry_id}"
 

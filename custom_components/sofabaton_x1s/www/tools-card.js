@@ -1696,6 +1696,15 @@ var ControlPanelApi = class {
       { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId }
     );
   }
+  subscribeHubEvents(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/hub_events/subscribe", entry_id: entryId }
+    );
+  }
 };
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors.ts
@@ -2097,7 +2106,9 @@ var INITIAL_SNAPSHOT = {
   logsScrollBehavior: "auto",
   pendingScrollEntityKey: null,
   lastWifiPress: null,
-  wifiPressSubscribedEntryId: null
+  wifiPressSubscribedEntryId: null,
+  lastHubEvent: null,
+  hubEventsSubscribedEntryId: null
 };
 var ControlPanelStore = class {
   constructor(onChange, options = {}) {
@@ -2122,6 +2133,8 @@ var ControlPanelStore = class {
     this._runtimeCompletionTimers = /* @__PURE__ */ new Map();
     this._wifiPressUnsub = null;
     this._wifiPressSubscribeSeq = 0;
+    this._hubEventsUnsub = null;
+    this._hubEventsSubscribeSeq = 0;
     // Hub to pre-select when the card was created from a hub-specific entity (via
     // the card picker). Applied once when the hub becomes available; the user can
     // freely switch hubs afterwards.
@@ -2146,6 +2159,7 @@ var ControlPanelStore = class {
     }
     void this._syncBackupOperationFeed();
     void this._syncWifiPressFeed();
+    void this._syncHubEventsFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -2157,13 +2171,15 @@ var ControlPanelStore = class {
       ...this._snapshot,
       externalHubCommandByHub: {},
       runtimeCompletionNoticeByHub: {},
-      lastWifiPress: null
+      lastWifiPress: null,
+      lastHubEvent: null
     };
     this._clearRuntimeStatePoll();
     this._clearRuntimeCompletionTimers();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
+    void this._teardownHubEventsFeed();
     void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
@@ -2277,17 +2293,20 @@ var ControlPanelStore = class {
       logsError: null,
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
-      lastWifiPress: null
+      lastWifiPress: null,
+      lastHubEvent: null
     };
     this.persistViewState();
     this.emit();
     void (async () => {
       await this._teardownBackupOperationFeed();
       await this._teardownWifiPressFeed();
+      await this._teardownHubEventsFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -2409,6 +2428,7 @@ var ControlPanelStore = class {
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
         await this._syncWifiPressFeed();
+        await this._syncHubEventsFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -2434,6 +2454,7 @@ var ControlPanelStore = class {
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -3024,6 +3045,71 @@ var ControlPanelStore = class {
     } catch {
     }
   }
+  async _syncHubEventsFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownHubEventsFeed();
+      return;
+    }
+    if (this._snapshot.hubEventsSubscribedEntryId === entryId && this._hubEventsUnsub) {
+      return;
+    }
+    await this._teardownHubEventsFeed();
+    const subscribeSeq = ++this._hubEventsSubscribeSeq;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: entryId };
+    try {
+      const unsubscribe = await this.api().subscribeHubEvents(entryId, (payload) => {
+        if (subscribeSeq !== this._hubEventsSubscribeSeq) return;
+        if (this._snapshot.hubEventsSubscribedEntryId !== entryId) return;
+        this._handleHubEventMessage(entryId, payload);
+      });
+      if (subscribeSeq !== this._hubEventsSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+        return;
+      }
+      this._hubEventsUnsub = unsubscribe;
+    } catch {
+      if (subscribeSeq === this._hubEventsSubscribeSeq) {
+        this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
+      }
+    }
+  }
+  _handleHubEventMessage(entryId, payload) {
+    const message = payload && typeof payload === "object" ? payload : null;
+    if (!message) return;
+    const timestamp = Number(message.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+    const type = message.type === "redundant_off" ? "redundant_off" : message.type === "activity_change" ? "activity_change" : null;
+    if (!type) return;
+    const activityId = (value) => typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null;
+    const event = {
+      entryId,
+      type,
+      fromActivityId: activityId(message.from_activity_id),
+      toActivityId: activityId(message.to_activity_id),
+      timestamp,
+      // Same split as wifi presses: the server timestamp is identity, the
+      // local receipt time drives the glow animation epoch.
+      receivedAt: Date.now()
+    };
+    this._snapshot = { ...this._snapshot, lastHubEvent: event };
+    this.emit();
+  }
+  async _teardownHubEventsFeed() {
+    this._hubEventsSubscribeSeq++;
+    const unsub = this._hubEventsUnsub;
+    this._hubEventsUnsub = null;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
+  }
   emit() {
     this.onChange(this._snapshot);
   }
@@ -3085,13 +3171,13 @@ var TOOLS_CARD_STRINGS = {
   },
   tabs: {
     cache: "Hub",
-    wifiCommands: "Wifi Commands",
+    wifiCommands: "Automation",
     backup: "Backup",
     settings: "Settings",
     logs: "Logs"
   },
   tabDocs: {
-    wifi_commands: "Wifi Commands documentation",
+    wifi_commands: "Automation documentation",
     backup: "Backup documentation"
   },
   backend: {
@@ -3489,7 +3575,7 @@ var TOOLS_CARD_STRINGS = {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Choose a Wifi Device to edit its command slots, or add a new one.",
+    sectionSubtitle: "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
@@ -3554,6 +3640,16 @@ var TOOLS_CARD_STRINGS = {
     hubEventPerform: (service) => `perform ${service}`,
     hubEventClearTitle: "Reset to do nothing",
     hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Events",
+    activityEventsTitle: "Activity Events",
+    activityEventsSubtitle: "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
+    activityEventStarts: (name) => `When ${name} starts`,
+    activityEventStops: "and when it stops",
+    activityEventStartModalTitle: (name) => `When ${name} starts`,
+    activityEventStopModalTitle: (name) => `When ${name} stops`,
+    activityEventFallbackName: (id) => `Activity ${id}`,
+    noActivitiesForEvents: "No Activities on this hub yet.",
     favorite: "Set as Favorite",
     physicalButtonAssignment: "Physical Button Assignment",
     enableLongPress: "Enable long-press",
@@ -12538,7 +12634,10 @@ var HARD_BUTTON_ID_MAP = {
 };
 var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 var DEFAULT_ACTION = { action: "perform-action" };
-var WIFI_SECTION_ROW = [{ id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.sectionLabel, icon: "mdi:wifi", passive: true }];
+var WIFI_SECTION_ROW = [
+  { id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.wifiCommandsTabLabel, icon: "mdi:wifi" },
+  { id: "hub_events", label: TOOLS_CARD_STRINGS.wifiCommands.eventsTabLabel, icon: "mdi:lightning-bolt-outline" }
+];
 var HUB_EVENT_ROWS = [
   { key: "power_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff, icon: "mdi:power" },
   { key: "redundant_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff, icon: "mdi:power-off" },
@@ -12584,45 +12683,38 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._creatingDevice = false;
     this._maxWifiDevices = 5;
     this._hubEventActions = this._defaultHubEventActions();
+    this._activityEventActions = {};
+    this._activeSection = "wifi";
     this._devicePowerPickerKind = null;
-    this._activeHubEventKey = null;
+    this._activeHubEventTarget = null;
     this._hubEventDraft = null;
     this._hubEventSelectorVersion = 0;
     this._hubEventSaveError = "";
     this._hubEventActionsLoading = false;
     this._deviceSessionRestoreTried = false;
+    this.lastHubEvent = null;
+    this._hubEventFlashClearTimer = null;
+    this._hubEventFlashClearForReceivedAt = null;
     this._closeDevicePowerPicker = () => {
       this._devicePowerPickerKind = null;
     };
     this._closeHubEventEditor = () => {
-      this._activeHubEventKey = null;
+      this._activeHubEventTarget = null;
       this._hubEventDraft = null;
       this._hubEventSaveError = "";
     };
     this._saveHubEventAction = async () => {
-      const key = this._activeHubEventKey;
-      const entityId = String(this._entityId() || "").trim();
-      if (!key || !entityId || !this.hass?.callWS) return;
-      const nextActions = {
-        ...this._hubEventActions,
-        [key]: this._normalizeCommandAction(this._hubEventDraft)
-      };
+      const target = this._activeHubEventTarget;
+      if (!target) return;
       try {
-        const result = await this.hass.callWS({
-          type: "sofabaton_x1s/hub_event_actions/set",
-          entity_id: entityId,
-          actions: nextActions
-        });
-        const raw = result?.actions || nextActions;
-        this._hubEventActions = {
-          power_off: this._normalizeCommandAction(raw.power_off),
-          redundant_off: this._normalizeCommandAction(raw.redundant_off),
-          activity_start: this._normalizeCommandAction(raw.activity_start)
-        };
-        this._closeHubEventEditor();
+        const saved = await this._writeHubEventAction(target, this._normalizeCommandAction(this._hubEventDraft));
+        if (saved) this._closeHubEventEditor();
       } catch (error) {
         this._hubEventSaveError = String(error?.message || "Unable to save Action");
       }
+    };
+    this._selectSection = (id) => {
+      this._activeSection = id;
     };
     this._saveActiveCommandModal = async () => {
       if (!Number.isInteger(this._activeCommandSlot)) return;
@@ -12777,6 +12869,11 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._irFlashClearTimer = null;
       this._irFlashClearForReceivedAt = null;
     }
+    if (this._hubEventFlashClearTimer) {
+      clearTimeout(this._hubEventFlashClearTimer);
+      this._hubEventFlashClearTimer = null;
+      this._hubEventFlashClearForReceivedAt = null;
+    }
   }
   updated(changed) {
     if (changed.has("hub")) this._deviceSessionRestoreTried = false;
@@ -12802,6 +12899,27 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         </div>
       `;
     }
+    if (this._activeSection === "hub_events") {
+      return b2`
+        <div class="tab-panel">
+          ${renderSecondaryTabShell({
+        connected: true,
+        items: [...WIFI_SECTION_ROW],
+        selectedId: "hub_events",
+        onSelect: this._selectSection,
+        shellClassName: "secondary-view-shell--edge",
+        content: renderSecondaryViewBody({
+          connected: true,
+          padded: false,
+          scroll: false,
+          className: "list-view",
+          content: this._renderHubEventsView()
+        })
+      })}
+          ${this._renderHubEventActionModal()}
+        </div>
+      `;
+    }
     const selectedDevice = this._selectedWifiDevice();
     if (!selectedDevice) {
       return b2`
@@ -12810,6 +12928,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         connected: true,
         items: [...WIFI_SECTION_ROW],
         selectedId: "wifi",
+        onSelect: this._selectSection,
         shellClassName: "secondary-view-shell--edge",
         content: renderSecondaryViewBody({
           connected: true,
@@ -12824,7 +12943,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           ${this._renderSyncWarningModal()}
           ${this._renderCreateDeviceModal()}
           ${this._renderDeleteDeviceModal()}
-          ${this._renderHubEventActionModal()}
         </div>
       `;
     }
@@ -12935,7 +13053,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             `)}
           </div>
         ` : b2`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
-        ${this._renderHubEventsSection()}
         <div class="sticky-footer">
           ${!canAdd ? b2`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : A}
         </div>
@@ -13057,6 +13174,29 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       activity_start: { ...DEFAULT_ACTION }
     };
   }
+  _applyHubEventActionsResult(result) {
+    const raw = result?.actions || {};
+    this._hubEventActions = {
+      power_off: this._normalizeCommandAction(raw.power_off),
+      redundant_off: this._normalizeCommandAction(raw.redundant_off),
+      activity_start: this._normalizeCommandAction(raw.activity_start)
+    };
+    this._activityEventActions = this._normalizeActivityEventActions(result?.activity_actions);
+  }
+  _normalizeActivityEventActions(raw) {
+    const source = raw && typeof raw === "object" ? raw : {};
+    const normalized = {};
+    for (const [key, value] of Object.entries(source)) {
+      const activityId = Number.parseInt(String(key).trim(), 10);
+      if (!Number.isFinite(activityId) || activityId < 0) continue;
+      const phases = value && typeof value === "object" ? value : {};
+      normalized[String(activityId)] = {
+        start: this._normalizeCommandAction(phases.start),
+        stop: this._normalizeCommandAction(phases.stop)
+      };
+    }
+    return normalized;
+  }
   async _loadHubEventActions(force = false) {
     const entityId = String(this._entityId() || "").trim();
     if (!entityId || !this.hass?.callWS) return;
@@ -13067,89 +13207,201 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         type: "sofabaton_x1s/hub_event_actions/get",
         entity_id: entityId
       });
-      const raw = result?.actions || {};
-      this._hubEventActions = {
-        power_off: this._normalizeCommandAction(raw.power_off),
-        redundant_off: this._normalizeCommandAction(raw.redundant_off),
-        activity_start: this._normalizeCommandAction(raw.activity_start)
-      };
+      this._applyHubEventActionsResult(result);
     } catch (_error) {
       this._hubEventActions = this._defaultHubEventActions();
+      this._activityEventActions = {};
     } finally {
       this._hubEventActionsLoading = false;
     }
+  }
+  _activityEventEntry(activityId) {
+    const entry = this._activityEventActions[String(activityId)];
+    return {
+      start: this._normalizeCommandAction(entry?.start),
+      stop: this._normalizeCommandAction(entry?.stop)
+    };
+  }
+  _actionForHubEventTarget(target) {
+    if (target.kind === "hub") return this._normalizeCommandAction(this._hubEventActions[target.key]);
+    return this._activityEventEntry(target.id)[target.phase];
+  }
+  /** Persist one hub/activity event action. Always ships both maps so the
+   *  backend can normalize (and prune stale activity ids) atomically. */
+  async _writeHubEventAction(target, action) {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return false;
+    const nextActions = { ...this._hubEventActions };
+    const nextActivityActions = Object.fromEntries(
+      Object.entries(this._activityEventActions).map(([id]) => [id, this._activityEventEntry(id)])
+    );
+    if (target.kind === "hub") {
+      nextActions[target.key] = this._normalizeCommandAction(action);
+    } else {
+      const entry = this._activityEventEntry(target.id);
+      entry[target.phase] = this._normalizeCommandAction(action);
+      nextActivityActions[String(target.id)] = entry;
+    }
+    const result = await this.hass.callWS({
+      type: "sofabaton_x1s/hub_event_actions/set",
+      entity_id: entityId,
+      actions: nextActions,
+      activity_actions: nextActivityActions
+    });
+    this._applyHubEventActionsResult(
+      result?.actions ? result : { actions: nextActions, activity_actions: nextActivityActions }
+    );
+    return true;
   }
   _hubEventActionText(action) {
     if (!this._commandHasCustomAction(action)) return TOOLS_CARD_STRINGS.wifiCommands.hubEventDoNothing;
     return TOOLS_CARD_STRINGS.wifiCommands.hubEventPerform(this._commandActionDetails(action).service);
   }
-  async _resetHubEventAction(key) {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
-    const nextActions = { ...this._hubEventActions, [key]: { ...DEFAULT_ACTION } };
+  async _resetHubEventAction(target) {
     try {
-      const result = await this.hass.callWS({
-        type: "sofabaton_x1s/hub_event_actions/set",
-        entity_id: entityId,
-        actions: nextActions
-      });
-      const raw = result?.actions || nextActions;
-      this._hubEventActions = {
-        power_off: this._normalizeCommandAction(raw.power_off),
-        redundant_off: this._normalizeCommandAction(raw.redundant_off),
-        activity_start: this._normalizeCommandAction(raw.activity_start)
-      };
+      await this._writeHubEventAction(target, { ...DEFAULT_ACTION });
     } catch (_error) {
     }
   }
-  _openHubEventEditor(key) {
-    this._activeHubEventKey = key;
-    this._hubEventDraft = this._normalizeCommandAction(this._hubEventActions[key]);
+  _openHubEventEditor(target) {
+    this._activeHubEventTarget = target;
+    this._hubEventDraft = this._actionForHubEventTarget(target);
     this._hubEventSaveError = "";
     this._hubEventSelectorVersion += 1;
   }
-  _renderHubEventsSection() {
+  /** Active hub-event firing while inside the 720ms glow window, scoped to
+   *  the current hub. Mirrors `_activeWifiPressFlash` (including the
+   *  single deferred cleanup re-render). */
+  _activeHubEventFlash() {
+    const event = this.lastHubEvent;
+    if (!event) return null;
+    const entryId = this.hub?.entry_id ?? null;
+    if (!entryId || event.entryId !== entryId) return null;
+    const elapsed = Date.now() - event.receivedAt;
+    if (elapsed < 0 || elapsed >= _SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS) return null;
+    if (this._hubEventFlashClearForReceivedAt !== event.receivedAt) {
+      if (this._hubEventFlashClearTimer) clearTimeout(this._hubEventFlashClearTimer);
+      this._hubEventFlashClearForReceivedAt = event.receivedAt;
+      this._hubEventFlashClearTimer = setTimeout(() => {
+        this._hubEventFlashClearTimer = null;
+        this._hubEventFlashClearForReceivedAt = null;
+        this.requestUpdate();
+      }, _SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS - elapsed + 16);
+    }
+    return event;
+  }
+  _flashMatchesHubEventRow(flash, key) {
+    if (!flash) return false;
+    if (key === "redundant_off") return flash.type === "redundant_off";
+    if (key === "power_off") {
+      return flash.type === "activity_change" && flash.toActivityId == null && flash.fromActivityId != null;
+    }
+    return flash.type === "activity_change" && flash.toActivityId != null;
+  }
+  _flashMatchesActivity(flash, activityId) {
+    if (!flash || flash.type !== "activity_change") return false;
+    return flash.toActivityId === activityId || flash.fromActivityId === activityId;
+  }
+  _hubEventFlashOverlay(active, flash) {
+    if (!active || !flash) return A;
+    return i6(flash.receivedAt, b2`<div class="wifi-ir-flash" aria-hidden="true"></div>`);
+  }
+  _renderHubEventsView() {
+    const flash = this._activeHubEventFlash();
+    const activities = this._editorActivities();
     return b2`
-      <div class="hub-events">
-        <div class="section-title-wrap">
-          <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsTitle}</div>
-        </div>
-        <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsSubtitle}</div>
-        <ul class="hub-event-lines">
-          ${HUB_EVENT_ROWS.map((row) => {
+      <div class="list-scroll">
+        <div class="hub-events">
+          <div class="section-title-wrap">
+            <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsTitle}</div>
+          </div>
+          <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsSubtitle}</div>
+          <ul class="hub-event-lines">
+            ${HUB_EVENT_ROWS.map((row) => {
       const action = this._hubEventActions[row.key];
       const configured = this._commandHasCustomAction(action);
+      const target = { kind: "hub", key: row.key };
       return b2`
-              <li class="hub-event-line">
-                <span class="hub-event-icon"><ha-icon icon=${row.icon}></ha-icon></span>
-                <span class="hub-event-text">
-                  ${row.label},
-                  <button class="hub-event-action-link" @click=${() => this._openHubEventEditor(row.key)}>
-                    ${this._hubEventActionText(action)}</button>${configured ? b2`<button
-                        class="hub-event-clear"
-                        title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
-                        @click=${() => {
-        void this._resetHubEventAction(row.key);
+                <li class="hub-event-line">
+                  <span class="hub-event-icon"><ha-icon icon=${row.icon}></ha-icon></span>
+                  <span class="hub-event-text">
+                    ${row.label},
+                    <button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+                      ${this._hubEventActionText(action)}</button>${configured ? b2`<button
+                          class="hub-event-clear"
+                          title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
+                          @click=${() => {
+        void this._resetHubEventAction(target);
       }}
-                      ><ha-icon icon="mdi:close"></ha-icon></button>` : A}.
-                </span>
-              </li>
-            `;
+                        ><ha-icon icon="mdi:close"></ha-icon></button>` : A}.
+                  </span>
+                  ${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, row.key), flash)}
+                </li>
+              `;
     })}
-        </ul>
+          </ul>
+        </div>
+        <div class="hub-events">
+          <div class="section-title-wrap">
+            <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
+          </div>
+          <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsSubtitle}</div>
+          ${activities.length ? b2`
+            <ul class="hub-event-lines">
+              ${activities.map((activity) => this._renderActivityEventLine(activity, flash))}
+            </ul>
+          ` : b2`<div class="empty-hint">${TOOLS_CARD_STRINGS.wifiCommands.noActivitiesForEvents}</div>`}
+        </div>
       </div>
     `;
   }
+  _renderActivityEventLine(activity, flash) {
+    const idKey = String(activity.id);
+    const entry = this._activityEventEntry(idKey);
+    const renderPhase = (phase) => {
+      const action = entry[phase];
+      const configured = this._commandHasCustomAction(action);
+      const target = { kind: "activity", id: idKey, phase };
+      return b2`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${configured ? b2`<button
+            class="hub-event-clear"
+            title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
+            @click=${() => {
+        void this._resetHubEventAction(target);
+      }}
+          ><ha-icon icon="mdi:close"></ha-icon></button>` : A}`;
+    };
+    return b2`
+      <li class="hub-event-line">
+        <span class="hub-event-icon"><ha-icon icon="mdi:television-play"></ha-icon></span>
+        <span class="hub-event-text">
+          ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStarts(activity.name)},
+          ${renderPhase("start")},
+          ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStops},
+          ${renderPhase("stop")}.
+        </span>
+        ${this._hubEventFlashOverlay(this._flashMatchesActivity(flash, activity.id), flash)}
+      </li>
+    `;
+  }
+  _hubEventEditorTitle(target) {
+    if (target.kind === "hub") {
+      return HUB_EVENT_ROWS.find((item) => item.key === target.key)?.label || "";
+    }
+    const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));
+    const name = activity?.name || TOOLS_CARD_STRINGS.wifiCommands.activityEventFallbackName(String(target.id));
+    return target.phase === "start" ? TOOLS_CARD_STRINGS.wifiCommands.activityEventStartModalTitle(name) : TOOLS_CARD_STRINGS.wifiCommands.activityEventStopModalTitle(name);
+  }
   _renderHubEventActionModal() {
-    const key = this._activeHubEventKey;
-    if (!key) return A;
-    const row = HUB_EVENT_ROWS.find((item) => item.key === key);
-    if (!row) return A;
+    const target = this._activeHubEventTarget;
+    if (!target) return A;
+    const title = this._hubEventEditorTitle(target);
+    if (!title) return A;
     return b2`
       <div class="modal-backdrop" @click=${this._closeHubEventEditor}>
         <div class="dialog" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">${row.label}</div>
+            <div class="dialog-title">${title}</div>
             <button class="dialog-close" @click=${this._closeHubEventEditor}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
@@ -13635,6 +13887,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._commandsData = this._normalizeCommandsForStorage([]);
       this._syncState = this._defaultSyncState();
       this._hubEventActions = this._defaultHubEventActions();
+      this._activityEventActions = {};
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const entityId = String(this._entityId() || "").trim();
@@ -14703,11 +14956,14 @@ _SofabatonWifiCommandsTab.properties = {
   _creatingDevice: { state: true },
   _maxWifiDevices: { state: true },
   _hubEventActions: { state: true },
+  _activityEventActions: { state: true },
+  _activeSection: { state: true },
   _devicePowerPickerKind: { state: true },
-  _activeHubEventKey: { state: true },
+  _activeHubEventTarget: { state: true },
   _hubEventDraft: { state: true },
   _hubEventSelectorVersion: { state: true },
-  _hubEventSaveError: { state: true }
+  _hubEventSaveError: { state: true },
+  lastHubEvent: { attribute: false }
 };
 _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     :host {
@@ -14850,7 +15106,7 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     }
     .hub-events { display: grid; gap: 6px; margin-top: 6px; }
     .hub-event-lines { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 6px; }
-    .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--primary-text-color); }
+    .hub-event-line { position: relative; display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--primary-text-color); border-radius: var(--tools-radius-sm); }
     .hub-event-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; align-self: center; }
     .hub-event-icon ha-icon { --mdc-icon-size: 16px; }
     .hub-event-icon.power-on { color: #2e7d32; }
@@ -16540,7 +16796,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   renderPreview() {
     const features = [
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
-      { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
+      { icon: "mdi:robot-outline", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
       { icon: "mdi:cog-outline", label: TOOLS_CARD_STRINGS.tabs.settings },
       { icon: "mdi:text-box-outline", label: TOOLS_CARD_STRINGS.tabs.logs }
@@ -16551,7 +16807,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           <div class="sb-preview-header">
             <div class="sb-preview-logo">${hubIcon("hero", "sb-preview-hub")}</div>
             <div class="sb-preview-sub">
-              Tools, cache, backups, logs &amp; Wi-Fi commands for your hub
+              Tools, cache, backups, logs &amp; automations for your hub
             </div>
           </div>
           <div class="sb-preview-grid">
@@ -16624,6 +16880,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
+          .lastHubEvent=${this._snapshot.lastHubEvent}
           .setHubCommandBusy=${(busy, label, entryId) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-wifi-commands-tab>

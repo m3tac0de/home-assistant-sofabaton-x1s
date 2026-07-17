@@ -580,6 +580,73 @@ def test_hub_event_actions_persist_and_normalize() -> None:
     assert loaded == saved
 
 
+def test_activity_event_actions_default_to_empty() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    assert store.get_activity_event_actions("hub-1") == {}
+
+
+def test_activity_event_actions_persist_and_normalize() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    saved = _run(
+        store.async_set_activity_event_actions(
+            "hub-1",
+            {
+                "101": {
+                    "start": {"perform_action": "scene.movie_on"},
+                    "stop": {"action": "perform-action"},
+                },
+                # Both phases no-op: the whole entry must be dropped so the
+                # store never accumulates unset activities.
+                "102": {
+                    "start": {"action": "perform-action"},
+                    "stop": {"action": "perform-action"},
+                },
+                # Non-numeric ids are invalid and dropped.
+                "movie-night": {"start": {"perform_action": "scene.x"}},
+                "-3": {"start": {"perform_action": "scene.negative"}},
+            },
+        )
+    )
+
+    assert set(saved) == {"101"}
+    assert saved["101"]["start"]["perform_action"] == "scene.movie_on"
+    assert saved["101"]["start"]["action"] == "perform-action"
+    assert saved["101"]["stop"] == {"action": "perform-action"}
+
+    loaded = store.get_activity_event_actions("hub-1")
+    assert loaded == saved
+
+
+def test_activity_event_actions_prune_stale_ids() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    _run(
+        store.async_set_activity_event_actions(
+            "hub-1",
+            {
+                "101": {"start": {"perform_action": "scene.a"}},
+                "102": {"stop": {"perform_action": "scene.b"}},
+            },
+        )
+    )
+
+    # No-op prune: everything still on the hub.
+    assert _run(store.async_prune_activity_event_actions("hub-1", [101, 102])) is False
+    assert set(store.get_activity_event_actions("hub-1")) == {"101", "102"}
+
+    # Activity 102 left the catalog: its actions must go with it.
+    assert _run(store.async_prune_activity_event_actions("hub-1", [101, 103])) is True
+    assert set(store.get_activity_event_actions("hub-1")) == {"101"}
+
+    # Pruning an already-clean store is a no-op (no store write).
+    assert _run(store.async_prune_activity_event_actions("hub-1", [101])) is False
+
+
 def test_hub_event_actions_do_not_leak_into_device_payloads() -> None:
     store = CommandConfigStore(SimpleNamespace())
     _run(store.async_load())

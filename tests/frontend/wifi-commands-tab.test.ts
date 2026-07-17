@@ -189,3 +189,83 @@ test("X1 hides power/input roles from the slot meta label but keeps them on X1S"
   assert.equal((element as any)._commandSlotMetaLabel(powerSlot), "in 0 Activities");
   assert.equal((element as any)._commandSlotMetaLabel(inputSlot), "in 0 Activities");
 });
+
+test("hub events tab normalizes activity event actions and drops invalid ids", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
+
+  const normalized = (element as any)._normalizeActivityEventActions({
+    "101": { start: { action: "perform-action", perform_action: "scene.movie_on" } },
+    "not-a-number": { start: { perform_action: "scene.bad" } },
+    "-2": { stop: { perform_action: "scene.negative" } },
+  });
+
+  assert.deepEqual(Object.keys(normalized), ["101"]);
+  assert.equal(normalized["101"].start.perform_action, "scene.movie_on");
+  // The unset phase always comes back as the default no-op payload.
+  assert.deepEqual(normalized["101"].stop, { action: "perform-action" });
+});
+
+test("hub events save ships both maps and targets the requested activity phase", async () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
+  element.hub = { entry_id: "hub-1" };
+  (element as any)._entityId = () => "remote.hub";
+  (element as any)._activityEventActions = {
+    "101": { start: { action: "perform-action", perform_action: "scene.keep" }, stop: { action: "perform-action" } },
+  };
+
+  const calls: Array<Record<string, unknown>> = [];
+  element.hass = {
+    callWS: async (msg: Record<string, unknown>) => {
+      calls.push(msg);
+      return { actions: msg.actions, activity_actions: msg.activity_actions };
+    },
+  };
+
+  await (element as any)._writeHubEventAction(
+    { kind: "activity", id: "102", phase: "stop" },
+    { action: "perform-action", perform_action: "scene.music_off" },
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].type, "sofabaton_x1s/hub_event_actions/set");
+  const shipped = calls[0].activity_actions as Record<string, { start: unknown; stop: { perform_action?: string } }>;
+  // Existing entries ride along untouched; the target phase lands on 102.
+  assert.equal((shipped["101"].start as { perform_action?: string }).perform_action, "scene.keep");
+  assert.equal(shipped["102"].stop.perform_action, "scene.music_off");
+  assert.deepEqual(shipped["102"].start, { action: "perform-action" });
+  // The hub-level map is always sent alongside.
+  assert.deepEqual(Object.keys(calls[0].actions as object).sort(), ["activity_start", "power_off", "redundant_off"]);
+});
+
+test("hub event flash matching lights the affected rows for a transition", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
+
+  const powerOff = { entryId: "hub-1", type: "activity_change", fromActivityId: 5, toActivityId: null, timestamp: 1, receivedAt: 1 };
+  const started = { entryId: "hub-1", type: "activity_change", fromActivityId: 5, toActivityId: 7, timestamp: 2, receivedAt: 2 };
+  const redundant = { entryId: "hub-1", type: "redundant_off", fromActivityId: null, toActivityId: null, timestamp: 3, receivedAt: 3 };
+
+  // Hub-level rows.
+  assert.equal((element as any)._flashMatchesHubEventRow(powerOff, "power_off"), true);
+  assert.equal((element as any)._flashMatchesHubEventRow(powerOff, "activity_start"), false);
+  assert.equal((element as any)._flashMatchesHubEventRow(started, "activity_start"), true);
+  assert.equal((element as any)._flashMatchesHubEventRow(started, "power_off"), false);
+  assert.equal((element as any)._flashMatchesHubEventRow(redundant, "redundant_off"), true);
+  assert.equal((element as any)._flashMatchesHubEventRow(null, "redundant_off"), false);
+
+  // Per-activity rows: a switch lights both the stopping and starting activity.
+  assert.equal((element as any)._flashMatchesActivity(started, 5), true);
+  assert.equal((element as any)._flashMatchesActivity(started, 7), true);
+  assert.equal((element as any)._flashMatchesActivity(started, 9), false);
+  assert.equal((element as any)._flashMatchesActivity(redundant, 5), false);
+});
+
+test("hub events load resets per-activity actions when the backend omits them", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
+  (element as any)._activityEventActions = {
+    "101": { start: { action: "perform-action", perform_action: "scene.stale" }, stop: { action: "perform-action" } },
+  };
+
+  (element as any)._applyHubEventActionsResult({ actions: {} });
+
+  assert.deepEqual((element as any)._activityEventActions, {});
+});

@@ -306,4 +306,14 @@ export class ControlPanelApi {
       { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId },
     );
   }
+
+  subscribeHubEvents(entryId: string, onMessage: (payload: unknown) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/hub_events/subscribe", entry_id: entryId },
+    );
+  }
 }

@@ -364,6 +364,19 @@ export interface WifiPressEvent {
   receivedAt: number;
 }
 
+/** A hub-level event firing (activity transition or redundant OFF press),
+ *  pushed live to drive the row glow in the Events tab. An
+ *  `activity_change` frame carries the full transition so one event can
+ *  light every affected row (global rows + per-activity start/stop). */
+export interface HubEventFireEvent {
+  entryId: string;
+  type: "activity_change" | "redundant_off";
+  fromActivityId: number | null;
+  toActivityId: number | null;
+  timestamp: number;
+  receivedAt: number;
+}
+
 export interface ControlPanelSnapshot {
   hass: HassLike | null;
   state: ControlPanelStateResponse | null;
@@ -399,4 +412,6 @@ export interface ControlPanelSnapshot {
   pendingScrollEntityKey: string | null;
   lastWifiPress: WifiPressEvent | null;
   wifiPressSubscribedEntryId: string | null;
+  lastHubEvent: HubEventFireEvent | null;
+  hubEventsSubscribedEntryId: string | null;
 }

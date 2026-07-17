@@ -376,7 +376,7 @@ test.describe("tools-card Hub list layout", () => {
     }
   });
 
-  test("uses the full Wifi Commands label and hides device-detail nav icons on mobile", async ({ page }) => {
+  test("uses the full Automation label and hides device-detail nav icons on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto("/tests/tools-card-harness.html");
 
@@ -385,8 +385,27 @@ test.describe("tools-card Hub list layout", () => {
       return [...(root?.querySelectorAll(".tabs .tab-btn-label") ?? [])]
         .map((label) => label.textContent?.trim());
     });
-    expect(tabLabels).toContain("Wifi Commands");
-    expect(tabLabels).not.toContain("Wifi");
+    expect(tabLabels).toContain("Automation");
+    expect(tabLabels).not.toContain("Auto");
+
+    await page.evaluate(() => {
+      const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+      const automationTab = [...(root?.querySelectorAll(".tabs .tab-btn") ?? [])]
+        .find((tab) => tab.textContent?.trim() === "Automation");
+      automationTab?.click();
+    });
+    await page.waitForFunction(() => {
+      const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+      const automation = root?.querySelector("sofabaton-wifi-commands-tab");
+      return automation?.shadowRoot?.querySelectorAll(".secondary-tab-btn-label").length === 2;
+    });
+    const automationSubTabLabels = await page.evaluate(() => {
+      const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+      const automation = root?.querySelector("sofabaton-wifi-commands-tab");
+      return [...(automation?.shadowRoot?.querySelectorAll(".secondary-tab-btn-label") ?? [])]
+        .map((label) => label.textContent?.trim());
+    });
+    expect(automationSubTabLabels).toEqual(["Wifi Commands", "Events"]);
 
     const assertTextOnlyDetailNav = async () => {
       const icons = page.locator(".detail-section-nav-btn ha-icon");
