@@ -63,6 +63,7 @@ __all__ = [
     "ManagedWifiSnapshot",
     "WifiInplacePlan",
     "build_wifi_inplace_plan",
+    "derive_device_level_bindings",
     "desired_snapshot_from_config",
     "baseline_snapshot_from_bundle",
 ]
@@ -125,6 +126,12 @@ class ManagedWifiSnapshot:
 
     ``input_command_ids`` is the device's ordered input list (ordinal ``n``
     selects ``input_command_ids[n-1]``).
+
+    ``device_bindings`` are the device's OWN device-page key rows —
+    ``(button_id, command_id, long_press_command_id|None)`` — the bindings
+    that make the device selectable as a role-group controller (volume,
+    navigation, …) in activity editors. On the desired side these are
+    derived from the config (:func:`derive_device_level_bindings`).
     """
 
     device_id: int
@@ -135,6 +142,7 @@ class ManagedWifiSnapshot:
     input_command_ids: tuple[int, ...] = ()
     slots: Mapping[int, WifiCommandSlot] = field(default_factory=dict)
     activities: Mapping[int, WifiActivityRefs] = field(default_factory=dict)
+    device_bindings: tuple[tuple[int, int, int | None], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -202,6 +210,7 @@ def build_wifi_inplace_plan(
     command_steps: list[SyncStep] = []
     power_steps: list[SyncStep] = []
     input_steps: list[SyncStep] = []
+    device_binding_steps: list[SyncStep] = []
     member_steps: list[SyncStep] = []
     favorite_steps: list[SyncStep] = []
     binding_steps: list[SyncStep] = []
@@ -289,6 +298,24 @@ def build_wifi_inplace_plan(
                 },
             )
         )
+
+    # ── 3b. device-page key bindings (role-group capability rows) ────────
+    # Same keymap primitives as activity bindings — the KeyToKey table is
+    # uniform, addressed here with the device's own id. Ownership follows
+    # the same rule: desired keys are written over whatever is live, only
+    # keys WE deployed are cleaned up, foreign device-page rows survive.
+    _diff_bindings(
+        dev,
+        dev,  # keymap entity id = the device itself
+        baseline.device_bindings,
+        desired.device_bindings,
+        device_binding_steps,
+        owned_buttons=(
+            {row[0] for row in deployed.device_bindings}
+            if deployed is not None
+            else None
+        ),
+    )
 
     # ── 4. per-activity refs ─────────────────────────────────────────────
     base_acts = baseline.activities
@@ -398,6 +425,7 @@ def build_wifi_inplace_plan(
         *command_steps,
         *power_steps,
         *input_steps,
+        *device_binding_steps,
         *member_steps,
         *favorite_steps,
         *binding_steps,
@@ -497,6 +525,54 @@ def _diff_bindings(
 
 
 # ── Adapters ─────────────────────────────────────────────────────────────
+
+
+def derive_device_level_bindings(
+    commands: Sequence[Mapping[str, Any]],
+    *,
+    hard_button_codes: Mapping[str, int],
+    slot_count: int = WIFI_COMMAND_SLOT_COUNT,
+    long_press_offset: int = WIFI_COMMAND_LONG_PRESS_OFFSET,
+) -> tuple[tuple[int, int, int | None], ...]:
+    """Derive the device-page key bindings implied by a command config.
+
+    A command assigned to a hard button also gets that key bound on the
+    managed device's OWN page when the claim is unambiguous — i.e. the
+    button is claimed by exactly one command across the device's slots.
+    (Two commands may legitimately claim the same button for different
+    activities; no device-level row can represent that, so ambiguous keys
+    are skipped and keep working per-activity exactly as before.)
+
+    Device-page bindings are what make the device selectable as a
+    role-group controller (volume, navigation, playback, channel) in
+    activity editors, and they respond to direct presses on the remote's
+    device page. Returns ``(button_id, command_id, long_command_id|None)``
+    rows ordered by button id.
+    """
+
+    claims: dict[int, list[tuple[int, int | None]]] = {}
+    for idx, slot in enumerate(list(commands)[:slot_count]):
+        if not isinstance(slot, Mapping):
+            continue
+        hard_button = str(slot.get("hard_button") or "").strip().lower()
+        if not hard_button:
+            continue
+        button_code = hard_button_codes.get(hard_button)
+        if not button_code:
+            continue
+        command_id = idx + 1
+        long_id = (
+            command_id + long_press_offset
+            if bool(slot.get("long_press_enabled"))
+            else None
+        )
+        claims.setdefault(int(button_code), []).append((command_id, long_id))
+
+    return tuple(
+        (button, rows[0][0], rows[0][1])
+        for button, rows in sorted(claims.items())
+        if len(rows) == 1
+    )
 
 
 def desired_snapshot_from_config(
@@ -614,6 +690,12 @@ def desired_snapshot_from_config(
         input_command_ids=tuple(input_command_ids),
         slots=slots,
         activities=activities,
+        device_bindings=derive_device_level_bindings(
+            commands,
+            hard_button_codes=hard_button_codes,
+            slot_count=slot_count,
+            long_press_offset=long_press_offset,
+        ),
     )
 
 
@@ -714,6 +796,16 @@ def baseline_snapshot_from_bundle(
             member_count=len(members),
         )
 
+    device_bindings = tuple(
+        (
+            int(row.get("button_id") or 0),
+            int(row.get("command_id") or 0),
+            int(row["long_press_command_id"]) if row.get("long_press_command_id") else None,
+        )
+        for row in device_entry.get("button_bindings") or []
+        if isinstance(row, Mapping) and row.get("button_id")
+    )
+
     return ManagedWifiSnapshot(
         device_id=device_id,
         device_name=str(dev_block.get("name") or ""),
@@ -723,4 +815,5 @@ def baseline_snapshot_from_bundle(
         input_command_ids=tuple(input_command_ids),
         slots=slots,
         activities=activities,
+        device_bindings=device_bindings,
     )

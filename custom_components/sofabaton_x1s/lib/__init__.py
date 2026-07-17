@@ -91,6 +91,7 @@ from .wifi_inplace_plan import (  # noqa: F401
     WifiInplacePlan,
     baseline_snapshot_from_bundle,
     build_wifi_inplace_plan,
+    derive_device_level_bindings,
     desired_snapshot_from_config,
 )
 
@@ -157,6 +158,7 @@ _CURATED = [
     "WifiInplacePlan",
     "baseline_snapshot_from_bundle",
     "build_wifi_inplace_plan",
+    "derive_device_level_bindings",
     "desired_snapshot_from_config",
     # asyncio facade
     "AsyncHubBrowser",

@@ -63,6 +63,15 @@ Each Wifi Device may assign a single command per Activity this way. The Wifi Com
 
 > Not available on X1 hubs — see [X1 hubs](#x1-hubs-no-power--activity-start-commands).
 
+## Device-page keys and button groups
+
+A command assigned to a physical button is also bound on the Wifi Device's **own device page** whenever the claim is unambiguous (no other command on the same device uses that button). This has two effects:
+
+- Pressing the key on the remote's device page for the Wifi Device triggers the command directly.
+- The Wifi Device becomes selectable as a **button-group controller** in the live activity editor — for example, a device with volume-key commands can be chosen as the device that handles *Volume* in an Activity, exactly like a regular device.
+
+If two commands claim the same button (for different Activities), no device-page key is written for that button — the per-Activity assignments simply apply as configured.
+
 ## Hub Events
 
 At the bottom of the Wifi Devices list you can attach a Home Assistant Action to hub state changes:

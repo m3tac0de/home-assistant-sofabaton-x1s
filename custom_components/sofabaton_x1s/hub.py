@@ -71,6 +71,7 @@ from .lib.devices import DeviceConfig, parse_device_record
 from .lib.wifi_inplace_plan import (
     baseline_snapshot_from_bundle,
     build_wifi_inplace_plan,
+    derive_device_level_bindings,
     desired_snapshot_from_config,
 )
 from .lib.x1_proxy import X1Proxy
@@ -3847,6 +3848,27 @@ class SofabatonHub:
                             long_press_command_id=long_press_command_id,
                             refresh_after_write=False,
                         )
+
+                # Device-page key rows for unambiguously-claimed hard buttons:
+                # they make the Wifi Device selectable as a role-group
+                # controller (volume/navigation/…) in activity editors and
+                # respond to direct presses on the remote's device page. The
+                # KeyToKey table is uniform, so the same binding write applies
+                # with the device's own id as the keymap entity.
+                for dev_button_id, dev_command_id, dev_long_id in derive_device_level_bindings(
+                    commands[:_WIFI_COMMAND_SLOT_COUNT],
+                    hard_button_codes=_HARD_BUTTON_TO_CODE,
+                    long_press_offset=_WIFI_COMMAND_LONG_PRESS_OFFSET,
+                ):
+                    await self.async_command_to_button(
+                        wifi_device_id,
+                        dev_button_id,
+                        wifi_device_id,
+                        dev_command_id,
+                        long_press_device_id=wifi_device_id if dev_long_id else None,
+                        long_press_command_id=dev_long_id,
+                        refresh_after_write=False,
+                    )
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,

@@ -543,6 +543,11 @@ def test_adapters_round_trip_to_noop():
             {"button_id": 198, "steps": [{"command_id": 1}]},
             {"button_id": 199, "steps": [{"command_id": 2}]},
         ],
+        "button_bindings": [
+            {"button_id": b, "device_id": 10, "command_id": c,
+             "long_press_device_id": 10 if l else None, "long_press_command_id": l}
+            for b, c, l in desired.device_bindings
+        ],
     }
     def refs_to_activity(act_id: int, refs) -> dict:
         return {
@@ -565,3 +570,98 @@ def test_adapters_round_trip_to_noop():
     plan = build_wifi_inplace_plan(baseline, desired)
     assert not plan.is_fallback
     assert plan.steps == ()
+
+
+# ── derived device-level bindings (role-group capability rows) ────────────
+
+from custom_components.sofabaton_x1s.lib.wifi_inplace_plan import (  # noqa: E402
+    derive_device_level_bindings,
+)
+
+
+def _slot_dict(name: str, *, hard_button: str = "", long_press: bool = False,
+               activities: list | None = None, input_activity: str = "") -> dict:
+    return {
+        "name": name, "add_as_favorite": False, "hard_button": hard_button,
+        "long_press_enabled": long_press, "input_activity_id": input_activity,
+        "activities": activities or [],
+    }
+
+
+def test_derive_unambiguous_claims_with_long_pair():
+    commands = [
+        _slot_dict("Vol Up", hard_button="volup", long_press=True, activities=["101"]),
+        _slot_dict("Vol Down", hard_button="voldn", activities=["101"]),
+        _slot_dict("Plain"),
+    ]
+    rows = derive_device_level_bindings(
+        commands, hard_button_codes={"volup": 0xB9, "voldn": 0xBA},
+    )
+    assert rows == ((0xB9, 1, 11), (0xBA, 2, None))
+
+
+def test_derive_skips_ambiguous_keys():
+    commands = [
+        _slot_dict("A", hard_button="volup", activities=["101"]),
+        _slot_dict("B", hard_button="volup", activities=["102"]),  # same key, other activity
+        _slot_dict("C", hard_button="mute", activities=["101"]),
+    ]
+    rows = derive_device_level_bindings(
+        commands, hard_button_codes={"volup": 0xB9, "mute": 0xB8},
+    )
+    assert rows == ((0xB8, 3, None),)  # volup skipped, mute derived
+
+
+def test_derive_includes_activityless_claims_and_skips_unknown_buttons():
+    commands = [
+        _slot_dict("Device Only", hard_button="volup"),  # no activities: still a device-page key
+        _slot_dict("Bogus", hard_button="doesnotexist"),
+    ]
+    rows = derive_device_level_bindings(commands, hard_button_codes={"volup": 0xB9})
+    assert rows == ((0xB9, 1, None),)
+
+
+def test_desired_adapter_populates_device_bindings():
+    snap = desired_snapshot_from_config(
+        store_config(), device_id=DEV, device_name="HA", brand="m3-k-h",
+        hard_button_codes=HARD_BUTTONS,
+    )
+    # slot 1 claims "red" with long press → device-page row (0xBE, 1, 11)
+    assert snap.device_bindings == ((0xBE, 1, 11),)
+
+
+def test_device_binding_add_targets_the_device_keymap():
+    desired = snapshot(device_bindings=((0xB9, 2, None),))
+    plan = build_wifi_inplace_plan(snapshot(), desired)
+    assert kinds(plan) == ["binding_write"]
+    assert plan.steps[0].payload == {
+        "activity_id": DEV,  # keymap entity = the device itself
+        "device_id": DEV,
+        "button_id": 0xB9,
+        "command_id": 2,
+        "long_press_device_id": None,
+        "long_press_command_id": None,
+    }
+
+
+def test_foreign_device_page_binding_survives_ours_is_gcd():
+    baseline = snapshot(device_bindings=((0xB8, 9, None), (0xB9, 1, None)))
+    desired = snapshot()  # config claims nothing
+    deployed = snapshot(device_bindings=((0xB9, 1, None),))  # we deployed volup only
+    plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed)
+    assert kinds(plan) == ["binding_delete"]
+    assert plan.steps[0].payload == {"activity_id": DEV, "button_id": 0xB9}
+    # 0xB8 (foreign device-page row) untouched
+
+
+def test_device_binding_steps_precede_membership_work():
+    baseline = snapshot(activities={ACT_A: WifiActivityRefs(ACT_A, member_count=3)})
+    desired = snapshot(
+        device_bindings=((0xB9, 2, None),),
+        activities={
+            ACT_A: WifiActivityRefs(ACT_A, member_count=3),
+            ACT_B: WifiActivityRefs(ACT_B, favorites={1: 0}),
+        },
+    )
+    plan = build_wifi_inplace_plan(baseline, desired)
+    assert kinds(plan) == ["binding_write", "member_replay", "favorite_add"]

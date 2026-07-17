@@ -140,12 +140,20 @@ def _make_hub(monkeypatch, loop, *, store, device_entry, run_result=None, call_o
     async def _noop(*_args, **_kwargs):
         return None
 
+    button_calls: list[tuple] = []
+
+    async def _button(activity_id, button_id, device_id, command_id, **kwargs):
+        button_calls.append((activity_id, button_id, device_id, command_id, kwargs))
+        return {"status": "success"}
+
     monkeypatch.setattr(hub, "async_create_wifi_device", _create)
     monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
     monkeypatch.setattr(hub, "async_fetch_device_commands", _noop)
     monkeypatch.setattr(hub, "async_resync_remote", _noop)
     monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _noop)
     hub._inplace_plans = plans
+    hub._button_calls = button_calls
     return hub
 
 
@@ -290,4 +298,33 @@ def test_rejected_inplace_write_raises_without_replace(monkeypatch):
     assert "inplace_run" in calls
     assert "create" not in calls  # never replace on top of a half-applied edit
     assert not store.saved  # deployed snapshot not advanced
+    loop.close()
+
+
+def test_replace_deploy_writes_derived_device_page_bindings(monkeypatch):
+    """A hard-button claim also lands as a device-page key row on the new
+    device (role-group capability), addressed with the device's own id."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store()
+    calls: list[str] = []
+    hub = _make_hub(monkeypatch, loop, store=store, device_entry=_device_entry(), call_order=calls)
+
+    payload = _payload(deployed_port=9999)  # port gate → replace path
+    payload["commands"][0].update({"hard_button": "red", "long_press_enabled": True})
+
+    result = _run_sync(loop, hub, payload)
+
+    assert result["status"] == "success"
+    assert "create" in calls
+    # exactly one device-scoped binding call: entity id == new device id (9),
+    # RED (0xBE) → cmd 1 with the long pair (11)
+    device_scoped = [c for c in hub._button_calls if c[0] == 9]
+    assert device_scoped == [
+        (9, 0xBE, 9, 1, {
+            "long_press_device_id": 9,
+            "long_press_command_id": 11,
+            "refresh_after_write": False,
+        }),
+    ]
     loop.close()

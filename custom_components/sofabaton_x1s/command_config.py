@@ -14,7 +14,7 @@ from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
 
 COMMAND_CONFIG_STORE_VERSION = 1
 COMMAND_CONFIG_STORE_MINOR_VERSION = 3
-COMMAND_HASH_VERSION = "v4"
+COMMAND_HASH_VERSION = "v5"
 COMMAND_BRAND_PREFIX = "m3"
 LEGACY_COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 10
@@ -234,6 +234,10 @@ def compute_commands_hash(
     power_off_command_id: int | None = None,
 ) -> str:
     payload = {
+        # Salting with the hash version lets a deploy-behavior change (not
+        # just a config change) flag existing deploys out of step once —
+        # v5: derived device-page key bindings ride the deploy.
+        "hash_version": COMMAND_HASH_VERSION,
         "commands": _hash_payload(normalize_commands(commands)),
         "device_name": str(device_name or DEFAULT_WIFI_DEVICE_NAME).strip(),
         "roku_listen_port": int(roku_listen_port),
