@@ -745,7 +745,7 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
+          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {

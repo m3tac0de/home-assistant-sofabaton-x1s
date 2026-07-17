@@ -5280,3 +5280,100 @@ def test_hub_event_actions_redundant_off_press(monkeypatch):
         assert [a.get("perform_action") for a in executed] == ["script.still_off"]
     finally:
         loop.close()
+
+
+def _make_delete_device_hub(monkeypatch, *, proxy_result):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+    )
+    monkeypatch.setattr(hub._proxy, "delete_device", lambda _dev_id: proxy_result)
+
+    persisted: list[bool] = []
+
+    async def _record_persist():
+        persisted.append(True)
+        return True
+
+    monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _record_persist)
+    return hub, loop, persisted
+
+
+def test_delete_device_drops_hub_snapshot_and_bumps_generation(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={"device_id": dev_lo, "confirmed_activities": [], "status": "success"},
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+        generation_before = hub.cache_generation
+        devices_generation_before = hub._devices_generation
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result and result.get("status") == "success"
+        # The hub-level snapshot feeds the Hub-tab device list; a successful
+        # delete must drop the row immediately instead of waiting for the
+        # next devices burst.
+        assert dev_lo not in hub.devices
+        assert hub._devices_generation == devices_generation_before + 1
+        assert hub.cache_generation == generation_before + 1
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_delete_device_failure_keeps_snapshot_and_generation(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted = _make_delete_device_hub(monkeypatch, proxy_result=None)
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+        generation_before = hub.cache_generation
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result is None
+        assert dev_lo in hub.devices
+        assert hub.cache_generation == generation_before
+        assert persisted == []
+    finally:
+        loop.close()
+
+
+def test_delete_activity_id_bumps_generation_without_touching_devices(monkeypatch):
+    act_id = 0x66
+    hub, loop, persisted = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={"device_id": act_id, "confirmed_activities": [], "status": "success"},
+    )
+    try:
+        hub.devices[0x14] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+        generation_before = hub.cache_generation
+        devices_generation_before = hub._devices_generation
+
+        result = loop.run_until_complete(hub.async_delete_device(act_id))
+
+        assert result and result.get("status") == "success"
+        assert 0x14 in hub.devices
+        assert hub._devices_generation == devices_generation_before
+        assert hub.cache_generation == generation_before + 1
+        assert persisted == [True]
+    finally:
+        loop.close()

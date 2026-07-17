@@ -16563,7 +16563,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .setHubCommandBusy=${(busy, label, entryId) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
+          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {

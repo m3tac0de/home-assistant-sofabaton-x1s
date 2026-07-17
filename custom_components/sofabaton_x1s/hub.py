@@ -2026,10 +2026,23 @@ class SofabatonHub:
     async def async_delete_device(self, device_id: int) -> dict[str, Any] | None:
         """Delete a device and confirm impacted activities on the selected hub."""
 
-        return await self.hass.async_add_executor_job(
+        result = await self.hass.async_add_executor_job(
             self._proxy.delete_device,
             device_id,
         )
+        if isinstance(result, dict) and str(result.get("status")) == "success":
+            # The proxy evicted the device from its own state, but the
+            # hub-level snapshot is unioned into the cache device list, so
+            # without this the Hub tab keeps showing the deleted device
+            # until the next devices burst. Activity ids routed through
+            # here are never in ``self.devices``; the activities burst the
+            # proxy delete already ran keeps that side current.
+            if self.devices.pop(device_id & 0xFF, None) is not None:
+                self._devices_generation += 1
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+            await self._async_persist_cache_if_enabled()
+        return result
 
     async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
         """Rewrite the hub's stored activity display order to *ordered_ids*."""
