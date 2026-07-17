@@ -149,3 +149,43 @@ test("wifi commands save drops orphaned activities when favorite and button are 
   assert.deepEqual(normalized[1].activities, ["101"]);
   assert.deepEqual(normalized[2].activities, ["102"]);
 });
+
+test("power/input config support is gated per hub version (X1 collapses transition callbacks)", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
+
+  element.hub = { entry_id: "hub-1", version: "X1" };
+  assert.equal((element as any)._supportsPowerInputConfig(), false);
+
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  assert.equal((element as any)._supportsPowerInputConfig(), true);
+
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  assert.equal((element as any)._supportsPowerInputConfig(), true);
+
+  // Unknown/absent versions keep the full UI (no flash-hide while loading).
+  element.hub = { entry_id: "hub-1" };
+  assert.equal((element as any)._supportsPowerInputConfig(), true);
+});
+
+test("X1 hides power/input roles from the slot meta label but keeps them on X1S", () => {
+  const powerSlot = {
+    name: "Power",
+    add_as_favorite: false,
+    hard_button: "",
+    long_press_enabled: false,
+    is_power_on: true,
+    is_power_off: false,
+    input_activity_id: "",
+    activities: [],
+  };
+  const inputSlot = { ...powerSlot, is_power_on: false, input_activity_id: "101" };
+
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  assert.equal((element as any)._commandSlotMetaLabel(powerSlot), "Power ON command");
+  assert.match(String((element as any)._commandSlotMetaLabel(inputSlot)), /^Input for /);
+
+  element.hub = { entry_id: "hub-1", version: "X1" };
+  assert.equal((element as any)._commandSlotMetaLabel(powerSlot), "in 0 Activities");
+  assert.equal((element as any)._commandSlotMetaLabel(inputSlot), "in 0 Activities");
+});

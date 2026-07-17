@@ -3263,6 +3263,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     ];
   }
   _renderDevicePowerRows() {
+    if (!this._supportsPowerInputConfig()) return A;
     const disabled = this._hubCommandLocked();
     return T`
       <ul class="hub-event-lines device-power-lines">
@@ -3297,6 +3298,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     `;
   }
   _renderDevicePowerPickerModal() {
+    if (!this._supportsPowerInputConfig()) return A;
     const kind = this._devicePowerPickerKind;
     if (!kind) return A;
     const row = this._devicePowerRowDefs().find((item) => item.kind === kind);
@@ -3608,8 +3610,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     return T`
       <div class="slot-btn">
         <div class="slot-actions">
-          ${command.is_power_on && command.is_power_off ? T`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : command.is_power_on ? T`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>` : command.is_power_off ? T`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : A}
-          ${this._hasInputActivity(command) ? T`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>` : A}
+          ${this._supportsPowerInputConfig() && command.is_power_on && command.is_power_off ? T`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_on ? T`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_off ? T`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : A}
+          ${this._supportsPowerInputConfig() && this._hasInputActivity(command) ? T`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>` : A}
           <button class="slot-clear" @click=${(event) => {
       event.stopPropagation();
       this._confirmClearSlot = idx;
@@ -3702,6 +3704,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     }}
                       ></ha-input>
                     `}
+                ${this._supportsPowerInputConfig() ? T`
                 <button
                   class="advanced-toggle ${this._advancedOptionsOpen ? "expanded" : ""}"
                   @click=${() => {
@@ -3714,7 +3717,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
                   </span>
                   <ha-icon icon="mdi:chevron-down"></ha-icon>
                 </button>
-                ${this._advancedOptionsOpen ? T`
+                ` : A}
+                ${this._advancedOptionsOpen && this._supportsPowerInputConfig() ? T`
                   <div class="advanced-panel">
                     <button class="checkbox-row ${inputSelectionEnabled ? "active" : ""}" ?disabled=${!hasActivities} @click=${() => {
       this._toggleInputActivityRow();
@@ -3995,6 +3999,10 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
   _supportsUnicodeCommandNames() {
     const version = this._hubVersion();
     return version.includes("X2") || version.includes("X1S");
+  }
+  _supportsPowerInputConfig() {
+    const version = this._hubVersion();
+    return !(version.includes("X1") && !version.includes("X1S"));
   }
   _sanitizeCommandName(value) {
     const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
@@ -4436,11 +4444,12 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
     const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
     const assignmentEnabled = this._activitySelectionEnabled(command);
+    const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return "Unconfigured command";
-    if (!assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
-    if (!assignmentEnabled && command.is_power_on) return "Power ON command";
-    if (!assignmentEnabled && command.is_power_off) return "Power OFF command";
-    if (!assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
+    if (powerInput && !assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
+    if (powerInput && !assignmentEnabled && command.is_power_on) return "Power ON command";
+    if (powerInput && !assignmentEnabled && command.is_power_off) return "Power OFF command";
+    if (powerInput && !assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
     return `in ${activityCount} ${activitiesLabel}`;
   }
   _toggleFavoriteRow() {
@@ -5047,4 +5056,35 @@ test("wifi commands save drops orphaned activities when favorite and button are 
   assert.deepEqual(normalized[0].activities, []);
   assert.deepEqual(normalized[1].activities, ["101"]);
   assert.deepEqual(normalized[2].activities, ["102"]);
+});
+test("power/input config support is gated per hub version (X1 collapses transition callbacks)", () => {
+  const element = new WifiCommandsTabElement();
+  element.hub = { entry_id: "hub-1", version: "X1" };
+  assert.equal(element._supportsPowerInputConfig(), false);
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  assert.equal(element._supportsPowerInputConfig(), true);
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  assert.equal(element._supportsPowerInputConfig(), true);
+  element.hub = { entry_id: "hub-1" };
+  assert.equal(element._supportsPowerInputConfig(), true);
+});
+test("X1 hides power/input roles from the slot meta label but keeps them on X1S", () => {
+  const powerSlot = {
+    name: "Power",
+    add_as_favorite: false,
+    hard_button: "",
+    long_press_enabled: false,
+    is_power_on: true,
+    is_power_off: false,
+    input_activity_id: "",
+    activities: []
+  };
+  const inputSlot = { ...powerSlot, is_power_on: false, input_activity_id: "101" };
+  const element = new WifiCommandsTabElement();
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  assert.equal(element._commandSlotMetaLabel(powerSlot), "Power ON command");
+  assert.match(String(element._commandSlotMetaLabel(inputSlot)), /^Input for /);
+  element.hub = { entry_id: "hub-1", version: "X1" };
+  assert.equal(element._commandSlotMetaLabel(powerSlot), "in 0 Activities");
+  assert.equal(element._commandSlotMetaLabel(inputSlot), "in 0 Activities");
 });

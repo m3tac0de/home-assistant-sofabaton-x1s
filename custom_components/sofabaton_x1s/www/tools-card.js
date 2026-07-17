@@ -12915,6 +12915,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     ];
   }
   _renderDevicePowerRows() {
+    if (!this._supportsPowerInputConfig()) return A;
     const disabled = this._hubCommandLocked();
     return b2`
       <ul class="hub-event-lines device-power-lines">
@@ -12949,6 +12950,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     `;
   }
   _renderDevicePowerPickerModal() {
+    if (!this._supportsPowerInputConfig()) return A;
     const kind = this._devicePowerPickerKind;
     if (!kind) return A;
     const row = this._devicePowerRowDefs().find((item) => item.kind === kind);
@@ -13260,8 +13262,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     return b2`
       <div class="slot-btn">
         <div class="slot-actions">
-          ${command.is_power_on && command.is_power_off ? b2`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : command.is_power_on ? b2`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>` : command.is_power_off ? b2`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : A}
-          ${this._hasInputActivity(command) ? b2`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>` : A}
+          ${this._supportsPowerInputConfig() && command.is_power_on && command.is_power_off ? b2`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_on ? b2`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_off ? b2`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : A}
+          ${this._supportsPowerInputConfig() && this._hasInputActivity(command) ? b2`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>` : A}
           <button class="slot-clear" @click=${(event) => {
       event.stopPropagation();
       this._confirmClearSlot = idx;
@@ -13354,6 +13356,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     }}
                       ></ha-input>
                     `}
+                ${this._supportsPowerInputConfig() ? b2`
                 <button
                   class="advanced-toggle ${this._advancedOptionsOpen ? "expanded" : ""}"
                   @click=${() => {
@@ -13366,7 +13369,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   </span>
                   <ha-icon icon="mdi:chevron-down"></ha-icon>
                 </button>
-                ${this._advancedOptionsOpen ? b2`
+                ` : A}
+                ${this._advancedOptionsOpen && this._supportsPowerInputConfig() ? b2`
                   <div class="advanced-panel">
                     <button class="checkbox-row ${inputSelectionEnabled ? "active" : ""}" ?disabled=${!hasActivities} @click=${() => {
       this._toggleInputActivityRow();
@@ -13647,6 +13651,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _supportsUnicodeCommandNames() {
     const version = this._hubVersion();
     return version.includes("X2") || version.includes("X1S");
+  }
+  _supportsPowerInputConfig() {
+    const version = this._hubVersion();
+    return !(version.includes("X1") && !version.includes("X1S"));
   }
   _sanitizeCommandName(value) {
     const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
@@ -14088,11 +14096,12 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
     const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
     const assignmentEnabled = this._activitySelectionEnabled(command);
+    const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return "Unconfigured command";
-    if (!assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
-    if (!assignmentEnabled && command.is_power_on) return "Power ON command";
-    if (!assignmentEnabled && command.is_power_off) return "Power OFF command";
-    if (!assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
+    if (powerInput && !assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
+    if (powerInput && !assignmentEnabled && command.is_power_on) return "Power ON command";
+    if (powerInput && !assignmentEnabled && command.is_power_off) return "Power OFF command";
+    if (powerInput && !assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
     return `in ${activityCount} ${activitiesLabel}`;
   }
   _toggleFavoriteRow() {

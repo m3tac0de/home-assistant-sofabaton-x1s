@@ -3859,6 +3859,7 @@ def test_sync_command_config_with_zero_slots_keeps_listener_when_another_device_
             *,
             deployed_device_id=None,
             commands_hash="",
+            request_port=None,
         ):
             self.devices[device_key] = {
                 "device_key": device_key,
@@ -4054,6 +4055,7 @@ def test_sync_command_config_with_missing_metadata_matches_unique_hash_only_bran
             *,
             deployed_device_id=None,
             commands_hash="",
+            request_port=None,
         ):
             return None
 
@@ -4132,6 +4134,7 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
             *,
             deployed_device_id=None,
             commands_hash="",
+            request_port=None,
         ):
             return None
 

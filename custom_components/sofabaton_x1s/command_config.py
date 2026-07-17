@@ -273,6 +273,11 @@ def _default_device_payload(
         "deployed_commands": [],
         "deployed_device_id": None,
         "deployed_commands_hash": "",
+        # The listener port the deployed callbacks were built with. The port
+        # is baked into the hub-side records at deploy time, so the in-place
+        # re-sync path may only run while it is unchanged; None (pre-upgrade
+        # deploys) forces one replace-path sync that backfills it.
+        "deployed_request_port": None,
     }
 
 
@@ -298,6 +303,10 @@ def _normalize_device_payload(
     deployed_device_id = device.get("deployed_device_id")
     payload["deployed_device_id"] = int(deployed_device_id) if isinstance(deployed_device_id, int) else None
     payload["deployed_commands_hash"] = str(device.get("deployed_commands_hash") or "").strip()
+    deployed_request_port = device.get("deployed_request_port")
+    payload["deployed_request_port"] = (
+        int(deployed_request_port) if isinstance(deployed_request_port, int) else None
+    )
     return payload
 
 
@@ -403,6 +412,7 @@ class CommandConfigStore:
             "activity_labels": _normalize_activity_labels(device.get("activity_labels")),
             "deployed_device_id": device.get("deployed_device_id"),
             "deployed_commands_hash": str(device.get("deployed_commands_hash") or ""),
+            "deployed_request_port": device.get("deployed_request_port"),
         }
 
     async def async_list_hub_devices(
@@ -534,17 +544,23 @@ class CommandConfigStore:
         *,
         deployed_device_id: int | None = None,
         commands_hash: str = "",
+        request_port: int | None = None,
     ) -> None:
         """Persist the command list that was last successfully synced to the hub.
 
         The list is ordered and its indices correspond directly to the
         ``command_index`` values embedded in callback URLs, so it must never be
-        mutated after being written here.
+        mutated after being written here. ``request_port`` records the listener
+        port the deployed callbacks were built with (gates the in-place
+        re-sync path).
         """
         hub_device = self._find_hub_device_record(entry_id, device_key)
         hub_device["deployed_commands"] = commands
         hub_device["deployed_device_id"] = deployed_device_id
         hub_device["deployed_commands_hash"] = str(commands_hash or "").strip()
+        hub_device["deployed_request_port"] = (
+            int(request_port) if isinstance(request_port, int) else None
+        )
         await self._store.async_save(self._data)
 
     async def async_set_deployed_device_id(

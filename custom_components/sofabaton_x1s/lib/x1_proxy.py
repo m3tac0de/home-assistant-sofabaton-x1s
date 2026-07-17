@@ -1047,6 +1047,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
             return False
 
         self.clear_ack_queue()
+        self.wait_for_read_burst_quiesce()
         send_ts = time.monotonic()
         self._log.info("[HUB] setting hub name=%s", next_name)
         self._send_family_frame(OP_SET_HUB_NAME & 0xFF, payload)
@@ -1526,6 +1527,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
                     page_payload.hex(" "),
                 )
 
+            self.wait_for_read_burst_quiesce()
             send_ts = time.monotonic()
             self._send_family_frame(0x12, page_payload)
             if seq < len(paged_payloads):

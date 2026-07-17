@@ -68,6 +68,11 @@ from .lib.blob_decoders import (
 from .lib.backup_export import PAYLOAD_PROFILE_FULL
 from .lib.commands import split_play_blob_tail
 from .lib.devices import DeviceConfig, parse_device_record
+from .lib.wifi_inplace_plan import (
+    baseline_snapshot_from_bundle,
+    build_wifi_inplace_plan,
+    desired_snapshot_from_config,
+)
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
     COMMAND_BRAND_PREFIX,
@@ -2305,6 +2310,14 @@ class SofabatonHub:
             )
         )
 
+        if not macros_ready:
+            # The macro request only got enqueued; the burst streams in
+            # asynchronously. Returning now would let the caller fire its
+            # next request mid-burst (the hub drops those silently), so
+            # block until the readback lands.
+            await self._async_wait_for_macros_ready(act_id)
+            macros_ready = (act_id & 0xFF) in self._proxy._macros_complete
+
         if macros_ready:
             self._maybe_complete_command_fetch(act_id)
             async_dispatcher_send(self.hass, signal_macros(self.entry_id))
@@ -3107,6 +3120,236 @@ class SofabatonHub:
         devices = await store.async_list_hub_devices(self.entry_id)
         return any(wifi_device_requires_listener(device) for device in devices)
 
+    async def _async_try_inplace_command_sync(
+        self,
+        *,
+        managed_device_id: int,
+        commands: list[dict[str, Any]],
+        command_payload: dict[str, Any],
+        normalized_device_key: str,
+        brand_name: str,
+        device_name: str,
+        commands_hash: str,
+        request_port: int,
+        store: Any,
+    ) -> dict[str, Any] | None:
+        """Attempt an in-place re-sync of the matched managed Wifi Device.
+
+        Returns a result dict on success, or ``None`` when the in-place path
+        declines (no deployed snapshot, port change, drift, planner fallback)
+        — the caller then falls through to the replace path. Raises once
+        writes have started and one fails: the brand-hash head commit is the
+        LAST step, so an interrupted run leaves the device reading
+        out-of-step and the next sync re-offers (no rollback needed; see
+        docs/internal/wifi-inplace-deploy-plan.md).
+        """
+        dev_id = int(managed_device_id)
+
+        # Gate 1: the callback port is baked into the deployed records; only
+        # the replace path can change it. None = pre-upgrade deploy with no
+        # recorded port — one replace-path sync backfills it.
+        deployed_request_port = command_payload.get("deployed_request_port")
+        if deployed_request_port != request_port:
+            _LOGGER.info(
+                "[%s] in-place sync declined: request_port %s != deployed %s",
+                self.entry_id, request_port, deployed_request_port,
+            )
+            return None
+
+        # Gate 2: a deployed snapshot must exist to derive the expected
+        # hub-side labels from (drift detection base).
+        deployed_slots = (
+            store.get_deployed_wifi_commands(self.entry_id, hub_device_id=dev_id)
+            if store is not None
+            else []
+        )
+        if not deployed_slots:
+            _LOGGER.info("[%s] in-place sync declined: no deployed snapshot", self.entry_id)
+            return None
+
+        # Fresh live baseline: the device's structural backup plus every
+        # activity (membership is only discoverable by reading them).
+        activity_ids = sorted(int(a) for a in self.activities)
+
+        def _read_baseline():
+            device_entry = self._proxy.backup_device(dev_id, include_blobs=False)
+            activity_entries = []
+            for act_id in activity_ids:
+                payload = self._proxy.backup_activity(act_id)
+                if isinstance(payload, dict):
+                    activity_entries.append(payload)
+            return device_entry, activity_entries
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            message="Reading the deployed Wifi Device",
+        )
+        device_entry, activity_entries = await self.hass.async_add_executor_job(_read_baseline)
+        if not isinstance(device_entry, dict) or len(activity_entries) < len(activity_ids):
+            _LOGGER.info("[%s] in-place sync declined: baseline read incomplete", self.entry_id)
+            return None
+
+        baseline = baseline_snapshot_from_bundle(device_entry, activity_entries)
+        if baseline.device_id != dev_id:
+            return None
+
+        # Gate 3: drift detection — the live records must still match the
+        # deployed snapshot's expansion (labels per command id). A user who
+        # edited the managed device in the Sofabaton app invalidates the
+        # in-place base; replace re-establishes it.
+        expected_labels: dict[int, str] = {}
+        for idx, slot in enumerate(deployed_slots[:_WIFI_COMMAND_SLOT_COUNT]):
+            name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+            expected_labels[idx + 1] = name
+            expected_labels[idx + 1 + _WIFI_COMMAND_LONG_PRESS_OFFSET] = f"{name} Long Press"
+        desired = desired_snapshot_from_config(
+            command_payload,
+            device_id=dev_id,
+            device_name=device_name,
+            brand=brand_name,
+            hard_button_codes=_HARD_BUTTON_TO_CODE,
+        )
+
+        # Classify every live record that disagrees with the deployed
+        # snapshot's expansion. A record that instead matches the DESIRED
+        # expansion is our own interrupted in-place run (the brand hash is
+        # only committed last, so a failed run leaves already-applied edits
+        # ahead of the snapshot) — the planner diffs against the live read,
+        # so re-running simply resumes: applied steps no-op, the rest
+        # re-emit. Only records matching NEITHER side are foreign edits
+        # (the Sofabaton app) and force the replace-path rebase.
+        drift: list[int] = []
+        resumed: list[int] = []
+        for cid, slot in baseline.slots.items():
+            if expected_labels.get(cid) == slot.label:
+                continue
+            desired_slot = desired.slots.get(cid)
+            if desired_slot is not None and desired_slot.label == slot.label:
+                resumed.append(cid)
+                continue
+            drift.append(cid)
+        if drift:
+            _LOGGER.info(
+                "[%s] in-place sync declined: live records drifted from the deployed "
+                "snapshot (command ids %s)", self.entry_id, sorted(drift),
+            )
+            return None
+        if resumed:
+            _LOGGER.info(
+                "[%s] in-place sync resuming an interrupted apply (command ids %s "
+                "already match the desired config)", self.entry_id, sorted(resumed),
+            )
+        plan = build_wifi_inplace_plan(baseline, desired)
+        if plan.is_fallback:
+            _LOGGER.info(
+                "[%s] in-place sync declined by planner: %s",
+                self.entry_id, plan.fallback_reason,
+            )
+            return None
+
+        total_steps = len(plan.steps) + 2
+        if plan.steps:
+            loop = self.hass.loop
+
+            def _progress(**data: Any) -> None:
+                message = str(data.get("message") or "")
+                completed = int(data.get("completed_steps") or 0)
+
+                def _inner() -> None:
+                    self._set_command_sync_progress(
+                        device_key=normalized_device_key,
+                        current_step=completed + 1,
+                        total_steps=total_steps,
+                        message=message,
+                    )
+
+                loop.call_soon_threadsafe(_inner)
+
+            result = await self.hass.async_add_executor_job(
+                partial(self._proxy.run_wifi_inplace_plan, plan, progress_callback=_progress)
+            )
+            if not isinstance(result, dict) or result.get("status") != "success":
+                # Writes started and one was rejected. Do NOT fall back to the
+                # replace path on top of a half-applied edit; the brand hash is
+                # unwritten so the device reads out-of-step and re-offers sync.
+                message = str((result or {}).get("message") or "The hub rejected an in-place write")
+                raise HomeAssistantError(f"In-place sync failed: {message}")
+
+        # Post-write cache refresh, mirroring the replace path's epilogue.
+        touched_acts = sorted(
+            {
+                int(step.payload.get("activity_id"))
+                for step in plan.steps
+                if step.payload.get("activity_id") is not None
+            }
+        )
+        favorite_acts = {
+            int(step.payload.get("activity_id"))
+            for step in plan.steps
+            if step.kind in ("favorite_add", "favorite_delete")
+        }
+        command_records_touched = any(
+            step.kind in ("command_add", "command_rename", "command_payload", "command_delete")
+            for step in plan.steps
+        )
+        if command_records_touched:
+            await self.async_fetch_device_commands(dev_id)
+        for act_id in touched_acts:
+            await self._async_fetch_activity_commands(act_id)
+            if act_id in favorite_acts:
+                await self.async_request_favorites_order(act_id)
+        if plan.steps:
+            await self._async_refresh_devices_snapshot()
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+            try:
+                await self._async_persist_cache_if_enabled()
+            except Exception:  # noqa: BLE001 - persist is best-effort
+                self._log.debug(
+                    "[%s] post-inplace cache persist failed", self.entry_id, exc_info=True
+                )
+            self._set_command_sync_progress(
+                device_key=normalized_device_key,
+                current_step=total_steps - 1,
+                total_steps=total_steps,
+                message="Resyncing physical remote",
+            )
+            await self.async_resync_remote()
+
+        if store is not None:
+            await store.async_save_deployed_wifi_commands(
+                self.entry_id,
+                normalized_device_key,
+                list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
+                deployed_device_id=dev_id,
+                commands_hash=commands_hash,
+                request_port=request_port,
+            )
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            status="success",
+            current_step=total_steps,
+            total_steps=total_steps,
+            message="Wifi Device updated in place"
+            if plan.steps
+            else "Wifi Device already up to date",
+            wifi_device_id=dev_id,
+            commands_hash=commands_hash,
+        )
+        _LOGGER.info(
+            "[%s] in-place sync applied %d step(s) to device %d (activities %s)",
+            self.entry_id, len(plan.steps), dev_id, touched_acts,
+        )
+        return {
+            "status": "success",
+            "wifi_device_id": dev_id,
+            "commands_hash": commands_hash,
+            "activities": touched_acts,
+            "inplace": True,
+            "steps": len(plan.steps),
+        }
+
     async def async_sync_command_config(
         self,
         *,
@@ -3300,6 +3543,28 @@ class SofabatonHub:
                         "activities": [],
                         "deleted_managed_devices": len(managed),
                     }
+
+                # ── In-place re-sync: with exactly one managed device
+                # matched, edit it in place so its device id (and everything
+                # the user attached to it in the app) survives. Declines —
+                # port change, drift, planner fallback, no snapshot — fall
+                # through to the replace path below. A failure AFTER writes
+                # started raises instead (never replace on top of a
+                # half-applied edit). docs/internal/wifi-inplace-deploy-plan.md
+                if len(managed) == 1:
+                    inplace_result = await self._async_try_inplace_command_sync(
+                        managed_device_id=managed[0][0],
+                        commands=commands,
+                        command_payload=command_payload,
+                        normalized_device_key=normalized_device_key,
+                        brand_name=brand_name,
+                        device_name=device_name,
+                        commands_hash=commands_hash,
+                        request_port=request_port,
+                        store=store,
+                    )
+                    if inplace_result is not None:
+                        return inplace_result
 
                 command_defs: list[dict[str, Any]] = []
                 input_command_ids: list[int] = []
@@ -3605,6 +3870,7 @@ class SofabatonHub:
                         list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
                         deployed_device_id=wifi_device_id,
                         commands_hash=commands_hash,
+                        request_port=request_port,
                     )
 
                 self._set_command_sync_progress(

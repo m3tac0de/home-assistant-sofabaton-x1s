@@ -207,6 +207,7 @@ class ActivityOpsMixin:
                 else OP_ACTIVITY_CONFIRM
             )
             self._log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
+            self.wait_for_read_burst_quiesce()
             send_ts = time.monotonic()
             self._send_cmd_frame(confirm_opcode, confirm_payload)
             if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
@@ -562,6 +563,7 @@ class ActivityOpsMixin:
                 member & 0xFF,
                 include_flag,
             )
+            self.wait_for_read_burst_quiesce()
             send_ts = time.monotonic()
             self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
             if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
@@ -588,6 +590,7 @@ class ActivityOpsMixin:
         for macro_button in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
             macro_name = BUTTONNAME_BY_CODE.get(macro_button, f"0x{macro_button:02X}")
             self._log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
+            self.wait_for_read_burst_quiesce()
             fetch_ts = time.monotonic()
             self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
@@ -798,6 +801,10 @@ class ActivityOpsMixin:
         """
         act_lo = activity_id & 0xFF
         self.reset_ack_queues()
+        # The hub silently drops a request that arrives while it is streaming
+        # a read burst (e.g. the macro-labels fetch that precedes this call in
+        # the post-sync cache refresh), so wait for the wire to go quiet first.
+        self.wait_for_read_burst_quiesce()
         send_ts = time.monotonic()
         self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
         # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte =
@@ -1091,6 +1098,7 @@ class ActivityOpsMixin:
                 map_step,
                 attempt,
             )
+            self.wait_for_read_burst_quiesce()
             send_ts = time.monotonic()
             self._send_family_frame(0x3E, map_payload)
             map_ack = self.wait_for_ack_any(

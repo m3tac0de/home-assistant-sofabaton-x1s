@@ -84,6 +84,15 @@ from .activity_sync import (  # noqa: F401
     build_activity_sync_plan,
     build_device_sync_plan,
 )
+from .wifi_inplace_plan import (  # noqa: F401
+    ManagedWifiSnapshot,
+    WifiActivityRefs,
+    WifiCommandSlot,
+    WifiInplacePlan,
+    baseline_snapshot_from_bundle,
+    build_wifi_inplace_plan,
+    desired_snapshot_from_config,
+)
 
 # Asyncio facade over the threaded core.
 from .aio import AsyncHubBrowser, AsyncXProxy, async_discover_hubs  # noqa: F401
@@ -141,6 +150,14 @@ _CURATED = [
     "SyncStep",
     "build_activity_sync_plan",
     "build_device_sync_plan",
+    # in-place wifi command re-sync planner
+    "ManagedWifiSnapshot",
+    "WifiActivityRefs",
+    "WifiCommandSlot",
+    "WifiInplacePlan",
+    "baseline_snapshot_from_bundle",
+    "build_wifi_inplace_plan",
+    "desired_snapshot_from_config",
     # asyncio facade
     "AsyncHubBrowser",
     "AsyncXProxy",

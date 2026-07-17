@@ -1002,6 +1002,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _renderDevicePowerRows() {
+    if (!this._supportsPowerInputConfig()) return nothing;
     const disabled = this._hubCommandLocked();
     return html`
       <ul class="hub-event-lines device-power-lines">
@@ -1035,6 +1036,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _renderDevicePowerPickerModal() {
+    if (!this._supportsPowerInputConfig()) return nothing;
     const kind = this._devicePowerPickerKind;
     if (!kind) return nothing;
     const row = this._devicePowerRowDefs().find((item) => item.kind === kind);
@@ -1378,14 +1380,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     return html`
       <div class="slot-btn">
         <div class="slot-actions">
-          ${command.is_power_on && command.is_power_off
+          ${this._supportsPowerInputConfig() && command.is_power_on && command.is_power_off
             ? html`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>`
-            : command.is_power_on
+            : this._supportsPowerInputConfig() && command.is_power_on
               ? html`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>`
-              : command.is_power_off
+              : this._supportsPowerInputConfig() && command.is_power_off
                 ? html`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>`
                 : nothing}
-          ${this._hasInputActivity(command)
+          ${this._supportsPowerInputConfig() && this._hasInputActivity(command)
             ? html`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>`
             : nothing}
           <button class="slot-clear" @click=${(event: Event) => { event.stopPropagation(); this._confirmClearSlot = idx; }}><ha-icon icon="mdi:close"></ha-icon></button>
@@ -1478,6 +1480,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                         }}
                       ></ha-input>
                     `}
+                ${this._supportsPowerInputConfig() ? html`
                 <button
                   class="advanced-toggle ${this._advancedOptionsOpen ? "expanded" : ""}"
                   @click=${() => {
@@ -1490,7 +1493,8 @@ class SofabatonWifiCommandsTab extends LitElement {
                   </span>
                   <ha-icon icon="mdi:chevron-down"></ha-icon>
                 </button>
-                ${this._advancedOptionsOpen ? html`
+                ` : nothing}
+                ${this._advancedOptionsOpen && this._supportsPowerInputConfig() ? html`
                   <div class="advanced-panel">
                     <button class="checkbox-row ${inputSelectionEnabled ? "active" : ""}" ?disabled=${!hasActivities} @click=${() => {
                       this._toggleInputActivityRow();
@@ -1781,6 +1785,15 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _supportsUnicodeCommandNames() {
     const version = this._hubVersion();
     return version.includes("X2") || version.includes("X1S");
+  }
+
+  private _supportsPowerInputConfig() {
+    // The X1 hub collapses activity-transition wifi callbacks to a single
+    // power-on + input callback regardless of how many callback devices the
+    // activity holds (live-hub-testing.md, 2026-07-17), so the power/input
+    // configuration is hidden for X1 hubs. Unknown versions keep the full UI.
+    const version = this._hubVersion();
+    return !(version.includes("X1") && !version.includes("X1S"));
   }
 
   private _sanitizeCommandName(value: unknown) {
@@ -2351,11 +2364,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
     const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
     const assignmentEnabled = this._activitySelectionEnabled(command);
+    const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return "Unconfigured command";
-    if (!assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
-    if (!assignmentEnabled && command.is_power_on) return "Power ON command";
-    if (!assignmentEnabled && command.is_power_off) return "Power OFF command";
-    if (!assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
+    if (powerInput && !assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
+    if (powerInput && !assignmentEnabled && command.is_power_on) return "Power ON command";
+    if (powerInput && !assignmentEnabled && command.is_power_off) return "Power OFF command";
+    if (powerInput && !assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
     return `in ${activityCount} ${activitiesLabel}`;
   }
 

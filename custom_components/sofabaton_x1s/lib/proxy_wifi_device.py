@@ -347,6 +347,7 @@ class WifiDeviceMixin:
             0xD508,
         )
         send_ts = time.monotonic()
+        self.wait_for_read_burst_quiesce()
         self._send_cmd_frame(0xD508, finalize_payload)
         ack = self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts)
         if ack is None:
@@ -399,6 +400,7 @@ class WifiDeviceMixin:
             )
             return True
 
+        self.wait_for_read_burst_quiesce()
         self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
         burst = self.wait_for_activity_inputs_burst(timeout=5.0)
         if not burst.ok:
@@ -452,6 +454,7 @@ class WifiDeviceMixin:
                 device_id & 0xFF,
                 command_id,
             )
+            self.wait_for_read_burst_quiesce()
             self._send_cmd_frame(OP_REQ_BLOB, bytes([device_id & 0xFF, command_id & 0xFF]))
             if not self._wait_for_wifi_input_refresh(
                 device_id=device_id,

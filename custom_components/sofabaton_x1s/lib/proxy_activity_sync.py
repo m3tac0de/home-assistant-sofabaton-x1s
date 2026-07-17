@@ -42,6 +42,8 @@ from .protocol_const import (
     FAMILY_FAV_DELETE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
+    OP_REQ_MACRO_LABELS,
+    ButtonName,
 )
 
 _POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
@@ -1271,6 +1273,7 @@ class ActivitySyncMixin:
             else OP_ACTIVITY_CONFIRM
         )
         self.reset_ack_queues()
+        self.wait_for_read_burst_quiesce()
         send_ts = time.monotonic()
         self._send_cmd_frame(confirm_opcode, confirm_payload)
         if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
@@ -1377,6 +1380,253 @@ class ActivitySyncMixin:
         if isinstance(device, dict):
             device["raw_body"] = body[3:]
         return True
+
+    # ── In-place Wifi Command re-sync step drivers ───────────────────────
+    #
+    # These back the four step kinds new to build_wifi_inplace_plan. Each
+    # frame is bench-validated on live X1 + X1S hubs — see
+    # live-hub-testing.md "in-place wifi deploy" bench program (chunks 1–4).
+
+    def _sync_step_command_delete(self, payload: Mapping[str, Any]) -> bool:
+        """Delete one command slot from a device (bench chunk 2).
+
+        Device-scoped reuse of the favorite/key delete frame:
+        ``FAMILY_FAV_DELETE [dev, command_id]`` → ACK 0x0103, bare — no 0x65
+        commit and no 0x61 sort rewrite. The hub cascades any favorite/binding
+        that referenced the command, so no separate teardown is needed.
+        """
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        cmd_lo = int(payload.get("command_id") or 0) & 0xFF
+        if not dev_lo or not cmd_lo:
+            return False
+        self.reset_ack_queues()
+        step = self._send_step(
+            step_name=f"wifi-command-delete[dev=0x{dev_lo:02X} cmd=0x{cmd_lo:02X}]",
+            family=FAMILY_FAV_DELETE,
+            payload=bytes([dev_lo, cmd_lo]),
+            ack_opcode=ACK_OPCODE_STATUS,
+            timeout=5.0,
+        )
+        return step.ok
+
+    def _sync_step_wifi_power_config(self, payload: Mapping[str, Any]) -> bool:
+        """Rewrite a wifi device's POWER_ON/POWER_OFF command rows (chunk 1).
+
+        A bare single family-0x12 macro-row write per changed button — no head
+        write, no 0x41 enable, no activity write. The activity power macros
+        resolve ``(dev, 0xC6)/(dev, 0xC7)`` through these device-side rows, so
+        the rewrite propagates without touching any activity.
+        """
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        if not dev_lo:
+            return False
+        ok = True
+        for button_id, key in (
+            (ButtonName.POWER_ON, "power_on_command_id"),
+            (ButtonName.POWER_OFF, "power_off_command_id"),
+        ):
+            command_id = payload.get(key)
+            if command_id is None:
+                continue
+            body = self._build_device_power_binding_payload(
+                device_id=dev_lo, button_id=button_id, command_id=int(command_id)
+            )
+            self.reset_ack_queues()
+            step = self._send_step(
+                step_name=f"wifi-power[dev=0x{dev_lo:02X} btn=0x{button_id:02X}]",
+                family=0x12,
+                payload=body,
+                ack_opcode=0x0112,
+                ack_first_byte=button_id,
+                ack_fallback_opcodes=(ACK_OPCODE_STATUS,),
+            )
+            ok = ok and step.ok
+        return ok
+
+    def _sync_step_wifi_input_config(self, payload: Mapping[str, Any]) -> bool:
+        """Rewrite a wifi device's input record in place (bench chunk 1).
+
+        Re-runs the create path's input configuration with the new ordered
+        input list; activities are untouched (their (dev,0xC5) ordinal steps
+        keep meaning "position N of this list"). An empty desired list is a
+        no-op: the create helper has no clear form, and with every activity
+        ordinal at 0 the stale record entries are unreachable.
+        """
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        if not dev_lo:
+            return False
+        input_command_ids = [int(c) for c in payload.get("input_command_ids") or []]
+        if not input_command_ids:
+            self._log.info(
+                "[DEVICE_SYNC] wifi_input_config: empty input list dev=0x%02X — "
+                "leaving the stale record (no clear form; ordinals are 0)",
+                dev_lo,
+            )
+            return True
+        labels = {
+            int(k): str(v) for k, v in (payload.get("labels") or {}).items()
+        }
+        max_id = max(input_command_ids)
+        command_defs = [
+            {
+                "display_name": labels.get(cid, f"Command {cid}"),
+                "trigger_name": labels.get(cid, f"Command {cid}"),
+                "press_type": "short",
+                "command_index": cid - 1,
+            }
+            for cid in range(1, max_id + 1)
+        ]
+        device = self.state.entities("device").get(dev_lo) or {}
+        return bool(
+            self._apply_wifi_input_configuration(
+                device_id=dev_lo,
+                device_name=str(device.get("name") or ""),
+                ip_address=self.get_routed_local_ip(),
+                brand_name=str(device.get("brand") or "m3tac0de"),
+                commands=command_defs,
+                input_command_ids=input_command_ids,
+            )
+        )
+
+    def _sync_step_membership_remove(self, payload: Mapping[str, Any]) -> bool:
+        """Remove a device from one activity by rewriting the activity's
+        POWER_ON macro without the device's rows (bench chunk 3).
+
+        The firmware cascades the rest: it strips the device from POWER_OFF,
+        the member table, and its bindings/favorites. The raw label slot must
+        be preserved verbatim or the save is rejected 0x0c. A no-op (device
+        already absent from POWER_ON) succeeds without a write.
+        """
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        act_lo = int(payload.get("activity_id") or 0) & 0xFF
+        if not dev_lo or not act_lo:
+            return False
+        self.reset_ack_queues()
+        self.wait_for_read_burst_quiesce()
+        self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, ButtonName.POWER_ON & 0xFF]))
+        record = self.wait_for_macro_record(act_lo, ButtonName.POWER_ON, timeout=5.0)
+        if record is None:
+            self._log.warning(
+                "[DEVICE_SYNC] membership_remove: no POWER_ON macro act=0x%02X", act_lo
+            )
+            return False
+        filtered = tuple(
+            entry
+            for entry in record.key_sequence
+            if entry.is_delay_only or (entry.device_id & 0xFF) != dev_lo
+        )
+        if len(filtered) == len(record.key_sequence):
+            return True  # device not referenced — already removed
+        body = build_macro_save_payload(
+            activity_id=act_lo,
+            key_id=ButtonName.POWER_ON,
+            key_sequence=filtered,
+            label="POWER_ON",
+            hub_version=self.hub_version,
+            label_slot=record.raw_label_slot or None,
+        )
+        ack = self._send_paged_macro_save(
+            payload=body, macro_button=ButtonName.POWER_ON, ack_timeout=5.0
+        )
+        return ack is not None
+
+    def _sync_step_wifi_head_commit(self, payload: Mapping[str, Any]) -> bool:
+        """Commit a managed wifi device's name + brand hash (bench chunk 4).
+
+        Rebuilds the head via the wifi-aware ``_build_wifi_device_payload``
+        carrying ``wifi_power_state`` read from the *current* head — without
+        that carry the default resets ``is_power_configured`` and breaks X1S
+        activity-driven power/input callback delivery. This is the LAST step of
+        an in-place re-sync (the commit marker: an interrupted deploy leaves the
+        brand hash unwritten, so the device reads out-of-step and re-offers
+        sync).
+        """
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        if not dev_lo:
+            return False
+        new_name = str(payload.get("name") or "")
+        new_brand = payload.get("brand")
+
+        device = self.state.entities("device").get(dev_lo)
+        raw = device.get("raw_body") if isinstance(device, dict) else None
+        wifi_power_state: tuple[int, int, int] | None = None
+        if isinstance(raw, (bytes, bytearray)):
+            try:
+                config = parse_device_record(
+                    bytes(raw), hub_version=self.hub_version, entity_kind="device"
+                )
+                wifi_power_state = (config.power_mode, config.power_style, config.tail_marker)
+            except (ValueError, TypeError):
+                wifi_power_state = None
+
+        ip_device = self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
+        body = self._build_wifi_device_payload(
+            device_name=new_name,
+            ip_address=self.get_routed_local_ip(),
+            state_byte=0x01,
+            device_id=dev_lo,
+            ip_device=ip_device,
+            brand_name=str(new_brand) if new_brand is not None else "m3tac0de",
+            wifi_power_state=wifi_power_state,
+        )
+        self.reset_ack_queues()
+        step = self._send_step(
+            step_name=f"wifi-head-commit[dev=0x{dev_lo:02X}]",
+            family=0x08,
+            payload=body,
+            ack_opcode=ACK_OPCODE_STATUS,
+            timeout=5.0,
+        )
+        if step.ok and isinstance(device, dict):
+            device["name"] = new_name
+            if new_brand is not None:
+                device["brand"] = str(new_brand)
+        return step.ok
+
+    def run_wifi_inplace_plan(
+        self,
+        plan: Any,
+        *,
+        progress_callback: Callable[..., None] | None = None,
+    ) -> dict[str, Any]:
+        """Walk a :class:`WifiInplacePlan` step by step, ack-gated and serial.
+
+        Mirrors :meth:`sync_device`'s orchestration: per-step progress, stop on
+        the first rejected write (the brand-hash commit is last, so a stop
+        leaves the device reading out-of-step). ``plan.fallback_reason`` must be
+        checked by the caller before calling this — a fallback plan has no
+        steps and is a caller-side signal to use the replace path.
+        """
+        steps = tuple(getattr(plan, "steps", ()) or ())
+
+        def _progress(**data: Any) -> None:
+            if callable(progress_callback):
+                progress_callback(**data)
+
+        if not self.can_issue_commands():
+            return {"status": "failed", "failed_at": "unavailable",
+                    "message": "The hub is not reachable (the Sofabaton app may be connected)."}
+
+        total = len(steps)
+        counters: dict[str, int] = {}
+        for index, step in enumerate(steps):
+            _progress(phase="writing", message=step.label, completed_steps=index, total_steps=total)
+            ok = self._dispatch_activity_sync_step(step)
+            if not ok:
+                # Every in-place step is an idempotent rewrite, so a transient
+                # ack miss (observed live: a macro-save ack lost under
+                # background hub traffic) is safely retried once.
+                self._log.warning(
+                    "[WIFI_INPLACE] step %s failed; retrying once", step.kind
+                )
+                time.sleep(2.0)
+                ok = self._dispatch_activity_sync_step(step)
+            if not ok:
+                return {"status": "failed", "failed_at": step.kind,
+                        "message": f"The hub rejected: {step.label}", "completed_steps": index}
+            counters[step.kind] = counters.get(step.kind, 0) + 1
+        _progress(phase="completed", message="Synced to hub.", completed_steps=total, total_steps=total)
+        return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
 
     # ── Low-level primitives ────────────────────────────────────────────
 

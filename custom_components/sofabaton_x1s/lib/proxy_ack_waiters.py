@@ -452,6 +452,7 @@ class AckWaitersMixin:
             self._activity_inputs_last_ts = 0.0
             self._activity_inputs_event.clear()
 
+        self.wait_for_read_burst_quiesce()
         self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
         burst = self.wait_for_activity_inputs_burst(timeout=timeout)
         if burst.outcome is AckOutcome.rejected:
@@ -512,6 +513,7 @@ class AckWaitersMixin:
             self._activity_inputs_pending = True
 
         try:
+            self.wait_for_read_burst_quiesce()
             self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
             burst = self.wait_for_activity_inputs_burst(timeout=timeout)
         finally:
@@ -564,6 +566,7 @@ class AckWaitersMixin:
             self._activity_inputs_pending = True
 
         try:
+            self.wait_for_read_burst_quiesce()
             self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
             burst = self.wait_for_activity_inputs_burst(timeout=timeout)
         finally:
@@ -626,6 +629,7 @@ class AckWaitersMixin:
             self._device_key_sort_expected_pages = None
             self._device_key_sort_pages.clear()
 
+        self.wait_for_read_burst_quiesce()
         send_ts = time.monotonic()
         self._send_family_frame(FAMILY_KEY_SORT_REQ, bytes([dev_lo]))
         # Accept either the family-0x63 paged reply (assembled into

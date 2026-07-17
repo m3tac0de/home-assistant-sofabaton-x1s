@@ -634,6 +634,7 @@ class CacheBackupMixin:
             return False
 
         self.clear_ack_queue()
+        self.wait_for_read_burst_quiesce()
         send_ts = time.monotonic()
         self._log.info(
             "[ERASE] sending opcode 0x%04X (timeout=%.0fs)",

@@ -977,3 +977,273 @@ Bench Test activity (`0x68`).
 - **X1 quirk:** `command_to_favorite`/`delete_favorite` occasionally return
   `None` even though the write lands — verify favorite ops by re-read on X1,
   not by the return value.
+
+## Validated: in-place wifi-device edit primitives (X1 + X1S, 2026-07-16/17)
+
+`bench_111_inplace_recon.py` plus follow-up probes `bench_111b`–`bench_111f`
+(in-place deploy program chunk 1, `docs/internal/wifi-inplace-deploy-plan.md`).
+Full bench deploy the shipped way first (20 slots, power 1/2, input [3], two
+activities, 2 favorites + RED short+long binding), live-fire baseline, then
+the plan's three 🟡 rows executed in place against the deployed device:
+
+- **Bare family-0x12 power-row rewrite works.** POWER_ON re-keyed 1→4 with a
+  single `_build_device_power_binding_payload` write (no 7b08/d508 head write,
+  no 0x41 enable, no activity writes). ACKed on both hubs; head record and
+  member activities byte-identical afterwards. Live proof: X1S activity
+  transition fires cmd 4 (+ input cmd); X1 device-scope fire
+  (`send_command(dev, 0xC6)`) resolves the rewritten row to cmd 4 — the same
+  0x12 lookup the activity engine's `(dev, 198)` step uses.
+- **Input-record rewrite works.** Re-running `_apply_wifi_input_configuration`
+  with input [3]→[5]: accepted on both hubs, member activities byte-identical
+  (the `(dev, 0xC5, ordinal)` macro steps are untouched when the ordinal is
+  unchanged), and the transition (X1S) / direct fire (X1) delivers the NEW
+  input command. On X1 the helper's family-0x08 finalize reproduces the
+  post-create head record byte-for-byte.
+- **Brand head rewrite works — with an X1S builder caveat.**
+  `_sync_step_device_rename` with a `brand` payload lands on both hubs; the
+  catalog re-read shows the new `m3-…` brand (the `get_managed_command_hashes`
+  source) and callbacks keep firing. **Caveat:** on X1S the generic
+  `parse_device_record` → `build_device_create_payload` roundtrip drops an
+  unmodeled wifi-identity byte block at tail[0..9] and re-encodes two flag
+  bytes (parsed fields identical, callbacks unaffected, but the record is not
+  byte-preserved). On X1 the roundtrip is byte-exact (diff = the single brand
+  char + nothing else). The in-place executor's brand step must build the head
+  through the wifi-aware `_build_wifi_device_payload` path on X1S/X2 (as the
+  X1 input finalize already does), or `devices.py` must learn to round-trip
+  unmodeled tail bytes.
+- **Drift-check tolerance:** `(dev, 0xC5)` steps inside POWER_ON macros with
+  **no input selected** lazily normalize `duration` 0→255 hub-side (observed
+  on X1S activity 0x65 between captures with zero intervening writes) — same
+  family as the known 0xC6/0xC7 duration canonicalization; the in-place
+  planner's byte-compare must treat 0 and 255 as equivalent there.
+- **X1 collapses roku-class activity-macro callbacks to one per transition
+  (user-confirmed 2026-07-17; pre-existing, hits the shipped replace deploy
+  identically).** On an activity transition the X1 fires **exactly one
+  power-on callback and one input callback total, regardless of how many
+  roku-class wifi devices are members of the startup sequence** — it behaves
+  as if all roku-class members are a single device. Bench evidence that led
+  here: with two wifi-callback members (dev 0x07 first, our dev 0x08 second)
+  the ON/OFF windows delivered only dev 0x07's callback and never dev 0x08's,
+  across 60s windows, while (a) direct fire of dev 0x08's commands delivers
+  instantly, (b) dev 0x07's callback was delivered and accepted (+0.4s) with
+  dev 0x08 still skipped, and (c) the c4-era single-wifi-member run
+  (2026-07-12) delivered fine. **Direct presses / favorites / bindings are
+  unaffected — only the activity power-on/off and input macro callbacks
+  collapse.** X1S is unaffected (fires every member's callback). This is a
+  hub-firmware limitation, not an integration or deploy bug; the in-place work
+  changes nothing about it. Product decision deferred (candidate: drop the
+  power/input feature on X1 hubs) — until then keep supporting X1 as if it
+  delivered per-device. (Probes: `bench_111c` direct-fire + long windows,
+  `bench_111d`/`bench_111e` head-IP redirect of dev 0x07 with byte-identical
+  restore, `bench_111f` device-scope power fire.)
+
+Deployment intentionally left in place on both hubs for chunk 2
+(dev 0x08, brand `m3-benchwifi-inplace0000002`, power 4/2, input [5]).
+
+**Addendum 2026-07-17 (user-tested):** the X1 activation caveat above is
+broader than first characterized — the X1 hub treats ALL roku-class wifi
+devices in an activity as a single logical callback target: one power-ON
+callback and one input callback per activity startup, regardless of how many
+roku-class members the startup sequence contains. X1S is unaffected. Product
+decision pending (possibly drop the power/input feature on X1); integration
+support continues unchanged for now. The X1 bench hub was subsequently
+restored from a different backup, so the chunk-1 deployment listed above no
+longer exists on the X1.
+
+## Validated: single-command delete from a device (X1 + X1S, 2026-07-17)
+
+`bench_112_command_delete.py` (in-place deploy program chunk 2; recovery
+`bench_112b_cleanup.py`). Deploys a fresh sacrificial managed wifi device
+(6 short + 6 long slots, power 1/2, input on 6) on ACT_A with a favorite +
+RED short/long binding on command 3, then deletes commands and verifies
+the fallout. 16/16 both hubs.
+
+- **Delete frame (bench-captured, both variants):**
+  `A5 5A 02 10 <dev> <command_id> <cksum>` — family `0x10`
+  (`FAMILY_FAV_DELETE`, the same opcode we already send to delete an
+  activity favorite/key), payload `[device_id, command_id]`, single frame,
+  ACK `0x0103` status `0x00`. **No `0x65` commit and no `0x61` sort rewrite
+  are needed** — the bare frame removes the slot on the first try; the
+  helper's commit and raw-key fallbacks never fired.
+- **command_id is the 1..20 command-table id on BOTH X1 and X1S** — the
+  X1 stored-key form (`0x18..`) is NOT used for delete, matching the 0x0E
+  overwrite finding. (Deploy assigns 6 short → ids 1..6 and 6 long → ids
+  7..12; the long record's id is `short_id + slot_count`, not a fixed +10.)
+- **Deleting a referenced command cascades the cleanup.** Removing cmd 3,
+  which had both a favorite and a RED hard-button binding, left **zero
+  dangling** favorite or binding rows in the activity (re-read confirmed) —
+  the hub drops the dependent favorite/binding itself, so a command-delete
+  step needs no separate favorite/binding teardown.
+- **Long-press record deletes identically** (cmd 9 = the long of slot 3),
+  same bare frame.
+- **Freed ids are inert:** a direct `send_command(dev, deleted_id)` fires
+  no callback, while a surviving id still fires — the record is genuinely
+  gone, not just hidden.
+- **key-sort:** these create_wifi_device devices carry an empty key-sort
+  blob to begin with; delete leaves it untouched (app does the same). A
+  delete step therefore never rewrites family 0x61.
+- **delete_device timing:** a `delete_device` issued immediately after the
+  post-delete `resync_remote` can no-op; re-sending it while polling a
+  fresh catalog (GC lands late) removes it reliably. Not a delete-path
+  issue — the standalone cleanup from a fresh connection deletes first try.
+
+This closes the plan's ❌ "Remove a command slot" row: the primitive is a
+device-scoped reuse of the existing `_send_step(family=FAMILY_FAV_DELETE,
+payload=[dev, cmd])` sender, no commit. Both hubs left clean (no bench
+devices remain).
+
+## Validated: remove device from one activity — power-macro rewrite (X1 + X1S, 2026-07-17)
+
+`bench_113_membership_remove.py` (in-place deploy program chunk 3).
+Deploys a fresh managed wifi device T into TWO activities (ACT_A 0x65 with
+an input on T + a favorite + a RED short/long binding; ACT_B 0x66 plain),
+then removes T from ACT_A by rewriting **only its POWER_ON macro** (family
+0x12) without T's rows, preserving the raw label slot. X1 21/21, X1S 22/22.
+
+- **A single POWER_ON rewrite triggers a full firmware cascade — both
+  hubs.** Dropping T's `(T,0xC6)` power row and `(T,0xC5)` input row from
+  POWER_ON (14→12 / 12→10 rows) removed T from the **member table**, from
+  **POWER_OFF** (never rewritten by us), from its **hard-button binding**,
+  AND from its **favorite** — no explicit POWER_OFF rewrite, no `0x0210`
+  binding/favorite deletes needed. The save is acked with the predicted
+  off-key `0x0112` (payload `0x01`, not the macro button `0xC6`).
+  - This clarifies the 2026-07-07/-11 capture notes: favorites cascade too,
+    not just bindings — a membership-remove step needs no favorite teardown.
+- **Surviving members are byte-stable** in both power macros (compared with
+  the known 0xC5 no-input duration 0↔255 normalization excluded).
+- **The other activity is byte-identical** (T remains its member) and **T
+  the device plus all 12 commands survive** — membership removal is not a
+  delete.
+- **Label slot must be preserved verbatim.** The rewrite reads the source
+  `MacroRecord` and passes `raw_label_slot` to `build_macro_save_payload`;
+  rebuilding the label from the string would drop the hub's trailing
+  metadata and the save is rejected `0x0c`.
+
+Implementation shape for the in-place planner: a membership-remove step is
+"fetch the activity's POWER_ON `MacroRecord`, drop every entry whose
+`device_id` is the target, re-save via the paged family-0x12 write." No new
+wire code — `_send_paged_macro_save` already exists.
+
+**Not tested here:** removing the *last* member of an activity. Prior
+programs established the hub GCs single-member activities; the planner must
+**refuse** a membership-remove that would empty an activity (delete the
+whole managed device instead, or leave it). Left for a targeted probe or
+the planner's guard.
+
+Both hubs left clean (bench device deleted, catalog back to baseline).
+
+## Validated: end-to-end in-place re-sync composition (X1 + X1S, 2026-07-17)
+
+`bench_114_inplace_resync.py` (in-place deploy program chunk 4). Replays
+the executor's planned step order at lib level against ONE deployed managed
+wifi device that also carries app-style manual references, proving every
+diff dimension composes with no cross-interference and — the whole point of
+in-place vs replace — that user-made references survive. X1 32/32, X1S 31/31.
+
+Six dimensions applied in executor order, all accepted and verified:
+command rename (in-place 0x0E) → command delete (cmd + its long record) →
+power-row rewrite (POWER_ON 1→7) → input-record rewrite (3→8) → membership
+removal (device dropped from a second activity via POWER_ON macro rewrite) →
+head rename + brand commit (last, the commit marker).
+
+- **Manual references survive the whole re-sync — both hubs.** A favorite
+  and a GREEN hard-button binding the deploy never created (simulating
+  app-side user edits on the activity the device stays in) are byte-present
+  and correct after all six steps. This is the core in-place thesis: because
+  the device id never changes, references keyed on it keep working, where the
+  old create→add→delete replace path would break them.
+- **Command edits are reference-safe in composition.** Renaming cmd 1 and
+  deleting cmd 6 (+ its long record 14) left the manual favorite (cmd 4) and
+  binding (cmd 5) untouched; survivors + power/input targets (cmd 7/8) all
+  present.
+- **The brand/head commit needs the power tail carried — P2 recipe.** The
+  final head commit must rebuild via `_build_wifi_device_payload` passing
+  `wifi_power_state=(power_mode, power_style, tail_marker)` read from the
+  device's *current* head. The naive call (defaults) flips
+  `is_power_configured` True→False and **breaks activity-driven power/input
+  callback delivery** on X1S (the raw family-0x12 power row still fires on a
+  direct device-scope press, so the break is invisible to anything but an
+  activity transition — a nasty latent bug). With the tail carried, a
+  post-commit ACT transition still delivers both power (cmd 7) and input
+  (cmd 8). X1 round-trips the head byte-exact; X1S normalizes `input_mode`
+  252→2 (functionally benign — delivery confirmed), and full byte-identity
+  would need `devices.py` to round-trip the unmodeled tail bytes.
+- **No interference:** untouched activity byte-identical; the device and its
+  surviving commands intact; membership removal cascades as in chunk 3.
+
+Bench notes: on X1S validate the power+input rewrites via a real transition
+on activity 0x66 (0x65 "Watch a movie" did not produce a clean transition in
+this harness — a state-tracking quirk, not a hub fault); on X1 the roku
+callback-collapse blocks activity delivery, so power is checked by
+device-scope fire and the input target by direct fire. Both hubs left clean.
+
+## In-place wifi deploy — bench program COMPLETE (X1 + X1S, 2026-07-17)
+
+All four discovery/validation chunks are closed (sections above): chunk 1
+in-place primitives (power-row, input-record, brand head), chunk 2
+single-command delete, chunk 3 remove-device-from-activity, chunk 4
+end-to-end composition + manual-reference survival. Every primitive the
+in-place diff planner needs is live-validated on both hub models, and the
+full re-sync composes without interference.
+
+Two implementation constraints carried forward to integration (P2/P3):
+- the head/brand commit MUST carry `wifi_power_state` from the current head
+  (else X1S activity delivery breaks silently — chunk 4);
+- drift/byte comparisons must treat the POWER_ON `(dev,0xC5)` no-input
+  duration as 0↔255 equivalent (hub canonicalizes lazily — chunk 1).
+
+No lib/integration code was changed during the bench program (bench scripts
++ docs only); the last-member-removal GC guard is the one item deferred to
+the planner rather than live-tested. Both hubs left at baseline.
+
+## Validated: in-place re-sync end-to-end via Home Assistant (X1 + X1S, 2026-07-17)
+
+`bench_116_ha_inplace_e2e.py` — drives the deployed dev HA instance's own
+APIs only (WS `command_config/set` + the `sync_command_config` service +
+`command_devices/list`), no direct hub connection. X1 11/11; X1S 10/11 with
+the sole FAIL a bench-config bug (a cleanup slot set `add_as_favorite:
+False` where the store default is True, so the config counted as configured
+and the cleanup ran in-place instead of zero-slot delete; the record-delete
+WS removed the hub device anyway, and the corrected X1 run proves the
+zero-slot path).
+
+Validated through the REAL production path on both hubs:
+
+- **Replace deploy backfills `deployed_request_port`** (8060) — the gate
+  field the in-place path requires.
+- **The second sync goes IN-PLACE**: progress message "Wifi Device updated
+  in place", the hub device id UNCHANGED across the re-sync (the entire
+  point vs the replace path), the deployed hash advanced, the port
+  persisted. 8 steps applied on X1S, matching the v1→v2 diff (command
+  rename, power row, input record, two member replays, favorite delete/add,
+  binding write, head commit).
+- **The drift gate works live**: a half-applied earlier run (see below) left
+  renamed records; the next sync logged "in-place sync declined: live
+  records drifted from the deployed snapshot (command ids [1, 11])" and
+  correctly rebased via replace.
+- **Failure semantics work live**: an in-place step's macro-save ack timed
+  out under HA background traffic on the first X1S attempt; the sync raised
+  ("In-place sync failed: The hub rejected: Updating input selection…"),
+  did NOT fall back to replace on the half-applied edit, and left the brand
+  hash unwritten so the device read out-of-step. Hardening added from this:
+  `run_wifi_inplace_plan` retries a failed step once (idempotent rewrites)
+  before failing.
+- **Zero-slot cleanup** deletes the managed device via the pre-existing
+  branch ("No configured slots; managed Wifi Device removed").
+
+Notes: HA must be restarted after deploying — the first attempt ran a
+stale process (files newer than the loaded code) which manifested as the
+port never persisting; a `deploy-ha.ps1 -SkipBuild` restart fixed it. The
+wifi-commands sensor appeared silent during the E2E, but a follow-up probe
+resolved it: **delivery works** (idle→ON transition: the hub POSTed
+`/launch/<mac>/11/4/short`, the listener logged received → mapped
+(`testing / Command 5 / short`) → status 200) and the sensor is a
+**0.3-second momentary pulse by design** (`_reset_state` via
+`async_call_later(0.3)`) built for automation triggers — polling misses it.
+Observation artifact, not a regression. Minor curiosity: the hub
+occasionally opens a listener connection that never completes a request
+("[WIFI_HTTP] request timed out", 2 in ~25 min); real deliveries all
+completed 200.
+
+P2 is now fully validated: planner + adapters + executors + hub branch +
+gates, live on both hub models through the real HA path.
