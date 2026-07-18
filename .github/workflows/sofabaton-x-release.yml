@@ -29,9 +29,7 @@ jobs:
           python-version: "3.13"
       - run: npm ci
       - run: pip install pytest
-      - name: Library tests (boundary lint, discovery, aio, public API)
-        run: pytest tests/lib -q
-      - name: Full integration suite
+      - name: Full pytest suite
         run: pytest tests -q
 
   build:
