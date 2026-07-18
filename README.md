@@ -158,23 +158,24 @@ This integration includes the **Sofabaton Virtual Remote** Lovelace card.
 
 <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-01.png" width="220"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-02.png" width="220"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-03.png" width="220">
 
-## 🖥️ Dashboard card - Sofabaton Control Panel
+## 🖥️ Dashboard card — Sofabaton Control Panel
 
-This integration adds the **Sofabaton Control Panel** Lovelace card to your Home Assistant.
-Find it in the Cards selection menu, or add it manually using the following YAML:
+The **Sofabaton Control Panel** is bundled with the integration and is its main interface for hub configuration, automation hooks, backups, and diagnostics. When multiple hubs are configured, use the selector in the card header to choose which hub to manage.
 
-```
+Find it in the dashboard card picker, or add it manually:
+
+```yaml
 type: custom:sofabaton-control-panel
 ```
 
-The Control Panel card is the central management UI for the integration. Its main features are:
+### What the tabs do
 
-- **Automation** — Configure and deploy Wifi Commands, or react to Hub and Activity Events with Home Assistant Actions (see below).
-- **Backup** — Create fully local backups, restore onto the same or a newer hub version family (`X1` → `X1S`/`X2`, `X1S` → `X2`), restore a whole hub or just add individual devices from a backup. See [`docs/backup.md`](docs/backup.md)
-- **Command payloads** — Generate, test, save, and share IR command payloads from the Hub tab's device editor. See [`docs/command_payloads.md`](docs/command_payloads.md).
-- **Persistent Cache** — Enable **persistent cache** in the **Settings** tab so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
-- **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
-- **Logs** — live streaming of hub log output for real-time diagnostics.
+- **Hub** — browse and refresh Activities and Devices. Create, edit, reorder, or delete them; manage Activity membership, inputs, power sequences, button assignments, shortcuts and macros; and edit Device power behavior, commands, IP addresses, and command payloads. See the [`command payload guide`](docs/command_payloads.md).
+- **Automation** — configure **Wifi Commands** that respond to physical remote buttons, or attach Home Assistant Actions to **Hub Events** and **Activity Events**. See the [`Wifi Commands and Events guide`](docs/wifi_commands.md).
+- **Backup** — create whole-hub or selected-Device backups, edit backup files offline, and selectively restore content to the same hub or a supported newer model. See the [`backup guide`](docs/backup.md).
+- **Settings and Logs** — manage persistent cache, proxy and Wifi listener settings, diagnostic logging, Find Remote, and physical remote sync; inspect live hub logs when troubleshooting.
+
+Live edits are reviewed before syncing. The card also prevents conflicting writes while the Sofabaton app or another hub operation is active.
 
 <img height="250" alt="Control Panel: Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png" /> <img height="250" alt="Control Panel: Automation, Wifi Commands sub-tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Control Panel: Automation, Events sub-tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/automation-events.png" /> <img height="250" alt="Control Panel: Backup, Make sub-tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-backup-tab.png" />
 
