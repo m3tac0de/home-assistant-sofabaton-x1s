@@ -27,8 +27,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 
 1. **Install via HACS** (recommended) or manually (see Installation).
 2. **Restart Home Assistant**.
-3. **Add your hubs**
-
+3. **Add your hubs**  
    Go to **Settings → Devices & Services**.
    - Your Sofabaton hubs appear at the top of the page, shortly after HA has fully started. **Add** them and follow the flow.
    - If automatic discovery fails (VLAN / mDNS), see [networking docs](docs/networking.md) or add manually.
@@ -130,7 +129,6 @@ When the official app is connected to the proxy, HA entities that can send comma
   - `binary_sensor.<hub>_hub_connected` (is the hub connected/disconnected to the integration)
   - `binary_sensor.<hub>_app_connected` (is the official app connected to the proxy)
   - `sensor.<hub>_activity` (current activity; stays accurate regardless of where it changed, **always available**)
-  - `sensor.<hub>_recorded_keypress` (ready-to-copy replay payloads from app button presses)
   - `sensor.<hub>_index` (diagnostic: activities/devices/commands/macros/favorites)
   - `sensor.<hub>_wifi_commands` (updates on Wifi Command key presses)
 

@@ -60,8 +60,6 @@ data:
 After it completes, inspect `sensor.<hub>_index` attributes for the populated
 command, macro, and favorites lists.
 
-For a full guide see [fetch_command.md](./fetch_command.md).
-
 ---
 
 ## `sofabaton_x1s.dump_ir_commands`
@@ -600,9 +598,10 @@ Buttons marked **X2 only** are not present on X1 or X1S remotes.
 
 ### Build a custom button layout for an activity
 
-Use `fetch_device_commands` to explore what commands are available on each
-device, then call `command_to_button` once per physical button to set up
-exactly which command fires when each key is pressed.
+The Control Panel's **Hub** tab is the recommended way to find Device, Activity,
+and command ids and configure button assignments. For a scripted workflow, use
+those ids with `command_to_button`. The `fetch_device_commands` Action remains
+available when command lists need to be loaded programmatically.
 
 ```yaml
 action: sofabaton_x1s.fetch_device_commands
