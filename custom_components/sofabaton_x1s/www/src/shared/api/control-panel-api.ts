@@ -10,6 +10,7 @@ import type {
   BlobPlayResponse,
   HassLike,
   HubAction,
+  HubClickAction,
   LogsResponse,
   RefreshKind,
   SettingKey,
@@ -36,6 +37,16 @@ export class ControlPanelApi {
       entry_id: entryId,
       setting,
       enabled,
+    });
+  }
+
+  // Global (all-hubs) dropdown setting: what a Hub-tab row click does.
+  setHubClickAction(entryId: string, value: HubClickAction) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/control_panel/set_setting",
+      entry_id: entryId,
+      setting: "hub_click_action",
+      value,
     });
   }
 

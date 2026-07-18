@@ -386,6 +386,135 @@ test("setSetting applies optimistic state and rolls back on failure", async () =
   assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
 });
 
+test("setHubClickAction applies optimistic state and rolls back on failure", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/set_setting": () => {
+          throw new Error("backend failed");
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  const pending = store.setHubClickAction("send");
+  assert.equal(store.snapshot.pendingSettingKey, "hub_click_action");
+  assert.equal(store.snapshot.state?.hub_click_action, "send");
+
+  await pending;
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.hub_click_action, "none");
+});
+
+test("setHubClickAction persists the value through set_setting", async () => {
+  const { store } = createStore();
+  const messages: Record<string, unknown>[] = [];
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/set_setting": (message) => {
+          messages.push(message);
+          return { ok: true, value: message.value };
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  await store.setHubClickAction("copy");
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].setting, "hub_click_action");
+  assert.equal(messages[0].value, "copy");
+  assert.equal(messages[0].entry_id, "hub-1");
+});
+
+test("sendHubClickCommand sends via the hub's remote entity and pulses the dock", async () => {
+  const { store } = createStore();
+  const calls: Array<{ domain: string; service: string; data?: Record<string, unknown> }> = [];
+  const hass = createHass({
+    states: {
+      "remote.living_room": {
+        state: "on",
+        attributes: { entry_id: "hub-1", proxy_client_connected: false },
+      },
+    },
+  });
+  hass.callService = async (domain, service, data) => {
+    calls.push({ domain, service, data });
+    return undefined;
+  };
+  store.connected();
+  store.setHass(hass);
+  await store.loadState();
+
+  await store.sendHubClickCommand({
+    kind: "command",
+    label: "Power Toggle",
+    contextLabel: "Television",
+    targetId: 1,
+    commandId: 10,
+  });
+
+  assert.deepEqual(calls, [
+    {
+      domain: "remote",
+      service: "send_command",
+      data: { entity_id: "remote.living_room", command: 10, device: 1 },
+    },
+  ]);
+  assert.equal(store.snapshot.lastCommandSend?.entryId, "hub-1");
+  assert.equal(store.snapshot.lastCommandSend?.commandLabel, "Power Toggle");
+  assert.equal(store.snapshot.lastCommandSend?.contextLabel, "Television");
+});
+
+test("copyHubClickCommand creates a persistent notification with the command YAML", async () => {
+  const { store } = createStore();
+  const calls: Array<{ domain: string; service: string; data?: Record<string, unknown> }> = [];
+  const hass = createHass({
+    states: {
+      "remote.living_room": {
+        state: "on",
+        attributes: { entry_id: "hub-1", proxy_client_connected: false },
+      },
+    },
+  });
+  hass.callService = async (domain, service, data) => {
+    calls.push({ domain, service, data });
+    return undefined;
+  };
+  store.connected();
+  store.setHass(hass);
+  await store.loadState();
+
+  await store.copyHubClickCommand({
+    kind: "favorite",
+    label: "Power",
+    contextLabel: "Watch TV",
+    targetId: 1,
+    commandId: 10,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].domain, "persistent_notification");
+  assert.equal(calls[0].service, "create");
+  const message = String(calls[0].data?.message ?? "");
+  assert.match(message, /Activity: Watch TV \| Favorite: Power/);
+  assert.match(message, /action: remote\.send_command/);
+  assert.match(message, /entity_id: remote\.living_room/);
+  assert.match(message, /command: 10/);
+  assert.match(message, /device: 1/);
+  // Sidebar copy leaves a success notice in the dock.
+  assert.equal(
+    store.snapshot.runtimeCompletionNoticeByHub["hub-1"]?.tone,
+    "success",
+  );
+});
+
 test("setHass marks cache as stale when generation changes outside refresh grace", async () => {
   const { store } = createStore();
   store.connected();

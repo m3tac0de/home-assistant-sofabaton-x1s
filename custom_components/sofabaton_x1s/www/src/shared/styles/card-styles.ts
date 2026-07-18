@@ -387,6 +387,16 @@ export const cardStyles = [secondaryTabStyles, css`
   .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); flex-shrink: 0; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
+  .setting-select {
+    max-width: 180px; padding: 6px 10px;
+    border: 1px solid var(--divider-color); border-radius: 8px;
+    background: var(--card-background-color, var(--ha-card-background, #fff));
+    color: var(--primary-text-color);
+    font: inherit; font-size: 12.5px; font-weight: 600;
+    cursor: pointer;
+  }
+  .setting-select:focus { outline: none; border-color: var(--primary-color); }
+  .setting-select:disabled { cursor: default; }
   .cache-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
   .cache-panel .secondary-view-shell,
   .cache-panel .secondary-tab-panel { min-width: 0; }
@@ -505,6 +515,9 @@ export const cardStyles = [secondaryTabStyles, css`
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
   .inner-row:hover { background: rgba(0, 0, 0, 0.03); }
+  .inner-row--clickable { cursor: pointer; }
+  .inner-row--clickable:hover { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
+  .inner-row--clickable:active { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
   .inner-label { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .inner-badges { display: flex; gap: 4px; flex-shrink: 0; }
   .buttons-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }

@@ -5,6 +5,7 @@ import type {
   ControlPanelLogLine,
   ControlPanelSnapshot,
   HassLike,
+  HubClickAction,
   TabId,
 } from "../ha-context";
 
@@ -52,6 +53,11 @@ export function selectedHubCache(snapshot: ControlPanelSnapshot): CacheHubState 
 
 export function persistentCacheEnabled(snapshot: ControlPanelSnapshot): boolean {
   return !!snapshot.state?.persistent_cache_enabled;
+}
+
+export function hubClickAction(snapshot: ControlPanelSnapshot): HubClickAction {
+  const action = snapshot.state?.hub_click_action;
+  return action === "send" || action === "copy" ? action : "none";
 }
 
 export function sortById<T extends { id?: number; button_id?: number }>(items: T[] = []): T[] {

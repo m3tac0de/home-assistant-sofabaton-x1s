@@ -1549,6 +1549,13 @@ var TOOLS_CARD_STRINGS = {
     persistentCacheTitle: "Persistent Cache",
     persistentCacheDescription: "Store activity and device data locally for faster access.",
     persistentCacheFooter: "GLOBAL",
+    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
+    hubClickActionTitle: "Hub Tab Clicks",
+    hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "Do nothing",
+    hubClickActionOptionSend: "Send the command",
+    hubClickActionOptionCopy: "Copy the command",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
     proxyTitle: "Proxy",
@@ -1602,6 +1609,26 @@ var TOOLS_CARD_STRINGS = {
     addActivityCancel: "Cancel",
     addActivityConfirm: "Create",
     addActivityCreating: "Creating\u2026"
+  },
+  // Hub-tab row clicks ("send the command" / "copy the command" modes).
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Activity",
+    contextDevice: "Device",
+    kindLabels: {
+      favorite: "Favorite",
+      macro: "Macro",
+      button: "Button",
+      command: "Command"
+    },
+    lovelaceHeading: "Lovelace Button Code",
+    lovelaceHint: "Copy this to your Dashboard YAML:",
+    actionHeading: "Service Call (Automation)",
+    actionHint: "Use this in your Scripts or Automations:",
+    noRemoteEntity: "The hub's remote entity is unavailable.",
+    copied: (label) => `Copied "${label}" to notifications.`,
+    sendTooltip: "Click to send this command to the hub",
+    copyTooltip: "Click to copy this command to a notification"
   },
   logs: {
     loading: "Loading log stream...",

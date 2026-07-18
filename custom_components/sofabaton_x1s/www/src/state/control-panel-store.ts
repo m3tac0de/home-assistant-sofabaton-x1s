@@ -4,6 +4,8 @@ import type {
   ControlPanelSnapshot,
   HassLike,
   HubAction,
+  HubClickAction,
+  HubClickItem,
   HubEventFireEvent,
   RefreshKind,
   RuntimeCompletionNotice,
@@ -22,11 +24,14 @@ import {
   formatError,
   formatLogEntry,
   hassFingerprint,
+  hubClickAction,
   isBackendUnavailableError,
   persistentCacheEnabled,
   proxyClientConnected,
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
+import { buildHubClickNotification } from "../shared/utils/hub-click-notification";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 const BACKEND_RETRY_MIN_MS = 2000;
 const BACKEND_RETRY_MAX_MS = 10000;
@@ -131,6 +136,7 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   pendingScrollEntityKey: null,
   lastWifiPress: null,
   wifiPressSubscribedEntryId: null,
+  lastCommandSend: null,
   lastHubEvent: null,
   hubEventsSubscribedEntryId: null,
 };
@@ -208,6 +214,7 @@ export class ControlPanelStore {
       externalHubCommandByHub: {},
       runtimeCompletionNoticeByHub: {},
       lastWifiPress: null,
+      lastCommandSend: null,
       lastHubEvent: null,
     };
     this._clearRuntimeStatePoll();
@@ -357,6 +364,7 @@ export class ControlPanelStore {
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
       lastWifiPress: null,
+      lastCommandSend: null,
       lastHubEvent: null,
     };
     this.persistViewState();
@@ -569,6 +577,103 @@ export class ControlPanelStore {
     } finally {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
+    }
+  }
+
+  /** Persist the global Hub-tab click behavior ("do nothing" / "send" /
+   *  "copy"), with the same optimistic-update + rollback flow as the
+   *  boolean setting toggles. */
+  async setHubClickAction(value: HubClickAction) {
+    const hub = selectedHub(this._snapshot);
+    if (!hub || this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) return;
+
+    const previous = hubClickAction(this._snapshot);
+    if (previous === value) return;
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "hub_click_action" };
+    this._applyOptimisticHubClickAction(value);
+
+    try {
+      await this.api().setHubClickAction(hub.entry_id, value);
+      await this.loadControlPanelState();
+    } catch (_error) {
+      this._applyOptimisticHubClickAction(previous);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+
+  private _applyOptimisticHubClickAction(value: HubClickAction) {
+    if (!this._snapshot.state) return;
+    this._snapshot = {
+      ...this._snapshot,
+      state: { ...this._snapshot.state, hub_click_action: value },
+    };
+  }
+
+  /** "Send the command": req_activate the clicked Hub-tab row on the hub via
+   *  the hub's remote entity, then pulse the bottom dock like an incoming
+   *  Wifi press. Failures surface as a dock completion notice. */
+  async sendHubClickCommand(item: HubClickItem) {
+    const hub = selectedHub(this._snapshot);
+    const hass = this._snapshot.hass;
+    if (!hub || !hass?.callService) return;
+    const entityId = entityForHub(hass, hub);
+    if (!entityId) {
+      this.showRuntimeCompletion(
+        { tone: "error", label: TOOLS_CARD_STRINGS.hubClick.noRemoteEntity },
+        hub.entry_id,
+      );
+      return;
+    }
+    try {
+      await hass.callService("remote", "send_command", {
+        entity_id: entityId,
+        command: item.commandId,
+        device: item.targetId,
+      });
+      this._snapshot = {
+        ...this._snapshot,
+        lastCommandSend: {
+          entryId: hub.entry_id,
+          contextLabel: item.contextLabel,
+          commandLabel: item.label,
+          receivedAt: Date.now(),
+        },
+      };
+      this.emit();
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    }
+  }
+
+  /** "Copy the command": drop a persistent notification in the sidebar with
+   *  ready-to-paste Lovelace / action YAML for the clicked row — the same
+   *  format the remote card's Key capture notification uses. */
+  async copyHubClickCommand(item: HubClickItem) {
+    const hub = selectedHub(this._snapshot);
+    const hass = this._snapshot.hass;
+    if (!hub || !hass?.callService) return;
+    const entityId = entityForHub(hass, hub);
+    if (!entityId) {
+      this.showRuntimeCompletion(
+        { tone: "error", label: TOOLS_CARD_STRINGS.hubClick.noRemoteEntity },
+        hub.entry_id,
+      );
+      return;
+    }
+    try {
+      await hass.callService(
+        "persistent_notification",
+        "create",
+        buildHubClickNotification(entityId, item),
+      );
+      this.showRuntimeCompletion(
+        { tone: "success", label: TOOLS_CARD_STRINGS.hubClick.copied(item.label) },
+        hub.entry_id,
+      );
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     }
   }
 

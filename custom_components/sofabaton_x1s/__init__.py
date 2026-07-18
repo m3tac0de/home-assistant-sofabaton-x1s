@@ -67,6 +67,7 @@ from .command_config import (
     wifi_device_requires_listener,
 )
 from .cache_store import PersistentCacheStore
+from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
 from .lib.bundle_validation import validate_hub_bundle_for_model
 from .lib.commands import build_descriptive_ir_blob_body
@@ -649,6 +650,18 @@ async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCa
     return store
 
 
+async def _async_get_ui_settings_store(hass: HomeAssistant) -> UiSettingsStore:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    store = domain_data.get("ui_settings_store")
+    if isinstance(store, UiSettingsStore):
+        return store
+
+    store = UiSettingsStore(hass)
+    await store.async_load()
+    domain_data["ui_settings_store"] = store
+    return store
+
+
 def _build_wifi_device_sync_payload(
     hub: SofabatonHub,
     config_payload: dict[str, Any],
@@ -1197,6 +1210,7 @@ async def _ws_get_control_panel_state(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     store = await _async_get_persistent_cache_store(hass)
+    ui_settings = await _async_get_ui_settings_store(hass)
     tools_frontend_version = await _async_get_integration_version(hass)
     hubs = await asyncio.gather(
         *[
@@ -1210,6 +1224,7 @@ async def _ws_get_control_panel_state(
     )
     payload = {
         "persistent_cache_enabled": store.enabled,
+        "hub_click_action": ui_settings.hub_click_action,
         "tools_frontend_version": tools_frontend_version,
         "hubs": hubs,
     }
@@ -1221,9 +1236,17 @@ async def _ws_get_control_panel_state(
         vol.Required("type"): f"{DOMAIN}/control_panel/set_setting",
         vol.Required("entry_id"): str,
         vol.Required("setting"): vol.In(
-            ["persistent_cache", "proxy_enabled", "hex_logging_enabled", "wifi_device_enabled"]
+            [
+                "persistent_cache",
+                "hub_click_action",
+                "proxy_enabled",
+                "hex_logging_enabled",
+                "wifi_device_enabled",
+            ]
         ),
-        vol.Required("enabled"): cv.boolean,
+        # Boolean settings pass "enabled"; hub_click_action passes "value".
+        vol.Optional("enabled"): cv.boolean,
+        vol.Optional("value"): vol.In(list(HUB_CLICK_ACTIONS)),
     }
 )
 @websocket_api.async_response
@@ -1231,6 +1254,24 @@ async def _ws_control_panel_set_setting(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     setting = str(msg["setting"])
+
+    if setting == "hub_click_action":
+        value = msg.get("value")
+        if value not in HUB_CLICK_ACTIONS:
+            connection.send_error(
+                msg["id"], "invalid_format", "hub_click_action requires a value"
+            )
+            return
+        ui_settings = await _async_get_ui_settings_store(hass)
+        await ui_settings.async_set_hub_click_action(str(value))
+        connection.send_result(msg["id"], {"ok": True, "value": value})
+        return
+
+    if "enabled" not in msg:
+        connection.send_error(
+            msg["id"], "invalid_format", f"{setting} requires an enabled boolean"
+        )
+        return
     enabled = bool(msg["enabled"])
 
     if setting == "persistent_cache":

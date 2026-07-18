@@ -1,11 +1,20 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
-import type { BackupSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
+import type {
+  BackupSectionId,
+  HassLike,
+  HubAction,
+  HubClickItem,
+  SettingKey,
+  TabId,
+  WifiPressEvent,
+} from "./shared/ha-context";
 import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
   hubActivities,
   hubDevices,
+  hubClickAction,
   hubConnected,
   hubIcon,
   persistentCacheEnabled,
@@ -460,6 +469,30 @@ class SofabatonControlPanelCard extends LitElement {
     void this._store.runAction(action);
   }
 
+  // Inner drawer rows in the Hub tab, dispatched per the global Hub Tab
+  // Clicks setting. Sends are skipped while another hub operation runs;
+  // copies are local (a persistent notification) and always allowed.
+  private handleHubItemClick(item: HubClickItem) {
+    const action = hubClickAction(this._snapshot);
+    if (action === "send") {
+      if (this.isSharedHubCommandBusy()) return;
+      void this._store.sendHubClickCommand(item);
+    } else if (action === "copy") {
+      void this._store.copyHubClickCommand(item);
+    }
+  }
+
+  private isSharedHubCommandBusy() {
+    const hub = selectedHub(this._snapshot);
+    const hubEntryId = hub?.entry_id ?? null;
+    return Boolean(
+      resolveRuntimeState(this._snapshot)?.kind === "operation_running" ||
+      hubRefreshBusy(this._snapshot, hubEntryId) ||
+      hubExternalCommandLabel(this._snapshot, hubEntryId) !== null ||
+      this._snapshot.pendingActionKey,
+    );
+  }
+
   private captureCacheScrollState() {
     const state = {
       section: this._snapshot.selectedCacheSection || null,
@@ -566,7 +599,7 @@ class SofabatonControlPanelCard extends LitElement {
               html`
                 <div
                   class="card-bottom-dock-ir-flash"
-                  title=${this._irFlashTitle(irFlash)}
+                  title=${irFlash.title}
                   aria-hidden="true"
                 ></div>
               `,
@@ -588,24 +621,40 @@ class SofabatonControlPanelCard extends LitElement {
     `;
   }
 
-  private _activeIrFlash(selectedEntryId: string | null) {
+  // The dock sweep runs both for incoming Wifi presses (server push) and
+  // for commands the user just sent by clicking a Hub-tab row; whichever
+  // happened last (for the selected hub) drives the animation.
+  private _activeIrFlash(selectedEntryId: string | null): { receivedAt: number; title: string } | null {
+    if (!selectedEntryId) return null;
+    const candidates: Array<{ receivedAt: number; title: string }> = [];
     const press = this._snapshot.lastWifiPress;
-    if (!press || !selectedEntryId || press.entryId !== selectedEntryId) return null;
-    const elapsed = Date.now() - press.receivedAt;
+    if (press && press.entryId === selectedEntryId) {
+      candidates.push({ receivedAt: press.receivedAt, title: this._irFlashTitle(press) });
+    }
+    const send = this._snapshot.lastCommandSend;
+    if (send && send.entryId === selectedEntryId) {
+      candidates.push({
+        receivedAt: send.receivedAt,
+        title: `${send.contextLabel} • ${send.commandLabel}`,
+      });
+    }
+    const latest = candidates.sort((left, right) => right.receivedAt - left.receivedAt)[0] ?? null;
+    if (!latest) return null;
+    const elapsed = Date.now() - latest.receivedAt;
     if (elapsed < 0 || elapsed >= SofabatonControlPanelCard._IR_FLASH_DURATION_MS) return null;
-    if (this._irFlashClearForReceivedAt !== press.receivedAt) {
+    if (this._irFlashClearForReceivedAt !== latest.receivedAt) {
       if (this._irFlashClearTimer) clearTimeout(this._irFlashClearTimer);
-      this._irFlashClearForReceivedAt = press.receivedAt;
+      this._irFlashClearForReceivedAt = latest.receivedAt;
       this._irFlashClearTimer = setTimeout(() => {
         this._irFlashClearTimer = null;
         this._irFlashClearForReceivedAt = null;
         this.requestUpdate();
       }, SofabatonControlPanelCard._IR_FLASH_DURATION_MS - elapsed + 16);
     }
-    return press;
+    return latest;
   }
 
-  private _irFlashTitle(press: NonNullable<ReturnType<typeof this._activeIrFlash>>) {
+  private _irFlashTitle(press: WifiPressEvent) {
     const device = press.deviceName?.trim() || "Wifi device";
     const command = press.commandLabel?.trim() || "Wifi command";
     return press.pressType === "long" ? `${device} • ${command} (long press)` : `${device} • ${command}`;
@@ -743,10 +792,12 @@ class SofabatonControlPanelCard extends LitElement {
       hub,
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
+      hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
       pendingActionKey: this._snapshot.pendingActionKey,
       onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
+      onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
       onRunAction: (action) => this.handleAction(action),
     });
 
@@ -840,6 +891,8 @@ class SofabatonControlPanelCard extends LitElement {
             this._store.selectCacheSection(sectionId);
           },
           onToggleEntity: (key) => this._store.toggleEntity(key),
+          clickAction: hubClickAction(this._snapshot),
+          onItemClick: (item) => this.handleHubItemClick(item),
           onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
           onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
           refreshAllSpinning:

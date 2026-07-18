@@ -31,6 +31,16 @@ class _CacheStore:
         self.cleared = True
 
 
+class _UiSettingsStore:
+    def __init__(self, hub_click_action="none"):
+        self.hub_click_action = hub_click_action
+        self.set_hub_click_action_to = None
+
+    async def async_set_hub_click_action(self, action):
+        self.hub_click_action = action
+        self.set_hub_click_action_to = action
+
+
 class _Hub:
     entry_id = "entry-1"
     name = "Living Room"
@@ -307,10 +317,14 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
 def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
     conn = _Conn()
     store = _CacheStore(enabled=False)
+    ui_settings = _UiSettingsStore(hub_click_action="send")
     hub = _Hub()
 
     async def fake_store(_hass):
         return store
+
+    async def fake_ui_settings(_hass):
+        return ui_settings
 
     async def fake_version(_hass):
         return "2026.5.1"
@@ -325,6 +339,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
     )
 
     monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
     monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
     monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
     monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
@@ -342,6 +357,8 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
         40,
         {
             "persistent_cache_enabled": False,
+            # Global Hub-tab click behavior from the UI settings store.
+            "hub_click_action": "send",
             "tools_frontend_version": "2026.5.1",
             "hubs": [
                 {
@@ -387,11 +404,15 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
 def test_ws_get_control_panel_state_disables_actions_when_client_connected(monkeypatch):
     conn = _Conn()
     store = _CacheStore(enabled=True)
+    ui_settings = _UiSettingsStore()
     hub = _Hub()
     hub.client_connected = True
 
     async def fake_store(_hass):
         return store
+
+    async def fake_ui_settings(_hass):
+        return ui_settings
 
     async def fake_version(_hass):
         return "2026.5.1"
@@ -406,6 +427,7 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
     )
 
     monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
     monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
     monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
     monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
@@ -455,6 +477,101 @@ def test_ws_control_panel_set_setting_updates_hub_setting(monkeypatch):
     assert conn.error is None
     assert conn.result == (42, {"ok": True, "enabled": True})
     assert hub.hex_logging_enabled is True
+
+
+def test_ws_control_panel_set_setting_updates_hub_click_action(monkeypatch):
+    conn = _Conn()
+    ui_settings = _UiSettingsStore()
+
+    async def fake_ui_settings(_hass):
+        return ui_settings
+
+    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_control_panel_set_setting(
+                SimpleNamespace(data={}),
+                conn,
+                {
+                    "id": 43,
+                    "entry_id": "entry-1",
+                    "setting": "hub_click_action",
+                    "value": "copy",
+                },
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (43, {"ok": True, "value": "copy"})
+    assert ui_settings.set_hub_click_action_to == "copy"
+
+
+def test_ws_control_panel_set_setting_hub_click_action_requires_value(monkeypatch):
+    conn = _Conn()
+    ui_settings = _UiSettingsStore()
+
+    async def fake_ui_settings(_hass):
+        return ui_settings
+
+    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_control_panel_set_setting(
+                SimpleNamespace(data={}),
+                conn,
+                {
+                    "id": 44,
+                    "entry_id": "entry-1",
+                    "setting": "hub_click_action",
+                },
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.result is None
+    assert conn.error == (44, "invalid_format", "hub_click_action requires a value")
+    assert ui_settings.set_hub_click_action_to is None
+
+
+def test_ws_control_panel_set_setting_boolean_requires_enabled(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    async def fake_resolve(_hass, data):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_control_panel_set_setting(
+                SimpleNamespace(data={}),
+                conn,
+                {
+                    "id": 45,
+                    "entry_id": "entry-1",
+                    "setting": "hex_logging_enabled",
+                },
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.result is None
+    assert conn.error == (
+        45,
+        "invalid_format",
+        "hex_logging_enabled requires an enabled boolean",
+    )
+    assert hub.hex_logging_enabled is False
 
 
 def test_ws_control_panel_run_action_triggers_hub_action(monkeypatch):

@@ -6,6 +6,10 @@ export type SettingKey =
   | "hex_logging_enabled"
   | "proxy_enabled"
   | "wifi_device_enabled";
+/** Global setting: what clicking a row in the Hub tab drawers does. */
+export type HubClickAction = "none" | "send" | "copy";
+/** Keys the settings tab can hold pending while the backend persists them. */
+export type PendingSettingKey = SettingKey | "hub_click_action";
 export type HubAction = "find_remote" | "sync_remote";
 export type RefreshKind = "activity" | "device";
 
@@ -67,6 +71,7 @@ export interface ControlPanelHubState {
 
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
+  hub_click_action?: HubClickAction;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
 }
@@ -364,6 +369,30 @@ export interface WifiPressEvent {
   receivedAt: number;
 }
 
+/** One clickable row in a Hub-tab drawer (favorite / macro / assigned
+ *  button inside an activity, or a device command). `targetId` is the hub
+ *  entity the command is sent to (device id for favorites and device
+ *  commands, activity id for macros and assigned buttons) and `commandId`
+ *  the key code sent to it — the same pair `remote.send_command` takes as
+ *  `device` / `command`. `contextLabel` names the activity/device the
+ *  drawer belongs to, for notifications and the dock pulse tooltip. */
+export interface HubClickItem {
+  kind: "favorite" | "macro" | "button" | "command";
+  label: string;
+  contextLabel: string;
+  targetId: number;
+  commandId: number;
+}
+
+/** Local marker that a Hub-tab click just sent a command, driving the same
+ *  dock sweep animation as an incoming Wifi press. */
+export interface CommandSendFlash {
+  entryId: string;
+  contextLabel: string;
+  commandLabel: string;
+  receivedAt: number;
+}
+
 /** A hub-level event firing (activity transition or redundant OFF press),
  *  pushed live to drive the row glow in the Events tab. An
  *  `activity_change` frame carries the full transition so one event can
@@ -400,7 +429,7 @@ export interface ControlPanelSnapshot {
   refreshBusyByHub: Record<string, string | null>;
   externalHubCommandByHub: Record<string, string>;
   runtimeCompletionNoticeByHub: Record<string, RuntimeCompletionNotice>;
-  pendingSettingKey: SettingKey | null;
+  pendingSettingKey: PendingSettingKey | null;
   pendingActionKey: HubAction | null;
   logsLines: ControlPanelLogLine[];
   logsError: string | null;
@@ -412,6 +441,7 @@ export interface ControlPanelSnapshot {
   pendingScrollEntityKey: string | null;
   lastWifiPress: WifiPressEvent | null;
   wifiPressSubscribedEntryId: string | null;
+  lastCommandSend: CommandSendFlash | null;
   lastHubEvent: HubEventFireEvent | null;
   hubEventsSubscribedEntryId: string | null;
 }
