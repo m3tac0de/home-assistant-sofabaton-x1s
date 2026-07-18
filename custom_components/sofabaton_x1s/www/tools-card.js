@@ -2032,8 +2032,8 @@ function resolveTabAvailability(snapshot, tabId) {
   }
   const hub = selectedHub(snapshot);
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
-    const title = tabId === "wifi_commands" ? "Wifi Commands unavailable" : "Backup unavailable";
-    const message = tabId === "wifi_commands" ? "Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy." : "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.";
+    const title = tabId === "wifi_commands" ? "Automation unavailable" : "Backup unavailable";
+    const message = tabId === "wifi_commands" ? "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy." : "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.";
     return { kind: "blocked", title, message };
   }
   return { kind: "available" };
