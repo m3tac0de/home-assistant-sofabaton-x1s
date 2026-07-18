@@ -13,6 +13,7 @@ import type {
   SettingKey,
   TabId,
   WifiPressEvent,
+  WifiSectionId,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import {
@@ -43,12 +44,14 @@ const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "backup", "cache
 export const REFRESH_ALL_KEY = "__refresh_all__";
 const VALID_CACHE_SECTIONS = new Set<SectionId>(["activities", "devices"]);
 const VALID_BACKUP_SECTIONS = new Set<BackupSectionId>(["make", "edit", "restore"]);
+const VALID_WIFI_SECTIONS = new Set<WifiSectionId>(["wifi", "hub_events"]);
 
 interface PersistedViewState {
   selectedHubEntryId?: string | null;
   selectedTab?: TabId;
   selectedCacheSection?: SectionId;
   selectedBackupSection?: BackupSectionId;
+  selectedWifiSection?: WifiSectionId;
   openSection?: SectionId | null;
   openBackupSection?: BackupSectionId;
 }
@@ -84,11 +87,15 @@ function readPersistedViewState(): PersistedViewState {
       : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection as BackupSectionId)
         ? (parsed.openBackupSection as BackupSectionId)
         : "make";
+    const selectedWifiSection = VALID_WIFI_SECTIONS.has(parsed?.selectedWifiSection as WifiSectionId)
+      ? (parsed.selectedWifiSection as WifiSectionId)
+      : "wifi";
     return {
       selectedHubEntryId,
       ...(selectedTab ? { selectedTab } : {}),
       selectedCacheSection,
       selectedBackupSection,
+      selectedWifiSection,
     };
   } catch (_error) {
     return {};
@@ -119,6 +126,7 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   selectedTab: "cache",
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
+  selectedWifiSection: "wifi",
   openEntity: null,
   staleData: false,
   refreshBusyByHub: {},
@@ -426,6 +434,13 @@ export class ControlPanelStore {
   setSelectedBackupSection(sectionId: BackupSectionId) {
     if (this._snapshot.selectedBackupSection === sectionId) return;
     this._snapshot = { ...this._snapshot, selectedBackupSection: sectionId };
+    this.persistViewState();
+    this.emit();
+  }
+
+  setSelectedWifiSection(sectionId: WifiSectionId) {
+    if (this._snapshot.selectedWifiSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedWifiSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -1083,11 +1098,17 @@ export class ControlPanelStore {
     };
   }
 
+  /** Reconcile the selected hub with the loaded hub list. Runs on every
+   * state load, so it only persists when the selection actually changes:
+   * an unconditional write would let every open tab continuously overwrite
+   * the shared view state with its own snapshot. */
   private syncSelection() {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
-      this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
-      this.persistViewState();
+      if (this._snapshot.selectedHubEntryId !== null) {
+        this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+        this.persistViewState();
+      }
       return;
     }
     if (
@@ -1102,8 +1123,8 @@ export class ControlPanelStore {
     }
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: hubs[0].entry_id };
+      this.persistViewState();
     }
-    this.persistViewState();
   }
 
   private api() {
@@ -1122,6 +1143,7 @@ export class ControlPanelStore {
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
           selectedBackupSection: this._snapshot.selectedBackupSection,
+          selectedWifiSection: this._snapshot.selectedWifiSection,
         } satisfies PersistedViewState),
       );
     } catch (_error) {

@@ -31,7 +31,8 @@ DEFAULT_COMMAND_ACTION = {"action": "perform-action"}
 #   power_off      - the hub switched from an activity into POWERED OFF
 #   redundant_off  - OFF was pressed while the hub was already POWERED OFF
 #   activity_start - the hub switched into an activity
-HUB_EVENT_ACTION_KEYS = ("power_off", "redundant_off", "activity_start")
+#   activity_stop  - an activity stopped (switch to another activity or OFF)
+HUB_EVENT_ACTION_KEYS = ("power_off", "redundant_off", "activity_start", "activity_stop")
 
 # Per-activity event hooks (also HA-side only). Keyed by the hub activity id;
 # no matching beyond the id is attempted — if the hub reuses an id for a new

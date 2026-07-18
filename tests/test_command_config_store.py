@@ -542,7 +542,7 @@ def test_hub_event_actions_default_to_noop_payloads() -> None:
     _run(store.async_load())
 
     actions = store.get_hub_event_actions("hub-1")
-    assert set(actions) == {"power_off", "redundant_off", "activity_start"}
+    assert set(actions) == {"power_off", "redundant_off", "activity_start", "activity_stop"}
     for payload in actions.values():
         assert payload == {"action": "perform-action"}
 
@@ -566,7 +566,7 @@ def test_hub_event_actions_persist_and_normalize() -> None:
         )
     )
 
-    assert set(saved) == {"power_off", "redundant_off", "activity_start"}
+    assert set(saved) == {"power_off", "redundant_off", "activity_start", "activity_stop"}
     assert saved["power_off"]["perform_action"] == "light.turn_off"
     # Missing hooks come back as the default no-op payload.
     assert saved["redundant_off"] == {"action": "perform-action"}

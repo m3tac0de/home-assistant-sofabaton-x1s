@@ -78,7 +78,7 @@ The **Events** sub-tab (next to **Wifi Commands**) contains separate **Hub Event
 
 - **When the hub is switched OFF** — the hub left an Activity and is now powered off.
 - **When OFF is pressed while the hub is already OFF** — the OFF button was pressed with nothing left to turn off. Useful as a "force everything off" hook.
-- **When an Activity starts** — the hub switched into any Activity.
+- **When any Activity starts** — the hub switched into any Activity — **and when one stops** — the hub left any Activity, either by powering off or by switching into another one.
 
 Below those, **Activity Events** list every Activity on the hub with a start and a stop hook:
 

@@ -9,6 +9,7 @@ import type {
   SettingKey,
   TabId,
   WifiPressEvent,
+  WifiSectionId,
 } from "./shared/ha-context";
 import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
@@ -821,6 +822,8 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .lastHubEvent=${this._snapshot.lastHubEvent}
+          .selectedSection=${this._snapshot.selectedWifiSection}
+          .setSelectedSection=${(section: WifiSectionId) => this._store.setSelectedWifiSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
           @editor-dirty-changed=${this._handleEditorDirtyChanged}

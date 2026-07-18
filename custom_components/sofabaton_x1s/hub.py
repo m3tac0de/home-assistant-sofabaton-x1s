@@ -560,6 +560,10 @@ class SofabatonHub:
                     self.hass.async_create_task(
                         self._async_run_activity_event_action(old_id, "stop")
                     )
+                    # Hub-level hook: an activity stopped (switch or OFF).
+                    self.hass.async_create_task(
+                        self._async_run_hub_event_action("activity_stop")
+                    )
                 if new_id is not None:
                     self.hass.async_create_task(
                         self._async_run_activity_event_action(new_id, "start")

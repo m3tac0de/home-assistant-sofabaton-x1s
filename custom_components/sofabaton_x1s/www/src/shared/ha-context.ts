@@ -1,6 +1,7 @@
 export type TabId = "settings" | "wifi_commands" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type BackupSectionId = "make" | "edit" | "restore";
+export type WifiSectionId = "wifi" | "hub_events";
 export type SettingKey =
   | "persistent_cache"
   | "hex_logging_enabled"
@@ -420,6 +421,7 @@ export interface ControlPanelSnapshot {
   selectedTab: TabId;
   selectedCacheSection: SectionId;
   selectedBackupSection: BackupSectionId;
+  selectedWifiSection: WifiSectionId;
   openEntity: string | null;
   staleData: boolean;
   // Long-running/busy UI state is keyed by hub entry_id so an operation on

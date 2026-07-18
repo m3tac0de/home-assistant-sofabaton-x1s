@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } from "../components/secondary-tab";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
-import type { ControlPanelHubState, HassLike, HubEventFireEvent, WifiPressEvent } from "../shared/ha-context";
+import type { ControlPanelHubState, HassLike, HubEventFireEvent, WifiPressEvent, WifiSectionId } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import {
   findRunningWifiDevice,
@@ -110,8 +110,6 @@ const HARD_BUTTON_ID_MAP: Record<string, number> = {
 const X2_ONLY_HARD_BUTTON_IDS = new Set<number>([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 const DEFAULT_ACTION = { action: "perform-action" };
 
-type WifiSectionId = "wifi" | "hub_events";
-
 const WIFI_SECTION_ROW: Array<{ id: WifiSectionId; label: string; icon: string }> = [
   { id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.wifiCommandsTabLabel, icon: "mdi:wifi" },
   { id: "hub_events", label: TOOLS_CARD_STRINGS.wifiCommands.eventsTabLabel, icon: "mdi:lightning-bolt-outline" },
@@ -119,7 +117,7 @@ const WIFI_SECTION_ROW: Array<{ id: WifiSectionId; label: string; icon: string }
 
 type PressType = "short" | "long";
 type ActiveModal = "details" | "action" | null;
-type HubEventKey = "power_off" | "redundant_off" | "activity_start";
+type HubEventKey = "power_off" | "redundant_off" | "activity_start" | "activity_stop";
 type ActivityEventPhase = "start" | "stop";
 type HubEventEditorTarget =
   | { kind: "hub"; key: HubEventKey }
@@ -133,8 +131,17 @@ interface ActivityEventEntry {
 const HUB_EVENT_ROWS: Array<{ key: HubEventKey; label: string; icon: string }> = [
   { key: "power_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff, icon: "mdi:power" },
   { key: "redundant_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff, icon: "mdi:power-off" },
-  { key: "activity_start", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStart, icon: "mdi:play-circle-outline" },
 ];
+
+// The activity start/stop pair renders as one combined row (like the
+// per-activity lines), so it lives outside HUB_EVENT_ROWS; the editor modal
+// still needs a title per key.
+const HUB_EVENT_MODAL_TITLES: Record<HubEventKey, string> = {
+  power_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff,
+  redundant_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff,
+  activity_start: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStart,
+  activity_stop: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStopModalTitle,
+};
 
 interface WifiCommandAction {
   action: string;
@@ -231,7 +238,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     _maxWifiDevices: { state: true },
     _hubEventActions: { state: true },
     _activityEventActions: { state: true },
-    _activeSection: { state: true },
+    selectedSection: { attribute: false },
+    setSelectedSection: { attribute: false },
     _devicePowerPickerKind: { state: true },
     _activeHubEventTarget: { state: true },
     _hubEventDraft: { state: true },
@@ -770,7 +778,8 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _maxWifiDevices = 5;
   private _hubEventActions: Record<HubEventKey, WifiCommandAction> = this._defaultHubEventActions();
   private _activityEventActions: Record<string, ActivityEventEntry> = {};
-  private _activeSection: WifiSectionId = "wifi";
+  selectedSection: WifiSectionId = "wifi";
+  setSelectedSection: (section: WifiSectionId) => void = () => {};
   private _devicePowerPickerKind: "on" | "off" | null = null;
   private _activeHubEventTarget: HubEventEditorTarget | null = null;
   private _hubEventDraft: WifiCommandAction | null = null;
@@ -821,7 +830,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   // list view, Events section, and guard states never count as "in the
   // editor", and a running deploy is narrated by the dock itself.
   private _notifyDirtyDock() {
-    const inEditor = this._activeSection === "wifi"
+    const inEditor = this.selectedSection === "wifi"
       && !this.loading
       && !this.error
       && !!this.hub
@@ -858,7 +867,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       `;
     }
 
-    if (this._activeSection === "hub_events") {
+    if (this.selectedSection === "hub_events") {
       return html`
         <div class="tab-panel">
           ${renderSecondaryTabShell({
@@ -1153,6 +1162,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       power_off: { ...DEFAULT_ACTION },
       redundant_off: { ...DEFAULT_ACTION },
       activity_start: { ...DEFAULT_ACTION },
+      activity_stop: { ...DEFAULT_ACTION },
     };
   }
 
@@ -1162,6 +1172,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       power_off: this._normalizeCommandAction(raw.power_off),
       redundant_off: this._normalizeCommandAction(raw.redundant_off),
       activity_start: this._normalizeCommandAction(raw.activity_start),
+      activity_stop: this._normalizeCommandAction(raw.activity_stop),
     };
     this._activityEventActions = this._normalizeActivityEventActions(result?.activity_actions);
   }
@@ -1279,7 +1290,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   };
 
   private _selectSection = (id: WifiSectionId) => {
-    this._activeSection = id;
+    this.setSelectedSection(id);
   };
 
   /** Active hub-event firing while inside the 720ms glow window, scoped to
@@ -1310,6 +1321,9 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (key === "power_off") {
       return flash.type === "activity_change" && flash.toActivityId == null && flash.fromActivityId != null;
     }
+    if (key === "activity_stop") {
+      return flash.type === "activity_change" && flash.fromActivityId != null;
+    }
     return flash.type === "activity_change" && flash.toActivityId != null;
   }
 
@@ -1326,6 +1340,17 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _renderHubEventsView() {
     const flash = this._activeHubEventFlash();
     const activities = this._editorActivities();
+    const renderHubAction = (key: HubEventKey) => {
+      const action = this._hubEventActions[key];
+      const configured = this._commandHasCustomAction(action);
+      const target: HubEventEditorTarget = { kind: "hub", key };
+      return html`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${configured ? html`<button
+            class="hub-event-clear"
+            title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
+            @click=${() => { void this._resetHubEventAction(target); }}
+          ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}`;
+    };
     return html`
       <div class="list-scroll">
         <div class="hub-events">
@@ -1334,26 +1359,29 @@ class SofabatonWifiCommandsTab extends LitElement {
           </div>
           <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsSubtitle}</div>
           <ul class="hub-event-lines">
-            ${HUB_EVENT_ROWS.map((row) => {
-              const action = this._hubEventActions[row.key];
-              const configured = this._commandHasCustomAction(action);
-              const target: HubEventEditorTarget = { kind: "hub", key: row.key };
-              return html`
-                <li class="hub-event-line">
-                  <span class="hub-event-icon"><ha-icon icon=${row.icon}></ha-icon></span>
-                  <span class="hub-event-text">
-                    ${row.label},
-                    <button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
-                      ${this._hubEventActionText(action)}</button>${configured ? html`<button
-                          class="hub-event-clear"
-                          title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
-                          @click=${() => { void this._resetHubEventAction(target); }}
-                        ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}.
-                  </span>
-                  ${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, row.key), flash)}
-                </li>
-              `;
-            })}
+            ${HUB_EVENT_ROWS.map((row) => html`
+              <li class="hub-event-line">
+                <span class="hub-event-icon"><ha-icon icon=${row.icon}></ha-icon></span>
+                <span class="hub-event-text">
+                  ${row.label},
+                  ${renderHubAction(row.key)}.
+                </span>
+                ${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, row.key), flash)}
+              </li>
+            `)}
+            <li class="hub-event-line">
+              <span class="hub-event-icon"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
+              <span class="hub-event-text">
+                ${TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStart},
+                ${renderHubAction("activity_start")},
+                ${TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStops},
+                ${renderHubAction("activity_stop")}.
+              </span>
+              ${this._hubEventFlashOverlay(
+                this._flashMatchesHubEventRow(flash, "activity_start") || this._flashMatchesHubEventRow(flash, "activity_stop"),
+                flash,
+              )}
+            </li>
           </ul>
         </div>
         <div class="hub-events">
@@ -1401,7 +1429,7 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _hubEventEditorTitle(target: HubEventEditorTarget): string {
     if (target.kind === "hub") {
-      return HUB_EVENT_ROWS.find((item) => item.key === target.key)?.label || "";
+      return HUB_EVENT_MODAL_TITLES[target.key] || "";
     }
     const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));
     const name = activity?.name || TOOLS_CARD_STRINGS.wifiCommands.activityEventFallbackName(String(target.id));

@@ -2025,6 +2025,8 @@ var TOOLS_CARD_STRINGS = {
     hubEventPowerOff: "When the hub is switched OFF",
     hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
     hubEventActivityStart: "When any Activity starts",
+    hubEventActivityStops: "and when one stops",
+    hubEventActivityStopModalTitle: "When any Activity stops",
     hubEventDoNothing: "do nothing",
     hubEventPerform: (service) => `perform ${service}`,
     hubEventClearTitle: "Reset to do nothing",
@@ -2154,6 +2156,7 @@ var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "backup",
 var REFRESH_ALL_KEY = "__refresh_all__";
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
+var VALID_WIFI_SECTIONS = /* @__PURE__ */ new Set(["wifi", "hub_events"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -2170,11 +2173,13 @@ function readPersistedViewState() {
     const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
     const selectedCacheSection = VALID_CACHE_SECTIONS.has(parsed?.selectedCacheSection) ? parsed.selectedCacheSection : VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : "activities";
     const selectedBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.selectedBackupSection) ? parsed.selectedBackupSection : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : "make";
+    const selectedWifiSection = VALID_WIFI_SECTIONS.has(parsed?.selectedWifiSection) ? parsed.selectedWifiSection : "wifi";
     return {
       selectedHubEntryId,
       ...selectedTab ? { selectedTab } : {},
       selectedCacheSection,
-      selectedBackupSection
+      selectedBackupSection,
+      selectedWifiSection
     };
   } catch (_error) {
     return {};
@@ -2202,6 +2207,7 @@ var INITIAL_SNAPSHOT = {
   selectedTab: "cache",
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
+  selectedWifiSection: "wifi",
   openEntity: null,
   staleData: false,
   refreshBusyByHub: {},
@@ -2466,6 +2472,12 @@ var ControlPanelStore = class {
   setSelectedBackupSection(sectionId) {
     if (this._snapshot.selectedBackupSection === sectionId) return;
     this._snapshot = { ...this._snapshot, selectedBackupSection: sectionId };
+    this.persistViewState();
+    this.emit();
+  }
+  setSelectedWifiSection(sectionId) {
+    if (this._snapshot.selectedWifiSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedWifiSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -3061,11 +3073,17 @@ var ControlPanelStore = class {
       }
     };
   }
+  /** Reconcile the selected hub with the loaded hub list. Runs on every
+   * state load, so it only persists when the selection actually changes:
+   * an unconditional write would let every open tab continuously overwrite
+   * the shared view state with its own snapshot. */
   syncSelection() {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
-      this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
-      this.persistViewState();
+      if (this._snapshot.selectedHubEntryId !== null) {
+        this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+        this.persistViewState();
+      }
       return;
     }
     if (!this._preferredHubApplied && this._preferredHubEntryId && hubs.some((hub) => hub.entry_id === this._preferredHubEntryId)) {
@@ -3076,8 +3094,8 @@ var ControlPanelStore = class {
     }
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: hubs[0].entry_id };
+      this.persistViewState();
     }
-    this.persistViewState();
   }
   api() {
     if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
@@ -3093,7 +3111,8 @@ var ControlPanelStore = class {
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
-          selectedBackupSection: this._snapshot.selectedBackupSection
+          selectedBackupSection: this._snapshot.selectedBackupSection,
+          selectedWifiSection: this._snapshot.selectedWifiSection
         })
       );
     } catch (_error) {

@@ -5234,6 +5234,7 @@ def _make_event_hook_hub(monkeypatch, activity_actions=None):
                 "power_off": {"action": "perform-action", "perform_action": "script.hub_off"},
                 "redundant_off": {"action": "perform-action", "perform_action": "script.still_off"},
                 "activity_start": {"action": "perform-action", "perform_action": "script.started"},
+                "activity_stop": {"action": "perform-action", "perform_action": "script.stopped"},
             }
 
         def get_activity_event_actions(self, _entry_id):
@@ -5261,13 +5262,19 @@ def test_hub_event_actions_fire_on_activity_transitions(monkeypatch):
         drain()
         assert executed == []
 
+        # Power off from 5: the global activity-stop hook runs before the
+        # power-off hook.
         hub._on_activity_change(None, 5, None)
         drain()
-        assert [a.get("perform_action") for a in executed] == ["script.hub_off"]
+        assert [a.get("perform_action") for a in executed] == [
+            "script.stopped",
+            "script.hub_off",
+        ]
 
         hub._on_activity_change(7, None, "Music")
         drain()
         assert [a.get("perform_action") for a in executed] == [
+            "script.stopped",
             "script.hub_off",
             "script.started",
         ]
@@ -5307,22 +5314,26 @@ def test_activity_event_actions_fire_on_start_stop_and_switch(monkeypatch):
         drain()
         assert executed == []
 
-        # Direct switch 5 -> 7: the old activity stops before the new one
-        # starts, then the global activity-start hook runs.
+        # Direct switch 5 -> 7: the old activity's stop hook runs first with
+        # the global activity-stop hook right behind it, then the new one
+        # starts and the global activity-start hook runs.
         hub._on_activity_change(7, 5, "Music")
         drain()
         assert [a.get("perform_action") for a in executed] == [
             "script.movie_stop",
+            "script.stopped",
             "script.music_start",
             "script.started",
         ]
 
-        # Power off from 7: its stop hook runs alongside the global one.
+        # Power off from 7: its stop hook runs alongside the global stop and
+        # power-off hooks.
         executed.clear()
         hub._on_activity_change(None, 7, None)
         drain()
         assert [a.get("perform_action") for a in executed] == [
             "script.music_stop",
+            "script.stopped",
             "script.hub_off",
         ]
 

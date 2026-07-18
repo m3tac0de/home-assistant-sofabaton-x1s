@@ -196,6 +196,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
     JSON.stringify({
       selectedHubEntryId: "hub-2",
       selectedTab: "backup",
+      selectedWifiSection: "hub_events",
     }),
   );
   const store = new ControlPanelStore(() => undefined, {
@@ -232,6 +233,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
 
   assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
   assert.equal(store.snapshot.selectedTab, "backup");
+  assert.equal(store.snapshot.selectedWifiSection, "hub_events");
 });
 
 test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
@@ -299,6 +301,7 @@ test("selectHub and selectTab persist the updated view state", async () => {
       // (cache panel) and selectedBackupSection.
       selectedCacheSection: "activities",
       selectedBackupSection: "make",
+      selectedWifiSection: "wifi",
     },
   );
 });

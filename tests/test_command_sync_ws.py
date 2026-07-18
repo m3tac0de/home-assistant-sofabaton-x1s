@@ -575,7 +575,7 @@ def test_ws_hub_event_actions_roundtrip(monkeypatch):
         )
         assert conn.error is None
         default_actions = conn.result[1]["actions"]
-        assert set(default_actions) == {"power_off", "redundant_off", "activity_start"}
+        assert set(default_actions) == {"power_off", "redundant_off", "activity_start", "activity_stop"}
         assert conn.result[1]["activity_actions"] == {}
 
         loop.run_until_complete(

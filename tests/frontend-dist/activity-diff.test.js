@@ -505,6 +505,8 @@ var TOOLS_CARD_STRINGS = {
     hubEventPowerOff: "When the hub is switched OFF",
     hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
     hubEventActivityStart: "When any Activity starts",
+    hubEventActivityStops: "and when one stops",
+    hubEventActivityStopModalTitle: "When any Activity stops",
     hubEventDoNothing: "do nothing",
     hubEventPerform: (service) => `perform ${service}`,
     hubEventClearTitle: "Reset to do nothing",

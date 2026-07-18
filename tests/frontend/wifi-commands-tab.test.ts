@@ -234,7 +234,7 @@ test("hub events save ships both maps and targets the requested activity phase",
   assert.equal(shipped["102"].stop.perform_action, "scene.music_off");
   assert.deepEqual(shipped["102"].start, { action: "perform-action" });
   // The hub-level map is always sent alongside.
-  assert.deepEqual(Object.keys(calls[0].actions as object).sort(), ["activity_start", "power_off", "redundant_off"]);
+  assert.deepEqual(Object.keys(calls[0].actions as object).sort(), ["activity_start", "activity_stop", "power_off", "redundant_off"]);
 });
 
 test("hub event flash matching lights the affected rows for a transition", () => {
@@ -249,6 +249,11 @@ test("hub event flash matching lights the affected rows for a transition", () =>
   assert.equal((element as any)._flashMatchesHubEventRow(powerOff, "activity_start"), false);
   assert.equal((element as any)._flashMatchesHubEventRow(started, "activity_start"), true);
   assert.equal((element as any)._flashMatchesHubEventRow(started, "power_off"), false);
+  // Any transition away from an activity lights the stop hook — including
+  // powering off.
+  assert.equal((element as any)._flashMatchesHubEventRow(started, "activity_stop"), true);
+  assert.equal((element as any)._flashMatchesHubEventRow(powerOff, "activity_stop"), true);
+  assert.equal((element as any)._flashMatchesHubEventRow(redundant, "activity_stop"), false);
   assert.equal((element as any)._flashMatchesHubEventRow(redundant, "redundant_off"), true);
   assert.equal((element as any)._flashMatchesHubEventRow(null, "redundant_off"), false);
 
@@ -320,11 +325,11 @@ test("wifi commands does not announce dirty from the Events section or guard sta
   element._selectedDeviceKey = "dev-1";
   element._syncState = { ...(element as any)._defaultSyncState(), sync_needed: true };
 
-  element._activeSection = "hub_events";
+  element.selectedSection = "hub_events";
   (element as any)._notifyDirtyDock();
   assert.deepEqual(events, []);
 
-  element._activeSection = "wifi";
+  element.selectedSection = "wifi";
   element.blockedTitle = "Hub busy";
   element.blockedMessage = "Try again later";
   (element as any)._notifyDirtyDock();
