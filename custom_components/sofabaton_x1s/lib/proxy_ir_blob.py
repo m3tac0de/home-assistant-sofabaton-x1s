@@ -557,54 +557,58 @@ class IrBlobMixin:
             "[PLAY_BLOB] sending %dB body in %d frame(s)", body_len, total_frames,
         )
 
-        # Ignore any stale ACKs already queued from prior traffic; playback must
-        # pace itself only on ACKs caused by the chunks we are about to send.
-        self.clear_ack_queue()
+        # ONE scope around the entire chunk stream + final ack: chunks
+        # must stream back-to-back — no per-chunk quiesce/lock — and
+        # nothing may interleave with the hub's per-chunk ack pacing.
+        with self.exchange("play_blob"):
+            # Ignore any stale ACKs already queued from prior traffic; playback must
+            # pace itself only on ACKs caused by the chunks we are about to send.
+            self.clear_ack_queue()
 
-        send_ts = time.monotonic()
-        for seq in range(1, total_frames + 1):
-            if seq > 1 and inter_frame_delay > 0:
-                time.sleep(inter_frame_delay)
-            slice_start = (seq - 1) * PLAY_BLOB_CHUNK_SIZE
-            slice_end = min(slice_start + PLAY_BLOB_CHUNK_SIZE, body_len)
-            body_slice = body_buffer[slice_start:slice_end]
-            frame_payload = bytes([0x01, 0x00, seq & 0xFF]) + body_slice
             send_ts = time.monotonic()
-            self._send_family_play_frame(frame_payload)
-            candidates = [(0x0103, 0x00)]
-            if seq == total_frames:
-                candidates.append((0x0103, 0x0C))
-            chunk_ack = self.wait_for_ack_any(candidates, timeout=ack_timeout, not_before=send_ts)
-            if chunk_ack is None:
+            for seq in range(1, total_frames + 1):
+                if seq > 1 and inter_frame_delay > 0:
+                    time.sleep(inter_frame_delay)
+                slice_start = (seq - 1) * PLAY_BLOB_CHUNK_SIZE
+                slice_end = min(slice_start + PLAY_BLOB_CHUNK_SIZE, body_len)
+                body_slice = body_buffer[slice_start:slice_end]
+                frame_payload = bytes([0x01, 0x00, seq & 0xFF]) + body_slice
+                send_ts = time.monotonic()
+                self._send_family_play_frame(frame_payload)
+                candidates = [(0x0103, 0x00)]
+                if seq == total_frames:
+                    candidates.append((0x0103, 0x0C))
+                chunk_ack = self.wait_for_ack_any(candidates, timeout=ack_timeout, not_before=send_ts)
+                if chunk_ack is None:
+                    self._log.warning(
+                        "[PLAY_BLOB] timeout waiting for chunk ack seq=%d/%d",
+                        seq,
+                        total_frames,
+                    )
+                    return False, False
+                if chunk_ack[1][:1] == b"\x0c":
+                    self._log.warning(
+                        "[PLAY_BLOB] chunk rejected seq=%d/%d %s",
+                        seq,
+                        total_frames,
+                        self._play_blob_tail_diagnostics(body_buffer),
+                    )
+                    return False, True
+
+            # A late 0x0103/0x0C after a successful final 0x00 indicates the hub
+            # rejected playback after processing the last chunk.
+            completion_ack = self._wait_for_ack_any_impl(
+                [(0x0103, 0x0C)],
+                timeout=final_ack_timeout,
+                not_before=send_ts,
+                log_timeout=False,
+            )
+            if completion_ack is not None:
                 self._log.warning(
-                    "[PLAY_BLOB] timeout waiting for chunk ack seq=%d/%d",
-                    seq,
-                    total_frames,
-                )
-                return False, False
-            if chunk_ack[1][:1] == b"\x0c":
-                self._log.warning(
-                    "[PLAY_BLOB] chunk rejected seq=%d/%d %s",
-                    seq,
-                    total_frames,
+                    "[PLAY_BLOB] hub reported playback failure after final chunk %s",
                     self._play_blob_tail_diagnostics(body_buffer),
                 )
                 return False, True
-
-        # A late 0x0103/0x0C after a successful final 0x00 indicates the hub
-        # rejected playback after processing the last chunk.
-        completion_ack = self._wait_for_ack_any_impl(
-            [(0x0103, 0x0C)],
-            timeout=final_ack_timeout,
-            not_before=send_ts,
-            log_timeout=False,
-        )
-        if completion_ack is not None:
-            self._log.warning(
-                "[PLAY_BLOB] hub reported playback failure after final chunk %s",
-                self._play_blob_tail_diagnostics(body_buffer),
-            )
-            return False, True
 
         return True, False
 

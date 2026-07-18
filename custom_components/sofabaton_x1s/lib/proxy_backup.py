@@ -633,16 +633,6 @@ class CacheBackupMixin:
             )
             return False
 
-        self.clear_ack_queue()
-        self.wait_for_read_burst_quiesce()
-        send_ts = time.monotonic()
-        self._log.info(
-            "[ERASE] sending opcode 0x%04X (timeout=%.0fs)",
-            OP_ERASE_CONFIGURATION,
-            timeout,
-        )
-        self._send_cmd_frame(OP_ERASE_CONFIGURATION, b"")
-
         def _disconnected() -> bool:
             # ``_hub_connected`` is updated by the transport bridge as
             # frames arrive / connections drop. A drop arriving before
@@ -650,11 +640,20 @@ class CacheBackupMixin:
             # request; treat as failure.
             return not getattr(self, "_hub_connected", True)
 
-        result = self.wait_for_any_response(
-            timeout=timeout,
-            not_before=send_ts,
-            disconnect_check=_disconnected,
-        )
+        with self.exchange("erase"):
+            self.clear_ack_queue()
+            send_ts = time.monotonic()
+            self._log.info(
+                "[ERASE] sending opcode 0x%04X (timeout=%.0fs)",
+                OP_ERASE_CONFIGURATION,
+                timeout,
+            )
+            self._send_cmd_frame(OP_ERASE_CONFIGURATION, b"")
+            result = self.wait_for_any_response(
+                timeout=timeout,
+                not_before=send_ts,
+                disconnect_check=_disconnected,
+            )
         if result is None:
             if _disconnected():
                 self._log.warning(

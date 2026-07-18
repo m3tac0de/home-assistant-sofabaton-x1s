@@ -207,10 +207,13 @@ class ActivityOpsMixin:
                 else OP_ACTIVITY_CONFIRM
             )
             self._log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
-            self.wait_for_read_burst_quiesce()
-            send_ts = time.monotonic()
-            self._send_cmd_frame(confirm_opcode, confirm_payload)
-            if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
+            with self.exchange("delete_confirm"):
+                send_ts = time.monotonic()
+                self._send_cmd_frame(confirm_opcode, confirm_payload)
+                confirm_ack = self.wait_for_ack_any(
+                    [(0x0103, None)], timeout=5.0, not_before=send_ts
+                )
+            if confirm_ack is None:
                 self._log.warning("[DELETE] missing ACK after activity confirm act=0x%02X", act_lo)
                 return None
 
@@ -563,10 +566,13 @@ class ActivityOpsMixin:
                 member & 0xFF,
                 include_flag,
             )
-            self.wait_for_read_burst_quiesce()
-            send_ts = time.monotonic()
-            self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
-            if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
+            with self.exchange("assign_confirm"):
+                send_ts = time.monotonic()
+                self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
+                member_ack = self.wait_for_ack_any(
+                    [(0x0103, None)], timeout=5.0, not_before=send_ts
+                )
+            if member_ack is None:
                 self._log.warning(
                     "[ACTIVITY_ASSIGN] missing ACK after 0x024F dev=0x%02X include=0x%02X",
                     member & 0xFF,
@@ -590,45 +596,45 @@ class ActivityOpsMixin:
         for macro_button in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
             macro_name = BUTTONNAME_BY_CODE.get(macro_button, f"0x{macro_button:02X}")
             self._log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
-            self.wait_for_read_burst_quiesce()
-            fetch_ts = time.monotonic()
-            self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
+            with self.exchange("assign_macro_fetch"):
+                fetch_ts = time.monotonic()
+                self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
-            # A freshly created activity has no power macros yet: the hub
-            # answers the fetch with a bare STATUS_ACK 0x07 ("table empty")
-            # and never sends a macro burst. Poll for both outcomes and fall
-            # back to an empty source record so the save below builds the
-            # power macro from scratch.
-            source_record: MacroRecord | None = None
-            deadline = time.monotonic() + 5.0
-            while source_record is None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                source_record = self.wait_for_macro_record(
-                    act_lo, macro_button, timeout=min(remaining, 0.25)
-                )
-                if source_record is not None:
-                    break
-                empty_ack = self._wait_for_ack_any_impl(
-                    [(0x0103, 0x07)],
-                    timeout=0.05,
-                    not_before=fetch_ts,
-                    log_timeout=False,
-                )
-                if empty_ack is not None:
-                    self._log.info(
-                        "[ACTIVITY_ASSIGN] no existing macro act=0x%02X button=0x%02X; building from scratch",
-                        act_lo,
-                        macro_button,
+                # A freshly created activity has no power macros yet: the hub
+                # answers the fetch with a bare STATUS_ACK 0x07 ("table empty")
+                # and never sends a macro burst. Poll for both outcomes and fall
+                # back to an empty source record so the save below builds the
+                # power macro from scratch.
+                source_record: MacroRecord | None = None
+                deadline = time.monotonic() + 5.0
+                while source_record is None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    source_record = self.wait_for_macro_record(
+                        act_lo, macro_button, timeout=min(remaining, 0.25)
                     )
-                    source_record = MacroRecord(
-                        activity_id=act_lo,
-                        key_id=macro_button,
-                        label="",
-                        key_sequence=(),
+                    if source_record is not None:
+                        break
+                    empty_ack = self._wait_for_ack_any_impl(
+                        [(0x0103, 0x07)],
+                        timeout=0.05,
+                        not_before=fetch_ts,
+                        log_timeout=False,
                     )
-                    break
+                    if empty_ack is not None:
+                        self._log.info(
+                            "[ACTIVITY_ASSIGN] no existing macro act=0x%02X button=0x%02X; building from scratch",
+                            act_lo,
+                            macro_button,
+                        )
+                        source_record = MacroRecord(
+                            activity_id=act_lo,
+                            key_id=macro_button,
+                            label="",
+                            key_sequence=(),
+                        )
+                        break
             if source_record is None:
                 self._log.warning(
                     "[ACTIVITY_ASSIGN] missing macro record act=0x%02X button=0x%02X",
@@ -800,23 +806,25 @@ class ActivityOpsMixin:
         or ``None`` on timeout.
         """
         act_lo = activity_id & 0xFF
-        self.reset_ack_queues()
         # The hub silently drops a request that arrives while it is streaming
         # a read burst (e.g. the macro-labels fetch that precedes this call in
-        # the post-sync cache refresh), so wait for the wire to go quiet first.
-        self.wait_for_read_burst_quiesce()
-        send_ts = time.monotonic()
-        self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
-        # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte =
-        # act_lo. An activity with no quick-access entries never gets a 0x63
-        # row: the hub answers STATUS_ACK 0x07 instead (the same "empty
-        # reply" convention as empty macro tables, bench capture 2026-07-16),
-        # so accept that too rather than stalling to the 5s timeout.
-        result = self.wait_for_ack_any(
-            [(0xFF63, act_lo), (0x0103, 0x07)],
-            timeout=5.0,
-            not_before=send_ts,
-        )
+        # the post-sync cache refresh); the exchange scope quiesces first.
+        # reset_ack_queues runs inside the scope: clearing before the quiesce
+        # would let a finishing burst's stray acks repopulate the queue.
+        with self.exchange("fav_order"):
+            self.reset_ack_queues()
+            send_ts = time.monotonic()
+            self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
+            # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte =
+            # act_lo. An activity with no quick-access entries never gets a 0x63
+            # row: the hub answers STATUS_ACK 0x07 instead (the same "empty
+            # reply" convention as empty macro tables, bench capture 2026-07-16),
+            # so accept that too rather than stalling to the 5s timeout.
+            result = self.wait_for_ack_any(
+                [(0xFF63, act_lo), (0x0103, 0x07)],
+                timeout=5.0,
+                not_before=send_ts,
+            )
         if result is None:
             self._log.warning("[FAV_ORDER] timeout waiting for hub response act=0x%02X", act_lo)
             return None
@@ -1091,27 +1099,29 @@ class ActivityOpsMixin:
             slot_id=slot_lo,
         )
         map_ack: tuple[int, bytes] | None = None
-        for attempt in range(1, 3):  # retries=1 → 2 attempts total
-            self._log.info(
-                "%s[STEP] %s tx family=0x3E expect_ack=0x013E attempt=%d/2",
-                LogTag.ACTIVITY,
-                map_step,
-                attempt,
-            )
-            self.wait_for_read_burst_quiesce()
-            send_ts = time.monotonic()
-            self._send_family_frame(0x3E, map_payload)
-            map_ack = self.wait_for_ack_any(
-                [(0x013E, None), (0x0103, None)],
-                timeout=7.5,
-                not_before=send_ts,
-            )
-            if map_ack is not None:
-                self._log.info("%s[STEP] %s acked via 0x%04X", LogTag.ACTIVITY, map_step, map_ack[0])
-                break
-            if attempt < 2:
-                self._log.warning("%s[STEP] %s retrying after ack timeout", LogTag.ACTIVITY, map_step)
-                time.sleep(0.15)
+        # The whole 2-attempt loop holds ONE exchange: a retry of the same
+        # step must not let another exchange interleave between attempts.
+        with self.exchange("favorite_map"):
+            for attempt in range(1, 3):  # retries=1 → 2 attempts total
+                self._log.info(
+                    "%s[STEP] %s tx family=0x3E expect_ack=0x013E attempt=%d/2",
+                    LogTag.ACTIVITY,
+                    map_step,
+                    attempt,
+                )
+                send_ts = time.monotonic()
+                self._send_family_frame(0x3E, map_payload)
+                map_ack = self.wait_for_ack_any(
+                    [(0x013E, None), (0x0103, None)],
+                    timeout=7.5,
+                    not_before=send_ts,
+                )
+                if map_ack is not None:
+                    self._log.info("%s[STEP] %s acked via 0x%04X", LogTag.ACTIVITY, map_step, map_ack[0])
+                    break
+                if attempt < 2:
+                    self._log.warning("%s[STEP] %s retrying after ack timeout", LogTag.ACTIVITY, map_step)
+                    time.sleep(0.15)
         if map_ack is None:
             self._log.warning("%s[STEP] %s failed waiting ack=0x013E", LogTag.ACTIVITY, map_step)
             return None

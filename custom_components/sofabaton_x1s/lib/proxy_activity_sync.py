@@ -1272,11 +1272,14 @@ class ActivitySyncMixin:
             if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
             else OP_ACTIVITY_CONFIRM
         )
-        self.reset_ack_queues()
-        self.wait_for_read_burst_quiesce()
-        send_ts = time.monotonic()
-        self._send_cmd_frame(confirm_opcode, confirm_payload)
-        if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
+        with self.exchange("rename_confirm"):
+            self.reset_ack_queues()
+            send_ts = time.monotonic()
+            self._send_cmd_frame(confirm_opcode, confirm_payload)
+            confirm_ack = self.wait_for_ack_any(
+                [(0x0103, None)], timeout=5.0, not_before=send_ts
+            )
+        if confirm_ack is None:
             self._log.warning("[ACTIVITY_SYNC] activity_rename: missing ACK act=0x%02X", act_lo)
             return False
         return True
@@ -1400,12 +1403,17 @@ class ActivitySyncMixin:
         if not dev_lo or not cmd_lo:
             return False
         self.reset_ack_queues()
+        # The device-scoped delete runs a hub-side consistency sweep before
+        # acking, and its latency scales with catalog size (observed live on
+        # X1: 4.2 s on a 7-device catalog 2026-07-17, 5.1 s on a 10-device
+        # catalog 2026-07-18 — past the old 5 s window). Same reason the
+        # family-0x09 device delete waits 120 s.
         step = self._send_step(
             step_name=f"wifi-command-delete[dev=0x{dev_lo:02X} cmd=0x{cmd_lo:02X}]",
             family=FAMILY_FAV_DELETE,
             payload=bytes([dev_lo, cmd_lo]),
             ack_opcode=ACK_OPCODE_STATUS,
-            timeout=5.0,
+            timeout=20.0,
         )
         return step.ok
 
@@ -1501,34 +1509,38 @@ class ActivitySyncMixin:
         act_lo = int(payload.get("activity_id") or 0) & 0xFF
         if not dev_lo or not act_lo:
             return False
-        self.reset_ack_queues()
-        self.wait_for_read_burst_quiesce()
-        self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, ButtonName.POWER_ON & 0xFF]))
-        record = self.wait_for_macro_record(act_lo, ButtonName.POWER_ON, timeout=5.0)
-        if record is None:
-            self._log.warning(
-                "[DEVICE_SYNC] membership_remove: no POWER_ON macro act=0x%02X", act_lo
+        # One scope over the POWER_ON readback AND the subsequent macro
+        # save: the read-modify-write must not let another exchange (or a
+        # queued catalog read) slip between readback and save. The nested
+        # exchange inside _send_paged_macro_save is a reentrant no-op.
+        with self.exchange("membership_remove"):
+            self.reset_ack_queues()
+            self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, ButtonName.POWER_ON & 0xFF]))
+            record = self.wait_for_macro_record(act_lo, ButtonName.POWER_ON, timeout=5.0)
+            if record is None:
+                self._log.warning(
+                    "[DEVICE_SYNC] membership_remove: no POWER_ON macro act=0x%02X", act_lo
+                )
+                return False
+            filtered = tuple(
+                entry
+                for entry in record.key_sequence
+                if entry.is_delay_only or (entry.device_id & 0xFF) != dev_lo
             )
-            return False
-        filtered = tuple(
-            entry
-            for entry in record.key_sequence
-            if entry.is_delay_only or (entry.device_id & 0xFF) != dev_lo
-        )
-        if len(filtered) == len(record.key_sequence):
-            return True  # device not referenced — already removed
-        body = build_macro_save_payload(
-            activity_id=act_lo,
-            key_id=ButtonName.POWER_ON,
-            key_sequence=filtered,
-            label="POWER_ON",
-            hub_version=self.hub_version,
-            label_slot=record.raw_label_slot or None,
-        )
-        ack = self._send_paged_macro_save(
-            payload=body, macro_button=ButtonName.POWER_ON, ack_timeout=5.0
-        )
-        return ack is not None
+            if len(filtered) == len(record.key_sequence):
+                return True  # device not referenced — already removed
+            body = build_macro_save_payload(
+                activity_id=act_lo,
+                key_id=ButtonName.POWER_ON,
+                key_sequence=filtered,
+                label="POWER_ON",
+                hub_version=self.hub_version,
+                label_slot=record.raw_label_slot or None,
+            )
+            ack = self._send_paged_macro_save(
+                payload=body, macro_button=ButtonName.POWER_ON, ack_timeout=5.0
+            )
+            return ack is not None
 
     def _sync_step_wifi_head_commit(self, payload: Mapping[str, Any]) -> bool:
         """Commit a managed wifi device's name + brand hash (bench chunk 4).

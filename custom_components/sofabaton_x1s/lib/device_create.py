@@ -30,6 +30,7 @@ lets tests substitute a lightweight fake without spinning up the full
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal, Protocol
@@ -158,6 +159,8 @@ class _ProxyLike(Protocol):
         timeout: float = 5.0,
         not_before: float | None = None,
     ) -> tuple[int, bytes] | None: ...
+
+    def exchange(self, name: str): ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,19 +318,24 @@ def run_create_sequence(
 
             while attempts_left > 0:
                 attempts_left -= 1
-                # Let any in-flight read burst finish before writing: the
-                # hub drops frames that arrive mid-burst (e.g. a queued
-                # catalog refresh answered between two steps).
-                quiesce = getattr(proxy, "wait_for_read_burst_quiesce", None)
-                if callable(quiesce):
-                    quiesce()
-                send_ts = time.monotonic()
-                proxy._send_family_frame(step.family, page_payload)
-                matched = proxy.wait_for_ack_any(
-                    candidates,
-                    timeout=step.timeout,
-                    not_before=send_ts,
-                )
+                # Each attempt runs inside an exchange scope: entry waits
+                # out any in-flight read burst (the hub drops frames that
+                # arrive mid-burst) and holds the wire until the ack wait
+                # returns. Scope is per attempt, not per sequence — a
+                # catalog burst is allowed to run between steps and the
+                # next attempt quiesces behind it (live-validated).
+                # ``getattr`` tolerance: test doubles may not implement
+                # ``exchange``.
+                exchange = getattr(proxy, "exchange", None)
+                ctx = exchange(step.label) if callable(exchange) else contextlib.nullcontext()
+                with ctx:
+                    send_ts = time.monotonic()
+                    proxy._send_family_frame(step.family, page_payload)
+                    matched = proxy.wait_for_ack_any(
+                        candidates,
+                        timeout=step.timeout,
+                        not_before=send_ts,
+                    )
                 if matched is not None:
                     break
                 if attempts_left > 0 and step.retry_delay > 0:

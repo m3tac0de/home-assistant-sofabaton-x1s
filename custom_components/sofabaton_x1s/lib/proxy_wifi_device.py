@@ -346,10 +346,10 @@ class WifiDeviceMixin:
             "[WIFI][STEP] publish-finalize tx opcode=0x%04X expect_ack=0x0103 first_byte=* attempt=1/1",
             0xD508,
         )
-        send_ts = time.monotonic()
-        self.wait_for_read_burst_quiesce()
-        self._send_cmd_frame(0xD508, finalize_payload)
-        ack = self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts)
+        with self.exchange("publish_finalize"):
+            send_ts = time.monotonic()
+            self._send_cmd_frame(0xD508, finalize_payload)
+            ack = self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts)
         if ack is None:
             self._log.warning(
                 "[WIFI][STEP] publish-finalize failed waiting ack=0x0103 first_byte=*"
@@ -400,90 +400,93 @@ class WifiDeviceMixin:
             )
             return True
 
-        self.wait_for_read_burst_quiesce()
-        self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-        burst = self.wait_for_activity_inputs_burst(timeout=5.0)
-        if not burst.ok:
-            self._log.warning(
-                "[WIFI] missing activity-input candidates before input config dev=0x%02X (%s)",
-                device_id & 0xFF,
-                burst.outcome.value,
-            )
-            return False
-
-        wifi_entries: list[InputEntry] = []
-        for ordinal, command_id in enumerate(input_command_ids, start=1):
-            label = _wifi_command_label(commands[command_id - 1], command_id - 1)
-            _slot_id, command_code = _ROKU_APP_SLOTS[command_id - 1]
-            # On X1 the entry's fid field carries the same code byte the
-            # keymap layer would; X1S/X2 keeps the field zero (the wide
-            # ordinal byte already disambiguates entries).
-            row_fid = command_code if self.hub_version == HUB_VERSION_X1 else 0
-            wifi_entries.append(
-                InputEntry(
-                    key_id=command_id & 0xFF,
-                    fid=row_fid,
-                    ordinal=ordinal,
-                    label=label,
+        # One scope over the inputs read, the paged saves, and the
+        # REQ_BLOB refresh loop: the whole configuration is one wire
+        # transaction. The _send_step calls inside nest harmlessly
+        # (reentrant exchange).
+        with self.exchange("wifi_input_config"):
+            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+            burst = self.wait_for_activity_inputs_burst(timeout=5.0)
+            if not burst.ok:
+                self._log.warning(
+                    "[WIFI] missing activity-input candidates before input config dev=0x%02X (%s)",
+                    device_id & 0xFF,
+                    burst.outcome.value,
                 )
-            )
-
-        input_config_payload = build_inputs_write(
-            hub_version=self.hub_version,
-            device_id=device_id,
-            entries=wifi_entries,
-        )
-
-        page_payloads = self._build_paged_macro_save_payloads(input_config_payload)
-        for seq, page_payload in enumerate(page_payloads, start=1):
-            _step = self._send_step(
-                step_name=f"input-config-save[{seq}/{len(page_payloads)}]",
-                family=0x46,
-                payload=page_payload,
-                ack_opcode=0x0103,
-            )
-            if not _step.ok:
                 return False
 
-        for command_id in input_command_ids:
-            dev_commands = self.state.commands.get(device_id & 0xFF)
-            if isinstance(dev_commands, dict):
-                dev_commands.pop(command_id, None)
-            self._log.info(
-                "[WIFI] refresh input-config entry dev=0x%02X slot=%d",
-                device_id & 0xFF,
-                command_id,
-            )
-            self.wait_for_read_burst_quiesce()
-            self._send_cmd_frame(OP_REQ_BLOB, bytes([device_id & 0xFF, command_id & 0xFF]))
-            if not self._wait_for_wifi_input_refresh(
+            wifi_entries: list[InputEntry] = []
+            for ordinal, command_id in enumerate(input_command_ids, start=1):
+                label = _wifi_command_label(commands[command_id - 1], command_id - 1)
+                _slot_id, command_code = _ROKU_APP_SLOTS[command_id - 1]
+                # On X1 the entry's fid field carries the same code byte the
+                # keymap layer would; X1S/X2 keeps the field zero (the wide
+                # ordinal byte already disambiguates entries).
+                row_fid = command_code if self.hub_version == HUB_VERSION_X1 else 0
+                wifi_entries.append(
+                    InputEntry(
+                        key_id=command_id & 0xFF,
+                        fid=row_fid,
+                        ordinal=ordinal,
+                        label=label,
+                    )
+                )
+
+            input_config_payload = build_inputs_write(
+                hub_version=self.hub_version,
                 device_id=device_id,
-                command_id=command_id,
-                timeout=5.0,
-            ):
-                return False
+                entries=wifi_entries,
+            )
 
-        # X1 re-runs the canonical family-0x08 device-record finalize
-        # after writing inputs; the X1S/X2 identity-publish finalize
-        # (0xD508 with a different body shape) is sent unconditionally
-        # by :meth:`_run_wifi_create_virtual_ip` so it also fires when
-        # no inputs are configured.
-        if self.hub_version == HUB_VERSION_X1:
-            finalize_payload = self._build_wifi_device_payload(
-                device_name=device_name,
-                ip_address=ip_address,
-                state_byte=0x01,
-                device_id=device_id,
-                brand_name=brand_name,
-            )
-            _step = self._send_step(
-                step_name="input-config-finalize",
-                family=0x08,
-                payload=finalize_payload,
-                ack_opcode=0x0103,
-            )
-            if not _step.ok:
-                return False
+            page_payloads = self._build_paged_macro_save_payloads(input_config_payload)
+            for seq, page_payload in enumerate(page_payloads, start=1):
+                _step = self._send_step(
+                    step_name=f"input-config-save[{seq}/{len(page_payloads)}]",
+                    family=0x46,
+                    payload=page_payload,
+                    ack_opcode=0x0103,
+                )
+                if not _step.ok:
+                    return False
+
+            for command_id in input_command_ids:
+                dev_commands = self.state.commands.get(device_id & 0xFF)
+                if isinstance(dev_commands, dict):
+                    dev_commands.pop(command_id, None)
+                self._log.info(
+                    "[WIFI] refresh input-config entry dev=0x%02X slot=%d",
+                    device_id & 0xFF,
+                    command_id,
+                )
+                self._send_cmd_frame(OP_REQ_BLOB, bytes([device_id & 0xFF, command_id & 0xFF]))
+                if not self._wait_for_wifi_input_refresh(
+                    device_id=device_id,
+                    command_id=command_id,
+                    timeout=5.0,
+                ):
+                    return False
+
+            # X1 re-runs the canonical family-0x08 device-record finalize
+            # after writing inputs; the X1S/X2 identity-publish finalize
+            # (0xD508 with a different body shape) is sent unconditionally
+            # by :meth:`_run_wifi_create_virtual_ip` so it also fires when
+            # no inputs are configured.
+            if self.hub_version == HUB_VERSION_X1:
+                finalize_payload = self._build_wifi_device_payload(
+                    device_name=device_name,
+                    ip_address=ip_address,
+                    state_byte=0x01,
+                    device_id=device_id,
+                    brand_name=brand_name,
+                )
+                _step = self._send_step(
+                    step_name="input-config-finalize",
+                    family=0x08,
+                    payload=finalize_payload,
+                    ack_opcode=0x0103,
+                )
+                if not _step.ok:
+                    return False
 
         return True
 

@@ -1247,3 +1247,146 @@ completed 200.
 
 P2 is now fully validated: planner + adapters + executors + hub branch +
 gates, live on both hub models through the real HA path.
+
+## Validated: exchange() sequencer consolidation (X1 + X1S, 2026-07-18)
+
+Post-refactor wire validation for the sequencer consolidation (all
+blocking request/response helpers now hold an `exchange()` scope —
+exclusive, quiesced wire access with an `exchange:<name>` pseudo-burst;
+fire-and-forget reads unchanged through the BurstScheduler). Four
+programs, all through the new lib code:
+
+- **Recon + structural backups** (`bench_01_recon`, both hubs): X1 9/9
+  devices `complete=True`, zero warnings; X1S catalog matches the
+  pre-refactor 2026-07-14 baseline exactly, including the pre-existing
+  `complete=False` trio (hue/PS5/Switch — those devices answer the
+  family-0x62 key-sort query with a family-0x47 inputs-shaped record,
+  identical before and after the refactor).
+- **Favorites add + reorder + delete** (`bench_20_favorites`, X1 act
+  0x66, production sync engine): all legs `success`, hub 0x63 order
+  matches after reorder, content byte-restored to baseline. This is the
+  flow whose FAV_ORDER drop (read sent 4 ms after a macro-labels fetch)
+  motivated the whole program; the probe run intentionally repeated the
+  macro-fetch→fav-order sequence back-to-back with no drop.
+- **Membership remove + full wifi deploy** (`bench_113_membership_remove`,
+  X1S): 22/22 — fresh managed wifi device deployed end-to-end
+  (create sequence, input config, publish finalize, power macros), added
+  to two activities, favorite + RED binding, POWER_ON-rewrite removal
+  with the full firmware cascade confirmed, other activity byte-identical,
+  clean delete back to baseline.
+- **Device backup/restore round-trip** (`bench_121_seq_devrt`, X1 dev
+  0x08): backup with blobs → restore as copy → re-read → `bench_compare`
+  byte-equality (0 problems) → delete → catalog back to baseline. 7/7.
+
+One live bug was found by the first recon run and fixed before the rest
+of the program: the inputs-pending flag was armed **before** the exchange
+scope, so a finishing macros burst's terminal STATUS_ACK 0x07 ("macro
+table empty") arriving during the quiesce wait was misattributed as a
+rejection of the not-yet-sent inputs request; the fetch bailed early,
+released the wire, and the following key-sort send was silently dropped
+inside the hub's orphaned inputs response (X1 dev 0x04,
+`complete=False`). The arming now happens inside the exchange scope,
+after entry — the same placement rule as `reset_ack_queues` — with a
+regression test in `tests/lib/test_exchange_guard.py`.
+
+Both hubs left clean (bench devices deleted, catalogs at baseline;
+the X1 act-0x66 favorite set byte-restored).
+
+## Validated: Wifi Commands on the exchange() sequencer (X1 + X1S, 2026-07-18)
+
+`bench_114_inplace_resync.py` re-run on the consolidated sequencer —
+X1S 32/32, X1 31/31 (`skipbundle` re-run). Covers the full Wifi Commands
+surface end-to-end: deploy (16 slots, power 1/2, input), REQ_ACTIVATE
+live-fire with HTTP delivery verified through `BenchWifiListener`
+before AND after the re-sync (`/launch/<mac>/<dev>/<idx>/short` received
+for both the power and input targets), all six in-place re-sync
+dimensions (command rename, command delete, power-row rewrite, input
+rewrite, membership drop, head+brand commit), manual favorite + GREEN
+binding survival, untouched activity byte-identical, clean delete back
+to baseline. The realtime REQ_ACTIVATE path (deliberately NOT wrapped in
+an exchange) delivers correctly alongside exchange-scoped writes.
+
+Timing finding (fix shipped): the X1's device-scoped `0x0210` command
+delete runs a hub-side consistency sweep before acking, and its latency
+scales with catalog size — 4.2 s on the 7-device July-17 catalog,
+5.1 s (measured repeatedly) on today's 10-record catalog. The step's
+old 5 s ack timeout was always marginal and now flaked deterministically.
+`_sync_step_command_delete` waits 20 s now (same rationale as the 120 s
+family-0x09 device-delete window), and the bench drives the production
+step instead of a bench-local copy of the old timeout. Not a sequencer
+regression — the pre-refactor 2026-07-17 log shows the same sweep at
+4.2 s.
+
+## Validated: sequencer gap-closure benches (X1 + X1S, 2026-07-18)
+
+Four follow-up programs covering the exchanges and behaviors the first
+validation pass had not touched:
+
+- **Hub-name round-trip** (`bench_122_seq_hubname`, X1S, 5/5): first
+  live run of the `hub_name` exchange — rename to a temp name, echoed
+  name verified, original restored.
+- **IR blob playback** (`bench_123_seq_playblob`, X1, 3/3 twice): first
+  live run of the `play_blob` exchange — 0x020C dump of a stored blob,
+  replayed twice via the family-0x0F chunk stream + final-ack window in
+  one scope. Both available bench-device blobs are 31 B (single chunk);
+  the chunk loop is code-identical for N≥1 and multi-chunk playback of
+  the same loop was validated pre-refactor, so single-chunk coverage of
+  the scope semantics is accepted.
+- **Concurrency stress** (`bench_124_seq_stress`, X1): the production
+  HA shape — a 1 Hz catalog-poll thread against continuous blocking
+  exchanges (key-sort, inputs, favorites-order, activity backups).
+  The FIRST run failed 5 of 18 cycles and exposed a real race: a
+  favorites-order exchange's "empty table" STATUS_ACK 0x07 was ALSO
+  claimed by `note_catalog_status_ack` as an empty activities/devices
+  catalog (the poller's request was in flight bookkeeping-wise), which
+  committed a bogus rows=0 snapshot and finished the catalog burst the
+  exchange-exit drain had just started — releasing the wire while the
+  hub streamed rows ("ghost row" warnings), so the next exchange's send
+  was silently dropped. Fixed twofold: `notify_ack` classifies a
+  non-zero status BEFORE the ack becomes consumable, and
+  `note_catalog_status_ack` bails when the wire is held by an
+  `exchange:` pseudo-burst (queued catalog reads are not in flight on a
+  held wire). Post-fix: 54 cycles / 88 polls, zero timeouts, zero
+  quiesce-cap warnings — triple the pre-fix throughput.
+- **Erase + full-bundle rebuild** (`bench_70_replace_restore`, X1,
+  20/20): first live run of the `erase` exchange through the new
+  sequencer. Fresh full bundle captured (gated on every entity
+  `complete`), 0x001D erase acked, hub verified empty, full replace-mode
+  `restore_hub_bundle`, then every device and activity re-captured and
+  content-compared: 9/9 devices and 2/2 activities round-trip with 0
+  problems (favorite slot ids hub-renumbered, expected). The hub ends
+  at its full pre-erase baseline.
+
+Bench program total for the sequencer consolidation: **three real bugs
+found and fixed** (inputs-pending arming, 0x0210 delete-sweep timeout,
+catalog 0x07 misattribution) — all in the ack-attribution/timing class
+the consolidation targets, none in the exchange guard itself.
+
+## Validated: Control Panel card backend path on the sequencer (HA, X1 + X1S, 2026-07-18)
+
+Deployed the sequencer build to the HA dev instance (`deploy-ha.ps1
+-SkipBuild`) with both hubs re-enabled and drove the card's real WS
+surface (`bench_130_ha_ws_smoke`, `bench_131_ha_ws_contention` —
+scripts/hub-bench, need scripts/.ha-config.json + .ha-token):
+
+- **Per-tab read paths, both hubs, 11/11**: control_panel/state,
+  catalog/refresh (devices + activities, 0.2–0.9 s on the wire),
+  cache/structural_bundle (cache-assembled, ~0 s), plus back-to-back
+  contention pairs in both orders — all clean.
+- **Long-operation contention (X1)**: a full backup/export operation
+  (hub-reading bundle, 76 s — matches the 74 s lib-level capture, so
+  the HA path adds no sequencer overhead) while hammering the card
+  paths at ~1 Hz. The pre-existing HA operation gate refused
+  catalog/refresh 72× with a clean `backup_operation_in_progress`
+  error while the op ran (correct card UX — refused, not queued),
+  cache reads stayed ~0 s throughout (337 calls), the gate lifted on
+  completion, and 265 subsequent refreshes all hit the live hub at
+  1 Hz without a single failure. Backup status: success.
+
+UI-risk conclusion: the card's long operations are serialized by the
+HA-layer operation registry (refusal with a typed error, which the
+card already renders), and short operations ride the exchange guard
+invisibly. The readiness-window staleness scenario from the risk
+assessment is precluded for backups by the gate; for non-gated
+overlaps the lib-level stress bench (54 cycles / 88 polls, zero
+timeouts) covers the shape.

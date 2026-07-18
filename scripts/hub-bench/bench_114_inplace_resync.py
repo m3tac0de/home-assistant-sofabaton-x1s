@@ -162,14 +162,12 @@ def head_diff(a: str | None, b: str | None) -> list[int] | None:
 
 
 def delete_command(proxy, dev: int, cmd: int) -> bool:
-    proxy.reset_ack_queues()
-    step = proxy._send_step(
-        step_name=f"cmd-delete-10[dev=0x{dev:02X} cmd=0x{cmd:02X}]",
-        family=FAMILY_FAV_DELETE, payload=bytes([dev & 0xFF, cmd & 0xFF]),
-        ack_opcode=0x0103, timeout=5.0,
-    )
+    # Drive the production step so the bench measures the shipped timeout
+    # (the device-scoped delete sweep acks in 4-5+ s on X1, scaling with
+    # catalog size — a bench-local 5 s copy of the old timeout flaked).
+    ok = proxy._sync_step_command_delete({"device_id": dev, "command_id": cmd})
     time.sleep(0.4)
-    return step.ok
+    return bool(ok)
 
 
 def remove_from_activity(proxy, act: int, dev: int) -> bool:

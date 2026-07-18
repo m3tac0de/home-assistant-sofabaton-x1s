@@ -680,6 +680,13 @@ class BurstScheduler:
         can_issue: Callable[[], bool],
         sender: Callable[[int, bytes], None],
     ) -> None:
+        # An ``exchange:<name>`` pseudo-burst marks the wire as held by a
+        # blocking request/response exchange, which may legitimately outlast
+        # the idle window (e.g. a multi-attempt step retrying a 7.5s wait).
+        # Only the exchange's own ``finally`` may finish it; the idle tick
+        # must never force-drain the queue mid-exchange.
+        if self.kind is not None and self.kind.startswith("exchange:"):
+            return
         if not self.active:
             return
         if now - self.last_ts < self.idle_s:

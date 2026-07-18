@@ -443,6 +443,18 @@ class CatalogMixin:
         if ack_status != 0x07:
             return False
 
+        active_kind = self._burst.kind if self._burst.active else None
+        if active_kind is not None and active_kind.startswith("exchange:"):
+            # An exchange holds the wire: fire-and-forget catalog reads are
+            # queued behind it, not in flight, so this 0x07 answers the
+            # exchange's own request (e.g. an empty favorites-order or
+            # macro table) — never an empty-catalog reply. Claiming it here
+            # committed a bogus rows=0 snapshot and finished the wrong
+            # burst (observed live: X1 stress bench 2026-07-18, the wire
+            # was released while the hub streamed rows and the next
+            # exchange's send was silently dropped).
+            return False
+
         if self._activity_request_inflight is not None and not self._activity_pending_rows:
             if self._activity_pending_generation != self._activity_request_inflight:
                 self._reset_pending_activity_snapshot(self._activity_request_inflight)
