@@ -13641,9 +13641,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     }
     return flash.type === "activity_change" && flash.toActivityId != null;
   }
-  _flashMatchesActivity(flash, activityId) {
+  _flashMatchesActivityPhase(flash, activityId, phase) {
     if (!flash || flash.type !== "activity_change") return false;
-    return flash.toActivityId === activityId || flash.fromActivityId === activityId;
+    return phase === "start" ? flash.toActivityId === activityId : flash.fromActivityId === activityId;
   }
   _hubEventFlashOverlay(active, flash) {
     if (!active || !flash) return A;
@@ -13656,8 +13656,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const action = this._hubEventActions[key];
       const configured = this._commandHasCustomAction(action);
       const target = { kind: "hub", key };
-      return b2`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
-          ${this._hubEventActionText(action)}</button>${configured ? b2`<button
+      return b2`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, key), flash)}</span>${configured ? b2`<button
             class="hub-event-clear"
             title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
             @click=${() => {
@@ -13680,7 +13680,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   ${row.label},
                   ${renderHubAction(row.key)}.
                 </span>
-                ${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, row.key), flash)}
               </li>
             `)}
             <li class="hub-event-line">
@@ -13691,10 +13690,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                 ${TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStops},
                 ${renderHubAction("activity_stop")}.
               </span>
-              ${this._hubEventFlashOverlay(
-      this._flashMatchesHubEventRow(flash, "activity_start") || this._flashMatchesHubEventRow(flash, "activity_stop"),
-      flash
-    )}
             </li>
           </ul>
         </div>
@@ -13719,8 +13714,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const action = entry[phase];
       const configured = this._commandHasCustomAction(action);
       const target = { kind: "activity", id: idKey, phase };
-      return b2`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
-          ${this._hubEventActionText(action)}</button>${configured ? b2`<button
+      return b2`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesActivityPhase(flash, activity.id, phase), flash)}</span>${configured ? b2`<button
             class="hub-event-clear"
             title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
             @click=${() => {
@@ -13737,7 +13732,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStops},
           ${renderPhase("stop")}.
         </span>
-        ${this._hubEventFlashOverlay(this._flashMatchesActivity(flash, activity.id), flash)}
       </li>
     `;
   }
@@ -15487,6 +15481,14 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       text-underline-offset: 3px;
     }
     .hub-event-action-link:hover { color: var(--primary-color); }
+    /* Positioning anchor for the event-fired glow: the flash overlay hugs
+       just the action link instead of the whole sentence row, so combined
+       rows (start + stop in one line) show which hook actually fired.
+       inline-block keeps the overlay geometry a single rectangle; the link
+       text is short enough that moving it to the next line as a unit is
+       fine. */
+    .hub-event-action-wrap { position: relative; display: inline-block; }
+    .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-clear {
       display: inline-flex;
       align-items: center;

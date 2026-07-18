@@ -5282,6 +5282,49 @@ def test_hub_event_actions_fire_on_activity_transitions(monkeypatch):
         loop.close()
 
 
+def test_hub_event_actions_fire_on_first_transition_after_powered_off_startup(monkeypatch):
+    # Startup with the hub powered off: the initial activities read resolves
+    # to "nothing running" without ever emitting an activity-change callback,
+    # so the catalog read itself must arm the hooks. The first real
+    # off -> activity transition then fires normally instead of being
+    # swallowed as the initial-state report.
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        monkeypatch.setattr(hub, "_get_activities_cached", lambda: ({}, True))
+        hub._on_activities_burst("activities")
+        drain()
+        assert executed == []
+        assert hub.get_last_hub_event() is None
+
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert [a.get("perform_action") for a in executed] == ["script.started"]
+        event = hub.get_last_hub_event()
+        assert event is not None
+        assert event["type"] == "activity_change"
+        assert event["from_activity_id"] is None
+        assert event["to_activity_id"] == 5
+    finally:
+        loop.close()
+
+
+def test_hub_event_hooks_not_armed_by_incomplete_activities_read(monkeypatch):
+    # A partial catalog read does not establish the activity state, so it
+    # must not arm the hooks: the initial-state report can still be pending
+    # and has to stay suppressed.
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        monkeypatch.setattr(hub, "_get_activities_cached", lambda: ({}, False))
+        hub._on_activities_burst("activities")
+        drain()
+
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert executed == []
+    finally:
+        loop.close()
+
+
 def test_hub_event_actions_redundant_off_press(monkeypatch):
     hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
     try:

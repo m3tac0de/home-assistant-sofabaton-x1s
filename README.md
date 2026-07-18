@@ -264,6 +264,42 @@ target:
 
 ---
 
+## ❓ Frequently asked questions
+
+<details>
+<summary><strong>Can this integration detect every button pressed on the physical remote?</strong></summary>
+
+No. The hub does not provide a general stream of every physical button press.
+
+To bring selected buttons into Home Assistant, configure them under **Automation → Wifi Commands** in the Control Panel. Home Assistant can also respond to Activity changes and hub power events through **Automation → Events**.
+
+</details>
+
+<details>
+<summary><strong>How does this differ from the official X2 integration?</strong></summary>
+
+The [official X2 integration](https://github.com/yomonpet/ha-sofabaton-hub) supports the X2 and communicates through its MQTT interface. **Sofabaton X** supports X1, X1S, and X2 through a direct local connection to the hub. It also provides live hub editing, backup and restore, Wifi Commands, Automation Events, command-payload tools, and a proxy for the Sofabaton app.
+
+</details>
+
+<details>
+<summary><strong>Can I run both X2 integrations?</strong></summary>
+
+Yes. They use separate communication paths and separate Home Assistant integration domains: the official X2 integration uses MQTT, while Sofabaton X uses the hub's local protocol. They do not collide, so both can be configured for the same X2 hub. You can choose which integration's entities to use in each dashboard or automation.
+
+</details>
+
+<details>
+<summary><strong>Why are my entities unavailable?</strong></summary>
+
+Sofabaton hubs allow only one direct client connection at a time. When the Sofabaton app is connected through this integration's proxy, entities that send commands are intentionally made unavailable to prevent competing writes. Close the app to return control to Home Assistant.
+
+Check `binary_sensor.<hub>_app_connected` to see whether the app is connected and `binary_sensor.<hub>_hub_connected` to verify that the integration is connected to the physical hub. The current-Activity sensor remains available while the app is connected.
+
+</details>
+
+---
+
 ## 🆘 Troubleshooting
 
 - 🌐 **Discovery / VLAN / firewall / iOS app can’t find proxy:** see [`docs/networking.md`](docs/networking.md)

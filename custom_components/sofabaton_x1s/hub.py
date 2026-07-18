@@ -198,9 +198,11 @@ class SofabatonHub:
         self.activities: Dict[int, Dict[str, Any]] = {}
         self.devices: Dict[int, Dict[str, Any]] = {}
         self.current_activity: Optional[int] = None
-        # Hub-level event hooks stay disarmed until the first activity-state
-        # resolution after (re)creating the proxy, so a restart that merely
-        # discovers an already-running activity doesn't fire user actions.
+        # Hub-level event hooks stay disarmed until the initial activity
+        # state is established after (re)creating the proxy — the first
+        # complete activities read, or the first change callback if one
+        # lands earlier — so a restart that merely discovers an
+        # already-running activity doesn't fire user actions.
         self._hub_event_hooks_armed = False
         self.client_connected: bool = False
         self.hub_connected: bool = False
@@ -546,6 +548,10 @@ class SofabatonHub:
             self.current_activity = new_id
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
+            # Fallback arming for change notifications that arrive before
+            # the first complete activities read (e.g. the ACK_READY path
+            # while a proxy client is connected); the primary arm site is
+            # _on_activities_burst, which also covers a powered-off startup.
             hooks_armed = self._hub_event_hooks_armed
             self._hub_event_hooks_armed = True
 
@@ -714,6 +720,16 @@ class SofabatonHub:
                 len(acts) if acts else 0,
             )
             self.activities_ready = ready
+            if ready and not self._hub_event_hooks_armed:
+                # A complete catalog read establishes the current activity
+                # state even when nothing is running. The proxy's own
+                # handle_active_state listener runs before this one, so a
+                # genuine initial-state report (None -> X at startup) has
+                # already been swallowed by the disarmed guard; arming here
+                # additionally covers the powered-off startup, where no
+                # change callback ever fires and the first real
+                # off -> activity transition must not be eaten as "initial".
+                self._hub_event_hooks_armed = True
             if ready:
                 activities_changed = self._replace_activities(acts)
                 self._activities_generation += 1

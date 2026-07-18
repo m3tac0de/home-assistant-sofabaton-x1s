@@ -237,7 +237,7 @@ test("hub events save ships both maps and targets the requested activity phase",
   assert.deepEqual(Object.keys(calls[0].actions as object).sort(), ["activity_start", "activity_stop", "power_off", "redundant_off"]);
 });
 
-test("hub event flash matching lights the affected rows for a transition", () => {
+test("hub event flash matching lights the affected action links for a transition", () => {
   const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
 
   const powerOff = { entryId: "hub-1", type: "activity_change", fromActivityId: 5, toActivityId: null, timestamp: 1, receivedAt: 1 };
@@ -257,11 +257,15 @@ test("hub event flash matching lights the affected rows for a transition", () =>
   assert.equal((element as any)._flashMatchesHubEventRow(redundant, "redundant_off"), true);
   assert.equal((element as any)._flashMatchesHubEventRow(null, "redundant_off"), false);
 
-  // Per-activity rows: a switch lights both the stopping and starting activity.
-  assert.equal((element as any)._flashMatchesActivity(started, 5), true);
-  assert.equal((element as any)._flashMatchesActivity(started, 7), true);
-  assert.equal((element as any)._flashMatchesActivity(started, 9), false);
-  assert.equal((element as any)._flashMatchesActivity(redundant, 5), false);
+  // Per-activity rows: a switch lights the stopping activity's stop link and
+  // the starting activity's start link — not the sibling phase.
+  assert.equal((element as any)._flashMatchesActivityPhase(started, 5, "stop"), true);
+  assert.equal((element as any)._flashMatchesActivityPhase(started, 5, "start"), false);
+  assert.equal((element as any)._flashMatchesActivityPhase(started, 7, "start"), true);
+  assert.equal((element as any)._flashMatchesActivityPhase(started, 7, "stop"), false);
+  assert.equal((element as any)._flashMatchesActivityPhase(started, 9, "start"), false);
+  assert.equal((element as any)._flashMatchesActivityPhase(powerOff, 5, "stop"), true);
+  assert.equal((element as any)._flashMatchesActivityPhase(redundant, 5, "stop"), false);
 });
 
 test("hub events load resets per-activity actions when the backend omits them", () => {

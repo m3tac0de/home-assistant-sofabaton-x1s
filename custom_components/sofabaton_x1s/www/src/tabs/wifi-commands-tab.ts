@@ -412,6 +412,14 @@ class SofabatonWifiCommandsTab extends LitElement {
       text-underline-offset: 3px;
     }
     .hub-event-action-link:hover { color: var(--primary-color); }
+    /* Positioning anchor for the event-fired glow: the flash overlay hugs
+       just the action link instead of the whole sentence row, so combined
+       rows (start + stop in one line) show which hook actually fired.
+       inline-block keeps the overlay geometry a single rectangle; the link
+       text is short enough that moving it to the next line as a unit is
+       fine. */
+    .hub-event-action-wrap { position: relative; display: inline-block; }
+    .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-clear {
       display: inline-flex;
       align-items: center;
@@ -1327,9 +1335,15 @@ class SofabatonWifiCommandsTab extends LitElement {
     return flash.type === "activity_change" && flash.toActivityId != null;
   }
 
-  private _flashMatchesActivity(flash: HubEventFireEvent | null, activityId: number): boolean {
+  private _flashMatchesActivityPhase(
+    flash: HubEventFireEvent | null,
+    activityId: number,
+    phase: ActivityEventPhase,
+  ): boolean {
     if (!flash || flash.type !== "activity_change") return false;
-    return flash.toActivityId === activityId || flash.fromActivityId === activityId;
+    return phase === "start"
+      ? flash.toActivityId === activityId
+      : flash.fromActivityId === activityId;
   }
 
   private _hubEventFlashOverlay(active: boolean, flash: HubEventFireEvent | null) {
@@ -1344,8 +1358,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       const action = this._hubEventActions[key];
       const configured = this._commandHasCustomAction(action);
       const target: HubEventEditorTarget = { kind: "hub", key };
-      return html`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
-          ${this._hubEventActionText(action)}</button>${configured ? html`<button
+      return html`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, key), flash)}</span>${configured ? html`<button
             class="hub-event-clear"
             title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
             @click=${() => { void this._resetHubEventAction(target); }}
@@ -1366,7 +1380,6 @@ class SofabatonWifiCommandsTab extends LitElement {
                   ${row.label},
                   ${renderHubAction(row.key)}.
                 </span>
-                ${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, row.key), flash)}
               </li>
             `)}
             <li class="hub-event-line">
@@ -1377,10 +1390,6 @@ class SofabatonWifiCommandsTab extends LitElement {
                 ${TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStops},
                 ${renderHubAction("activity_stop")}.
               </span>
-              ${this._hubEventFlashOverlay(
-                this._flashMatchesHubEventRow(flash, "activity_start") || this._flashMatchesHubEventRow(flash, "activity_stop"),
-                flash,
-              )}
             </li>
           </ul>
         </div>
@@ -1406,8 +1415,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       const action = entry[phase];
       const configured = this._commandHasCustomAction(action);
       const target: HubEventEditorTarget = { kind: "activity", id: idKey, phase };
-      return html`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
-          ${this._hubEventActionText(action)}</button>${configured ? html`<button
+      return html`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesActivityPhase(flash, activity.id, phase), flash)}</span>${configured ? html`<button
             class="hub-event-clear"
             title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
             @click=${() => { void this._resetHubEventAction(target); }}
@@ -1422,7 +1431,6 @@ class SofabatonWifiCommandsTab extends LitElement {
           ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStops},
           ${renderPhase("stop")}.
         </span>
-        ${this._hubEventFlashOverlay(this._flashMatchesActivity(flash, activity.id), flash)}
       </li>
     `;
   }

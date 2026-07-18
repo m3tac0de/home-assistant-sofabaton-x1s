@@ -2780,6 +2780,14 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       text-underline-offset: 3px;
     }
     .hub-event-action-link:hover { color: var(--primary-color); }
+    /* Positioning anchor for the event-fired glow: the flash overlay hugs
+       just the action link instead of the whole sentence row, so combined
+       rows (start + stop in one line) show which hook actually fired.
+       inline-block keeps the overlay geometry a single rectangle; the link
+       text is short enough that moving it to the next line as a unit is
+       fine. */
+    .hub-event-action-wrap { position: relative; display: inline-block; }
+    .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-clear {
       display: inline-flex;
       align-items: center;
@@ -3566,9 +3574,9 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     }
     return flash.type === "activity_change" && flash.toActivityId != null;
   }
-  _flashMatchesActivity(flash, activityId) {
+  _flashMatchesActivityPhase(flash, activityId, phase) {
     if (!flash || flash.type !== "activity_change") return false;
-    return flash.toActivityId === activityId || flash.fromActivityId === activityId;
+    return phase === "start" ? flash.toActivityId === activityId : flash.fromActivityId === activityId;
   }
   _hubEventFlashOverlay(active, flash) {
     if (!active || !flash) return A;
@@ -3581,8 +3589,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       const action = this._hubEventActions[key];
       const configured = this._commandHasCustomAction(action);
       const target = { kind: "hub", key };
-      return T`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
-          ${this._hubEventActionText(action)}</button>${configured ? T`<button
+      return T`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, key), flash)}</span>${configured ? T`<button
             class="hub-event-clear"
             title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
             @click=${() => {
@@ -3605,7 +3613,6 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
                   ${row.label},
                   ${renderHubAction(row.key)}.
                 </span>
-                ${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, row.key), flash)}
               </li>
             `)}
             <li class="hub-event-line">
@@ -3616,10 +3623,6 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
                 ${TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStops},
                 ${renderHubAction("activity_stop")}.
               </span>
-              ${this._hubEventFlashOverlay(
-      this._flashMatchesHubEventRow(flash, "activity_start") || this._flashMatchesHubEventRow(flash, "activity_stop"),
-      flash
-    )}
             </li>
           </ul>
         </div>
@@ -3644,8 +3647,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       const action = entry[phase];
       const configured = this._commandHasCustomAction(action);
       const target = { kind: "activity", id: idKey, phase };
-      return T`<button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
-          ${this._hubEventActionText(action)}</button>${configured ? T`<button
+      return T`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesActivityPhase(flash, activity.id, phase), flash)}</span>${configured ? T`<button
             class="hub-event-clear"
             title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
             @click=${() => {
@@ -3662,7 +3665,6 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
           ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStops},
           ${renderPhase("stop")}.
         </span>
-        ${this._hubEventFlashOverlay(this._flashMatchesActivity(flash, activity.id), flash)}
       </li>
     `;
   }
@@ -5374,7 +5376,7 @@ test("hub events save ships both maps and targets the requested activity phase",
   assert.deepEqual(shipped["102"].start, { action: "perform-action" });
   assert.deepEqual(Object.keys(calls[0].actions).sort(), ["activity_start", "activity_stop", "power_off", "redundant_off"]);
 });
-test("hub event flash matching lights the affected rows for a transition", () => {
+test("hub event flash matching lights the affected action links for a transition", () => {
   const element = new WifiCommandsTabElement();
   const powerOff = { entryId: "hub-1", type: "activity_change", fromActivityId: 5, toActivityId: null, timestamp: 1, receivedAt: 1 };
   const started = { entryId: "hub-1", type: "activity_change", fromActivityId: 5, toActivityId: 7, timestamp: 2, receivedAt: 2 };
@@ -5388,10 +5390,13 @@ test("hub event flash matching lights the affected rows for a transition", () =>
   assert.equal(element._flashMatchesHubEventRow(redundant, "activity_stop"), false);
   assert.equal(element._flashMatchesHubEventRow(redundant, "redundant_off"), true);
   assert.equal(element._flashMatchesHubEventRow(null, "redundant_off"), false);
-  assert.equal(element._flashMatchesActivity(started, 5), true);
-  assert.equal(element._flashMatchesActivity(started, 7), true);
-  assert.equal(element._flashMatchesActivity(started, 9), false);
-  assert.equal(element._flashMatchesActivity(redundant, 5), false);
+  assert.equal(element._flashMatchesActivityPhase(started, 5, "stop"), true);
+  assert.equal(element._flashMatchesActivityPhase(started, 5, "start"), false);
+  assert.equal(element._flashMatchesActivityPhase(started, 7, "start"), true);
+  assert.equal(element._flashMatchesActivityPhase(started, 7, "stop"), false);
+  assert.equal(element._flashMatchesActivityPhase(started, 9, "start"), false);
+  assert.equal(element._flashMatchesActivityPhase(powerOff, 5, "stop"), true);
+  assert.equal(element._flashMatchesActivityPhase(redundant, 5, "stop"), false);
 });
 test("hub events load resets per-activity actions when the backend omits them", () => {
   const element = new WifiCommandsTabElement();
