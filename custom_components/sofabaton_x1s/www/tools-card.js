@@ -970,6 +970,29 @@ var cardStyles = [secondaryTabStyles, i`
         color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)))
       );
   }
+  /* Editor dirty state — an open editor (live activity/device editor or a
+     Wifi Commands device editor) holds changes that only a sync will
+     persist to the hub. Deliberately louder than the success/error tones:
+     a warning-tinted band that flares bright once as it appears (same
+     720ms motion language as the dock wipe), then settles and holds
+     steady — no continuous flashing. */
+  .card-bottom-dock--dirty {
+    border-top-color: color-mix(in srgb, var(--warning-color, #f59e0b) 60%, var(--divider-color));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--warning-color, #f59e0b) 24%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--warning-color, #f59e0b) 14%, var(--ha-card-background, var(--card-background-color)))
+      );
+    animation: dockDirtyReveal 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1;
+  }
+  @keyframes dockDirtyReveal {
+    0% { filter: brightness(1.5) saturate(1.3); }
+    100% { filter: brightness(1) saturate(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-bottom-dock--dirty { animation: none; }
+  }
   .card-bottom-dock-center {
     min-width: 0;
     flex: 1 1 auto;
@@ -996,6 +1019,10 @@ var cardStyles = [secondaryTabStyles, i`
   }
   .card-bottom-dock--error .card-bottom-dock-status {
     color: color-mix(in srgb, var(--error-color, #db4437) 88%, black 10%);
+  }
+  .card-bottom-dock--dirty .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--warning-color, #f59e0b) 64%, var(--primary-text-color));
+    font-weight: 600;
   }
   .card-bottom-dock-link {
     color: var(--primary-color);
@@ -3180,6 +3207,9 @@ var TOOLS_CARD_STRINGS = {
     wifi_commands: "Automation documentation",
     backup: "Backup documentation"
   },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
+  },
   backend: {
     unavailableTitle: "Backend not available",
     unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
@@ -3297,7 +3327,7 @@ var TOOLS_CARD_STRINGS = {
     // Cache-sourced capture (blob-free structural bundle).
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
@@ -3575,7 +3605,7 @@ var TOOLS_CARD_STRINGS = {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
@@ -12692,6 +12722,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._hubEventSaveError = "";
     this._hubEventActionsLoading = false;
     this._deviceSessionRestoreTried = false;
+    // Last dirty value announced to the host via `editor-dirty-changed`, so
+    // the event only fires on transitions.
+    this._dirtyDockNotified = false;
     this.lastHubEvent = null;
     this._hubEventFlashClearTimer = null;
     this._hubEventFlashClearForReceivedAt = null;
@@ -12880,7 +12913,24 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
     if (changed.has("hub") || changed.has("_selectedDeviceKey")) this._persistSelectedDeviceSession();
     this._scheduleSyncPoll();
+    this._notifyDirtyDock();
     this.renderRoot.querySelectorAll("ha-selector[data-hide-action-type='1']").forEach((element) => this._hideUiActionTypeSelector(element));
+  }
+  // Tell the host card whether the user is inside a device editor (detail
+  // view) whose stored config still needs a deploy to the hub, so its
+  // bottom dock can show the dirty banner. Mirrors the render() gating:
+  // list view, Events section, and guard states never count as "in the
+  // editor", and a running deploy is narrated by the dock itself.
+  _notifyDirtyDock() {
+    const inEditor = this._activeSection === "wifi" && !this.loading && !this.error && !!this.hub && !(this.blockedTitle && this.blockedMessage) && !!this._selectedWifiDevice();
+    const dirty = inEditor && this._syncState.sync_needed && this._syncState.status !== "running";
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty },
+      bubbles: true,
+      composed: true
+    }));
   }
   _useLegacyTextField() {
     return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
@@ -15638,6 +15688,9 @@ var SofabatonActivitiesTab = class extends i4 {
     // decisions on the entry_id — not object identity — to avoid tearing down
     // an in-flight capture/edit whenever state refreshes.
     this._hubEntryId = null;
+    // Last dirty value announced to the host via `editor-dirty-changed`, so
+    // the event only fires on transitions.
+    this._dirtyDockNotified = false;
     // ── Live command-payload editing (host-provided I/O) ────────────────
     // The detail view is hass-free, so it delegates the on-demand blob fetch
     // and the Test playback to these callbacks. The fetch is per-command (not
@@ -15786,6 +15839,21 @@ var SofabatonActivitiesTab = class extends i4 {
       void this._hydrateRunningSync();
     }
     this._maybeAutoOpen();
+    this._notifyDirtyDock();
+  }
+  // Tell the host card whether this editor holds changes that only a sync
+  // will persist, so its bottom dock can show the dirty banner. "editing"
+  // and "sync_failed" are the stages where unsynced changes sit idle;
+  // during "syncing" the dock already narrates the running operation.
+  _notifyDirtyDock() {
+    const dirty = this._dirty && (this._stage === "editing" || this._stage === "sync_failed");
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty },
+      bubbles: true,
+      composed: true
+    }));
   }
   // Direct-open: capture the requested entity as soon as the guards clear.
   // Runs once per requested id — a close (back to the idle stage) must not
@@ -16390,6 +16458,13 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     // Entity currently open in the live editor (wrench buttons in the Hub
     // tab); while set, the Hub tab renders the editor instead of the cache.
     this._editingEntity = null;
+    // True while an open editor (live activity/device editor or a Wifi
+    // Commands device editor) holds changes that only a sync will persist to
+    // the hub. Driven by `editor-dirty-changed` events from the tab elements;
+    // cleared here on the paths where the emitting element unmounts without
+    // getting a chance to send its own dirty=false (tab switch, editor exit,
+    // hub switch while the live editor is open).
+    this._editorSyncPending = false;
     // Re-order mode ("Change order" under the Activities / Devices list).
     this._reorderMode = false;
     this._reorderKind = "activity";
@@ -16405,6 +16480,12 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._pendingCacheScrollSnapshot = null;
     this._boundHandleDocumentPointerDown = (event) => {
       this.handleDocumentPointerDown(event);
+    };
+    this._handleEditorDirtyChanged = (event) => {
+      const dirty = Boolean(event.detail?.dirty);
+      if (dirty === this._editorSyncPending) return;
+      this._editorSyncPending = dirty;
+      this.requestUpdate();
     };
     this._store = new ControlPanelStore(
       (snapshot) => {
@@ -16531,6 +16612,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       this._editingEntity = null;
       this.resetActivityListInteractions();
     }
+    if (tabId !== this._snapshot.selectedTab) this._editorSyncPending = false;
     this._store.selectTab(tabId);
   }
   // Drops re-order mode and the Add Activity dialog (tab switch, hub switch).
@@ -16679,10 +16761,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   }
   renderBottomDock(hub) {
     const runtimeState = resolveRuntimeState(this._snapshot);
-    const docLink = runtimeState ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
+    const editorSyncPending = this._editorSyncPending && !runtimeState;
+    const docLink = runtimeState || editorSyncPending ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
     const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
     const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
-    const dockClass = runtimeState?.kind === "completion" ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}` : "card-bottom-dock";
+    const dockClass = runtimeState?.kind === "completion" ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}` : editorSyncPending ? "card-bottom-dock card-bottom-dock--dirty" : "card-bottom-dock";
     const irFlash = this._activeIrFlash(hub?.entry_id ?? null);
     return b2`
       <div class=${dockClass}>
@@ -16704,7 +16787,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
               `
     ) : A}
         <div class="card-bottom-dock-center">
-          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
+          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : editorSyncPending ? b2`<span class="card-bottom-dock-status">${TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
         </div>
         <div class="card-bottom-dock-right">
           ${this.renderConnectivityPill(hub)}
@@ -16883,6 +16966,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .lastHubEvent=${this._snapshot.lastHubEvent}
           .setHubCommandBusy=${(busy, label, entryId) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          @editor-dirty-changed=${this._handleEditorDirtyChanged}
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
@@ -16919,8 +17003,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
+            @editor-dirty-changed=${this._handleEditorDirtyChanged}
             @editor-exit=${() => {
           this._editingEntity = null;
+          this._editorSyncPending = false;
           this.requestUpdate();
         }}
           ></sofabaton-activities-tab>
@@ -16993,6 +17079,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
         this._hubPickerOpen = false;
         if (entryId !== this._snapshot.selectedHubEntryId) {
           this._editingEntity = null;
+          if (this._snapshot.selectedTab !== "wifi_commands") {
+            this._editorSyncPending = false;
+          }
         }
         this.resetActivityListInteractions();
         this._store.selectHub(entryId);

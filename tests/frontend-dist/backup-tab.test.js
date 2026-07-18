@@ -1750,6 +1750,9 @@ var TOOLS_CARD_STRINGS = {
     wifi_commands: "Automation documentation",
     backup: "Backup documentation"
   },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
+  },
   backend: {
     unavailableTitle: "Backend not available",
     unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
@@ -1867,7 +1870,7 @@ var TOOLS_CARD_STRINGS = {
     // Cache-sourced capture (blob-free structural bundle).
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
@@ -2145,7 +2148,7 @@ var TOOLS_CARD_STRINGS = {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,

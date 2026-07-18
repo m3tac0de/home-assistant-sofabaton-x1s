@@ -16,6 +16,9 @@ export const TOOLS_CARD_STRINGS = {
     wifi_commands: "Automation documentation",
     backup: "Backup documentation",
   } satisfies Partial<Record<TabId, string>>,
+  dock: {
+    unsyncedChanges: "Unsynced changes — sync to the hub to apply them",
+  },
   backend: {
     unavailableTitle: "Backend not available",
     unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
@@ -138,7 +141,7 @@ export const TOOLS_CARD_STRINGS = {
     capturingFromCache: (kind: "activity" | "device") => `Loading ${kind} from the hub cache…`,
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind: "activity" | "device") =>
-      `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
+      `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
@@ -431,7 +434,7 @@ export const TOOLS_CARD_STRINGS = {
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
     sectionSubtitle:
-      "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
+      "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName: string) => `Syncing ${deviceName}...`,

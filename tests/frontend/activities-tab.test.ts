@@ -563,3 +563,48 @@ test("activities tab sync failure surfaces the failed step, stale maps to reload
   // Edits are preserved on failure (baseline untouched).
   assert.equal(element._dirty, true);
 });
+
+test("activity editor announces dirty state transitions for the host dock", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const events: boolean[] = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean((event as CustomEvent<{ dirty: boolean }>).detail.dirty));
+  });
+
+  element._stage = "editing";
+  element._dirty = true;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+
+  // No re-dispatch without a transition.
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+
+  // While syncing the dock narrates the running operation instead.
+  element._stage = "syncing";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false]);
+
+  // A failed sync leaves unsynced changes sitting in the editor.
+  element._stage = "sync_failed";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true]);
+
+  // Leaving the editor clears the flag.
+  element._resetToList();
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true, false]);
+});
+
+test("activity editor does not announce dirty while the bundle matches the baseline", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const events: boolean[] = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean((event as CustomEvent<{ dirty: boolean }>).detail.dirty));
+  });
+
+  element._stage = "editing";
+  element._dirty = false;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+});

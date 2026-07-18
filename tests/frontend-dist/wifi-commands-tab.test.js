@@ -1522,6 +1522,9 @@ var TOOLS_CARD_STRINGS = {
     wifi_commands: "Automation documentation",
     backup: "Backup documentation"
   },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
+  },
   backend: {
     unavailableTitle: "Backend not available",
     unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
@@ -1639,7 +1642,7 @@ var TOOLS_CARD_STRINGS = {
     // Cache-sourced capture (blob-free structural bundle).
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
@@ -1917,7 +1920,7 @@ var TOOLS_CARD_STRINGS = {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
@@ -2348,6 +2351,9 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     this._hubEventSaveError = "";
     this._hubEventActionsLoading = false;
     this._deviceSessionRestoreTried = false;
+    // Last dirty value announced to the host via `editor-dirty-changed`, so
+    // the event only fires on transitions.
+    this._dirtyDockNotified = false;
     this.lastHubEvent = null;
     this._hubEventFlashClearTimer = null;
     this._hubEventFlashClearForReceivedAt = null;
@@ -3083,7 +3089,24 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
     if (changed.has("hub") || changed.has("_selectedDeviceKey")) this._persistSelectedDeviceSession();
     this._scheduleSyncPoll();
+    this._notifyDirtyDock();
     this.renderRoot.querySelectorAll("ha-selector[data-hide-action-type='1']").forEach((element) => this._hideUiActionTypeSelector(element));
+  }
+  // Tell the host card whether the user is inside a device editor (detail
+  // view) whose stored config still needs a deploy to the hub, so its
+  // bottom dock can show the dirty banner. Mirrors the render() gating:
+  // list view, Events section, and guard states never count as "in the
+  // editor", and a running deploy is narrated by the dock itself.
+  _notifyDirtyDock() {
+    const inEditor = this._activeSection === "wifi" && !this.loading && !this.error && !!this.hub && !(this.blockedTitle && this.blockedMessage) && !!this._selectedWifiDevice();
+    const dirty = inEditor && this._syncState.sync_needed && this._syncState.status !== "running";
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty },
+      bubbles: true,
+      composed: true
+    }));
   }
   _useLegacyTextField() {
     return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
@@ -5318,4 +5341,49 @@ test("hub events load resets per-activity actions when the backend omits them", 
   };
   element._applyHubEventActionsResult({ actions: {} });
   assert.deepEqual(element._activityEventActions, {});
+});
+test("wifi commands announces editor dirty state only inside the device editor", () => {
+  const element = new WifiCommandsTabElement();
+  const events = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean(event.detail.dirty));
+  });
+  element.hub = { entry_id: "hub-1" };
+  element._wifiDevices = [{ device_key: "dev-1", device_name: "TV" }];
+  element._syncState = { ...element._defaultSyncState(), sync_needed: true };
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+  element._selectedDeviceKey = "dev-1";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+  element._syncState = { ...element._syncState, status: "running" };
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false]);
+  element._syncState = { ...element._syncState, status: "failed" };
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true]);
+  element._selectedDeviceKey = null;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true, false]);
+});
+test("wifi commands does not announce dirty from the Events section or guard states", () => {
+  const element = new WifiCommandsTabElement();
+  const events = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean(event.detail.dirty));
+  });
+  element.hub = { entry_id: "hub-1" };
+  element._wifiDevices = [{ device_key: "dev-1", device_name: "TV" }];
+  element._selectedDeviceKey = "dev-1";
+  element._syncState = { ...element._defaultSyncState(), sync_needed: true };
+  element._activeSection = "hub_events";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+  element._activeSection = "wifi";
+  element.blockedTitle = "Hub busy";
+  element.blockedMessage = "Try again later";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
 });

@@ -224,6 +224,9 @@ class SofabatonActivitiesTab extends LitElement {
   // decisions on the entry_id — not object identity — to avoid tearing down
   // an in-flight capture/edit whenever state refreshes.
   private _hubEntryId: string | null = null;
+  // Last dirty value announced to the host via `editor-dirty-changed`, so
+  // the event only fires on transitions.
+  private _dirtyDockNotified = false;
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
@@ -249,6 +252,22 @@ class SofabatonActivitiesTab extends LitElement {
       void this._hydrateRunningSync();
     }
     this._maybeAutoOpen();
+    this._notifyDirtyDock();
+  }
+
+  // Tell the host card whether this editor holds changes that only a sync
+  // will persist, so its bottom dock can show the dirty banner. "editing"
+  // and "sync_failed" are the stages where unsynced changes sit idle;
+  // during "syncing" the dock already narrates the running operation.
+  private _notifyDirtyDock() {
+    const dirty = this._dirty && (this._stage === "editing" || this._stage === "sync_failed");
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   // Direct-open: capture the requested entity as soon as the guards clear.

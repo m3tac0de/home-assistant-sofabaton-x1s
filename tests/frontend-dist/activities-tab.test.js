@@ -1205,6 +1205,9 @@ var TOOLS_CARD_STRINGS = {
     wifi_commands: "Automation documentation",
     backup: "Backup documentation"
   },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
+  },
   backend: {
     unavailableTitle: "Backend not available",
     unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
@@ -1322,7 +1325,7 @@ var TOOLS_CARD_STRINGS = {
     // Cache-sourced capture (blob-free structural bundle).
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
@@ -1600,7 +1603,7 @@ var TOOLS_CARD_STRINGS = {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Wifi Commands let buttons on your physical remote run Home Assistant Actions or trigger automations. Commands are deployed to the hub in groups called Wifi Devices. Choose a Wifi Device to edit its command slots, or add a new one.",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
@@ -8984,6 +8987,9 @@ var SofabatonActivitiesTab = class extends i3 {
     // decisions on the entry_id — not object identity — to avoid tearing down
     // an in-flight capture/edit whenever state refreshes.
     this._hubEntryId = null;
+    // Last dirty value announced to the host via `editor-dirty-changed`, so
+    // the event only fires on transitions.
+    this._dirtyDockNotified = false;
     // ── Live command-payload editing (host-provided I/O) ────────────────
     // The detail view is hass-free, so it delegates the on-demand blob fetch
     // and the Test playback to these callbacks. The fetch is per-command (not
@@ -9282,6 +9288,21 @@ var SofabatonActivitiesTab = class extends i3 {
       void this._hydrateRunningSync();
     }
     this._maybeAutoOpen();
+    this._notifyDirtyDock();
+  }
+  // Tell the host card whether this editor holds changes that only a sync
+  // will persist, so its bottom dock can show the dirty banner. "editing"
+  // and "sync_failed" are the stages where unsynced changes sit idle;
+  // during "syncing" the dock already narrates the running operation.
+  _notifyDirtyDock() {
+    const dirty = this._dirty && (this._stage === "editing" || this._stage === "sync_failed");
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty },
+      bubbles: true,
+      composed: true
+    }));
   }
   // Direct-open: capture the requested entity as soon as the guards clear.
   // Runs once per requested id — a close (back to the idle stage) must not
@@ -10111,4 +10132,37 @@ test("activities tab sync failure surfaces the failed step, stale maps to reload
   assert.equal(element._stage, "sync_failed");
   assert.equal(element._syncFailedAt, "stale_check");
   assert.equal(element._dirty, true);
+});
+test("activity editor announces dirty state transitions for the host dock", () => {
+  const element = new ActivitiesTabElement();
+  const events = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean(event.detail.dirty));
+  });
+  element._stage = "editing";
+  element._dirty = true;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+  element._stage = "syncing";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false]);
+  element._stage = "sync_failed";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true]);
+  element._resetToList();
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true, false]);
+});
+test("activity editor does not announce dirty while the bundle matches the baseline", () => {
+  const element = new ActivitiesTabElement();
+  const events = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean(event.detail.dirty));
+  });
+  element._stage = "editing";
+  element._dirty = false;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
 });

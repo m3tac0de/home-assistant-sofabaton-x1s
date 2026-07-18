@@ -165,6 +165,13 @@ class SofabatonControlPanelCard extends LitElement {
   // Entity currently open in the live editor (wrench buttons in the Hub
   // tab); while set, the Hub tab renders the editor instead of the cache.
   private _editingEntity: { kind: "activity" | "device"; id: number } | null = null;
+  // True while an open editor (live activity/device editor or a Wifi
+  // Commands device editor) holds changes that only a sync will persist to
+  // the hub. Driven by `editor-dirty-changed` events from the tab elements;
+  // cleared here on the paths where the emitting element unmounts without
+  // getting a chance to send its own dirty=false (tab switch, editor exit,
+  // hub switch while the live editor is open).
+  private _editorSyncPending = false;
   // Re-order mode ("Change order" under the Activities / Devices list).
   private _reorderMode = false;
   private _reorderKind: "activity" | "device" = "activity";
@@ -336,8 +343,18 @@ class SofabatonControlPanelCard extends LitElement {
       this._editingEntity = null;
       this.resetActivityListInteractions();
     }
+    // Switching tabs unmounts whichever editor raised the dirty flag; it
+    // can't send dirty=false itself at that point.
+    if (tabId !== this._snapshot.selectedTab) this._editorSyncPending = false;
     this._store.selectTab(tabId);
   }
+
+  private _handleEditorDirtyChanged = (event: CustomEvent<{ dirty: boolean }>) => {
+    const dirty = Boolean(event.detail?.dirty);
+    if (dirty === this._editorSyncPending) return;
+    this._editorSyncPending = dirty;
+    this.requestUpdate();
+  };
 
   // Drops re-order mode and the Add Activity dialog (tab switch, hub switch).
   private resetActivityListInteractions() {
@@ -518,12 +535,18 @@ class SofabatonControlPanelCard extends LitElement {
 
   private renderBottomDock(hub: ReturnType<typeof selectedHub>) {
     const runtimeState = resolveRuntimeState(this._snapshot);
-    const docLink = runtimeState ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
+    // Runtime activity (running operation / completion notice) always wins
+    // over the editor dirty banner: while a sync is actually running the
+    // dock should narrate that, not nag about the changes it is persisting.
+    const editorSyncPending = this._editorSyncPending && !runtimeState;
+    const docLink = runtimeState || editorSyncPending ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
     const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
     const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
     const dockClass = runtimeState?.kind === "completion"
       ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}`
-      : "card-bottom-dock";
+      : editorSyncPending
+        ? "card-bottom-dock card-bottom-dock--dirty"
+        : "card-bottom-dock";
     const irFlash = this._activeIrFlash(hub?.entry_id ?? null);
 
     return html`
@@ -552,9 +575,11 @@ class SofabatonControlPanelCard extends LitElement {
         <div class="card-bottom-dock-center">
           ${runtimeState
             ? html`<span class="card-bottom-dock-status">${statusText}</span>`
-            : docLink
-              ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
-              : nothing}
+            : editorSyncPending
+              ? html`<span class="card-bottom-dock-status">${TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>`
+              : docLink
+                ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
+                : nothing}
         </div>
         <div class="card-bottom-dock-right">
           ${this.renderConnectivityPill(hub)}
@@ -747,6 +772,7 @@ class SofabatonControlPanelCard extends LitElement {
           .lastHubEvent=${this._snapshot.lastHubEvent}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          @editor-dirty-changed=${this._handleEditorDirtyChanged}
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
@@ -783,8 +809,10 @@ class SofabatonControlPanelCard extends LitElement {
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
+            @editor-dirty-changed=${this._handleEditorDirtyChanged}
             @editor-exit=${() => {
               this._editingEntity = null;
+              this._editorSyncPending = false;
               this.requestUpdate();
             }}
           ></sofabaton-activities-tab>
@@ -862,9 +890,16 @@ class SofabatonControlPanelCard extends LitElement {
                     this._hubPickerOpen = false;
                     // The live editor is hub-specific: left open across a
                     // switch it would keep editing the previous hub's
-                    // entity id against the new hub's cache.
+                    // entity id against the new hub's cache. The Wifi
+                    // Commands tab stays mounted across a hub switch and
+                    // resets its own state (sending dirty=false itself), so
+                    // only the unmounting live editor needs the flag
+                    // cleared here.
                     if (entryId !== this._snapshot.selectedHubEntryId) {
                       this._editingEntity = null;
+                      if (this._snapshot.selectedTab !== "wifi_commands") {
+                        this._editorSyncPending = false;
+                      }
                     }
                     this.resetActivityListInteractions();
                     this._store.selectHub(entryId);

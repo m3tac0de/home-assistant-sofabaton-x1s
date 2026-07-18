@@ -69,6 +69,29 @@ export const cardStyles = [secondaryTabStyles, css`
         color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)))
       );
   }
+  /* Editor dirty state — an open editor (live activity/device editor or a
+     Wifi Commands device editor) holds changes that only a sync will
+     persist to the hub. Deliberately louder than the success/error tones:
+     a warning-tinted band that flares bright once as it appears (same
+     720ms motion language as the dock wipe), then settles and holds
+     steady — no continuous flashing. */
+  .card-bottom-dock--dirty {
+    border-top-color: color-mix(in srgb, var(--warning-color, #f59e0b) 60%, var(--divider-color));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--warning-color, #f59e0b) 24%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--warning-color, #f59e0b) 14%, var(--ha-card-background, var(--card-background-color)))
+      );
+    animation: dockDirtyReveal 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1;
+  }
+  @keyframes dockDirtyReveal {
+    0% { filter: brightness(1.5) saturate(1.3); }
+    100% { filter: brightness(1) saturate(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-bottom-dock--dirty { animation: none; }
+  }
   .card-bottom-dock-center {
     min-width: 0;
     flex: 1 1 auto;
@@ -95,6 +118,10 @@ export const cardStyles = [secondaryTabStyles, css`
   }
   .card-bottom-dock--error .card-bottom-dock-status {
     color: color-mix(in srgb, var(--error-color, #db4437) 88%, black 10%);
+  }
+  .card-bottom-dock--dirty .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--warning-color, #f59e0b) 64%, var(--primary-text-color));
+    font-weight: 600;
   }
   .card-bottom-dock-link {
     color: var(--primary-color);

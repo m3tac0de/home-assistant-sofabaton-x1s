@@ -269,3 +269,64 @@ test("hub events load resets per-activity actions when the backend omits them", 
 
   assert.deepEqual((element as any)._activityEventActions, {});
 });
+
+test("wifi commands announces editor dirty state only inside the device editor", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  const events: boolean[] = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean((event as CustomEvent<{ dirty: boolean }>).detail.dirty));
+  });
+  element.hub = { entry_id: "hub-1" };
+  element._wifiDevices = [{ device_key: "dev-1", device_name: "TV" }];
+  element._syncState = { ...(element as any)._defaultSyncState(), sync_needed: true };
+
+  // List view: a sync is needed but the user is not in the editor.
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, []);
+
+  // Detail view with a pending sync → dirty.
+  element._selectedDeviceKey = "dev-1";
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+
+  // No re-dispatch without a transition.
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, [true]);
+
+  // Deploy running: the dock narrates the operation instead.
+  element._syncState = { ...element._syncState, status: "running" };
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, [true, false]);
+
+  // A failed deploy leaves the config still needing a sync.
+  element._syncState = { ...element._syncState, status: "failed" };
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true]);
+
+  // Back to the device list clears the flag.
+  element._selectedDeviceKey = null;
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, [true, false, true, false]);
+});
+
+test("wifi commands does not announce dirty from the Events section or guard states", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  const events: boolean[] = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean((event as CustomEvent<{ dirty: boolean }>).detail.dirty));
+  });
+  element.hub = { entry_id: "hub-1" };
+  element._wifiDevices = [{ device_key: "dev-1", device_name: "TV" }];
+  element._selectedDeviceKey = "dev-1";
+  element._syncState = { ...(element as any)._defaultSyncState(), sync_needed: true };
+
+  element._activeSection = "hub_events";
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, []);
+
+  element._activeSection = "wifi";
+  element.blockedTitle = "Hub busy";
+  element.blockedMessage = "Try again later";
+  (element as any)._notifyDirtyDock();
+  assert.deepEqual(events, []);
+});

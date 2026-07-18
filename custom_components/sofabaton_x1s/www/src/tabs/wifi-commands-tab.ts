@@ -780,6 +780,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _hubEventSaveError = "";
   private _hubEventActionsLoading = false;
   private _deviceSessionRestoreTried = false;
+  // Last dirty value announced to the host via `editor-dirty-changed`, so
+  // the event only fires on transitions.
+  private _dirtyDockNotified = false;
   lastHubEvent: HubEventFireEvent | null = null;
   private _hubEventFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _hubEventFlashClearForReceivedAt: number | null = null;
@@ -808,9 +811,34 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
     if (changed.has("hub") || changed.has("_selectedDeviceKey")) this._persistSelectedDeviceSession();
     this._scheduleSyncPoll();
+    this._notifyDirtyDock();
     this.renderRoot
       .querySelectorAll<HTMLElement>("ha-selector[data-hide-action-type='1']")
       .forEach((element) => this._hideUiActionTypeSelector(element));
+  }
+
+  // Tell the host card whether the user is inside a device editor (detail
+  // view) whose stored config still needs a deploy to the hub, so its
+  // bottom dock can show the dirty banner. Mirrors the render() gating:
+  // list view, Events section, and guard states never count as "in the
+  // editor", and a running deploy is narrated by the dock itself.
+  private _notifyDirtyDock() {
+    const inEditor = this._activeSection === "wifi"
+      && !this.loading
+      && !this.error
+      && !!this.hub
+      && !(this.blockedTitle && this.blockedMessage)
+      && !!this._selectedWifiDevice();
+    const dirty = inEditor
+      && this._syncState.sync_needed
+      && this._syncState.status !== "running";
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   private _useLegacyTextField() {
