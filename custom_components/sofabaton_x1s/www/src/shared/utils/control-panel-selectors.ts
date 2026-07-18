@@ -5,6 +5,7 @@ import type {
   ControlPanelLogLine,
   ControlPanelSnapshot,
   HassLike,
+  HubClickAction,
   TabId,
 } from "../ha-context";
 
@@ -54,10 +55,9 @@ export function persistentCacheEnabled(snapshot: ControlPanelSnapshot): boolean 
   return !!snapshot.state?.persistent_cache_enabled;
 }
 
-export function sortByName<T extends { name?: string; label?: string }>(items: T[] = []): T[] {
-  return [...items].sort((left, right) =>
-    String(left?.name ?? left?.label ?? "").localeCompare(String(right?.name ?? right?.label ?? "")),
-  );
+export function hubClickAction(snapshot: ControlPanelSnapshot): HubClickAction {
+  const action = snapshot.state?.hub_click_action;
+  return action === "send" || action === "copy" ? action : "none";
 }
 
 export function sortById<T extends { id?: number; button_id?: number }>(items: T[] = []): T[] {
@@ -66,12 +66,26 @@ export function sortById<T extends { id?: number; button_id?: number }>(items: T
   );
 }
 
+// Follow the hub's stored display order (the record's sort byte) when
+// present. A sort of 0 means "never ordered" — those rows keep the legacy
+// id order and land after explicitly ordered rows (so a freshly created
+// entry appears at the end of an ordered list).
+function sortByHubOrder<T extends { id?: number; sort?: number }>(items: T[] = []): T[] {
+  const bySort = (value?: number) =>
+    Number(value ?? 0) > 0 ? Number(value) : Number.POSITIVE_INFINITY;
+  return [...items].sort(
+    (left, right) =>
+      bySort(left?.sort) - bySort(right?.sort)
+      || Number(left?.id ?? 0) - Number(right?.id ?? 0),
+  );
+}
+
 export function hubActivities(hub: CacheHubState | null) {
-  return sortById(hub?.activities ?? []);
+  return sortByHubOrder(hub?.activities ?? []);
 }
 
 export function hubDevices(hub: CacheHubState | null) {
-  return sortByName(hub?.devices_list ?? []);
+  return sortByHubOrder(hub?.devices_list ?? []);
 }
 
 export function deviceClassIcon(deviceClass?: string | null) {
@@ -240,7 +254,7 @@ export type RuntimeState =
     }
   | {
       kind: "operation_running";
-      operation: "backup_export" | "backup_restore" | "wifi_deploy";
+      operation: "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | "wifi_deploy";
       label: string;
       detail: string;
       progress: {
@@ -274,13 +288,30 @@ export function resolveCardGateState(snapshot: ControlPanelSnapshot): CardGateSt
   return { kind: "pass" };
 }
 
+/** True when a catalog/cache refresh is running for the given hub. */
+export function hubRefreshBusy(snapshot: ControlPanelSnapshot, entryId: string | null | undefined): boolean {
+  return !!entryId && entryId in snapshot.refreshBusyByHub;
+}
+
+/** Active refresh label for the given hub (null while a label-less section refresh runs or when idle). */
+export function hubActiveRefreshLabel(snapshot: ControlPanelSnapshot, entryId: string | null | undefined): string | null {
+  return entryId ? snapshot.refreshBusyByHub[entryId] ?? null : null;
+}
+
+/** Busy label of an externally-driven hub command (backup, wifi deploy, ...) for the given hub. */
+export function hubExternalCommandLabel(snapshot: ControlPanelSnapshot, entryId: string | null | undefined): string | null {
+  return entryId ? snapshot.externalHubCommandByHub[entryId] ?? null : null;
+}
+
 export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeState | null {
   const hub = selectedHub(snapshot);
-  if (snapshot.runtimeCompletionNotice) {
+  const entryId = hub?.entry_id ?? null;
+  const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : undefined;
+  if (completionNotice) {
     return {
       kind: "completion",
-      tone: snapshot.runtimeCompletionNotice.tone,
-      label: snapshot.runtimeCompletionNotice.label,
+      tone: completionNotice.tone,
+      label: completionNotice.label,
       detail: null,
     };
   }
@@ -298,7 +329,11 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
         ? "backup_restore"
         : hubRuntime.operation === "backup_export"
           ? "backup_export"
-          : "wifi_deploy",
+          : hubRuntime.operation === "cache_refresh"
+            ? "cache_refresh"
+            : hubRuntime.operation === "entity_sync"
+              ? "entity_sync"
+              : "wifi_deploy",
       label: String(hubRuntime.label || "Operation running"),
       detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
       progress: {
@@ -325,15 +360,16 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
     };
   }
 
-  if (snapshot.externalHubCommandBusy) {
+  const externalLabel = hubExternalCommandLabel(snapshot, entryId);
+  if (externalLabel !== null) {
     return {
       kind: "notice",
-      label: String(snapshot.externalHubCommandLabel || "Hub command in progress..."),
+      label: externalLabel || "Hub command in progress...",
       detail: null,
     };
   }
 
-  if (snapshot.refreshBusy) {
+  if (hubRefreshBusy(snapshot, entryId)) {
     return {
       kind: "notice",
       label: "Refreshing cache...",
@@ -359,25 +395,16 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
     };
   }
 
-  // Activities renders its proxy-connected / busy guards *inside* the tab
-  // (§4.1) so the user can still see the activity list; it is never blocked
-  // at the tab level once the hub is connected.
-  if (tabId === "logs" || tabId === "settings" || tabId === "cache" || tabId === "activities") {
+  if (tabId === "logs" || tabId === "settings" || tabId === "cache") {
     return { kind: "available" };
   }
 
   const hub = selectedHub(snapshot);
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
-    const title = tabId === "wifi_commands"
-      ? "Wifi Commands unavailable"
-      : tabId === "backup"
-        ? "Backup unavailable"
-        : "Blobs unavailable";
+    const title = tabId === "wifi_commands" ? "Automation unavailable" : "Backup unavailable";
     const message = tabId === "wifi_commands"
-      ? "Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy."
-      : tabId === "backup"
-        ? "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy."
-        : "Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.";
+      ? "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy."
+      : "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.";
     return { kind: "blocked", title, message };
   }
 

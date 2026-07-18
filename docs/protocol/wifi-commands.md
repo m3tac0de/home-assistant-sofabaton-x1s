@@ -121,3 +121,40 @@ Observed constraints from field traffic:
 - WiFi/IP devices can be assigned to activities like other devices
 
 Exact hard limits may vary by firmware.
+
+---
+
+## Command id space (X1 vs X1S/X2)
+
+Live-validated 2026-07-12 (both hub models). The integration deploys
+each of the 10 user slots as two command records — a short-press and a
+long-press variant — so a full device holds 20 records.
+
+- **X1S / X2 (virtual-IP)**: records are written *and* read back at
+  command ids `1..20`.
+- **X1 (Roku-replay)**: records are *written* in the family-0x0E
+  payloads at key ids `0x18..0x2B`, but the hub re-exposes them in its
+  command table (and everywhere else) as ids `1..20`. The `0x18..`
+  ids exist only inside the write payloads.
+
+On both variants the `1..20` space is what `REQ_ACTIVATE` (`0x023F`)
+and the power/input binding rows address — activating key `0x18` on an
+X1 hits nothing. Callback paths are
+`/launch/<hub_action_id>/<device_id>/<command_index>/<short|long>`,
+where `command_index` is the 0-based slot the user configured.
+
+## Callback delivery and activity macros
+
+- One `REQ_ACTIVATE` on a WiFi/IP command delivers exactly one HTTP
+  callback, provided the listener returns a response the hub accepts;
+  an unacceptable response triggers a delivery-retry loop. See the
+  `REQ_ACTIVATE` (`0x023F`) row in [opcodes.md](opcodes.md).
+- The hub runs an activity's power macros on a real state transition,
+  so activating/deactivating an activity that contains a WiFi/IP
+  device fires that device's power-on/input and power-off callbacks
+  through the same path.
+
+Full deploy-pipeline validation (create → add-to-activity → favorites
+→ bindings → re-sync/rollback, both hub models) is recorded in
+[live-hub-testing.md](live-hub-testing.md) under "Validated: Wifi
+Commands deploy pipeline".

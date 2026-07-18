@@ -9,7 +9,7 @@ from homeassistant.helpers.storage import Store
 from .const import DOMAIN
 
 CACHE_STORE_VERSION = 2
-CACHE_STORE_MINOR_VERSION = 1
+CACHE_STORE_MINOR_VERSION = 2
 
 
 class _MigratingStore(Store[dict[str, Any]]):
@@ -22,6 +22,12 @@ class _MigratingStore(Store[dict[str, Any]]):
         # Phase 6 reshaped cached state; discard any pre-v2 payload.
         if old_major_version < CACHE_STORE_VERSION:
             return {"enabled": False, "hubs": {}}
+        if old_minor_version < 2:
+            # 2.2 dropped the separately-persisted structural bundles: they
+            # are assembled on demand from the canonical hub cache now. The
+            # hub cache payloads themselves stay valid (new structural
+            # fields appear on the next refresh).
+            old_data.pop("structural_bundles", None)
         return old_data
 
 

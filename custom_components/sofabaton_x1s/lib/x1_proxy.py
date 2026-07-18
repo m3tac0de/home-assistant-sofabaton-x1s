@@ -1,7 +1,16 @@
 # proxy.py — X1 Hub proxy (legible, opcode-forward)
 # -------------------------------------------------
+# Wire-access invariant: the hub services one request at a time and
+# silently drops any A->H frame that arrives while it is streaming a
+# response burst. ALL A->H traffic therefore flows through exactly one
+# of two paths:
+#   * enqueue_cmd -> BurstScheduler (fire-and-forget catalog reads), or
+#   * an exchange() scope (blocking request/response helpers; see
+#     proxy_exchange.py).
+# tests/lib/test_sequencer_boundary.py enforces this at CI time.
 from __future__ import annotations
 
+import contextlib
 import logging
 import ipaddress
 import re
@@ -159,11 +168,12 @@ from .proxy_wifi_device import WifiDeviceMixin
 from .proxy_backup import CacheBackupMixin
 from .proxy_backup_export import BackupExportMixin
 from .proxy_activity_ops import ActivityOpsMixin
+from .proxy_activity_sync import ActivitySyncMixin
 from .proxy_ack_waiters import AckWaitersMixin
 from .proxy_catalog import CatalogMixin
+from .proxy_exchange import ExchangeMixin
 from .proxy_frame_decode import FrameDecodeMixin, _hexdump
 from .proxy_ir_blob import IrBlobMixin
-from .proxy_remote_battery import RemoteBatteryMixin
 
 # ============================================================================
 # Utilities
@@ -367,7 +377,7 @@ def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RemoteBatteryMixin, RestoreMixin, BackupExportMixin):
+class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin):
     def __init__(
         self,
         real_hub_ip: str,
@@ -460,6 +470,11 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         self._client_state_listeners: list[callable] = []
         self._ota_update_listeners: list[callable] = []
         self._activation_listeners: list[callable] = []
+        self._redundant_off_listeners: list[Callable[[], None]] = []
+        # Set when ACK_READY arrives while the hub is already powered off;
+        # resolved by the next active-state evaluation (see
+        # handle_active_state). A no-op OFF press is the only known trigger.
+        self._pending_redundant_off_check = False
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
         self._pending_virtual: dict[str, Any] | None = None
@@ -471,11 +486,28 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         self._ack_queue_lock = threading.Lock()
         self._ack_queue: deque[tuple[int, bytes, float]] = deque()
         self._ack_event = threading.Event()
+        # Exchange guard: serializes blocking request/response exchanges
+        # against each other (RLock so a helper that already holds an
+        # exchange may call helpers that open their own). The depth
+        # counter is only read/written by the thread holding the lock.
+        self._exchange_lock = threading.RLock()
+        self._exchange_depth = 0
+        # Ident of the frame-processing thread (latched by _handle_idle,
+        # which the transport bridge invokes on that thread). exchange()
+        # refuses to run there: that thread delivers the acks an exchange
+        # blocks on, so entering would deadlock.
+        self._frame_thread_ident: int | None = None
         self._x2_remote_sync_id_lock = threading.Lock()
         self._x2_remote_sync_id: bytes | None = None
         self._x2_remote_sync_id_event = threading.Event()
         self._macro_payload_lock = threading.Lock()
+        # Transient fetch-arrival signals: popped by wait_for_macro_record,
+        # cleared by reset_ack_queues before every write transaction.
         self._macro_payload_events: dict[tuple[int, int], MacroRecord] = {}
+        # Persistent macro cache read by structural bundles / exports. Only
+        # per-entity invalidation (clear_entity_cache) or a cache import may
+        # drop entries — never the ack-queue reset.
+        self._macro_records_cache: dict[tuple[int, int], MacroRecord] = {}
         self._macro_payload_event = threading.Event()
         self._activity_inputs_lock = threading.Lock()
         self._activity_inputs_seen = 0
@@ -611,11 +643,28 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
 
     def handle_active_state(self, trigger: str) -> None:
         new_id, old_id = self.state.update_activity_state()
+        pending_redundant_off = self._pending_redundant_off_check
+        self._pending_redundant_off_check = False
         if new_id != old_id:
             if new_id is not None:
                 self._notify_activity_change(new_id & 0xFF, old_id & 0xFF if old_id is not None else None)
             else:
                 self._notify_activity_change(None, old_id & 0xFF if old_id is not None else None)
+        elif pending_redundant_off and new_id is None:
+            # ACK_READY fired while the hub was already powered off and the
+            # refreshed state confirms nothing changed: the only known cause
+            # is an OFF press on the remote while everything was already off.
+            self._log.info("[HINT] OFF pressed while hub already powered off")
+            self._notify_redundant_off_press()
+
+    def flag_pending_redundant_off_check(self) -> None:
+        """Arm the redundant-OFF check for the next active-state evaluation.
+
+        Called when ACK_READY arrives while the cached state says the hub is
+        already powered off (see :class:`AckReadyHandler`).
+        """
+
+        self._pending_redundant_off_check = True
     
     def enable_proxy(self) -> None:
         self._proxy_enabled = True
@@ -650,121 +699,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
             len(payload),
         )
         self._send_cmd_frame(opcode, payload)
-
-    def _send_step(
-        self,
-        *,
-        step_name: str,
-        family: int,
-        payload: bytes,
-        ack_opcode: int,
-        ack_first_byte: int | None = None,
-        ack_fallback_opcodes: tuple[int, ...] = (),
-        timeout: float = 5.0,
-        retries: int = 0,
-        retry_delay: float = 0.0,
-    ) -> SendStepResult:
-        """Send one create-flow step and classify the hub's response.
-
-        Returns a :class:`SendStepResult` whose ``outcome`` is one of
-        :class:`AckOutcome`. A ``STATUS_ACK`` (``0x0103``) reply whose
-        first payload byte is non-zero is classified as
-        :attr:`AckOutcome.rejected` even when the step asked for the
-        success byte; this matches the behaviour already present in
-        :func:`run_create_sequence` and lets multi-step orchestrations
-        fail fast on the first hub-side refusal instead of spinning out
-        the per-step timeout.
-        """
-
-        candidates: list[tuple[int, int | None]] = [(ack_opcode, ack_first_byte)]
-        candidates.extend((fallback_opcode, None) for fallback_opcode in ack_fallback_opcodes)
-
-        # STATUS_ACK reply slot. When the caller is waiting for the OK
-        # byte specifically, also wake on any other first byte so a
-        # rejection surfaces immediately rather than waiting out the
-        # timeout. The classifier below turns a non-zero answer into a
-        # ``rejected`` outcome.
-        wildcard_status_reject = (
-            ack_opcode == ACK_OPCODE_STATUS
-            and ack_first_byte == ACK_STATUS_BYTE_OK
-        )
-        if wildcard_status_reject:
-            candidates.append((ack_opcode, None))
-
-        total_attempts = max(1, int(retries) + 1)
-        for attempt in range(1, total_attempts + 1):
-            self._log.debug(
-                "%s[STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s attempt=%d/%d",
-                LogTag.WIFI,
-                step_name,
-                family,
-                ack_opcode,
-                f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
-                attempt,
-                total_attempts,
-            )
-            send_ts = time.monotonic()
-            self._send_family_frame(family, payload)
-
-            matched = self.wait_for_ack_any(
-                candidates,
-                timeout=timeout,
-                not_before=send_ts,
-            )
-            if matched is not None:
-                matched_opcode, matched_payload = matched
-                first_byte = matched_payload[0] if matched_payload else None
-                is_status_reject = (
-                    matched_opcode == ACK_OPCODE_STATUS
-                    and first_byte is not None
-                    and first_byte != ACK_STATUS_BYTE_OK
-                )
-                if is_status_reject:
-                    self._log.warning(
-                        "%s[STEP] %s hub rejected status=0x%02X",
-                        LogTag.WIFI,
-                        step_name,
-                        first_byte,
-                    )
-                    return SendStepResult(
-                        outcome=AckOutcome.rejected,
-                        ack_opcode=matched_opcode,
-                        ack_payload=bytes(matched_payload),
-                    )
-                if matched_opcode != ack_opcode:
-                    self._log.warning(
-                        "%s[STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
-                        LogTag.WIFI,
-                        step_name,
-                        matched_opcode,
-                        ack_opcode,
-                    )
-                self._log.debug("%s[STEP] %s acked via 0x%04X", LogTag.WIFI, step_name, matched_opcode)
-                return SendStepResult(
-                    outcome=AckOutcome.acked,
-                    ack_opcode=matched_opcode,
-                    ack_payload=bytes(matched_payload),
-                )
-
-            if attempt < total_attempts:
-                self._log.warning(
-                    "%s[STEP] %s retrying after ack timeout (attempt %d/%d)",
-                    LogTag.WIFI,
-                    step_name,
-                    attempt,
-                    total_attempts,
-                )
-                if retry_delay > 0:
-                    time.sleep(retry_delay)
-
-        self._log.warning(
-            "%s[STEP] %s timeout waiting ack=0x%04X first_byte=%s",
-            LogTag.WIFI,
-            step_name,
-            ack_opcode,
-            f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
-        )
-        return SendStepResult(outcome=AckOutcome.timeout)
 
     def _utf16le_padded(self, text: str, *, length: int) -> bytes:
         data = text.encode("utf-16le")
@@ -830,6 +764,17 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
     def on_activity_change(self, cb) -> None:
         """cb(new_id: int | None, old_id: int | None, name: str | None)"""
         self._activity_listeners.append(cb)
+
+    def on_redundant_off_press(self, cb: Callable[[], None]) -> None:
+        """cb() fired when OFF is pressed while the hub is already powered off."""
+        self._redundant_off_listeners.append(cb)
+
+    def _notify_redundant_off_press(self) -> None:
+        for cb in self._redundant_off_listeners:
+            try:
+                cb()
+            except Exception:
+                self._log.exception("redundant off-press listener failed")
 
     def on_app_activation(self, cb) -> None:
         """cb(record: dict[str, Any])"""
@@ -980,16 +925,17 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
             self._log.warning("[HUB] set_hub_name ignored: name %r produced no encodable bytes", next_name)
             return False
 
-        self.clear_ack_queue()
-        send_ts = time.monotonic()
-        self._log.info("[HUB] setting hub name=%s", next_name)
-        self._send_family_frame(OP_SET_HUB_NAME & 0xFF, payload)
+        with self.exchange("hub_name"):
+            self.clear_ack_queue()
+            send_ts = time.monotonic()
+            self._log.info("[HUB] setting hub name=%s", next_name)
+            self._send_family_frame(OP_SET_HUB_NAME & 0xFF, payload)
 
-        matched = self.wait_for_ack_family_low(
-            FAMILY_HUB_NAME_REPLY,
-            timeout=timeout,
-            not_before=send_ts,
-        )
+            matched = self.wait_for_ack_family_low(
+                FAMILY_HUB_NAME_REPLY,
+                timeout=timeout,
+                not_before=send_ts,
+            )
         if matched is None:
             self._log.warning("[HUB] timed out waiting for hub-name reply")
             return False
@@ -1438,64 +1384,86 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         """Send one macro save using paged family-0x12 write layout."""
 
         paged_payloads = self._build_paged_macro_save_payloads(payload)
-        self.clear_ack_queue()
 
         last_ack: tuple[int, bytes] | None = None
-        for seq, page_payload in enumerate(paged_payloads, start=1):
-            page_opcode = ((len(page_payload) & 0xFF) << 8) | 0x12
-            self._log.debug(
-                "%s save macro page seq=%d/%d opcode=0x%04X payload=%dB",
-                LogTag.ACTIVITY,
-                seq,
-                len(paged_payloads),
-                page_opcode,
-                len(page_payload),
-            )
-            if self.diag_dump:
+        # ONE scope around the whole page loop: the pages of one save
+        # must never interleave with any other exchange or queued read.
+        with self.exchange("macro_save"):
+            self.clear_ack_queue()
+            for seq, page_payload in enumerate(paged_payloads, start=1):
+                page_opcode = ((len(page_payload) & 0xFF) << 8) | 0x12
                 self._log.debug(
-                    "%s save macro page %d/%d payload %s",
-                    LogTag.WIRE,
-                    seq,
-                    len(paged_payloads),
-                    page_payload.hex(" "),
-                )
-
-            send_ts = time.monotonic()
-            self._send_family_frame(0x12, page_payload)
-            if seq < len(paged_payloads):
-                candidates = [(0x0103, None)]
-            else:
-                candidates = [(0x0112, macro_button), (0x0103, None)]
-            last_ack = self.wait_for_ack_any(
-                candidates,
-                timeout=ack_timeout,
-                not_before=send_ts,
-            )
-            if last_ack is None:
-                self._log.warning(
-                    "%s missing ACK after macro save page seq=%d/%d button=0x%02X",
+                    "%s save macro page seq=%d/%d opcode=0x%04X payload=%dB",
                     LogTag.ACTIVITY,
                     seq,
                     len(paged_payloads),
-                    macro_button,
+                    page_opcode,
+                    len(page_payload),
                 )
-                return None
+                if self.diag_dump:
+                    self._log.debug(
+                        "%s save macro page %d/%d payload %s",
+                        LogTag.WIRE,
+                        seq,
+                        len(paged_payloads),
+                        page_payload.hex(" "),
+                    )
 
-            ack_opcode, ack_payload = last_ack
-            # 0x0103 carries the hub status in payload[0]: 0x00 = accept,
-            # anything else (observed: 0x0c) = rejection. We can't trust a
-            # rejected page as if it succeeded.
-            if ack_opcode == 0x0103 and (not ack_payload or ack_payload[0] != 0x00):
-                status = ack_payload[0] if ack_payload else None
-                self._log.warning(
-                    "%s hub rejected macro save page seq=%d/%d button=0x%02X status=%s",
-                    LogTag.ACTIVITY,
-                    seq,
-                    len(paged_payloads),
-                    macro_button,
-                    f"0x{status:02X}" if status is not None else "?",
+                send_ts = time.monotonic()
+                self._send_family_frame(0x12, page_payload)
+                if seq < len(paged_payloads):
+                    candidates = [(0x0103, None)]
+                else:
+                    # The final-page 0x0112 ack usually echoes the macro key in
+                    # payload[0], but not always: a save that drops a device's
+                    # last power-macro reference makes the hub cascade-remove
+                    # that device from the activity and ack with a different
+                    # byte (observed live: 0x01 after ~1.2 s on X1). Accept any
+                    # 0x0112 — rejections arrive as 0x0103 with a non-zero
+                    # status, checked below.
+                    candidates = [(0x0112, None), (0x0103, None)]
+                last_ack = self.wait_for_ack_any(
+                    candidates,
+                    timeout=ack_timeout,
+                    not_before=send_ts,
                 )
-                return None
+                if last_ack is None:
+                    self._log.warning(
+                        "%s missing ACK after macro save page seq=%d/%d button=0x%02X",
+                        LogTag.ACTIVITY,
+                        seq,
+                        len(paged_payloads),
+                        macro_button,
+                    )
+                    return None
+
+                ack_opcode, ack_payload = last_ack
+                # 0x0103 carries the hub status in payload[0]: 0x00 = accept,
+                # anything else (observed: 0x0c) = rejection. We can't trust a
+                # rejected page as if it succeeded.
+                if ack_opcode == 0x0103 and (not ack_payload or ack_payload[0] != 0x00):
+                    status = ack_payload[0] if ack_payload else None
+                    self._log.warning(
+                        "%s hub rejected macro save page seq=%d/%d button=0x%02X status=%s",
+                        LogTag.ACTIVITY,
+                        seq,
+                        len(paged_payloads),
+                        macro_button,
+                        f"0x{status:02X}" if status is not None else "?",
+                    )
+                    return None
+                if (
+                    ack_opcode == 0x0112
+                    and ack_payload
+                    and ack_payload[0] != (macro_button & 0xFF)
+                ):
+                    self._log.info(
+                        "%s macro save ack fallback button=0x%02X ack_payload=0x%02X",
+                        LogTag.ACTIVITY,
+                        macro_button,
+                        ack_payload[0],
+                    )
+
 
         return last_ack
 
@@ -1776,6 +1744,12 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
             self._button_burst_expected_frames.clear()
 
     def _handle_idle(self, now: float) -> None:
+        if self._frame_thread_ident is None:
+            # The transport bridge invokes this callback on its
+            # frame-processing thread; latch its ident so exchange()
+            # can refuse to run there (see the deadlock note on
+            # :meth:`exchange`).
+            self._frame_thread_ident = threading.get_ident()
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)
         if (
             self._activity_retry_due_at is not None

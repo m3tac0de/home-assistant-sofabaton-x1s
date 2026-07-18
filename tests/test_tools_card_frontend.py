@@ -30,22 +30,15 @@ def test_tools_card_keeps_action_hint_copy_visible() -> None:
     )
 
 
-def test_tools_card_blobs_tab_uses_live_state_refresh() -> None:
+def test_tools_card_tabs_use_live_state_refresh() -> None:
     source = Path("custom_components/sofabaton_x1s/www/tools-card.js").read_text(
         encoding="utf-8",
     )
 
     assert ".refreshControlPanelState=" in source
-    assert "this._store.loadControlPanelState()" in source
-
-
-def test_tools_card_blobs_tab_omits_save_result_renderer() -> None:
-    source = Path("custom_components/sofabaton_x1s/www/tools-card.js").read_text(
-        encoding="utf-8",
-    )
-
-    assert "_renderSaveResult()" not in source
-    assert "Save Result" not in source
+    # The tab-facing refresh must stay backed by a real (silent) store
+    # state reload rather than a stubbed no-op.
+    assert "this._store.loadState({ silent: true" in source
 
 
 def test_tools_card_empty_dock_branch_renders_no_placeholder_status_node() -> None:

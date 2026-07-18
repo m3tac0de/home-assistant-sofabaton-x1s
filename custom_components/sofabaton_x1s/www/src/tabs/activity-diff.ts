@@ -19,8 +19,10 @@ import {
   activityMemberViews,
   activityQuickAccessItems,
   activityRoleAssignments,
+  deviceButtonBindingItems,
   deviceCommandItems,
   deviceIdleBehavior,
+  deviceIpAddress,
   bundleDeviceOptions,
   type BackupActivityMemberView,
   type BackupActivityQuickAccessItem,
@@ -92,6 +94,119 @@ export function diffActivityForReview(
     .filter((group) => group.entries.length > 0);
 }
 
+// ── Device review (live device editor) ────────────────────────────────
+
+export type DeviceReviewSection = "power" | "network" | "buttons" | "macros";
+
+export interface DeviceReviewGroup {
+  section: DeviceReviewSection;
+  entries: ActivityReviewEntry[];
+}
+
+const DEVICE_SECTION_ORDER: DeviceReviewSection[] = ["power", "network", "buttons", "macros"];
+
+interface RawMacroRow {
+  button_id?: number;
+  name?: string;
+  steps?: unknown[];
+}
+
+function rawDeviceMacros(bundle: BackupBundlePayload, deviceId: number): Map<number, RawMacroRow> {
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId),
+  ) as { macros?: RawMacroRow[] } | undefined;
+  const rows = new Map<number, RawMacroRow>();
+  for (const macro of device?.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId > 0) rows.set(buttonId, macro);
+  }
+  return rows;
+}
+
+function macroStepsSignature(macro: RawMacroRow | undefined): string {
+  return JSON.stringify(macro?.steps ?? []);
+}
+
+export function diffDeviceForReview(
+  baseline: BackupBundlePayload | null,
+  edited: BackupBundlePayload | null,
+  deviceId: number,
+): DeviceReviewGroup[] {
+  const D = TOOLS_CARD_STRINGS.activities.deviceReview;
+  const buckets: Record<DeviceReviewSection, ActivityReviewEntry[]> = {
+    power: [],
+    network: [],
+    buttons: [],
+    macros: [],
+  };
+  if (!baseline || !edited) return [];
+
+  // Network: the device-head IP address (hue / roku / sonos).
+  const ipBefore = deviceIpAddress(baseline, deviceId);
+  const ipAfter = deviceIpAddress(edited, deviceId);
+  if (ipBefore !== ipAfter) {
+    buckets.network.push({
+      text: ipAfter ? D.ipChanged(ipAfter) : D.ipCleared,
+    });
+  }
+
+  // Power: automatic power control byte + the two power sequences.
+  const idleBefore = deviceIdleBehavior(baseline, deviceId);
+  const idleAfter = deviceIdleBehavior(edited, deviceId);
+  if (idleBefore !== idleAfter) {
+    const label = R.idleShort[Number(idleAfter ?? 0)] ?? String(idleAfter);
+    buckets.power.push({ text: D.powerControlChanged(label) });
+  }
+  const baseMacros = rawDeviceMacros(baseline, deviceId);
+  const editMacros = rawDeviceMacros(edited, deviceId);
+  for (const [buttonId, text] of [
+    [POWER_ON_MACRO_BUTTON_ID, D.powerOnChanged],
+    [POWER_OFF_MACRO_BUTTON_ID, D.powerOffChanged],
+  ] as Array<[number, string]>) {
+    if (macroStepsSignature(baseMacros.get(buttonId)) !== macroStepsSignature(editMacros.get(buttonId))) {
+      buckets.power.push({ text });
+    }
+  }
+
+  // Macros (non-power): added / removed / renamed / steps edited.
+  const isPower = (id: number) => id === POWER_ON_MACRO_BUTTON_ID || id === POWER_OFF_MACRO_BUTTON_ID;
+  for (const [buttonId, macro] of editMacros) {
+    if (isPower(buttonId)) continue;
+    const before = baseMacros.get(buttonId);
+    const name = String(macro?.name || `Macro ${buttonId}`);
+    if (!before) {
+      buckets.macros.push({ text: D.macroAdded(name) });
+      continue;
+    }
+    const renamed = String(before?.name || "") !== String(macro?.name || "");
+    const stepsChanged = macroStepsSignature(before) !== macroStepsSignature(macro);
+    if (renamed) buckets.macros.push({ text: D.macroRenamed(String(before?.name || ""), name) });
+    if (stepsChanged) buckets.macros.push({ text: D.macroChanged(name) });
+  }
+  for (const [buttonId, macro] of baseMacros) {
+    if (isPower(buttonId) || editMacros.has(buttonId)) continue;
+    buckets.macros.push({ text: D.macroRemoved(String(macro?.name || `Macro ${buttonId}`)) });
+  }
+
+  // Buttons: the device's own binding rows.
+  const baseBindings = new Map(deviceButtonBindingItems(baseline, deviceId).map((item) => [item.buttonId, item]));
+  const editBindings = new Map(deviceButtonBindingItems(edited, deviceId).map((item) => [item.buttonId, item]));
+  for (const [buttonId, item] of editBindings) {
+    const before = baseBindings.get(buttonId);
+    const changed = !before
+      || before.commandId !== item.commandId
+      || (before.longPress?.commandId ?? null) !== (item.longPress?.commandId ?? null);
+    if (changed) buckets.buttons.push({ text: D.bindingBound(item.buttonName, item.shortPressLabel) });
+  }
+  for (const [buttonId, item] of baseBindings) {
+    if (!editBindings.has(buttonId)) buckets.buttons.push({ text: D.bindingCleared(item.buttonName) });
+  }
+
+  return DEVICE_SECTION_ORDER
+    .map((section) => ({ section, entries: buckets[section] }))
+    .filter((group) => group.entries.length > 0);
+}
+
 // ── Devices (membership) ──────────────────────────────────────────────
 
 function diffMembership(
@@ -120,9 +235,6 @@ function diffStart(
   for (const [deviceId, member] of editById) {
     const before = baseById.get(deviceId);
     if (!before) continue; // added/removed handled by membership
-    if (member.powersOn !== before.powersOn) {
-      buckets.start.push({ text: member.powersOn ? R.powersOnNow(member.deviceName) : R.powersOnNo(member.deviceName) });
-    }
     if ((member.inputCommandId ?? null) !== (before.inputCommandId ?? null)) {
       buckets.start.push({
         text: member.inputCommandId != null && member.inputCommandName
@@ -178,6 +290,19 @@ function diffButtons(
 // ── Shortcuts (quick access) ──────────────────────────────────────────
 
 function shortcutIdentity(item: BackupActivityQuickAccessItem): string {
+  // The editor reassigns quick-access button_ids positionally on every edit,
+  // so button_id is a display position, not a stable identity. A favorite's
+  // durable identity is its content (device + command). A macro has no single
+  // command, so its label is the nearest durable identity (mirroring the sync
+  // planner's content matching) — falling back to button_id would make every
+  // move of a macro read as an add + remove pair. Unnamed macros keep the
+  // button_id fallback.
+  if (item.kind === "favorite" && item.deviceId != null && item.commandId != null) {
+    return `favorite:${item.deviceId}:${item.commandId}`;
+  }
+  if (item.kind === "macro" && String(item.label || "").trim()) {
+    return `macro:${String(item.label).trim()}`;
+  }
   return `${item.kind}:${item.buttonId}`;
 }
 
@@ -220,17 +345,13 @@ function diffShortcuts(
 // ── When it ends (power-off) ──────────────────────────────────────────
 
 function diffEnd(
-  buckets: Record<ActivityReviewSection, ActivityReviewEntry[]>,
-  baseById: Map<number, BackupActivityMemberView>,
-  editById: Map<number, BackupActivityMemberView>,
+  _buckets: Record<ActivityReviewSection, ActivityReviewEntry[]>,
+  _baseById: Map<number, BackupActivityMemberView>,
+  _editById: Map<number, BackupActivityMemberView>,
 ) {
-  for (const [deviceId, member] of editById) {
-    const before = baseById.get(deviceId);
-    if (!before) continue;
-    if (member.powersOff !== before.powersOff) {
-      buckets.end.push({ text: member.powersOff ? R.powersOffNow(member.deviceName) : R.powersOffNo(member.deviceName) });
-    }
-  }
+  // Per-device end behavior is encoded by device-wide idle behavior, not by
+  // optional activity POWER_OFF refs. The idle diff is reported under
+  // Device-wide changes because it applies everywhere that device is used.
 }
 
 // ── Device-wide (idle behavior, command renames) ──────────────────────

@@ -43,14 +43,6 @@ class _Hub:
         self.fetch_calls = []
         self.play_calls = []
         self.play_return = True
-        self.persist_calls = []
-        self.persist_return = {
-            "status": "success",
-            "device_id": 11,
-            "command_id": 112,
-            "command_name": "New Command",
-            "page_count": 4,
-        }
 
     async def async_fetch_blob(self, *, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
         self.fetch_calls.append((device_id, command_id, wait_timeout))
@@ -59,18 +51,6 @@ class _Hub:
     async def async_play_ir_blob(self, blob: bytes, *, inter_frame_delay: float = 0.08):
         self.play_calls.append((blob, inter_frame_delay))
         return self.play_return
-
-    async def async_persist_ir_blob(
-        self,
-        *,
-        device_id: int,
-        command_name: str,
-        blob: bytes,
-        inter_frame_delay: float = 0.08,
-        wait_timeout: float = 10.0,
-    ):
-        self.persist_calls.append((device_id, command_name, blob, inter_frame_delay, wait_timeout))
-        return self.persist_return
 
 
 def test_ws_fetch_blob_returns_normalized_payload(monkeypatch):
@@ -227,79 +207,4 @@ def test_ws_play_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):
         5,
         "unavailable",
         "Hub is not ready to play IR blob (proxy client connected?)",
-    )
-
-
-def test_ws_persist_ir_blob_accepts_descriptor(monkeypatch):
-    conn = _Conn()
-    hub = _Hub()
-
-    async def fake_resolve(_hass, _data):
-        return hub
-
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
-
-    loop = asyncio.new_event_loop()
-    try:
-      loop.run_until_complete(
-          integration._ws_persist_ir_blob(
-              SimpleNamespace(data={}),
-              conn,
-              {
-                  "id": 6,
-                  "entry_id": "entry-1",
-                  "device_id": 11,
-                  "command_name": "New Command",
-                  "blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
-              },
-          )
-      )
-    finally:
-      loop.close()
-
-    assert conn.error is None
-    assert conn.result == (6, hub.persist_return)
-    assert hub.persist_calls[-1][0] == 11
-    assert hub.persist_calls[-1][1] == "New Command"
-    assert isinstance(hub.persist_calls[-1][2], bytes)
-    # Descriptor library_data begins with a 2-byte BE descriptor-text length
-    # ("P:Sony12 R:40000 D:1 F:18 MUL:2" = 31 chars = 0x001F).
-    assert hub.persist_calls[-1][2][:2] == b"\x00\x1f"
-
-
-def test_ws_persist_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):
-    conn = _Conn()
-    hub = _Hub()
-    hub.persist_return = None
-
-    async def fake_resolve(_hass, _data):
-        return hub
-
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
-
-    loop = asyncio.new_event_loop()
-    try:
-      loop.run_until_complete(
-          integration._ws_persist_ir_blob(
-              SimpleNamespace(data={}),
-              conn,
-              {
-                  "id": 7,
-                  "entry_id": "entry-1",
-                  "device_id": 11,
-                  "command_name": "New Command",
-                  "blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
-              },
-          )
-      )
-    finally:
-      loop.close()
-
-    assert conn.result is None
-    assert conn.error == (
-        7,
-        "unavailable",
-        "Hub is not ready to persist IR blob (proxy client connected?)",
     )

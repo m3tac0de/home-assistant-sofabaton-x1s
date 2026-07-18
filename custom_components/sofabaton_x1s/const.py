@@ -91,16 +91,16 @@ def signal_ip_commands(entry_id: str) -> str:
     return f"sofabaton_x1s_ip_commands_{entry_id}"
 
 
+def signal_hub_events(entry_id: str) -> str:
+    return f"sofabaton_x1s_hub_events_{entry_id}"
+
+
 def signal_wifi_device(entry_id: str) -> str:
     return f"sofabaton_x1s_wifi_device_{entry_id}"
 
 
 def signal_command_sync(entry_id: str) -> str:
     return f"sofabaton_x1s_command_sync_{entry_id}"
-
-
-def signal_remote_battery(entry_id: str) -> str:
-    return f"sofabaton_x1s_remote_battery_{entry_id}"
 
 
 def format_hub_entry_title(version: str | None, host: str | None, mac: str | None) -> str:

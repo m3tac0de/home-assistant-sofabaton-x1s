@@ -1,11 +1,11 @@
-import asyncio
+﻿import asyncio
 import logging
 import pytest
 from types import SimpleNamespace
 
 import custom_components.sofabaton_x1s.hub as hub_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S, HUB_VERSION_X2
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
 from custom_components.sofabaton_x1s.lib.devices import DeviceConfig, build_device_create_payload
 from custom_components.sofabaton_x1s.lib.macros import MacroKeyEntry, MacroRecord
@@ -188,7 +188,7 @@ def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
                 "command_blob": blob_body.hex(" "),
                 "parsed_blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
                 # IR descriptive payloads now ride the same `decoded`
-                # block shape as the wifi virtual device classes — the
+                # block shape as the wifi virtual device classes â€” the
                 # decoder is content-sniffed via the magic prefix and
                 # returns None for non-descriptive IR blobs, so this
                 # field is populated here and empty for raw IR rows.
@@ -304,7 +304,7 @@ def test_async_fetch_blob_decoded_block_for_wifi_ip(monkeypatch):
 def test_build_hub_code_record_restore_data_attaches_decoded_for_wifi_ip():
     """`restore_data` for virtual classes carries the decoded block.
 
-    The block is purely additive — `data_hex` stays byte-identical to
+    The block is purely additive â€” `data_hex` stays byte-identical to
     what backups produce today, so older restore paths (which only
     read `data_hex`) keep working. This test pins the additive shape
     explicitly so a future refactor cannot quietly start mutating
@@ -338,14 +338,17 @@ def test_build_hub_code_record_restore_data_attaches_decoded_for_wifi_ip():
     )
 
     assert restore_data is not None
-    # data_hex preserved verbatim — restore path keeps working.
-    assert restore_data["data_hex"] == wifi_ip_full_hex
+    # data_hex is the stable blob body: the persisted write-context tail
+    # ("f1") is split into persist_tail_hex so restore seals a fresh one
+    # (live-bench finding: keeping it grew the record every round-trip).
+    assert restore_data["data_hex"] == wifi_ip_full_hex.rsplit(" ", 1)[0]
+    assert restore_data["persist_tail_hex"] == "f1"
     assert restore_data["transport"] == "hub_code_record"
     assert restore_data["library_type"] == 0x1C
 
     decoded = restore_data["decoded"]
     assert decoded["class"] == "wifi_ip"
-    assert decoded["trailer_hex"] == "f1"  # unstripped path keeps the byte
+    assert decoded["trailer_hex"] == ""  # tail no longer part of the body
     assert decoded["fields"]["host"] == "192.168.2.77"
     assert decoded["fields"]["port"] == 8060
     assert decoded["fields"]["path"] == "/launch/fc012c39d390/1/0/short"
@@ -356,8 +359,8 @@ def test_ir_decoder_attaches_block_for_descriptive_payload():
 
     The IR backup branch in :meth:`async_backup_device` attaches a
     ``decoded`` block on the row by calling
-    ``try_decode_command_blob("ir", blob_hex)``. That single call —
-    the actual integration point — is exercised here. End-to-end
+    ``try_decode_command_blob("ir", blob_hex)``. That single call â€”
+    the actual integration point â€” is exercised here. End-to-end
     backup-pipeline integration is covered by the bundle tests.
     """
 
@@ -391,7 +394,8 @@ def test_build_hub_code_record_restore_data_no_decoded_for_unsupported_class():
         command, device_class="bluetooth"
     )
     assert restore_data is not None
-    assert restore_data["data_hex"] == "0c 00 30 74"
+    assert restore_data["data_hex"] == "0c 00 30"
+    assert restore_data["persist_tail_hex"] == "74"
     assert "decoded" not in restore_data
 
 
@@ -462,9 +466,9 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
     assert result["complete"] is True
     # Device-255 macro entries are firmware "delay/wait" sentinel rows
     # (head byte 0xFF, delay byte carries the pause). Commit 0700430
-    # ("Evolved backup edit … Fixed issue in backup/restore where macro
+    # ("Evolved backup edit â€¦ Fixed issue in backup/restore where macro
     # delays weren't being backed up and restored") deliberately stopped
-    # filtering them — they're preserved verbatim through backup→restore
+    # filtering them â€” they're preserved verbatim through backupâ†’restore
     # so the firmware can replay inter-step pauses. They're still excluded
     # from referenced_source_device_ids because they don't point at a real
     # source device.
@@ -720,7 +724,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "tail_marker": 0,
         "extras": None,
     }
-    # restore_data now carries a `decoded` block alongside the raw bytes —
+    # restore_data now carries a `decoded` block alongside the raw bytes â€”
     # the same IR descriptor decoder that the fetch-blob path uses. This is
     # the canonical view for descriptive IR blobs and is what restore reads
     # when rewriting the body for the destination hub.
@@ -1009,7 +1013,8 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
                 "transport": "hub_code_record",
                 "library_type": 0x1C,
                 "command_code": "00 00 00 00 4e 21",
-                "data_hex": "aa bb cc dd",
+                "data_hex": "aa bb cc",
+                "persist_tail_hex": "dd",
             },
         }
     ]
@@ -1116,7 +1121,8 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
                 "transport": "hub_code_record",
                 "library_type": 0x03,
                 "command_code": "00 00 00 00 4e 25",
-                "data_hex": "aa bb cc dd",
+                "data_hex": "aa bb cc",
+                "persist_tail_hex": "dd",
             },
         }
     ]
@@ -1314,7 +1320,7 @@ def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch
     assert full_refresh_calls == [(11, 10.0)]
     # Post-persist single-command refresh now runs as background housekeeping
     # with a capped budget (refresh_budget = min(2.0, wait_timeout)) and
-    # force_refresh=False — the persist itself has already settled on the
+    # force_refresh=False â€” the persist itself has already settled on the
     # hub, so this pass just re-pulls the metadata on a best-effort basis.
     assert single_refresh_calls == [(11, 112, 2.0, False)]
 
@@ -1602,6 +1608,7 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
             "id": act_id,
             "name": "Movies",
             "is_active": True,
+            "sort": 0,
             "favorite_count": 1,
             "keybinding_count": 0,
             "macro_count": 1,
@@ -1624,12 +1631,45 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
         {
             "id": dev_id,
             "name": "Denon",
+            "sort": 0,
             "device_class": "ir",
             "device_class_code": 0x0D,
             "command_count": 2,
             "has_commands": True,
         }
     ]
+
+    loop.close()
+
+
+def test_cache_devices_list_reads_sort_byte_from_state_raw_body() -> None:
+    """Device rows expose the record's sort byte (body[6]) like activities do."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    dev_id = 0x04
+    raw_body = bytearray(32)
+    raw_body[6] = 0x05
+    hub.devices[dev_id] = {"name": "Denon"}
+    hub._proxy.state.devices[dev_id] = {"name": "Denon", "raw_body": bytes(raw_body)}
+
+    payload = loop.run_until_complete(hub.async_get_cache_contents())
+
+    assert [(row["id"], row["sort"]) for row in payload["devices_list"]] == [(dev_id, 0x05)]
 
     loop.close()
 
@@ -1798,149 +1838,6 @@ def test_async_restore_persistent_cache_bumps_cache_generation():
     loop.run_until_complete(hub.async_restore_persistent_cache({}))
 
     assert hub.cache_generation == 1
-
-    loop.close()
-
-
-def test_async_poll_remote_battery_updates_cached_state(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    hass = FakeHass(loop)
-
-    hub = SofabatonHub(
-        hass,
-        "entry-id",
-        "hub-name",
-        "127.0.0.1",
-        1234,
-        {},
-        9999,
-        10000,
-        True,
-        False,
-        version=HUB_VERSION_X2,
-    )
-    calls: list[float] = []
-
-    def _poll(*, timeout: float = 2.0):
-        calls.append(timeout)
-        return {
-            "ok": True,
-            "decoded": {
-                "battery": 84,
-                "name": "Remote 1",
-                "remote_id": 8,
-                "remote_id_hex": "00 00 08",
-                "accessory_id": 8,
-                "online": True,
-                "hardware_version": 4,
-                "firmware_version": 7,
-                "production_batch_hex": "20 25 06 10",
-            },
-        }
-
-    monkeypatch.setattr(hub._proxy, "poll_x2_remote_battery", _poll)
-
-    result = loop.run_until_complete(
-        hub.async_poll_remote_battery(wait_timeout=1.25)
-    )
-
-    assert calls == [1.25]
-    assert result["ok"] is True
-    assert hub.remote_battery_level == 84
-    assert hub.get_remote_battery_state()["level"] == 84
-    attrs = hub.get_remote_battery_attributes()
-    assert attrs["last_poll_status"] == "success"
-    assert attrs["remote_name"] == "Remote 1"
-    assert attrs["remote_id"] == 8
-    assert attrs["remote_id_hex"] == "00 00 08"
-    assert attrs["accessory_id"] == 8
-
-    loop.close()
-
-
-def test_remote_battery_unconfirmed_zero_preserves_previous_value():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    hass = FakeHass(loop)
-
-    hub = SofabatonHub(
-        hass,
-        "entry-id",
-        "hub-name",
-        "127.0.0.1",
-        1234,
-        {},
-        9999,
-        10000,
-        True,
-        False,
-        version=HUB_VERSION_X2,
-    )
-    hub.remote_battery_level = 82
-
-    hub._record_remote_battery_poll(
-        {
-            "ok": True,
-            "unconfirmed_zero": True,
-            "decoded": {
-                "battery": 0,
-                "name": "Remote 1",
-                "remote_id": 8,
-                "remote_id_hex": "00 00 08",
-                "accessory_id": 8,
-            },
-        }
-    )
-
-    assert hub.remote_battery_level == 82
-    attrs = hub.get_remote_battery_attributes()
-    assert attrs["unconfirmed_zero"] is True
-    assert attrs["last_poll_status"] == "zero_ignored"
-    assert attrs["last_raw_battery"] == 0
-
-    loop.close()
-
-
-def test_remote_battery_unconfirmed_zero_without_previous_value_stays_unavailable():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    hass = FakeHass(loop)
-
-    hub = SofabatonHub(
-        hass,
-        "entry-id",
-        "hub-name",
-        "127.0.0.1",
-        1234,
-        {},
-        9999,
-        10000,
-        True,
-        False,
-        version=HUB_VERSION_X2,
-    )
-
-    hub._record_remote_battery_poll(
-        {
-            "ok": True,
-            "unconfirmed_zero": True,
-            "decoded": {
-                "battery": 0,
-                "name": "Remote 1",
-                "remote_id": 8,
-                "remote_id_hex": "00 00 08",
-                "accessory_id": 8,
-            },
-        }
-    )
-
-    assert hub.remote_battery_level is None
-    state = hub.get_remote_battery_state()
-    assert state["level"] is None
-    attrs = hub.get_remote_battery_attributes()
-    assert attrs["last_poll_status"] == "zero_ignored"
-    assert attrs["last_raw_battery"] == 0
 
     loop.close()
 
@@ -2890,6 +2787,11 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
         resync_calls.append(True)
 
     monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    monkeypatch.setattr(
+        hub,
+        "async_request_favorites_order",
+        lambda *_a, **_k: asyncio.sleep(0, result=[(1, 1)]),
+    )
 
     payload = {
         "commands": [
@@ -2934,7 +2836,9 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
     assert requested_maps == [101]
     assert requested_buttons == [(101, True)]
-    assert cache_refresh_calls == [(101, True, False, True)]
+    # The post-deploy warm now runs the full per-activity refresh, which
+    # clears favorites too before refetching them from the keymap burst.
+    assert cache_refresh_calls == [(101, True, True, True)]
     assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
     assert resync_calls == [True]
 
@@ -3204,6 +3108,118 @@ def test_prime_buttons_requests_activity_map_before_favorite_command_resolution(
     loop.close()
 
 
+def test_sync_command_config_rewarms_every_touched_activity(monkeypatch):
+    """A deploy must leave every touched activity's structural cache warm.
+
+    The write steps (managed-device delete, re-add, favorite/keymap writes,
+    family-0x61 reorder) each invalidate parts of the per-activity cache, so
+    step 7 has to run the full per-activity refresh for every activity the
+    deploy touched -- and re-read the favorites display order for activities
+    that had favorites reordered.
+    """
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    async def _refresh_devices(_timeout=15.0):
+        return {}
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices)
+    monkeypatch.setattr(
+        hub,
+        "async_create_wifi_device",
+        lambda *_a, **_k: asyncio.sleep(0, result={"device_id": 9, "status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_add_device_to_activity",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_command_to_favorite",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success", "fav_id": 1}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_command_to_button",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_reorder_favorites",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_a, **_k: asyncio.sleep(0),
+    )
+    monkeypatch.setattr(hub, "async_resync_remote", lambda: asyncio.sleep(0))
+
+    order_reads: list[int] = []
+
+    def _order_read(act_id, *_a, **_k):
+        order_reads.append(int(act_id))
+        return asyncio.sleep(0, result=[(1, 1)])
+
+    monkeypatch.setattr(hub, "async_request_favorites_order", _order_read)
+
+    warmed: list[int] = []
+
+    async def _fetch_activity_commands(act_id: int):
+        warmed.append(int(act_id))
+
+    monkeypatch.setattr(hub, "_async_fetch_activity_commands", _fetch_activity_commands)
+
+    payload = {
+        "commands": [
+            {
+                "name": "Fav Command",
+                "add_as_favorite": True,
+                "hard_button": "",
+                "activities": ["101"],
+                "action": {"action": "perform-action"},
+            },
+            {
+                "name": "Button Command",
+                "add_as_favorite": False,
+                "hard_button": "menu",
+                "activities": ["102"],
+                "action": {"action": "perform-action"},
+            },
+        ],
+        "commands_hash": "abc",
+    }
+
+    loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert warmed == [101, 102]
+    # Only activity 101 got a favorite (and thus a reorder); the display
+    # order is re-read once by the reorder step and once by the warm.
+    assert order_reads == [101, 101]
+
+    loop.close()
+
+
 def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -3393,6 +3409,132 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
 
     loop.close()
 
+
+
+def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
+    """Build a hub whose sync-relevant methods record into *call_order*.
+
+    The hub snapshot contains one managed device (id 11) so the deploy runs
+    the full delete/create/add sequence.
+    """
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    snapshot = {11: {"brand": "m3-default-oldhash", "name": "Managed Device"}}
+
+    async def _snapshot(*_args, **_kwargs):
+        return dict(snapshot)
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _snapshot)
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_, **__: None)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
+
+    async def _create(*_args, **_kwargs):
+        call_order.append("create")
+        return {"device_id": 9, "status": "success"}
+
+    async def _add_activity(act_id, dev_id, **_kwargs):
+        call_order.append(f"add:{act_id}:{dev_id}")
+        return {"status": "success"}
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        call_order.append(f"delete:{dev_id}")
+        if dev_id in fail_delete_ids:
+            return None
+        return {"status": "success"}
+
+    async def _button(*_args, **_kwargs):
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
+
+    async def _resync_remote():
+        return None
+
+    monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    return hub
+
+
+_SYNC_ORDER_PAYLOAD = {
+    "commands": [
+        {
+            "name": "Command 1",
+            "add_as_favorite": False,
+            "hard_button": "ok",
+            "activities": ["101"],
+            "action": {"action": "perform-action"},
+        }
+    ],
+    "commands_hash": "abc",
+}
+
+
+def test_sync_command_config_deletes_managed_device_after_activity_add(monkeypatch):
+    """The old managed device is deleted only after the replacement joined
+    its activities: the hub purges activities left with zero member devices,
+    so the previous delete-first order destroyed any activity whose sole
+    member was the managed Wifi Device."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert call_order == ["create", "add:101:9", "delete:11"]
+    assert result["status"] == "success"
+    assert result["wifi_device_id"] == 9
+
+    loop.close()
+
+
+def test_sync_command_config_rolls_back_created_device_when_managed_delete_fails(monkeypatch):
+    """A failed delete of the old managed device removes the freshly created
+    replacement again; the store still points at the old device id, so
+    leaving the new one behind would orphan it on the next sync."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order, fail_delete_ids=(11,))
+
+    with pytest.raises(Exception, match="Failed deleting managed device 11"):
+        loop.run_until_complete(
+            hub.async_sync_command_config(
+                command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+            )
+        )
+
+    assert call_order == ["create", "add:101:9", "delete:11", "delete:9"]
+
+    loop.close()
 
 
 def test_refresh_devices_snapshot_default_timeout_is_15_seconds():
@@ -3681,7 +3823,7 @@ def test_sync_command_config_post_hoc_reorder_uses_tracked_fav_ids(monkeypatch):
     # new_fav_id_set  = {1, 2, 3, 4, 5}
     # pre_existing    = fav_ids from scrambled_order NOT in new_fav_id_set,
     #                   sorted by their slot: [(5,1),(1,2),(3,3),(2,4),(4,5),(6,6)]
-    #                   → only fav_id 6 (slot 6) survives the filter
+    #                   â†’ only fav_id 6 (slot 6) survives the filter
     # final_order     = [6] + [1, 2, 3, 4, 5]
     assert reorder_calls == [(101, [6, 1, 2, 3, 4, 5])]
 
@@ -3717,6 +3859,7 @@ def test_sync_command_config_with_zero_slots_keeps_listener_when_another_device_
             *,
             deployed_device_id=None,
             commands_hash="",
+            request_port=None,
         ):
             self.devices[device_key] = {
                 "device_key": device_key,
@@ -3912,6 +4055,7 @@ def test_sync_command_config_with_missing_metadata_matches_unique_hash_only_bran
             *,
             deployed_device_id=None,
             commands_hash="",
+            request_port=None,
         ):
             return None
 
@@ -3990,6 +4134,7 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
             *,
             deployed_device_id=None,
             commands_hash="",
+            request_port=None,
         ):
             return None
 
@@ -4729,3 +4874,762 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     assert set(cleared) == {(5, "activity"), (6, "activity")}
 
     loop.close()
+
+
+def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
+    """Preflight refuses to deploy when a configured activity id now carries a
+    different name on the hub (id reuse after app-side delete/recreate)."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
+
+    catalog_calls: list[str] = []
+
+    async def _request_catalog(kind, timeout_seconds=30.0):
+        catalog_calls.append(kind)
+        hub._activities_generation += 1
+        hub.activities = {101: {"name": "Movie Night", "active": False}}
+
+    monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
+
+    delete_calls: list[int] = []
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        delete_calls.append(dev_id)
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [{"name": "Command 1", "add_as_favorite": True, "activities": ["101"]}],
+        "commands_hash": "abc",
+        "activity_labels": {"101": "TV"},
+    }
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="Failed Activity validation"):
+        loop.run_until_complete(
+            hub.async_sync_command_config(command_payload=payload, request_port=8060)
+        )
+
+    assert catalog_calls == ["activities"]
+    # The preflight must abort before the destructive delete/recreate begins.
+    assert delete_calls == []
+
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "failed"
+    assert "Failed Activity validation" in progress["message"]
+    assert '"TV"' in progress["message"]
+    assert '"Movie Night"' in progress["message"]
+
+    loop.close()
+
+
+def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
+    """If the fresh activity read never lands, abort instead of deploying
+    against a stale (now cleared) catalog."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
+
+    async def _request_catalog(kind, timeout_seconds=30.0):
+        return None  # no generation bump: the burst never arrived
+
+    monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
+
+    delete_calls: list[int] = []
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        delete_calls.append(dev_id)
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [{"name": "Command 1", "add_as_favorite": True, "activities": ["101"]}],
+        "commands_hash": "abc",
+        "activity_labels": {"101": "TV"},
+    }
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="Failed to refresh the Activity list"):
+        loop.run_until_complete(
+            hub.async_sync_command_config(command_payload=payload, request_port=8060)
+        )
+
+    assert delete_calls == []
+
+    loop.close()
+
+
+def test_sync_command_config_proceeds_when_activity_labels_match(monkeypatch):
+    """Matching labels (or absent snapshots) let the deploy continue after the
+    fresh catalog read."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
+
+    catalog_calls: list[str] = []
+
+    async def _request_catalog(kind, timeout_seconds=30.0):
+        catalog_calls.append(kind)
+        hub._activities_generation += 1
+        hub.activities = {101: {"name": "TV", "active": False}}
+
+    monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_buttons_for_entity",
+        lambda ent_id, *, fetch_if_missing=True: ([], True),
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "clear_entity_cache",
+        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False: None,
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_macros_for_activity",
+        lambda act_id, *, fetch_if_missing=True: ([], False),
+    )
+
+    create_calls: list[dict[str, object]] = []
+
+    async def _create(*_args, **_kwargs):
+        create_calls.append(dict(_kwargs))
+        return {"device_id": 9, "status": "success"}
+
+    add_calls: list[int] = []
+
+    async def _add_activity(activity_id, *_args, **_kwargs):
+        add_calls.append(activity_id)
+        return {"status": "success"}
+
+    async def _favorite(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _button(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _delete(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _resync_remote():
+        return None
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_command_to_favorite", _favorite)
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
+
+    payload = {
+        "commands": [
+            {
+                "name": "Command 1",
+                "add_as_favorite": True,
+                "activities": ["101"],
+                "action": {"action": "perform-action"},
+            }
+        ],
+        "power_on_command_id": 1,
+        "commands_hash": "abc",
+        "activity_labels": {"101": "TV"},
+    }
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert result["status"] == "success"
+    assert catalog_calls == ["activities"]
+    assert len(create_calls) == 1
+    assert add_calls == [101]
+
+    loop.close()
+
+
+def test_sync_command_config_ignores_orphaned_activities(monkeypatch):
+    """A slot with an activities list but neither add_as_favorite nor a hard
+    button must not pull the wifi device into those activities (issue #258:
+    the editor auto-selects a default activity and hides — without clearing —
+    the selection when both toggles are off)."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
+
+    catalog_calls: list[str] = []
+
+    async def _request_catalog(kind, timeout_seconds=30.0):
+        catalog_calls.append(kind)
+        hub._activities_generation += 1
+
+    monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
+
+    create_calls: list[dict[str, object]] = []
+
+    async def _create(*_args, **_kwargs):
+        create_calls.append(dict(_kwargs))
+        return {"device_id": 9, "status": "success"}
+
+    add_calls: list[int] = []
+
+    async def _add_activity(activity_id, *_args, **_kwargs):
+        add_calls.append(activity_id)
+        return {"status": "success"}
+
+    async def _delete(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _resync_remote():
+        return None
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
+
+    payload = {
+        "commands": [
+            {
+                "name": "Command 1",
+                "add_as_favorite": False,
+                "hard_button": "",
+                "activities": ["101", "102"],
+                "action": {"action": "perform-action"},
+            }
+        ],
+        "commands_hash": "abc",
+    }
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert result["status"] == "success"
+    assert len(create_calls) == 1
+    # No honored activity references: no preflight catalog read, no adds.
+    assert catalog_calls == []
+    assert add_calls == []
+
+    loop.close()
+
+
+def _make_event_hook_hub(monkeypatch, activity_actions=None):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+    )
+
+    async def _noop_prime(_activity_id):
+        return None
+
+    monkeypatch.setattr(hub, "_async_prime_buttons_for", _noop_prime)
+
+    executed: list[dict] = []
+
+    async def _record_action(action_config):
+        executed.append(dict(action_config))
+
+    monkeypatch.setattr(hub, "_async_execute_action_config", _record_action)
+
+    class _EventStore:
+        def get_hub_event_actions(self, _entry_id):
+            return {
+                "power_off": {"action": "perform-action", "perform_action": "script.hub_off"},
+                "redundant_off": {"action": "perform-action", "perform_action": "script.still_off"},
+                "activity_start": {"action": "perform-action", "perform_action": "script.started"},
+                "activity_stop": {"action": "perform-action", "perform_action": "script.stopped"},
+            }
+
+        def get_activity_event_actions(self, _entry_id):
+            return dict(activity_actions or {})
+
+    async def _fake_store(_hass):
+        return _EventStore()
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_get_command_config_store", _fake_store
+    )
+
+    def _drain():
+        loop.run_until_complete(asyncio.sleep(0))
+        loop.run_until_complete(asyncio.sleep(0))
+
+    return hub, loop, executed, _drain
+
+
+def test_hub_event_actions_fire_on_activity_transitions(monkeypatch):
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        # First resolution after startup only arms the hooks.
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert executed == []
+
+        # Power off from 5: the global activity-stop hook runs before the
+        # power-off hook.
+        hub._on_activity_change(None, 5, None)
+        drain()
+        assert [a.get("perform_action") for a in executed] == [
+            "script.stopped",
+            "script.hub_off",
+        ]
+
+        hub._on_activity_change(7, None, "Music")
+        drain()
+        assert [a.get("perform_action") for a in executed] == [
+            "script.stopped",
+            "script.hub_off",
+            "script.started",
+        ]
+    finally:
+        loop.close()
+
+
+def test_hub_event_actions_fire_on_first_transition_after_powered_off_startup(monkeypatch):
+    # Startup with the hub powered off: the initial activities read resolves
+    # to "nothing running" without ever emitting an activity-change callback,
+    # so the catalog read itself must arm the hooks. The first real
+    # off -> activity transition then fires normally instead of being
+    # swallowed as the initial-state report.
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        monkeypatch.setattr(hub, "_get_activities_cached", lambda: ({}, True))
+        hub._on_activities_burst("activities")
+        drain()
+        assert executed == []
+        assert hub.get_last_hub_event() is None
+
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert [a.get("perform_action") for a in executed] == ["script.started"]
+        event = hub.get_last_hub_event()
+        assert event is not None
+        assert event["type"] == "activity_change"
+        assert event["from_activity_id"] is None
+        assert event["to_activity_id"] == 5
+    finally:
+        loop.close()
+
+
+def test_hub_event_hooks_not_armed_by_incomplete_activities_read(monkeypatch):
+    # A partial catalog read does not establish the activity state, so it
+    # must not arm the hooks: the initial-state report can still be pending
+    # and has to stay suppressed.
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        monkeypatch.setattr(hub, "_get_activities_cached", lambda: ({}, False))
+        hub._on_activities_burst("activities")
+        drain()
+
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert executed == []
+    finally:
+        loop.close()
+
+
+def test_hub_event_actions_redundant_off_press(monkeypatch):
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        hub._on_redundant_off_press()
+        drain()
+        assert [a.get("perform_action") for a in executed] == ["script.still_off"]
+    finally:
+        loop.close()
+
+
+_ACTIVITY_EVENT_ACTIONS = {
+    "5": {
+        "start": {"action": "perform-action", "perform_action": "script.movie_start"},
+        "stop": {"action": "perform-action", "perform_action": "script.movie_stop"},
+    },
+    "7": {
+        "start": {"action": "perform-action", "perform_action": "script.music_start"},
+        "stop": {"action": "perform-action", "perform_action": "script.music_stop"},
+    },
+}
+
+
+def test_activity_event_actions_fire_on_start_stop_and_switch(monkeypatch):
+    hub, loop, executed, drain = _make_event_hook_hub(
+        monkeypatch, activity_actions=_ACTIVITY_EVENT_ACTIONS
+    )
+    try:
+        # First resolution after startup only arms the hooks.
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert executed == []
+
+        # Direct switch 5 -> 7: the old activity's stop hook runs first with
+        # the global activity-stop hook right behind it, then the new one
+        # starts and the global activity-start hook runs.
+        hub._on_activity_change(7, 5, "Music")
+        drain()
+        assert [a.get("perform_action") for a in executed] == [
+            "script.movie_stop",
+            "script.stopped",
+            "script.music_start",
+            "script.started",
+        ]
+
+        # Power off from 7: its stop hook runs alongside the global stop and
+        # power-off hooks.
+        executed.clear()
+        hub._on_activity_change(None, 7, None)
+        drain()
+        assert [a.get("perform_action") for a in executed] == [
+            "script.music_stop",
+            "script.stopped",
+            "script.hub_off",
+        ]
+
+        # Power on into an activity with no configured entry: only the
+        # global hook fires.
+        executed.clear()
+        hub._on_activity_change(9, None, "Sports")
+        drain()
+        assert [a.get("perform_action") for a in executed] == ["script.started"]
+    finally:
+        loop.close()
+
+
+def test_hub_event_notify_records_transitions(monkeypatch):
+    hub, loop, _executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        # The arming resolution must not surface as a firing.
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert hub.get_last_hub_event() is None
+
+        hub._on_activity_change(7, 5, "Music")
+        drain()
+        event = hub.get_last_hub_event()
+        assert event is not None
+        assert event["type"] == "activity_change"
+        assert event["from_activity_id"] == 5
+        assert event["to_activity_id"] == 7
+        assert isinstance(event["timestamp"], float)
+
+        hub._on_activity_change(None, 7, None)
+        drain()
+        event = hub.get_last_hub_event()
+        assert event["type"] == "activity_change"
+        assert event["from_activity_id"] == 7
+        assert event["to_activity_id"] is None
+
+        hub._on_redundant_off_press()
+        drain()
+        assert hub.get_last_hub_event()["type"] == "redundant_off"
+    finally:
+        loop.close()
+
+
+def test_activities_burst_prunes_stale_activity_event_actions(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+    )
+
+    prune_calls: list[tuple[str, list[int]]] = []
+
+    class _PruneStore:
+        async def async_prune_activity_event_actions(self, entry_id, activity_ids):
+            prune_calls.append((entry_id, sorted(int(a) for a in activity_ids)))
+            return True
+
+    async def _fake_store(_hass):
+        return _PruneStore()
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_get_command_config_store", _fake_store
+    )
+
+    hub.activities = {101: {"name": "Movie", "active": False, "needs_confirm": False}}
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({102: {"name": "Music", "active": False, "needs_confirm": False}}, True),
+    )
+
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert prune_calls == [("entry-id", [102])]
+
+    # An identical follow-up burst (no catalog change) must not prune again.
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+    loop.run_until_complete(asyncio.sleep(0))
+    assert prune_calls == [("entry-id", [102])]
+
+    loop.close()
+
+
+def _make_delete_device_hub(monkeypatch, *, proxy_result):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+    )
+    monkeypatch.setattr(hub._proxy, "delete_device", lambda _dev_id: proxy_result)
+
+    persisted: list[bool] = []
+
+    async def _record_persist():
+        persisted.append(True)
+        return True
+
+    monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _record_persist)
+
+    warmed: list[int] = []
+
+    async def _record_warm(act_id):
+        warmed.append(int(act_id))
+
+    monkeypatch.setattr(hub, "_async_fetch_activity_commands", _record_warm)
+    return hub, loop, persisted, warmed
+
+
+def test_delete_device_drops_hub_snapshot_and_bumps_generation(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={"device_id": dev_lo, "confirmed_activities": [], "status": "success"},
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+        generation_before = hub.cache_generation
+        devices_generation_before = hub._devices_generation
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result and result.get("status") == "success"
+        # The hub-level snapshot feeds the Hub-tab device list; a successful
+        # delete must drop the row immediately instead of waiting for the
+        # next devices burst.
+        assert dev_lo not in hub.devices
+        assert hub._devices_generation == devices_generation_before + 1
+        assert hub.cache_generation == generation_before + 1
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_delete_device_failure_keeps_snapshot_and_generation(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(monkeypatch, proxy_result=None)
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+        generation_before = hub.cache_generation
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result is None
+        assert dev_lo in hub.devices
+        assert hub.cache_generation == generation_before
+        assert persisted == []
+        assert warmed == []
+    finally:
+        loop.close()
+
+
+def test_delete_activity_id_bumps_generation_without_touching_devices(monkeypatch):
+    act_id = 0x66
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={"device_id": act_id, "confirmed_activities": [], "status": "success"},
+    )
+    try:
+        hub.devices[0x14] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+        generation_before = hub.cache_generation
+        devices_generation_before = hub._devices_generation
+
+        result = loop.run_until_complete(hub.async_delete_device(act_id))
+
+        assert result and result.get("status") == "success"
+        assert 0x14 in hub.devices
+        assert hub._devices_generation == devices_generation_before
+        assert hub.cache_generation == generation_before + 1
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_delete_device_rewarms_confirmed_activities(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={
+            "device_id": dev_lo,
+            "confirmed_activities": [0x65, 0x66],
+            "status": "success",
+        },
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result and result.get("status") == "success"
+        # The proxy delete gutted these activities' cached keymap/favorites/
+        # macros; the hub-level delete must refetch them so the structural
+        # cache stays bundle-grade without a manual full refresh.
+        assert warmed == [0x65, 0x66]
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_delete_device_skips_rewarm_when_disabled(monkeypatch):
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={
+            "device_id": dev_lo,
+            "confirmed_activities": [0x65],
+            "status": "success",
+        },
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+
+        result = loop.run_until_complete(
+            hub.async_delete_device(dev_lo, refresh_impacted_activities=False)
+        )
+
+        assert result and result.get("status") == "success"
+        assert warmed == []
+        # Generation bump + persist still run: the deploy pipeline that opts
+        # out does its own re-warm before relying on the persisted cache.
+        assert persisted == [True]
+    finally:
+        loop.close()

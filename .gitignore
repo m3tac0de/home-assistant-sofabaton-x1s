@@ -24,5 +24,8 @@ playwright-report/
 test-results/
 artifacts/
 docs/internal/
+out/
 pytest.cmd
 dist/
+scripts/.ha-token
+scripts/.ha-config.json

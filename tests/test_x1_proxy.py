@@ -129,22 +129,20 @@ def test_try_finish_activities_burst_ends_burst_once_snapshot_is_complete() -> N
     assert proxy.state.current_activity_hint == 0x66
 
 
-def test_empty_activities_burst_commits_empty_snapshot_and_marks_ready() -> None:
+def test_silent_activities_burst_discards_snapshot_and_keeps_prior_state() -> None:
+    # Mirror of the devices case: silence means the request was dropped,
+    # not that the catalog is empty (an empty catalog answers 0x07).
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.state.activities = {0x65: {"name": "Keeper", "active": False, "needs_confirm": False}}
 
     proxy._begin_activity_request()
     proxy._burst.start("activities", now=0.0)
 
-    finished = proxy.try_finish_activities_burst()
-
-    assert finished is True
     proxy._on_activities_burst_end("activities")
     activities, ready = proxy.get_activities(force_refresh=False)
 
-    assert ready is True
-    assert activities == {}
-    assert proxy.state.activities == {}
-    assert proxy._activity_retry_due_at is None
+    assert ready is False
+    assert proxy.state.activities == {0x65: {"name": "Keeper", "active": False, "needs_confirm": False}}
 
 
 def test_status_ack_07_finishes_empty_activities_burst_immediately() -> None:
@@ -239,21 +237,23 @@ def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None
     }
 
 
-def test_empty_devices_burst_commits_empty_snapshot_and_marks_ready() -> None:
+def test_silent_devices_burst_discards_snapshot_and_keeps_prior_state() -> None:
+    # A devices request that ends with no rows AND no STATUS_ACK 0x07 was
+    # dropped by the hub (a truly empty catalog answers 0x07). It must be
+    # discarded, not committed as an empty catalog — committing wiped
+    # state.devices when a queued catalog retry fired mid write-sequence
+    # (live-bench finding, backup/restore chunk 2).
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.state.devices = {5: {"name": "Keeper"}}
 
     proxy._begin_device_request()
     proxy._burst.start("devices", now=0.0)
 
-    finished = proxy.try_finish_devices_burst()
-
-    assert finished is True
     proxy._on_devices_burst_end("devices")
     devices, ready = proxy.get_devices(force_refresh=False)
 
-    assert ready is True
-    assert devices == {}
-    assert proxy.state.devices == {}
+    assert ready is False
+    assert proxy.state.devices == {5: {"name": "Keeper"}}
 
 
 def test_status_ack_07_finishes_empty_devices_burst_immediately() -> None:
@@ -269,6 +269,72 @@ def test_status_ack_07_finishes_empty_devices_burst_immediately() -> None:
     devices, ready = proxy.get_devices(force_refresh=False)
     assert ready is True
     assert devices == {}
+
+
+def test_status_ack_07_finishes_empty_macros_burst_immediately() -> None:
+    """A macro-less entity answers REQ_MACRO_LABELS with a bare STATUS_ACK
+    0x07; the macros burst must finish then, not after the scheduler's 5s
+    response grace (which stalled whole-hub cache refresh per entity)."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._pending_macro_requests.add(7)
+    proxy._burst.start("macros:7", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert 7 in proxy._macros_complete
+    assert 7 not in proxy._pending_macro_requests
+
+
+def test_status_ack_07_finishes_empty_buttons_burst_immediately() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._pending_button_requests.add(9)
+    proxy._burst.start("buttons:9", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert 9 not in proxy._pending_button_requests
+    # The empty keymap is a definitive answer: the entity must be marked
+    # fetched, or backup_device waits out its timeout on
+    # ``dev_lo in state.buttons`` and stamps complete=False on a good
+    # capture (live-bench finding, backup/restore chunk 1).
+    assert proxy.state.buttons.get(9) == set()
+    assert proxy.get_buttons_for_entity(9, fetch_if_missing=False) == ([], True)
+
+
+def test_status_ack_07_finishes_empty_commands_burst_immediately() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._pending_command_requests[5] = {0xFF}
+    proxy._burst.start("commands:5", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert 5 in proxy._commands_complete
+    assert 5 not in proxy._pending_command_requests
+
+
+def test_status_ack_07_ignores_unrelated_bursts_and_statuses() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    # Non-0x07 statuses never touch the burst.
+    proxy._burst.start("macros:7", now=0.0)
+    assert proxy.note_catalog_status_ack(0x0C) is False
+    assert proxy._burst.active is True
+
+    # 0x07 with a burst kind outside the empty-reply family is left alone
+    # (ir_dump completion has its own pending/event bookkeeping).
+    proxy._burst.kind = "ir_dump:5:255"
+    assert proxy.note_catalog_status_ack(0x07) is False
+    assert proxy._burst.active is True
 
 
 def test_export_cache_state_omits_raw_body_bytes() -> None:
@@ -3566,11 +3632,14 @@ def test_send_paged_macro_save_waits_for_each_chunk_ack(monkeypatch) -> None:
 
     ack = proxy._send_paged_macro_save(payload=oversized_payload, macro_button=ButtonName.POWER_ON)
 
-    assert ack == (0x0112, b"\xc6")
+    # The final-page 0x0112 ack is not pinned to the macro key: the hub may
+    # ack with a different payload byte (e.g. after a cascading member
+    # removal), so the waiter accepts any 0x0112.
+    assert ack == (0x0112, b"\x00")
     assert [family for family, _payload in sent_pages] == [0x12, 0x12]
     assert sent_pages[0][1][:9] == bytes.fromhex("01 00 01 01 00 02 65 c6 14")
     assert sent_pages[1][1][:3] == bytes.fromhex("01 00 02")
-    assert ack_calls == [[(0x0103, None)], [(0x0112, 198), (0x0103, None)]]
+    assert ack_calls == [[(0x0103, None)], [(0x0112, None), (0x0103, None)]]
 
 
 def test_send_paged_macro_save_treats_nonzero_status_byte_as_rejection(
@@ -3798,6 +3867,56 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
         (0x024F, bytes([0x05, 0x00])),
     ]
 
+def test_add_device_to_activity_builds_power_macros_from_scratch_on_empty_reply(monkeypatch) -> None:
+    """A brand-new activity answers the macro fetch with STATUS_ACK 0x07.
+
+    The assignment must synthesize an empty source record and proceed
+    instead of timing out waiting for a macro burst that never comes.
+    """
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        proxy._activity_map_complete.add(act_id & 0xFF)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: None)
+    monkeypatch.setattr(
+        proxy,
+        "_wait_for_ack_any_impl",
+        lambda candidates, *, timeout=5.0, not_before=None, log_timeout=True: (0x0103, b"\x07"),
+    )
+
+    source_records: list[MacroRecord] = []
+
+    def _build(source_record, *, device_id, button_id, allowed_device_ids=None, input_index=0):
+        source_records.append(source_record)
+        return b"\x00\x00\x00"
+
+    monkeypatch.setattr(proxy, "_build_macro_save_payload", _build)
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
+    )
+
+    result = proxy.add_device_to_activity(104, 1)
+
+    assert result is not None
+    assert result["members_confirmed"] == [1]
+    assert [record.key_id for record in source_records] == [ButtonName.POWER_ON, ButtonName.POWER_OFF]
+    assert all(record.key_sequence == () for record in source_records)
+    assert all(record.activity_id == 104 for record in source_records)
+
+
 def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -3936,8 +4055,8 @@ def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch)
         [(0x0103, None)],
         [(0x0103, None)],
         [(0x0103, None)],
-        [(0x0112, 198), (0x0103, None)],
-        [(0x0112, 199), (0x0103, None)],
+        [(0x0112, None), (0x0103, None)],
+        [(0x0112, None), (0x0103, None)],
     ]
 
 
@@ -4294,7 +4413,8 @@ def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
     assert sent[2][1] == bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x66, 0x01, 0x01, 0x6A])
     assert sent[3][1] == b"f"
     assert ack_calls == [
-        [(0xFF63, 0x66)],                      # fav-order query for act=0x66
+        # fav-order query for act=0x66; STATUS_ACK 0x07 = empty quick-access table
+        [(0xFF63, 0x66), (0x0103, 0x07)],
         [(0x013E, None), (0x0103, None)],      # map
         [(0x0103, None)],                      # stage
         [(0x0103, None)],                      # commit
@@ -4475,7 +4595,7 @@ def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
         "status": "success",
     }
     assert steps == [
-        ("fav-delete-10[act=0x66 fav=0x04]", 0x10, bytes([0x66, 0x04]), 7.5),
+        ("fav-delete-10[act=0x66 fav=0x04]", 0x10, bytes([0x66, 0x04]), 12.0),
         ("fav-delete-reorder-61[act=0x66]", 0x61, bytes.fromhex("01 00 01 01 00 01 66 02 01 06 02 73"), 5.0),
         ("fav-delete-commit-65[act=0x66]", 0x65, b"\x66", 5.0),
     ]
@@ -4489,6 +4609,50 @@ def test_delete_favorite_rejects_unknown_fav_id(monkeypatch) -> None:
     monkeypatch.setattr(proxy, "request_favorites_order", lambda act_id: [(0x02, 0x01), (0x04, 0x02), (0x06, 0x03)])
 
     assert proxy.delete_favorite(0x66, 0x09) is None
+
+
+def test_request_favorites_order_returns_empty_on_status_ack_07(monkeypatch) -> None:
+    """No quick-access entries -> the hub sends STATUS_ACK 0x07, not a 0x63 row.
+
+    That empty reply must resolve immediately as an empty order instead of
+    stalling to the 5s ack timeout (bench capture 2026-07-16).
+    """
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: sent.append((family, payload)),
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, *, timeout=5.0, not_before=None: (0x0103, b"\x07"),
+    )
+
+    # A stale cached order must be replaced by the known-empty result.
+    proxy.state.activity_favorites_order[0x66] = [(0x02, 0x01)]
+
+    assert proxy.request_favorites_order(0x66) == []
+    assert proxy.state.activity_favorites_order[0x66] == []
+    assert sent == [(0x62, b"\x66")]
+
+
+def test_request_favorites_order_returns_cached_order_on_63_response(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+
+    def _ack(candidates, *, timeout=5.0, not_before=None):
+        # Simulate FavoritesOrderHandler having parsed the 0x63 response.
+        proxy.state.activity_favorites_order[0x66] = [(0x02, 0x01), (0x04, 0x02)]
+        return (0xFF63, b"\x66")
+
+    monkeypatch.setattr(proxy, "wait_for_ack_any", _ack)
+
+    assert proxy.request_favorites_order(0x66) == [(0x02, 0x01), (0x04, 0x02)]
 
 
 def test_reorder_favorites_requires_explicit_fav_ids(monkeypatch) -> None:

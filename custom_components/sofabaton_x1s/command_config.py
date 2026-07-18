@@ -14,7 +14,7 @@ from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
 
 COMMAND_CONFIG_STORE_VERSION = 1
 COMMAND_CONFIG_STORE_MINOR_VERSION = 3
-COMMAND_HASH_VERSION = "v4"
+COMMAND_HASH_VERSION = "v5"
 COMMAND_BRAND_PREFIX = "m3"
 LEGACY_COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 10
@@ -25,6 +25,20 @@ DEFAULT_WIFI_DEVICE_KEY = "default"
 DEFAULT_WIFI_DEVICE_NAME = "Home Assistant"
 
 DEFAULT_COMMAND_ACTION = {"action": "perform-action"}
+
+# Hub-level event hooks. These live only in the HA-side config store and are
+# never synced to the hub:
+#   power_off      - the hub switched from an activity into POWERED OFF
+#   redundant_off  - OFF was pressed while the hub was already POWERED OFF
+#   activity_start - the hub switched into an activity
+#   activity_stop  - an activity stopped (switch to another activity or OFF)
+HUB_EVENT_ACTION_KEYS = ("power_off", "redundant_off", "activity_start", "activity_stop")
+
+# Per-activity event hooks (also HA-side only). Keyed by the hub activity id;
+# no matching beyond the id is attempted — if the hub reuses an id for a new
+# activity the hook simply applies to the new activity, and ids that leave
+# the hub's catalog are pruned so the store stays clean over time.
+ACTIVITY_EVENT_PHASES = ("start", "stop")
 
 _SPACE_RE = re.compile(r"\s+")
 
@@ -83,23 +97,50 @@ def _normalize_slot(slot: Any, idx: int) -> dict[str, Any]:
     if not isinstance(slot, dict):
         return _default_slot(idx)
 
+    add_as_favorite = bool(slot.get("add_as_favorite", False))
+    hard_button = str(slot.get("hard_button", ""))
+    # The activities list only carries meaning for favorites and hard-button
+    # bindings. The command editor auto-selects a default activity and hides
+    # (without clearing) the selection when both toggles are off, so orphaned
+    # entries would otherwise silently pull the wifi device into activities
+    # the user never sees referenced (issue #258).
+    activities_active = add_as_favorite or bool(hard_button.strip())
     return {
         "name": str(slot.get("name", f"Command {idx + 1}")),
-        "add_as_favorite": bool(slot.get("add_as_favorite", False)),
-        "hard_button": str(slot.get("hard_button", "")),
+        "add_as_favorite": add_as_favorite,
+        "hard_button": hard_button,
         "long_press_enabled": bool(slot.get("long_press_enabled", False))
-        and bool(str(slot.get("hard_button", "")).strip()),
+        and bool(hard_button.strip()),
         "input_activity_id": str(slot.get("input_activity_id", "")),
         "activities": [
             str(activity)
             for activity in slot.get("activities", [])
             if str(activity) != ""
         ]
-        if isinstance(slot.get("activities"), list)
+        if activities_active and isinstance(slot.get("activities"), list)
         else [],
         "action": _normalize_action(slot.get("action")),
         "long_press_action": _normalize_action(slot.get("long_press_action")),
     }
+
+
+def _normalize_activity_labels(value: Any) -> dict[str, str]:
+    """Normalize the id->name snapshot taken when activities were selected.
+
+    Keys are activity ids as strings (matching the id strings stored in the
+    command slots); values are the activity names the user saw at
+    configuration time. Used at deploy time to detect hub-side id reuse.
+    """
+
+    if not isinstance(value, dict):
+        return {}
+    labels: dict[str, str] = {}
+    for key, name in value.items():
+        key_text = str(key).strip()
+        name_text = str(name).strip()
+        if key_text and name_text:
+            labels[key_text] = name_text
+    return labels
 
 
 def _normalize_action(action: Any) -> dict[str, Any]:
@@ -116,6 +157,49 @@ def _normalize_action(action: Any) -> dict[str, Any]:
         return dict(action) if action.get("action") else {**action, **DEFAULT_COMMAND_ACTION}
 
     return dict(DEFAULT_COMMAND_ACTION)
+
+
+def normalize_hub_event_actions(raw: Any) -> dict[str, dict[str, Any]]:
+    """Normalize the hub-level event-action mapping.
+
+    Always returns every key in :data:`HUB_EVENT_ACTION_KEYS`; unset hooks
+    carry the default (no-op) action payload.
+    """
+
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        key: _normalize_action(source.get(key))
+        for key in HUB_EVENT_ACTION_KEYS
+    }
+
+
+def normalize_activity_event_actions(raw: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    """Normalize the per-activity event-action mapping.
+
+    Keys are hub activity ids as strings; values carry one action per phase
+    in :data:`ACTIVITY_EVENT_PHASES`. Entries whose phases are all the
+    default (no-op) action are dropped entirely so unset activities never
+    accumulate in the store.
+    """
+
+    source = raw if isinstance(raw, dict) else {}
+    normalized: dict[str, dict[str, dict[str, Any]]] = {}
+    for key, value in source.items():
+        try:
+            activity_id = int(str(key).strip())
+        except (TypeError, ValueError):
+            continue
+        if activity_id < 0:
+            continue
+        phases = value if isinstance(value, dict) else {}
+        entry = {
+            phase: _normalize_action(phases.get(phase))
+            for phase in ACTIVITY_EVENT_PHASES
+        }
+        if all(entry[phase] == DEFAULT_COMMAND_ACTION for phase in ACTIVITY_EVENT_PHASES):
+            continue
+        normalized[str(activity_id)] = entry
+    return normalized
 
 
 def normalize_commands(raw: Any) -> list[dict[str, Any]]:
@@ -186,6 +270,10 @@ def compute_commands_hash(
     power_off_command_id: int | None = None,
 ) -> str:
     payload = {
+        # Salting with the hash version lets a deploy-behavior change (not
+        # just a config change) flag existing deploys out of step once —
+        # v5: derived device-page key bindings ride the deploy.
+        "hash_version": COMMAND_HASH_VERSION,
         "commands": _hash_payload(normalize_commands(commands)),
         "device_name": str(device_name or DEFAULT_WIFI_DEVICE_NAME).strip(),
         "roku_listen_port": int(roku_listen_port),
@@ -221,9 +309,15 @@ def _default_device_payload(
         "commands": default_commands(),
         "power_on_command_id": None,
         "power_off_command_id": None,
+        "activity_labels": {},
         "deployed_commands": [],
         "deployed_device_id": None,
         "deployed_commands_hash": "",
+        # The listener port the deployed callbacks were built with. The port
+        # is baked into the hub-side records at deploy time, so the in-place
+        # re-sync path may only run while it is unchanged; None (pre-upgrade
+        # deploys) forces one replace-path sync that backfills it.
+        "deployed_request_port": None,
     }
 
 
@@ -243,11 +337,16 @@ def _normalize_device_payload(
     payload["commands"] = normalize_commands(device.get("commands"))
     payload["power_on_command_id"] = normalize_power_command_id(device.get("power_on_command_id"))
     payload["power_off_command_id"] = normalize_power_command_id(device.get("power_off_command_id"))
+    payload["activity_labels"] = _normalize_activity_labels(device.get("activity_labels"))
     deployed = device.get("deployed_commands")
     payload["deployed_commands"] = deployed if isinstance(deployed, list) else []
     deployed_device_id = device.get("deployed_device_id")
     payload["deployed_device_id"] = int(deployed_device_id) if isinstance(deployed_device_id, int) else None
     payload["deployed_commands_hash"] = str(device.get("deployed_commands_hash") or "").strip()
+    deployed_request_port = device.get("deployed_request_port")
+    payload["deployed_request_port"] = (
+        int(deployed_request_port) if isinstance(deployed_request_port, int) else None
+    )
     return payload
 
 
@@ -350,8 +449,10 @@ class CommandConfigStore:
                 power_off_command_id=power_off_command_id,
             ),
             "configured_slot_count": count_configured_command_slots(commands),
+            "activity_labels": _normalize_activity_labels(device.get("activity_labels")),
             "deployed_device_id": device.get("deployed_device_id"),
             "deployed_commands_hash": str(device.get("deployed_commands_hash") or ""),
+            "deployed_request_port": device.get("deployed_request_port"),
         }
 
     async def async_list_hub_devices(
@@ -382,6 +483,8 @@ class CommandConfigStore:
                 "hubs": {
                     entry_id: {
                         "devices": deepcopy(devices),
+                        "event_actions": self.get_hub_event_actions(entry_id),
+                        "activity_event_actions": self.get_activity_event_actions(entry_id),
                     }
                 }
             },
@@ -422,6 +525,48 @@ class CommandConfigStore:
         await self._store.async_save(self._data)
         return self._payload_for_device(payload, roku_listen_port=roku_listen_port)
 
+    async def async_rename_hub_device(
+        self,
+        entry_id: str,
+        device_key: str,
+        device_name: str,
+        *,
+        deployed_commands_hash: str | None = None,
+    ) -> bool:
+        """Rename an existing Wifi Device record in place.
+
+        Used when a deployed managed device is renamed through the live
+        device editor: the hub already carries the new name, so the store
+        must follow instead of flagging (or later reverting) the rename.
+        When the record was in sync at rename time the caller passes the
+        recomputed *deployed_commands_hash* (the hash covers the device
+        name) so the record stays in sync.
+        """
+
+        devices = self._hub_device_records(entry_id)
+        normalized_key = _normalize_device_key(device_key)
+        device = next(
+            (item for item in devices if item["device_key"] == normalized_key),
+            None,
+        )
+        if device is None:
+            return False
+        normalized_name = str(device_name or "").strip()
+        if not normalized_name:
+            return False
+        changed = False
+        if device.get("device_name") != normalized_name:
+            device["device_name"] = normalized_name
+            changed = True
+        if deployed_commands_hash is not None:
+            normalized_hash = str(deployed_commands_hash or "").strip()
+            if str(device.get("deployed_commands_hash") or "").strip() != normalized_hash:
+                device["deployed_commands_hash"] = normalized_hash
+                changed = True
+        if changed:
+            await self._store.async_save(self._data)
+        return changed
+
     async def async_delete_hub_device(self, entry_id: str, device_key: str) -> bool:
         devices = self._hub_device_records(entry_id)
         normalized_key = _normalize_device_key(device_key)
@@ -440,17 +585,23 @@ class CommandConfigStore:
         *,
         deployed_device_id: int | None = None,
         commands_hash: str = "",
+        request_port: int | None = None,
     ) -> None:
         """Persist the command list that was last successfully synced to the hub.
 
         The list is ordered and its indices correspond directly to the
         ``command_index`` values embedded in callback URLs, so it must never be
-        mutated after being written here.
+        mutated after being written here. ``request_port`` records the listener
+        port the deployed callbacks were built with (gates the in-place
+        re-sync path).
         """
         hub_device = self._find_hub_device_record(entry_id, device_key)
         hub_device["deployed_commands"] = commands
         hub_device["deployed_device_id"] = deployed_device_id
         hub_device["deployed_commands_hash"] = str(commands_hash or "").strip()
+        hub_device["deployed_request_port"] = (
+            int(request_port) if isinstance(request_port, int) else None
+        )
         await self._store.async_save(self._data)
 
     async def async_set_deployed_device_id(
@@ -600,6 +751,66 @@ class CommandConfigStore:
             return commands[command_index]
         return None
 
+    def get_hub_event_actions(self, entry_id: str) -> dict[str, dict[str, Any]]:
+        """Return the hub-level event actions (HA-side only, never synced)."""
+
+        hub = self._hub_record(entry_id)
+        return normalize_hub_event_actions(hub.get("event_actions"))
+
+    async def async_set_hub_event_actions(
+        self,
+        entry_id: str,
+        actions: Any,
+    ) -> dict[str, dict[str, Any]]:
+        hub = self._hub_record(entry_id)
+        hub["event_actions"] = normalize_hub_event_actions(actions)
+        await self._store.async_save(self._data)
+        return normalize_hub_event_actions(hub.get("event_actions"))
+
+    def get_activity_event_actions(self, entry_id: str) -> dict[str, dict[str, dict[str, Any]]]:
+        """Return the per-activity event actions (HA-side only, never synced)."""
+
+        hub = self._hub_record(entry_id)
+        return normalize_activity_event_actions(hub.get("activity_event_actions"))
+
+    async def async_set_activity_event_actions(
+        self,
+        entry_id: str,
+        actions: Any,
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        hub = self._hub_record(entry_id)
+        hub["activity_event_actions"] = normalize_activity_event_actions(actions)
+        await self._store.async_save(self._data)
+        return normalize_activity_event_actions(hub.get("activity_event_actions"))
+
+    async def async_prune_activity_event_actions(
+        self,
+        entry_id: str,
+        valid_activity_ids: Any,
+    ) -> bool:
+        """Drop per-activity actions whose activity id left the hub catalog.
+
+        Called with the authoritative activity-id set after a catalog
+        refresh; saves only when something was actually removed.
+        """
+
+        hub = self._hub_record(entry_id)
+        current = normalize_activity_event_actions(hub.get("activity_event_actions"))
+        if not current:
+            return False
+        valid: set[str] = set()
+        for value in valid_activity_ids or []:
+            try:
+                valid.add(str(int(value)))
+            except (TypeError, ValueError):
+                continue
+        pruned = {key: entry for key, entry in current.items() if key in valid}
+        if pruned == current:
+            return False
+        hub["activity_event_actions"] = pruned
+        await self._store.async_save(self._data)
+        return True
+
     async def async_set_hub_commands(
         self,
         entry_id: str,
@@ -609,6 +820,7 @@ class CommandConfigStore:
         roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
         power_on_command_id: Any = None,
         power_off_command_id: Any = None,
+        activity_labels: Any = None,
     ) -> dict[str, Any]:
         normalized = normalize_commands(commands)
         normalized_power_on = normalize_power_command_id(power_on_command_id)
@@ -617,6 +829,8 @@ class CommandConfigStore:
         device["commands"] = normalized
         device["power_on_command_id"] = normalized_power_on
         device["power_off_command_id"] = normalized_power_off
+        if activity_labels is not None:
+            device["activity_labels"] = _normalize_activity_labels(activity_labels)
         await self._store.async_save(self._data)
         return self._payload_for_device(device, roku_listen_port=roku_listen_port)
 

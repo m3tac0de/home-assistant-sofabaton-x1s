@@ -1,142 +1,132 @@
 # Sofabaton Command Payloads
 
-This page explains the command payload data (shown as "Blobs" in the Control Panel
-card) you may see in fetched blobs and backup files.
+A command payload is the data the hub sends when a command runs. Most users
+never need to edit it, but payload editing is useful for testing IR codes,
+adding commands, sharing codes, and correcting Wifi command details.
 
-It is written for users of the integration. It does not describe the internal
-decoder implementation.
+> **Terminology:** Command payloads were previously called **blobs**. That name
+> remains in the advanced Home Assistant Action names and their `blob` fields,
+> but the Control Panel and this documentation use **command payload**.
 
-## Raw and decoded forms
+## Edit an existing command
 
-A command payload may appear in two forms:
+In the **Sofabaton Control Panel**, open **Hub → Devices**, select a Device, and
+choose **Edit device**. Under **Commands**:
 
-- `data_hex`: the raw bytes stored by the hub
-- `decoded`: a structured, human-readable view of the same payload when the
-  integration knows how to describe it
+- use the pencil to rename a command;
+- use the braces (`{}`) to fetch and edit its payload.
 
-The raw `data_hex` value is always the exact payload. The `decoded` block is a
-more readable representation for supported command classes.
+The payload is fetched from the hub only when you open the editor. Recognized
+payloads get a structured form; everything else is shown as raw hexadecimal
+bytes.
 
-## Where you will see this
+1. Make the required change.
+2. For an IR Device, use **Test** to send the current payload once without
+   saving it.
+3. Choose **Save** to stage the change in the Device editor.
+4. Review the pending changes and choose **Sync** to write them to the hub.
 
-- In the **Blobs** tab when you fetch a command from the hub
-- In backup JSON files under a command row's `restore_data`
+> **Test**, **Save**, and **Sync** are separate steps. Test never saves. Save
+> does not change the hub until the Device is synced.
 
-Not every command has a readable decoded form. Many command types remain
-raw-only.
+<img src="images/command-payload-editor.png" alt="Editing and testing a raw IR command payload" width="640" />
 
-## Supported decoded classes
+## Add a command
 
-The integration can expose decoded payloads for these classes:
+Choose **Add command** in the Device editor, then enter a name and payload.
+The form depends on the Device class:
 
-- `wifi_ip`
-- `wifi_roku`
-- `wifi_hue`
-- `wifi_sonos`
-- `ir` for the descriptive IR variant only
+- **IR** — enter a descriptive payload beginning with `P:`, such as
+  `P:Sony12 R:40000 D:1 F:18 MUL:2`. You can Test it before saving.
+- **Supported Wifi classes** — edit the structured fields. The editor uses an
+  existing command from that Device as a template for the hub-specific record.
+- **Other classes** — enter raw hex. A non-IR Device needs at least one existing
+  command so the integration can reuse its command metadata.
 
-Other command classes, including Bluetooth, RF-style payloads, and
-non-descriptive IR blobs, should be treated as raw `data_hex` only.
+The new command is staged alongside the other Device edits and created during
+the next Sync.
 
-## The `decoded` block shape
+## Payload forms
 
-When present, a decoded payload has this shape:
+### Raw payloads
 
-```json
-"decoded": {
-  "class": "wifi_ip",
-  "trailer_hex": "4e",
-  "fields": {
-    "host": "192.168.2.88",
-    "port": 6666,
-    "method": "GET",
-    "path": "/freddy/e26a44861b45/11/0/short",
-    "header": "",
-    "content_type": "application/x-www-form-urlencoded",
-    "body": ""
-  }
-}
-```
+Raw payloads are shown as hex byte pairs. Whitespace and `0x` prefixes are
+accepted; the editor normalizes the formatting without trying to interpret the
+payload's fields.
 
-`class` identifies the payload family. `fields` contains the readable values.
-`trailer_hex` is an opaque trailing byte region that belongs to the payload and
-should normally be left alone when editing.
+For IR, raw payloads commonly contain carrier frequency and timing data from a
+learned signal or an IR database. Raw IR works across X1, X1S, and X2 hubs.
 
-## Field meanings by class
+### Structured payloads
 
-### `wifi_ip`
+When the integration recognizes a payload, the editor exposes its useful fields
+instead of making you edit the encoded bytes directly:
 
-Fields:
+| Class | Editable fields |
+| --- | --- |
+| `ir` | Descriptive IR string beginning with `P:` |
+| `wifi_ip` | Host, port, method, path, headers, content type, and body |
+| `wifi_roku` | Command path |
+| `wifi_hue` | Path and request body |
+| `wifi_sonos` | Path and request body |
 
-- `host`: destination IPv4 address
-- `port`: destination TCP port
-- `method`: HTTP method such as `GET` or `POST`
-- `path`: request path
-- `header`: extra HTTP headers as plain text
-- `content_type`: HTTP content type, when present
-- `body`: request body text
+Payloads without a supported decoder remain available as raw hex. A readable
+form is a convenience, not a requirement for a valid command.
 
-This class represents a complete HTTP-style command.
+The Control Panel can synthesize, Test, and save descriptive IR commands on X1,
+X1S, and X2 hubs. The raw IrScrutinizer exporter remains the most portable
+choice when you want timing-style payloads.
 
-### `wifi_roku`
+## Obtain and share IR payloads
 
-Fields:
+You can use:
 
-- `path`: Roku command path such as `keypress/Home`
+- a payload fetched from another command on your hub;
+- a payload shared by another user;
+- IR data converted from an online database with
+  [IrScrutinizer](../IrScrutinizer/README.md).
 
-### `wifi_hue`
+For an imported payload, paste it into the editor, Test it, Save it, and then
+Sync the Device. When sharing a payload, include the Device brand and model,
+the command's purpose, and whether the payload was learned, generated, or taken
+from a database.
 
-Fields:
+## Payloads in backups
 
-- `path`: request path
-- `body_block`: request body text
+Full backups contain command payloads and can be edited offline through
+**Backup → Edit**. Structural cache bundles do not contain payloads and cannot
+be restored or edited as backups.
 
-### `wifi_sonos`
+In backup JSON, `restore_data.data_hex` contains the stored bytes. Some commands
+also have a human-readable `restore_data.decoded` block. When editing JSON by
+hand, change only `decoded.fields`, set `decoded.edited` to `true`, and leave
+`decoded.class` and `decoded.trailer_hex` unchanged. If `edited` is absent or
+false, restore uses the original `data_hex`.
 
-Fields:
+See the [backup and restore guide](backup.md) for the complete backup workflow.
 
-- `path`: request path
-- `body_block`: request body text
+## Advanced Home Assistant Actions
 
-This class uses the same general shape as `wifi_hue`, but the body content is
-typically a Sonos SOAP-style request.
+The legacy Action names still use *blob*:
 
-### `ir`
+| Action | Purpose |
+| --- | --- |
+| `sofabaton_x1s.fetch_blob` | Fetch a command payload from the hub |
+| `sofabaton_x1s.play_ir_blob` | Test an IR payload without saving it |
+| `sofabaton_x1s.persist_ir_blob` | Add an IR command directly to an existing IR Device |
 
-Fields:
+These Actions are useful in scripts and automations, but the Control Panel is
+the simpler interactive workflow. See the [Action reference](actions.md) for
+fields, response data, and examples.
 
-- `descriptor`: descriptive IR text such as `P:Sony12 R:40000 D:1 F:18 MUL:2`
+## Important notes
 
-This decoded form only exists for the descriptive IR variant, which is
-supported on X2 hubs only. Learned raw IR payloads do not become editable
-descriptive text automatically.
-
-## Editing in backup files
-
-If you are editing a backup JSON file manually, the `decoded` block is the part
-meant to be human-readable.
-
-For supported decoded rows:
-
-- edit values under `restore_data.decoded.fields`
-- leave `restore_data.decoded.class` unchanged
-- leave `restore_data.decoded.trailer_hex` unchanged unless you understand the
-  wire format well enough to change it deliberately
-- set `restore_data.decoded.edited` to `true` so restore knows to rebuild the
-  raw payload from the edited fields
-
-If `edited` is absent or false, restore uses the stored `data_hex` as-is.
-
-If a row has no decoded block, treat it as raw-only.
-
-## Limits and expectations
-
-- A decoded block is a convenience view, not a promise that every payload type
-  is editable.
-- `trailer_hex` is not intended as a user-facing setting.
-- Raw-only payloads should not be hand-converted into made-up decoded blocks.
-
-## Related docs
-
-- Backup and restore: [backup.md](./backup.md)
-- Blob workflow: [blobs.md](./blobs.md)
+- **Test is available only for IR Devices.** Payload editing and saving also
+  support other Device classes.
+- A payload Save in the live editor is staged; use the Device's **Sync** button
+  to write it to the hub.
+- Test an IR payload before syncing it whenever possible.
+- Editing and syncing are unavailable while the Sofabaton app or another hub
+  operation holds the connection.
+- If the editor asks for a cache refresh, refresh that Device and reopen it.
+- Not every payload has a readable structured form; raw-only is normal.

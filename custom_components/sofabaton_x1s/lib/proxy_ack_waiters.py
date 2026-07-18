@@ -64,9 +64,6 @@ class AckWaitersMixin:
             return self._pending_assigned_device_id
 
     def notify_ack(self, opcode: int, payload: bytes) -> None:
-        with self._ack_queue_lock:
-            self._ack_queue.append((opcode, payload, time.monotonic()))
-            self._ack_event.set()
         name = OPNAMES.get(opcode, f"OP_{opcode:04X}")
         if opcode == OP_STATUS_ACK:
             status = payload[0] if payload else None
@@ -79,19 +76,31 @@ class AckWaitersMixin:
             else:
                 detail = f"status=0x{status:02X}"
             self._log.info("[ACK] %s (0x%04X) %s", name, opcode, detail)
-            # If we are waiting on REQ_ACTIVITY_INPUTS and no inputs frame has
-            # arrived yet, a non-zero STATUS_ACK is the hub's rejection of
-            # that request (commonly status=0x07 for "device not configured
-            # for power/inputs yet"). Trip the event so the wait can exit
-            # early instead of timing out after the full window.
+            # Classify the status BEFORE the ack becomes consumable: a
+            # blocking waiter woken by the queue append can consume it,
+            # exit its exchange scope, and drain queued catalog reads onto
+            # the wire before this thread finishes attributing the frame —
+            # at which point note_catalog_status_ack would see the freshly
+            # started catalog burst and finish it against a status byte
+            # that belonged to the exchange (observed live: X1 stress
+            # bench 2026-07-18).
             if status is not None and status != 0x00:
+                # If we are waiting on REQ_ACTIVITY_INPUTS and no inputs
+                # frame has arrived yet, a non-zero STATUS_ACK is the hub's
+                # rejection of that request (commonly status=0x07 for
+                # "device not configured for power/inputs yet"). Trip the
+                # event so the wait can exit early instead of timing out
+                # after the full window.
                 self.note_catalog_status_ack(status)
                 with self._activity_inputs_lock:
                     if self._activity_inputs_pending and self._activity_inputs_seen == 0:
                         self._inputs_burst_reject_pending = True
                         self._activity_inputs_event.set()
-            return
-        self._log.info("[ACK] %s (0x%04X) payload_len=%d", name, opcode, len(payload))
+        else:
+            self._log.info("[ACK] %s (0x%04X) payload_len=%d", name, opcode, len(payload))
+        with self._ack_queue_lock:
+            self._ack_queue.append((opcode, payload, time.monotonic()))
+            self._ack_event.set()
 
     def clear_ack_queue(self) -> None:
         with self._ack_queue_lock:
@@ -266,12 +275,26 @@ class AckWaitersMixin:
             self._ack_event.wait(min(remaining, poll_interval))
 
     def cache_macro_record(self, record: MacroRecord) -> None:
-        """Store a fully-assembled :class:`MacroRecord` keyed by ``(activity_id, key_id)``."""
+        """Store a fully-assembled :class:`MacroRecord` keyed by ``(activity_id, key_id)``.
+
+        Written to both stores: the transient event map that unblocks
+        ``wait_for_macro_record``, and the persistent record cache that
+        structural bundles and exports read (``get_cached_macro_records``).
+        """
 
         key = (record.activity_id & 0xFF, record.key_id & 0xFF)
         with self._macro_payload_lock:
             self._macro_payload_events[key] = record
+            self._macro_records_cache[key] = record
             self._macro_payload_event.set()
+
+    def drop_cached_macro_records(self, activity_id: int) -> None:
+        """Invalidate the persistent macro cache for one activity."""
+
+        act_lo = activity_id & 0xFF
+        with self._macro_payload_lock:
+            for key in [k for k in self._macro_records_cache if (k[0] & 0xFF) == act_lo]:
+                del self._macro_records_cache[key]
 
     def wait_for_macro_record(
         self, activity_id: int, button_id: int, *, timeout: float = 5.0
@@ -301,7 +324,7 @@ class AckWaitersMixin:
         with self._macro_payload_lock:
             records = [
                 record
-                for (cached_act_id, _button_id), record in self._macro_payload_events.items()
+                for (cached_act_id, _button_id), record in self._macro_records_cache.items()
                 if (cached_act_id & 0xFF) == act_lo
             ]
         records.sort(key=lambda record: record.key_id & 0xFF)
@@ -432,14 +455,17 @@ class AckWaitersMixin:
 
     def query_device_input_index(self, device_id: int, cmd_id: int, *, timeout: float = 5.0) -> int | None:
         """Return the 1-based ordinal of cmd_id in the device's ACTIVITY_INPUTS list, or None if not found."""
-        with self._activity_inputs_lock:
-            self._activity_inputs_payloads.clear()
-            self._activity_inputs_seen = 0
-            self._activity_inputs_last_ts = 0.0
-            self._activity_inputs_event.clear()
-
-        self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-        burst = self.wait_for_activity_inputs_burst(timeout=timeout)
+        with self.exchange("inputs_query"):
+            # Clear only after the exchange has quiesced the wire so stray
+            # 0x47 frames from a prior (orphaned) inputs response cannot be
+            # counted toward this request's burst.
+            with self._activity_inputs_lock:
+                self._activity_inputs_payloads.clear()
+                self._activity_inputs_seen = 0
+                self._activity_inputs_last_ts = 0.0
+                self._activity_inputs_event.clear()
+            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+            burst = self.wait_for_activity_inputs_burst(timeout=timeout)
         if burst.outcome is AckOutcome.rejected:
             self._log.info(
                 "[INPUT_QUERY] hub rejected inputs request dev=0x%02X cmd=0x%02X",
@@ -489,20 +515,26 @@ class AckWaitersMixin:
         faithful backup needs.
         """
 
-        with self._activity_inputs_lock:
-            self._activity_inputs_payloads.clear()
-            self._activity_inputs_seen = 0
-            self._activity_inputs_last_ts = 0.0
-            self._activity_inputs_event.clear()
-            self._inputs_burst_reject_pending = False
-            self._activity_inputs_pending = True
-
-        try:
-            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-            burst = self.wait_for_activity_inputs_burst(timeout=timeout)
-        finally:
+        with self.exchange("inputs_fetch"):
+            # Arm the pending flag only after the exchange has quiesced the
+            # wire: arming before it lets a finishing catalog burst's
+            # terminal STATUS_ACK (e.g. the "macro table empty" 0x07 that
+            # ends a macros burst) be misattributed as a rejection of the
+            # not-yet-sent inputs request (observed live: X1 recon
+            # 2026-07-18, dev 0x04).
             with self._activity_inputs_lock:
-                self._activity_inputs_pending = False
+                self._activity_inputs_payloads.clear()
+                self._activity_inputs_seen = 0
+                self._activity_inputs_last_ts = 0.0
+                self._activity_inputs_event.clear()
+                self._inputs_burst_reject_pending = False
+                self._activity_inputs_pending = True
+            try:
+                self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+                burst = self.wait_for_activity_inputs_burst(timeout=timeout)
+            finally:
+                with self._activity_inputs_lock:
+                    self._activity_inputs_pending = False
 
         if burst.outcome is AckOutcome.rejected:
             self._log.info(
@@ -541,20 +573,22 @@ class AckWaitersMixin:
         surface.
         """
 
-        with self._activity_inputs_lock:
-            self._activity_inputs_payloads.clear()
-            self._activity_inputs_seen = 0
-            self._activity_inputs_last_ts = 0.0
-            self._activity_inputs_event.clear()
-            self._inputs_burst_reject_pending = False
-            self._activity_inputs_pending = True
-
-        try:
-            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-            burst = self.wait_for_activity_inputs_burst(timeout=timeout)
-        finally:
+        with self.exchange("inputs_record"):
+            # Arm only after the exchange has quiesced the wire — see the
+            # misattribution note in :meth:`fetch_device_input_entries`.
             with self._activity_inputs_lock:
-                self._activity_inputs_pending = False
+                self._activity_inputs_payloads.clear()
+                self._activity_inputs_seen = 0
+                self._activity_inputs_last_ts = 0.0
+                self._activity_inputs_event.clear()
+                self._inputs_burst_reject_pending = False
+                self._activity_inputs_pending = True
+            try:
+                self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+                burst = self.wait_for_activity_inputs_burst(timeout=timeout)
+            finally:
+                with self._activity_inputs_lock:
+                    self._activity_inputs_pending = False
 
         if burst.outcome is AckOutcome.rejected:
             self._log.info(
@@ -612,19 +646,20 @@ class AckWaitersMixin:
             self._device_key_sort_expected_pages = None
             self._device_key_sort_pages.clear()
 
-        send_ts = time.monotonic()
-        self._send_family_frame(FAMILY_KEY_SORT_REQ, bytes([dev_lo]))
-        # Accept either the family-0x63 paged reply (assembled into
-        # state.device_key_sorts and notified as 0xFF62) OR a STATUS_ACK
-        # from the hub. The hub replies with STATUS_ACK status=0x07 when
-        # the requested device has no key-sort blob configured -- mirror
-        # the inputs path and treat that as "device has no key-sort data"
-        # (empty msg_hex) rather than waiting out the full timeout.
-        result = self.wait_for_ack_any(
-            [(0xFF62, dev_lo), (OP_STATUS_ACK, None)],
-            timeout=timeout,
-            not_before=send_ts,
-        )
+        with self.exchange("key_sort"):
+            send_ts = time.monotonic()
+            self._send_family_frame(FAMILY_KEY_SORT_REQ, bytes([dev_lo]))
+            # Accept either the family-0x63 paged reply (assembled into
+            # state.device_key_sorts and notified as 0xFF62) OR a STATUS_ACK
+            # from the hub. The hub replies with STATUS_ACK status=0x07 when
+            # the requested device has no key-sort blob configured -- mirror
+            # the inputs path and treat that as "device has no key-sort data"
+            # (empty msg_hex) rather than waiting out the full timeout.
+            result = self.wait_for_ack_any(
+                [(0xFF62, dev_lo), (OP_STATUS_ACK, None)],
+                timeout=timeout,
+                not_before=send_ts,
+            )
         if result is None:
             with self._device_key_sort_lock:
                 self._device_key_sort_pending = None

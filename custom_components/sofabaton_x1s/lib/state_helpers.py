@@ -107,6 +107,17 @@ class ActivityCache:
         # Populated by OP_FAV_ORDER_RESP (family 0x63) response to OP_FAV_ORDER_REQ (0x0162)
         self.activity_favorites_order: dict[int, list[tuple[int, int]]] = {}
         self.device_key_sorts: dict[int, dict[str, Any]] = {}
+        # Full parsed family-0x46 input records (JSON-safe dicts, the shape
+        # ``fetch_device_input_record`` returns). Captured by the structural
+        # backup fetch so bundle assembly can run purely from state.
+        self.device_input_records: dict[int, dict[str, Any]] = {}
+        # ISO-8601 stamp of the last backup-grade structural fetch per
+        # entity. Bundles assembled from state carry these per-payload so
+        # consumers (the live activity editor) can judge staleness.
+        self.detail_fetched_at: dict[str, dict[int, str]] = {
+            "device": {},
+            "activity": {},
+        }
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_keybinding_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
@@ -669,6 +680,13 @@ class BurstScheduler:
         can_issue: Callable[[], bool],
         sender: Callable[[int, bytes], None],
     ) -> None:
+        # An ``exchange:<name>`` pseudo-burst marks the wire as held by a
+        # blocking request/response exchange, which may legitimately outlast
+        # the idle window (e.g. a multi-attempt step retrying a 7.5s wait).
+        # Only the exchange's own ``finally`` may finish it; the idle tick
+        # must never force-drain the queue mid-exchange.
+        if self.kind is not None and self.kind.startswith("exchange:"):
+            return
         if not self.active:
             return
         if now - self.last_ts < self.idle_s:

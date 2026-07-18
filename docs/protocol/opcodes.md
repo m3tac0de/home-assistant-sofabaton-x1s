@@ -25,13 +25,13 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x023C` | `REQ_BUTTONS` | `[act_lo, 0xFF]` | All | Request activity keymap and favorite rows |
 | `0x025C` | `REQ_COMMANDS` | `[dev_lo, 0xFF]` or `[dev_lo, cmd_lo]` | All | Request full command list or one command label |
 | `0x020C` | `REQ_BLOB` | `[dev_lo, cmd_lo]` or `[dev_lo, 0xFF]` | X1, X1S observed | Request raw command/blob dump pages for one command or a full device snapshot |
-| `0x023F` | `REQ_ACTIVATE` | `[entity_lo, key_code]` | All | Activate an activity or send a device command |
+| `0x023F` | `REQ_ACTIVATE` | `[entity_lo, key_code]` | All | Activate an activity or send a device command. **wifi_ip callback delivery (X1S live, 2026-07-12, settled)**: one frame targeting a `wifi_ip` command triggers exactly **one** HTTP callback — *if* the listener's response is one the hub accepts. Against an unaccepted response (observed: bare `HTTP/1.0 200`, `Content-Length: 0`, no body) the hub **re-delivers the same callback ~8–10/s until accepted** (83 identical POSTs in 10 s; switching the live listener to the integration shape mid-storm stopped it within ~5 s). The status code is *not* the acceptance criterion: a well-formed `HTTP/1.1 404` + body + `Connection: close` counts as delivered (single callback, no retry); the exact discriminator vs the HTTP/1.0-empty shape (version, body, or headers) was not isolated. **Connection refused = no retry**: with the listener port closed the hub gave up outright — zero callbacks arrived after the port reopened 15 s later. The 2026-07-12 chunk-5 "infinite repeat" was this delivery-retry loop, not key-repeat (which also explains why `key_code=0x00` didn't stop it). Validated in `docs/internal/wifi-commands-bench-plan.md` chunk 2. |
 | `0x016C` | `REQ_ACTIVITY_MAP` | `[act_lo]` | All observed | Request activity membership roster |
 | `0x024D` | `REQ_MACRO_LABELS` | `[act_lo, 0xFF]` or `[act_lo, macro_id]` | All observed | Request activity macro labels or one macro payload |
 | `0x0148` | `REQ_ACTIVITY_INPUTS` | `[dev_lo]` | All observed | Request input candidates for one device |
 | `0x0162` | `FAV_ORDER_REQ` | `[act_lo]` | All observed | Request current favorite ordering |
 | `0x0210` | `FAV_DELETE` | activity/favorite ids | All observed | Delete one favorite |
-| `0x0109` | `DELETE_DEVICE` | `[dev_lo]` | All observed | Delete one device |
+| `0x0109` | `DELETE_DEVICE` | `[id_lo]` | All observed | Delete one device **or activity**. The id range selects the target table: `< 0x65` deletes a device (id may be reused, followed by an activity-confirm sweep); `>= 0x65` deletes that activity directly. Live-validated on X1 + X1S: deleting an activity id removes only that activity, leaving devices and other activities intact. **Device-delete side effect**: the consistency sweep GCs every activity with exactly one member device (app-created or restored, any binding count); the purge can land seconds after the ack, so an immediate post-delete catalog read may still show the doomed activity. |
 | `0x0058` | `REQ_VERSION` | none observed | All observed | Request WiFi firmware and follow-up version/info banner frames |
 | `0x0140` | `PING2` | none observed | All observed | Keepalive probe |
 | `0x024F` | `ACTIVITY_DEVICE_CONFIRM` | `[dev_lo, include_flag]` | All observed | Confirm device membership during activity assignment |
@@ -57,6 +57,8 @@ These writes use opcode families whose high byte varies with payload length.
 | family `0x12` | `MACRO_WRITE` | fixed or paged macro record | All observed | Write one macro definition |
 | family `0x46` | `INPUTS_WRITE` | single- or multi-page inputs body | All observed | Write one device's inputs page |
 | family `0x61` | `KEY_SORT_WRITE` | paged sort payload | All observed | Write one device's key ordering payload |
+| family `0x51` | `ACTIVITY_SORT` | paged `(0x00, activity_id, position)` rows | X1, X1S validated | Rewrite the stored activity display order (see live-hub-testing.md) |
+| family `0x11` | `DEVICE_SORT` | paged `(record_kind, device_id, position)` rows | X1, X1S validated | Rewrite the stored device display order (see live-hub-testing.md) |
 
 ### IR blob playback (family `0x0F`)
 
@@ -107,6 +109,24 @@ Observed semantics:
 | family `0x61` | `SET_FAVORITES_ORDER` | `A->H` | Write favorite ordering |
 | family `0x63` | `FAV_ORDER_RESP` | `H->A` | Current `(favorite_id, slot)` ordering |
 | family `0x65` | `FAV_COMMIT` | `A->H` | Commit reorder/delete |
+
+Behavioral notes (bench-observed on X1 + X1S, 2026-07-11):
+
+- The hub assigns a new favorite the next free `fav_id` counting up
+  from 1, independent of ids already used by keymap-derived favorite
+  rows (a keymap slot at `0x58` coexists with a fresh favorite at
+  `0x01`).
+- The `0x63` order table only lists favorites that have been through
+  an explicit `SET_FAVORITES_ORDER` write. Keymap-derived favorites do
+  not appear in it until a reorder includes them, and an activity
+  whose favorites are all keymap-derived gets **no `0x63` reply at
+  all** (the `0x0162` request goes unanswered). Enumerate favorites
+  from the keymap (`REQ_BUTTONS`); use `0x63` only as ordering
+  evidence.
+- The hub serializes request handling and **drops** a `0x0162` sent
+  while a previous request's burst (e.g. `REQ_ACTIVITY_MAP 0x016C`)
+  is still streaming — no reply, no error. Wait for in-flight bursts
+  to finish before issuing the order request.
 
 ---
 

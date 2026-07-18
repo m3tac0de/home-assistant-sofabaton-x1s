@@ -141,19 +141,31 @@ def test_bounce_refuses_during_window_then_reopens():
     assert _wait(lambda: listener._thr is not None and listener._thr.is_alive())
 
     try:
-        listener.bounce(downtime=0.5)
+        # The downtime must dominate one full refused-connect observation:
+        # on Windows a connect() to an RST-refusing port is not reported
+        # refused on the first RST — WinSock retries the SYN internally
+        # (~500 ms apart, ~1 s to fail; _connect_refused's own 1 s socket
+        # timeout caps it). With a 0.5 s window the retry straddled the
+        # reopen and the connect SUCCEEDED against the revived listener
+        # (the historical 1-in-5 flake). bounce() closes the socket
+        # synchronously, so the first attempt below starts inside the
+        # window and resolves with ~2 s of margin before it ends.
+        listener.bounce(downtime=3.0)
 
         # During the window the port is closed -> connections are refused.
-        assert _wait(lambda: _connect_refused(port), timeout=0.4)
+        assert _wait(lambda: _connect_refused(port), timeout=2.5)
+        # The refusal was observed while the window was still open — the
+        # assertion above proves refusal-during-bounce, not just refusal.
+        assert listener._bouncing is True
 
         # After the window the listener comes back on the same port and the
         # registration is still there.
         assert _wait(
             lambda: listener._thr is not None and listener._thr.is_alive(),
-            timeout=2.0,
+            timeout=5.0,
         )
         assert "hubA" in listener._by_proxy
-        assert _wait(lambda: not _connect_refused(port), timeout=1.0)
+        assert _wait(lambda: not _connect_refused(port), timeout=3.0)
     finally:
         listener.shutdown()
 

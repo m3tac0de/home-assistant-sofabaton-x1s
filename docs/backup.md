@@ -1,220 +1,140 @@
-# Sofabaton Control Panel: Backup and Restore
+# Sofabaton Backup and Restore
 
-The **Backup** tab in the **Sofabaton Control Panel** lets you export a hub
-configuration to a JSON file and restore that file later.
+The **Backup** tab in the **Sofabaton Control Panel** can create, edit, and
+restore local JSON backup files.
 
-This feature is meant for rebuilding hub configuration: devices, activities,
-commands, macros, inputs, favorites, button bindings, and related metadata. It
-is not a snapshot of live runtime state, so it does not preserve whether a
-device happened to be on, off, or mid-activity when the backup was taken.
+A backup contains hub configuration: Devices, Activities, commands and their
+payloads, inputs, power sequences, button assignments, shortcuts, macros,
+ordering, and related metadata. It does not capture runtime state such as which
+Activity was running or whether a Device was powered on.
+
+<img src="images/control-panel-backup-tab.png" alt="Sofabaton Control Panel Backup Make tab" width="500" />
 
 ## Before you start
 
-To create a backup from the card, **persistent cache must be enabled**. The
-backup UI uses the cached hub catalog to show devices and activities and to
-build the bundle.
+- **Persistent cache must be enabled to make a backup.** The card uses the
+  cached hub catalog to offer the available Devices and Activities.
+- Backup, restore, and hub editing are unavailable while the Sofabaton app or
+  another hub operation holds the connection.
+- Keep the downloaded JSON file somewhere safe. The integration does not
+  maintain a backup archive for you.
 
-Backup, restore, and blobs are also unavailable while the Sofabaton app is
-connected to the hub through the proxy.
+## Make a backup
 
-## Which backup should you make?
+Open **Backup → Make** and choose a scope:
 
-There are two useful cases:
+- **Entire hub** — includes every Device and Activity.
+- **Selected devices** — includes only the Devices you select and no
+  Activities.
 
-- **Whole hub** backs up all devices and all activities.
-- **Selected devices** backs up only the devices you choose.
+Use **Entire hub** if you may need to restore Activities later. Activities
+depend on Devices and commands, so a complete hub backup is the safest recovery
+point. Selected-Device backups are useful for archiving or copying individual
+Devices.
 
-If you may want to restore activities later, use **Whole hub**. Activities
-refer to devices and commands, so they only restore cleanly when the bundle
-includes the full device side they depend on.
+Choose **Start backup** and follow the progress in the card. The job runs in the
+integration backend, so it continues if you close the card or navigate elsewhere
+in Home Assistant. Returning to the card reconnects to the active operation.
 
-Device-only backups are best for copying or archiving a few devices. They do
-not include activities.
+When the backup is ready, download it within **5 minutes**. That limit applies
+only to the integration's temporary copy; the JSON file you downloaded does not
+expire. If the temporary copy expires, create another backup.
 
-## What happens when you create a backup
+## Edit a backup
 
-The card starts the job, but the work runs in the integration backend. If you
-close the card or move around Home Assistant, the backup keeps running. When
-you come back, the card reattaches to the active operation and shows its
-current progress.
+Open **Backup → Edit** and choose a backup file. Editing works on an in-memory
+copy and does not change the hub.
 
-When the backup completes, the integration keeps a temporary in-memory copy for
-download. That server-side copy lasts **5 minutes**. If you miss that window,
-just create a new backup.
+| Area | What you can edit |
+| --- | --- |
+| Hub | Hub name and the order of Devices and Activities |
+| Activities | Name, participating Devices, inputs, power sequences, button groups and bindings, shortcuts, and macros |
+| Devices | Name, automatic power behavior, power sequences, commands and payloads, button bindings, and supported Wifi IP settings |
 
-Once you have downloaded the file, it is yours to keep. The 5-minute limit only
-applies to the temporary copy held by the integration, not to the JSON file you
-saved locally.
+You can also remove Activities, Devices, commands, shortcuts, and macros. The
+editor shows affected references and clears them from the loaded backup where
+needed.
 
-Downloads use Home Assistant's normal authenticated signed-download flow. The
-integration does not write backup files into the Home Assistant filesystem or
-maintain its own backup archive.
+Choose **Download edited backup** to save your changes to a new JSON file.
+Editing does not modify the original backup file or the hub.
 
-## What gets restored
+> Deletions and a changed hub name reach the destination hub only through an
+> erase-and-restore operation. A normal merge restore does not remove existing
+> hub content.
 
-Restore works from a single `hub_bundle` JSON file. Devices are restored first.
-If the bundle also contains activities, those are restored second using the new
-device ids assigned on the destination hub.
+For command payload fields and formats, see the
+[command payload guide](command_payloads.md).
 
-The file carries the source hub model and an exact `schema_version`. Restore
-requires the bundle's exact schema version (currently `5`); bundles with any
-other schema version — older or newer — are rejected, and no migrator is
-provided. The UI also refuses to restore a backup onto an **older** hub model.
-For example, a backup created on an `X2` hub will not restore onto an `X1S`.
+## Restore a backup
 
-The important detail is that this compatibility check is about the Sofabaton
-hub **model/version family** recorded in the bundle's `hub.version` field:
-`X1`, `X1S`, or `X2`. It is not comparing firmware build numbers.
+1. Open **Backup → Restore** and choose a full backup JSON file.
+2. Select the Activities and Devices to restore.
+3. Leave **Erase existing Devices and Activities** off for a merge, or enable it
+   for a clean replacement.
+4. Choose **Start restore** and follow the progress in the card.
 
-In practice, transporting a backup between hub versions works like this:
+Selecting an Activity automatically includes the Devices and linked Activities
+it depends on.
 
-- Backup from `X1`: can restore onto `X1`, `X1S`, or `X2`
-- Backup from `X1S`: can restore onto `X1S` or `X2`
-- Backup from `X2`: can restore only onto `X2`
+### Merge restore
 
-So the rule is: **same model is allowed, moving upward is allowed, moving
-downward is blocked**.
+Merge is the default. It adds the selected backup content alongside what is
+already on the destination hub. Use it to import individual Devices or add
+content without erasing the current configuration.
 
-## How restore behaves
+### Erase and restore
 
-By default, restore adds the selected backup items alongside what is already on
-the hub.
+Enabling **Erase existing Devices and Activities** erases the entire destination
+hub before restoring the selected items. Use it when you want a clean rebuild.
 
-The card also provides a checkbox labeled **Delete existing devices and
-activities**. If you turn that on, the integration erases the destination hub
-first and then restores the backup onto a clean hub.
+Be careful when restoring only a subset: the hub is still erased first, and
+only the selected backup items are then restored. The saved hub name is also
+applied only in this mode.
 
-Use the default behavior if you only want to bring in a few devices and keep
-the current hub contents. Turn on **Delete existing devices and activities** if
-you want the destination hub to match the backup as closely as possible.
+Devices are restored before Activities. Activity references are remapped to the
+new Device ids assigned by the destination hub.
 
-When you select an activity for restore, the UI automatically includes any
-devices that activity depends on. You do not need to work out those
-dependencies by hand.
+## Compatibility
 
-When the delete-existing option is enabled, the integration also attempts to
-restore the saved hub name from the backup.
+The source hub model is stored in the backup. Restoring to the same model or a
+newer model is supported; restoring to an older model is blocked.
 
-## What can fail, and what that means
+| Backup source | Supported destination hubs |
+| --- | --- |
+| X1 | X1, X1S, X2 |
+| X1S | X1S, X2 |
+| X2 | X2 |
 
-If the delete-existing option is enabled, restore starts with a full hub erase.
-If that erase fails, restore stops before writing anything from the backup.
+This compares the hub model family, not its firmware build number.
 
-If restore fails partway through devices or activities, the integration does
-**not** roll back earlier work. Anything already restored stays on the hub, and
-the result reports where the failure happened. In other words, restore is
-all-or-nothing only up to the initial erase step when the delete-existing
-option is turned on.
+Restore also requires the exact backup schema version supported by the installed
+integration. Older or newer schema versions are rejected; there is no automatic
+migration. Only full backup bundles can be edited or restored—structural cache
+bundles do not contain command payloads and are rejected.
 
-## Editing backup files
+## Failure behavior
 
-The **Edit** section in the card opens a loaded backup bundle for in-place
-edits before you download it again. It works on the bundle in memory, so
-nothing on the hub changes until you restore.
+If an erase fails, restore stops before writing backup content. Once Device or
+Activity restoration has begun, however, there is no automatic rollback. If a
+later step fails, anything already restored remains on the hub and the progress
+result identifies where the failure occurred.
 
-What you can do in the editor:
+Keep the source backup until you have verified the restored hub. After a partial
+failure, you can retry the missing content or run an erase-and-restore again for
+a clean rebuild.
 
-- **Rename** the hub, devices, activities, activity macros, activity
-  favorites, and device commands. Command renames propagate everywhere the
-  command is referenced.
-- **Reorder** devices and activities to match how they appear on the hub, and
-  reorder macros and favorites inside an activity. Drag handles are available
-  where the browser supports them; move buttons are provided as a fallback.
-- **Edit the head IP address** of `wifi_hue`, `wifi_roku`, and `wifi_sonos`
-  devices. (For `wifi_ip` devices, the IP lives inside each command blob and
-  is edited per-command via the structured-payload form below.)
-- **Edit structured command payloads** ("Blobs" in the Control Panel card) for
-  command rows whose class has a decoder. The supported classes and fields are:
-  - `wifi_ip`: `host`, `port`, `method`, `path`, extra `header` lines,
-    `content_type`, `body`
-  - `wifi_roku`: `path`
-  - `wifi_hue`: `path`, `body_block`
-  - `wifi_sonos`: `path`, `body_block`
-  - `ir`: `descriptor` (descriptive-protocol IR only — raw learned-IR
-    blobs are not editable)
+## Advanced JSON editing
 
-  When you save changes to a decoded payload, the editor marks that row as
-  edited so restore re-encodes the payload from your fields instead of
-  replaying the original `data_hex`.
+The card editor is the recommended way to modify a backup. Manual JSON editing
+is possible, but changing ids, required fields, or the bundle structure can make
+the file invalid.
 
-Rows that do not carry a supported `decoded` block remain raw-only. That
-includes Bluetooth, RF-style payloads, non-descriptive IR blobs, and any
-other command row without a decoder.
+Command payloads use `restore_data.data_hex` and, when supported, a structured
+`restore_data.decoded` block. See the
+[command payload guide](command_payloads.md#payloads-in-backups) before editing
+those fields by hand.
 
-After editing, download the bundle from the card and restore it like any
-other backup file.
+## Related documentation
 
-## Advanced: editing the JSON manually
-
-The same payload-edit mechanism is exposed in the bundle JSON, so anything
-the card editor does can also be done by hand. This is only needed when you
-want a workflow the card does not cover (scripted edits, bulk find/replace,
-etc.).
-
-Command payloads ("Blobs" in the Control Panel card) are stored in backups as raw
-`data_hex`. That raw payload is
-the authoritative restore source and is written back to the hub as-is during
-restore. For some command classes, the backup also includes a `decoded` block
-with a more readable view of the same payload.
-
-If a command row contains `restore_data.decoded.edited: true`, restore
-re-encodes `data_hex` from the `decoded` block first and then restores that
-newly encoded payload. If `edited` is absent or false, restore ignores the
-decoded view and uses the stored `data_hex` unchanged.
-
-To apply a manual payload change:
-
-1. Create and download a backup JSON file.
-2. Open the file in a text editor.
-3. Find the command row you want to change.
-4. Edit only the values under `restore_data.decoded.fields`.
-5. Set `restore_data.decoded.edited` to `true`.
-6. Leave `restore_data.decoded.class` and `restore_data.decoded.trailer_hex`
-   alone.
-7. Restore from that edited backup file.
-
-Example:
-
-```json
-"restore_data": {
-  "data_hex": "1e6c61756e63682f6362333833353339363834622f31302f302f73686f7274d3",
-  "decoded": {
-    "class": "wifi_roku",
-    "trailer_hex": "d3",
-    "edited": true,
-    "fields": {
-      "path": "keypress/Home"
-    }
-  }
-}
-```
-
-## What restore validates
-
-Restore does not trust edited payloads blindly.
-
-- It re-encodes raw bytes from `decoded`.
-- It decodes those bytes again as a self-check.
-- It verifies that the decoded fields and `trailer_hex` still match what you
-  asked for.
-
-If any of those checks fail, restore raises an error for that command row
-instead of silently falling back to the old `data_hex`. This is deliberate:
-failed edits should be visible, not partially ignored.
-
-## Important limits
-
-- Do not edit `data_hex` and `decoded` independently. If you are editing a
-  supported decoded row, treat `decoded` as the source of truth and set
-  `edited: true`.
-- Do not add a made-up `decoded` block to a raw-only command row. Restore only
-  supports manual editing for rows whose class already has a real decoder and
-  encoder.
-- Do not restructure the bundle, delete required keys, or change ids unless
-  you are prepared to debug schema or restore errors yourself.
-
-## Related docs
-
-- Service/API details: [actions.md](./actions.md)
-- Blob workflow overview: [blobs.md](./blobs.md)
-- Command payload reference: [command_payloads.md](./command_payloads.md)
+- [Command payloads](command_payloads.md)
+- [Home Assistant Action reference](actions.md)

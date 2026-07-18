@@ -1,5 +1,12 @@
 import { html, nothing } from "lit";
-import type { ControlPanelHubState, HassLike, HubAction, SettingKey } from "../shared/ha-context";
+import type {
+  ControlPanelHubState,
+  HassLike,
+  HubAction,
+  HubClickAction,
+  PendingSettingKey,
+  SettingKey,
+} from "../shared/ha-context";
 import { canRunHubActions, hubConnected, hubIcon, proxyClientConnected } from "../shared/utils/control-panel-selectors";
 import { renderSettingTile } from "../components/setting-tile";
 import { TOOLS_CARD_STRINGS } from "../strings";
@@ -10,10 +17,12 @@ export function renderSettingsTab(params: {
   hub: ControlPanelHubState | null;
   hass: HassLike | null;
   persistentCacheEnabled: boolean;
+  hubClickAction: HubClickAction;
   hubCommandBusy: boolean;
-  pendingSettingKey: SettingKey | null;
+  pendingSettingKey: PendingSettingKey | null;
   pendingActionKey: HubAction | null;
   onToggleSetting: (setting: SettingKey, enabled: boolean) => void;
+  onSelectHubClickAction: (value: HubClickAction) => void;
   onRunAction: (action: HubAction) => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
@@ -26,18 +35,6 @@ export function renderSettingsTab(params: {
   const hubVersion = String(hub.version ?? "").trim();
   const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
   const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
-  const remoteBattery = hub.remote_battery;
-  const batteryLevel =
-    remoteBattery?.supported && typeof remoteBattery.level === "number"
-      ? Math.max(0, Math.min(100, Math.round(remoteBattery.level)))
-      : null;
-  const batteryUpdated = String(remoteBattery?.last_updated ?? "").trim();
-  const batteryStatus =
-    batteryLevel == null
-      ? String(remoteBattery?.attributes?.last_poll_status ?? "Waiting")
-      : batteryUpdated
-        ? "Updated"
-        : "Current";
 
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
@@ -78,21 +75,6 @@ export function renderSettingsTab(params: {
             </div>
           </div>
         </div>
-        ${remoteBattery?.supported
-          ? html`
-              <div class="remote-battery-panel">
-                <div class="remote-battery-icon"><ha-icon icon="mdi:battery"></ha-icon></div>
-                <div class="remote-battery-copy">
-                  <span class="remote-battery-label">Remote battery</span>
-                  <span class="remote-battery-status">${batteryStatus}</span>
-                </div>
-                <div class="remote-battery-meter" aria-label="Remote battery ${batteryLevel ?? 0} percent">
-                  <span style=${`width: ${batteryLevel ?? 0}%`}></span>
-                </div>
-                <span class="remote-battery-value">${batteryLevel == null ? "--" : `${batteryLevel}%`}</span>
-              </div>
-            `
-          : nothing}
       </div>
       <div class="tab-panel scrollable">
         <div class="settings-content">
@@ -104,6 +86,29 @@ export function renderSettingsTab(params: {
               footerLabel: TOOLS_CARD_STRINGS.settings.persistentCacheFooter,
               control: html`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("persistent_cache", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
               onClick: busy ? undefined : () => params.onToggleSetting("persistent_cache", !params.persistentCacheEnabled),
+            })}
+            ${renderSettingTile({
+              title: TOOLS_CARD_STRINGS.settings.hubClickActionTitle,
+              description: TOOLS_CARD_STRINGS.settings.hubClickActionDescription,
+              classes: busy ? "disabled" : "",
+              footerLabel: TOOLS_CARD_STRINGS.settings.hubClickActionFooter,
+              control: html`<select
+                class="setting-select"
+                .value=${params.hubClickAction}
+                ?disabled=${busy}
+                @click=${(event: Event) => event.stopPropagation()}
+                @change=${(event: Event) => {
+                  event.stopPropagation();
+                  const value = (event.currentTarget as HTMLSelectElement).value;
+                  params.onSelectHubClickAction(
+                    value === "send" || value === "copy" ? value : "none",
+                  );
+                }}
+              >
+                <option value="none" ?selected=${params.hubClickAction === "none"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionNone}</option>
+                <option value="send" ?selected=${params.hubClickAction === "send"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionSend}</option>
+                <option value="copy" ?selected=${params.hubClickAction === "copy"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionCopy}</option>
+              </select>`,
             })}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,

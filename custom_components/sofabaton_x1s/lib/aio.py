@@ -82,6 +82,9 @@ class AsyncXProxy:
       :class:`TimeoutError` when the fetch never lands.
     * **control** — :meth:`press`, :meth:`start_activity`,
       :meth:`stop_activity`, :meth:`find_remote`.
+    * **live edit** — :meth:`sync_activity`, :meth:`sync_device`: diff a
+      captured backup bundle against an edited copy and write the
+      difference in place (see the "live edit surface" section below).
 
     Anything else in :data:`PROXY_METHODS` (provisioning, cache export,
     explicit requests) is awaitable too and delegates to the engine in
@@ -134,6 +137,8 @@ class AsyncXProxy:
             "command_to_favorite",
             "command_to_button",
             "add_device_to_activity",
+            "reorder_activities",
+            "create_activity",
             "play_ir_blob",
             "persist_ir_blob",
             "erase_configuration",
@@ -594,6 +599,78 @@ class AsyncXProxy:
         """
 
         return await self.run(self._proxy.find_remote)
+
+    # -- live edit surface -----------------------------------------------------
+    #
+    # In-place editing of one activity or one device: capture a
+    # ``hub_bundle`` (``backup_hub_bundle``, typically with
+    # ``include_blobs=False``) as the baseline, produce an edited copy,
+    # then sync. The engine diffs the two
+    # bundles into targeted writes (plan → stale pre-flight → serial
+    # ack-gated steps); nothing is deleted-and-restored. For a dry-run
+    # preview of what a sync would write, feed the same bundle pair to the
+    # pure planners ``build_activity_sync_plan``/``build_device_sync_plan``
+    # (exported from the package root).
+    #
+    # These are explicit methods (not PROXY_METHODS delegates) so the
+    # ``progress_callback`` is marshaled onto the event loop instead of
+    # firing on the engine thread.
+
+    async def sync_activity(
+        self,
+        *,
+        baseline: dict,
+        edited: dict,
+        activity_id: int,
+        progress_callback: Optional[Callable] = None,
+    ) -> dict:
+        """Write the ``baseline`` → ``edited`` diff for one activity to the hub.
+
+        Returns the engine's result dict: ``{"status": "success",
+        "completed_steps", "total_steps", "counters"}`` on success, or
+        ``{"status": "failed", "failed_at", "message", ...}`` when the plan
+        is out of scope, the activity changed on the hub since ``baseline``
+        was captured (``failed_at: "stale_check"``), or the hub rejected a
+        step. ``progress_callback`` (sync or async) receives keyword-only
+        progress payloads (``phase``, ``message``, ``completed_steps``,
+        ``total_steps``, ...) on the event loop.
+        """
+
+        return await self.run(
+            self._proxy.sync_activity,
+            baseline=baseline,
+            edited=edited,
+            activity_id=activity_id,
+            progress_callback=self._marshal_optional(progress_callback),
+        )
+
+    async def sync_device(
+        self,
+        *,
+        baseline: dict,
+        edited: dict,
+        device_id: int,
+        progress_callback: Optional[Callable] = None,
+    ) -> dict:
+        """Device-scoped counterpart of :meth:`sync_activity`.
+
+        Same bundle-pair contract and result dict, with the device id as
+        the entity being edited (command adds/renames/payload edits, idle
+        behaviour, input records).
+        """
+
+        return await self.run(
+            self._proxy.sync_device,
+            baseline=baseline,
+            edited=edited,
+            device_id=device_id,
+            progress_callback=self._marshal_optional(progress_callback),
+        )
+
+    def _marshal_optional(self, callback: Optional[Callable]) -> Optional[Callable]:
+        if callback is None:
+            return None
+        return _marshal_callback(self._loop, callback)
 
     # -- lazy-read plumbing --------------------------------------------------
 

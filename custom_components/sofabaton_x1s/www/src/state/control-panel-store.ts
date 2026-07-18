@@ -1,16 +1,19 @@
 import type {
   BackupProgressEvent,
   BackupSectionId,
-  BlobsSectionId,
   ControlPanelSnapshot,
   HassLike,
   HubAction,
+  HubClickAction,
+  HubClickItem,
+  HubEventFireEvent,
   RefreshKind,
   RuntimeCompletionNotice,
   SectionId,
   SettingKey,
   TabId,
   WifiPressEvent,
+  WifiSectionId,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import {
@@ -22,30 +25,35 @@ import {
   formatError,
   formatLogEntry,
   hassFingerprint,
+  hubClickAction,
   isBackendUnavailableError,
   persistentCacheEnabled,
   proxyClientConnected,
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
+import { buildHubClickNotification } from "../shared/utils/hub-click-notification";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 const BACKEND_RETRY_MIN_MS = 2000;
 const BACKEND_RETRY_MAX_MS = 10000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-const VALID_TABS = new Set<TabId>(["activities", "settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "backup", "cache", "logs"]);
+
+/** activeRefreshLabel sentinel for the whole-hub "Refresh all" operation. */
+export const REFRESH_ALL_KEY = "__refresh_all__";
 const VALID_CACHE_SECTIONS = new Set<SectionId>(["activities", "devices"]);
 const VALID_BACKUP_SECTIONS = new Set<BackupSectionId>(["make", "edit", "restore"]);
-const VALID_BLOBS_SECTIONS = new Set<BlobsSectionId>(["fetch", "test", "save"]);
+const VALID_WIFI_SECTIONS = new Set<WifiSectionId>(["wifi", "hub_events"]);
 
 interface PersistedViewState {
   selectedHubEntryId?: string | null;
   selectedTab?: TabId;
   selectedCacheSection?: SectionId;
   selectedBackupSection?: BackupSectionId;
-  selectedBlobsSection?: BlobsSectionId;
+  selectedWifiSection?: WifiSectionId;
   openSection?: SectionId | null;
   openBackupSection?: BackupSectionId;
-  openBlobsSection?: BlobsSectionId | null;
 }
 
 interface StorageLike {
@@ -79,17 +87,15 @@ function readPersistedViewState(): PersistedViewState {
       : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection as BackupSectionId)
         ? (parsed.openBackupSection as BackupSectionId)
         : "make";
-    const selectedBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.selectedBlobsSection as BlobsSectionId)
-      ? (parsed.selectedBlobsSection as BlobsSectionId)
-      : VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection as BlobsSectionId)
-        ? (parsed.openBlobsSection as BlobsSectionId)
-        : "fetch";
+    const selectedWifiSection = VALID_WIFI_SECTIONS.has(parsed?.selectedWifiSection as WifiSectionId)
+      ? (parsed.selectedWifiSection as WifiSectionId)
+      : "wifi";
     return {
       selectedHubEntryId,
       ...(selectedTab ? { selectedTab } : {}),
       selectedCacheSection,
       selectedBackupSection,
-      selectedBlobsSection,
+      selectedWifiSection,
     };
   } catch (_error) {
     return {};
@@ -120,14 +126,12 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   selectedTab: "cache",
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
-  selectedBlobsSection: "fetch",
+  selectedWifiSection: "wifi",
   openEntity: null,
   staleData: false,
-  refreshBusy: false,
-  activeRefreshLabel: null,
-  externalHubCommandBusy: false,
-  externalHubCommandLabel: null,
-  runtimeCompletionNotice: null,
+  refreshBusyByHub: {},
+  externalHubCommandByHub: {},
+  runtimeCompletionNoticeByHub: {},
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -140,6 +144,9 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   pendingScrollEntityKey: null,
   lastWifiPress: null,
   wifiPressSubscribedEntryId: null,
+  lastCommandSend: null,
+  lastHubEvent: null,
+  hubEventsSubscribedEntryId: null,
 };
 
 interface ControlPanelStoreOptions {
@@ -164,9 +171,11 @@ export class ControlPanelStore {
   private _backupOpEntryId: string | null = null;
   private _backupOpId: string | null = null;
   private _runtimeStatePollTimer: ReturnType<typeof setTimeout> | null = null;
-  private _runtimeCompletionTimer: ReturnType<typeof setTimeout> | null = null;
+  private _runtimeCompletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private _wifiPressUnsub: (() => void) | null = null;
   private _wifiPressSubscribeSeq = 0;
+  private _hubEventsUnsub: (() => void) | null = null;
+  private _hubEventsSubscribeSeq = 0;
   // Hub to pre-select when the card was created from a hub-specific entity (via
   // the card picker). Applied once when the hub becomes available; the user can
   // freely switch hubs afterwards.
@@ -199,6 +208,7 @@ export class ControlPanelStore {
     }
     void this._syncBackupOperationFeed();
     void this._syncWifiPressFeed();
+    void this._syncHubEventsFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -209,16 +219,18 @@ export class ControlPanelStore {
     this._isConnected = false;
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
+      externalHubCommandByHub: {},
+      runtimeCompletionNoticeByHub: {},
       lastWifiPress: null,
+      lastCommandSend: null,
+      lastHubEvent: null,
     };
     this._clearRuntimeStatePoll();
-    this._clearRuntimeCompletionTimer();
+    this._clearRuntimeCompletionTimers();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
+    void this._teardownHubEventsFeed();
     void this.unsubscribeLogs();
   }
 
@@ -230,11 +242,15 @@ export class ControlPanelStore {
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
   }
 
-  private _clearRuntimeCompletionTimer() {
-    if (this._runtimeCompletionTimer) {
-      clearTimeout(this._runtimeCompletionTimer);
-      this._runtimeCompletionTimer = null;
+  private _clearRuntimeCompletionTimers(entryId?: string) {
+    if (entryId !== undefined) {
+      const timer = this._runtimeCompletionTimers.get(entryId);
+      if (timer) clearTimeout(timer);
+      this._runtimeCompletionTimers.delete(entryId);
+      return;
     }
+    for (const timer of this._runtimeCompletionTimers.values()) clearTimeout(timer);
+    this._runtimeCompletionTimers.clear();
   }
 
   private _clearRuntimeStatePoll() {
@@ -316,7 +332,7 @@ export class ControlPanelStore {
       const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
       if (
         this._isConnected &&
-        !this._isHubCommandBusy() &&
+        !this._isAnyHubCommandBusy() &&
         !this._snapshot.loading &&
         Date.now() > this._refreshGraceUntil &&
         didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)
@@ -355,21 +371,21 @@ export class ControlPanelStore {
       logsError: null,
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
       lastWifiPress: null,
+      lastCommandSend: null,
+      lastHubEvent: null,
     };
-    this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
       await this._teardownBackupOperationFeed();
       await this._teardownWifiPressFeed();
+      await this._teardownHubEventsFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -422,9 +438,9 @@ export class ControlPanelStore {
     this.emit();
   }
 
-  setSelectedBlobsSection(sectionId: BlobsSectionId) {
-    if (this._snapshot.selectedBlobsSection === sectionId) return;
-    this._snapshot = { ...this._snapshot, selectedBlobsSection: sectionId };
+  setSelectedWifiSection(sectionId: WifiSectionId) {
+    if (this._snapshot.selectedWifiSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedWifiSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -444,32 +460,50 @@ export class ControlPanelStore {
     this._snapshot = { ...this._snapshot, pendingScrollEntityKey: null };
   }
 
-  setExternalHubCommandBusy(busy: boolean, label: string | null = null) {
+  /**
+   * Busy state is stored per hub: callers whose operation may outlive the
+   * current hub selection (tab subscriptions, async finallys) pass the
+   * entry_id captured when the operation started so a late clear/set can
+   * never touch another hub's state. Without an entry_id the currently
+   * selected hub is used.
+   */
+  setExternalHubCommandBusy(busy: boolean, label: string | null = null, entryId?: string | null) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    const byHub = { ...this._snapshot.externalHubCommandByHub };
+    if (busy) byHub[key] = String(label || "").trim() || "Hub command in progress…";
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: busy,
-      externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress…" : null,
+      externalHubCommandByHub: byHub,
     };
     this.emit();
   }
 
-  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, ttlMs = 6000) {
-    this._clearRuntimeCompletionTimer();
+  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, entryId?: string | null, ttlMs = 6000) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    this._clearRuntimeCompletionTimers(key);
+    const byHub = { ...this._snapshot.runtimeCompletionNoticeByHub };
+    if (notice) byHub[key] = notice;
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      runtimeCompletionNotice: notice,
+      runtimeCompletionNoticeByHub: byHub,
     };
     this.emit();
     if (!notice) return;
-    this._runtimeCompletionTimer = setTimeout(() => {
-      this._runtimeCompletionTimer = null;
-      if (!this._snapshot.runtimeCompletionNotice) return;
+    this._runtimeCompletionTimers.set(key, setTimeout(() => {
+      this._runtimeCompletionTimers.delete(key);
+      if (!(key in this._snapshot.runtimeCompletionNoticeByHub)) return;
+      const next = { ...this._snapshot.runtimeCompletionNoticeByHub };
+      delete next[key];
       this._snapshot = {
         ...this._snapshot,
-        runtimeCompletionNotice: null,
+        runtimeCompletionNoticeByHub: next,
       };
       this.emit();
-    }, ttlMs);
+    }, ttlMs));
   }
 
   async loadState(options: { silent?: boolean } = {}) {
@@ -489,6 +523,7 @@ export class ControlPanelStore {
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
         await this._syncWifiPressFeed();
+        await this._syncHubEventsFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -515,6 +550,7 @@ export class ControlPanelStore {
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -559,6 +595,103 @@ export class ControlPanelStore {
     }
   }
 
+  /** Persist the global Hub-tab click behavior ("do nothing" / "send" /
+   *  "copy"), with the same optimistic-update + rollback flow as the
+   *  boolean setting toggles. */
+  async setHubClickAction(value: HubClickAction) {
+    const hub = selectedHub(this._snapshot);
+    if (!hub || this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) return;
+
+    const previous = hubClickAction(this._snapshot);
+    if (previous === value) return;
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "hub_click_action" };
+    this._applyOptimisticHubClickAction(value);
+
+    try {
+      await this.api().setHubClickAction(hub.entry_id, value);
+      await this.loadControlPanelState();
+    } catch (_error) {
+      this._applyOptimisticHubClickAction(previous);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+
+  private _applyOptimisticHubClickAction(value: HubClickAction) {
+    if (!this._snapshot.state) return;
+    this._snapshot = {
+      ...this._snapshot,
+      state: { ...this._snapshot.state, hub_click_action: value },
+    };
+  }
+
+  /** "Send the command": req_activate the clicked Hub-tab row on the hub via
+   *  the hub's remote entity, then pulse the bottom dock like an incoming
+   *  Wifi press. Failures surface as a dock completion notice. */
+  async sendHubClickCommand(item: HubClickItem) {
+    const hub = selectedHub(this._snapshot);
+    const hass = this._snapshot.hass;
+    if (!hub || !hass?.callService) return;
+    const entityId = entityForHub(hass, hub);
+    if (!entityId) {
+      this.showRuntimeCompletion(
+        { tone: "error", label: TOOLS_CARD_STRINGS.hubClick.noRemoteEntity },
+        hub.entry_id,
+      );
+      return;
+    }
+    try {
+      await hass.callService("remote", "send_command", {
+        entity_id: entityId,
+        command: item.commandId,
+        device: item.targetId,
+      });
+      this._snapshot = {
+        ...this._snapshot,
+        lastCommandSend: {
+          entryId: hub.entry_id,
+          contextLabel: item.contextLabel,
+          commandLabel: item.label,
+          receivedAt: Date.now(),
+        },
+      };
+      this.emit();
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    }
+  }
+
+  /** "Copy the command": drop a persistent notification in the sidebar with
+   *  ready-to-paste Lovelace / action YAML for the clicked row — the same
+   *  format the remote card's Key capture notification uses. */
+  async copyHubClickCommand(item: HubClickItem) {
+    const hub = selectedHub(this._snapshot);
+    const hass = this._snapshot.hass;
+    if (!hub || !hass?.callService) return;
+    const entityId = entityForHub(hass, hub);
+    if (!entityId) {
+      this.showRuntimeCompletion(
+        { tone: "error", label: TOOLS_CARD_STRINGS.hubClick.noRemoteEntity },
+        hub.entry_id,
+      );
+      return;
+    }
+    try {
+      await hass.callService(
+        "persistent_notification",
+        "create",
+        buildHubClickNotification(entityId, item),
+      );
+      this.showRuntimeCompletion(
+        { tone: "success", label: TOOLS_CARD_STRINGS.hubClick.copied(item.label) },
+        hub.entry_id,
+      );
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    }
+  }
+
   async runAction(action: HubAction) {
     const hub = selectedHub(this._snapshot);
     if (!hub || this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) return;
@@ -579,32 +712,160 @@ export class ControlPanelStore {
     await this.loadState();
   }
 
+  private _setRefreshBusy(entryId: string, label: string | null) {
+    this._snapshot = {
+      ...this._snapshot,
+      refreshBusyByHub: { ...this._snapshot.refreshBusyByHub, [entryId]: label },
+    };
+    this.emit();
+  }
+
+  private _clearRefreshBusy(entryId: string) {
+    const byHub = { ...this._snapshot.refreshBusyByHub };
+    delete byHub[entryId];
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this.emit();
+  }
+
   async refreshSection(sectionId: SectionId) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: null };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, null);
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
+  }
+
+  /**
+   * Whole-hub structural cache refresh ("Refresh all" in the Hub tab).
+   * Starts the backend cache_refresh operation and follows its progress;
+   * running state and phase messages surface through the bottom dock
+   * (hub.runtime_state), so the button itself only spins.
+   *
+   * Resolves with `null` on success or a failure message — the same one shown
+   * in the dock — so embedded starters (the Activities tab's refresh button)
+   * can react to the outcome.
+   */
+  async refreshAllForHub(): Promise<string | null> {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this._setRefreshBusy(hub.entry_id, REFRESH_ALL_KEY);
+    let unsubscribe: (() => void) | null = null;
+    try {
+      const start = await this.api().startCacheRefresh(hub.entry_id);
+      // Pull runtime_state promptly so the dock picks up the running operation.
+      void this.loadControlPanelState().catch(() => undefined);
+      const failure = await new Promise<string | null>((resolve) => {
+        this.api()
+          .subscribeBackupProgress(start.operation_id, (payload: BackupProgressEvent) => {
+            if (payload.status === "success") resolve(null);
+            else if (payload.status === "failed") {
+              resolve(String(payload.error || payload.message || "Cache refresh failed."));
+            }
+          })
+          .then((unsub) => { unsubscribe = unsub; })
+          .catch((error) => resolve(formatError(error)));
+      });
+      this.showRuntimeCompletion(
+        failure
+          ? { tone: "error", label: failure }
+          : { tone: "success", label: "Hub cache refreshed." },
+        hub.entry_id,
+      );
+      await this.loadState({ silent: true });
+      return failure;
+    } catch (error) {
+      const failure = formatError(error);
+      this.showRuntimeCompletion({ tone: "error", label: failure }, hub.entry_id);
+      return failure;
+    } finally {
+      if (unsubscribe) {
+        try { (unsubscribe as () => void)(); } catch { /* ignore */ }
+      }
+      this._clearRefreshBusy(hub.entry_id);
+    }
+  }
+
+  /**
+   * Immediate live write of the hub's stored activity display order.
+   * ``orderedIds`` is the full activity id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderActivities(orderedIds: number[]): Promise<string | null> {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering activities…", hub.entry_id);
+    try {
+      await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+
+  /**
+   * Immediate live write of the hub's stored device display order.
+   * ``orderedIds`` is the full device id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderDevices(orderedIds: number[]): Promise<string | null> {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering devices…", hub.entry_id);
+    try {
+      await this.api().reorderDevices(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+
+  /**
+   * Create a fresh, empty activity on the hub, then pull its cache entry so
+   * the live editor can capture it right away. Resolves with the assigned
+   * activity id or an error message.
+   */
+  async createActivity(name: string): Promise<{ activityId: number } | { error: string }> {
+    if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { error: "No hub selected." };
+    this.setExternalHubCommandBusy(true, "Creating activity…", hub.entry_id);
+    let activityId = 0;
+    try {
+      const result = await this.api().createActivity(hub.entry_id, name);
+      activityId = Number(result?.activity_id || 0);
+      if (!activityId) return { error: "The hub did not return the new activity id." };
+    } catch (error) {
+      return { error: formatError(error) };
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    // Per-entity cache refresh: makes the new activity part of the
+    // persistent/structural cache (and the visible list) before the caller
+    // opens the editor on it. The editor's needs-refresh guard covers the
+    // case where this refresh fails.
+    await this.refreshForHub("activity", activityId, `act-${activityId}`);
+    return { activityId };
   }
 
   async refreshForHub(kind: RefreshKind, targetId: number, key: string) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: key };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, key);
     try {
       await this.api().refreshCacheEntry({
         hubEntryId: hub.entry_id,
@@ -614,14 +875,12 @@ export class ControlPanelStore {
       });
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-        pendingScrollEntityKey: key,
-      };
-      this.emit();
+      // Scroll-to-entry only makes sense if the user is still on the hub
+      // whose entry was refreshed.
+      if (this._snapshot.selectedHubEntryId === hub.entry_id) {
+        this._snapshot = { ...this._snapshot, pendingScrollEntityKey: key };
+      }
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
 
@@ -775,17 +1034,26 @@ export class ControlPanelStore {
     if (
       previousRuntime?.kind === "operation_running"
       && nextRuntime?.kind !== "operation_running"
+      // Cache refreshes report their own completion (success or failure)
+      // through refreshAllForHub's progress subscription, which knows the
+      // real terminal status — the poll transition doesn't.
+      && previousRuntime.operation !== "cache_refresh"
     ) {
       const operation = previousRuntime.operation;
       const successLabel = operation === "backup_restore"
         ? "Restore completed successfully."
         : operation === "backup_export"
           ? "Backup completed successfully."
-          : "Wifi Device deployed successfully.";
-      this.showRuntimeCompletion({
-        tone: "success",
-        label: successLabel,
-      });
+          : operation === "entity_sync"
+            ? "Synced to hub."
+            : "Wifi Device deployed successfully.";
+      this.showRuntimeCompletion(
+        {
+          tone: "success",
+          label: successLabel,
+        },
+        nextHub?.entry_id ?? previousHub?.entry_id ?? null,
+      );
     }
     this._scheduleRuntimeStatePoll();
   }
@@ -830,11 +1098,17 @@ export class ControlPanelStore {
     };
   }
 
+  /** Reconcile the selected hub with the loaded hub list. Runs on every
+   * state load, so it only persists when the selection actually changes:
+   * an unconditional write would let every open tab continuously overwrite
+   * the shared view state with its own snapshot. */
   private syncSelection() {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
-      this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
-      this.persistViewState();
+      if (this._snapshot.selectedHubEntryId !== null) {
+        this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+        this.persistViewState();
+      }
       return;
     }
     if (
@@ -849,8 +1123,8 @@ export class ControlPanelStore {
     }
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: hubs[0].entry_id };
+      this.persistViewState();
     }
-    this.persistViewState();
   }
 
   private api() {
@@ -869,7 +1143,7 @@ export class ControlPanelStore {
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
           selectedBackupSection: this._snapshot.selectedBackupSection,
-          selectedBlobsSection: this._snapshot.selectedBlobsSection,
+          selectedWifiSection: this._snapshot.selectedWifiSection,
         } satisfies PersistedViewState),
       );
     } catch (_error) {
@@ -879,13 +1153,29 @@ export class ControlPanelStore {
 
   private _isHubCommandBusy() {
     const hub = selectedHub(this._snapshot);
+    const entryId = hub?.entry_id ?? null;
     const activeBackupOperation = hub?.active_backup_operation;
     const backupBusy =
       !!activeBackupOperation &&
       ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
-      this._snapshot.refreshBusy ||
-      this._snapshot.externalHubCommandBusy ||
+      (entryId && entryId in this._snapshot.refreshBusyByHub) ||
+      (entryId && entryId in this._snapshot.externalHubCommandByHub) ||
+      this._snapshot.pendingActionKey ||
+      backupBusy,
+    );
+  }
+
+  /** Busy on ANY hub — used to suppress the stale-data banner while one of
+   * our own operations is bumping cache generations in the background. */
+  private _isAnyHubCommandBusy() {
+    const backupBusy = (this._snapshot.state?.hubs ?? []).some((hub) =>
+      !!hub.active_backup_operation &&
+      ["pending", "running"].includes(String(hub.active_backup_operation.status || "")),
+    );
+    return Boolean(
+      Object.keys(this._snapshot.refreshBusyByHub).length ||
+      Object.keys(this._snapshot.externalHubCommandByHub).length ||
       this._snapshot.pendingActionKey ||
       backupBusy,
     );
@@ -1038,6 +1328,79 @@ export class ControlPanelStore {
     const unsub = this._wifiPressUnsub;
     this._wifiPressUnsub = null;
     this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: null };
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private async _syncHubEventsFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownHubEventsFeed();
+      return;
+    }
+    if (this._snapshot.hubEventsSubscribedEntryId === entryId && this._hubEventsUnsub) {
+      return;
+    }
+
+    await this._teardownHubEventsFeed();
+    const subscribeSeq = ++this._hubEventsSubscribeSeq;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: entryId };
+
+    try {
+      const unsubscribe = await this.api().subscribeHubEvents(entryId, (payload) => {
+        if (subscribeSeq !== this._hubEventsSubscribeSeq) return;
+        if (this._snapshot.hubEventsSubscribedEntryId !== entryId) return;
+        this._handleHubEventMessage(entryId, payload);
+      });
+      if (subscribeSeq !== this._hubEventsSubscribeSeq) {
+        try { unsubscribe(); } catch { /* ignore */ }
+        return;
+      }
+      this._hubEventsUnsub = unsubscribe;
+    } catch {
+      // Hub-event firings are a UX-only enhancement; if the subscription
+      // fails (older backend, transient WS error) we silently degrade
+      // and the rows in the Events tab simply won't glow.
+      if (subscribeSeq === this._hubEventsSubscribeSeq) {
+        this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
+      }
+    }
+  }
+
+  private _handleHubEventMessage(entryId: string, payload: unknown) {
+    const message = (payload && typeof payload === "object") ? (payload as Record<string, unknown>) : null;
+    if (!message) return;
+    const timestamp = Number(message.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+    const type = message.type === "redundant_off" ? "redundant_off" : message.type === "activity_change" ? "activity_change" : null;
+    if (!type) return;
+    const activityId = (value: unknown) =>
+      typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null;
+    const event: HubEventFireEvent = {
+      entryId,
+      type,
+      fromActivityId: activityId(message.from_activity_id),
+      toActivityId: activityId(message.to_activity_id),
+      timestamp,
+      // Same split as wifi presses: the server timestamp is identity, the
+      // local receipt time drives the glow animation epoch.
+      receivedAt: Date.now(),
+    };
+    this._snapshot = { ...this._snapshot, lastHubEvent: event };
+    this.emit();
+  }
+
+  private async _teardownHubEventsFeed() {
+    this._hubEventsSubscribeSeq++;
+    const unsub = this._hubEventsUnsub;
+    this._hubEventsUnsub = null;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
     if (!unsub) return;
     try {
       await unsub();

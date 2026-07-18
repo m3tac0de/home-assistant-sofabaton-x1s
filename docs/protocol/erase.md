@@ -37,6 +37,16 @@ single-shot equivalent of deleting every device individually.
 No per-variant divergence has been observed. A single builder is
 sufficient.
 
+## Live validation (2026-07-12, backup/restore bench chunk 6)
+
+`erase_configuration` ran live on both an X1 and an X1S (first runs
+through our code): ack in **19.7 s (X1)** and **23.0 s (X1S)**, both
+catalogs empty on the next read, and **no post-ack session drop on
+either hub** — the documented disconnect tolerance below went unused.
+The 2-minute suggested timeout is comfortably generous; a follow-up
+replace-mode `restore_hub_bundle` rebuilt both hubs fully with every
+entity content-equal to the pre-erase capture.
+
 ## Response and timing
 
 Observed behaviour after the frame is sent:
@@ -133,7 +143,7 @@ It should:
 - On failure, raise; the bundle-restore orchestrator surfaces this
   as the bundle's first failure with no devices created.
 
-The `NotImplementedError` stub currently in
-`SofabatonHub.async_erase_configuration` is the placeholder for this
-implementation. Replace-mode bundle restores (the only callers) will
-start succeeding the moment this method is wired up.
+This is implemented as `erase_configuration` in
+`lib/proxy_backup.py` (120 s default ack window, cache wipe + 2 s
+settle on success), driven by `SofabatonHub.async_erase_configuration`,
+and live-validated on both hub models (see above).

@@ -49,9 +49,25 @@ _NETWORK_CALLBACK_CLASSES = {
     DEVICE_CLASS_WIFI_SONOS,
 }
 
+# Payload profiles distinguish what a bundle-shaped payload *carries*, not
+# how complete the capture was. ``full_backup`` payloads include command
+# payload bodies (IR blobs / raw command dumps) and are restorable;
+# ``structural`` payloads deliberately omit them (labels, bindings, macros,
+# inputs only) and must never be accepted by restore. Payloads with no
+# ``payload_profile`` field predate the marker and are treated as
+# ``full_backup`` for compatibility with existing backup files.
+PAYLOAD_PROFILE_FULL = "full_backup"
+PAYLOAD_PROFILE_STRUCTURAL = "structural"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def now_iso() -> str:
+    """UTC ISO-8601 timestamp; the stamp format for ``fetched_at`` fields."""
+
+    return _now_iso()
 
 
 def is_network_callback_device_class(device_class: Any) -> bool:
@@ -175,12 +191,32 @@ def build_hub_code_record_restore_data(
     if not data_hex:
         return None
 
+    # The hub persists family-0x0E saved records as ``blob_body +
+    # persist_tail`` (write-context checksum; see data-structures.md
+    # "Save-specific trailing checksum"). Strip that tail here so
+    # ``data_hex`` is the stable blob body — the restore writer computes
+    # and appends a fresh tail for the new write context. Without this,
+    # every backup→restore round-trip grew the record by one byte
+    # (live-bench finding, backup/restore chunk 2). The IR path already
+    # does the equivalent split in ``normalize_dump_to_blobs``.
+    persist_tail_hex: str | None = None
+    try:
+        blob = bytes.fromhex(data_hex)
+    except ValueError:
+        blob = b""
+    if len(blob) >= 2:
+        body, tail = split_play_blob_tail(blob)
+        data_hex = body.hex(" ")
+        persist_tail_hex = f"{tail:02x}"
+
     restore_data: dict[str, Any] = {
         "transport": "hub_code_record",
         "library_type": payload[8],
         "command_code": payload[9:15].hex(" "),
         "data_hex": data_hex,
     }
+    if persist_tail_hex is not None:
+        restore_data["persist_tail_hex"] = persist_tail_hex
 
     if device_class and is_decodable_class(device_class):
         decoded_block = try_decode_blob(device_class, data_hex)
@@ -364,8 +400,12 @@ def build_activity_button_rows(
         details = button_details.get(button_id, {})
         target_device_id = int(details.get("device_id", 0)) & 0xFF
         command_id = int(details.get("command_id", 0)) & 0xFF
-        if target_device_id == 0:
-            # Slot exists but isn't bound to a target device; skip.
+        if target_device_id == 0 or command_id == 0:
+            # Slot exists but isn't bound: no target device, or a keymap
+            # page placeholder carrying a role-assigned device with no
+            # command (command byte 0) — e.g. a playback-role device that
+            # has no mapping for this button. Neither is an actionable
+            # binding, and bundle validation rejects command_id 0.
             continue
         referenced.add(target_device_id)
         rows.append(
@@ -455,12 +495,15 @@ def assemble_device_backup(
     key_sort_row: dict[str, Any] | None,
     input_record: dict[str, Any] | None,
     complete: bool,
+    payload_profile: str = PAYLOAD_PROFILE_FULL,
+    fetched_at: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "kind": "device_backup",
         "schema_version": DEVICE_BACKUP_SCHEMA_VERSION,
         "captured_at": _now_iso(),
         "complete": complete,
+        "payload_profile": payload_profile,
         "device": device_block,
         "commands": command_rows,
         "key_sort": dict(key_sort_row) if isinstance(key_sort_row, dict) else None,
@@ -468,6 +511,11 @@ def assemble_device_backup(
         "button_bindings": button_rows,
         "macros": macro_rows,
     }
+    if fetched_at:
+        # When the payload is assembled from cached state, ``captured_at``
+        # is assembly time; ``fetched_at`` is when the hub was last read.
+        payload["fetched_at"] = fetched_at
+    return payload
 
 
 def assemble_activity_backup(
@@ -478,8 +526,10 @@ def assemble_activity_backup(
     macro_rows: list[dict[str, Any]],
     referenced_source_device_ids: set[int],
     complete: bool,
+    fetched_at: str | None = None,
+    favorites_order: list[int] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "kind": "activity_backup",
         "schema_version": ACTIVITY_BACKUP_SCHEMA_VERSION,
         "captured_at": _now_iso(),
@@ -492,6 +542,16 @@ def assemble_activity_backup(
         "macros": macro_rows,
         "referenced_source_device_ids": sorted(referenced_source_device_ids),
     }
+    if fetched_at:
+        payload["fetched_at"] = fetched_at
+    # Quick-access display order (hub ids in family-0x61 slot order). An
+    # advisory ordering hint for the editor, never an identity: favorites and
+    # macro shortcuts share one fav-id namespace, and a reorder rewrites this
+    # slot table WITHOUT renumbering the button_ids. Consumers that lack it
+    # (older backups) fall back to button_id order. Omitted when empty.
+    if favorites_order:
+        payload["favorites_order"] = [int(fav_id) & 0xFF for fav_id in favorites_order]
+    return payload
 
 
 def assemble_hub_bundle(
@@ -500,6 +560,7 @@ def assemble_hub_bundle(
     activity_payloads: list[dict[str, Any]],
     hub_info: dict[str, Any],
     total_steps: int | None = None,
+    payload_profile: str = PAYLOAD_PROFILE_FULL,
 ) -> dict[str, Any]:
     complete = all(bool(p.get("complete")) for p in device_payloads) and all(
         bool(p.get("complete")) for p in activity_payloads
@@ -509,6 +570,7 @@ def assemble_hub_bundle(
         "schema_version": HUB_BUNDLE_SCHEMA_VERSION,
         "captured_at": _now_iso(),
         "complete": complete,
+        "payload_profile": payload_profile,
         "hub": dict(hub_info),
         "devices": device_payloads,
         "activities": activity_payloads,

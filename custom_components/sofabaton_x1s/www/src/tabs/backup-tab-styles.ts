@@ -9,7 +9,10 @@ export const backupTabStyles = css`
     :host {
       display: flex;
       flex: 1;
+      min-width: 0;
       min-height: 0;
+      max-width: 100%;
+      overflow: hidden;
       --backup-radius-sm: calc(var(--ha-card-border-radius, 12px) * 0.85);
       --backup-radius-md: var(--ha-card-border-radius, 12px);
       --backup-radius-lg: calc(var(--ha-card-border-radius, 12px) * 1.33);
@@ -429,8 +432,9 @@ export const backupTabStyles = css`
       line-height: 1.45;
       padding: 8px 14px 0;
     }
-    .tab-panel--detail { padding: 0; }
+    .tab-panel--detail { min-width: 0; padding: 0; }
     .detail-view {
+      min-width: 0;
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -440,6 +444,7 @@ export const backupTabStyles = css`
     .sticky-header {
       position: sticky;
       z-index: 2;
+      min-width: 0;
       background: var(--ha-card-background, var(--card-background-color));
     }
     .sticky-header { top: 0; }
@@ -467,12 +472,14 @@ export const backupTabStyles = css`
       gap: 10px;
       min-width: 0;
       flex: 1;
+      overflow: hidden;
     }
     .detail-title-stack {
       display: flex;
       flex-direction: column;
       min-width: 0;
-      flex: 1 1 auto;
+      flex: 1 1 0;
+      overflow: hidden;
     }
     .detail-crumbs {
       display: flex;
@@ -518,6 +525,9 @@ export const backupTabStyles = css`
       flex: 0 0 auto;
     }
     .detail-title {
+      display: block;
+      width: 100%;
+      max-width: 100%;
       font-size: 18px;
       font-weight: 700;
       line-height: 1.15;
@@ -578,6 +588,10 @@ export const backupTabStyles = css`
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+    @media (max-width: 640px) {
+      .detail-section-nav-btn { gap: 0; }
+      .detail-section-nav-btn ha-icon { display: none; }
     }
     /* Match the Wifi Commands tab's detail-view back button so the
        affordance is identical across the card: padded pill with a
@@ -1019,6 +1033,27 @@ export const backupTabStyles = css`
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
+    /* Reminder banner inside the Edit Payload dialog nudging the user
+       toward Test before overwriting a working command. */
+    .payload-test-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #ffa726) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--warning-color, #ffa726) 10%, transparent);
+      color: var(--primary-text-color);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .payload-test-note ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--warning-color, #ffa726);
+      flex: none;
+      margin-top: 1px;
+    }
     /* "Advanced" foldout that wraps the structured-payload form
        inside the Change Command dialog. Mirrors the Wifi Commands
        command-config popup so the affordance reads the same way
@@ -1099,7 +1134,10 @@ export const backupTabStyles = css`
       font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
       resize: vertical;
       min-height: 60px;
-      white-space: pre;
+      /* Wrap long content (e.g. a raw hex payload) inside the textarea
+         instead of running off as one long line; newlines are preserved. */
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     /* Escaped wire-string fields are conceptually one long string with
        visible \\n escapes. Wrap on the textarea edge rather than

@@ -488,7 +488,7 @@
     });
 
     // ── ha-textarea ──────────────────────────────────────────────────────────────
-    // Used by the blobs tab for the Test / Save blob bodies.
+    // Used by payload-editing dialogs for blob text bodies.
     customElements.define("ha-textarea", class extends HTMLElement {
       _value     = "";
       _label     = "";
@@ -716,11 +716,16 @@
       }
     });
 
+    // The real Home Assistant element owns pointer/drag behavior and emits an
+    // `item-moved` event. Tests emit that public event directly; this stub only
+    // needs to make the capability visible before the editor is constructed.
+    customElements.define("ha-sortable", class extends HTMLElement {});
+
   </script>
 
   <!-- Card bundle — runs after stubs module above.
        The ?v= bust forces browsers to skip cache when the file is updated. -->
-  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=80"></script>
+  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=81"></script>
 
   <!-- Harness logic — runs after both modules above -->
   <script type="module">
@@ -814,7 +819,7 @@
     // tools_frontend_version must match the ?v= cache-bust on the script tag.
     // The store compares this against LOADED_TOOLS_FRONTEND_VERSION (read from the
     // script URL's ?v= param) and sets toolsFrontendVersionMismatch if they differ.
-    const TOOLS_FRONTEND_VERSION = "80";
+    const TOOLS_FRONTEND_VERSION = "81";
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
@@ -890,7 +895,9 @@
       devices: [
         { device: { device_id: 1, name: "Television", device_class: "ir", sort: 1 },
           commands: [
-            { command_id: 10, name: "Power" },
+            // Raw payload only (learned IR): exercises the raw-hex payload editor.
+            { command_id: 10, name: "Power",
+              restore_data: { transport: "hub_code_record", library_type: 0x0d, button_code: 0x1234, data_hex: "aa 01 02 03 0d 25" } },
             { command_id: 11, name: "Volume Up" },
             { command_id: 12, name: "Input HDMI1" },
           ],
@@ -925,7 +932,11 @@
         // the narrative activity editor's Devices section.
         { device: { device_id: 3, name: "Streamer", device_class: "ir", sort: 3 },
           commands: [
-            { command_id: 30, name: "Home" },
+            // Decoded block: exercises the structured payload editor.
+            { command_id: 30, name: "Home",
+              restore_data: { transport: "hub_code_record", library_type: 0x1c,
+                data_hex: "2f 6b 65 79 70 72 65 73 73 2f 48 6f 6d 65",
+                decoded: { class: "wifi_roku", fields: { path: "/keypress/Home" }, trailer_hex: "" } } },
             { command_id: 31, name: "Play" },
             { command_id: 32, name: "Up" },
             { command_id: 33, name: "Down" },
@@ -1170,6 +1181,7 @@
 
     const wsLogEl  = document.getElementById("ws-log");
     let   wsBuffer = [];
+    let   structuredCalls = [];
 
     function wsLog(type, dir) {
       const prefix = dir === "req" ? "→" : dir === "err" ? "✕" : "←";
@@ -1196,6 +1208,7 @@
 
         callWS(message) {
           const type = String(message.type ?? "");
+          structuredCalls.push({ channel: "ws", message: clone(message) });
           wsLog(type, "req");
 
           const handler = handlers[type];
@@ -1268,6 +1281,7 @@
         // callService needed by wifi-commands-tab → sync_command_config
         callService(domain, service, data) {
           const key = `${domain}.${service}`;
+          structuredCalls.push({ channel: "service", domain, service, data: clone(data) });
           wsLog(key, "req");
           const svcHandler = handlers[key];
           if (svcHandler) return svcHandler(data);
@@ -1281,6 +1295,7 @@
 
     async function loadScenario(scenario) {
       wsBuffer = [];
+      structuredCalls = [];
       wsLogEl.innerHTML = "";
 
       // Clear persisted view state so each scenario starts fresh.
@@ -1314,7 +1329,7 @@
     // ── postLoad helpers ──────────────────────────────────────────────────────────
 
     // Settings + Logs moved into a tools-menu dropdown in the c49f180 refactor;
-    // the main tab bar only carries Cache / Wifi Commands / Backup / Blobs now.
+    // the main tab bar only carries Cache / Wifi Commands / Backup now.
     // To click one of the menu items, we have to open the dropdown first.
     async function clickTab(card, label) {
       const top = [...card.shadowRoot.querySelectorAll(".tab-btn")]
@@ -1360,6 +1375,29 @@
       const btn   = block?.querySelector(".icon-btn");
       btn?.click();
       await card.updateComplete;
+    }
+
+    // Open the live editor from the Hub tab: switch to the given sub-tab,
+    // find the entity row by name, and click its wrench button.
+    async function openLiveEditor(card, sectionLabel, entityName) {
+      await clickTab(card, "Hub");
+      await card.updateComplete;
+      const subTab = [...card.shadowRoot.querySelectorAll(".secondary-tab-btn")]
+        .find(b => b.textContent.includes(sectionLabel));
+      subTab?.click();
+      await card.updateComplete;
+      const block = [...card.shadowRoot.querySelectorAll(".entity-block")]
+        .find(b => b.textContent.includes(entityName));
+      const wrench = block?.querySelector('ha-icon[icon="mdi:wrench"]')?.closest("button");
+      wrench?.click();
+      await card.updateComplete;
+      const editor = card.shadowRoot.querySelector("sofabaton-activities-tab");
+      if (editor) await editor.updateComplete;
+      return editor;
+    }
+
+    async function openActivityEditor(card, activityName) {
+      return openLiveEditor(card, "Activities", activityName);
     }
 
     // Click an ha-switch found near labelText inside the card's shadow root.
@@ -1444,6 +1482,7 @@
     }
 
     function clone(value) {
+      if (value === undefined) return undefined;
       return JSON.parse(JSON.stringify(value));
     }
 
@@ -1552,7 +1591,7 @@
         label: "8. Populated — Devices open",
         states: STATES_CONNECTED,
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           await clickAccordion(card, "devices");
         },
       },
@@ -1561,7 +1600,7 @@
         label: "9. WiFi device expanded (12 cmds)",
         states: STATES_CONNECTED,
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           await clickAccordion(card, "devices");
           await clickEntity(card, "dev-7");
         },
@@ -1571,7 +1610,7 @@
         label: "10. Stale data banner",
         states: STATES_CONNECTED,
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           card._store._refreshGraceUntil = 0;
           card.hass = {
             states: {
@@ -1596,7 +1635,7 @@
           "sofabaton_x1s/persistent_cache/refresh": () => new Promise(() => {}),
         },
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           await clickAccordion(card, "devices");
           await clickEntityRefresh(card, "dev-7");
         },
@@ -1607,7 +1646,7 @@
         states: STATES_CONNECTED,
         state: { ...BASE_STATE, persistent_cache_enabled: false },
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
         },
       },
 
@@ -1681,51 +1720,94 @@
       // The branch redesign adds a device-list layer: you first see a list of
       // WifiDeviceSummary cards, then navigate into one to edit its command slots.
 
-      // ── Activities (live editor, Phase L2) ──────────────────────────────────────
+      // ── Activity editor (live, Phase L2) — opened from the Hub tab wrench ──────
       {
-        id: "activities-list", group: "Activities",
-        label: "Activities — list",
-        states: STATES_CONNECTED,
-        postLoad: card => clickTab(card, "Activities"),
-      },
-      {
-        id: "activities-capture", group: "Activities",
-        label: "Activities — capture → edit",
+        id: "activities-capture", group: "Activity Editor",
+        label: "Activity editor — open via wrench",
         states: STATES_CONNECTED,
         handlers: {
-          "sofabaton_x1s/backup/export": () => ({ operation_id: "capture-1" }),
+          // Capture now reads the cached blob-free structural bundle (instant).
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: clone(EDIT_BACKUP_BUNDLE), generation: 1 }),
+          "sofabaton_x1s/activity/sync": () => ({ operation_id: "sync-1" }),
+          "sofabaton_x1s/activity/sync_plan": () => ({ step_count: 2, steps: [
+            { kind: "member_replay", label: "Adding a device to the activity…" },
+            { kind: "favorite_add", label: "Adding a shortcut…" },
+          ] }),
         },
-        subscribe: (cb) => {
-          // Emit a successful whole-hub capture carrying the rich edit bundle.
-          setTimeout(() => cb({
-            operation_id: "capture-1",
-            kind: "backup_export",
-            entry_id: "hub-1",
-            status: "success",
-            backup: clone(EDIT_BACKUP_BUNDLE),
-          }), 200);
+        subscribe: (cb, msg) => {
+          const opId = String(msg && msg.operation_id || "");
+          if (opId === "sync-1") {
+            // Scripted sync progress → success.
+            setTimeout(() => cb({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "running", phase: "writing", message: "Adding a shortcut…", completed_steps: 1, total_steps: 2 }), 120);
+            setTimeout(() => cb({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 }), 400);
+          }
           return Promise.resolve(() => {});
         },
         async postLoad(card) {
-          await clickTab(card, "Activities");
-          const tab = card.shadowRoot.querySelector("sofabaton-activities-tab");
-          if (!tab) return;
-          await tab.updateComplete;
-          const rows = [...tab.shadowRoot.querySelectorAll(".activity-row")];
-          const row = rows.find(r => r.textContent.includes("Watch TV"));
-          row?.click();
-          await tab.updateComplete;
+          await openActivityEditor(card, "Watch TV");
         },
       },
       {
-        id: "activities-app-connected", group: "Activities",
-        label: "Activities — app connected (blocked)",
+        id: "device-editor", group: "Activity Editor",
+        label: "Device editor — open via wrench",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: clone(EDIT_BACKUP_BUNDLE), generation: 1 }),
+          "sofabaton_x1s/device/sync": () => ({ operation_id: "dev-sync-1" }),
+        },
+        subscribe: (cb, msg) => {
+          const opId = String(msg && msg.operation_id || "");
+          if (opId === "dev-sync-1") {
+            setTimeout(() => cb({ operation_id: "dev-sync-1", kind: "device_sync", entry_id: "hub-1", status: "running", phase: "writing", message: "Writing button assignments…", completed_steps: 0, total_steps: 1 }), 120);
+            setTimeout(() => cb({ operation_id: "dev-sync-1", kind: "device_sync", entry_id: "hub-1", status: "success", total_steps: 1 }), 400);
+          }
+          return Promise.resolve(() => {});
+        },
+        async postLoad(card) {
+          await openLiveEditor(card, "Devices", "Television");
+        },
+      },
+      {
+        id: "activities-needs-refresh", group: "Activity Editor",
+        label: "Activity editor — needs cache refresh",
+        states: STATES_CONNECTED,
+        handlers: {
+          // No structural bundle cached yet → clicking an activity prompts a refresh.
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: null, generation: null }),
+          "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "refresh-1" }),
+        },
+        subscribe: (cb) => {
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "running", message: "Reading your hub's configuration…" }), 100);
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "success" }), 400);
+          return Promise.resolve(() => {});
+        },
+        async postLoad(card) {
+          await openActivityEditor(card, "Watch TV");
+        },
+      },
+      {
+        id: "cache-refresh-all", group: "Hub Tab",
+        label: "Hub — Refresh all",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "refresh-1" }),
+        },
+        subscribe: (cb) => {
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "running", message: "Reading your hub's configuration…" }), 100);
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "success" }), 500);
+          return Promise.resolve(() => {});
+        },
+        postLoad: card => clickTab(card, "Hub"),
+      },
+      {
+        id: "activities-app-connected", group: "Hub Tab",
+        label: "Hub — app connected (edit/refresh disabled)",
         states: STATES_PROXY,
         state: {
           ...BASE_STATE,
           hubs: [{ ...HUB_1, proxy_client_connected: true }],
         },
-        postLoad: card => clickTab(card, "Activities"),
+        postLoad: card => clickTab(card, "Hub"),
       },
       {
         id: "backup-compose", group: "Backup / Restore",
@@ -1833,7 +1915,7 @@
           hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 19, group: "WiFi Commands",
@@ -1844,7 +1926,7 @@
           hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: WIFI_DEVICES_SYNC_NEEDED,
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 20, group: "WiFi Commands",
@@ -1861,7 +1943,7 @@
             devices: WIFI_DEVICES_SYNC_RUNNING, max_devices: 5,
           }),
         },
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 21, group: "WiFi Commands",
@@ -1875,7 +1957,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_IDLE },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
         },
       },
@@ -1891,7 +1973,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_IDLE },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
           await clickFirstConfiguredSlot(card);
         },
@@ -1908,7 +1990,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_NEEDED },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
         },
       },
@@ -1922,7 +2004,7 @@
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiAddDevice(card);
         },
       },
@@ -1936,7 +2018,7 @@
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDeleteDevice(card, "Bedroom Remote");
         },
       },
@@ -1952,7 +2034,7 @@
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_POWER },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_IDLE },
         async postLoad(card) {
-          await clickTab(card, "Wifi Commands");
+          await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
         },
       },
@@ -1965,7 +2047,7 @@
           hubs: [{ ...HUB_1, version: "", settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: WIFI_DEVICES_HEALTHY,
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
       {
         id: 28, group: "WiFi Commands",
@@ -1976,173 +2058,38 @@
           hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
         wifiDevices: [],
-        postLoad: card => clickTab(card, "Wifi Commands"),
+        postLoad: card => clickTab(card, "Automation"),
       },
 
-      // ── E: Blobs ─────────────────────────────────────────────────────────────────
-
-      {
-        id: 30, group: "Blobs",
-        label: "30. Empty (no command picked)",
-        states: STATES_CONNECTED,
-        postLoad: card => clickTab(card, "Blobs"),
-      },
-      {
-        id: 31, group: "Blobs",
-        label: "31. Cache disabled",
-        states: STATES_CONNECTED,
-        state: { ...BASE_STATE, persistent_cache_enabled: false },
-        contents: { ...BASE_CONTENTS, enabled: false },
-        postLoad: card => clickTab(card, "Blobs"),
-      },
-      {
-        id: 32, group: "Blobs",
-        label: "32. Fetch result",
-        states: STATES_CONNECTED,
-        handlers: {
-          "sofabaton_x1s/blobs/fetch": (msg) => ({
-            device_id: Number(msg.device_id ?? 1),
-            requested_command_id: Number(msg.command_id ?? 10),
-            total_commands: 1,
-            received_command_count: 1,
-            complete: true,
-            commands: [{
-              command_label: "Power Toggle",
-              device_id: Number(msg.device_id ?? 1),
-              command_id: Number(msg.command_id ?? 10),
-              device_class: "IR",
-              blob_kind: "ir",
-              command_blob: "AAEC003F00FE00FE00FE0042EE",
-              parsed_blob: "P:Sony12 R:40000 D:1 F:18 MUL:2",
-              replay_tail_checksum: 0x1234,
-              command_checksum: 0xABCD,
-            }],
-          }),
-        },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          await tab.updateComplete;
-          tab._selectedDeviceId = 1;
-          tab._selectedCommandId = 10;
-          tab.requestUpdate();
-          await tab.updateComplete;
-          await tab._runFetch();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 33, group: "Blobs",
-        label: "33. Test section open",
-        states: STATES_CONNECTED,
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab._testBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 34, group: "Blobs",
-        label: "34. Save section open",
-        states: STATES_CONNECTED,
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "save";
-          tab._saveDeviceIdInput = "1";
-          tab._saveCommandName = "Custom Power";
-          tab._saveBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 35, group: "Blobs",
-        label: "35. Test error state",
-        states: STATES_CONNECTED,
-        handlers: {
-          "sofabaton_x1s/blobs/play": () => Promise.reject(new Error("invalid blob: bad protocol descriptor")),
-        },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab._testBlobInput = "garbage";
-          tab.requestUpdate();
-          await tab.updateComplete;
-          await tab._runTest();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 36, group: "Blobs",
-        label: "36. Save success flash",
-        states: STATES_CONNECTED,
-        handlers: {
-          "sofabaton_x1s/blobs/persist": (msg) => ({
-            status: "ok",
-            device_id: Number(msg.device_id ?? 1),
-            command_id: 99,
-            command_name: String(msg.command_name ?? "Custom"),
-            page_count: 1,
-          }),
-        },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "save";
-          tab._saveDeviceIdInput = "1";
-          tab._saveCommandName = "Custom Power";
-          tab._saveBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
-          tab.requestUpdate();
-          await tab.updateComplete;
-          await tab._runSave();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 38, group: "Blobs",
-        label: "38. X2 hub (descriptor hints)",
-        states: {
-          "remote.living_room": {
-            state: "on",
-            attributes: { ...STATES_CONNECTED["remote.living_room"].attributes, hub_version: "X2" },
-          },
-        },
-        state: { ...BASE_STATE, hubs: [{ ...HUB_1, version: "X2" }] },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 37, group: "Blobs",
-        label: "37. Proxy connected (Test/Save blocked)",
-        states: STATES_PROXY,
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
     ];
 
     // ── Build sidebar ─────────────────────────────────────────────────────────────
+
+    // Stable automation surface for browser tests. The harness remains useful
+    // manually, while a runner can select a scenario and inspect complete
+    // request payloads without reaching into the visual log or a real hub.
+    window.__toolsCardHarness = {
+      async loadScenario(id) {
+        const scenario = SCENARIOS.find((candidate) => String(candidate.id) === String(id));
+        if (!scenario) throw new Error(`Unknown tools-card scenario: ${id}`);
+        await loadScenario(scenario);
+      },
+      getCalls() {
+        return clone(structuredCalls);
+      },
+      clearCalls() {
+        structuredCalls = [];
+      },
+      getCard() {
+        return window._harnessCard ?? null;
+      },
+      getWorkingBundle() {
+        const card = window._harnessCard;
+        const editor = card?.shadowRoot?.querySelector("sofabaton-activities-tab");
+        return clone(editor?._working ?? null);
+      },
+      scenarioIds: SCENARIOS.map((scenario) => String(scenario.id)),
+    };
 
     const controlsEl = document.getElementById("controls");
     const groupEls   = {};

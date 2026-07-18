@@ -1,20 +1,21 @@
-# Automation Assist: Wifi Commands
+# Automation
 
 Run Home Assistant Actions when buttons are pressed on the physical remote.
 
-In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to **5 Wifi Devices** can be created per hub, each with 10 command slots.
+In the **Sofabaton Control Panel** card, open **Automation → Wifi Commands**. Up to **5 Wifi Devices** can be created per hub, each with 10 command slots.
 
 1. **Add a Wifi Device**: Give it a name. Multiple devices are useful if you want separate logical groups of commands or separate power/input configurations per device.
 2. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
-3. **Configure power / input** (optional): Mark a command as the device's Power ON or Power OFF command. Alternatively, a command can be configured to be an INPUT of the Wifi Device, and assigned to an Activity. The commands become part of the Activity's startup and shutdown sequences.
+3. **Configure power / activity start** (optional; X1S/X2 hubs only — see the X1 note below): On the device's slot page, choose which command runs when the hub turns the device on or off. Alternatively, a command can be set to run when an Activity starts (it becomes the Wifi Device's input for that Activity on the hub). These commands become part of the Activity's startup and shutdown sequences.
 4. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
 5. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
 
-> - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
+> - The first synchronization may take several minutes. During this time all other interactions with the hub are blocked.
+> - Later syncs update the deployed device **in place** and only write what changed, so they are typically much faster (see "How re-syncing works" below).
 > - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
-> - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
+> - **Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
-<img height="180" alt="Wifi Devices list" src="images/wifi-commands-devices.png" /> <img height="180" alt="Command slot grid" src="images/wifi-commands-command-grid.png" /> <img height="180" alt="Command slot: power and input settings" src="images/wifi-commands-slot-advanced.png" /> <img height="180" alt="Command slot: favorite and activities" src="images/wifi-commands-slot-favorite.png" /> <img height="180" alt="Command slot: configuring an Action" src="images/wifi-commands-slot-action.png" /> <img height="180" alt="Command grid ready to sync" src="images/wifi-commands-sync-pending.png" /> <img height="180" alt="Sync to hub in progress" src="images/wifi-commands-syncing.png" />
+<img height="180" alt="Wifi Devices list" src="images/wifi-commands-devices.png" /> <img height="180" alt="Command grid and device power controls" src="images/wifi-commands-command-grid.png" /> <img height="180" alt="Command slot: Activity-start setting" src="images/wifi-commands-slot-advanced.png" /> <img height="180" alt="Command slot: favorite, physical button and Activities" src="images/wifi-commands-slot-favorite.png" /> <img height="180" alt="Command slot: configuring an Action" src="images/wifi-commands-slot-action.png" />
 
 ## How this works
 
@@ -35,21 +36,62 @@ Up to **5 Wifi Devices** can be created per hub. Each device has its own name, i
 - Separating commands by logical group (e.g. one device for lighting scenes, another for audio presets).
 - Assigning different power-on/off commands to different activities.
 
-Devices are managed in the **Wifi Commands** tab of the Control Panel card. Each device is independent: syncing one device does not affect the others.
+Devices are managed under **Automation → Wifi Commands** in the Control Panel card. Each device is independent: syncing one device does not affect the others.
+
+Renaming a deployed Wifi Device through the device editor (**Hub tab → Devices → Edit**) carries over automatically: the Wifi Commands configuration picks up the new name and the device stays in sync — no redeploy needed.
+
+The rest of a managed Wifi Device is **read-only in the live device editor** — its commands, power/input, and button assignments are owned by the Wifi Commands tab, and editing them elsewhere would be overwritten on the next sync. Opening one in **Hub tab → Devices → Edit** shows a *Managed by Wifi Commands* notice; make those changes in the Wifi Commands tab instead. (References you add to the device *outside* Wifi Commands — an extra favorite, a hard-button binding, or adding it to another Activity through the Sofabaton app — are left alone by re-syncs and keep working.)
 
 ## Power control
 
-Each Wifi Device can have a dedicated **Power ON** command and a **Power OFF** command.
+Each Wifi Device can have a dedicated power **on** and power **off** command. These are configured at the top of the device's slot page:
+
+- *When the hub turns this device on, perform: `<command>`*
+- *When the hub turns this device off, perform: `<command>`*
 
 The hub treats the Wifi Device as a real device, and will trigger power commands whenever an Activity change requires it.  
 The commands are called in the startup and shutdown sequences of any Activity that has a command assigned from the Wifi Device.  
-A single Power ON and Power OFF command may be assigned per Wifi Device. The Wifi Commands UI enforces this.
+A single on and off command may be assigned per Wifi Device; the dropdowns list the device's configured commands and default to **Nothing**.
 
-## Input control
+> Not available on X1 hubs — see [X1 hubs](#x1-hubs-no-power--activity-start-commands).
 
-One or more commands in a Wifi Device can be designated as **INPUTS** and assigned an Activity.  
-These commands are called whenever the Activity is started, as part of its startup sequence.  
-Each Wifi Device may assign a single INPUT per Activity. The Wifi Commands UI enforces this.
+## Perform a command when an Activity starts
+
+A command can be set (in its editor, under **Advanced**) to run whenever a chosen Activity starts.  
+Under the hood the command becomes the Wifi Device's INPUT for that Activity on the hub, so it is called as part of the Activity's startup sequence.  
+Each Wifi Device may assign a single command per Activity this way. The Wifi Commands UI enforces this. A command cannot be both a power command and an Activity-start command.
+
+> Not available on X1 hubs — see [X1 hubs](#x1-hubs-no-power--activity-start-commands).
+
+## Device-page keys and button groups
+
+A command assigned to a physical button is also bound on the Wifi Device's **own device page** whenever the claim is unambiguous (no other command on the same device uses that button). This has two effects:
+
+- Pressing the key on the remote's device page for the Wifi Device triggers the command directly.
+- The Wifi Device becomes selectable as a **button-group controller** in the live activity editor — for example, a device with volume-key commands can be chosen as the device that handles *Volume* in an Activity, exactly like a regular device.
+
+If two commands claim the same button (for different Activities), no device-page key is written for that button — the per-Activity assignments simply apply as configured.
+
+## Hub Events
+
+The **Events** sub-tab (next to **Wifi Commands**) contains separate **Hub Events** and **Activity Events** sections. Under **Hub Events**, you can attach a Home Assistant Action to hub state changes:
+
+- **When the hub is switched OFF** — the hub left an Activity and is now powered off.
+- **When OFF is pressed while the hub is already OFF** — the OFF button was pressed with nothing left to turn off. Useful as a "force everything off" hook.
+- **When any Activity starts** — the hub switched into any Activity — **and when one stops** — the hub left any Activity, either by powering off or by switching into another one.
+
+Below those, **Activity Events** list every Activity on the hub with a start and a stop hook:
+
+- **When \<Activity\> starts** — the hub switched into that Activity.
+- **and when it stops** — the hub left that Activity, either by powering off or by switching directly into another Activity (the old Activity's stop hook runs before the new one's start hook).
+
+Each line shows its configured Action; click it to change, or use the small ✕ to reset it to *do nothing*. When an event fires, its row briefly lights up — the same live indicator the Wifi Device cards show for incoming command presses.
+
+Activity Events are tied to the hub's Activity **id** only; no name matching is attempted. If you delete an Activity, its configured hooks are cleaned up automatically the next time the integration refreshes the Activity list, and if the hub later reuses that id for a new Activity, a hook configured before the cleanup would simply apply to the new Activity.
+
+Unlike Wifi Commands, these hooks live entirely in Home Assistant: they are never synced to the hub and no sync is needed after changing them. They also require no Wifi Device or command slots — they work purely from the hub's reported activity state.
+
+<img height="250" alt="Hub and Activity Events" src="images/automation-events.png" />
 
 ## Configuration
 
@@ -124,10 +166,31 @@ Enables/Disables the HTTP listener / Wifi Device. Switched off by default. Autom
 `button.<hub>_resync_remote`  
 Forces a resync of the physical remote. Automatically called at the end of a hub synchronization sequence.
 
+## How re-syncing works: in-place updates, with replace as fallback
+
+A re-sync (any sync after the first) now **edits the deployed Wifi Device in place**: only the records that actually changed are rewritten, nothing is deleted, and the device keeps its identity on the hub. That means anything you attached to the Wifi Device yourself through the Sofabaton app — extra Activity memberships, favorites, hard-button bindings, macro steps — keeps working across re-syncs. In-place updates are also much faster than a full deploy (a rename is a single record rewrite instead of a multi-minute redeploy).
+
+A few situations still require the older **replace** behaviour (create the new device, move it into its Activities, then delete the old one):
+
+- the **first deploy** of a Wifi Device (and the first sync after upgrading from an integration version that predates in-place updates),
+- the **HTTP listener port changed** (the port is baked into the deployed records),
+- the managed Wifi Device was **edited in the Sofabaton app** since the last sync (the integration detects this and re-deploys from your configuration),
+- a command was **removed from an Activity where the Wifi Device is the only device** (see below).
+
+When the replace path runs, two hub-firmware behaviours are worth knowing about (they are the hub's own — the same happens when the official app deletes a device):
+
+- **Activities left with no devices are removed.** Whenever a device is deleted, the hub automatically deletes any Activity that ends up with **zero devices** as a result. This applies when you clear all Wifi Commands (which deletes the managed device without a replacement) or delete the device through the app. Add a second device to a Wifi-only Activity, or back up first, if you want to keep it through a removal.
+- **A hard button the Wifi Command replaced is left unbound, not restored.** If you assign a Wifi Command to a physical button that already did something in an Activity, deploying overwrites the old binding. Removing the Wifi Command later clears that button — it does **not** put the original function back. Re-bind the button through the app or a backup restore if you need its old behaviour.
+
+## X1 hubs: no power / Activity-start commands
+
+X1 hub firmware only delivers a single power callback and a single Activity-start callback per Activity transition, no matter how many wifi-type devices take part in the startup sequence — so these features cannot work reliably alongside other wifi devices on that hub model. The power and Activity-start configuration is therefore **hidden for X1 hubs**; commands, favorites, hard buttons and Actions all work normally. X1S and X2 hubs are unaffected.
+
 ## Recovery
 
 - This feature involves reconfiguring the hub, it is therefore a good idea to create a backup of your hub configuration before using this feature.
-- If deployment of the Wifi Device fails, a rollback is performed and no trace will be left on the hub
+- If the **first deployment** of a Wifi Device fails, a rollback is performed and no trace will be left on the hub.
+- If an **in-place update** is interrupted (for example the hub rejects a write mid-way), nothing is rolled back: every in-place write is an independent, safely repeatable edit. The device simply reads as out-of-step and the next sync picks up where it left off.
 - Manual removal: this feature creates a Device on the Sofabaton hub. Removing it through the app is safe and removes the Wifi Commands configuration from your hub. The integration will notice hub configuration is no longer in sync, and provides the option to re-sync.
 
 Please [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) in case of any problems, make sure to [include detailed logs](logging.md).

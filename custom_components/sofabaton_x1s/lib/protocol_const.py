@@ -352,6 +352,22 @@ FAMILY_FAV_DELETE = 0x10      # A→H: delete a single favorite from an activity
 FAMILY_FAV_ORDER_REQ = 0x62   # A→H: request current favorites ordering (opcode 0x0162)
 FAMILY_FAV_ORDER_RESP = 0x63  # H→A: hub returns current favorites ordering (opcode variable)
 
+# Activity display-order write (observed in app traffic, X1S bench capture
+# 2026-07-14). One frame carries the full new order as (0x00, activity_id,
+# sort_position) rows inside the canonical paged-write body; the hub replies
+# STATUS_ACK 0x00 and the app follows with REMOTE_SYNC. Example (3
+# activities): opcode 0x1051, payload
+#   01 00 01 | 01 00 01 | 00 67 01 00 66 02 00 65 03 | 3a
+FAMILY_ACTIVITY_SORT = 0x51   # A→H: rewrite the stored activity display order
+
+# Device display-order write: the device-list analog of FAMILY_ACTIVITY_SORT
+# with the identical paged-write body, except each row leads with the device
+# record's kind byte (record body[3]) instead of 0x00:
+#   (record_kind, device_id, sort_position)
+# The hub replies STATUS_ACK 0x00 and restamps each device record's sort byte
+# (body[6]); the app follows with REMOTE_SYNC.
+FAMILY_DEVICE_SORT = 0x11     # A→H: rewrite the stored device display order
+
 FAMILY_KEY_SORT_REQ = 0x62
 FAMILY_KEY_SORT_RESP = 0x63
 
@@ -383,6 +399,8 @@ FAMILY_NAMES: Dict[int, str] = {
     FAMILY_REMOTE_STATUS: "REMOTE_STATUS",
     FAMILY_PLAY_BLOB: "PLAY_BLOB",
     FAMILY_FAV_DELETE: "FAV_DELETE",
+    FAMILY_ACTIVITY_SORT: "ACTIVITY_SORT",
+    FAMILY_DEVICE_SORT: "DEVICE_SORT",
     FAMILY_MACROS: "MACROS",
     FAMILY_KEYMAP: "KEYMAP",
     FAMILY_ACT_ROW: "ACTIVITY_ROW",
@@ -643,6 +661,8 @@ __all__ = [
     "FAMILY_KEYMAP",
     "FAMILY_DEVBTNS",
     "FAMILY_FAV_DELETE",
+    "FAMILY_ACTIVITY_SORT",
+    "FAMILY_DEVICE_SORT",
     "FAMILY_FAV_ORDER_REQ",
     "FAMILY_FAV_ORDER_RESP",
 ]

@@ -1,0 +1,4 @@
+{
+    "base_url": "https://YOUR-HA-HOST:8123",
+    "deploy_target": "\\\\YOUR-HA-HOST\\config\\custom_components\\sofabaton_x1s"
+}

@@ -1,4 +1,4 @@
-# Sofabaton X2 descriptive-blob protocol reference
+# Sofabaton X2 descriptive-payload protocol reference
 
 Working notes for `IrScrutinizer/sofabaton-x2.xml`. The X2 hub stores some IR
 codes as ASCII strings of the form
@@ -32,7 +32,7 @@ The end-to-end validation for the exporter is therefore:
 
 1. Take an IrScrutinizer/Pronto source signal.
 2. Run it through the exporter to produce a descriptive string.
-3. Push the string to the hub via `Save Blob`.
+3. Push the string to the hub (payload editor Save, or the `persist_ir_blob` action).
 4. Confirm the **physical device actually responds**.
 
 Byte-equal matching against a known-good descriptive string from the cloud
@@ -44,7 +44,7 @@ protocol names + parameter names to the X2 tokens and field set. We build it
 empirically:
 
 1. Capture a known-protocol signal on the X2 hub (or fetch one via the HA
-   integration's `Fetch Blob`).
+   integration's `fetch_blob` action).
 2. Decode the same source signal in IrScrutinizer to obtain its IRP form.
 3. Diff the two representations. Record:
    - Token name on the X2 side (e.g. `Sharp` vs current XSL guess `Sharp3`).

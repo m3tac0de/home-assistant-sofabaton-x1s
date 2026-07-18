@@ -3,15 +3,10 @@ import assert from "node:assert/strict";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
+  activityQuickAccessItems,
   activityChainDependencyIds,
   activityRoleAssignments,
-  addActivityHaActionFavorite,
   bundleEditableDeviceOptions,
-  bundleHaActionTarget,
-  isHaActionDeviceId,
-  parseHaActionAddress,
-  pruneHaActionHosts,
-  renameBundleActivityFavorite,
   roleMappableButtonCount,
   setActivityRoleDevice,
   activityMacroStepItems,
@@ -20,12 +15,12 @@ import {
   activityPowerDevices,
   addActivityMemberDevice,
   removeActivityMemberDevice,
-  setActivityDevicePowerOff,
-  setActivityDevicePowerOn,
   addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
+  addBundleDeviceCommand,
   addDeviceMacroCommandStep,
+  nextFreeDeviceCommandId,
   clearActivityDeviceInput,
   removeActivityMacroStep,
   reorderActivityMacroSteps,
@@ -43,11 +38,17 @@ import {
   backupUsesWholeHub,
   bundleButtonCatalog,
   bundleDeleteImpact,
+  bundleDeviceBrand,
+  isManagedWifiBrand,
   deleteActivityButtonBinding,
   deleteBundleActivity,
   deleteBundleActivityQuickAccess,
   deleteBundleDevice,
   deleteBundleDeviceCommand,
+  commandDecodedBlock,
+  commandRawPayloadHex,
+  normalizeCommandPayloadHex,
+  updateCommandRawPayload,
   deviceButtonBindingItems,
   deviceIdleBehavior,
   updateBundleDeviceIdleBehavior,
@@ -128,6 +129,16 @@ test("validateBackupBundle rejects wrong kinds and schemas", () => {
   assert.equal(validateBackupBundle(bundle).kind, "hub_bundle");
   assert.throws(() => validateBackupBundle({ kind: "device_backup", schema_version: 5 }), /not a Sofabaton hub bundle/i);
   assert.throws(() => validateBackupBundle({ kind: "hub_bundle", schema_version: 4, devices: [], activities: [] }), /schema_version must be 5/i);
+});
+
+test("validateBackupBundle rejects structural cache bundles, accepts explicit full", () => {
+  assert.throws(
+    () => validateBackupBundle({ ...bundle, payload_profile: "structural" }),
+    /structural cache bundle/i,
+  );
+  assert.equal(validateBackupBundle({ ...bundle, payload_profile: "full_backup" }).kind, "hub_bundle");
+  // Legacy files carry no payload_profile: the base fixture above already
+  // proves those keep validating.
 });
 
 test("normalizeHubVersion canonicalizes known hub model labels", () => {
@@ -300,8 +311,87 @@ test("deleteBundleDeviceCommand also removes the deleted command's trailing dela
   // Impact reflects both removed rows (command + its trailing delay).
   assert.deepEqual(
     bundleDeleteImpact(b, { kind: "command", deviceId: 1, commandId: 10 }),
-    { favorites: 0, macroSteps: 2, activities: 0, bindings: 0 },
+    { favorites: 0, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 0 },
   );
+});
+
+test("deleteBundleDeviceCommand prunes the device's own power-macro steps", () => {
+  // Live repro (BUG #7): device "Samsungtst"-style bundle where the device's
+  // POWER_OFF sequence (button 199) plays the command being deleted. Device
+  // macro steps carry no device_id — only command_id — and a trailing delay
+  // row (command_id 0xFF) belongs to the step before it.
+  const b = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [{
+      device: { device_id: 1, name: "TV", device_class: "ir" },
+      commands: [{ command_id: 2, name: "Power off" }, { command_id: 3, name: "Power on" }],
+      macros: [
+        { button_id: 198, name: "POWER_ON", steps: [{ command_id: 3, duration: 0 }] },
+        { button_id: 199, name: "POWER_OFF", steps: [
+          { command_id: 2, duration: 0 },
+          { command_id: 255, duration: 255, delay: 4 },
+          { command_id: 3, duration: 0 },
+        ] },
+        { button_id: 5, name: "User seq", steps: [{ command_id: 2, duration: 0 }] },
+      ],
+    }],
+    activities: [],
+  };
+  const next = deleteBundleDeviceCommand(b, 1, 2);
+  const macros = next.devices[0].macros!;
+  // POWER_OFF lost the command-2 step AND its trailing delay; POWER_ON intact.
+  assert.deepEqual(macros.find((m) => m.button_id === 199)!.steps, [{ command_id: 3, duration: 0 }]);
+  assert.deepEqual(macros.find((m) => m.button_id === 198)!.steps, [{ command_id: 3, duration: 0 }]);
+  // The device user macro is pruned too.
+  assert.deepEqual(macros.find((m) => m.button_id === 5)!.steps, []);
+  // Impact: 2 power-macro rows (step + consumed delay) named separately from
+  // the 1 user-macro step.
+  assert.deepEqual(
+    bundleDeleteImpact(b, { kind: "command", deviceId: 1, commandId: 2 }),
+    { favorites: 0, macroSteps: 1, powerSteps: 2, activities: 0, bindings: 0 },
+  );
+});
+
+test("nextFreeDeviceCommandId picks the lowest unused id", () => {
+  const b = editableBundle();
+  // Device 1 carries commands 10 and 11 → the lowest free id is 1.
+  assert.equal(nextFreeDeviceCommandId(b, 1), 1);
+  const device1 = b.devices.find((d) => d.device?.device_id === 1)!;
+  device1.commands = Array.from({ length: 9 }, (_, i) => ({ command_id: i + 1, name: `C${i + 1}` }));
+  assert.equal(nextFreeDeviceCommandId(b, 1), 10);
+  assert.equal(nextFreeDeviceCommandId(b, 99), null);
+});
+
+test("addBundleDeviceCommand appends a new-flagged row on the target device only", () => {
+  const next = addBundleDeviceCommand(editableBundle(), 1, 12, "Netflix", {
+    transport: "hub_code_record",
+    data_hex: "0a4f23",
+  });
+  const device1 = next.devices.find((d) => d.device?.device_id === 1)!;
+  assert.deepEqual(device1.commands?.map((c) => c.command_id), [10, 11, 12]);
+  const added = device1.commands!.find((c) => c.command_id === 12)!;
+  assert.equal(added.name, "Netflix");
+  assert.deepEqual(added.restore_data, {
+    transport: "hub_code_record",
+    data_hex: "0a4f23",
+    new: true,
+  });
+  // Other devices untouched.
+  const device2 = next.devices.find((d) => d.device?.device_id === 2)!;
+  assert.deepEqual(device2.commands?.map((c) => c.command_id), [20]);
+});
+
+test("addBundleDeviceCommand is a no-op on a taken id or missing device", () => {
+  const base = editableBundle();
+  const taken = addBundleDeviceCommand(base, 1, 10, "Dup", { data_hex: "0a" });
+  assert.deepEqual(
+    taken.devices.find((d) => d.device?.device_id === 1)!.commands?.map((c) => c.command_id),
+    [10, 11],
+  );
+  const missing = addBundleDeviceCommand(base, 99, 1, "Ghost", { data_hex: "0a" });
+  assert.deepEqual(missing.devices.map((d) => d.device?.device_id), base.devices.map((d) => d.device?.device_id));
 });
 
 test("deleteBundleActivityQuickAccess removes one row and preserves power macros", () => {
@@ -330,9 +420,9 @@ test("addBundleActivityFavorite appends at the next editable slot", () => {
 test("bundleDeleteImpact counts cascade references", () => {
   const b = editableBundle();
   // device 1 is used by a Combo step (cmd 11) and the POWER_ON macro step (cmd 10) → 2 steps.
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, activities: 1, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, activities: 0, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 1, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 });
 });
 
 test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
@@ -352,6 +442,73 @@ test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
   assert.equal(act.macros?.find((m) => m.name === "Combo")?.button_id, 1);
   // Favorites renumbered to slots 2 and 3, in the given order.
   assert.deepEqual(act.favorite_slots?.map((s) => s.button_id), [2, 3]);
+});
+
+test("reorderBundleActivityQuickAccess follows macro-target binding refs", () => {
+  // A binding that plays the macro stores device_id = the activity's own id
+  // and command_id = the macro's button_id. Renumbering the macro (3 → 1)
+  // must rewrite the reference, or the bundle points the binding at the
+  // wrong quick-access slot.
+  const bundle = editableBundle() as any;
+  bundle.activities[0].button_bindings = [
+    { button_id: 0xb1, device_id: 101, command_id: 3 },
+    { button_id: 0xb2, device_id: 1, command_id: 10, long_press_device_id: 101, long_press_command_id: 3 },
+    { button_id: 0xb3, device_id: 1, command_id: 3 },
+  ];
+  const next = reorderBundleActivityQuickAccess(bundle, 101, [
+    { kind: "macro", buttonId: 3 },
+    { kind: "favorite", buttonId: 1 },
+    { kind: "favorite", buttonId: 2 },
+  ]);
+  const bindings = activity101(next)!.button_bindings!;
+  // Macro-target refs follow the renumbering…
+  assert.equal(bindings[0].command_id, 1);
+  assert.equal(bindings[1].long_press_command_id, 1);
+  // …but a device command that merely shares the numeric id does not.
+  assert.equal(bindings[2].command_id, 3);
+});
+
+test("activityQuickAccessItems orders by favorites_order (slot table) when present", () => {
+  // favorites (bid 1, 2) + macro (bid 3). The hub's 0x61 slot table puts the
+  // macro first — a reorder that never renumbered the button_ids. Display must
+  // follow the slot table, not the button_ids.
+  const b = editableBundle() as any;
+  b.activities[0].favorites_order = [3, 1, 2];
+  const items = activityQuickAccessItems(b, 101);
+  assert.deepEqual(items.map((i) => i.buttonId), [3, 1, 2]);
+  assert.deepEqual(items.map((i) => i.kind), ["macro", "favorite", "favorite"]);
+});
+
+test("activityQuickAccessItems appends ids missing from favorites_order at the tail", () => {
+  // A freshly-added shortcut (macro 3) isn't in the slot table yet → it must
+  // sort after every listed entry, in button_id order, not vanish or lead.
+  const b = editableBundle() as any;
+  b.activities[0].favorites_order = [2, 1];
+  assert.deepEqual(activityQuickAccessItems(b, 101).map((i) => i.buttonId), [2, 1, 3]);
+});
+
+test("activityQuickAccessItems tolerates stale ids in favorites_order", () => {
+  // A deleted favorite still named in the slot table (id 9) is a harmless gap.
+  const b = editableBundle() as any;
+  b.activities[0].favorites_order = [9, 1, 2, 3];
+  assert.deepEqual(activityQuickAccessItems(b, 101).map((i) => i.buttonId), [1, 2, 3]);
+});
+
+test("activityQuickAccessItems falls back to button_id order without favorites_order", () => {
+  assert.deepEqual(activityQuickAccessItems(editableBundle(), 101).map((i) => i.buttonId), [1, 2, 3]);
+});
+
+test("reorderBundleActivityQuickAccess writes favorites_order matching the new order", () => {
+  const next = reorderBundleActivityQuickAccess(editableBundle(), 101, [
+    { kind: "macro", buttonId: 3 },
+    { kind: "favorite", buttonId: 1 },
+    { kind: "favorite", buttonId: 2 },
+  ]) as any;
+  const act = activity101(next)!;
+  // Slot table is the dense positional order the renumbered button_ids use.
+  assert.deepEqual((act as any).favorites_order, [1, 2, 3]);
+  // Re-reading the display list reflects the move (macro now leads).
+  assert.deepEqual(activityQuickAccessItems(next, 101).map((i) => i.kind), ["macro", "favorite", "favorite"]);
 });
 
 test("applyBundleDelete dispatches by target kind", () => {
@@ -497,8 +654,13 @@ test("upsertDeviceButtonBinding writes a device-level binding", () => {
 });
 
 test("deleteActivityButtonBinding removes one binding", () => {
-  const b = deleteActivityButtonBinding(bindingBundle(), 101, 0xB0);
+  let b = deleteActivityButtonBinding(bindingBundle(), 101, 0xB0);
   assert.deepEqual(b.activities[0].button_bindings!.map((r) => r.button_id), [0xB6]);
+  assert.deepEqual(b.activities[0].referenced_source_device_ids, [2]);
+
+  b = deleteActivityButtonBinding(b, 101, 0xB6);
+  assert.deepEqual(b.activities[0].button_bindings, []);
+  assert.deepEqual(b.activities[0].referenced_source_device_ids, []);
 });
 
 test("deleting a device cascades to activity button bindings", () => {
@@ -814,16 +976,18 @@ test("reorderActivityMacroSteps carries a command's attached wait", () => {
   ]);
 });
 
-test("removeActivityMacroStep keeps the device in the power macros (additive membership)", () => {
+test("removeActivityMacroStep unlinks a device after its final macro reference is removed", () => {
   let b = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
   b = addActivityMacroCommandStep(b, 101, 1, 2, 20, 0);
   assert.deepEqual(b.activities[0].referenced_source_device_ids, [1, 2]);
-  // Removing device 2's only macro step does NOT drop it from the power
-  // macros — once a device is powered by the activity it stays (a device is
-  // only removed by deleting the device itself). Avoids dropping power-only
-  // devices that have no favorite/binding/macro reference.
+  // Device 2 has no remaining editable reference, so its generated linkage
+  // rows disappear while device 1 remains linked through its macro step.
   b = removeActivityMacroStep(b, 101, 1, 1);
-  assert.deepEqual(b.activities[0].referenced_source_device_ids, [1, 2]);
+  assert.deepEqual(b.activities[0].referenced_source_device_ids, [1]);
+  const powerRows = b.activities[0].macros!
+    .filter((macro) => macro.button_id === 198 || macro.button_id === 199)
+    .flatMap((macro) => macro.steps ?? []);
+  assert.equal(powerRows.some((step) => step.device_id === 2), false);
 });
 
 test("updateActivityMacroStep re-synthesizes button_code when the command changes", () => {
@@ -868,6 +1032,33 @@ test("setActivityMacroStepWait edits the wait on a protected power ref without t
   assert.deepEqual([headStep.device_id, headStep.command_id], [3, 198]);
 });
 
+test("reconcile inserts repaired input refs after an attached power wait", () => {
+  const base = realPowerActivity();
+  const partial = {
+    ...base,
+    activities: [{
+      ...base.activities[0],
+      macros: base.activities[0].macros!.map((macro) => {
+        if (macro.button_id !== 198) return macro;
+        return {
+          ...macro,
+          steps: [
+            macro.steps![0],
+            { device_id: 0xFF, command_id: 0xFF, button_code: 0xFFFFFFFFFFFF, duration: 0xFF, delay: 8 },
+            ...macro.steps!.slice(1).filter((step) => !(step.device_id === 3 && step.command_id === 0xC5)),
+          ],
+        };
+      }),
+    }],
+  };
+  const fixed = reconcileActivityPowerMacros(partial, 101);
+  const steps = fixed.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  const c6 = steps.findIndex((step) => step.device_id === 3 && step.command_id === 0xC6);
+  const c5 = steps.findIndex((step) => step.device_id === 3 && step.command_id === 0xC5);
+  assert.deepEqual([steps[c6 + 1].device_id, steps[c6 + 1].command_id, steps[c6 + 1].delay], [0xFF, 0xFF, 8]);
+  assert.equal(c5, c6 + 2);
+});
+
 test("a user command added to a power macro is a deletable (non-protected) step", () => {
   const added = addActivityMacroCommandStep(realPowerActivity(), 101, 198, 9, 52, 0);
   const cmd = activityMacroStepItems(added, 101, 198).find((i) => i.kind === "command")!;
@@ -878,7 +1069,7 @@ test("a user command added to a power macro is a deletable (non-protected) step"
   assert.equal(activityMacroStepItems(removed, 101, 198).some((i) => i.kind === "power" || i.kind === "input"), true);
 });
 
-test("deleting a favorite keeps its device in the power macros, but deleting the device removes it", () => {
+test("deleting a device's final favorite removes its generated power linkage", () => {
   const seeded = reconcileActivityPowerMacros({
     ...powerMacroBundle(),
     activities: [{
@@ -892,13 +1083,10 @@ test("deleting a favorite keeps its device in the power macros, but deleting the
     }],
   }, 101);
   assert.deepEqual(seeded.activities[0].referenced_source_device_ids, [1, 2]);
-  // Deleting device 1's favorite leaves it in the power macros (additive).
+  // Device 1's favorite was its final editable reference.
   const afterFav = deleteBundleActivityQuickAccess(seeded, 101, "favorite", 1);
-  assert.deepEqual(afterFav.activities[0].referenced_source_device_ids, [1, 2]);
-  // Deleting the device entirely DOES remove it from the power macros.
-  const afterDevice = deleteBundleDevice(afterFav, 1);
-  assert.deepEqual(afterDevice.activities[0].referenced_source_device_ids, [2]);
-  const on = afterDevice.activities[0].macros!.find((m) => m.button_id === 198)!;
+  assert.deepEqual(afterFav.activities[0].referenced_source_device_ids, [2]);
+  const on = afterFav.activities[0].macros!.find((m) => m.button_id === 198)!;
   assert.deepEqual([...new Set(on.steps!.filter((s) => s.command_id === 0xC6).map((s) => s.device_id))], [2]);
 });
 
@@ -990,55 +1178,38 @@ test("activityMemberRemovalImpact counts scoped user-visible references only", (
   // Device 2: volume binding dropped + OK long-press cleared + one Combo step.
   assert.deepEqual(
     activityMemberRemovalImpact(b, 101, 2),
-    { favorites: 0, macroSteps: 1, activities: 0, bindings: 2 },
+    { favorites: 0, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 2 },
   );
   // Device 1: favorite + OK short-press binding + Combo step (with its wait
   // row consumed) — power-ref rows are managed detail and never counted.
   assert.deepEqual(
     activityMemberRemovalImpact(b, 101, 1),
-    { favorites: 1, macroSteps: 2, activities: 0, bindings: 1 },
+    { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 1 },
   );
 });
 
-test("setActivityDevicePowerOff(false) removes the 0xC7 ref and survives reconcile", () => {
-  const leaveOn = setActivityDevicePowerOff(membershipBundle(), 101, 2, false);
-  const view = activityMemberViews(leaveOn, 101).find((v) => v.deviceId === 2)!;
-  assert.deepEqual([view.powersOn, view.powersOff], [true, false]);
-  // The "leave on" choice must not be re-completed by a later reconcile.
-  const reconciled = reconcileActivityPowerMacros(leaveOn, 101);
-  assert.equal(activityMemberViews(reconciled, 101).find((v) => v.deviceId === 2)!.powersOff, false);
-  // Re-enabling restores the ref step.
-  const backOn = setActivityDevicePowerOff(reconciled, 101, 2, true);
-  assert.equal(activityMemberViews(backOn, 101).find((v) => v.deviceId === 2)!.powersOff, true);
-});
-
-test("setActivityDevicePowerOn(false) encodes 'stays as is' and survives reconcile", () => {
-  const staysOn = setActivityDevicePowerOn(membershipBundle(), 101, 1, false);
-  const view = activityMemberViews(staysOn, 101).find((v) => v.deviceId === 1)!;
-  assert.deepEqual([view.powersOn, view.powersOff], [false, true]);
-  const reconciled = reconcileActivityPowerMacros(staysOn, 101);
-  assert.equal(activityMemberViews(reconciled, 101).find((v) => v.deviceId === 1)!.powersOn, false);
-});
-
-test("unchecking the last power ref keeps the device a member via a no-op input step", () => {
-  // Device 3 joins with only power refs (no favorite/binding/step), loses
-  // power-on, then its 0xC5 input step, leaving 0xC7 as its last
-  // representation. Unchecking power-off must not eject it from the activity.
-  const joined = setActivityDevicePowerOn(addActivityMemberDevice(membershipBundle(), 101, 3), 101, 3, false);
-  const offOnly = {
-    ...joined,
+test("reconcile restores missing mandatory power refs for a member", () => {
+  const partial = addActivityMemberDevice(membershipBundle(), 101, 3);
+  const missing = {
+    ...partial,
     activities: [{
-      ...joined.activities[0],
-      macros: joined.activities[0].macros!.map((m) => (m.button_id === 198
-        ? { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC5)) }
-        : m)),
+      ...partial.activities[0],
+      macros: partial.activities[0].macros!.map((m) => {
+        if (m.button_id === 198) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC6)) };
+        }
+        if (m.button_id === 199) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC7)) };
+        }
+        return m;
+      }),
     }],
   };
-  const noRefs = setActivityDevicePowerOff(offOnly, 101, 3, false);
-  const view = activityMemberViews(noRefs, 101).find((v) => v.deviceId === 3)!;
-  assert.deepEqual([view.powersOn, view.powersOff], [false, false]);
-  const reconciled = reconcileActivityPowerMacros(noRefs, 101);
-  assert.equal(activityMemberViews(reconciled, 101).some((v) => v.deviceId === 3), true);
+  const before = activityMemberViews(missing, 101).find((v) => v.deviceId === 3)!;
+  assert.deepEqual([before.powersOn, before.powersOff, before.inputOrdinal], [false, false, 0]);
+  const reconciled = reconcileActivityPowerMacros(missing, 101);
+  const after = activityMemberViews(reconciled, 101).find((v) => v.deviceId === 3)!;
+  assert.deepEqual([after.powersOn, after.powersOff, after.inputOrdinal], [true, true, 0]);
 });
 
 // ── Role-based button assignment ─────────────────────────────────────
@@ -1165,119 +1336,101 @@ test("setActivityRoleDevice(null) clears only that group", () => {
   assert.deepEqual([roleFor(cleared, "navigation").state, roleFor(cleared, "navigation").boundCount], ["device", 3]);
 });
 
-// ── Home Assistant actions ───────────────────────────────────────────
+// ── Raw payload editing ──────────────────────────────────────────────
 
-// Canonical callback blob for host 192.168.1.10:8060, device id 4, name
-// "Dim the lights". The SAME constant lives in the Python parity test
-// (tests/test_ha_action_writer_parity.py), which proves the TS writer
-// here and lib/blob_decoders.py agree byte-for-byte.
-const HA_ACTION_EXPECTED_DATA_HEX =
-  "c0 a8 01 0a 1f 7c 00 7f 50 4f 53 54 20 2f 6c 61 75 6e 63 68 2f 68 61 2f 34 2f 44 69 6d 25 32 30 74"
-  + " 68 65 25 32 30 6c 69 67 68 74 73 2f 73 68 6f 72 74 20 48 54 54 50 2f 31 2e 31 0d 0a 48 6f 73 74"
-  + " 3a 31 39 32 2e 31 36 38 2e 31 2e 31 30 3a 38 30 36 30 0d 0a 43 6f 6e 74 65 6e 74 2d 54 79 70 65"
-  + " 3a 61 70 70 6c 69 63 61 74 69 6f 6e 2f 78 2d 77 77 77 2d 66 6f 72 6d 2d 75 72 6c 65 6e 63 6f 64"
-  + " 65 64 0d 0a 0d 0a";
+function rawPayloadBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [],
+    devices: [
+      {
+        device: { device_id: 9, name: "Soundbar", device_class: "bluetooth" },
+        commands: [
+          {
+            command_id: 1,
+            name: "Power",
+            restore_data: {
+              transport: "hub_code_record",
+              library_type: 0x0e,
+              command_code: "00 00 00 00 12 34",
+              data_hex: "aa bb cc",
+            },
+          },
+          { command_id: 2, name: "Label only" },
+          {
+            command_id: 3,
+            name: "Decoded",
+            restore_data: {
+              transport: "hub_code_record",
+              library_type: 0x1c,
+              data_hex: "0a 0b",
+              decoded: { class: "wifi_roku", fields: { path: "/keypress/Home" }, trailer_hex: "" },
+            },
+          },
+        ],
+      },
+    ],
+  } as any;
+}
 
-const HA_TARGET = { host: "192.168.1.10", port: 8060 };
-
-test("addActivityHaActionFavorite provisions a hidden host and the callback slot", () => {
-  const next = addActivityHaActionFavorite(membershipBundle(), 101, "Dim the lights", HA_TARGET)!;
-  assert.ok(next);
-  const host = next.devices.find((d) => d.ha_action_host)!;
-  assert.equal(host.device?.device_id, 4); // lowest free id after 1/2/3
-  assert.equal(host.device?.name, "Home Assistant");
-  assert.equal(host.device?.device_class, "wifi_ip");
-  const row = host.commands![0]!;
-  assert.equal(row.command_id, 1);
-  assert.equal(row.name, "Dim the lights");
-  const restore = row.restore_data as Record<string, any>;
-  assert.equal(restore.transport, "hub_code_record");
-  assert.equal(restore.library_type, 0x1C);
-  assert.equal(restore.command_code, "00 00 00 00 4e 21");
-  assert.equal(restore.data_hex, HA_ACTION_EXPECTED_DATA_HEX);
-  assert.equal(restore.decoded.class, "wifi_ip");
-  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Dim%20the%20lights/short");
-  assert.equal(restore.decoded.trailer_hex, "");
-  // The shortcut references the slot.
-  const slot = next.activities[0].favorite_slots!.find((s) => s.device_id === 4)!;
-  assert.deepEqual([slot.command_id, slot.name], [1, "Dim the lights"]);
-  // Hidden from member-facing views, present for restore-facing options.
-  assert.equal(activityMemberViews(next, 101).some((v) => v.deviceId === 4), false);
-  assert.equal(activityAddableDevices(next, 101).some((o) => o.id === 4), false);
-  assert.equal(bundleEditableDeviceOptions(next).some((o) => o.id === 4), false);
-  assert.equal(isHaActionDeviceId(next, 4), true);
-  assert.deepEqual(bundleHaActionTarget(next), HA_TARGET);
-  // Membership plumbing (power refs) still exists for restore integrity.
-  assert.equal(next.activities[0].referenced_source_device_ids!.includes(4), true);
+test("normalizeCommandPayloadHex canonicalizes tolerant input and rejects bad hex", () => {
+  assert.equal(normalizeCommandPayloadHex("AABBCC"), "aa bb cc");
+  assert.equal(normalizeCommandPayloadHex("0xAA 0xBB\ncc,dd"), "aa bb cc dd");
+  assert.equal(normalizeCommandPayloadHex(""), null);
+  assert.equal(normalizeCommandPayloadHex("abc"), null);
+  assert.equal(normalizeCommandPayloadHex("zz"), null);
 });
 
-test("HA actions reuse the host, allocate slots, and normalize underscores", () => {
-  const first = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
-  const second = addActivityHaActionFavorite(first, 101, "Movie_night", HA_TARGET)!;
-  const hosts = second.devices.filter((d) => d.ha_action_host);
-  assert.equal(hosts.length, 1);
-  assert.deepEqual(hosts[0].commands!.map((r) => r.command_id), [1, 2]);
-  // The listener converts "_" to " " on receipt; normalize at creation so
-  // the label the user sees is the label HA fires.
-  assert.equal(hosts[0].commands![1].name, "Movie night");
+test("commandRawPayloadHex reads data_hex and is null without restore data", () => {
+  const bundle = rawPayloadBundle();
+  assert.equal(commandRawPayloadHex(bundle, 9, 1), "aa bb cc");
+  assert.equal(commandRawPayloadHex(bundle, 9, 2), null);
+  assert.equal(commandRawPayloadHex(bundle, 9, 99), null);
 });
 
-test("pruneHaActionHosts drops unreferenced slots and dissolves empty hosts", () => {
-  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
-  // Referenced → sweep keeps everything.
-  const swept = pruneHaActionHosts(withAction);
-  assert.equal(swept.devices.some((d) => d.ha_action_host), true);
-  // Delete the shortcut (slot button_id 4: favorites 1, combo macro 3 → next is 4).
-  const deleted = deleteBundleActivityQuickAccess(withAction, 101, "favorite", 4);
-  const pruned = pruneHaActionHosts(deleted);
-  assert.equal(pruned.devices.some((d) => d.ha_action_host), false);
-  // The membership plumbing went with it.
-  assert.equal(pruned.activities[0].referenced_source_device_ids!.includes(4), false);
+test("updateCommandRawPayload replaces data_hex and drops a stale decoded block", () => {
+  const bundle = rawPayloadBundle();
+  const next = updateCommandRawPayload(bundle, 9, 3, "de ad be ef");
+  const command = next.devices[0].commands!.find((row: any) => row.command_id === 3)!;
+  const restore = command.restore_data as Record<string, any>;
+  assert.equal(restore.data_hex, "de ad be ef");
+  // The old decoded fields no longer describe the bytes; restore must
+  // replay the new hex verbatim, so the block is gone entirely.
+  assert.equal("decoded" in restore, false);
+  assert.equal(commandDecodedBlock(next, 9, 3), null);
+  // Untouched siblings and non-payload fields survive.
+  assert.equal(restore.library_type, 0x1c);
+  assert.equal(commandRawPayloadHex(next, 9, 1), "aa bb cc");
+  // Commands without restore_data are a no-op.
+  const untouched = updateCommandRawPayload(bundle, 9, 2, "de ad");
+  assert.equal(commandRawPayloadHex(untouched, 9, 2), null);
 });
 
-test("renaming an HA-action shortcut re-renders the callback path", () => {
-  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
-  const renamed = renameBundleActivityFavorite(withAction, 101, 4, "Movie mode");
-  const host = renamed.devices.find((d) => d.ha_action_host)!;
-  const restore = host.commands![0].restore_data as Record<string, any>;
-  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Movie%20mode/short");
-  assert.ok(String(restore.data_hex).length > 0);
-  // data_hex actually carries the new path bytes (spot-check "Movie").
-  const ascii = String(restore.data_hex).split(" ").map((h) => parseInt(h, 16))
-    .map((b) => String.fromCharCode(b)).join("");
-  assert.ok(ascii.includes("/launch/ha/4/Movie%20mode/short"));
-});
-
-test("parseHaActionAddress accepts IPv4 with optional port", () => {
-  assert.deepEqual(parseHaActionAddress("192.168.1.10:8060"), HA_TARGET);
-  assert.deepEqual(parseHaActionAddress("10.0.0.2"), { host: "10.0.0.2", port: 8060 });
-  assert.equal(parseHaActionAddress("homeassistant.local:8060"), null);
-  assert.equal(parseHaActionAddress("192.168.1.10:0"), null);
-  assert.equal(parseHaActionAddress("192.168.1.10:70000"), null);
-  assert.equal(parseHaActionAddress(""), null);
-});
-
-test("power pill toggles keep member order and step adjacency stable (interleaved macros)", () => {
-  // realPowerActivity interleaves: dev3 0xC6 @0, dev9 0xC5 @1, dev9 0xC6 @2, dev3 0xC5 @3.
-  assert.deepEqual(activityMemberViews(realPowerActivity(), 101).map((v) => v.deviceId), [3, 9]);
-  // "Stays as is" for dev3: its anchor position must not move.
-  const off = setActivityDevicePowerOn(realPowerActivity(), 101, 3, false);
-  assert.deepEqual(activityMemberViews(off, 101).map((v) => v.deviceId), [3, 9]);
-  // Back to "turns on": order unchanged AND the 0xC6 sits directly before
-  // the device's own 0xC5, not appended at the sequence end.
-  const on = setActivityDevicePowerOn(off, 101, 3, true);
-  assert.deepEqual(activityMemberViews(on, 101).map((v) => v.deviceId), [3, 9]);
-  const steps = on.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
-  const c6 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC6);
-  const c5 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC5);
-  assert.ok(c6 >= 0 && c5 === c6 + 1, `expected adjacent 0xC6/0xC5, got ${c6}/${c5}`);
-  // END side: toggling dev3's power-off away and back must not push its
-  // 0xC7 behind dev9's in the POWER_OFF sequence.
-  const offEnd = setActivityDevicePowerOff(realPowerActivity(), 101, 3, false);
-  const onEnd = setActivityDevicePowerOff(offEnd, 101, 3, true);
-  assert.deepEqual(activityMemberViews(onEnd, 101).map((v) => v.deviceId), [3, 9]);
-  const offSteps = onEnd.activities[0].macros!.find((m) => m.button_id === 199)!.steps!;
-  assert.deepEqual(offSteps.map((s) => s.device_id), [3, 9]);
+test("reconcile repairs missing power refs in interleaved macros", () => {
+  const partial = {
+    ...realPowerActivity(),
+    activities: [{
+      ...realPowerActivity().activities[0],
+      macros: realPowerActivity().activities[0].macros!.map((m) => {
+        if (m.button_id === 198) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC6)) };
+        }
+        if (m.button_id === 199) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC7)) };
+        }
+        return m;
+      }),
+    }],
+  };
+  const fixed = reconcileActivityPowerMacros(partial, 101);
+  const onSteps = fixed.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  const c6 = onSteps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC6);
+  const c5 = onSteps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC5);
+  assert.ok(c6 >= 0 && c5 >= 0 && c6 < c5, `expected repaired 0xC6 before 0xC5, got ${c6}/${c5}`);
+  const offSteps = fixed.activities[0].macros!.find((m) => m.button_id === 199)!.steps!;
+  assert.deepEqual(offSteps.map((s) => [s.device_id, s.command_id]), [[3, 0xC7], [9, 0xC7]]);
 });
 
 // ── Cross-activity chain references (restore selection) ─────────────
@@ -1347,4 +1500,31 @@ test("reconcileRestoreSelection pulls chained activities and their devices in", 
   assert.deepEqual(selection.forcedActivityIds, [102, 103]);
   // Device 2 is linked only to the FORCED activity 102 — it must come along.
   assert.deepEqual(selection.forcedDeviceIds, [1, 2]);
+});
+
+test("isManagedWifiBrand recognizes managed brands and rejects others", () => {
+  assert.equal(isManagedWifiBrand("m3-benchwifi-abc123"), true);
+  assert.equal(isManagedWifiBrand("m3-default-0ff"), true);
+  assert.equal(isManagedWifiBrand("m3tac0de-legacyhash"), true);
+  assert.equal(isManagedWifiBrand("m3-"), false); // empty suffix
+  assert.equal(isManagedWifiBrand("Samsung"), false);
+  assert.equal(isManagedWifiBrand(""), false);
+  assert.equal(isManagedWifiBrand("m3thing"), false); // no prefix delimiter
+});
+
+test("bundleDeviceBrand reads the device head brand", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { name: "H", version: "X1S" },
+    devices: [
+      { device: { device_id: 8, name: "Lights", brand: "m3-key-hash" }, commands: [] },
+      { device: { device_id: 9, name: "TV" }, commands: [] },
+    ],
+    activities: [],
+  } as any;
+  assert.equal(bundleDeviceBrand(bundle, 8), "m3-key-hash");
+  assert.equal(bundleDeviceBrand(bundle, 9), ""); // no brand field
+  assert.equal(bundleDeviceBrand(bundle, 99), ""); // missing device
+  assert.equal(bundleDeviceBrand(null, 8), "");
 });

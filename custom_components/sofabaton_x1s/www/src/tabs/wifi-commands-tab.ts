@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } from "../components/secondary-tab";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
-import type { ControlPanelHubState, HassLike, WifiPressEvent } from "../shared/ha-context";
+import type { ControlPanelHubState, HassLike, HubEventFireEvent, WifiPressEvent, WifiSectionId } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import {
   findRunningWifiDevice,
@@ -109,10 +109,39 @@ const HARD_BUTTON_ID_MAP: Record<string, number> = {
 
 const X2_ONLY_HARD_BUTTON_IDS = new Set<number>([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 const DEFAULT_ACTION = { action: "perform-action" };
-const WIFI_SECTION_ROW = [{ id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.sectionLabel, icon: "mdi:wifi", passive: true }] as const;
+
+const WIFI_SECTION_ROW: Array<{ id: WifiSectionId; label: string; icon: string }> = [
+  { id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.wifiCommandsTabLabel, icon: "mdi:wifi" },
+  { id: "hub_events", label: TOOLS_CARD_STRINGS.wifiCommands.eventsTabLabel, icon: "mdi:lightning-bolt-outline" },
+];
 
 type PressType = "short" | "long";
 type ActiveModal = "details" | "action" | null;
+type HubEventKey = "power_off" | "redundant_off" | "activity_start" | "activity_stop";
+type ActivityEventPhase = "start" | "stop";
+type HubEventEditorTarget =
+  | { kind: "hub"; key: HubEventKey }
+  | { kind: "activity"; id: string; phase: ActivityEventPhase };
+
+interface ActivityEventEntry {
+  start: WifiCommandAction;
+  stop: WifiCommandAction;
+}
+
+const HUB_EVENT_ROWS: Array<{ key: HubEventKey; label: string; icon: string }> = [
+  { key: "power_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff, icon: "mdi:power" },
+  { key: "redundant_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff, icon: "mdi:power-off" },
+];
+
+// The activity start/stop pair renders as one combined row (like the
+// per-activity lines), so it lives outside HUB_EVENT_ROWS; the editor modal
+// still needs a title per key.
+const HUB_EVENT_MODAL_TITLES: Record<HubEventKey, string> = {
+  power_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff,
+  redundant_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff,
+  activity_start: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStart,
+  activity_stop: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStopModalTitle,
+};
 
 interface WifiCommandAction {
   action: string;
@@ -207,6 +236,16 @@ class SofabatonWifiCommandsTab extends LitElement {
     _deletingDeviceKey: { state: true },
     _creatingDevice: { state: true },
     _maxWifiDevices: { state: true },
+    _hubEventActions: { state: true },
+    _activityEventActions: { state: true },
+    selectedSection: { attribute: false },
+    setSelectedSection: { attribute: false },
+    _devicePowerPickerKind: { state: true },
+    _activeHubEventTarget: { state: true },
+    _hubEventDraft: { state: true },
+    _hubEventSelectorVersion: { state: true },
+    _hubEventSaveError: { state: true },
+    lastHubEvent: { attribute: false },
   };
 
   static styles = [secondaryTabStyles, operationProgressStyles, css`
@@ -272,10 +311,11 @@ class SofabatonWifiCommandsTab extends LitElement {
       .wifi-ir-flash { animation: none; opacity: 0; }
     }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
-    .device-card-lead { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
-    .device-card-lead ha-icon { --mdc-icon-size: 20px; }
-    .device-card-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+    .device-card-lead { color: var(--state-icon-color, var(--secondary-text-color)); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .device-card-lead ha-icon { --mdc-icon-size: 16px; }
+    .device-card-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0; overflow: hidden; }
+    .device-card-name { display: block; font-size: 13px; font-weight: 700; line-height: 1.15; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin-left: auto; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
     .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
@@ -289,8 +329,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
-    .device-card-count { white-space: nowrap; font-size: 12px; color: var(--primary-text-color); flex-shrink: 0; }
-    .device-card-count-strong { font-weight: 700; }
+    .device-card-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
     .device-delete-btn:disabled {
@@ -327,6 +366,90 @@ class SofabatonWifiCommandsTab extends LitElement {
       opacity: 1;
     }
     .empty-state-card { border: 1px dashed var(--divider-color); border-radius: var(--tools-radius-md); padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
+    .device-power-lines { margin-bottom: 2px; }
+    .device-power-options { display: grid; gap: 8px; }
+    .device-power-option {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--tools-radius-sm);
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease;
+    }
+    .device-power-option:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .device-power-option.active {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+      color: var(--primary-color);
+    }
+    .hub-events { display: grid; gap: 6px; margin-top: 6px; }
+    .hub-event-lines { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 6px; }
+    .hub-event-line { position: relative; display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--primary-text-color); border-radius: var(--tools-radius-sm); }
+    .hub-event-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; align-self: center; }
+    .hub-event-icon ha-icon { --mdc-icon-size: 16px; }
+    .hub-event-icon.power-on { color: #2e7d32; }
+    .hub-event-icon.power-off { color: #c62828; }
+    .hub-event-action-link:disabled { cursor: default; opacity: 0.5; color: var(--secondary-text-color); }
+    .hub-event-clear:disabled { cursor: default; opacity: 0.42; }
+    .hub-event-text { min-width: 0; }
+    .hub-event-action-link {
+      display: inline;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      font-weight: 700;
+      font-style: italic;
+      color: var(--primary-text-color);
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 3px;
+    }
+    .hub-event-action-link:hover { color: var(--primary-color); }
+    /* Positioning anchor for the event-fired glow: the flash overlay hugs
+       just the action link instead of the whole sentence row, so combined
+       rows (start + stop in one line) show which hook actually fired.
+       inline-block keeps the overlay geometry a single rectangle; the link
+       text is short enough that moving it to the next line as a unit is
+       fine. */
+    .hub-event-action-wrap { position: relative; display: inline-block; }
+    .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
+    .hub-event-clear {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+      width: 18px;
+      height: 18px;
+      margin-left: 4px;
+      padding: 0;
+      border: 1px solid var(--divider-color);
+      border-radius: 50%;
+      background: transparent;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+    }
+    .hub-event-clear:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
+    .hub-event-clear ha-icon { --mdc-icon-size: 12px; }
+    @media (max-width: 640px) {
+      .hub-event-lines { gap: 10px; }
+      /* Multi-line sentences: pin the icon to the first text line so the
+         wrapped text hangs cleanly next to it, and give the inline action
+         link / clear button finger-sized targets. */
+      .hub-event-line { align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.65; }
+      .hub-event-icon { align-self: flex-start; margin-top: 3px; }
+      .hub-event-icon ha-icon { --mdc-icon-size: 18px; }
+      .hub-event-action-link { padding: 2px 0; text-underline-offset: 4px; }
+      .hub-event-clear { width: 24px; height: 24px; margin-left: 6px; }
+      .hub-event-clear ha-icon { --mdc-icon-size: 14px; }
+      .device-power-lines { padding: 2px 2px 0; }
+    }
     .bottom-dock-status {
       width: 100%;
       min-height: 0;
@@ -540,8 +663,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     .checkbox-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; text-align: left; }
     .checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display: flex; align-items: center; justify-content: center; transition: background-color 120ms ease, border-color 120ms ease; }
     .checkbox-icon ha-icon { --mdc-icon-size: 16px; }
-    .checkbox-icon.power-on { color: #2e7d32; background: color-mix(in srgb, #2e7d32 18%, var(--ha-card-background, transparent)); }
-    .checkbox-icon.power-off { color: #c62828; background: color-mix(in srgb, #c62828 18%, var(--ha-card-background, transparent)); }
     .checkbox-icon.input { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--ha-card-background, transparent)); }
     .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; }
     .checkbox-subtext { min-height: 1.35em; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); white-space: normal; }
@@ -612,10 +733,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       .detail-title-actions { gap: 6px; min-width: max-content; }
       .detail-sync-btn, .list-action-btn { flex: 0 0 auto; white-space: nowrap; }
       .device-card { align-items: center; gap: 10px; padding: 10px 12px; }
-      .device-card-main { align-items: center; flex-direction: row; gap: 10px; }
-      .device-card-name { flex: 1; }
+      .device-card-main { align-items: center; flex-direction: row; gap: 8px; }
       .device-card-meta { margin-left: auto; flex-wrap: nowrap; gap: 8px; }
-      .device-card-count { font-size: 12px; }
       .device-status-pill { padding: 6px; min-width: 32px; justify-content: center; }
       .device-status-pill-label { display: none; }
       .sync-row { align-items: flex-start; flex-direction: column; }
@@ -624,7 +743,7 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   declare hass: HassLike | null;
   declare hub: ControlPanelHubState | null;
-  setHubCommandBusy?: ((busy: boolean, label?: string | null) => void) | null;
+  setHubCommandBusy?: ((busy: boolean, label?: string | null, entryId?: string) => void) | null;
   refreshControlPanelState?: (() => Promise<void> | void) | null;
   hubCommandBusy = false;
   hubCommandBusyLabel: string | null = null;
@@ -665,7 +784,23 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _deletingDeviceKey: string | null = null;
   private _creatingDevice = false;
   private _maxWifiDevices = 5;
+  private _hubEventActions: Record<HubEventKey, WifiCommandAction> = this._defaultHubEventActions();
+  private _activityEventActions: Record<string, ActivityEventEntry> = {};
+  selectedSection: WifiSectionId = "wifi";
+  setSelectedSection: (section: WifiSectionId) => void = () => {};
+  private _devicePowerPickerKind: "on" | "off" | null = null;
+  private _activeHubEventTarget: HubEventEditorTarget | null = null;
+  private _hubEventDraft: WifiCommandAction | null = null;
+  private _hubEventSelectorVersion = 0;
+  private _hubEventSaveError = "";
+  private _hubEventActionsLoading = false;
   private _deviceSessionRestoreTried = false;
+  // Last dirty value announced to the host via `editor-dirty-changed`, so
+  // the event only fires on transitions.
+  private _dirtyDockNotified = false;
+  lastHubEvent: HubEventFireEvent | null = null;
+  private _hubEventFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
+  private _hubEventFlashClearForReceivedAt: number | null = null;
   connectedCallback() {
     super.connectedCallback();
     void this._ensureLoadedForCurrentHub();
@@ -679,6 +814,11 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._irFlashClearTimer = null;
       this._irFlashClearForReceivedAt = null;
     }
+    if (this._hubEventFlashClearTimer) {
+      clearTimeout(this._hubEventFlashClearTimer);
+      this._hubEventFlashClearTimer = null;
+      this._hubEventFlashClearForReceivedAt = null;
+    }
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -686,9 +826,34 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
     if (changed.has("hub") || changed.has("_selectedDeviceKey")) this._persistSelectedDeviceSession();
     this._scheduleSyncPoll();
+    this._notifyDirtyDock();
     this.renderRoot
       .querySelectorAll<HTMLElement>("ha-selector[data-hide-action-type='1']")
       .forEach((element) => this._hideUiActionTypeSelector(element));
+  }
+
+  // Tell the host card whether the user is inside a device editor (detail
+  // view) whose stored config still needs a deploy to the hub, so its
+  // bottom dock can show the dirty banner. Mirrors the render() gating:
+  // list view, Events section, and guard states never count as "in the
+  // editor", and a running deploy is narrated by the dock itself.
+  private _notifyDirtyDock() {
+    const inEditor = this.selectedSection === "wifi"
+      && !this.loading
+      && !this.error
+      && !!this.hub
+      && !(this.blockedTitle && this.blockedMessage)
+      && !!this._selectedWifiDevice();
+    const dirty = inEditor
+      && this._syncState.sync_needed
+      && this._syncState.status !== "running";
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   private _useLegacyTextField() {
@@ -710,6 +875,28 @@ class SofabatonWifiCommandsTab extends LitElement {
       `;
     }
 
+    if (this.selectedSection === "hub_events") {
+      return html`
+        <div class="tab-panel">
+          ${renderSecondaryTabShell({
+            connected: true,
+            items: [...WIFI_SECTION_ROW],
+            selectedId: "hub_events",
+            onSelect: this._selectSection,
+            shellClassName: "secondary-view-shell--edge",
+            content: renderSecondaryViewBody({
+              connected: true,
+              padded: false,
+              scroll: false,
+              className: "list-view",
+              content: this._renderHubEventsView(),
+            }),
+          })}
+          ${this._renderHubEventActionModal()}
+        </div>
+      `;
+    }
+
     const selectedDevice = this._selectedWifiDevice();
     if (!selectedDevice) {
       return html`
@@ -718,6 +905,7 @@ class SofabatonWifiCommandsTab extends LitElement {
             connected: true,
             items: [...WIFI_SECTION_ROW],
             selectedId: "wifi",
+            onSelect: this._selectSection,
             shellClassName: "secondary-view-shell--edge",
             content: renderSecondaryViewBody({
               connected: true,
@@ -781,6 +969,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                     message: String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncInProgress),
                   })
                 : html`
+                    ${this._renderDevicePowerRows()}
                     <div class="command-grid">
                       ${(() => {
                         const press = this._activeWifiPressFlash();
@@ -795,6 +984,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         ${this._renderSyncWarningModal()}
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
+        ${this._renderDevicePowerPickerModal()}
       </div>
     `;
   }
@@ -827,13 +1017,15 @@ class SofabatonWifiCommandsTab extends LitElement {
               >
                 <div class="device-card-main">
                   <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
-                  <div class="device-card-name">${device.device_name}</div>
+                  <div class="device-card-copy">
+                    <div class="device-card-name">${device.device_name}</div>
+                    <div class="device-card-count">${Number(device.configured_slot_count || 0)} slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</div>
+                  </div>
                   <div class="device-card-meta">
                     <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
                       <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
                       <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
                     </span>
-                    <span class="device-card-count"><span class="device-card-count-strong">${Number(device.configured_slot_count || 0)}</span> slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</span>
                   </div>
                 </div>
                 <div class="device-card-actions">
@@ -850,6 +1042,450 @@ class SofabatonWifiCommandsTab extends LitElement {
         ` : html`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         <div class="sticky-footer">
           ${!canAdd ? html`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : nothing}
+        </div>
+      </div>
+    `;
+  }
+
+  private _configuredCommandOptions() {
+    return this._commandsList()
+      .map((command, idx) => ({ command, idx }))
+      .filter(({ command, idx }) => this._isCommandConfigured(command, idx))
+      .map(({ command, idx }) => ({
+        value: String(idx + 1),
+        label: String(command.name || "").trim() || `Command ${idx + 1}`,
+      }));
+  }
+
+  private _devicePowerSelectorValue(kind: "on" | "off") {
+    const flagKey = kind === "on" ? "is_power_on" : "is_power_off";
+    const idx = this._commandsList().findIndex((command) => Boolean(command[flagKey]));
+    return idx >= 0 ? String(idx + 1) : "__none__";
+  }
+
+  private async _setDevicePowerTarget(kind: "on" | "off", targetIdx: number) {
+    const flagKey = kind === "on" ? "is_power_on" : "is_power_off";
+    if (this._devicePowerSelectorValue(kind) === (targetIdx >= 0 ? String(targetIdx + 1) : "__none__")) return;
+    const next = this._commandsList().map((command, idx) => {
+      if (idx === targetIdx) {
+        // Power and Activity-input roles stay mutually exclusive (matches the
+        // previous editor behavior where enabling one cleared the other).
+        return this._cloneCommandSlot({ ...command, [flagKey]: true, input_activity_id: "" });
+      }
+      return command[flagKey] ? this._cloneCommandSlot({ ...command, [flagKey]: false }) : command;
+    });
+    await this._setCommands(next);
+  }
+
+  private _devicePowerCommandName(kind: "on" | "off") {
+    const value = this._devicePowerSelectorValue(kind);
+    if (value === "__none__") return "";
+    const option = this._configuredCommandOptions().find((item) => item.value === value);
+    return option?.label || `Command ${value}`;
+  }
+
+  private _closeDevicePowerPicker = () => {
+    this._devicePowerPickerKind = null;
+  };
+
+  private _devicePowerRowDefs() {
+    return [
+      { kind: "on" as const, label: TOOLS_CARD_STRINGS.wifiCommands.devicePowerOnLabel },
+      { kind: "off" as const, label: TOOLS_CARD_STRINGS.wifiCommands.devicePowerOffLabel },
+    ];
+  }
+
+  private _renderDevicePowerRows() {
+    if (!this._supportsPowerInputConfig()) return nothing;
+    const disabled = this._hubCommandLocked();
+    return html`
+      <ul class="hub-event-lines device-power-lines">
+        ${this._devicePowerRowDefs().map(({ kind, label }) => {
+          const commandName = this._devicePowerCommandName(kind);
+          const configured = Boolean(commandName);
+          return html`
+            <li class="hub-event-line">
+              <span class="hub-event-icon ${kind === "on" ? "power-on" : "power-off"}"><ha-icon icon="mdi:power"></ha-icon></span>
+              <span class="hub-event-text">
+                ${label},
+                <button
+                  class="hub-event-action-link"
+                  ?disabled=${disabled}
+                  @click=${() => { this._devicePowerPickerKind = kind; }}
+                >
+                  ${configured
+                    ? TOOLS_CARD_STRINGS.wifiCommands.devicePowerPerform(commandName)
+                    : TOOLS_CARD_STRINGS.wifiCommands.hubEventDoNothing}</button>${configured ? html`<button
+                      class="hub-event-clear"
+                      title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
+                      ?disabled=${disabled}
+                      @click=${() => { void this._setDevicePowerTarget(kind, -1); }}
+                    ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}.
+              </span>
+            </li>
+          `;
+        })}
+      </ul>
+    `;
+  }
+
+  private _renderDevicePowerPickerModal() {
+    if (!this._supportsPowerInputConfig()) return nothing;
+    const kind = this._devicePowerPickerKind;
+    if (!kind) return nothing;
+    const row = this._devicePowerRowDefs().find((item) => item.kind === kind);
+    if (!row) return nothing;
+    const current = this._devicePowerSelectorValue(kind);
+    const pick = async (targetIdx: number) => {
+      this._devicePowerPickerKind = null;
+      await this._setDevicePowerTarget(kind, targetIdx);
+    };
+    return html`
+      <div class="modal-backdrop" @click=${this._closeDevicePowerPicker}>
+        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${row.label}</div>
+            <button class="dialog-close" @click=${this._closeDevicePowerPicker}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-note">${TOOLS_CARD_STRINGS.wifiCommands.devicePowerHint}</div>
+            <div class="device-power-options">
+              <button class="device-power-option ${current === "__none__" ? "active" : ""}" @click=${() => { void pick(-1); }}>
+                ${TOOLS_CARD_STRINGS.wifiCommands.devicePowerNothing}
+              </button>
+              ${this._configuredCommandOptions().map((option) => html`
+                <button class="device-power-option ${current === option.value ? "active" : ""}" @click=${() => { void pick(Number(option.value) - 1); }}>
+                  ${option.label}
+                </button>
+              `)}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _defaultHubEventActions(): Record<HubEventKey, WifiCommandAction> {
+    return {
+      power_off: { ...DEFAULT_ACTION },
+      redundant_off: { ...DEFAULT_ACTION },
+      activity_start: { ...DEFAULT_ACTION },
+      activity_stop: { ...DEFAULT_ACTION },
+    };
+  }
+
+  private _applyHubEventActionsResult(result: { actions?: Record<string, unknown>; activity_actions?: Record<string, unknown> } | null | undefined) {
+    const raw = result?.actions || {};
+    this._hubEventActions = {
+      power_off: this._normalizeCommandAction(raw.power_off),
+      redundant_off: this._normalizeCommandAction(raw.redundant_off),
+      activity_start: this._normalizeCommandAction(raw.activity_start),
+      activity_stop: this._normalizeCommandAction(raw.activity_stop),
+    };
+    this._activityEventActions = this._normalizeActivityEventActions(result?.activity_actions);
+  }
+
+  private _normalizeActivityEventActions(raw: unknown): Record<string, ActivityEventEntry> {
+    const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const normalized: Record<string, ActivityEventEntry> = {};
+    for (const [key, value] of Object.entries(source)) {
+      const activityId = Number.parseInt(String(key).trim(), 10);
+      if (!Number.isFinite(activityId) || activityId < 0) continue;
+      const phases = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+      normalized[String(activityId)] = {
+        start: this._normalizeCommandAction(phases.start),
+        stop: this._normalizeCommandAction(phases.stop),
+      };
+    }
+    return normalized;
+  }
+
+  private async _loadHubEventActions(force = false) {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return;
+    if (this._hubEventActionsLoading && !force) return;
+    this._hubEventActionsLoading = true;
+    try {
+      const result = await this.hass.callWS<{ actions?: Record<string, unknown>; activity_actions?: Record<string, unknown> }>({
+        type: "sofabaton_x1s/hub_event_actions/get",
+        entity_id: entityId,
+      });
+      this._applyHubEventActionsResult(result);
+    } catch (_error) {
+      this._hubEventActions = this._defaultHubEventActions();
+      this._activityEventActions = {};
+    } finally {
+      this._hubEventActionsLoading = false;
+    }
+  }
+
+  private _activityEventEntry(activityId: string): ActivityEventEntry {
+    const entry = this._activityEventActions[String(activityId)];
+    return {
+      start: this._normalizeCommandAction(entry?.start),
+      stop: this._normalizeCommandAction(entry?.stop),
+    };
+  }
+
+  private _actionForHubEventTarget(target: HubEventEditorTarget): WifiCommandAction {
+    if (target.kind === "hub") return this._normalizeCommandAction(this._hubEventActions[target.key]);
+    return this._activityEventEntry(target.id)[target.phase];
+  }
+
+  /** Persist one hub/activity event action. Always ships both maps so the
+   *  backend can normalize (and prune stale activity ids) atomically. */
+  private async _writeHubEventAction(target: HubEventEditorTarget, action: WifiCommandAction): Promise<boolean> {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return false;
+    const nextActions = { ...this._hubEventActions };
+    const nextActivityActions: Record<string, ActivityEventEntry> = Object.fromEntries(
+      Object.entries(this._activityEventActions).map(([id]) => [id, this._activityEventEntry(id)]),
+    );
+    if (target.kind === "hub") {
+      nextActions[target.key] = this._normalizeCommandAction(action);
+    } else {
+      const entry = this._activityEventEntry(target.id);
+      entry[target.phase] = this._normalizeCommandAction(action);
+      nextActivityActions[String(target.id)] = entry;
+    }
+    const result = await this.hass.callWS<{ actions?: Record<string, unknown>; activity_actions?: Record<string, unknown> }>({
+      type: "sofabaton_x1s/hub_event_actions/set",
+      entity_id: entityId,
+      actions: nextActions,
+      activity_actions: nextActivityActions,
+    });
+    this._applyHubEventActionsResult(
+      result?.actions ? result : { actions: nextActions, activity_actions: nextActivityActions },
+    );
+    return true;
+  }
+
+  private _hubEventActionText(action: WifiCommandAction) {
+    if (!this._commandHasCustomAction(action)) return TOOLS_CARD_STRINGS.wifiCommands.hubEventDoNothing;
+    return TOOLS_CARD_STRINGS.wifiCommands.hubEventPerform(this._commandActionDetails(action).service);
+  }
+
+  private async _resetHubEventAction(target: HubEventEditorTarget) {
+    try {
+      await this._writeHubEventAction(target, { ...DEFAULT_ACTION });
+    } catch (_error) {
+      // Keep the current state if the reset fails; the editor still works.
+    }
+  }
+
+  private _openHubEventEditor(target: HubEventEditorTarget) {
+    this._activeHubEventTarget = target;
+    this._hubEventDraft = this._actionForHubEventTarget(target);
+    this._hubEventSaveError = "";
+    this._hubEventSelectorVersion += 1;
+  }
+
+  private _closeHubEventEditor = () => {
+    this._activeHubEventTarget = null;
+    this._hubEventDraft = null;
+    this._hubEventSaveError = "";
+  };
+
+  private _saveHubEventAction = async () => {
+    const target = this._activeHubEventTarget;
+    if (!target) return;
+    try {
+      const saved = await this._writeHubEventAction(target, this._normalizeCommandAction(this._hubEventDraft));
+      if (saved) this._closeHubEventEditor();
+    } catch (error) {
+      this._hubEventSaveError = String((error as Error)?.message || "Unable to save Action");
+    }
+  };
+
+  private _selectSection = (id: WifiSectionId) => {
+    this.setSelectedSection(id);
+  };
+
+  /** Active hub-event firing while inside the 720ms glow window, scoped to
+   *  the current hub. Mirrors `_activeWifiPressFlash` (including the
+   *  single deferred cleanup re-render). */
+  private _activeHubEventFlash(): HubEventFireEvent | null {
+    const event = this.lastHubEvent;
+    if (!event) return null;
+    const entryId = this.hub?.entry_id ?? null;
+    if (!entryId || event.entryId !== entryId) return null;
+    const elapsed = Date.now() - event.receivedAt;
+    if (elapsed < 0 || elapsed >= SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS) return null;
+    if (this._hubEventFlashClearForReceivedAt !== event.receivedAt) {
+      if (this._hubEventFlashClearTimer) clearTimeout(this._hubEventFlashClearTimer);
+      this._hubEventFlashClearForReceivedAt = event.receivedAt;
+      this._hubEventFlashClearTimer = setTimeout(() => {
+        this._hubEventFlashClearTimer = null;
+        this._hubEventFlashClearForReceivedAt = null;
+        this.requestUpdate();
+      }, SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS - elapsed + 16);
+    }
+    return event;
+  }
+
+  private _flashMatchesHubEventRow(flash: HubEventFireEvent | null, key: HubEventKey): boolean {
+    if (!flash) return false;
+    if (key === "redundant_off") return flash.type === "redundant_off";
+    if (key === "power_off") {
+      return flash.type === "activity_change" && flash.toActivityId == null && flash.fromActivityId != null;
+    }
+    if (key === "activity_stop") {
+      return flash.type === "activity_change" && flash.fromActivityId != null;
+    }
+    return flash.type === "activity_change" && flash.toActivityId != null;
+  }
+
+  private _flashMatchesActivityPhase(
+    flash: HubEventFireEvent | null,
+    activityId: number,
+    phase: ActivityEventPhase,
+  ): boolean {
+    if (!flash || flash.type !== "activity_change") return false;
+    return phase === "start"
+      ? flash.toActivityId === activityId
+      : flash.fromActivityId === activityId;
+  }
+
+  private _hubEventFlashOverlay(active: boolean, flash: HubEventFireEvent | null) {
+    if (!active || !flash) return nothing;
+    return keyed(flash.receivedAt, html`<div class="wifi-ir-flash" aria-hidden="true"></div>`);
+  }
+
+  private _renderHubEventsView() {
+    const flash = this._activeHubEventFlash();
+    const activities = this._editorActivities();
+    const renderHubAction = (key: HubEventKey) => {
+      const action = this._hubEventActions[key];
+      const configured = this._commandHasCustomAction(action);
+      const target: HubEventEditorTarget = { kind: "hub", key };
+      return html`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesHubEventRow(flash, key), flash)}</span>${configured ? html`<button
+            class="hub-event-clear"
+            title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
+            @click=${() => { void this._resetHubEventAction(target); }}
+          ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}`;
+    };
+    return html`
+      <div class="list-scroll">
+        <div class="hub-events">
+          <div class="section-title-wrap">
+            <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsTitle}</div>
+          </div>
+          <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsSubtitle}</div>
+          <ul class="hub-event-lines">
+            ${HUB_EVENT_ROWS.map((row) => html`
+              <li class="hub-event-line">
+                <span class="hub-event-icon"><ha-icon icon=${row.icon}></ha-icon></span>
+                <span class="hub-event-text">
+                  ${row.label},
+                  ${renderHubAction(row.key)}.
+                </span>
+              </li>
+            `)}
+            <li class="hub-event-line">
+              <span class="hub-event-icon"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
+              <span class="hub-event-text">
+                ${TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStart},
+                ${renderHubAction("activity_start")},
+                ${TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStops},
+                ${renderHubAction("activity_stop")}.
+              </span>
+            </li>
+          </ul>
+        </div>
+        <div class="hub-events">
+          <div class="section-title-wrap">
+            <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
+          </div>
+          <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsSubtitle}</div>
+          ${activities.length ? html`
+            <ul class="hub-event-lines">
+              ${activities.map((activity) => this._renderActivityEventLine(activity, flash))}
+            </ul>
+          ` : html`<div class="empty-hint">${TOOLS_CARD_STRINGS.wifiCommands.noActivitiesForEvents}</div>`}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderActivityEventLine(activity: { id: number; name: string }, flash: HubEventFireEvent | null) {
+    const idKey = String(activity.id);
+    const entry = this._activityEventEntry(idKey);
+    const renderPhase = (phase: ActivityEventPhase) => {
+      const action = entry[phase];
+      const configured = this._commandHasCustomAction(action);
+      const target: HubEventEditorTarget = { kind: "activity", id: idKey, phase };
+      return html`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesActivityPhase(flash, activity.id, phase), flash)}</span>${configured ? html`<button
+            class="hub-event-clear"
+            title=${TOOLS_CARD_STRINGS.wifiCommands.hubEventClearTitle}
+            @click=${() => { void this._resetHubEventAction(target); }}
+          ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}`;
+    };
+    return html`
+      <li class="hub-event-line">
+        <span class="hub-event-icon"><ha-icon icon="mdi:television-play"></ha-icon></span>
+        <span class="hub-event-text">
+          ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStarts(activity.name)},
+          ${renderPhase("start")},
+          ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStops},
+          ${renderPhase("stop")}.
+        </span>
+      </li>
+    `;
+  }
+
+  private _hubEventEditorTitle(target: HubEventEditorTarget): string {
+    if (target.kind === "hub") {
+      return HUB_EVENT_MODAL_TITLES[target.key] || "";
+    }
+    const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));
+    const name = activity?.name || TOOLS_CARD_STRINGS.wifiCommands.activityEventFallbackName(String(target.id));
+    return target.phase === "start"
+      ? TOOLS_CARD_STRINGS.wifiCommands.activityEventStartModalTitle(name)
+      : TOOLS_CARD_STRINGS.wifiCommands.activityEventStopModalTitle(name);
+  }
+
+  private _renderHubEventActionModal() {
+    const target = this._activeHubEventTarget;
+    if (!target) return nothing;
+    const title = this._hubEventEditorTitle(target);
+    if (!title) return nothing;
+    return html`
+      <div class="modal-backdrop" @click=${this._closeHubEventEditor}>
+        <div class="dialog" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${title}</div>
+            <button class="dialog-close" @click=${this._closeHubEventEditor}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-note">${TOOLS_CARD_STRINGS.wifiCommands.hubEventModalNote}</div>
+            <div class="config-block">
+              <div class="action-helper">${TOOLS_CARD_STRINGS.wifiCommands.selectTriggeredAction}</div>
+              <div class="action-selector-wrap">
+                ${keyed(this._hubEventSelectorVersion, html`
+                  <ha-selector
+                    data-hide-action-type="1"
+                    .hass=${this.hass}
+                    .selector=${{ ui_action: {} }}
+                    .label=${TOOLS_CARD_STRINGS.wifiCommands.action}
+                    .value=${this._normalizeCommandAction(this._hubEventDraft)}
+                    @value-changed=${(event: CustomEvent) => {
+                      this._hubEventDraft = this._normalizeCommandAction(event.detail?.value);
+                      this._hubEventSaveError = "";
+                    }}
+                  ></ha-selector>
+                `)}
+              </div>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._hubEventSaveError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeHubEventEditor}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._saveHubEventAction}>${TOOLS_CARD_STRINGS.wifiCommands.save}</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -992,14 +1628,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     return html`
       <div class="slot-btn">
         <div class="slot-actions">
-          ${command.is_power_on && command.is_power_off
+          ${this._supportsPowerInputConfig() && command.is_power_on && command.is_power_off
             ? html`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>`
-            : command.is_power_on
+            : this._supportsPowerInputConfig() && command.is_power_on
               ? html`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>`
-              : command.is_power_off
+              : this._supportsPowerInputConfig() && command.is_power_off
                 ? html`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>`
                 : nothing}
-          ${this._hasInputActivity(command)
+          ${this._supportsPowerInputConfig() && this._hasInputActivity(command)
             ? html`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>`
             : nothing}
           <button class="slot-clear" @click=${(event: Event) => { event.stopPropagation(); this._confirmClearSlot = idx; }}><ha-icon icon="mdi:close"></ha-icon></button>
@@ -1092,6 +1728,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                         }}
                       ></ha-input>
                     `}
+                ${this._supportsPowerInputConfig() ? html`
                 <button
                   class="advanced-toggle ${this._advancedOptionsOpen ? "expanded" : ""}"
                   @click=${() => {
@@ -1104,40 +1741,9 @@ class SofabatonWifiCommandsTab extends LitElement {
                   </span>
                   <ha-icon icon="mdi:chevron-down"></ha-icon>
                 </button>
-                ${this._advancedOptionsOpen ? html`
+                ` : nothing}
+                ${this._advancedOptionsOpen && this._supportsPowerInputConfig() ? html`
                   <div class="advanced-panel">
-                    <button class="checkbox-row ${draft.is_power_on ? "active" : ""}" @click=${() => {
-                      this._togglePowerCommandRow("on");
-                    }}>
-                      <span class="checkbox-left">
-                        <span class="checkbox-icon power-on"><ha-icon icon="mdi:power"></ha-icon></span>
-                        <span class="checkbox-copy">
-                          <span>${TOOLS_CARD_STRINGS.wifiCommands.powerOn}</span>
-                          <span class="checkbox-subtext">${this._powerReplacementLabel("on")}</span>
-                        </span>
-                      </span>
-                      <ha-switch
-                        .checked=${draft.is_power_on}
-                        @click=${(event: Event) => event.stopPropagation()}
-                        @change=${(event: Event) => this._handlePowerCommandSwitchChange("on", event)}
-                      ></ha-switch>
-                    </button>
-                    <button class="checkbox-row ${draft.is_power_off ? "active" : ""}" @click=${() => {
-                      this._togglePowerCommandRow("off");
-                    }}>
-                      <span class="checkbox-left">
-                        <span class="checkbox-icon power-off"><ha-icon icon="mdi:power"></ha-icon></span>
-                        <span class="checkbox-copy">
-                          <span>${TOOLS_CARD_STRINGS.wifiCommands.powerOff}</span>
-                          <span class="checkbox-subtext">${this._powerReplacementLabel("off")}</span>
-                        </span>
-                      </span>
-                      <ha-switch
-                        .checked=${draft.is_power_off}
-                        @click=${(event: Event) => event.stopPropagation()}
-                        @change=${(event: Event) => this._handlePowerCommandSwitchChange("off", event)}
-                      ></ha-switch>
-                    </button>
                     <button class="checkbox-row ${inputSelectionEnabled ? "active" : ""}" ?disabled=${!hasActivities} @click=${() => {
                       this._toggleInputActivityRow();
                     }}>
@@ -1334,11 +1940,14 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._wifiDevices = [];
       this._commandsData = this._normalizeCommandsForStorage([]);
       this._syncState = this._defaultSyncState();
+      this._hubEventActions = this._defaultHubEventActions();
+      this._activityEventActions = {};
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const entityId = String(this._entityId() || "").trim();
     const deviceListLoaded = await this._loadWifiDevices(true);
     if (!shouldFinalizeWifiHubLoad({ entryId, entityId, deviceListLoaded })) return;
+    await this._loadHubEventActions(true);
     if (!this._deviceSessionRestoreTried && !this._selectedDeviceKey) {
       this._deviceSessionRestoreTried = true;
       this._restoreSelectedDeviceSession();
@@ -1427,9 +2036,18 @@ class SofabatonWifiCommandsTab extends LitElement {
     return version.includes("X2") || version.includes("X1S");
   }
 
+  private _supportsPowerInputConfig() {
+    // The X1 hub collapses activity-transition wifi callbacks to a single
+    // power-on + input callback regardless of how many callback devices the
+    // activity holds (live-hub-testing.md, 2026-07-17), so the power/input
+    // configuration is hidden for X1 hubs. Unknown versions keep the full UI.
+    const version = this._hubVersion();
+    return !(version.includes("X1") && !version.includes("X1S"));
+  }
+
   private _sanitizeCommandName(value: unknown) {
     const pattern = this._supportsUnicodeCommandNames()
-      ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu
+      ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu
       : /[^A-Za-z0-9 ]+/g;
     return String(value ?? "").replace(pattern, "").slice(0, 20);
   }
@@ -1438,10 +2056,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     return this._sanitizeCommandName(value);
   }
 
-  private _setSharedHubCommandBusy(busy: boolean, label: string | null = null) {
-    this.setHubCommandBusy?.(busy, label);
+  // entryId is captured by callers when their operation starts so busy
+  // set/clear pairs stay scoped to that hub even if the hub picker moves on
+  // before the operation's finally runs.
+  private _setSharedHubCommandBusy(busy: boolean, label: string | null = null, entryId?: string) {
+    const key = (entryId ?? String(this.hub?.entry_id || "")).trim() || undefined;
+    this.setHubCommandBusy?.(busy, label, key);
     this.dispatchEvent(new CustomEvent("sofabaton-hub-command-busy-changed", {
-      detail: { busy, label },
+      detail: { busy, label, entryId: key ?? null },
       bubbles: true,
       composed: true,
     }));
@@ -1568,18 +2190,26 @@ class SofabatonWifiCommandsTab extends LitElement {
         validActivityIds && rawInputActivityId && !validActivityIds.has(rawInputActivityId)
           ? ""
           : rawInputActivityId;
-      const rawActivities = Array.isArray(record.activities)
-        ? record.activities.map((id) => String(id)).filter((id) => id !== "")
-        : [];
+      const addAsFavorite =
+        record.add_as_favorite === undefined ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite);
+      const hardButton = String(record.hard_button ?? "");
+      // The activities selection only exists for favorites and hard-button
+      // bindings; the editor hides (without clearing) it when both are off.
+      // Drop the orphaned list at save time so it cannot silently pull the
+      // wifi device into activities on deploy (issue #258).
+      const activitiesActive = addAsFavorite || Boolean(hardButton.trim());
+      const rawActivities =
+        activitiesActive && Array.isArray(record.activities)
+          ? record.activities.map((id) => String(id)).filter((id) => id !== "")
+          : [];
       const activities = validActivityIds
         ? rawActivities.filter((id) => validActivityIds.has(id))
         : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
         name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
-        add_as_favorite:
-          record.add_as_favorite === undefined ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite),
-        hard_button: String(record.hard_button ?? ""),
+        add_as_favorite: addAsFavorite,
+        hard_button: hardButton,
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
         is_power_on: normalizedPowerOnId === idx + 1,
         is_power_off: normalizedPowerOffId === idx + 1,
@@ -1827,15 +2457,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!String(draft.name ?? "").length || String(draft.name).startsWith(" ")) {
       return "Command name must start with a non-space character.";
     }
-    if (
-      !draft.add_as_favorite &&
-      !String(draft.hard_button || "").trim() &&
-      !draft.is_power_on &&
-      !draft.is_power_off &&
-      !this._hasInputActivity(draft)
-    ) {
-      return "Set a power command, input activity, add as favorite, or map to button before saving.";
-    }
     return "";
   }
 
@@ -1992,11 +2613,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
     const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
     const assignmentEnabled = this._activitySelectionEnabled(command);
+    const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return "Unconfigured command";
-    if (!assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
-    if (!assignmentEnabled && command.is_power_on) return "Power ON command";
-    if (!assignmentEnabled && command.is_power_off) return "Power OFF command";
-    if (!assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
+    if (powerInput && !assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
+    if (powerInput && !assignmentEnabled && command.is_power_on) return "Power ON command";
+    if (powerInput && !assignmentEnabled && command.is_power_off) return "Power OFF command";
+    if (powerInput && !assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
     return `in ${activityCount} ${activitiesLabel}`;
   }
 
@@ -2015,28 +2637,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     this._commandSaveError = "";
   }
 
-  private _powerReplacementSlot(kind: "on" | "off") {
-    if (!Number.isInteger(this._activeCommandSlot)) return null;
-    const activeIdx = Number(this._activeCommandSlot);
-    const commands = this._commandsList();
-    for (let idx = 0; idx < commands.length; idx += 1) {
-      if (idx === activeIdx) continue;
-      const isMatch = kind === "on" ? Boolean(commands[idx].is_power_on) : Boolean(commands[idx].is_power_off);
-      if (isMatch) return { index: idx, slot: commands[idx] };
-    }
-    return null;
-  }
-
-  private _powerReplacementLabel(kind: "on" | "off") {
-    const draft = this._activeCommandDraft();
-    if (kind === "on" && draft?.is_power_on) return "Command called as part of device power on sequence";
-    if (kind === "off" && draft?.is_power_off) return "Command called as part of device power off sequence";
-    const replacement = this._powerReplacementSlot(kind);
-    if (!replacement) return `No current ${kind} command set`;
-    const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
-    return `Replaces "${name}" as the ${kind} command`;
-  }
-
   private _inputActivityReplacementSlot(activityId: string) {
     if (!Number.isInteger(this._activeCommandSlot) || !activityId) return null;
     const activeIdx = Number(this._activeCommandSlot);
@@ -2051,11 +2651,11 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _inputActivityReplacementLabel() {
     const draft = this._activeCommandDraft();
     const activityId = String(draft?.input_activity_id || "").trim();
-    if (!activityId) return "Command called as part of Activity startup sequence";
+    if (!activityId) return TOOLS_CARD_STRINGS.wifiCommands.activityInputHint;
     const replacement = this._inputActivityReplacementSlot(activityId);
-    if (!replacement) return "Command called as part of Activity startup sequence";
+    if (!replacement) return TOOLS_CARD_STRINGS.wifiCommands.activityInputHint;
     const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
-    return `Replaces "${name}" as input for ${this._activityName(activityId)}`;
+    return TOOLS_CARD_STRINGS.wifiCommands.activityInputReplaces(name, this._activityName(activityId));
   }
 
   private _hardButtonConflictInfo(buttonId: string) {
@@ -2090,40 +2690,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!conflict) return "";
     if (conflict.isSameDevice) return `Replaces "${conflict.slotName}" on this button`;
     return `Replaces "${conflict.slotName}" from ${conflict.deviceName}`;
-  }
-
-  private _setPowerCommandFlag(kind: "on" | "off", enabled: boolean) {
-    if (!Number.isInteger(this._activeCommandSlot)) return;
-    const key = kind === "on" ? "is_power_on" : "is_power_off";
-    const idx = Number(this._activeCommandSlot);
-    const nextDrafts = { ...this._commandEditorDrafts };
-    if (enabled) {
-      Object.entries(nextDrafts).forEach(([draftIdx, draft]) => {
-        if (Number(draftIdx) !== idx && draft) {
-          nextDrafts[Number(draftIdx)] = this._cloneCommandSlot({ ...draft, [key]: false });
-        }
-      });
-    }
-    const current = this._ensureCommandDraft(idx);
-    if (!current) return;
-    nextDrafts[idx] = this._cloneCommandSlot({
-      ...current,
-      [key]: enabled,
-      input_activity_id: enabled ? "" : current.input_activity_id,
-    });
-    this._commandEditorDrafts = nextDrafts;
-    this._commandSaveError = "";
-  }
-
-  private _togglePowerCommandRow(kind: "on" | "off") {
-    const draft = this._activeCommandDraft();
-    if (!draft) return;
-    this._setPowerCommandFlag(kind, !Boolean(kind === "on" ? draft.is_power_on : draft.is_power_off));
-  }
-
-  private _handlePowerCommandSwitchChange(kind: "on" | "off", event: Event) {
-    const checked = Boolean((event.currentTarget as HTMLInputElement).checked);
-    this._setPowerCommandFlag(kind, checked);
   }
 
   private _toggleLongPressRow() {
@@ -2484,7 +3050,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       return;
     }
     this._creatingDevice = true;
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.createDeviceBusy);
+    const busyEntryId = String(this.hub?.entry_id || "").trim();
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.createDeviceBusy, busyEntryId);
     try {
       const payload = await this.hass.callWS<{ device_key?: string }>({
         type: "sofabaton_x1s/command_device/create",
@@ -2498,7 +3065,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._deviceMutationError = String((error as Error)?.message || TOOLS_CARD_STRINGS.wifiCommands.createDeviceFailed);
     } finally {
       this._creatingDevice = false;
-      this._setSharedHubCommandBusy(false);
+      this._setSharedHubCommandBusy(false, null, busyEntryId);
     }
   }
 
@@ -2522,7 +3089,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (this._hubCommandLocked()) return;
     this._closeDeleteDeviceModal();
     this._deletingDeviceKey = deviceKey;
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceBusy);
+    const busyEntryId = String(this.hub?.entry_id || "").trim();
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceBusy, busyEntryId);
     try {
       await this.hass.callWS({
         type: "sofabaton_x1s/command_device/delete",
@@ -2537,7 +3105,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._deleteDeviceKey = deviceKey;
     } finally {
       this._deletingDeviceKey = null;
-      this._setSharedHubCommandBusy(false);
+      this._setSharedHubCommandBusy(false, null, busyEntryId);
     }
   };
 
@@ -2606,7 +3174,8 @@ class SofabatonWifiCommandsTab extends LitElement {
           }
         : device,
     );
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback);
+    const busyEntryId = String(this.hub?.entry_id || "").trim();
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
       await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
       await this._refreshControlPanelState();
@@ -2630,7 +3199,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
       await this._refreshControlPanelState();
-      this._setSharedHubCommandBusy(false);
+      this._setSharedHubCommandBusy(false, null, busyEntryId);
     }
   }
 

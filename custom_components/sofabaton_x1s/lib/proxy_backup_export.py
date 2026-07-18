@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import threading
 import time
+from copy import deepcopy
 from typing import Any, Callable, Optional
 
 from . import backup_export as _bx
@@ -150,12 +151,19 @@ class BackupExportMixin:
         device_id: int,
         *,
         wait_timeout: float = 10.0,
+        include_blobs: bool = True,
     ) -> dict[str, Any] | None:
         """Build a restore-oriented ``device_backup`` payload from the hub.
 
         Returns ``None`` when the device is unknown. Captures only what a
         restore needs (schema, command table, keymap, macros, IR blobs);
         runtime state is deliberately excluded.
+
+        ``include_blobs=False`` skips the per-command IR blob dump — the
+        dominant cost of a whole-hub read. The result keeps command *labels*,
+        key bindings, macros, input records and idle behaviour (everything the
+        live activity editor needs) but is **not** restorable (no command
+        payloads). Used by the structural "refresh entire hub cache" path.
         """
 
         dev_lo = device_id & 0xFF
@@ -172,27 +180,102 @@ class BackupExportMixin:
 
         self.clear_entity_cache(dev_lo, True, True, True)
 
-        commands_ready = self._fetch_and_wait(
+        self._fetch_and_wait(
             f"commands:{dev_lo}",
             lambda: self.get_commands_for_entity(dev_lo, fetch_if_missing=True),
             lambda: dev_lo in self._commands_complete,
             timeout=wait_timeout,
         )
-        final_buttons_ready = self._fetch_and_wait(
+        self._fetch_and_wait(
             f"buttons:{dev_lo}",
             lambda: self.get_buttons_for_entity(dev_lo, fetch_if_missing=True),
             lambda: dev_lo in self.state.buttons,
             timeout=wait_timeout,
         )
-        if skip_macros:
-            final_macros_ready = True
-        else:
-            final_macros_ready = self._fetch_and_wait(
+        if not skip_macros:
+            self._fetch_and_wait(
                 f"macros:{dev_lo}",
                 lambda: self.get_macros_for_activity(dev_lo, fetch_if_missing=True),
                 lambda: dev_lo in self._macros_complete,
                 timeout=wait_timeout,
             )
+
+        normalized_device_class = normalize_device_class(
+            device_meta.get("device_class", device_meta.get("device_class_code"))
+        )
+        raw_dump_class = _bx.uses_raw_command_dump(normalized_device_class)
+
+        if include_blobs:
+            dump = self.request_ir_command_dump(
+                dev_lo, command_id=None, timeout=max(wait_timeout, 15.0)
+            )
+            if raw_dump_class:
+                blob_source = dump
+            else:
+                blob_source = _bx.normalize_dump_to_blobs(
+                    dump,
+                    resolve_device_class=self._resolve_device_class,
+                    fallback_device_id=dev_lo,
+                )
+        else:
+            # Structural capture: skip the per-command IR dump entirely.
+            blob_source = None
+
+        if skip_inputs:
+            self.state.device_input_records.pop(dev_lo, None)
+        else:
+            input_record = self.fetch_device_input_record(dev_lo, timeout=wait_timeout)
+            if isinstance(input_record, dict):
+                self.state.device_input_records[dev_lo] = input_record
+            else:
+                self.state.device_input_records.pop(dev_lo, None)
+        # The family-0x63 burst path already stores into
+        # ``state.device_key_sorts``; the explicit write also captures the
+        # STATUS_ACK "no key-sort configured" empty row so a later
+        # from-state assembly sees the same value this capture did.
+        key_sort_row = self.fetch_device_key_sort(dev_lo, timeout=wait_timeout)
+        if key_sort_row is not None:
+            self.state.device_key_sorts[dev_lo] = dict(key_sort_row)
+
+        # Idle / automatic-power behavior lives in its own hub query
+        # (OP_IDLE_BEHAVIOR, 0x0242), not the device record, so it must be
+        # fetched explicitly. The reply handler stores it on the device's
+        # catalog entry, which is where the assembler reads it back.
+        self.fetch_idle_behavior(dev_lo, timeout=wait_timeout)
+
+        self.state.detail_fetched_at["device"][dev_lo] = _bx.now_iso()
+
+        return self.assemble_device_backup_from_state(
+            dev_lo, blob_source=blob_source, include_blobs=include_blobs
+        )
+
+    def assemble_device_backup_from_state(
+        self,
+        device_id: int,
+        *,
+        blob_source: dict[str, Any] | None = None,
+        include_blobs: bool = False,
+    ) -> dict[str, Any] | None:
+        """Assemble a ``device_backup`` purely from cached proxy state.
+
+        No hub I/O happens here: the payload is a projection of whatever the
+        last fetch (live capture or persistent-cache import) left in
+        ``self.state``. Without ``blob_source`` the result is a structural
+        payload; ``backup_device`` threads the freshly-dumped blobs through
+        for the full-backup shape. Returns ``None`` when the device is not
+        in the catalog.
+        """
+
+        dev_lo = device_id & 0xFF
+        device_meta = dict(self.state.entities("device").get(dev_lo) or {})
+        if not device_meta:
+            return None
+
+        device_config = self._parse_config(
+            device_meta.get("raw_body"), hub_version=self.hub_version
+        )
+        skip_macros = device_config is not None and not device_config.is_power_configured
+        skip_inputs = device_config is not None and not device_config.is_input_configured
 
         command_labels, _ = self.get_commands_for_entity(dev_lo, fetch_if_missing=False)
         button_codes, _ = self.get_buttons_for_entity(dev_lo, fetch_if_missing=False)
@@ -202,37 +285,15 @@ class BackupExportMixin:
         )
         raw_dump_class = _bx.uses_raw_command_dump(normalized_device_class)
 
-        dump = self.request_ir_command_dump(
-            dev_lo, command_id=None, timeout=max(wait_timeout, 15.0)
-        )
-        if raw_dump_class:
-            blob_source = dump
-        else:
-            blob_source = _bx.normalize_dump_to_blobs(
-                dump,
-                resolve_device_class=self._resolve_device_class,
-                fallback_device_id=dev_lo,
-            )
-
-        if skip_inputs:
-            input_record: dict[str, Any] | None = None
-            input_entries: list[Any] | None = []
-        else:
-            input_record = self.fetch_device_input_record(dev_lo, timeout=wait_timeout)
-            input_entries = (
-                list(input_record.get("entries") or [])
-                if isinstance(input_record, dict)
-                else []
-            )
-        key_sort_row = self.fetch_device_key_sort(dev_lo, timeout=wait_timeout)
-
         label_map = {
             int(command_id) & 0xFF: str(label)
             for command_id, label in dict(command_labels).items()
         }
         blob_by_command: dict[int, dict[str, Any]] = {}
-        blobs_complete = False
-        if isinstance(blob_source, dict):
+        # A structural capture intentionally has no blobs, so it counts as
+        # "complete" for the blobs dimension (nothing was meant to be fetched).
+        blobs_complete = not include_blobs
+        if include_blobs and isinstance(blob_source, dict):
             blobs_complete = bool(blob_source.get("complete"))
             for command in blob_source.get("commands", []):
                 if not isinstance(command, dict):
@@ -261,24 +322,27 @@ class BackupExportMixin:
         )
         macro_rows = _bx.build_device_macro_rows(self.get_cached_macro_records(dev_lo))
 
-        # Idle / automatic-power behavior lives in its own hub query
-        # (OP_IDLE_BEHAVIOR, 0x0242), not the device record, so it must be
-        # fetched explicitly. ``None`` (no reply) omits the field and lets
-        # restore fall back to the legacy power_mode reading.
-        idle_mode, idle_ready = self.fetch_idle_behavior(dev_lo, timeout=wait_timeout)
-        idle_behavior = idle_mode if idle_ready else None
+        input_record = (
+            None if skip_inputs else self.state.device_input_records.get(dev_lo)
+        )
+        key_sort_row = self.state.device_key_sorts.get(dev_lo)
+
+        idle_value = device_meta.get("idle_behavior")
+        idle_behavior = int(idle_value) & 0xFF if isinstance(idle_value, int) else None
 
         device_block = _bx.build_device_block(
             dev_lo, device_meta, device_config, idle_behavior=idle_behavior
         )
 
+        # Readiness mirrors the predicates the fetch phase waits on, so a
+        # payload assembled right after ``backup_device`` reports the same
+        # completeness the inline assembly used to.
         complete = all(
             [
                 bool(device_block),
-                commands_ready,
-                final_buttons_ready,
-                final_macros_ready,
-                input_entries is not None,
+                dev_lo in self._commands_complete,
+                dev_lo in self.state.buttons,
+                skip_macros or dev_lo in self._macros_complete,
                 blobs_complete,
                 key_sort_row is not None,
             ]
@@ -290,8 +354,12 @@ class BackupExportMixin:
             button_rows=button_rows,
             macro_rows=macro_rows,
             key_sort_row=key_sort_row,
-            input_record=input_record,
+            input_record=deepcopy(input_record) if isinstance(input_record, dict) else None,
             complete=complete,
+            payload_profile=(
+                _bx.PAYLOAD_PROFILE_FULL if include_blobs else _bx.PAYLOAD_PROFILE_STRUCTURAL
+            ),
+            fetched_at=self.state.detail_fetched_at["device"].get(dev_lo),
         )
 
     # ------------------------------------------------------------------
@@ -313,23 +381,54 @@ class BackupExportMixin:
         if not activity_meta:
             return None
 
-        activity_config = self._parse_config(
-            activity_meta.get("raw_body"), hub_version=self.hub_version
-        )
-
         self.clear_entity_cache(act_lo, True, True, True)
 
-        final_buttons_ready = self._fetch_and_wait(
+        self._fetch_and_wait(
             f"buttons:{act_lo}",
             lambda: self.get_buttons_for_entity(act_lo, fetch_if_missing=True),
             lambda: act_lo in self.state.buttons,
             timeout=wait_timeout,
         )
-        final_macros_ready = self._fetch_and_wait(
+        self._fetch_and_wait(
             f"macros:{act_lo}",
             lambda: self.get_macros_for_activity(act_lo, fetch_if_missing=True),
             lambda: act_lo in self._macros_complete,
             timeout=wait_timeout,
+        )
+
+        # Quick-access display order (family-0x61 slot table). Best-effort: a
+        # reorder rewrites this table without renumbering button_ids, so it is
+        # the only source for the shortcut display order. A failed/absent read
+        # leaves the bundle without ``favorites_order`` and consumers fall back
+        # to button_id order. Runs after the buttons/macros bursts have settled
+        # so the 0x0162 request does not collide with an in-flight mapping.
+        try:
+            self.request_favorites_order(act_lo)
+        except Exception:  # noqa: BLE001 - ordering is advisory, never fatal
+            self._log.debug("[FAV_ORDER] backup_activity order read failed act=0x%02X", act_lo)
+
+        self.state.detail_fetched_at["activity"][act_lo] = _bx.now_iso()
+
+        return self.assemble_activity_backup_from_state(act_lo)
+
+    def assemble_activity_backup_from_state(
+        self, activity_id: int
+    ) -> dict[str, Any] | None:
+        """Assemble an ``activity_backup`` purely from cached proxy state.
+
+        The activity counterpart of
+        :meth:`assemble_device_backup_from_state` -- no hub I/O, ``None``
+        when the activity is not in the catalog. Activities never carry
+        command payloads, so the same payload serves both profiles.
+        """
+
+        act_lo = activity_id & 0xFF
+        activity_meta = dict(self.state.entities("activity").get(act_lo) or {})
+        if not activity_meta:
+            return None
+
+        activity_config = self._parse_config(
+            activity_meta.get("raw_body"), hub_version=self.hub_version
         )
 
         button_codes, _ = self.get_buttons_for_entity(act_lo, fetch_if_missing=False)
@@ -347,9 +446,24 @@ class BackupExportMixin:
         )
         referenced |= fav_refs
 
+        # Quick-access display order (hub ids sorted by their family-0x61 slot).
+        # Populated by a prior request_favorites_order(); absent when never
+        # fetched, in which case consumers fall back to button_id order.
+        order_pairs = self.state.activity_favorites_order.get(act_lo) or []
+        favorites_order = [
+            int(fav_id) & 0xFF
+            for fav_id, _slot in sorted(order_pairs, key=lambda pair: int(pair[1]))
+        ]
+
         activity_block = _bx.build_device_block(act_lo, activity_meta, activity_config)
 
-        complete = all([bool(activity_block), final_buttons_ready, final_macros_ready])
+        complete = all(
+            [
+                bool(activity_block),
+                act_lo in self.state.buttons,
+                act_lo in self._macros_complete,
+            ]
+        )
 
         return _bx.assemble_activity_backup(
             activity_block=activity_block,
@@ -358,6 +472,8 @@ class BackupExportMixin:
             macro_rows=macro_rows,
             referenced_source_device_ids=referenced,
             complete=complete,
+            fetched_at=self.state.detail_fetched_at["activity"].get(act_lo),
+            favorites_order=favorites_order,
         )
 
     # ------------------------------------------------------------------
@@ -371,6 +487,7 @@ class BackupExportMixin:
         hub_info: dict[str, Any] | None = None,
         wait_timeout: float = 10.0,
         progress: Callable[..., None] | None = None,
+        include_blobs: bool = True,
     ) -> dict[str, Any]:
         """Build a ``hub_bundle`` covering the requested scope.
 
@@ -378,6 +495,11 @@ class BackupExportMixin:
         restricts to those devices (no activities). ``progress`` receives
         the same status dicts the integration surfaces. ``hub_info``
         overrides the bundle's informational ``hub`` block.
+
+        ``include_blobs=False`` produces a **structural** bundle (no command
+        IR payloads) — dramatically faster because it skips the per-command
+        blob dump. Same `hub_bundle` shape; suitable for the live activity
+        editor (which never reads blobs) but not for restore.
         """
 
         def _progress(**payload: Any) -> None:
@@ -427,7 +549,7 @@ class BackupExportMixin:
                 total_steps=total_steps,
                 current_device_id=dev_id,
             )
-            payload = self.backup_device(dev_id, wait_timeout=wait_timeout)
+            payload = self.backup_device(dev_id, wait_timeout=wait_timeout, include_blobs=include_blobs)
             if payload is None:
                 raise ValueError(f"Hub did not return device data for device {dev_id}")
             device_payloads.append(payload)
@@ -485,6 +607,56 @@ class BackupExportMixin:
             activity_payloads=activity_payloads,
             hub_info=resolved_hub_info,
             total_steps=total_steps,
+            payload_profile=(
+                _bx.PAYLOAD_PROFILE_FULL if include_blobs else _bx.PAYLOAD_PROFILE_STRUCTURAL
+            ),
+        )
+
+    def assemble_hub_bundle_from_state(
+        self,
+        *,
+        hub_info: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Assemble a structural ``hub_bundle`` purely from cached proxy state.
+
+        This is the projection the live activity editor reads: every device
+        and activity currently in the catalog, assembled without any hub
+        I/O or blob dumps, stamped ``payload_profile == "structural"``.
+
+        Returns ``None`` when no backup-grade structural fetch has ever
+        populated the state (fresh start with an empty/summary-only cache):
+        assembling a bundle of bare catalog names would present empty
+        keymaps as hub truth, and a sync diffed against that baseline could
+        issue destructive writes.
+        """
+
+        fetched = self.state.detail_fetched_at
+        if not fetched.get("device") and not fetched.get("activity"):
+            return None
+
+        device_payloads: list[dict[str, Any]] = []
+        for dev_id in sorted(self.get_known_device_ids()):
+            payload = self.assemble_device_backup_from_state(dev_id)
+            if payload is not None:
+                device_payloads.append(payload)
+
+        activity_payloads: list[dict[str, Any]] = []
+        for act_id in sorted(self.get_known_activity_ids()):
+            payload = self.assemble_activity_backup_from_state(act_id)
+            if payload is not None:
+                activity_payloads.append(payload)
+
+        resolved_hub_info = hub_info if hub_info is not None else {
+            "entry_id": self.proxy_id,
+            "name": self.get_banner_info().get("name") or self.mdns_instance,
+            "version": self.hub_version,
+        }
+
+        return _bx.assemble_hub_bundle(
+            device_payloads=device_payloads,
+            activity_payloads=activity_payloads,
+            hub_info=resolved_hub_info,
+            payload_profile=_bx.PAYLOAD_PROFILE_STRUCTURAL,
         )
 
     # ------------------------------------------------------------------

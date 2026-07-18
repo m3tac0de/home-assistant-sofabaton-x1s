@@ -87,7 +87,15 @@ def _device_payload(
         "button_bindings": [],
         "macros": [],
         "favorite_slots": [],
-        "inputs": inputs or [],
+        # Real device backups carry the input list under
+        # ``input_record.entries`` — NOT a top-level ``inputs`` key. The
+        # 0xC5 ordinal resolver reads this shape; an earlier fixture faked
+        # an ``inputs`` key and hid that the resolver never matched real
+        # backups (backup/restore chunk 4).
+        "input_record": {
+            "device_id": source_device_id,
+            "entries": inputs or [],
+        },
     }
 
 
@@ -155,7 +163,7 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
     proxy = _proxy(monkeypatch)
     backed_up: list[int] = []
 
-    def _backup_device(device_id, *, wait_timeout: float = 10.0):
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
         backed_up.append(device_id)
         return {
             "kind": "device_backup",
@@ -179,6 +187,72 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
     assert len(result["devices"]) == 1
     assert result["activities"] == []
     assert backed_up == [7]
+
+
+def test_backup_hub_bundle_structural_propagates_include_blobs(monkeypatch) -> None:
+    """``include_blobs=False`` threads through to every per-device backup."""
+
+    proxy = _proxy(monkeypatch)
+    seen: list[bool] = []
+
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
+        seen.append(include_blobs)
+        return {"kind": "device_backup", "complete": True, "device": {"device_id": device_id, "name": "D"}}
+
+    monkeypatch.setattr(proxy, "backup_device", _backup_device)
+
+    proxy.backup_hub_bundle(
+        device_ids=[7, 8],
+        hub_info={"entry_id": "e", "name": "S", "version": HUB_VERSION_X1S},
+        include_blobs=False,
+    )
+    assert seen == [False, False]
+
+
+def test_backup_hub_bundle_stamps_payload_profile(monkeypatch) -> None:
+    """Bundles declare full_backup vs structural via ``payload_profile``."""
+
+    proxy = _proxy(monkeypatch)
+
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
+        return {"kind": "device_backup", "complete": True, "device": {"device_id": device_id, "name": "D"}}
+
+    monkeypatch.setattr(proxy, "backup_device", _backup_device)
+    hub_info = {"entry_id": "e", "name": "S", "version": HUB_VERSION_X1S}
+
+    full = proxy.backup_hub_bundle(device_ids=[7], hub_info=hub_info)
+    assert full["payload_profile"] == "full_backup"
+
+    structural = proxy.backup_hub_bundle(
+        device_ids=[7], hub_info=hub_info, include_blobs=False
+    )
+    assert structural["payload_profile"] == "structural"
+
+
+def test_assemble_device_backup_payload_profile_defaults_to_full() -> None:
+    """Device payload assembly stamps the profile; the default is full."""
+
+    from custom_components.sofabaton_x1s.lib.backup_export import (
+        PAYLOAD_PROFILE_STRUCTURAL,
+        assemble_device_backup,
+    )
+
+    kwargs = dict(
+        device_block={"device_id": 7, "name": "D"},
+        command_rows=[],
+        button_rows=[],
+        macro_rows=[],
+        key_sort_row=None,
+        input_record=None,
+        complete=True,
+    )
+    assert assemble_device_backup(**kwargs)["payload_profile"] == "full_backup"
+    assert (
+        assemble_device_backup(**kwargs, payload_profile=PAYLOAD_PROFILE_STRUCTURAL)[
+            "payload_profile"
+        ]
+        == "structural"
+    )
 
 
 def test_backup_hub_rejects_empty_after_validation(monkeypatch) -> None:
@@ -230,6 +304,31 @@ def test_restore_bundle_rejects_non_bundle_kind() -> None:
     )
     with pytest.raises(ValueError, match="kind == 'hub_bundle'"):
         proxy.restore_hub_bundle({"kind": "device_backup", "schema_version": 4})
+
+
+def test_restore_bundle_rejects_structural_profile() -> None:
+    """A structural (blob-free) bundle must never be replayed onto a hub."""
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    with pytest.raises(ValueError, match="structural cache bundles"):
+        proxy.restore_hub_bundle(
+            {
+                "kind": "hub_bundle",
+                "schema_version": 5,
+                "payload_profile": "structural",
+                "devices": [],
+                "activities": [],
+            }
+        )
+    # Legacy bundles carry no payload_profile and must keep restoring; the
+    # existing success-path tests in this file all omit the field, so their
+    # continued passing is the compatibility proof.
 
 
 def test_restore_bundle_devices_only_succeeds_and_returns_map(monkeypatch) -> None:
@@ -805,6 +904,45 @@ def test_async_restore_backup_replace_mode_aborts_on_erase_failure() -> None:
     hub._proxy.erase_configuration.assert_called_once()
 
 
+def test_async_restore_backup_rejects_structural_before_erase() -> None:
+    """A structural bundle must fail validation before the replace-mode erase
+    wipes the destination hub."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Sofabaton"
+    hub.version = HUB_VERSION_X1S
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.erase_configuration = MagicMock(
+        side_effect=AssertionError("erase must not run for a structural bundle")
+    )
+    hub._proxy.restore_hub_bundle = MagicMock(
+        side_effect=AssertionError("restore must not run for a structural bundle")
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "payload_profile": "structural",
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+
+    with pytest.raises(ValueError, match="structural cache bundles"):
+        _run(hub.async_restore_backup(bundle))
+
+    hub._proxy.erase_configuration.assert_not_called()
+    hub._proxy.restore_hub_bundle.assert_not_called()
+
+
 def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> None:
     """Successful erase unblocks the bundle orchestrator."""
 
@@ -831,6 +969,9 @@ def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> Non
         }
     )
 
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
     bundle = {
         "kind": "hub_bundle",
         "schema_version": 5,
@@ -841,8 +982,11 @@ def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> Non
     result = _run(hub.async_restore_backup(bundle))
 
     assert result["status"] == "success"
+    assert result["cache_warmed"] is True
     hub._proxy.erase_configuration.assert_called_once()
     hub._proxy.restore_hub_bundle.assert_called_once()
+    hub.async_refresh_hub_cache.assert_awaited_once()
+    hub._async_persist_cache_if_enabled.assert_awaited_once()
 
 
 def test_async_restore_backup_replace_mode_restores_hub_name_from_bundle() -> None:
@@ -869,6 +1013,9 @@ def test_async_restore_backup_replace_mode_restores_hub_name_from_bundle() -> No
             "restored_activities": [],
         }
     )
+
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
 
     bundle = {
         "kind": "hub_bundle",
@@ -912,6 +1059,9 @@ def test_async_restore_backup_replace_mode_restores_same_hub_name_without_identi
         }
     )
 
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
     bundle = {
         "kind": "hub_bundle",
         "schema_version": 5,
@@ -930,8 +1080,8 @@ def test_async_restore_backup_replace_mode_restores_same_hub_name_without_identi
     )
 
     assert result["status"] == "success"
-    assert result["_progress_completed_steps"] == 3
-    assert result["_progress_total_steps"] == 3
+    assert result["_progress_completed_steps"] == 4
+    assert result["_progress_total_steps"] == 4
     assert result["hub_name"] == "X1 - test"
     assert result["hub_name_restored"] is True
     hub.async_set_hub_name.assert_awaited_once_with("X1 - test", sync_identity=False)
@@ -962,6 +1112,9 @@ def test_async_restore_backup_replace_mode_progress_counts_include_restored_step
         }
     )
 
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
     bundle = {
         "kind": "hub_bundle",
         "schema_version": 5,
@@ -980,11 +1133,57 @@ def test_async_restore_backup_replace_mode_progress_counts_include_restored_step
     )
 
     assert result["status"] == "success"
-    assert result["_progress_completed_steps"] == 4
-    assert result["_progress_total_steps"] == 4
-    assert progress_events[-1]["message"] == "Restored hub name."
-    assert progress_events[-1]["completed_steps"] == 4
-    assert progress_events[-1]["total_steps"] == 4
+    assert result["_progress_completed_steps"] == 5
+    assert result["_progress_total_steps"] == 5
+    rename_event = next(
+        event for event in progress_events if event["message"] == "Restored hub name."
+    )
+    assert rename_event["completed_steps"] == 4
+    assert progress_events[-1]["message"] == "Hub cache warmed."
+    assert progress_events[-1]["completed_steps"] == 5
+    assert progress_events[-1]["total_steps"] == 5
+
+
+def test_async_restore_backup_cache_warm_failure_keeps_restore_success() -> None:
+    """A failed post-restore cache warm must not fail the restore itself."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Sofabaton"
+    hub.version = HUB_VERSION_X1S
+    hub._log = MagicMock()
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.restore_hub_bundle = MagicMock(
+        return_value={
+            "status": "success",
+            "device_id_map": {},
+            "restored_devices": [],
+            "restored_activities": [],
+        }
+    )
+    hub.async_refresh_hub_cache = AsyncMock(side_effect=RuntimeError("hub went away"))
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [],
+        "activities": [],
+    }
+
+    result = _run(hub.async_restore_backup(bundle, replace_mode=False))
+
+    assert result["status"] == "success"
+    assert result["cache_warmed"] is False
+    hub._async_persist_cache_if_enabled.assert_not_awaited()
 
 
 def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
@@ -1011,6 +1210,8 @@ def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
             "restored_activities": [],
         }
     )
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
 
     bundle = {
         "kind": "hub_bundle",
@@ -1023,6 +1224,7 @@ def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
     result = _run(hub.async_restore_backup(bundle, replace_mode=False))
 
     assert result["status"] == "success"
+    assert result["cache_warmed"] is True
     assert "hub_name_restored" not in result
     hub.async_set_hub_name.assert_not_awaited()
 
@@ -1047,6 +1249,8 @@ def test_async_restore_backup_merge_mode_skips_erase_even_with_activities() -> N
     hub._proxy.restore_hub_bundle = MagicMock(
         return_value={"status": "success", "device_id_map": {}, "restored_devices": [], "restored_activities": []}
     )
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
 
     bundle = {
         "kind": "hub_bundle",

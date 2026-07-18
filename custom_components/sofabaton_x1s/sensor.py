@@ -1,9 +1,8 @@
 from __future__ import annotations
 from datetime import timedelta
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import entity_registry as er
@@ -14,7 +13,6 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN,
     CONF_MAC,
-    HUB_VERSION_X2,
     signal_activity,
     signal_buttons,
     signal_devices,
@@ -24,25 +22,18 @@ from .const import (
     signal_app_activations,
     signal_ip_commands,
     signal_wifi_device,
-    signal_remote_battery,
 )
-from .hub import REMOTE_BATTERY_POLL_INTERVAL_SECONDS, SofabatonHub, get_hub_display_name, get_hub_model
+from .hub import SofabatonHub, get_hub_display_name, get_hub_model
 
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
-    try:
-        entry_model = get_hub_model(entry)
-    except AttributeError:
-        entry_model = None
     entities = [
         SofabatonIndexSensor(hub, entry),
         SofabatonActivitySensor(hub, entry),
         SofabatonRecordedKeypressSensor(hub, entry),
         SofabatonIpCommandsSensor(hub, entry),
     ]
-    if getattr(hub, "supports_remote_battery", False) or entry_model == HUB_VERSION_X2:
-        entities.append(SofabatonRemoteBatterySensor(hub, entry))
     async_add_entities(entities)
 
 
@@ -365,69 +356,6 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
             "button_label": self._last_activation.get("button_label"),
             "example_remote_send_command": example_remote_send_command,
         }
-
-
-class SofabatonRemoteBatterySensor(SensorEntity):
-    _attr_should_poll = False
-    _attr_has_entity_name = True
-    _attr_name = "Remote Battery"
-    _attr_device_class = SensorDeviceClass.BATTERY
-    _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_state_class = SensorStateClass.MEASUREMENT
-
-    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
-        self._hub = hub
-        self._entry = entry
-        self._attr_unique_id = f"{entry.data[CONF_MAC]}_remote_battery"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
-
-    async def async_added_to_hass(self) -> None:
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                signal_remote_battery(self._hub.entry_id),
-                self._handle_update,
-            )
-        )
-        self.async_on_remove(
-            async_track_time_interval(
-                self.hass,
-                self._schedule_poll,
-                timedelta(seconds=REMOTE_BATTERY_POLL_INTERVAL_SECONDS),
-            )
-        )
-        self.async_on_remove(async_call_later(self.hass, 5, self._schedule_poll))
-
-    @callback
-    def _handle_update(self) -> None:
-        self.async_write_ha_state()
-
-    @callback
-    def _schedule_poll(self, _now) -> None:
-        self.hass.async_create_task(self._hub.async_poll_remote_battery())
-
-    @property
-    def available(self) -> bool:
-        return (
-            self._hub.supports_remote_battery
-            and self._hub.hub_connected
-            and self._hub.remote_battery_level is not None
-        )
-
-    @property
-    def native_value(self) -> int | None:
-        return self._hub.remote_battery_level
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        return self._hub.get_remote_battery_attributes()
 
 
 class SofabatonIpCommandsSensor(SensorEntity):

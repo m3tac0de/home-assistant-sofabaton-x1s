@@ -26,7 +26,6 @@ import {
   bundleDeviceOptions,
   bundleEditableDeviceOptions,
   pruneBackupBundle,
-  pruneHaActionHosts,
   reconcileRestoreSelection,
   renameBundleHub,
   reorderBundleActivities,
@@ -90,7 +89,10 @@ class SofabatonBackupTab extends LitElement {
   hass: HassLike | null = null;
   hub: ControlPanelHubState | null = null;
   cacheHub: CacheHubState | null = null;
-  setHubCommandBusy?: (busy: boolean, label?: string | null) => void;
+  // entryId scopes the shared busy state to the hub the operation was started
+  // on, so a completion arriving after a hub-picker switch cannot set or clear
+  // another hub's busy notice.
+  setHubCommandBusy?: (busy: boolean, label?: string | null, entryId?: string) => void;
   refreshControlPanelState?: () => Promise<unknown>;
   hubCommandBusy = false;
   hubCommandBusyLabel: string | null = null;
@@ -697,9 +699,7 @@ class SofabatonBackupTab extends LitElement {
    * `this._editBundle = ...` assignment to bypass the dirty flag.
    */
   private _commitEditBundleEdit(next: BackupBundlePayload) {
-    // Sweep HA-action plumbing on every commit: slots nothing references
-    // anymore are dropped, empty hidden host devices dissolve.
-    this._editBundle = pruneHaActionHosts(next);
+    this._editBundle = next;
     this._editBundleDirty = true;
   }
 
@@ -1229,14 +1229,15 @@ class SofabatonBackupTab extends LitElement {
     this._backupProgress = null;
     this._discardEditSession();
     const deviceIds = this._backupScope === "whole_hub" ? null : this._backupDeviceIds;
-    this.setHubCommandBusy?.(true, "Starting backup…");
+    const entryId = this.hub.entry_id;
+    this.setHubCommandBusy?.(true, "Starting backup…", entryId);
     try {
-      const start = await this.api().startBackupExport(this.hub.entry_id, deviceIds);
+      const start = await this.api().startBackupExport(entryId, deviceIds);
       await this.refreshControlPanelState?.();
-      await this._subscribeToOperation(start.operation_id, "backup");
+      await this._subscribeToOperation(start.operation_id, "backup", entryId);
     } catch (error) {
       this._backupError = formatError(error);
-      this.setHubCommandBusy?.(false, null);
+      this.setHubCommandBusy?.(false, null, entryId);
     }
   }
 
@@ -1257,20 +1258,26 @@ class SofabatonBackupTab extends LitElement {
     this._restoreSuccess = null;
     this._restoreProgress = null;
     this._discardEditSession();
-    this.setHubCommandBusy?.(true, "Starting restore…");
+    const entryId = this.hub.entry_id;
+    this.setHubCommandBusy?.(true, "Starting restore…", entryId);
     try {
-      const start = await this.api().startBackupRestore(this.hub.entry_id, filtered, this._restoreMode);
+      const start = await this.api().startBackupRestore(entryId, filtered, this._restoreMode);
       await this.refreshControlPanelState?.();
-      await this._subscribeToOperation(start.operation_id, "restore");
+      await this._subscribeToOperation(start.operation_id, "restore", entryId);
     } catch (error) {
       this._restoreError = formatError(error);
-      this.setHubCommandBusy?.(false, null);
+      this.setHubCommandBusy?.(false, null, entryId);
     }
   }
 
-  private async _subscribeToOperation(operationId: string, kind: "backup" | "restore") {
+  private async _subscribeToOperation(operationId: string, kind: "backup" | "restore", entryId: string) {
     this._teardownProgressSubscription();
     const unsubscribe = await this.api().subscribeBackupProgress(operationId, async (payload) => {
+      // The subscription is keyed by operation id only, so events keep
+      // arriving after a hub-picker switch. Shared busy updates stay safe
+      // (scoped by entryId); instance display state must not be touched
+      // while another hub is selected — it re-hydrates on switch-back.
+      const staleHub = String(this.hub?.entry_id || "").trim() !== entryId;
       // ``transient: true`` is the orchestrator's signal that this is a
       // pre-flight failure — no wire writes happened and the op is
       // about to be dismissed server-side. Surface the message as an
@@ -1281,27 +1288,29 @@ class SofabatonBackupTab extends LitElement {
       if (transient && payload.status === "failed") {
         const opId = String(payload.operation_id || operationId || "").trim();
         if (opId) this._acknowledgedOpIds.add(opId);
-        if (kind === "backup") {
-          this._backupError = String(payload.error || payload.message || "Backup failed.");
-        } else {
-          this._restoreError = String(payload.error || payload.message || "Restore failed.");
+        if (!staleHub) {
+          if (kind === "backup") {
+            this._backupError = String(payload.error || payload.message || "Backup failed.");
+          } else {
+            this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          }
         }
-        this.setHubCommandBusy?.(false, null);
+        this.setHubCommandBusy?.(false, null, entryId);
         this._teardownProgressSubscription();
         return;
       }
       if (kind === "backup") {
-        this._backupProgress = payload;
+        if (!staleHub) this._backupProgress = payload;
         if (payload.status === "success") {
-          this.setHubCommandBusy?.(false, null);
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
             // Ignore refresh failures here; the success state is already known.
           }
         } else if (payload.status === "failed") {
-          this._backupError = String(payload.error || payload.message || "Backup failed.");
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._backupError = String(payload.error || payload.message || "Backup failed.");
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
@@ -1309,18 +1318,18 @@ class SofabatonBackupTab extends LitElement {
           }
         }
       } else {
-        this._restoreProgress = payload;
+        if (!staleHub) this._restoreProgress = payload;
         if (payload.status === "success") {
-          this._restoreSuccess = "Restore completed.";
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._restoreSuccess = "Restore completed.";
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
             // Ignore refresh failures here; the success state is already known.
           }
         } else if (payload.status === "failed") {
-          this._restoreError = String(payload.error || payload.message || "Restore failed.");
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          this.setHubCommandBusy?.(false, null, entryId);
         }
       }
       if (!this._isProgressRunning(payload)) {
@@ -1512,6 +1521,10 @@ class SofabatonBackupTab extends LitElement {
     this._teardownProgressSubscription();
     try {
       const state = await this.api().getBackupState(entryId);
+      // Rapid hub-picker switches can interleave two hydrations; a late
+      // response for a hub that is no longer selected must not overwrite
+      // the current hub's view (the switch already queued its own sync).
+      if (String(this.hub?.entry_id || "").trim() !== entryId) return;
       const rawBackup = state?.backup_export || null;
       const rawRestore = state?.backup_restore || null;
       // Drop ops the user has already acknowledged. The id sticks in
@@ -1544,13 +1557,13 @@ class SofabatonBackupTab extends LitElement {
         String(this._restoreProgress?.status || "") === "success" ? "Restore completed." : null;
       const active = state?.active_operation || null;
       if (active && String(active.kind || "") === "backup_export" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress…"));
-        await this._subscribeToOperation(active.operation_id, "backup");
+        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress…"), entryId);
+        await this._subscribeToOperation(active.operation_id, "backup", entryId);
       } else if (active && String(active.kind || "") === "backup_restore" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress…"));
-        await this._subscribeToOperation(active.operation_id, "restore");
+        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress…"), entryId);
+        await this._subscribeToOperation(active.operation_id, "restore", entryId);
       } else {
-        this.setHubCommandBusy?.(false, null);
+        this.setHubCommandBusy?.(false, null, entryId);
       }
     } catch {
       // Ignore hydration failures; the tab can still start a fresh operation.

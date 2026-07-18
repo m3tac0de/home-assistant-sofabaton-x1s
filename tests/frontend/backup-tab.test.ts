@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import "../../custom_components/sofabaton_x1s/www/src/tabs/backup-tab";
 import type { BackupOperationStateResponse, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
-import { activityQuickAccessItems, reorderBundleActivityQuickAccess } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
+import {
+  activityQuickAccessItems,
+  reorderBundleActivityQuickAccess,
+} from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 
 const BackupTabElement = customElements.get("sofabaton-backup-tab") as {
   new (): HTMLElement;
@@ -10,6 +13,43 @@ const BackupTabElement = customElements.get("sofabaton-backup-tab") as {
 const EditDetailViewElement = customElements.get("sofabaton-edit-detail-view") as {
   new (): HTMLElement;
 };
+
+function templateHasValue(template: unknown, expected: string): boolean {
+  if (template === expected) return true;
+  if (Array.isArray(template)) return template.some((value) => templateHasValue(value, expected));
+  if (template && typeof template === "object" && "values" in template) {
+    return templateHasValue((template as { values?: unknown[] }).values ?? [], expected);
+  }
+  return false;
+}
+
+function templateHasString(template: unknown, expected: string): boolean {
+  if (typeof template === "string") return template.includes(expected);
+  if (Array.isArray(template)) return template.some((value) => templateHasString(value, expected));
+  if (template && typeof template === "object") {
+    const maybeTemplate = template as { strings?: unknown[]; values?: unknown[] };
+    return templateHasString(maybeTemplate.strings ?? [], expected)
+      || templateHasString(maybeTemplate.values ?? [], expected);
+  }
+  return false;
+}
+
+function templateText(template: unknown): string {
+  if (typeof template === "string") return template;
+  if (Array.isArray(template)) return template.map(templateText).join("");
+  if (template && typeof template === "object") {
+    const maybeTemplate = template as { strings?: unknown[]; values?: unknown[] };
+    const strings = maybeTemplate.strings ?? [];
+    const values = maybeTemplate.values ?? [];
+    let text = "";
+    for (let index = 0; index < strings.length; index += 1) {
+      text += templateText(strings[index]);
+      if (index < values.length) text += templateText(values[index]);
+    }
+    return text;
+  }
+  return "";
+}
 
 function createHass(state: BackupOperationStateResponse, onBackupState?: () => void): HassLike {
   return {
@@ -366,4 +406,413 @@ test("backup activity quick-access items hide internal power macros", () => {
 
   assert.deepEqual(items.map((item) => item.label), ["HDMI 1", "Lights Down"]);
   assert.deepEqual(items.map((item) => item.buttonId), [1, 2]);
+});
+
+test("live edit hides favorite rename but allows command rename", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [
+      {
+        kind: "activity_backup",
+        complete: true,
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [{ button_id: 1, device_id: 7, command_id: 3, name: "HDMI 1" }],
+        macros: [],
+      },
+    ],
+    devices: [
+      {
+        kind: "device_backup",
+        complete: true,
+        device: { device_id: 7, name: "Projector", device_class: "tv" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+  const favorite = activityQuickAccessItems(bundle, 101)[0];
+
+  element.mode = "backup";
+  assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), true);
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
+
+  element.mode = "live";
+  // Favorite rename stays backup-only in live mode…
+  assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), false);
+  // …but command rename is now offered live (via a command_rename sync step).
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
+
+  element._openQuickAccessRenameDialog("favorite", 1);
+  assert.equal(element._editRenameDialogOpen, false);
+  element.kind = "device";
+  element.entityId = 7;
+  element._openDeviceCommandRenameDialog(3);
+  assert.equal(element._editRenameDialogOpen, true);
+});
+
+test("activity edit detail removes the section nav and puts power first", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 7, name: "Projector", device_class: "ir" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [{ button_id: 1, device_id: 7, command_id: 3, name: "HDMI 1" }],
+        button_bindings: [],
+        macros: [],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+  const sections = element._editDetailSectionItems("activity");
+
+  assert.deepEqual(sections.map((section: { id: string }) => section.id), []);
+
+  const rendered = element._renderEditDetailView({ kind: "activity", title: "Movie Night" });
+  const text = templateText(rendered);
+  const powerIndex = text.indexOf('data-edit-section="power"');
+  const bindingsIndex = text.indexOf('data-edit-section="bindings"');
+  const quickAccessIndex = text.indexOf('data-edit-section="quick_access"');
+
+  assert.equal(templateHasString(rendered, "detail-section-nav"), false);
+  assert.ok(powerIndex >= 0, "expected the Power section to render");
+  assert.ok(bindingsIndex > powerIndex, "expected button setup after Power");
+  assert.ok(quickAccessIndex > bindingsIndex, "expected shortcuts after button setup");
+});
+
+test("activity add binding dialog offers shortcut target types and all devices", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 1, name: "Television", device_class: "ir" },
+        commands: [{ command_id: 10, name: "Power" }],
+      },
+      {
+        device: { device_id: 2, name: "Streamer", device_class: "ir" },
+        commands: [{ command_id: 20, name: "Home" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [{ button_id: 1, device_id: 1, command_id: 10, name: "TV Power" }],
+        button_bindings: [],
+        macros: [],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+
+  element._openAddBindingDialog("activity");
+  const result = element._renderBindingDialog();
+
+  assert.equal(templateHasValue(result, "Device command"), true);
+  assert.equal(templateHasValue(result, "Macro"), true);
+  assert.equal(templateHasValue(result, "Home Assistant action"), false);
+  assert.equal(templateHasValue(result, "Streamer"), true);
+});
+
+test("activity button binding can create a macro target", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 7, name: "Projector", device_class: "ir" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+
+  element._openAddBindingDialog("activity");
+  const buttonId = element._bindingButtonId;
+  element._bindingTargetKind = "action";
+  element._bindingActionName = "Scene Prep";
+  element._applyBinding();
+
+  const activity = element.bundle.activities[0];
+  const macro = activity.macros.find((entry: any) => entry.name === "Scene Prep");
+  const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
+
+  assert.ok(macro, "expected a macro to be created");
+  assert.ok(binding, "expected the selected button to be bound");
+  assert.equal(binding.device_id, 101);
+  assert.equal(binding.command_id, macro.button_id);
+  assert.deepEqual(element._macroEditor, {
+    scope: "activity",
+    entityId: 101,
+    buttonId: macro.button_id,
+    name: "Scene Prep",
+  });
+});
+
+test("activity button binding can reuse an existing macro target", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 7, name: "Projector", device_class: "ir" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 5, name: "Scene Prep", steps: [] }],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+
+  element._openAddBindingDialog("activity");
+  const buttonId = element._bindingButtonId;
+  element._bindingTargetKind = "action";
+  element._bindingMacroMode = "existing";
+  element._bindingMacroId = 5;
+  element._applyBinding();
+
+  const activity = element.bundle.activities[0];
+  const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
+
+  assert.equal(activity.macros.length, 1);
+  assert.ok(binding, "expected the selected button to be bound");
+  assert.equal(binding.device_id, 101);
+  assert.equal(binding.command_id, 5);
+  assert.equal(element._macroEditor, null);
+});
+
+test("activity long-press binding can reuse an existing macro target", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 7, name: "Projector", device_class: "ir" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 5, name: "Scene Prep", steps: [] }],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+
+  element._openAddBindingDialog("activity");
+  const buttonId = element._bindingButtonId;
+  element._bindingTargetKind = "command";
+  element._bindingDeviceId = 7;
+  element._bindingCommandId = 3;
+  element._bindingLongPressEnabled = true;
+  element._bindingLpTargetKind = "action";
+  element._bindingLpMacroMode = "existing";
+  element._bindingLpMacroId = 5;
+  element._applyBinding();
+
+  const activity = element.bundle.activities[0];
+  const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
+  const userMacroCount = activity.macros.filter((entry: any) => entry.name === "Scene Prep").length;
+
+  assert.equal(userMacroCount, 1);
+  assert.ok(binding, "expected the selected button to be bound");
+  assert.equal(binding.device_id, 7);
+  assert.equal(binding.command_id, 3);
+  assert.equal(binding.long_press_device_id, 101);
+  assert.equal(binding.long_press_command_id, 5);
+});
+
+test("activity binding dialog gives long-press the same target types", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 7, name: "Projector", device_class: "ir" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 5, name: "Scene Prep", steps: [] }],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+
+  element._openAddBindingDialog("activity");
+  element._bindingLongPressEnabled = true;
+  const result = element._renderBindingDialog();
+
+  assert.equal(templateHasString(result, "sb-binding-lp-kind"), true);
+  assert.equal(templateHasValue(result, "Device command"), true);
+  assert.equal(templateHasValue(result, "Macro"), true);
+  assert.equal(templateHasValue(result, "Home Assistant action"), false);
+});
+
+test("activity long-press enable defaults command target to a real device", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 7, name: "Projector", device_class: "ir" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [],
+        button_bindings: [{ button_id: 0xB0, device_id: 101, command_id: 5 }],
+        macros: [{ button_id: 5, name: "Scene Prep", steps: [] }],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+
+  element._openEditBindingDialog("activity", 0xB0);
+  assert.equal(element._bindingTargetKind, "action");
+
+  element._handleBindingLongPressToggle({ target: { checked: true } });
+
+  assert.equal(element._bindingLpTargetKind, "command");
+  assert.equal(element._bindingLpDeviceId, 7);
+  assert.equal(element._bindingLpCommandId, 3);
+});
+
+test("activity shortcut macro flow can reuse an existing activity macro", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 7, name: "Projector", device_class: "ir" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 5, name: "Scene Prep", steps: [] }],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+
+  element._openAddShortcutDialog();
+  element._addShortcutKind = "action";
+  element._addShortcutMacroMode = "existing";
+  element._addShortcutMacroId = 5;
+  element._applyAddShortcut();
+
+  const activity = element.bundle.activities[0];
+  assert.equal(activity.macros.length, 1);
+  assert.deepEqual(element._macroEditor, {
+    scope: "activity",
+    entityId: 101,
+    buttonId: 5,
+    name: "Scene Prep",
+  });
+});
+
+test("activity role picker offers editable devices that are not linked yet", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 1, name: "Television", device_class: "ir" },
+        commands: [{ command_id: 10, name: "Power" }],
+      },
+      {
+        device: { device_id: 2, name: "Soundbar", device_class: "ir" },
+        commands: [{ command_id: 20, name: "Volume Up" }],
+        button_bindings: [{ button_id: 0xB6, command_id: 20 }],
+      },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [{ button_id: 1, device_id: 1, command_id: 10, name: "TV Power" }],
+        button_bindings: [],
+        macros: [],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+  element._roleMenuOpen = "volume";
+
+  const result = element._renderActivityRolesBlock();
+
+  assert.equal(templateHasValue(result, "Soundbar"), true);
 });

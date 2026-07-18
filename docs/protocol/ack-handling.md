@@ -32,6 +32,18 @@ the convention is the same: a present reply with a zero / matching
 first byte means accept, and any non-zero or non-matching first byte
 means reject.
 
+**Exception — macro-save ack `0x0112`** (bench-observed on X1,
+2026-07-11): a macro save that removes a device's last power-macro
+reference triggers a hub-side cascade (the device is removed from the
+activity entirely) and the hub acks the *successful* save with a
+`0x0112` whose first byte is NOT the written macro key (observed
+`0x01`, arriving ~1.2 s after the write instead of immediately).
+Clients must accept any `0x0112` reply as the save ack and rely on
+`STATUS_ACK` non-zero bytes for rejection signaling; treating the
+non-matching correlation byte as a reject misreports a completed
+write. See [live-hub-testing.md](live-hub-testing.md) "Validated:
+activity-edit engine emissions".
+
 ---
 
 ## Three-way outcome

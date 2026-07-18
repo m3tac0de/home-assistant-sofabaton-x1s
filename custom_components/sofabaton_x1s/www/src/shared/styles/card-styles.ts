@@ -69,6 +69,29 @@ export const cardStyles = [secondaryTabStyles, css`
         color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)))
       );
   }
+  /* Editor dirty state — an open editor (live activity/device editor or a
+     Wifi Commands device editor) holds changes that only a sync will
+     persist to the hub. Deliberately louder than the success/error tones:
+     a warning-tinted band that flares bright once as it appears (same
+     720ms motion language as the dock wipe), then settles and holds
+     steady — no continuous flashing. */
+  .card-bottom-dock--dirty {
+    border-top-color: color-mix(in srgb, var(--warning-color, #f59e0b) 60%, var(--divider-color));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--warning-color, #f59e0b) 24%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--warning-color, #f59e0b) 14%, var(--ha-card-background, var(--card-background-color)))
+      );
+    animation: dockDirtyReveal 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1;
+  }
+  @keyframes dockDirtyReveal {
+    0% { filter: brightness(1.5) saturate(1.3); }
+    100% { filter: brightness(1) saturate(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-bottom-dock--dirty { animation: none; }
+  }
   .card-bottom-dock-center {
     min-width: 0;
     flex: 1 1 auto;
@@ -95,6 +118,10 @@ export const cardStyles = [secondaryTabStyles, css`
   }
   .card-bottom-dock--error .card-bottom-dock-status {
     color: color-mix(in srgb, var(--error-color, #db4437) 88%, black 10%);
+  }
+  .card-bottom-dock--dirty .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--warning-color, #f59e0b) 64%, var(--primary-text-color));
+    font-weight: 600;
   }
   .card-bottom-dock-link {
     color: var(--primary-color);
@@ -212,7 +239,6 @@ export const cardStyles = [secondaryTabStyles, css`
   .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
   .tab-btn.active { color: var(--primary-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
-  .tab-btn-label-short { display: none; }
   .tab-menu { position: relative; display: flex; }
   .tab-menu--push-right { margin-left: auto; }
   .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
@@ -271,57 +297,6 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-row-value, .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
   .hub-row-label { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color)); }
   .hub-row-value { font-size: 12px; font-weight: 700; text-align: right; word-break: break-word; }
-  .remote-battery-panel {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) minmax(72px, 118px) auto;
-    align-items: center;
-    gap: 10px;
-    min-height: 48px;
-    padding: 9px 12px;
-    border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color));
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--card-background-color) 94%, var(--primary-color));
-  }
-  .remote-battery-icon {
-    width: 32px;
-    height: 32px;
-    display: grid;
-    place-items: center;
-    color: var(--primary-color);
-  }
-  .remote-battery-icon ha-icon { width: 22px; height: 22px; }
-  .remote-battery-copy { min-width: 0; display: grid; gap: 2px; }
-  .remote-battery-label {
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--primary-text-color);
-  }
-  .remote-battery-status {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--secondary-text-color);
-    text-transform: capitalize;
-  }
-  .remote-battery-meter {
-    height: 8px;
-    border-radius: 999px;
-    overflow: hidden;
-    background: color-mix(in srgb, var(--secondary-text-color) 24%, transparent);
-  }
-  .remote-battery-meter > span {
-    display: block;
-    height: 100%;
-    min-width: 0;
-    border-radius: inherit;
-    background: color-mix(in srgb, var(--success-color, #43a047) 84%, var(--primary-color));
-  }
-  .remote-battery-value {
-    min-width: 38px;
-    font-size: 13px;
-    font-weight: 800;
-    text-align: right;
-    color: var(--primary-text-color);
-  }
   .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .hub-tab-layout > .tab-panel { flex: 1; }
   .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
@@ -412,7 +387,19 @@ export const cardStyles = [secondaryTabStyles, css`
   .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); flex-shrink: 0; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
-  .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .setting-select {
+    max-width: 180px; padding: 6px 10px;
+    border: 1px solid var(--divider-color); border-radius: 8px;
+    background: var(--card-background-color, var(--ha-card-background, #fff));
+    color: var(--primary-text-color);
+    font: inherit; font-size: 12.5px; font-weight: 600;
+    cursor: pointer;
+  }
+  .setting-select:focus { outline: none; border-color: var(--primary-color); }
+  .setting-select:disabled { cursor: default; }
+  .cache-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .cache-panel .secondary-view-shell,
+  .cache-panel .secondary-tab-panel { min-width: 0; }
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
   .accordion-section:first-child { border-top: none; }
   .accordion-section.open { flex: 1; }
@@ -434,35 +421,103 @@ export const cardStyles = [secondaryTabStyles, css`
   .chevron, .entity-chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
   .accordion-section.open .chevron, .entity-block.open .entity-chevron { transform: rotate(180deg); }
   .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: grid; gap: 6px; align-content: start; }
-  .entity-block { border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color, var(--ha-card-background)); overflow-x: clip; transition: border-color 120ms ease; }
+  .entity-block { width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color, var(--ha-card-background)); overflow-x: clip; transition: border-color 120ms ease; }
   .entity-block:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-  .entity-summary { display: flex; align-items: center; gap: 8px; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: var(--ha-card-border-radius, 12px); transition: background-color 120ms ease; }
+  .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: var(--ha-card-border-radius, 12px); transition: background-color 120ms ease; }
   .entity-summary:hover { background: color-mix(in srgb, var(--primary-color) 5%, var(--secondary-background-color, var(--ha-card-background))); }
-  .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-  .entity-name { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 8px; }
+  .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; }
   .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--state-icon-color, var(--secondary-text-color)); flex-shrink: 0; }
   .entity-name-icon ha-icon { --mdc-icon-size: 16px; }
-  .entity-name-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0; overflow: hidden; }
+  .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entity-body { display: none; }
   .entity-block.open .entity-body { display: block; }
   .entity-block.open > .entity-summary { position: sticky; top: 0; z-index: 2; background: var(--secondary-background-color, var(--ha-card-background)); border-bottom: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0; }
   .id-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; font-family: "SF Mono", "Fira Code", Consolas, monospace; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.4); padding: 2px 5px; flex-shrink: 0; white-space: nowrap; min-width: 68px; justify-content: space-between; }
   .id-badge span:first-child { color: var(--secondary-text-color); opacity: 0.75; }
   .id-badge span:last-child { color: var(--primary-text-color); text-align: right; }
-  .entity-count { font-size: 10px; color: var(--secondary-text-color); flex-shrink: 0; white-space: nowrap; }
+  .entity-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cache-panel-header {
     margin-top: 6px;
     margin-bottom: 8px;
+    gap: 18px;
   }
+  .cache-panel-header .refresh-action { display: inline-flex; align-items: center; gap: 8px; }
+  .refresh-list-label--clickable { cursor: pointer; -webkit-user-select: none; user-select: none; }
+  .refresh-list-label--clickable:hover { color: var(--primary-text-color); }
+  .refresh-list-label--clickable[aria-disabled="true"] { cursor: default; }
+  .refresh-list-label--clickable[aria-disabled="true"]:hover { color: var(--secondary-text-color); }
   .cache-panel-body,
   .secondary-tab-panel--connected .cache-panel-body {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: hidden;
     padding-top: 0;
   }
   .entity-chevron { font-size: 8px; color: var(--secondary-text-color); transition: transform 150ms; flex-shrink: 0; }
+  /* Activity re-order mode: rows swap the play icon for a drag handle,
+     take an alternate background, and become draggable as a whole. */
+  .entity-block--reorder {
+    background: color-mix(in srgb, var(--primary-color) 9%, var(--secondary-background-color, var(--ha-card-background)));
+    border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color));
+    cursor: grab;
+  }
+  .entity-block--reorder:active { cursor: grabbing; }
+  .entity-block--reorder .entity-summary { cursor: inherit; }
+  .entity-block--reorder .entity-summary:hover { background: transparent; }
+  .entity-block--reorder .entity-name-icon { color: var(--primary-color); }
+  .cache-reorder-list { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; }
+  .cache-reorder-sortable { display: block; min-width: 0; }
+  .sortable-ghost.entity-block--reorder { opacity: 0.45; }
+  .cache-list-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px 0 4px; }
+  .cache-reorder-hint { font-size: 11.5px; color: var(--secondary-text-color); }
+  .cache-footer-error { font-size: 12px; color: var(--error-color, #db4437); }
+  .cache-footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cache-footer-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--divider-color);
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85);
+    background: transparent;
+    color: var(--primary-text-color);
+    font: inherit; font-size: 12.5px; font-weight: 700;
+    padding: 7px 12px; cursor: pointer;
+  }
+  .cache-footer-btn ha-icon { --mdc-icon-size: 16px; }
+  .cache-footer-btn:hover:not([disabled]) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+  .cache-footer-btn[disabled] { opacity: 0.5; cursor: default; }
+  .cache-footer-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+  /* Add Activity dialog. */
+  .cache-modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+  .cache-dialog {
+    width: min(420px, calc(100vw - 36px));
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 16px;
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
+    border: 1px solid var(--divider-color);
+    background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+    box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
+  }
+  .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
+  .cache-dialog-text { font-size: 13px; line-height: 1.55; color: var(--secondary-text-color); }
+  .cache-dialog-input {
+    width: 100%; box-sizing: border-box;
+    padding: 9px 10px;
+    border: 1px solid var(--divider-color);
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+    background: var(--card-background-color, var(--primary-background-color));
+    color: var(--primary-text-color);
+    font: inherit; font-size: 13.5px;
+  }
+  .cache-dialog-input:focus { outline: none; border-color: var(--primary-color); }
+  .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
   .inner-row:hover { background: rgba(0, 0, 0, 0.03); }
+  .inner-row--clickable { cursor: pointer; }
+  .inner-row--clickable:hover { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
+  .inner-row--clickable:active { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
   .inner-label { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .inner-badges { display: flex; gap: 4px; flex-shrink: 0; }
   .buttons-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }
@@ -526,15 +581,12 @@ export const cardStyles = [secondaryTabStyles, css`
   @media (max-width: 640px) {
     .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
     .tabs-scroll::-webkit-scrollbar { display: none; }
-    .tab-btn-label-short { display: inline; }
-    .tab-btn--has-short-label .tab-btn-label { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
     .hub-connection-node { width: 42px; height: 42px; border-radius: 14px; }
     .hub-hero-icon { width: 25px; height: 25px; }
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
-    .entity-count { display: none; }
     .card-topbar { padding: 4px 8px; gap: 6px; }
     .card-bottom-dock { padding: 5px 8px; }
     .card-bottom-dock-center { font-size: 10px; }

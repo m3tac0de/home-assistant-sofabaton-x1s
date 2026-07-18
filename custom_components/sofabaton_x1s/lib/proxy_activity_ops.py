@@ -17,12 +17,24 @@ import logging
 import time
 from typing import Any
 
-from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_versions import (
+    ACTIVITY_BACKUP_SCHEMA_VERSION,
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
+)
 from .hub_logging import LogTag
-from .device_create import build_button_binding_step, synthesize_command_code
+from .macros import MacroRecord
+from .device_create import (
+    FAMILY_REMOTE_SYNC,
+    build_button_binding_step,
+    synthesize_command_code,
+)
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
+    FAMILY_ACTIVITY_SORT,
+    FAMILY_DEVICE_SORT,
     FAMILY_FAV_DELETE,
     FAMILY_FAV_ORDER_REQ,
     OP_ACTIVITY_ASSIGN_FINALIZE,
@@ -33,11 +45,21 @@ from .protocol_const import (
 
 log = logging.getLogger("x1proxy")
 
+_FAV_DELETE_ACK_TIMEOUT = 12.0
+
 
 # Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
 # See the activity-row schema comment in ``opcode_handlers`` for details.
 _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD = 152
 _ACTIVITY_ROW_TAIL_LEN = 60
+
+# The activity name field starts at a fixed offset inside the row payload on
+# every model. X1 stores it as a 60-byte ASCII field; X1S/X2 store it UTF-16BE
+# in the zero-padded region that runs up to the tail token block at offset 152
+# (confirmed by dumping live activity rows on both hubs).
+_ACTIVITY_ROW_NAME_OFFSET = 32
+_ACTIVITY_ROW_NAME_ASCII_LEN = 60
+
 
 
 class ActivityOpsMixin:
@@ -86,7 +108,14 @@ class ActivityOpsMixin:
             mutable[marker_indexes[-1] + 3] = 0x00
         return bytes(mutable)
 
-    def _build_activity_confirm_payload(self, activity_id: int) -> bytes | None:
+    def _build_activity_confirm_payload(
+        self, activity_id: int, *, name: str | None = None
+    ) -> bytes | None:
+        """Build the full activity-row write used by the confirm/finalize
+        opcodes. When ``name`` is given the row is rewritten with that name in
+        place (an in-place activity rename), otherwise the row's current name
+        is preserved."""
+
         act_lo = activity_id & 0xFF
         activity = self.state.entities("activity").get(act_lo)
         if not isinstance(activity, dict):
@@ -95,10 +124,20 @@ class ActivityOpsMixin:
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
             row_payload = self._activity_row_payloads.get(act_lo)
             if isinstance(row_payload, (bytes, bytearray)) and len(row_payload) >= 120:
-                return self._clear_x1s_confirm_flag(bytes(row_payload))
+                row = bytearray(row_payload)
+                if name is not None:
+                    # Overwrite the UTF-16BE name field, zero-padded up to the
+                    # tail token block, preserving every other byte of the row.
+                    start = _ACTIVITY_ROW_NAME_OFFSET
+                    end = min(len(row), _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD)
+                    encoded = name.encode("utf-16-be")[: end - start]
+                    row[start:end] = encoded.ljust(end - start, b"\x00")
+                return self._clear_x1s_confirm_flag(bytes(row))
 
-        name = str(activity.get("name", ""))
-        encoded_name = name.encode("ascii", errors="ignore")[:60].ljust(60, b"\x00")
+        row_name = str(activity.get("name", "")) if name is None else str(name)
+        encoded_name = row_name.encode("ascii", errors="ignore")[
+            :_ACTIVITY_ROW_NAME_ASCII_LEN
+        ].ljust(_ACTIVITY_ROW_NAME_ASCII_LEN, b"\x00")
         active_flag = 0x01 if bool(activity.get("active", False)) else 0x02
 
         return (
@@ -168,9 +207,13 @@ class ActivityOpsMixin:
                 else OP_ACTIVITY_CONFIRM
             )
             self._log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
-            send_ts = time.monotonic()
-            self._send_cmd_frame(confirm_opcode, confirm_payload)
-            if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
+            with self.exchange("delete_confirm"):
+                send_ts = time.monotonic()
+                self._send_cmd_frame(confirm_opcode, confirm_payload)
+                confirm_ack = self.wait_for_ack_any(
+                    [(0x0103, None)], timeout=5.0, not_before=send_ts
+                )
+            if confirm_ack is None:
                 self._log.warning("[DELETE] missing ACK after activity confirm act=0x%02X", act_lo)
                 return None
 
@@ -190,6 +233,265 @@ class ActivityOpsMixin:
             "device_id": dev_lo,
             "confirmed_activities": confirmed_activities,
             "status": "success",
+        }
+
+    def _request_activities_and_wait(self, *, timeout: float = 15.0) -> bool:
+        """Kick a catalog refresh and block until the activities burst lands."""
+
+        if not self.request_activities():
+            return False
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._burst.active and self._burst.kind == "activities":
+                break
+            time.sleep(0.01)
+        while time.monotonic() < deadline:
+            if not self._burst.active:
+                return True
+            time.sleep(0.01)
+        return not self._burst.active
+
+    def _build_entity_sort_payload(self, rows: list[tuple[int, int]]) -> bytes:
+        """Build a display-order write payload (families 0x51 / 0x11).
+
+        ``rows`` is ``(row_marker, entity_id)`` in display order; positions
+        are the 1-based row index. Canonical paged-write shape (single
+        page): 3-byte outer wrapper ``[01, page_be=1]``, body header
+        ``[01, total_pages_be=1]``, one ``(marker, entity_id,
+        sort_position)`` row per entity, and the trailing body checksum.
+        Activities use marker ``0x00``; devices lead with the record kind
+        byte (record body[3]). Byte-verified against an app capture on X1S
+        (opcode ``0x1051``, bench 2026-07-14):
+
+            01 00 01 | 01 00 01 | 00 67 01 00 66 02 00 65 03 | 3a
+        """
+
+        body = bytearray(3 + 3 * len(rows) + 1)
+        body[0:3] = bytes([0x01, 0x00, 0x01])
+        for slot_index, (marker, ent_lo) in enumerate(rows):
+            offset = 3 + slot_index * 3
+            body[offset] = marker & 0xFF
+            body[offset + 1] = ent_lo & 0xFF
+            body[offset + 2] = (slot_index + 1) & 0xFF
+        body[-1] = sum(body[:-1]) & 0xFF
+        return bytes([0x01, 0x00, 0x01]) + bytes(body)
+
+    def reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+        """Write *ordered_ids* as the hub's stored activity display order
+        (first element = sort position 1).
+
+        Uses the app's own SET_ACTIVITY_ORDER write (family ``0x51``): a
+        single frame carrying the full new order, acked via STATUS_ACK,
+        followed by REMOTE_SYNC — captured live from the official app on
+        X1S (2026-07-14). ``ordered_ids`` must cover every activity
+        currently known to the catalog, matching what the app sends. A
+        trailing catalog refresh re-reads the rows so cached state (and the
+        persistent cache export) reflects the hub's stored order.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[ACT_REORDER] ignored: proxy client is connected")
+            return None
+
+        known = {
+            act_id & 0xFF
+            for act_id, details in self.state.entities("activity").items()
+            if isinstance(details, dict)
+        }
+        ordered: list[int] = []
+        for raw_id in ordered_ids:
+            act_lo = int(raw_id) & 0xFF
+            if act_lo not in known:
+                self._log.warning("[ACT_REORDER] unknown activity id=0x%02X", act_lo)
+                return None
+            if act_lo not in ordered:
+                ordered.append(act_lo)
+        missing = known - set(ordered)
+        if missing:
+            self._log.warning(
+                "[ACT_REORDER] ordered_ids is missing activities: %s",
+                ", ".join(f"0x{m:02X}" for m in sorted(missing)),
+            )
+            return None
+        if not ordered:
+            self._log.warning("[ACT_REORDER] no activities to reorder")
+            return None
+
+        self.reset_ack_queues()
+
+        _step = self._send_step(
+            step_name=f"activity-sort[{','.join(f'0x{a:02X}' for a in ordered)}]",
+            family=FAMILY_ACTIVITY_SORT,
+            payload=self._build_entity_sort_payload([(0x00, act_lo) for act_lo in ordered]),
+            ack_opcode=0x0103,
+            ack_first_byte=0x00,
+        )
+        if not _step.ok:
+            self._log.warning("[ACT_REORDER] hub did not accept the new order")
+            return None
+
+        # The app follows the order write with REMOTE_SYNC so the remote
+        # refreshes its local view.
+        _step = self._send_step(
+            step_name="activity-sort-remote-sync",
+            family=FAMILY_REMOTE_SYNC,
+            payload=b"",
+            ack_opcode=0x0103,
+            ack_first_byte=0x00,
+        )
+        if not _step.ok:
+            self._log.warning("[ACT_REORDER] REMOTE_SYNC after reorder was not acked")
+
+        if not self._request_activities_and_wait():
+            self._log.warning("[ACT_REORDER] catalog refresh after reorder did not finish")
+
+        return {"status": "success", "ordered_ids": list(ordered)}
+
+    def _request_devices_and_wait(self, *, timeout: float = 15.0) -> bool:
+        """Kick a catalog refresh and block until the devices burst lands."""
+
+        if not self.request_devices():
+            return False
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._burst.active and self._burst.kind == "devices":
+                break
+            time.sleep(0.01)
+        while time.monotonic() < deadline:
+            if not self._burst.active:
+                return True
+            time.sleep(0.01)
+        return not self._burst.active
+
+    def reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+        """Write *ordered_ids* as the hub's stored device display order
+        (first element = sort position 1).
+
+        Device analog of :meth:`reorder_activities`: a single family-``0x11``
+        frame carrying the full new order, acked via STATUS_ACK, followed by
+        REMOTE_SYNC. Rows lead with each device record's kind byte (record
+        body[3]) where the activity write sends ``0x00``. ``ordered_ids``
+        must cover every device currently known to the catalog. A trailing
+        catalog refresh re-reads the rows so cached state (and the
+        persistent cache export) reflects the hub's stored order.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[DEV_REORDER] ignored: proxy client is connected")
+            return None
+
+        known: dict[int, int] = {}
+        for dev_id, details in self.state.entities("device").items():
+            if not isinstance(details, dict):
+                continue
+            dev_lo = int(dev_id) & 0xFF
+            marker = 0x00
+            raw_body = details.get("raw_body")
+            if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 3:
+                marker = int(raw_body[3])
+            known[dev_lo] = marker
+        ordered: list[int] = []
+        for raw_id in ordered_ids:
+            dev_lo = int(raw_id) & 0xFF
+            if dev_lo not in known:
+                self._log.warning("[DEV_REORDER] unknown device id=0x%02X", dev_lo)
+                return None
+            if dev_lo not in ordered:
+                ordered.append(dev_lo)
+        missing = set(known) - set(ordered)
+        if missing:
+            self._log.warning(
+                "[DEV_REORDER] ordered_ids is missing devices: %s",
+                ", ".join(f"0x{m:02X}" for m in sorted(missing)),
+            )
+            return None
+        if not ordered:
+            self._log.warning("[DEV_REORDER] no devices to reorder")
+            return None
+
+        self.reset_ack_queues()
+
+        _step = self._send_step(
+            step_name=f"device-sort[{','.join(f'0x{d:02X}' for d in ordered)}]",
+            family=FAMILY_DEVICE_SORT,
+            payload=self._build_entity_sort_payload([(known[dev_lo], dev_lo) for dev_lo in ordered]),
+            ack_opcode=0x0103,
+            ack_first_byte=0x00,
+        )
+        if not _step.ok:
+            self._log.warning("[DEV_REORDER] hub did not accept the new order")
+            return None
+
+        _step = self._send_step(
+            step_name="device-sort-remote-sync",
+            family=FAMILY_REMOTE_SYNC,
+            payload=b"",
+            ack_opcode=0x0103,
+            ack_first_byte=0x00,
+        )
+        if not _step.ok:
+            self._log.warning("[DEV_REORDER] REMOTE_SYNC after reorder was not acked")
+
+        if not self._request_devices_and_wait():
+            self._log.warning("[DEV_REORDER] catalog refresh after reorder did not finish")
+
+        return {"status": "success", "ordered_ids": list(ordered)}
+
+    def create_activity(self, name: str) -> dict[str, Any] | None:
+        """Create a fresh, empty activity named *name* on the hub.
+
+        Thin wrapper over :meth:`restore_activity` with a synthetic minimal
+        ``activity_backup`` payload: the record write (family ``0x37``) plus
+        the terminal remote-sync, no bindings / macros / favorites. The
+        record fields mirror a blank activity row (icon ``1``, every other
+        knob zeroed). Returns ``{"status": "success", "activity_id": <id>}``
+        with the hub-assigned id, or ``None`` on refusal / failure.
+        """
+
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            self._log.warning("[ACT_CREATE] refused: empty activity name")
+            return None
+        if not self.can_issue_commands():
+            self._log.info("[ACT_CREATE] ignored: proxy client is connected")
+            return None
+
+        payload = {
+            "kind": "activity_backup",
+            "schema_version": ACTIVITY_BACKUP_SCHEMA_VERSION,
+            "device": {
+                "entity_type": "activity",
+                "device_id": 0,
+                "name": clean_name,
+                "brand": "",
+                "icon": 1,
+                "sort": 0,
+                "code_type": 0,
+                "device_type": 0,
+                "hide": 0,
+                "input_flag": 0,
+                "channel": 0,
+                "power_state": 0,
+                "poll_time": -1,
+                "input_mode": 0,
+                "power_mode": 0,
+                "power_style": 0,
+                "share_mode": 0,
+            },
+            "button_bindings": [],
+            "macros": [],
+            "favorite_slots": [],
+        }
+        result = self.restore_activity(payload, device_id_map={})
+        if not isinstance(result, dict) or result.get("status") != "success":
+            return None
+
+        if not self._request_activities_and_wait():
+            self._log.warning("[ACT_CREATE] catalog refresh after create did not finish")
+
+        return {
+            "status": "success",
+            "activity_id": int(result.get("activity_id") or 0) & 0xFF,
         }
 
     def add_device_to_activity(
@@ -264,9 +566,13 @@ class ActivityOpsMixin:
                 member & 0xFF,
                 include_flag,
             )
-            send_ts = time.monotonic()
-            self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
-            if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
+            with self.exchange("assign_confirm"):
+                send_ts = time.monotonic()
+                self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
+                member_ack = self.wait_for_ack_any(
+                    [(0x0103, None)], timeout=5.0, not_before=send_ts
+                )
+            if member_ack is None:
                 self._log.warning(
                     "[ACTIVITY_ASSIGN] missing ACK after 0x024F dev=0x%02X include=0x%02X",
                     member & 0xFF,
@@ -290,9 +596,45 @@ class ActivityOpsMixin:
         for macro_button in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
             macro_name = BUTTONNAME_BY_CODE.get(macro_button, f"0x{macro_button:02X}")
             self._log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
-            self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
+            with self.exchange("assign_macro_fetch"):
+                fetch_ts = time.monotonic()
+                self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
-            source_record = self.wait_for_macro_record(act_lo, macro_button, timeout=5.0)
+                # A freshly created activity has no power macros yet: the hub
+                # answers the fetch with a bare STATUS_ACK 0x07 ("table empty")
+                # and never sends a macro burst. Poll for both outcomes and fall
+                # back to an empty source record so the save below builds the
+                # power macro from scratch.
+                source_record: MacroRecord | None = None
+                deadline = time.monotonic() + 5.0
+                while source_record is None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    source_record = self.wait_for_macro_record(
+                        act_lo, macro_button, timeout=min(remaining, 0.25)
+                    )
+                    if source_record is not None:
+                        break
+                    empty_ack = self._wait_for_ack_any_impl(
+                        [(0x0103, 0x07)],
+                        timeout=0.05,
+                        not_before=fetch_ts,
+                        log_timeout=False,
+                    )
+                    if empty_ack is not None:
+                        self._log.info(
+                            "[ACTIVITY_ASSIGN] no existing macro act=0x%02X button=0x%02X; building from scratch",
+                            act_lo,
+                            macro_button,
+                        )
+                        source_record = MacroRecord(
+                            activity_id=act_lo,
+                            key_id=macro_button,
+                            label="",
+                            key_sequence=(),
+                        )
+                        break
             if source_record is None:
                 self._log.warning(
                     "[ACTIVITY_ASSIGN] missing macro record act=0x%02X button=0x%02X",
@@ -464,14 +806,32 @@ class ActivityOpsMixin:
         or ``None`` on timeout.
         """
         act_lo = activity_id & 0xFF
-        self.reset_ack_queues()
-        send_ts = time.monotonic()
-        self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
-        # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte = act_lo
-        result = self.wait_for_ack_any([(0xFF63, act_lo)], timeout=5.0, not_before=send_ts)
+        # The hub silently drops a request that arrives while it is streaming
+        # a read burst (e.g. the macro-labels fetch that precedes this call in
+        # the post-sync cache refresh); the exchange scope quiesces first.
+        # reset_ack_queues runs inside the scope: clearing before the quiesce
+        # would let a finishing burst's stray acks repopulate the queue.
+        with self.exchange("fav_order"):
+            self.reset_ack_queues()
+            send_ts = time.monotonic()
+            self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
+            # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte =
+            # act_lo. An activity with no quick-access entries never gets a 0x63
+            # row: the hub answers STATUS_ACK 0x07 instead (the same "empty
+            # reply" convention as empty macro tables, bench capture 2026-07-16),
+            # so accept that too rather than stalling to the 5s timeout.
+            result = self.wait_for_ack_any(
+                [(0xFF63, act_lo), (0x0103, 0x07)],
+                timeout=5.0,
+                not_before=send_ts,
+            )
         if result is None:
             self._log.warning("[FAV_ORDER] timeout waiting for hub response act=0x%02X", act_lo)
             return None
+        if (result[0] & 0xFFFF) == 0x0103:
+            self._log.debug("[FAV_ORDER] empty quick-access table act=0x%02X", act_lo)
+            self.state.activity_favorites_order[act_lo] = []
+            return []
         return self.state.activity_favorites_order.get(act_lo)
 
     def _validate_favorite_fav_id(
@@ -502,6 +862,11 @@ class ActivityOpsMixin:
             (int(macro.get("command_id", 0)) & 0xFF) == fav_lo
             for macro in self.state.get_activity_macros(act_lo)
         ):
+            return fav_lo
+        # Key ids handed out by this sync run's macro allocator: a macro
+        # written NEW moments ago is a valid sort target but is not yet in
+        # the hub order table nor in the cached keymap/macro views.
+        if fav_lo in (getattr(self, "_activity_sync_session_key_ids", None) or ()):
             return fav_lo
         return None
 
@@ -645,7 +1010,7 @@ class ActivityOpsMixin:
             family=FAMILY_FAV_DELETE,
             payload=bytes([act_lo, validated_fav_id]),
             ack_opcode=0x0103,
-            timeout=7.5,
+            timeout=_FAV_DELETE_ACK_TIMEOUT,
         )
         if not _step.ok:
             return None
@@ -734,26 +1099,29 @@ class ActivityOpsMixin:
             slot_id=slot_lo,
         )
         map_ack: tuple[int, bytes] | None = None
-        for attempt in range(1, 3):  # retries=1 → 2 attempts total
-            self._log.info(
-                "%s[STEP] %s tx family=0x3E expect_ack=0x013E attempt=%d/2",
-                LogTag.ACTIVITY,
-                map_step,
-                attempt,
-            )
-            send_ts = time.monotonic()
-            self._send_family_frame(0x3E, map_payload)
-            map_ack = self.wait_for_ack_any(
-                [(0x013E, None), (0x0103, None)],
-                timeout=7.5,
-                not_before=send_ts,
-            )
-            if map_ack is not None:
-                self._log.info("%s[STEP] %s acked via 0x%04X", LogTag.ACTIVITY, map_step, map_ack[0])
-                break
-            if attempt < 2:
-                self._log.warning("%s[STEP] %s retrying after ack timeout", LogTag.ACTIVITY, map_step)
-                time.sleep(0.15)
+        # The whole 2-attempt loop holds ONE exchange: a retry of the same
+        # step must not let another exchange interleave between attempts.
+        with self.exchange("favorite_map"):
+            for attempt in range(1, 3):  # retries=1 → 2 attempts total
+                self._log.info(
+                    "%s[STEP] %s tx family=0x3E expect_ack=0x013E attempt=%d/2",
+                    LogTag.ACTIVITY,
+                    map_step,
+                    attempt,
+                )
+                send_ts = time.monotonic()
+                self._send_family_frame(0x3E, map_payload)
+                map_ack = self.wait_for_ack_any(
+                    [(0x013E, None), (0x0103, None)],
+                    timeout=7.5,
+                    not_before=send_ts,
+                )
+                if map_ack is not None:
+                    self._log.info("%s[STEP] %s acked via 0x%04X", LogTag.ACTIVITY, map_step, map_ack[0])
+                    break
+                if attempt < 2:
+                    self._log.warning("%s[STEP] %s retrying after ack timeout", LogTag.ACTIVITY, map_step)
+                    time.sleep(0.15)
         if map_ack is None:
             self._log.warning("%s[STEP] %s failed waiting ack=0x013E", LogTag.ACTIVITY, map_step)
             return None

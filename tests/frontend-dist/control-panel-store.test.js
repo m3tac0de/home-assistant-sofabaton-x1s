@@ -26,6 +26,15 @@ var ControlPanelApi = class {
       enabled
     });
   }
+  // Global (all-hubs) dropdown setting: what a Hub-tab row click does.
+  setHubClickAction(entryId, value) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/control_panel/set_setting",
+      entry_id: entryId,
+      setting: "hub_click_action",
+      value
+    });
+  }
   runAction(entryId, action) {
     return this.hass.callWS({
       type: "sofabaton_x1s/control_panel/run_action",
@@ -48,20 +57,103 @@ var ControlPanelApi = class {
       blob
     });
   }
-  persistIrBlob(entryId, deviceId, commandName, blob) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/blobs/persist",
-      entry_id: entryId,
-      device_id: deviceId,
-      command_name: commandName,
-      blob
-    });
-  }
   startBackupExport(entryId, deviceIds) {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/export",
       entry_id: entryId,
       ...deviceIds?.length ? { device_ids: deviceIds } : {}
+    });
+  }
+  startActivitySync(entryId, activityId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/sync",
+      entry_id: entryId,
+      activity_id: activityId,
+      baseline,
+      edited
+    });
+  }
+  activitySyncPlan(entryId, activityId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/sync_plan",
+      entry_id: entryId,
+      activity_id: activityId,
+      baseline,
+      edited
+    });
+  }
+  startDeviceSync(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
+  deviceSyncPlan(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync_plan",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
+  // Immediate live delete of a whole activity/device from the hub. Both wrap
+  // the id-generic hub delete primitive; separate types keep the id range and
+  // validation explicit per entity kind.
+  deleteActivity(entryId, activityId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/delete",
+      entry_id: entryId,
+      activity_id: activityId
+    });
+  }
+  deleteDevice(entryId, deviceId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/delete",
+      entry_id: entryId,
+      device_id: deviceId
+    });
+  }
+  // Immediate live write of the hub's stored activity display order.
+  // ordered_ids is the full activity id list in the desired order.
+  reorderActivities(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
+  // Immediate live write of the hub's stored device display order.
+  // ordered_ids is the full device id list in the desired order.
+  reorderDevices(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
+  // Create a fresh, empty activity on the hub; resolves with the
+  // hub-assigned activity id so the caller can open the live editor on it.
+  createActivity(entryId, name) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/create",
+      entry_id: entryId,
+      name
+    });
+  }
+  startCacheRefresh(entryId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/cache/refresh_all",
+      entry_id: entryId
+    });
+  }
+  getStructuralBundle(entryId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/cache/structural_bundle",
+      entry_id: entryId
     });
   }
   stashEditedBackup(entryId, backup, filename) {
@@ -153,6 +245,15 @@ var ControlPanelApi = class {
     return this.hass.connection.subscribeMessage(
       onMessage,
       { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId }
+    );
+  }
+  subscribeHubEvents(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/hub_events/subscribe", entry_id: entryId }
     );
   }
 };
@@ -1305,6 +1406,10 @@ function selectedHub(snapshot) {
 function persistentCacheEnabled(snapshot) {
   return !!snapshot.state?.persistent_cache_enabled;
 }
+function hubClickAction(snapshot) {
+  const action = snapshot.state?.hub_click_action;
+  return action === "send" || action === "copy" ? action : "none";
+}
 function deviceClassIcon(deviceClass) {
   switch (String(deviceClass || "").trim().toLowerCase()) {
     case "ir":
@@ -1388,6 +1493,82 @@ function entityForHub(hass, hub) {
   if (!hub) return null;
   return remoteEntities(hass).find((id) => hass?.states?.[id]?.attributes?.entry_id === hub.entry_id) ?? null;
 }
+function remoteAttrsForHub(hass, hub) {
+  const entityId = entityForHub(hass, hub);
+  return (entityId ? hass?.states?.[entityId]?.attributes : void 0) ?? {};
+}
+function proxyClientConnected(hass, hub) {
+  const attrs = remoteAttrsForHub(hass, hub);
+  if (typeof attrs.proxy_client_connected === "boolean") return attrs.proxy_client_connected;
+  return !!hub?.proxy_client_connected;
+}
+function hubRefreshBusy(snapshot, entryId) {
+  return !!entryId && entryId in snapshot.refreshBusyByHub;
+}
+function hubExternalCommandLabel(snapshot, entryId) {
+  return entryId ? snapshot.externalHubCommandByHub[entryId] ?? null : null;
+}
+function resolveRuntimeState(snapshot) {
+  const hub = selectedHub(snapshot);
+  const entryId = hub?.entry_id ?? null;
+  const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : void 0;
+  if (completionNotice) {
+    return {
+      kind: "completion",
+      tone: completionNotice.tone,
+      label: completionNotice.label,
+      detail: null
+    };
+  }
+  const hubRuntime = hub?.runtime_state;
+  if (hubRuntime?.kind === "operation_running") {
+    const total = Number(hubRuntime.total_steps || 0);
+    const current = Number(hubRuntime.current_step || 0);
+    const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
+    return {
+      kind: "operation_running",
+      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy",
+      label: String(hubRuntime.label || "Operation running"),
+      detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
+      progress: {
+        current: Number.isFinite(current) ? current : null,
+        total: Number.isFinite(total) && total > 0 ? total : null,
+        percent,
+        indeterminate: !total || total <= 0
+      }
+    };
+  }
+  if (hubRuntime?.kind === "app_connected") {
+    return {
+      kind: "app_connected",
+      label: String(hubRuntime.label || "Only Logs is available while the Sofabaton app is connected."),
+      detail: String(hubRuntime.detail || "")
+    };
+  }
+  if (hub && proxyClientConnected(snapshot.hass, hub)) {
+    return {
+      kind: "app_connected",
+      label: "Only Logs is available while the Sofabaton app is connected.",
+      detail: null
+    };
+  }
+  const externalLabel = hubExternalCommandLabel(snapshot, entryId);
+  if (externalLabel !== null) {
+    return {
+      kind: "notice",
+      label: externalLabel || "Hub command in progress...",
+      detail: null
+    };
+  }
+  if (hubRefreshBusy(snapshot, entryId)) {
+    return {
+      kind: "notice",
+      label: "Refreshing cache...",
+      detail: null
+    };
+  }
+  return null;
+}
 function cacheGenerationSnapshot(hass) {
   const snapshot = {};
   for (const id of remoteEntities(hass)) {
@@ -1420,14 +1601,641 @@ function connectionFingerprint(hass) {
   }).join("||");
 }
 
+// custom_components/sofabaton_x1s/www/src/strings.ts
+var TOOLS_CARD_STRINGS = {
+  docs: {
+    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
+  },
+  tabs: {
+    cache: "Hub",
+    wifiCommands: "Automation",
+    backup: "Backup",
+    settings: "Settings",
+    logs: "Logs"
+  },
+  tabDocs: {
+    wifi_commands: "Automation documentation",
+    backup: "Backup documentation"
+  },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
+  },
+  backend: {
+    unavailableTitle: "Backend not available",
+    unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
+    versionMismatchTitle: "Refresh required to update the Sofabaton Control Panel card",
+    versionMismatchCopy: "This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant. Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.",
+    backendExpects: "Backend expects",
+    cardLoaded: "Card loaded",
+    unknownVersion: "unknown",
+    refreshingCache: "Refreshing cache...",
+    hubCommandInProgress: "Hub command in progress..."
+  },
+  hubUnavailable: {
+    title: "Hub unavailable",
+    copy: "This hub is not connected, so the control panel is unavailable until the hub reconnects."
+  },
+  settings: {
+    loading: "Loading...",
+    noHubsFound: "No hubs found.",
+    unknownHubName: "Unknown",
+    activities: "Activities",
+    devices: "Devices",
+    persistentCacheTitle: "Persistent Cache",
+    persistentCacheDescription: "Store activity and device data locally for faster access.",
+    persistentCacheFooter: "GLOBAL",
+    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
+    hubClickActionTitle: "Hub Tab Clicks",
+    hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "Do nothing",
+    hubClickActionOptionSend: "Send the command",
+    hubClickActionOptionCopy: "Copy the command",
+    hexLoggingTitle: "Hex Logging",
+    hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
+    wifiDeviceTitle: "WiFi Device",
+    wifiDeviceDescription: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
+    findRemoteTitle: "Find Remote",
+    findRemoteDescription: "Make the remote beep so you can locate it.",
+    syncRemoteTitle: "Sync Remote",
+    syncRemoteDescription: "Push the latest configuration to the physical remote."
+  },
+  cache: {
+    loading: "Loading...",
+    noHubsFound: "No hubs found.",
+    persistentCacheOffTitle: "Persistent cache is off",
+    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
+    enablingPersistentCache: "Enabling...",
+    enablePersistentCache: "Enable persistent cache",
+    devIdBadge: "DevID",
+    favIdBadge: "FavID",
+    comIdBadge: "ComID",
+    activityFallback: (id) => `Activity ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
+    favoriteFallback: (commandId) => `Favorite ${commandId}`,
+    macroFallback: (commandId) => `Macro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} favs / ${macros} macros / ${buttons} btns`,
+    deviceCommandCount: (count) => `${count} cmds`,
+    favorites: "Favorites",
+    macros: "Macros",
+    buttons: "Buttons",
+    noCachedData: "No cached data yet.",
+    noCachedCommands: "No cached commands.",
+    staleBanner: "Cache was updated externally. Refresh to see latest data.",
+    refresh: "Refresh",
+    activities: "Activities",
+    devices: "Devices",
+    refreshList: "Refresh list",
+    refreshAll: "Refresh all",
+    editActivity: "Edit activity",
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026"
+  },
+  // Hub-tab row clicks ("send the command" / "copy the command" modes).
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Activity",
+    contextDevice: "Device",
+    kindLabels: {
+      favorite: "Favorite",
+      macro: "Macro",
+      button: "Button",
+      command: "Command"
+    },
+    lovelaceHeading: "Lovelace Button Code",
+    lovelaceHint: "Copy this to your Dashboard YAML:",
+    actionHeading: "Service Call (Automation)",
+    actionHint: "Use this in your Scripts or Automations:",
+    noRemoteEntity: "The hub's remote entity is unavailable.",
+    copied: (label) => `Copied "${label}" to notifications.`,
+    sendTooltip: "Click to send this command to the hub",
+    copyTooltip: "Click to copy this command to a notification"
+  },
+  logs: {
+    loading: "Loading log stream...",
+    empty: "No log lines captured for this hub yet.",
+    liveConsole: "Live Console"
+  },
+  cacheRefresh: {
+    label: "Refresh all",
+    running: "Refreshing\u2026",
+    starting: "Starting hub cache refresh\u2026",
+    working: "Reading your hub's configuration\u2026",
+    done: "Hub cache refreshed."
+  },
+  progress: {
+    homeAssistant: "Home Assistant",
+    sofabatonHub: "Sofabaton Hub",
+    working: "Working...",
+    backupTitle: "Creating backup",
+    restoreTitle: "Restoring backup"
+  },
+  activities: {
+    loading: "Loading activities...",
+    selectHub: "Select a hub to edit its activities.",
+    activityFallback: (id) => `Activity ${id}`,
+    // Guard panels (§4.1), rendered inside the editor view.
+    appConnectedTitle: "The Sofabaton app is connected",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
+    operationRunningTitle: "Another operation is running",
+    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
+    // Capture flow (§4.2).
+    captureTitle: "Reading your hub",
+    captureMessage: "Reading your hub's configuration\u2026",
+    captureMessageWithStep: (current, total) => `Reading your hub's configuration\u2026 (device ${current} of ${total})`,
+    captureFailedTitle: "Couldn't read the hub",
+    captureFailedBody: "The hub stopped responding before we finished reading it.",
+    retry: "Retry",
+    back: "Back",
+    // Cache-sourced capture (blob-free structural bundle).
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
+    needsRefreshTitle: "Refresh the hub cache to edit",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
+    // Session restore banner (§4.6).
+    // Live-mode edit header (§4.3). The header mirrors the Wifi command
+    // editor: a single stateful Sync button (no dirty chip, no review/discard).
+    syncToHub: "Sync to Hub",
+    syncUpToDate: "Up to date",
+    // Immediate entity delete (executed on the hub right away).
+    deletingTitle: (kind) => `Deleting ${kind}`,
+    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
+    // Sync flow (§4.5).
+    syncingTitle: "Syncing to your hub",
+    syncingMessage: "Writing your changes to the hub\u2026",
+    syncSuccess: "Synced to hub.",
+    syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
+    syncFailedTitle: "Sync didn't finish",
+    syncFailedStep: (step) => `The hub stopped at: ${step}`,
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
+    syncRetry: "Retry sync",
+    syncReload: "Reload from hub",
+    syncKeepEditing: "Keep editing",
+    exitUnsyncedTitle: "Unsynced changes",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
+    exitSyncNow: "Sync now",
+    exitWithoutSync: "Leave without syncing",
+    // Dismiss label reused by the sync-success / delete-error banners.
+    discardConfirmCancel: "Keep editing",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
+      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device) => `"${device}" input cleared.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group, device) => `${group} now control "${device}".`,
+      roleCustomized: (group) => `${group} customized.`,
+      roleCleared: (group) => `${group} no longer assigned.`,
+      shortcutAdded: (name) => `Added "${name}".`,
+      shortcutRemoved: (name) => `Removed "${name}".`,
+      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons"
+      },
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub"
+      }
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "Power",
+      sectionNetwork: "Network",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name) => `Added macro "${name}".`,
+      macroRemoved: (name) => `Removed macro "${name}".`,
+      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
+      macroChanged: (name) => `Edited macro "${name}".`,
+      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button) => `"${button}" no longer bound.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
+    }
+  },
+  backup: {
+    loading: "Loading backup tools...",
+    selectHub: "Select a hub to manage backups.",
+    creatingSubtitle: "The hub is creating your backup.",
+    readySubtitle: "Your backup is ready.",
+    chooseSubtitle: "Choose what to include in this backup.",
+    enablePersistentCache: "Enable persistent cache to choose backup contents from the card.",
+    completedTitle: "Backup completed",
+    expired: "Backup expired. Start a new backup to download again.",
+    downloaded: "Downloaded",
+    downloadAgain: "Download again",
+    downloadBackup: "Download backup",
+    complete: "Complete",
+    entireHub: "Entire hub",
+    selectedDevices: "Selected devices",
+    devicesToInclude: "Devices to include",
+    selectedCount: (count) => `${count} selected`,
+    deselectAll: "Deselect all",
+    selectAll: "Select all",
+    noDevicesAvailable: "No devices available.",
+    working: "Working",
+    startBackup: "Start backup",
+    editLoadPrompt: "Load a backup file, then choose an Activity or Device to edit.",
+    chooseBackupFile: "Choose backup file",
+    reorderHint: " Drag the handle on any row to reorder Activities and Devices.",
+    hubName: "Hub name",
+    hubNameNotSet: "(not set)",
+    renameHub: "Rename Hub",
+    activities: "Activities",
+    noActivitiesInFile: "This backup file has no activities.",
+    devices: "Devices",
+    noDevicesInFile: "This backup file has no devices.",
+    unsavedChanges: "Unsaved changes. Click ",
+    downloadEditedBackupStrong: "Download edited backup",
+    unsavedChangesSuffix: " to save them to a file.",
+    downloadEditedBackup: "Download edited backup",
+    deleteActivityTitle: (name) => `Delete activity "${name}"?`,
+    deleteDeviceTitle: (name) => `Delete device "${name}"?`,
+    deleteCommandTitle: (name) => `Delete command "${name}"?`,
+    deleteFavoriteTitle: (name) => `Delete shortcut "${name}"?`,
+    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
+    deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
+    deleteSimpleBody: "This removes it from the loaded backup.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
+    deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+    deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    // Live-edit variants: deletions here act on the hub, not a backup file.
+    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
+    deleteSimpleBodyLive: "This removes it.",
+    deleteImmediateNote: "This is applied to the hub immediately.",
+    deleteSyncNote: "This change is written to the hub on the next Sync.",
+    deleteCancel: "Cancel",
+    deleteConfirm: "Delete",
+    deleteActivityAria: "Delete activity",
+    deleteDeviceAria: "Delete device",
+    deleteCommandAria: "Delete command",
+    addFavoriteTitle: "Add command shortcut",
+    addFavoriteDevice: "Device",
+    addFavoriteCommand: "Command",
+    addFavoriteName: "Display name",
+    addFavoriteAdd: "Add",
+    addFavoriteCancel: "Cancel",
+    addFavoriteNoDevices: "This backup has no devices with commands to add.",
+    addFavoriteNoCommands: "This device has no commands to add.",
+    buttonBindingsTitle: "Button bindings",
+    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this Activity.",
+    buttonBindingsDeviceSub: "Bind remote buttons to this Device's own commands.",
+    buttonBindingsEmpty: "No button bindings configured.",
+    addBinding: "Add binding",
+    bindingButton: "Button",
+    bindingTargetDevice: "Device",
+    bindingCommand: "Command",
+    bindingEnableLongPress: "Enable long-press binding",
+    bindingLongPressDevice: "Long-press device",
+    bindingLongPressCommand: "Long-press command",
+    bindingIncomplete: "Choose a button and target first.",
+    bindingNoButtons: "Every button on this hub model is already bound.",
+    bindingNoCommands: "This device has no commands to bind.",
+    bindingNoDevices: "This backup has no devices with commands to bind.",
+    bindingAdd: "Add",
+    bindingSave: "Save",
+    bindingCancel: "Cancel",
+    bindingDialogAddTitle: "Add button binding",
+    bindingDialogEditTitle: (name) => `Edit ${name} binding`,
+    bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Delete ${name} binding?`,
+    deleteBindingAria: "Delete binding",
+    deleteImpactBindings: (count) => `${count} button binding${count === 1 ? "" : "s"} will be cleared`,
+    macrosTitle: "Macros",
+    macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
+    macroPowerChip: "power",
+    powerSetupTitle: "Power",
+    powerSetupDeviceSub: "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
+    powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
+    powerOnLabel: "Power-on sequence",
+    powerOffLabel: "Power-off sequence",
+    // Automatic-power dropdown (device only). One hub byte encodes the whole
+    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
+    powerControlTitle: "Automatic power control",
+    powerControlUnset: "Not captured",
+    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+    powerControlDisabled: "Don't control power",
+    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+    powerControlAutoOff: "Turn off when idle",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
+    powerControlStayOn: "Stay on between Activities",
+    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+    powerControlAlwaysOn: "Always stay on",
+    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
+    inputStepTitle: "Set input",
+    inputStepCommand: "Input command",
+    inputStepNone: "\u2014 no input \u2014",
+    macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
+    noMacroSteps: "No steps yet.",
+    addStep: "Add step",
+    stepDialogAddTitle: "Add step",
+    stepDialogEditTitle: "Edit step",
+    stepDevice: "Device",
+    stepCommand: "Command",
+    stepHoldSeconds: "Hold (seconds, 0 = click)",
+    holdLabel: (seconds) => `Hold ${seconds}s`,
+    stepAdd: "Add",
+    stepSave: "Save",
+    stepCancel: "Cancel",
+    stepNoCommands: "This device has no commands.",
+    stepWaitAria: "Wait after this step (seconds)",
+    stepWaitLabel: "Delay",
+    stepWaitUnit: "s",
+    renameMacroAria: "Rename macro",
+    deleteStepAria: "Delete step",
+    editStepAria: "Edit step",
+    newMacroName: "Macro",
+    shortcutChipCommand: "command",
+    shortcutChipAction: "macro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
+    powerSectionTitle: "Power",
+    powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
+    powerInputLabel: "Input",
+    powerInputNone: "\u2014 none \u2014",
+    powerDelayLabel: "Delay (s)",
+    powerNoDevices: "No devices yet. Add a favorite, binding, or macro that uses one.",
+    powerOnSequence: "Power-on sequence",
+    powerOffSequence: "Power-off sequence",
+    powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
+    macroRenameAria: "Rename macro",
+    editStepsAria: "Edit steps",
+    crumbActivities: "Activities",
+    crumbDevices: "Devices",
+    // Activity-detail copy.
+    activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
+    activityRunningTitle: "Buttons on the remote",
+    activityRunningSub: "Which device each remote button controls in this activity.",
+    activityShortcutsTitle: "Shortcuts on the remote screen",
+    activityShortcutsSubSortable: "Commands and macros shown on the remote's screen. Drag the handle to reorder.",
+    activityShortcutsSubStatic: "Commands and macros shown on the remote's screen. Use the move buttons to reorder.",
+    activityShortcutsEmpty: "No shortcuts yet. Add a command or a macro.",
+    // Role-based button assignment (Phase B).
+    roleVolume: "Volume buttons control",
+    roleNavigation: "Navigation and OK control",
+    rolePlayback: "Playback buttons control",
+    roleChannels: "Channel buttons control",
+    roleNotUsed: "Not used",
+    roleCustom: "Custom",
+    roleCustomized: (name) => `${name} (customized)`,
+    roleMappedNote: (bound, total) => `${bound} of ${total} buttons mapped`,
+    roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
+    roleMenuAria: (roleLabel) => `Choose a device for: ${roleLabel}`,
+    roleConfirmTitle: "Replace custom button setup?",
+    roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
+    roleConfirmReplace: "Replace",
+    roleConfirmCancel: "Cancel",
+    customizeButtonsToggle: "Customize individual buttons",
+    bindingsViewTitle: "Individual buttons",
+    bindingsConfiguredCount: (count) => `${count} configured`,
+    bindingsNoneConfigured: "None customized",
+    // Unified "add to shortcuts" flow.
+    addShortcutButton: "Add",
+    addShortcutTitle: "Add to shortcuts",
+    addShortcutKindLabel: "Type",
+    shortcutKindCommand: "Device command",
+    shortcutKindAction: "Macro",
+    macroTargetLabel: "Macro",
+    macroTargetCreateNew: "Create new macro",
+    macroTargetNoExisting: "No macros yet. Create one below.",
+    addShortcutActionName: "Name",
+    addShortcutActionHelper: "You'll pick the steps next."
+  },
+  wifiCommands: {
+    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    sectionLabel: "Wifi Devices",
+    deployingTitle: "Deploying Wifi Commands",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
+    addDevice: "Add Wifi Device",
+    syncingDeviceFallback: "Syncing Wifi Device...",
+    syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
+    syncInProgress: "Sync in progress",
+    startSync: "Starting sync",
+    syncFailedToStart: "Sync failed to start",
+    syncMessageRemoteUnavailable: "Remote entity unavailable. Is the app connected?",
+    syncMessageFailed: "Last sync failed.",
+    syncMessageNeeded: "Command config changes need to be synced to the hub.",
+    syncMessageUpToDate: "Hub command configuration is up to date.",
+    syncMessageIdle: "No sync needed.",
+    syncShortUnavailable: "Unavailable",
+    syncShortRunning: "Syncing",
+    syncShortFailed: "Sync failed",
+    syncShortNeeded: "Sync needed",
+    syncShortUpToDate: "Up to date",
+    syncShortIdle: "Idle",
+    deviceDeleting: "Deleting...",
+    deviceSynced: "Synced",
+    seeDocumentation: "See documentation",
+    actionButtonUnavailable: "Unavailable",
+    actionButtonSyncing: "Syncing...",
+    actionButtonBusy: "Busy",
+    actionButtonSyncToHub: "Sync to Hub",
+    actionButtonUpToDate: "Up to Date",
+    createDeviceBusy: "Creating Wifi Device...",
+    createDeviceNameRequired: "Device name is required.",
+    createDeviceFailed: "Unable to create Wifi Device",
+    deleteDeviceBusy: "Deleting Wifi Device...",
+    deleteDeviceFailed: "Unable to delete Wifi Device",
+    createModalCancel: "Cancel",
+    createModalCreate: "Create",
+    deleteModalTitle: "Delete Wifi Device?",
+    deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
+    deleteModalDelete: "Delete",
+    clearSlotTitle: "Clear command slot?",
+    clearSlotSubtitle: "Resets configuration.",
+    clearSlotNo: "No",
+    clearSlotYes: "Yes",
+    makeCommand: "Make Command",
+    noActionConfigured: "No Action configured",
+    commandSlotTitle: (slotIndex) => `Command Slot ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Command Slot ${slotIndex + 1} Action`,
+    commandDisplayName: "Command Display Name",
+    advanced: "Advanced",
+    activityInput: "Perform this command when an Activity starts",
+    activityInputHint: "The command is set as the Activity's input on the hub, so it runs during the Activity's startup sequence.",
+    activityInputReplaces: (slotName, activityName) => `Replaces "${slotName}" when ${activityName} starts`,
+    noActivitiesForHub: "No Activities available for this hub.",
+    activityInputLabel: "Activity that performs this command",
+    devicePowerOnLabel: "When the hub turns this device ON",
+    devicePowerOffLabel: "When the hub turns this device OFF",
+    devicePowerNothing: "Nothing",
+    devicePowerHint: "Runs as part of this device's power sequence in your Activities. Synced to the hub.",
+    devicePowerPerform: (commandName) => `perform ${commandName}`,
+    hubEventsTitle: "Hub Events",
+    hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
+    hubEventPowerOff: "When the hub is switched OFF",
+    hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
+    hubEventActivityStart: "When any Activity starts",
+    hubEventActivityStops: "and when one stops",
+    hubEventActivityStopModalTitle: "When any Activity stops",
+    hubEventDoNothing: "do nothing",
+    hubEventPerform: (service) => `perform ${service}`,
+    hubEventClearTitle: "Reset to do nothing",
+    hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Events",
+    activityEventsTitle: "Activity Events",
+    activityEventsSubtitle: "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
+    activityEventStarts: (name) => `When ${name} starts`,
+    activityEventStops: "and when it stops",
+    activityEventStartModalTitle: (name) => `When ${name} starts`,
+    activityEventStopModalTitle: (name) => `When ${name} stops`,
+    activityEventFallbackName: (id) => `Activity ${id}`,
+    noActivitiesForEvents: "No Activities on this hub yet.",
+    favorite: "Set as Favorite",
+    physicalButtonAssignment: "Physical Button Assignment",
+    enableLongPress: "Enable long-press",
+    applyToActivities: "Apply to these Activities",
+    actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
+    shortPress: "Short press",
+    longPress: "Long press",
+    selectLongPressAction: "Select Long-Press Action",
+    selectTriggeredAction: "Select Triggered Action",
+    action: "Action",
+    save: "Save",
+    syncWarningTitle: "Sync commands to hub?",
+    syncWarningBody: "This sync can run for several minutes. During this process, other interactions with the hub are blocked.",
+    syncWarningBody2: "At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.",
+    syncWarningOptOut: "Don't show this warning again for this remote.",
+    syncWarningStart: "Start sync",
+    keyLabels: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      back: "Back",
+      home: "Home",
+      menu: "Menu",
+      volup: "Vol +",
+      voldn: "Vol -",
+      mute: "Mute",
+      chup: "Ch +",
+      chdn: "Ch -",
+      guide: "Guide",
+      dvr: "DVR",
+      play: "Play",
+      exit: "Exit",
+      rew: "Rewind",
+      pause: "Pause",
+      fwd: "Fast Forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/shared/utils/hub-click-notification.ts
+var KIND_ICONS = {
+  favorite: "mdi:star",
+  macro: "mdi:cogs",
+  button: "mdi:remote",
+  command: "mdi:remote"
+};
+function serviceYaml(entityId, item) {
+  return [
+    "action: remote.send_command",
+    "target:",
+    `  entity_id: ${entityId}`,
+    "data:",
+    `  command: ${item.commandId}`,
+    `  device: ${item.targetId}`
+  ].join("\n");
+}
+function buttonYaml(entityId, item) {
+  return [
+    "type: button",
+    `name: ${item.label}`,
+    `icon: ${KIND_ICONS[item.kind]}`,
+    "tap_action:",
+    "  action: perform-action",
+    "  perform_action: remote.send_command",
+    "  target:",
+    `    entity_id: ${entityId}`,
+    "  data:",
+    `    command: ${item.commandId}`,
+    `    device: ${item.targetId}`,
+    "hold_action:",
+    "  action: none"
+  ].join("\n");
+}
+function buildHubClickNotification(entityId, item) {
+  const S3 = TOOLS_CARD_STRINGS.hubClick;
+  const contextKind = item.kind === "command" ? S3.contextDevice : S3.contextActivity;
+  const message = [
+    "---",
+    "",
+    `**${contextKind}: ${item.contextLabel} | ${S3.kindLabels[item.kind]}: ${item.label}**`,
+    "",
+    "---",
+    `\u{1F4CB} **${S3.lovelaceHeading}**`,
+    "",
+    `*${S3.lovelaceHint}*`,
+    "```yaml",
+    buttonYaml(entityId, item),
+    "```",
+    `\u2699\uFE0F **${S3.actionHeading}**`,
+    "",
+    `*${S3.actionHint}*`,
+    "```yaml",
+    serviceYaml(entityId, item),
+    "```"
+  ].join("\n");
+  return { title: S3.notificationTitle, message };
+}
+
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["activities", "settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "backup", "cache", "logs"]);
+var REFRESH_ALL_KEY = "__refresh_all__";
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
-var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);
+var VALID_WIFI_SECTIONS = /* @__PURE__ */ new Set(["wifi", "hub_events"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -1444,13 +2252,13 @@ function readPersistedViewState() {
     const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
     const selectedCacheSection = VALID_CACHE_SECTIONS.has(parsed?.selectedCacheSection) ? parsed.selectedCacheSection : VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : "activities";
     const selectedBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.selectedBackupSection) ? parsed.selectedBackupSection : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : "make";
-    const selectedBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.selectedBlobsSection) ? parsed.selectedBlobsSection : VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection) ? parsed.openBlobsSection : "fetch";
+    const selectedWifiSection = VALID_WIFI_SECTIONS.has(parsed?.selectedWifiSection) ? parsed.selectedWifiSection : "wifi";
     return {
       selectedHubEntryId,
       ...selectedTab ? { selectedTab } : {},
       selectedCacheSection,
       selectedBackupSection,
-      selectedBlobsSection
+      selectedWifiSection
     };
   } catch (_error) {
     return {};
@@ -1478,14 +2286,12 @@ var INITIAL_SNAPSHOT = {
   selectedTab: "cache",
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
-  selectedBlobsSection: "fetch",
+  selectedWifiSection: "wifi",
   openEntity: null,
   staleData: false,
-  refreshBusy: false,
-  activeRefreshLabel: null,
-  externalHubCommandBusy: false,
-  externalHubCommandLabel: null,
-  runtimeCompletionNotice: null,
+  refreshBusyByHub: {},
+  externalHubCommandByHub: {},
+  runtimeCompletionNoticeByHub: {},
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -1497,7 +2303,10 @@ var INITIAL_SNAPSHOT = {
   logsScrollBehavior: "auto",
   pendingScrollEntityKey: null,
   lastWifiPress: null,
-  wifiPressSubscribedEntryId: null
+  wifiPressSubscribedEntryId: null,
+  lastCommandSend: null,
+  lastHubEvent: null,
+  hubEventsSubscribedEntryId: null
 };
 var ControlPanelStore = class {
   constructor(onChange, options = {}) {
@@ -1519,9 +2328,11 @@ var ControlPanelStore = class {
     this._backupOpEntryId = null;
     this._backupOpId = null;
     this._runtimeStatePollTimer = null;
-    this._runtimeCompletionTimer = null;
+    this._runtimeCompletionTimers = /* @__PURE__ */ new Map();
     this._wifiPressUnsub = null;
     this._wifiPressSubscribeSeq = 0;
+    this._hubEventsUnsub = null;
+    this._hubEventsSubscribeSeq = 0;
     // Hub to pre-select when the card was created from a hub-specific entity (via
     // the card picker). Applied once when the hub becomes available; the user can
     // freely switch hubs afterwards.
@@ -1546,6 +2357,7 @@ var ControlPanelStore = class {
     }
     void this._syncBackupOperationFeed();
     void this._syncWifiPressFeed();
+    void this._syncHubEventsFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -1555,16 +2367,18 @@ var ControlPanelStore = class {
     this._isConnected = false;
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
-      lastWifiPress: null
+      externalHubCommandByHub: {},
+      runtimeCompletionNoticeByHub: {},
+      lastWifiPress: null,
+      lastCommandSend: null,
+      lastHubEvent: null
     };
     this._clearRuntimeStatePoll();
-    this._clearRuntimeCompletionTimer();
+    this._clearRuntimeCompletionTimers();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
+    void this._teardownHubEventsFeed();
     void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
@@ -1574,11 +2388,15 @@ var ControlPanelStore = class {
     }
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
   }
-  _clearRuntimeCompletionTimer() {
-    if (this._runtimeCompletionTimer) {
-      clearTimeout(this._runtimeCompletionTimer);
-      this._runtimeCompletionTimer = null;
+  _clearRuntimeCompletionTimers(entryId) {
+    if (entryId !== void 0) {
+      const timer = this._runtimeCompletionTimers.get(entryId);
+      if (timer) clearTimeout(timer);
+      this._runtimeCompletionTimers.delete(entryId);
+      return;
     }
+    for (const timer of this._runtimeCompletionTimers.values()) clearTimeout(timer);
+    this._runtimeCompletionTimers.clear();
   }
   _clearRuntimeStatePoll() {
     if (this._runtimeStatePollTimer) {
@@ -1649,7 +2467,7 @@ var ControlPanelStore = class {
     }
     if (fingerprint !== this._lastHassFingerprint) {
       const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (this._isConnected && !this._isHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
+      if (this._isConnected && !this._isAnyHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
         this._snapshot = { ...this._snapshot, staleData: true };
       }
       this._lastObservedGenerations = generationSnapshot;
@@ -1674,21 +2492,21 @@ var ControlPanelStore = class {
       logsError: null,
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
-      lastWifiPress: null
+      lastWifiPress: null,
+      lastCommandSend: null,
+      lastHubEvent: null
     };
-    this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
       await this._teardownBackupOperationFeed();
       await this._teardownWifiPressFeed();
+      await this._teardownHubEventsFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -1736,9 +2554,9 @@ var ControlPanelStore = class {
     this.persistViewState();
     this.emit();
   }
-  setSelectedBlobsSection(sectionId) {
-    if (this._snapshot.selectedBlobsSection === sectionId) return;
-    this._snapshot = { ...this._snapshot, selectedBlobsSection: sectionId };
+  setSelectedWifiSection(sectionId) {
+    if (this._snapshot.selectedWifiSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedWifiSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -1755,31 +2573,49 @@ var ControlPanelStore = class {
     if (!this._snapshot.pendingScrollEntityKey) return;
     this._snapshot = { ...this._snapshot, pendingScrollEntityKey: null };
   }
-  setExternalHubCommandBusy(busy, label = null) {
+  /**
+   * Busy state is stored per hub: callers whose operation may outlive the
+   * current hub selection (tab subscriptions, async finallys) pass the
+   * entry_id captured when the operation started so a late clear/set can
+   * never touch another hub's state. Without an entry_id the currently
+   * selected hub is used.
+   */
+  setExternalHubCommandBusy(busy, label = null, entryId) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    const byHub = { ...this._snapshot.externalHubCommandByHub };
+    if (busy) byHub[key] = String(label || "").trim() || "Hub command in progress\u2026";
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: busy,
-      externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress\u2026" : null
+      externalHubCommandByHub: byHub
     };
     this.emit();
   }
-  showRuntimeCompletion(notice, ttlMs = 6e3) {
-    this._clearRuntimeCompletionTimer();
+  showRuntimeCompletion(notice, entryId, ttlMs = 6e3) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    this._clearRuntimeCompletionTimers(key);
+    const byHub = { ...this._snapshot.runtimeCompletionNoticeByHub };
+    if (notice) byHub[key] = notice;
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      runtimeCompletionNotice: notice
+      runtimeCompletionNoticeByHub: byHub
     };
     this.emit();
     if (!notice) return;
-    this._runtimeCompletionTimer = setTimeout(() => {
-      this._runtimeCompletionTimer = null;
-      if (!this._snapshot.runtimeCompletionNotice) return;
+    this._runtimeCompletionTimers.set(key, setTimeout(() => {
+      this._runtimeCompletionTimers.delete(key);
+      if (!(key in this._snapshot.runtimeCompletionNoticeByHub)) return;
+      const next = { ...this._snapshot.runtimeCompletionNoticeByHub };
+      delete next[key];
       this._snapshot = {
         ...this._snapshot,
-        runtimeCompletionNotice: null
+        runtimeCompletionNoticeByHub: next
       };
       this.emit();
-    }, ttlMs);
+    }, ttlMs));
   }
   async loadState(options = {}) {
     if (this._loadingStatePromise) return this._loadingStatePromise;
@@ -1798,6 +2634,7 @@ var ControlPanelStore = class {
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
         await this._syncWifiPressFeed();
+        await this._syncHubEventsFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -1823,6 +2660,7 @@ var ControlPanelStore = class {
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
+      await this._syncHubEventsFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -1862,6 +2700,97 @@ var ControlPanelStore = class {
       this.emit();
     }
   }
+  /** Persist the global Hub-tab click behavior ("do nothing" / "send" /
+   *  "copy"), with the same optimistic-update + rollback flow as the
+   *  boolean setting toggles. */
+  async setHubClickAction(value) {
+    const hub = selectedHub(this._snapshot);
+    if (!hub || this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) return;
+    const previous = hubClickAction(this._snapshot);
+    if (previous === value) return;
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "hub_click_action" };
+    this._applyOptimisticHubClickAction(value);
+    try {
+      await this.api().setHubClickAction(hub.entry_id, value);
+      await this.loadControlPanelState();
+    } catch (_error) {
+      this._applyOptimisticHubClickAction(previous);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+  _applyOptimisticHubClickAction(value) {
+    if (!this._snapshot.state) return;
+    this._snapshot = {
+      ...this._snapshot,
+      state: { ...this._snapshot.state, hub_click_action: value }
+    };
+  }
+  /** "Send the command": req_activate the clicked Hub-tab row on the hub via
+   *  the hub's remote entity, then pulse the bottom dock like an incoming
+   *  Wifi press. Failures surface as a dock completion notice. */
+  async sendHubClickCommand(item) {
+    const hub = selectedHub(this._snapshot);
+    const hass = this._snapshot.hass;
+    if (!hub || !hass?.callService) return;
+    const entityId = entityForHub(hass, hub);
+    if (!entityId) {
+      this.showRuntimeCompletion(
+        { tone: "error", label: TOOLS_CARD_STRINGS.hubClick.noRemoteEntity },
+        hub.entry_id
+      );
+      return;
+    }
+    try {
+      await hass.callService("remote", "send_command", {
+        entity_id: entityId,
+        command: item.commandId,
+        device: item.targetId
+      });
+      this._snapshot = {
+        ...this._snapshot,
+        lastCommandSend: {
+          entryId: hub.entry_id,
+          contextLabel: item.contextLabel,
+          commandLabel: item.label,
+          receivedAt: Date.now()
+        }
+      };
+      this.emit();
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    }
+  }
+  /** "Copy the command": drop a persistent notification in the sidebar with
+   *  ready-to-paste Lovelace / action YAML for the clicked row — the same
+   *  format the remote card's Key capture notification uses. */
+  async copyHubClickCommand(item) {
+    const hub = selectedHub(this._snapshot);
+    const hass = this._snapshot.hass;
+    if (!hub || !hass?.callService) return;
+    const entityId = entityForHub(hass, hub);
+    if (!entityId) {
+      this.showRuntimeCompletion(
+        { tone: "error", label: TOOLS_CARD_STRINGS.hubClick.noRemoteEntity },
+        hub.entry_id
+      );
+      return;
+    }
+    try {
+      await hass.callService(
+        "persistent_notification",
+        "create",
+        buildHubClickNotification(entityId, item)
+      );
+      this.showRuntimeCompletion(
+        { tone: "success", label: TOOLS_CARD_STRINGS.hubClick.copied(item.label) },
+        hub.entry_id
+      );
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    }
+  }
   async runAction(action) {
     const hub = selectedHub(this._snapshot);
     if (!hub || this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) return;
@@ -1879,31 +2808,148 @@ var ControlPanelStore = class {
     this.emit();
     await this.loadState();
   }
+  _setRefreshBusy(entryId, label) {
+    this._snapshot = {
+      ...this._snapshot,
+      refreshBusyByHub: { ...this._snapshot.refreshBusyByHub, [entryId]: label }
+    };
+    this.emit();
+  }
+  _clearRefreshBusy(entryId) {
+    const byHub = { ...this._snapshot.refreshBusyByHub };
+    delete byHub[entryId];
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this.emit();
+  }
   async refreshSection(sectionId) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: null };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, null);
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
+  }
+  /**
+   * Whole-hub structural cache refresh ("Refresh all" in the Hub tab).
+   * Starts the backend cache_refresh operation and follows its progress;
+   * running state and phase messages surface through the bottom dock
+   * (hub.runtime_state), so the button itself only spins.
+   *
+   * Resolves with `null` on success or a failure message — the same one shown
+   * in the dock — so embedded starters (the Activities tab's refresh button)
+   * can react to the outcome.
+   */
+  async refreshAllForHub() {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this._setRefreshBusy(hub.entry_id, REFRESH_ALL_KEY);
+    let unsubscribe = null;
+    try {
+      const start = await this.api().startCacheRefresh(hub.entry_id);
+      void this.loadControlPanelState().catch(() => void 0);
+      const failure = await new Promise((resolve) => {
+        this.api().subscribeBackupProgress(start.operation_id, (payload) => {
+          if (payload.status === "success") resolve(null);
+          else if (payload.status === "failed") {
+            resolve(String(payload.error || payload.message || "Cache refresh failed."));
+          }
+        }).then((unsub) => {
+          unsubscribe = unsub;
+        }).catch((error) => resolve(formatError(error)));
+      });
+      this.showRuntimeCompletion(
+        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." },
+        hub.entry_id
+      );
+      await this.loadState({ silent: true });
+      return failure;
+    } catch (error) {
+      const failure = formatError(error);
+      this.showRuntimeCompletion({ tone: "error", label: failure }, hub.entry_id);
+      return failure;
+    } finally {
+      if (unsubscribe) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+      }
+      this._clearRefreshBusy(hub.entry_id);
+    }
+  }
+  /**
+   * Immediate live write of the hub's stored activity display order.
+   * ``orderedIds`` is the full activity id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderActivities(orderedIds) {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering activities\u2026", hub.entry_id);
+    try {
+      await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+  /**
+   * Immediate live write of the hub's stored device display order.
+   * ``orderedIds`` is the full device id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderDevices(orderedIds) {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering devices\u2026", hub.entry_id);
+    try {
+      await this.api().reorderDevices(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+  /**
+   * Create a fresh, empty activity on the hub, then pull its cache entry so
+   * the live editor can capture it right away. Resolves with the assigned
+   * activity id or an error message.
+   */
+  async createActivity(name) {
+    if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { error: "No hub selected." };
+    this.setExternalHubCommandBusy(true, "Creating activity\u2026", hub.entry_id);
+    let activityId = 0;
+    try {
+      const result = await this.api().createActivity(hub.entry_id, name);
+      activityId = Number(result?.activity_id || 0);
+      if (!activityId) return { error: "The hub did not return the new activity id." };
+    } catch (error) {
+      return { error: formatError(error) };
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.refreshForHub("activity", activityId, `act-${activityId}`);
+    return { activityId };
   }
   async refreshForHub(kind, targetId, key) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: key };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, key);
     try {
       await this.api().refreshCacheEntry({
         hubEntryId: hub.entry_id,
@@ -1913,14 +2959,10 @@ var ControlPanelStore = class {
       });
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-        pendingScrollEntityKey: key
-      };
-      this.emit();
+      if (this._snapshot.selectedHubEntryId === hub.entry_id) {
+        this._snapshot = { ...this._snapshot, pendingScrollEntityKey: key };
+      }
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
   async syncLogsFeed() {
@@ -2062,13 +3104,16 @@ var ControlPanelStore = class {
     };
     const nextHub = selectedHub(this._snapshot);
     const nextRuntime = nextHub?.runtime_state;
-    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running") {
+    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
-      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
-      this.showRuntimeCompletion({
-        tone: "success",
-        label: successLabel
-      });
+      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : operation === "entity_sync" ? "Synced to hub." : "Wifi Device deployed successfully.";
+      this.showRuntimeCompletion(
+        {
+          tone: "success",
+          label: successLabel
+        },
+        nextHub?.entry_id ?? previousHub?.entry_id ?? null
+      );
     }
     this._scheduleRuntimeStatePoll();
   }
@@ -2107,11 +3152,17 @@ var ControlPanelStore = class {
       }
     };
   }
+  /** Reconcile the selected hub with the loaded hub list. Runs on every
+   * state load, so it only persists when the selection actually changes:
+   * an unconditional write would let every open tab continuously overwrite
+   * the shared view state with its own snapshot. */
   syncSelection() {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
-      this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
-      this.persistViewState();
+      if (this._snapshot.selectedHubEntryId !== null) {
+        this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+        this.persistViewState();
+      }
       return;
     }
     if (!this._preferredHubApplied && this._preferredHubEntryId && hubs.some((hub) => hub.entry_id === this._preferredHubEntryId)) {
@@ -2122,8 +3173,8 @@ var ControlPanelStore = class {
     }
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: hubs[0].entry_id };
+      this.persistViewState();
     }
-    this.persistViewState();
   }
   api() {
     if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
@@ -2140,7 +3191,7 @@ var ControlPanelStore = class {
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
           selectedBackupSection: this._snapshot.selectedBackupSection,
-          selectedBlobsSection: this._snapshot.selectedBlobsSection
+          selectedWifiSection: this._snapshot.selectedWifiSection
         })
       );
     } catch (_error) {
@@ -2148,10 +3199,21 @@ var ControlPanelStore = class {
   }
   _isHubCommandBusy() {
     const hub = selectedHub(this._snapshot);
+    const entryId = hub?.entry_id ?? null;
     const activeBackupOperation = hub?.active_backup_operation;
     const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
-      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey || backupBusy
+      entryId && entryId in this._snapshot.refreshBusyByHub || entryId && entryId in this._snapshot.externalHubCommandByHub || this._snapshot.pendingActionKey || backupBusy
+    );
+  }
+  /** Busy on ANY hub — used to suppress the stale-data banner while one of
+   * our own operations is bumping cache generations in the background. */
+  _isAnyHubCommandBusy() {
+    const backupBusy = (this._snapshot.state?.hubs ?? []).some(
+      (hub) => !!hub.active_backup_operation && ["pending", "running"].includes(String(hub.active_backup_operation.status || ""))
+    );
+    return Boolean(
+      Object.keys(this._snapshot.refreshBusyByHub).length || Object.keys(this._snapshot.externalHubCommandByHub).length || this._snapshot.pendingActionKey || backupBusy
     );
   }
   async _syncBackupOperationFeed() {
@@ -2281,6 +3343,71 @@ var ControlPanelStore = class {
     const unsub = this._wifiPressUnsub;
     this._wifiPressUnsub = null;
     this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: null };
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
+  }
+  async _syncHubEventsFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownHubEventsFeed();
+      return;
+    }
+    if (this._snapshot.hubEventsSubscribedEntryId === entryId && this._hubEventsUnsub) {
+      return;
+    }
+    await this._teardownHubEventsFeed();
+    const subscribeSeq = ++this._hubEventsSubscribeSeq;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: entryId };
+    try {
+      const unsubscribe = await this.api().subscribeHubEvents(entryId, (payload) => {
+        if (subscribeSeq !== this._hubEventsSubscribeSeq) return;
+        if (this._snapshot.hubEventsSubscribedEntryId !== entryId) return;
+        this._handleHubEventMessage(entryId, payload);
+      });
+      if (subscribeSeq !== this._hubEventsSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+        return;
+      }
+      this._hubEventsUnsub = unsubscribe;
+    } catch {
+      if (subscribeSeq === this._hubEventsSubscribeSeq) {
+        this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
+      }
+    }
+  }
+  _handleHubEventMessage(entryId, payload) {
+    const message = payload && typeof payload === "object" ? payload : null;
+    if (!message) return;
+    const timestamp = Number(message.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+    const type = message.type === "redundant_off" ? "redundant_off" : message.type === "activity_change" ? "activity_change" : null;
+    if (!type) return;
+    const activityId = (value) => typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null;
+    const event = {
+      entryId,
+      type,
+      fromActivityId: activityId(message.from_activity_id),
+      toActivityId: activityId(message.to_activity_id),
+      timestamp,
+      // Same split as wifi presses: the server timestamp is identity, the
+      // local receipt time drives the glow animation epoch.
+      receivedAt: Date.now()
+    };
+    this._snapshot = { ...this._snapshot, lastHubEvent: event };
+    this.emit();
+  }
+  async _teardownHubEventsFeed() {
+    this._hubEventsSubscribeSeq++;
+    const unsub = this._hubEventsUnsub;
+    this._hubEventsUnsub = null;
+    this._snapshot = { ...this._snapshot, hubEventsSubscribedEntryId: null };
     if (!unsub) return;
     try {
       await unsub();
@@ -2434,7 +3561,8 @@ test("loadState restores the most recent hub and tab from local storage", async 
     VIEW_STATE_STORAGE_KEY2,
     JSON.stringify({
       selectedHubEntryId: "hub-2",
-      selectedTab: "blobs"
+      selectedTab: "backup",
+      selectedWifiSection: "hub_events"
     })
   );
   const store = new ControlPanelStore(() => void 0, {
@@ -2468,7 +3596,8 @@ test("loadState restores the most recent hub and tab from local storage", async 
   );
   await store.loadState();
   assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
-  assert.equal(store.snapshot.selectedTab, "blobs");
+  assert.equal(store.snapshot.selectedTab, "backup");
+  assert.equal(store.snapshot.selectedWifiSection, "hub_events");
 });
 test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
   globalThis.localStorage?.setItem(
@@ -2527,10 +3656,10 @@ test("selectHub and selectTab persist the updated view state", async () => {
       selectedTab: "wifi_commands",
       // Keys renamed from open* to selected* in the tools-card refactor; the
       // store now persists the active per-tab section under selectedCacheSection
-      // (cache panel), selectedBackupSection, selectedBlobsSection.
+      // (cache panel) and selectedBackupSection.
       selectedCacheSection: "activities",
       selectedBackupSection: "make",
-      selectedBlobsSection: "fetch"
+      selectedWifiSection: "wifi"
     }
   );
 });
@@ -2603,6 +3732,122 @@ test("setSetting applies optimistic state and rolls back on failure", async () =
   await pending;
   assert.equal(store.snapshot.pendingSettingKey, null);
   assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
+});
+test("setHubClickAction applies optimistic state and rolls back on failure", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/set_setting": () => {
+          throw new Error("backend failed");
+        }
+      }
+    })
+  );
+  await store.loadState();
+  const pending = store.setHubClickAction("send");
+  assert.equal(store.snapshot.pendingSettingKey, "hub_click_action");
+  assert.equal(store.snapshot.state?.hub_click_action, "send");
+  await pending;
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.hub_click_action, "none");
+});
+test("setHubClickAction persists the value through set_setting", async () => {
+  const { store } = createStore();
+  const messages = [];
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/set_setting": (message) => {
+          messages.push(message);
+          return { ok: true, value: message.value };
+        }
+      }
+    })
+  );
+  await store.loadState();
+  await store.setHubClickAction("copy");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].setting, "hub_click_action");
+  assert.equal(messages[0].value, "copy");
+  assert.equal(messages[0].entry_id, "hub-1");
+});
+test("sendHubClickCommand sends via the hub's remote entity and pulses the dock", async () => {
+  const { store } = createStore();
+  const calls = [];
+  const hass = createHass({
+    states: {
+      "remote.living_room": {
+        state: "on",
+        attributes: { entry_id: "hub-1", proxy_client_connected: false }
+      }
+    }
+  });
+  hass.callService = async (domain, service, data) => {
+    calls.push({ domain, service, data });
+    return void 0;
+  };
+  store.connected();
+  store.setHass(hass);
+  await store.loadState();
+  await store.sendHubClickCommand({
+    kind: "command",
+    label: "Power Toggle",
+    contextLabel: "Television",
+    targetId: 1,
+    commandId: 10
+  });
+  assert.deepEqual(calls, [
+    {
+      domain: "remote",
+      service: "send_command",
+      data: { entity_id: "remote.living_room", command: 10, device: 1 }
+    }
+  ]);
+  assert.equal(store.snapshot.lastCommandSend?.entryId, "hub-1");
+  assert.equal(store.snapshot.lastCommandSend?.commandLabel, "Power Toggle");
+  assert.equal(store.snapshot.lastCommandSend?.contextLabel, "Television");
+});
+test("copyHubClickCommand creates a persistent notification with the command YAML", async () => {
+  const { store } = createStore();
+  const calls = [];
+  const hass = createHass({
+    states: {
+      "remote.living_room": {
+        state: "on",
+        attributes: { entry_id: "hub-1", proxy_client_connected: false }
+      }
+    }
+  });
+  hass.callService = async (domain, service, data) => {
+    calls.push({ domain, service, data });
+    return void 0;
+  };
+  store.connected();
+  store.setHass(hass);
+  await store.loadState();
+  await store.copyHubClickCommand({
+    kind: "favorite",
+    label: "Power",
+    contextLabel: "Watch TV",
+    targetId: 1,
+    commandId: 10
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].domain, "persistent_notification");
+  assert.equal(calls[0].service, "create");
+  const message = String(calls[0].data?.message ?? "");
+  assert.match(message, /Activity: Watch TV \| Favorite: Power/);
+  assert.match(message, /action: remote\.send_command/);
+  assert.match(message, /entity_id: remote\.living_room/);
+  assert.match(message, /command: 10/);
+  assert.match(message, /device: 1/);
+  assert.equal(
+    store.snapshot.runtimeCompletionNoticeByHub["hub-1"]?.tone,
+    "success"
+  );
 });
 test("setHass marks cache as stale when generation changes outside refresh grace", async () => {
   const { store } = createStore();
@@ -2682,6 +3927,50 @@ test("refreshForHub uses entity_id when a matching remote entity exists", async 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].entity_id, "remote.living_room");
   assert.equal(messages[0].entry_id, void 0);
+});
+test("busy state and completion notices stay scoped to the hub they ran on", async () => {
+  const { store } = createStore();
+  const twoHubState = {
+    ...baseState,
+    hubs: [
+      baseState.hubs[0],
+      { ...baseState.hubs[0], entry_id: "hub-2", name: "Bedroom" }
+    ]
+  };
+  let progressCallback = null;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => twoHubState,
+        "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "op-1" })
+      },
+      subscribe: async (callback, message) => {
+        if (String(message.type) === "sofabaton_x1s/backup/progress_subscribe") {
+          progressCallback = callback;
+        }
+        return () => {
+        };
+      }
+    })
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+  const refreshPromise = store.refreshAllForHub();
+  await flush();
+  await flush();
+  assert.ok("hub-1" in store.snapshot.refreshBusyByHub);
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "notice");
+  store.selectHub("hub-2");
+  await flush();
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+  progressCallback?.({ status: "success" });
+  await refreshPromise;
+  assert.deepEqual(store.snapshot.refreshBusyByHub, {});
+  assert.ok(store.snapshot.runtimeCompletionNoticeByHub["hub-1"]);
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+  store.selectHub("hub-1");
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "completion");
 });
 test("deviceClassIcon maps known cache device classes to the expected icons", () => {
   assert.equal(deviceClassIcon("ir"), "mdi:remote");

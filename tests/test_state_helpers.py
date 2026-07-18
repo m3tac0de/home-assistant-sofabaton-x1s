@@ -37,6 +37,46 @@ def test_burst_scheduler_drains_queue_and_notifies() -> None:
     assert notifications == ["foo"]
 
 
+def test_burst_scheduler_tick_never_drains_exchange_pseudo_burst() -> None:
+    """An ``exchange:`` pseudo-burst is exempt from the idle tick.
+
+    Only ``X1Proxy.exchange()``'s ``finally`` block may finish a
+    pseudo-burst; if the tick force-drained it, queued reads would fire
+    into the middle of a blocking request/response exchange and be
+    silently dropped by the hub.
+    """
+
+    sent: list[tuple[int, bytes]] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    scheduler.start("exchange:test", now=0.0)
+    scheduler.queue_or_send(
+        opcode=2,
+        payload=b"b",
+        expects_burst=False,
+        burst_kind=None,
+        can_issue=lambda: True,
+        sender=lambda op, payload: sent.append((op, payload)),
+        now=0.0,
+    )
+
+    # Far beyond any idle window: the pseudo-burst must survive.
+    scheduler.tick(1e9, can_issue=lambda: True, sender=lambda op, payload: sent.append((op, payload)))
+
+    assert scheduler.active is True
+    assert scheduler.kind == "exchange:test"
+    assert sent == []
+
+    # finish() (what exchange()'s finally does) still drains normally.
+    assert scheduler.finish(
+        "exchange:test",
+        can_issue=lambda: True,
+        sender=lambda op, payload: sent.append((op, payload)),
+        now=1e9,
+    )
+    assert sent == [(2, b"b")]
+    assert scheduler.active is False
+
+
 def test_burst_scheduler_can_finish_matching_burst_early() -> None:
     sent: list[tuple[int, bytes]] = []
     notifications: list[str] = []

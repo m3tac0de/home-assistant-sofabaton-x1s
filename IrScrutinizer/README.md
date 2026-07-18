@@ -1,23 +1,23 @@
-# IrScrutinizer Exporters For Sofabaton Blobs
+# IrScrutinizer Exporters For Sofabaton Command Payloads
 
 This directory contains custom IrScrutinizer export formats for generating
-blob-ready output for the Sofabaton Home Assistant integration.
+payload-ready output for the Sofabaton Home Assistant integration.
 
 These exporters are intended to bridge two worlds:
 
 - IrScrutinizer, which can import, decode, analyze, and render IR signals from local, physical or online sources
-- the Sofabaton integration's **Blobs** workflow, where users test and save IR
-  command payloads to the hub
+- the Sofabaton integration's **command payload** workflow, where users test
+  and save IR command payloads to the hub
 
-If you are new to blobs, read [../docs/blobs.md](../docs/blobs.md)
-first.
+If you are new to command payloads, read
+[../docs/command_payloads.md](../docs/command_payloads.md) first.
 
-With these exporters users convert IR signals into Sofabaton hub-compatible Blobs.
+With these exporters users convert IR signals into Sofabaton hub-compatible command payloads.
 
 ## Files in this directory
 
 - [sofabaton-x.xml](sofabaton-x.xml)
-  exports the raw timing-style Sofabaton IR blob used by all X-series hubs.
+  exports the raw timing-style Sofabaton IR payload used by all X-series hubs.
 - [sofabaton-x2.xml](sofabaton-x2.xml)
   exports the X2's descriptive ASCII form, such as
   `P:Sony12 R:40000 D:1 F:18 MUL:2`.
@@ -27,19 +27,19 @@ With these exporters users convert IR signals into Sofabaton hub-compatible Blob
 
 ## Limitations
 
-There are 2 ways that a Sofabaton hub stores IR Blobs:
+There are 2 ways that a Sofabaton hub stores IR command payloads:
 
 - The **raw IR format** describes the signal by its actual transmitted timings: carrier frequency plus the sequence of mark/space durations. It is a low-level recording of what the hub should send. The **raw IR format** is supported on **all hubs**.
 - The **descriptive format** describes the same signal by its decoded protocol and parameter values, like `P:Sony12 R:40000 D:1 F:18 MUL:2`. It is a higher-level, human-readable representation of what the signal means. The **descriptive format** is supported on the **X2 hub only**.
 
-Both types of Blob appear to require an IR Protocol identifier. In the descriptive format that is very obvious, and making a mistake there will render the Blob useless.  
+Both payload types appear to require an IR Protocol identifier. In the descriptive format that is very obvious, and making a mistake there will render the payload useless.  
 In the raw format there also appears to be a Protocol identifier. For this the hub doesn't seem to care which one is used, as long as it's a valid one. This would make sense, as the raw format is by its very nature protocol agnostic. It's very possible that the protocol identifier is just there as metadata.
 What that means for these exporters:
 
 - The raw format exporter uses a hardcoded identifier. This has been observed to work across a range of different devices and protocols. If it turns out that some commands do not work the exporter will have to be extended. If you're interested, open an exporter in a text editor.
 - The descriptive exporter implements a mapping between Protocol naming conventions of the Sofabaton hub and those used in IrScrutinizer, and generates checksums when required. This mapping is incomplete! A fair amount of protocols have been mapped, but certainly this is not exhaustive.
 
-All known IR commands can be converted into Sofabaton compatible Blobs, it is a matter of mapping protocol labels.
+All known IR commands can be converted into Sofabaton compatible payloads, it is a matter of mapping protocol labels.
 
 ## Installation
 
@@ -59,8 +59,8 @@ All known IR commands can be converted into Sofabaton compatible Blobs, it is a 
 
 ### `Sofabaton X-series`
 
-This exporter emits a single raw Sofabaton IR blob as a hex string with spaces
-between bytes.
+This exporter emits a single raw Sofabaton IR payload as a hex string with
+spaces between bytes.
 
 The current implementation:
 
@@ -77,7 +77,7 @@ This format is intended for:
 
 ### `Sofabaton X2`
 
-This exporter emits the X2's descriptive ASCII blob form, for example:
+This exporter emits the X2's descriptive ASCII payload form, for example:
 
 ```text
 P:Sony12 R:40000 D:1 F:18 MUL:2
@@ -89,7 +89,7 @@ This format is intended for:
 
 ## Example workflow
 
-This is the practical path that leads to a usable blob in Home Assistant.
+This is the practical path that leads to a usable command payload in Home Assistant.
 
 In the **Export** tab, select the X-series exporter.  
 <img src="screenshots/image-6.png" alt="screenshot" width="450"/>
@@ -110,8 +110,8 @@ Find the command you intend to export, right-click it and select **Scrutinize Se
 Now go to the **Scrutinize signal** tab. And click **Export**.  
 <img src="screenshots/image-4.png" alt="screenshot" width="450"/>
 
-The exported file is saved in the directory configured in the Export tab. Open it in Notepad to see the Blob.  
+The exported file is saved in the directory configured in the Export tab. Open it in Notepad to see the payload.  
 <img src="screenshots/image-5.png" alt="screenshot" width="450"/>
 
-Copy the Blob to Control Panel card -> Blobs -> Test. Click the **Test** button.  
+Copy the payload into the Control Panel card -> Hub tab -> Edit device -> command payload editor. Click the **Test** button.  
 <img src="screenshots/image-7.png" alt="screenshot" width="450"/>

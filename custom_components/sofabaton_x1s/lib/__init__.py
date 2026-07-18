@@ -76,6 +76,25 @@ from .device_create import (  # noqa: F401
 # Step/ack result types surfaced by proxy operations.
 from .ack import AckOutcome, InputsBurstResult, SendStepResult  # noqa: F401
 
+# Live-edit sync planners (pure diff → write plan; the executor lives on
+# the proxy as sync_activity/sync_device). Exposed so consumers can
+# preview exactly what a sync would write before committing.
+from .activity_sync import (  # noqa: F401
+    SyncStep,
+    build_activity_sync_plan,
+    build_device_sync_plan,
+)
+from .wifi_inplace_plan import (  # noqa: F401
+    ManagedWifiSnapshot,
+    WifiActivityRefs,
+    WifiCommandSlot,
+    WifiInplacePlan,
+    baseline_snapshot_from_bundle,
+    build_wifi_inplace_plan,
+    derive_device_level_bindings,
+    desired_snapshot_from_config,
+)
+
 # Asyncio facade over the threaded core.
 from .aio import AsyncHubBrowser, AsyncXProxy, async_discover_hubs  # noqa: F401
 
@@ -128,6 +147,19 @@ _CURATED = [
     "AckOutcome",
     "InputsBurstResult",
     "SendStepResult",
+    # live-edit sync planners
+    "SyncStep",
+    "build_activity_sync_plan",
+    "build_device_sync_plan",
+    # in-place wifi command re-sync planner
+    "ManagedWifiSnapshot",
+    "WifiActivityRefs",
+    "WifiCommandSlot",
+    "WifiInplacePlan",
+    "baseline_snapshot_from_bundle",
+    "build_wifi_inplace_plan",
+    "derive_device_level_bindings",
+    "desired_snapshot_from_config",
     # asyncio facade
     "AsyncHubBrowser",
     "AsyncXProxy",

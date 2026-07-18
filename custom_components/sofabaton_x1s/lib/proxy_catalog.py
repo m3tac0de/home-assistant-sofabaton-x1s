@@ -380,7 +380,13 @@ class CatalogMixin:
         if expected == 0:
             return True
         if expected is None:
-            return len(self._activity_pending_rows) == 0
+            # No row ever arrived and no explicit empty-catalog ack: the
+            # request was dropped or unanswered (the hub answers a truly
+            # empty catalog with STATUS_ACK 0x07, which sets expected=0).
+            # Treating silence as "empty" committed a wiped snapshot when
+            # a queued catalog retry fired mid write-sequence (live-bench
+            # finding, backup/restore chunk 2).
+            return False
         if expected < 0:
             return False
         seen = set(self._activity_pending_rows.keys())
@@ -391,7 +397,9 @@ class CatalogMixin:
         if expected == 0:
             return True
         if expected is None:
-            return len(self._device_pending_rows) == 0
+            # See _activity_snapshot_complete: silence is a dropped
+            # request, not an empty catalog.
+            return False
         if expected < 0:
             return False
         seen = set(self._device_pending_rows.keys())
@@ -435,6 +443,18 @@ class CatalogMixin:
         if ack_status != 0x07:
             return False
 
+        active_kind = self._burst.kind if self._burst.active else None
+        if active_kind is not None and active_kind.startswith("exchange:"):
+            # An exchange holds the wire: fire-and-forget catalog reads are
+            # queued behind it, not in flight, so this 0x07 answers the
+            # exchange's own request (e.g. an empty favorites-order or
+            # macro table) — never an empty-catalog reply. Claiming it here
+            # committed a bogus rows=0 snapshot and finished the wrong
+            # burst (observed live: X1 stress bench 2026-07-18, the wire
+            # was released while the hub streamed rows and the next
+            # exchange's send was silently dropped).
+            return False
+
         if self._activity_request_inflight is not None and not self._activity_pending_rows:
             if self._activity_pending_generation != self._activity_request_inflight:
                 self._reset_pending_activity_snapshot(self._activity_request_inflight)
@@ -459,6 +479,39 @@ class CatalogMixin:
             )
             if finished:
                 self._log.info("[DEV] STATUS_ACK 0x07 indicates an empty devices catalog; finishing burst")
+            return finished
+
+        # Per-entity read bursts (macros, buttons, commands, activity_map)
+        # get the same "table is empty / not configured" answer: a bare
+        # STATUS_ACK 0x07 and no row burst. Finish the active burst now so
+        # its burst-end bookkeeping (pending-request discard, completion
+        # marking) runs immediately instead of after the scheduler's 5s
+        # response grace — a macro-less device otherwise stalls a whole-hub
+        # cache refresh ~5s per entity.
+        kind = self._burst.kind if self._burst.active else None
+        if kind and kind.split(":", 1)[0] in (
+            "macros",
+            "buttons",
+            "commands",
+            "activity_map",
+        ):
+            finished = self._burst.finish(
+                kind,
+                can_issue=self.can_issue_commands,
+                sender=self._send_cmd_frame,
+            )
+            if finished:
+                base, _, ent = kind.partition(":")
+                if base == "buttons" and ent.isdigit():
+                    # An empty keymap is a definitive answer: record the
+                    # entity so ``ent_lo in state.buttons`` (the fetch/
+                    # completeness predicate) treats it as fetched instead
+                    # of waiting out the timeout and reporting incomplete.
+                    self.state.buttons.setdefault(int(ent) & 0xFF, set())
+                self._log.info(
+                    "[CATALOG] STATUS_ACK 0x07 indicates an empty %s reply; finishing burst",
+                    kind,
+                )
             return finished
 
         return False
@@ -888,6 +941,7 @@ class CatalogMixin:
             self.state.activity_macros.pop(ent_lo, None)
             self._macros_complete.discard(ent_lo)
             self._pending_macro_requests.discard(ent_lo)
+            self.drop_cached_macro_records(ent_lo)
 
     def _clear_favorite_label_requests_for_activity(self, act_lo: int) -> None:
         to_delete: list[tuple[int, int]] = []

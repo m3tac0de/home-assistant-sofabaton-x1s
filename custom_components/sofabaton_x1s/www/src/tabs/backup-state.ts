@@ -154,7 +154,7 @@ export const DECODED_CLASS_FORM_SPECS: Record<DecodableCommandClass, DecodedForm
   },
   ir: {
     title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR blobs are not editable here.",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR payloads are not editable here.",
     fields: [
       {
         key: "descriptor",
@@ -265,6 +265,119 @@ export function updateCommandDecodedFields(
               },
             },
           };
+        }),
+      };
+    }),
+  };
+}
+
+/**
+ * Read a command's raw wire payload (`restore_data.data_hex`) for the
+ * payload editor. Returns `null` when the command carries no captured
+ * payload — structural bundles, or classes whose export produces neither
+ * restore shape. The string keeps the bundle's own formatting
+ * (space-separated lowercase byte pairs).
+ */
+export function commandRawPayloadHex(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+  commandId: number,
+): string | null {
+  if (!bundle) return null;
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId),
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === Number(commandId),
+  );
+  if (!command) return null;
+  const restoreData = (command as { restore_data?: unknown }).restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const dataHex = String((restoreData as Record<string, unknown>).data_hex ?? "").trim();
+  return dataHex || null;
+}
+
+/**
+ * Normalize user-entered payload hex to the bundle's canonical form
+ * (space-separated lowercase byte pairs, the shape `bytes.hex(" ")`
+ * produced on capture). Tolerates `0x` prefixes, commas, and arbitrary
+ * whitespace. Returns `null` when the input is not plausible hex
+ * (empty, odd digit count, or non-hex characters).
+ */
+export function normalizeCommandPayloadHex(raw: string): string | null {
+  const cleaned = String(raw ?? "").replace(/0x/gi, "").replace(/[\s,]+/g, "");
+  if (!cleaned || cleaned.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) {
+    return null;
+  }
+  return (cleaned.toLowerCase().match(/.{2}/g) ?? []).join(" ");
+}
+
+/**
+ * Replace a command's raw payload (`restore_data.data_hex`) verbatim.
+ * Any `decoded` block is dropped in the same write: its structured
+ * fields no longer describe the new bytes, and leaving it (or its
+ * `edited` flag) in place would make the restore path re-encode stale
+ * fields instead of replaying the user's hex.
+ *
+ * No-op when the command has no `restore_data` to edit.
+ */
+export function updateCommandRawPayload(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+  dataHex: string,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          const restoreData = (command as { restore_data?: unknown }).restore_data;
+          if (!restoreData || typeof restoreData !== "object") return command;
+          const { decoded: _stale, ...rest } = restoreData as Record<string, unknown>;
+          return {
+            ...command,
+            restore_data: { ...rest, data_hex: dataHex },
+          };
+        }),
+      };
+    }),
+  };
+}
+
+/**
+ * Set (replace) a command's entire `restore_data` block.
+ *
+ * Used by the *live* device editor: the structural cache bundle carries no
+ * command payloads, so editing one fetches the blob on demand and writes a
+ * fully-built `restore_data` here in one shot — including the `edited`
+ * marker the device-sync planner keys on. (Backup mode instead mutates an
+ * already-present block via `updateCommandRawPayload` /
+ * `updateCommandDecodedFields`.) No-op when the device or command is absent.
+ */
+export function setCommandRestoreData(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+  restoreData: Record<string, unknown>,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, restore_data: restoreData };
         }),
       };
     }),
@@ -492,6 +605,14 @@ export function validateBackupBundle(raw: unknown): BackupBundlePayload {
       `Backup file schema_version must be ${BACKUP_BUNDLE_SCHEMA_VERSION} (got ${String(bundle.schema_version || "") || "unknown"}).`,
     );
   }
+  // A missing payload_profile means a legacy full backup; an explicitly
+  // structural bundle is the blob-free cache shape and can't be restored.
+  const profile = String(bundle.payload_profile || "full_backup");
+  if (profile !== "full_backup") {
+    throw new Error(
+      "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
+    );
+  }
   if (!Array.isArray(bundle.devices) || !Array.isArray(bundle.activities)) {
     throw new Error("Backup file is missing devices or activities arrays.");
   }
@@ -582,10 +703,7 @@ function updateDeviceCommandLabel(
       };
     }),
   };
-  // HA-action callbacks carry the command name inside the callback URL;
-  // a rename must re-render the stored request or the hub keeps firing
-  // the old name.
-  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
+  return next;
 }
 
 function commandLabelFor(bundle: BackupBundlePayload, deviceId: number, commandId: number) {
@@ -646,7 +764,27 @@ export function activityQuickAccessItems(
       commandId: Number(row?.command_id || 0) || undefined,
     });
   }
-  return items.sort((left, right) => left.buttonId - right.buttonId);
+  // Order by the hub's family-0x61 slot table (favorites_order) when present:
+  // favorites and macro shortcuts share one fav-id namespace and are shown in
+  // slot order, which a reorder rewrites WITHOUT renumbering button_ids — so
+  // button_id order alone can't reflect a reorder. An entry whose button_id is
+  // absent from favorites_order ranks after every listed one (a freshly-added
+  // shortcut appends at the tail). Absent/empty → pure button_id order, the
+  // legacy behaviour for older bundles and the device path.
+  const order = activity.favorites_order ?? [];
+  const rankById = new Map<number, number>();
+  order.forEach((favId, index) => {
+    const bid = Number(favId) & 0xFF;
+    if (!rankById.has(bid)) rankById.set(bid, index);
+  });
+  const rankOf = (buttonId: number): number => {
+    const bid = Number(buttonId) & 0xFF;
+    return rankById.has(bid) ? (rankById.get(bid) as number) : rankById.size + bid;
+  };
+  return items.sort((left, right) => {
+    const delta = rankOf(left.buttonId) - rankOf(right.buttonId);
+    return delta !== 0 ? delta : left.buttonId - right.buttonId;
+  });
 }
 
 export function renameBundleActivityMacro(
@@ -728,6 +866,34 @@ export function bundleDeviceClass(
   );
   if (!device) return null;
   return String(device.device?.device_class ?? "").trim().toLowerCase() || null;
+}
+
+/**
+ * Read a device's `brand` from the bundle's device head. A managed Wifi
+ * Commands device carries an `m3-<key>-<hash>` (or legacy `m3tac0de-…`)
+ * brand; the live editor uses this to lock managed devices to read-only.
+ */
+export function bundleDeviceBrand(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): string {
+  if (!bundle) return "";
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+  );
+  return String(device?.device?.brand ?? "").trim();
+}
+
+/** True when a brand string identifies a managed Wifi Commands device. */
+export function isManagedWifiBrand(brand: string): boolean {
+  const text = String(brand ?? "").trim();
+  // Mirrors hub._parse_managed_wifi_brand: `m3-<key>-<hash>` / `m3tac0de-…`
+  // with a non-empty suffix after the prefix.
+  for (const prefix of ["m3-", "m3tac0de-"]) {
+    if (text.startsWith(prefix) && text.slice(prefix.length).trim()) return true;
+  }
+  return false;
 }
 
 /**
@@ -849,6 +1015,75 @@ export function renameBundleDeviceCommand(
 }
 
 /**
+ * The next free command id on a Device (lowest unused id >= 1, capped at
+ * 0xFF like the hub's one-byte command-id space). Returns `null` when the
+ * device is absent or its id space is exhausted.
+ */
+export function nextFreeDeviceCommandId(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): number | null {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+  );
+  if (!device) return null;
+  const used = new Set(
+    (device.commands ?? []).map((command) => Number(command?.command_id || 0)),
+  );
+  for (let candidate = 1; candidate <= 0xff; candidate += 1) {
+    if (!used.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Append a brand-new command row to a Device.
+ *
+ * Live-editor path: the row carries a provisional `command_id` (allocated
+ * against the bundle via `nextFreeDeviceCommandId`) and a fully-built
+ * `restore_data` block whose `new: true` marker tells the device-sync
+ * planner to emit a `command_add` step (a fresh family-0x0E record write)
+ * instead of an in-place overwrite. No-op when the device is absent or the
+ * id is already taken (the caller allocated stale).
+ */
+export function addBundleDeviceCommand(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+  name: string,
+  restoreData: Record<string, unknown>,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  if (normalizedCommandId < 1 || normalizedCommandId > 0xff) return bundle;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      const commands = device.commands ?? [];
+      const taken = commands.some(
+        (command) => Number(command?.command_id || 0) === normalizedCommandId,
+      );
+      if (taken) return device;
+      return {
+        ...device,
+        commands: [
+          ...commands,
+          {
+            command_id: normalizedCommandId,
+            name: trimmed || `Command ${normalizedCommandId}`,
+            restore_data: { ...restoreData, new: true },
+          },
+        ],
+      };
+    }),
+  };
+}
+
+/**
  * Rewrite the per-record `sort` byte on every Activity in `orderedActivityIds`
  * to match the new ordering (1-based, ascending). Activities not in the list
  * keep their existing sort value, so we never silently renumber records the
@@ -913,11 +1148,17 @@ export function reorderBundleActivityQuickAccess(
   );
   const macroRows: BackupBundleMacroRow[] = [];
   const favoriteRows: BackupBundleFavoriteSlot[] = [];
+  const macroIdRemap = new Map<number, number>();
   orderedItems.forEach((item, index) => {
     const nextButtonId = index + 1;
     if (item.kind === "macro") {
       const row = macrosByButtonId.get(Number(item.buttonId));
-      if (row) macroRows.push({ ...row, button_id: nextButtonId });
+      if (row) {
+        macroRows.push({ ...row, button_id: nextButtonId });
+        if (Number(item.buttonId) !== nextButtonId) {
+          macroIdRemap.set(Number(item.buttonId), nextButtonId);
+        }
+      }
       return;
     }
     const row = favoritesByButtonId.get(Number(item.buttonId));
@@ -938,7 +1179,53 @@ export function reorderBundleActivityQuickAccess(
     ...current,
     macros: macroRows,
     favorite_slots: favoriteRows,
+    // Keep favorites_order in step with the new positional button_ids. The
+    // reordered items are renumbered 1..N in display order, so the slot table
+    // is exactly [1..N]; leaving the stale baseline order here would make
+    // activityQuickAccessItems (and the sync planner) re-derive the OLD order.
+    favorites_order: orderedItems.map((_item, index) => index + 1),
+    // Macro-target bindings reference a macro by its button_id (with
+    // device_id = the activity's own id). Renumbering the macros without
+    // following those references would leave the bundle internally
+    // inconsistent — a later reorder, or the sync planner, would resolve
+    // them against the wrong macro.
+    button_bindings: remapMacroTargetBindings(
+      current.button_bindings,
+      normalizedActivityId,
+      macroIdRemap,
+    ),
   }));
+}
+
+/** Rewrite macro-target binding references through `macroIdRemap`
+ * (old macro button_id → new). Rows that don't reference a renumbered
+ * macro pass through unchanged (same array if nothing changed). */
+function remapMacroTargetBindings(
+  bindings: BackupBundleButtonBinding[] | null | undefined,
+  activityId: number,
+  macroIdRemap: Map<number, number>,
+): BackupBundleButtonBinding[] | null | undefined {
+  if (!bindings || macroIdRemap.size === 0) return bindings;
+  let changed = false;
+  const next = bindings.map((row) => {
+    let updated = row;
+    if (Number(row?.device_id || 0) === activityId && macroIdRemap.has(Number(row?.command_id || 0))) {
+      updated = { ...updated, command_id: macroIdRemap.get(Number(row?.command_id || 0)) };
+      changed = true;
+    }
+    if (
+      Number(updated?.long_press_device_id || 0) === activityId
+      && macroIdRemap.has(Number(updated?.long_press_command_id || 0))
+    ) {
+      updated = {
+        ...(updated === row ? { ...row } : updated),
+        long_press_command_id: macroIdRemap.get(Number(updated?.long_press_command_id || 0)),
+      };
+      changed = true;
+    }
+    return updated;
+  });
+  return changed ? next : bindings;
 }
 
 /**
@@ -969,6 +1256,8 @@ export interface BackupDeleteImpact {
   favorites: number;
   /** macro steps that will be removed as a side effect. */
   macroSteps: number;
+  /** steps removed from the owning device's power on/off sequences. */
+  powerSteps: number;
   /** activities whose referenced_source_device_ids point at the device. */
   activities: number;
   /** button bindings removed, or whose long-press is cleared, as a side effect. */
@@ -981,6 +1270,13 @@ function stepMatchesDevice(step: BackupBundleMacroStep, deviceId: number): boole
 
 function stepMatchesCommand(step: BackupBundleMacroStep, deviceId: number, commandId: number): boolean {
   return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
+}
+
+// A DEVICE macro step carries no device_id (the owning device is implicit),
+// so command-delete matching goes by command_id alone — guarded against the
+// 0xFF delay sentinel, which shares that slot.
+function deviceMacroStepMatchesCommand(step: BackupBundleMacroStep, commandId: number): boolean {
+  return !isMacroDelayStep(step) && Number(step?.command_id || 0) === commandId;
 }
 
 // A pure wait/delay macro step uses 0xFF (255) as a sentinel in its
@@ -1126,7 +1422,7 @@ export function bundleDeleteImpact(
   bundle: BackupBundlePayload | null,
   target: BackupDeleteTarget,
 ): BackupDeleteImpact {
-  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -1149,7 +1445,7 @@ export function bundleDeleteImpact(
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId),
       );
     }
-    return { favorites, macroSteps, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -1177,7 +1473,16 @@ export function bundleDeleteImpact(
       device?.button_bindings,
       (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true),
     );
-    return { favorites, macroSteps, activities: 0, bindings };
+    // Steps in the owning device's own macros that play this command. The
+    // power on/off sequences (198/199) get their own count so the dialog
+    // can name them; device user macros fold into the generic step count.
+    let powerSteps = 0;
+    for (const macro of device?.macros ?? []) {
+      const removed = countRemovedMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, commandId));
+      if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
+      else macroSteps += removed;
+    }
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
@@ -1187,7 +1492,8 @@ export function bundleDeleteImpact(
 
 /** True when at least one reference will be cleared as a side effect. */
 export function backupDeleteHasCascade(impact: BackupDeleteImpact): boolean {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0
+    || impact.activities > 0 || impact.bindings > 0;
 }
 
 /** Remove a top-level Activity. Activities are referenced by nothing else. */
@@ -1260,6 +1566,13 @@ export function deleteBundleDeviceCommand(
           device.button_bindings,
           (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true),
         ),
+        // The device's own macros (power on/off sequences and user macros)
+        // reference commands by id — prune those steps too, or the bundle
+        // keeps dangling references sync validation rejects.
+        macros: (device.macros ?? []).map((macro) => ({
+          ...macro,
+          steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId)),
+        })),
       };
     }),
     activities: (bundle.activities ?? []).map((activity) => ({
@@ -1277,7 +1590,7 @@ export function deleteBundleDeviceCommand(
       ),
     })),
   };
-  return reconcileBundlePowerMacros(next);
+  return reconcileBundleMembershipChange(bundle, next);
 }
 
 /**
@@ -1313,7 +1626,7 @@ export function deleteBundleActivityQuickAccess(
       ),
     };
   });
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 /**
@@ -1402,9 +1715,9 @@ export function applyBundleDelete(
 //     {D, command_id 0xC7}  → play D's power-off        (button_code 0)
 //     delay row             → 0
 //
-// Membership = devices referenced by the Activity's favorites, button
-// bindings (incl. long-press targets), and user-macro steps. Devices are
-// added when first referenced and removed when their last reference goes.
+// Membership = devices already represented in either Activity power macro,
+// plus devices referenced by favorites, button bindings (incl. long-press),
+// and user-macro steps. Devices stay members until explicitly removed.
 // button_code is forced to 0 for 0xC5/0xC6/0xC7 (mirrors macros.py:471);
 // delay/wait rows use device_id/command_id 0xFF with the pause in `delay`.
 const POWER_ON_MACRO_BUTTON_ID = 198;
@@ -1414,15 +1727,15 @@ const DEVICE_POWER_OFF_REF_COMMAND = 0xC7;
 const DEVICE_INPUT_REF_COMMAND = 0xC5;
 const POWER_MACRO_DELAY_BUTTON_CODE = 0xFFFFFFFFFFFF;
 // Default `delay` byte for a freshly-added power step. Real exports carry
-// 0xFF here (firmware "use default timing"); every power step carries its
-// own delay byte — power macros do NOT use separate wait rows. Power steps
-// for one device are a flat, possibly-interleaved list:
+// 0xFF here (firmware "use default timing"); user-visible waits are modeled
+// as separate trailing delay rows that stay attached to the row they follow.
+// Power steps for one device are a flat, possibly-interleaved list:
 //   {device_id D, command_id 0xC6}  → play D's power-on
 //   {device_id D, command_id 0xC5, duration=input ordinal}  → set D's input
 //   {device_id D, command_id 0xC7}  → play D's power-off (in POWER_OFF)
 const POWER_STEP_DEFAULT_DELAY = 0xFF;
 
-// Delay/wait row used inside USER macros (a pure pause between steps).
+// Delay/wait row used inside activity macros (a pure pause between steps).
 function powerMacroDelayRow(delay: number): BackupBundleMacroStep {
   return {
     device_id: 0xFF,
@@ -1471,15 +1784,12 @@ function activityPowerDeviceIds(activity: BackupBundleActivityPayload): Set<numb
 }
 
 /**
- * Devices an Activity's power macros should contain: every device already
- * in the power macros (preserving power-only devices) plus every device a
- * favorite, button binding (incl. long-press), or user-macro step uses.
- * Membership is additive — a device stays once present and is removed only
- * by deleting the device itself.
+ * Devices directly used by editable Activity content. Mandatory power/input
+ * reference rows are generated linkage and deliberately do not count here.
  */
-function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
+function activityUsageDeviceIds(activity: BackupBundleActivityPayload): Set<number> {
   const selfId = Number(activity?.device?.device_id || 0);
-  const ids = activityPowerDeviceIds(activity);
+  const ids = new Set<number>();
   const add = (value: unknown) => {
     const id = Number(value || 0);
     // The activity's own id appears as a binding target for MACRO bindings;
@@ -1500,38 +1810,72 @@ function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[
       add(step?.device_id);
     }
   }
+  return ids;
+}
+
+/**
+ * Devices an Activity currently links: presence in its generated power
+ * macros is canonical, while direct editable references are included so
+ * reconciliation can repair a missing power row.
+ */
+function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
+  const ids = activityPowerDeviceIds(activity);
+  for (const id of activityUsageDeviceIds(activity)) ids.add(id);
   return [...ids].sort((left, right) => left - right);
 }
 
 /**
  * Reconcile one power macro's flat step list to `members`: preserve every
  * existing member step (and any wait rows) verbatim, drop steps for devices
- * that are no longer members, and append the missing reference commands for
- * the devices in `seedIds` (members with no power representation yet).
- * Devices already represented in the power macros keep their step set
- * verbatim — a deliberately absent 0xC6/0xC7 encodes "stays as is" /
- * "leave on" and must not be re-completed.
+ * that are no longer members, and add any missing mandatory reference rows.
+ * The user may reorder required rows in the sequence editor, but absence is
+ * not a power policy; device-wide idle behavior controls that.
  */
 function reconcilePowerMacroSteps(
   existingSteps: BackupBundleMacroStep[] | null | undefined,
   members: number[],
   refCommands: number[],
-  seedIds: Set<number>,
 ): BackupBundleMacroStep[] {
   const memberSet = new Set(members);
-  const kept = (existingSteps ?? []).filter((step) => {
-    if (isMacroDelayStep(step)) return true;
-    const deviceId = Number(step?.device_id || 0);
+  const { prefix, groups } = groupMacroSteps(existingSteps);
+  const kept = flattenMacroGroups(prefix, groups.filter((group) => {
+    const deviceId = Number(group.head?.device_id || 0);
     return deviceId > 0 ? memberSet.has(deviceId) : true;
-  });
+  }));
   const out = [...kept];
+  const memberOrder = new Map(members.map((id, index) => [id, index]));
+  const findRef = (deviceId: number, command: number) => out.findIndex(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, command),
+  );
+  const indexAfterGroupAt = (headIndex: number): number => {
+    let index = headIndex + 1;
+    while (index < out.length && isMacroDelayStep(out[index])) index += 1;
+    return index;
+  };
+  const insertIndexFor = (deviceId: number, command: number): number => {
+    if (command === DEVICE_POWER_ON_REF_COMMAND) {
+      const inputIndex = findRef(deviceId, DEVICE_INPUT_REF_COMMAND);
+      if (inputIndex >= 0) return inputIndex;
+    }
+    if (command === DEVICE_INPUT_REF_COMMAND) {
+      const powerIndex = findRef(deviceId, DEVICE_POWER_ON_REF_COMMAND);
+      if (powerIndex >= 0) return indexAfterGroupAt(powerIndex);
+    }
+
+    const myOrder = memberOrder.get(deviceId) ?? members.length;
+    const laterIndex = out.findIndex((step) => {
+      if (isMacroDelayStep(step) || !isPowerRefStep(step)) return false;
+      const otherOrder = memberOrder.get(Number(step?.device_id || 0));
+      return otherOrder != null && otherOrder > myOrder;
+    });
+    return laterIndex >= 0 ? laterIndex : out.length;
+  };
   for (const deviceId of members) {
-    if (!seedIds.has(deviceId)) continue;
     for (const command of refCommands) {
       const present = out.some(
         (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command,
       );
-      if (!present) out.push(powerStep(deviceId, command));
+      if (!present) out.splice(insertIndexFor(deviceId, command), 0, powerStep(deviceId, command));
     }
   }
   return out;
@@ -1541,11 +1885,8 @@ function reconcilePowerMacroSteps(
  * Bring an Activity's POWER_ON / POWER_OFF macros (and its
  * `referenced_source_device_ids`) into line with its member devices.
  * Idempotent and non-destructive: existing steps (inputs, delays, order)
- * are preserved; full reference sets are seeded only for devices with no
- * power representation yet (newly-referenced or `extraMemberIds`), so a
- * deliberately removed 0xC6/0xC7 ("stays as is" / "leave on") survives.
- * `extraMemberIds` force devices with no reference anywhere into
- * membership — the seeding path used by "add device to activity".
+ * are preserved, while missing mandatory reference rows are repaired.
+ * `extraMemberIds` explicitly seed devices with no editable reference.
  */
 export function reconcileActivityPowerMacros(
   bundle: BackupBundlePayload,
@@ -1554,20 +1895,18 @@ export function reconcileActivityPowerMacros(
 ): BackupBundlePayload {
   return updateActivity(bundle, activityId, (activity) => {
     const selfId = Number(activity?.device?.device_id || 0);
-    const powerIds = activityPowerDeviceIds(activity);
     const memberSet = new Set(activityMemberDeviceIds(activity));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
       if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
     }
     const members = [...memberSet].sort((left, right) => left - right);
-    const seedIds = new Set(members.filter((id) => !powerIds.has(id)));
     const macros = [...(activity.macros ?? [])];
     const ensure = (buttonId: number, name: string, refCommands: number[]) => {
       const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
       const existing = index >= 0 ? macros[index] : null;
       if (!existing && members.length === 0) return;
-      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands, seedIds);
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
       const next: BackupBundleMacroRow = {
         ...(existing ?? {}),
         button_id: buttonId,
@@ -1593,13 +1932,65 @@ export function reconcileBundlePowerMacros(bundle: BackupBundlePayload): BackupB
   return next;
 }
 
+/**
+ * Remove generated linkage only for devices whose final editable reference
+ * disappeared during a mutation. Existing power-only members that were not
+ * affected by the edit are preserved.
+ */
+function reconcileActivityMembershipChange(
+  before: BackupBundlePayload,
+  after: BackupBundlePayload,
+  activityId: number,
+): BackupBundlePayload {
+  const aId = Number(activityId);
+  const beforeActivity = (before.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId,
+  );
+  const afterActivity = (after.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId,
+  );
+  if (!afterActivity) return after;
+
+  const beforeUsage = beforeActivity ? activityUsageDeviceIds(beforeActivity) : new Set<number>();
+  const afterUsage = activityUsageDeviceIds(afterActivity);
+  const lost = new Set([...beforeUsage].filter((deviceId) => !afterUsage.has(deviceId)));
+  if (lost.size === 0) return reconcileActivityPowerMacros(after, aId);
+
+  const pruned = updateActivity(after, aId, (activity) => ({
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (deviceId) => !lost.has(Number(deviceId)),
+    ),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(
+        macro.steps,
+        (step) => isPowerRefStep(step) && lost.has(Number(step?.device_id || 0)),
+      ),
+    })),
+  }));
+  return reconcileActivityPowerMacros(pruned, aId);
+}
+
+/** Apply membership transition reconciliation to every surviving Activity. */
+function reconcileBundleMembershipChange(
+  before: BackupBundlePayload,
+  after: BackupBundlePayload,
+): BackupBundlePayload {
+  let next = after;
+  for (const activity of after.activities ?? []) {
+    const activityId = Number(activity?.device?.device_id || 0);
+    if (activityId > 0) next = reconcileActivityMembershipChange(before, next, activityId);
+  }
+  return next;
+}
+
 // ── Activity membership editing ─────────────────────────────────────
 //
-// Membership is DERIVED, not stored: a device belongs to an activity
-// because something references it (power-ref steps, favorites, button
-// bindings, macro steps); `referenced_source_device_ids` is a recomputed
-// mirror. "Add device" therefore seeds power-ref steps (the minimal
-// reference), and "remove device" strips every reference and reconciles.
+// Membership is encoded by power-ref steps; `referenced_source_device_ids`
+// is a recomputed mirror. Favorites, button bindings, and real macro steps
+// automatically create that linkage, and removing a device's final editable
+// reference removes its generated power rows.
 
 function findBundleActivity(
   bundle: BackupBundlePayload | null,
@@ -1620,13 +2011,13 @@ function findBundleActivity(
 export interface BackupActivityMemberView {
   deviceId: number;
   deviceName: string;
-  /** Device has a 0xC6 power-on ref step ("turns on" vs "stays as is"). */
+  /** Device has a 0xC6 power-on ref step. Missing rows are repaired. */
   powersOn: boolean;
   /** 1-based ordinal from the device's 0xC5 input step; 0 = unset. */
   inputOrdinal: number;
   inputCommandId: number | null;
   inputCommandName: string | null;
-  /** Device has a 0xC7 power-off ref step ("turn off" vs "leave on"). */
+  /** Device has a 0xC7 power-off ref step. Missing rows are repaired. */
   powersOff: boolean;
 }
 
@@ -1636,10 +2027,7 @@ export function activityMemberViews(
 ): BackupActivityMemberView[] {
   const activity = findBundleActivity(bundle, activityId);
   if (!bundle || !activity) return [];
-  // Hidden HA-action hosts stay members data-wise (power-ref invariant,
-  // restore id-mapping) but are plumbing, not devices the user manages.
-  const members = activityMemberDeviceIds(activity)
-    .filter((id) => !isHaActionDeviceId(bundle, id));
+  const members = activityMemberDeviceIds(activity);
   const memberSet = new Set(members);
   const macroFor = (buttonId: number) =>
     (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
@@ -1694,7 +2082,7 @@ export function activityAddableDevices(
   if (!bundle || !activity) return [];
   const members = new Set(activityMemberDeviceIds(activity));
   return bundleDeviceOptions(bundle).filter(
-    (option) => !members.has(option.id) && !isHaActionDeviceId(bundle, option.id),
+    (option) => !members.has(option.id),
   );
 }
 
@@ -1747,7 +2135,7 @@ export function activityMemberRemovalImpact(
   activityId: number,
   deviceId: number,
 ): BackupDeleteImpact {
-  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -1771,155 +2159,7 @@ export function activityMemberRemovalImpact(
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId),
   );
-  return { favorites, macroSteps, activities: 0, bindings };
-}
-
-/** Device order implied by ref-step appearance across both power macros. */
-function powerRefDeviceOrder(activity: BackupBundleActivityPayload): number[] {
-  const order: number[] = [];
-  const push = (value: unknown) => {
-    const id = Number(value || 0);
-    if (id > 0 && !order.includes(id)) order.push(id);
-  };
-  for (const buttonId of [POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_BUTTON_ID]) {
-    const macro = (activity.macros ?? []).find((entry) => Number(entry?.button_id || 0) === buttonId);
-    for (const step of macro?.steps ?? []) {
-      if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
-    }
-  }
-  return order;
-}
-
-/**
- * Toggle one power-ref step for a member device: `refCommand` present in
- * macro `buttonId` when `present`, absent otherwise.
- *
- * Position stability is part of the contract — power macros are flat,
- * interleaved step lists, and both the member-row order in the editor
- * and the on-hub execution order derive from step positions. So:
- * removing a 0xC6 keeps the device anchored by moving its 0xC5 into the
- * vacated slot (or seeding a no-op 0xC5 there); re-adding a ref inserts
- * next to the device's own steps (0xC6 directly before its 0xC5) or at
- * the position implied by the surrounding device order — never a blind
- * append that would shuffle rows and shift execution timing.
- */
-function setActivityPowerRefStep(
-  activity: BackupBundleActivityPayload,
-  deviceId: number,
-  buttonId: number,
-  refCommand: number,
-  present: boolean,
-): BackupBundleActivityPayload {
-  const dId = Number(deviceId);
-  const macros = [...(activity.macros ?? [])];
-  const macroIndex = (id: number) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
-  const index = macroIndex(buttonId);
-  const target = index >= 0 ? macros[index] : null;
-  const steps = [...(target?.steps ?? [])];
-  const findRef = (command: number) => steps.findIndex(
-    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, command),
-  );
-  const refIndex = findRef(refCommand);
-  if (present === (refIndex >= 0)) return activity;
-
-  const commit = (nextSteps: BackupBundleMacroStep[]) => {
-    const name = buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON";
-    const next: BackupBundleMacroRow = {
-      ...(target ?? { button_id: buttonId, name }),
-      steps: nextSteps,
-    };
-    if (index >= 0) macros[index] = next;
-    else macros.push(next);
-    return { ...activity, macros };
-  };
-
-  if (present) {
-    let insertAt = steps.length;
-    if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-      // Canonical per-device shape is 0xC6 directly before its 0xC5.
-      const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-      if (inputIndex >= 0) insertAt = inputIndex;
-    }
-    if (insertAt === steps.length) {
-      // No own anchor in this macro — slot in by surrounding device order.
-      const order = powerRefDeviceOrder(activity);
-      const myPos = order.indexOf(dId);
-      if (myPos >= 0) {
-        const later = steps.findIndex(
-          (step) => !isMacroDelayStep(step)
-            && isPowerRefStep(step)
-            && order.indexOf(Number(step?.device_id || 0)) > myPos,
-        );
-        if (later >= 0) insertAt = later;
-      }
-    }
-    steps.splice(insertAt, 0, powerStep(dId, refCommand));
-    return commit(steps);
-  }
-
-  if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-    // Keep the device anchored at the vacated position: pull its 0xC5
-    // up into the 0xC6's slot, or seed a no-op 0xC5 there. This also
-    // guarantees membership survives (the 0xC5 is a power ref).
-    const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-    if (inputIndex >= 0) {
-      const inputStep = steps[inputIndex];
-      const without = steps.filter((_, i) => i !== refIndex && i !== inputIndex);
-      const insertAt = refIndex - (inputIndex < refIndex ? 1 : 0);
-      without.splice(insertAt, 0, inputStep);
-      return commit(without);
-    }
-    return commit(steps.map((step, i) => (
-      i === refIndex ? powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0) : step
-    )));
-  }
-
-  // 0xC7 removal: plain removal (order stays anchored by POWER_ON), but
-  // keep membership when this was the device's last power representation.
-  const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
-  let next: BackupBundleActivityPayload = commit(withoutOff);
-  if (!activityMemberDeviceIds(next).includes(dId)) {
-    next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
-  }
-  return next;
-}
-
-/** Set whether the Activity turns this member device off when it ends. */
-export function setActivityDevicePowerOff(
-  bundle: BackupBundlePayload,
-  activityId: number,
-  deviceId: number,
-  powersOff: boolean,
-): BackupBundlePayload {
-  return updateActivity(bundle, Number(activityId), (activity) => {
-    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
-    return setActivityPowerRefStep(
-      activity,
-      deviceId,
-      POWER_OFF_MACRO_BUTTON_ID,
-      DEVICE_POWER_OFF_REF_COMMAND,
-      Boolean(powersOff),
-    );
-  });
-}
-
-/** Set whether the Activity turns this member device on when it starts. */
-export function setActivityDevicePowerOn(
-  bundle: BackupBundlePayload,
-  activityId: number,
-  deviceId: number,
-  powersOn: boolean,
-): BackupBundlePayload {
-  return updateActivity(bundle, Number(activityId), (activity) => {
-    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
-    return setActivityPowerRefStep(
-      activity,
-      deviceId,
-      POWER_ON_MACRO_BUTTON_ID,
-      DEVICE_POWER_ON_REF_COMMAND,
-      Boolean(powersOn),
-    );
-  });
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
 }
 
 // ── Macro editing ───────────────────────────────────────────────────
@@ -2098,7 +2338,8 @@ export function setActivityDeviceInput(
   const cId = Number(commandId);
   if (cId <= 0) return bundle;
   const ensured = ensureDeviceInput(bundle, deviceId, cId);
-  return updateActivity(ensured.bundle, activityId, (activity) =>
+  const reconciled = reconcileActivityPowerMacros(ensured.bundle, Number(activityId));
+  return updateActivity(reconciled, activityId, (activity) =>
     setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal),
   );
 }
@@ -2109,7 +2350,8 @@ export function clearActivityDeviceInput(
   activityId: number,
   deviceId: number,
 ): BackupBundlePayload {
-  return updateActivity(bundle, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
+  const reconciled = reconcileActivityPowerMacros(bundle, Number(activityId));
+  return updateActivity(reconciled, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
 }
 
 // ── Device macro step editing ───────────────────────────────────────
@@ -2502,7 +2744,7 @@ function updateActivityMacro(
     return { ...activity, macros };
   });
   // Step edits can change which devices the activity uses.
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 /** Create an empty user macro on an Activity at the next quick-access slot. */
@@ -2869,7 +3111,7 @@ export function upsertActivityButtonBinding(
     ...activity,
     button_bindings: upsertBindingRow(activity.button_bindings, row),
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 export interface DeviceBindingInput {
@@ -2916,7 +3158,7 @@ export function deleteActivityButtonBinding(
     ...activity,
     button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId),
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 /** Remove a Device button binding by button id. */
@@ -2941,7 +3183,7 @@ export function deleteDeviceButtonBinding(
 
 // ── Role-based button assignment ─────────────────────────────────────
 //
-// The narrative editor's "While the activity is running" section asks
+// The narrative editor's "Buttons on the remote" section asks
 // four questions ("Volume buttons control …") instead of ~20 per-button
 // dialogs. Each answer fans out to individual KeyToKey binding rows,
 // copied from the target device's DEVICE-MODE bindings — cloud-sourced
@@ -3114,402 +3356,13 @@ export function setActivityRoleDevice(
     }
     return { ...activity, button_bindings: rows };
   });
-  return reconcileActivityPowerMacros(next, aId);
+  return reconcileActivityMembershipChange(bundle, next, aId);
 }
 
-// ── Home Assistant actions ───────────────────────────────────────────
-//
-// An "HA action" is a wifi_ip command slot on a hidden, editor-managed
-// "Home Assistant" device whose HTTP callback targets this HA instance's
-// wifi-commands listener. The callback uses the listener's NAME-based
-// path form (`/launch/{token}/{device}/{name}/{press}`), so the action
-// keeps firing correctly even after a restore reassigns device ids.
-// The command's `restore_data` mirrors a real capture (hub_code_record
-// + data_hex + decoded block) so the ordinary restore pipeline writes
-// it with zero special-casing. The blob's 1-byte inner-record trailer
-// is deliberately omitted: replay is length-prefixed so the trailer is
-// inert for sending; live-hub validation is tracked in
-// docs/protocol/live-hub-testing.md.
-//
-// Lifecycle is sweep-based: `pruneHaActionHosts` (run on every editor
-// commit) drops slots nothing references anymore and dissolves empty
-// host devices. Membership-wise the host is a normal member (power-ref
-// invariant, restore id-mapping), but it is hidden from the
-// member-facing UI via `isHaActionDeviceId` filters.
 
-export const HA_ACTION_HOST_NAME = "Home Assistant";
-const HA_ACTION_HOST_BRAND = "m3tac0de";
-const HA_ACTION_MAX_SLOTS = 10;
-// wifi_ip device-class / library code (0x1C) — see docs/protocol.
-const HA_ACTION_LIBRARY_TYPE = 0x1C;
-const HA_ACTION_DEFAULT_PORT = 8060;
-const MAX_DEVICE_ID = 0x63;
-const HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-
-export interface HaActionCallbackTarget {
-  host: string;
-  port: number;
-}
-
-export function isHaActionHostEntry(entry: BackupBundleDevicePayload | null | undefined): boolean {
-  return Boolean(entry?.ha_action_host);
-}
-
-/** True when `deviceId` is one of the bundle's hidden HA-action hosts. */
-export function isHaActionDeviceId(bundle: BackupBundlePayload | null, deviceId: number): boolean {
-  return (bundle?.devices ?? []).some(
-    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId),
-  );
-}
-
-/** Parse "ip[:port]" into a callback target; null when not a usable IPv4. */
-export function parseHaActionAddress(value: string): HaActionCallbackTarget | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const [hostPart, portPart, ...rest] = raw.split(":");
-  if (rest.length > 0) return null;
-  const host = hostPart.trim();
-  if (!HA_IPV4_PATTERN.test(host)) return null;
-  if (portPart === undefined || portPart.trim() === "") {
-    return { host, port: HA_ACTION_DEFAULT_PORT };
-  }
-  const port = Number(portPart.trim());
-  if (!Number.isInteger(port) || port <= 0 || port > 0xFFFF) return null;
-  return { host, port };
-}
-
-/**
- * The callback target already in use by this bundle's HA-action slots,
- * so later additions (and the dialog prefill) reuse it.
- */
-export function bundleHaActionTarget(bundle: BackupBundlePayload | null): HaActionCallbackTarget | null {
-  for (const entry of bundle?.devices ?? []) {
-    if (!isHaActionHostEntry(entry)) continue;
-    for (const row of entry.commands ?? []) {
-      const decoded = (row?.restore_data as Record<string, unknown> | undefined)?.decoded as
-        | { fields?: Record<string, unknown> }
-        | undefined;
-      const host = String(decoded?.fields?.host || "");
-      const port = Number(decoded?.fields?.port || 0);
-      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
-    }
-  }
-  return null;
-}
-
-// The listener's old-format parser runs unquote() and then replaces "_"
-// with " ", so underscores can never round-trip. Normalize at creation
-// so the name the user sees is exactly the label HA receives.
-function normalizeHaActionName(value: string): string {
-  return String(value ?? "").trim().replace(/_/g, " ");
-}
-
-function haActionCallbackPath(deviceId: number, name: string): string {
-  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
-}
-
-function asciiHexBytes(text: string): number[] {
-  const out: number[] = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code > 0x7F) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
-    out.push(code);
-  }
-  return out;
-}
-
-/**
- * Render the wifi_ip command blob for an HA-action callback. Mirrors
- * `render_wifi_ip_http_text` in lib/blob_decoders.py for the fixed
- * shape this flow uses (POST, x-www-form-urlencoded, no extra headers,
- * no body) — guarded by the Python parity test
- * tests/test_ha_action_writer_parity.py.
- */
-function renderHaActionDataHex(target: HaActionCallbackTarget, path: string): string {
-  const text =
-    `POST ${path} HTTP/1.1\r\n` +
-    `Host:${target.host}:${target.port}\r\n` +
-    "Content-Type:application/x-www-form-urlencoded\r\n" +
-    "\r\n";
-  const textBytes = asciiHexBytes(text);
-  const ipBytes = target.host.split(".").map((part) => Number(part) & 0xFF);
-  const bytes = [
-    ...ipBytes,
-    (target.port >> 8) & 0xFF,
-    target.port & 0xFF,
-    (textBytes.length >> 8) & 0xFF,
-    textBytes.length & 0xFF,
-    ...textBytes,
-  ];
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
-}
-
-function haActionCommandCodeHex(commandId: number): string {
-  const code = (0x4E20 + (Number(commandId) & 0xFF)) & 0xFFFFFFFFFFFF;
-  const hex = code.toString(16).padStart(12, "0");
-  return hex.replace(/(..)(?=.)/g, "$1 ");
-}
-
-function buildHaActionCommandRow(
-  deviceId: number,
-  commandId: number,
-  name: string,
-  target: HaActionCallbackTarget,
-): BackupBundleCommandRow {
-  const path = haActionCallbackPath(deviceId, name);
-  return {
-    command_id: commandId,
-    name,
-    restore_data: {
-      transport: "hub_code_record",
-      library_type: HA_ACTION_LIBRARY_TYPE,
-      command_code: haActionCommandCodeHex(commandId),
-      data_hex: renderHaActionDataHex(target, path),
-      decoded: {
-        class: "wifi_ip",
-        fields: {
-          host: target.host,
-          port: target.port,
-          method: "POST",
-          path,
-          header: "",
-          content_type: "application/x-www-form-urlencoded",
-          body: "",
-        },
-        trailer_hex: "",
-        edited: false,
-      },
-    },
-  };
-}
-
-/**
- * Re-render an HA-action command's callback from its current name and
- * stored target. No-op for anything that isn't an HA-action slot.
- */
-function refreshHaActionCallback(
-  bundle: BackupBundlePayload,
-  deviceId: number,
-  commandId: number,
-): BackupBundlePayload {
-  if (!isHaActionDeviceId(bundle, deviceId)) return bundle;
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
-        return entry;
-      }
-      return {
-        ...entry,
-        commands: (entry.commands ?? []).map((row) => {
-          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
-          const decoded = (row?.restore_data as Record<string, unknown> | undefined)?.decoded as
-            | { fields?: Record<string, unknown> }
-            | undefined;
-          const host = String(decoded?.fields?.host || "");
-          const port = Number(decoded?.fields?.port || 0);
-          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
-          const name = normalizeHaActionName(String(row?.name || ""));
-          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
-        }),
-      };
-    }),
-  };
-}
-
-/** Lowest unused id in the shared 8-bit device space (1..0x63). */
-function allocateHaHostDeviceId(bundle: BackupBundlePayload): number | null {
-  const used = new Set<number>();
-  for (const entry of bundle.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (const entry of bundle.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
-    if (!used.has(id)) return id;
-  }
-  return null;
-}
-
-// Device head mirroring the live wifi-create flow's DeviceConfig for an
-// IP-generic device (proxy_wifi_device._build_wifi_device_payload with
-// ip_device=True, committed state).
-function buildHaHostEntry(deviceId: number, name: string, sort: number): BackupBundleDevicePayload {
-  return {
-    ha_action_host: true,
-    device: {
-      device_id: deviceId,
-      name,
-      brand: HA_ACTION_HOST_BRAND,
-      device_class: "wifi_ip",
-      device_class_code: 0x1C,
-      icon: 1,
-      sort,
-      code_type: 0x1C,
-      device_type: 0x10,
-      code_id_hex: Array(16).fill("00").join(" "),
-      hide: 0,
-      input_flag: 0,
-      channel: 0,
-      power_state: 0,
-      poll_time: 0,
-      input_mode: 2,
-      power_mode: 0,
-      power_style: 0,
-      share_mode: 0,
-      tail_marker: 1,
-    } as BackupBundleDeviceBlock,
-    commands: [],
-  };
-}
-
-export interface HaActionProvision {
-  bundle: BackupBundlePayload;
-  deviceId: number;
-  commandId: number;
-  name: string;
-}
-
-/**
- * Provision a new HA-action slot: reuse a host device with a free slot
- * or create the next hidden host, then append the callback command.
- * Returns null when the device id space is exhausted.
- */
-export function provisionHaAction(
-  bundle: BackupBundlePayload,
-  rawName: string,
-  target: HaActionCallbackTarget,
-): HaActionProvision | null {
-  const name = normalizeHaActionName(rawName) || "HA action";
-  const hosts = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
-  let next = bundle;
-  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
-  let deviceId: number;
-  if (hostEntry) {
-    deviceId = Number(hostEntry.device?.device_id || 0);
-    if (deviceId <= 0) return null;
-  } else {
-    const allocated = allocateHaHostDeviceId(bundle);
-    if (allocated == null) return null;
-    deviceId = allocated;
-    const hostName = hosts.length === 0
-      ? HA_ACTION_HOST_NAME
-      : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
-    const maxSort = (bundle.devices ?? []).reduce(
-      (max, entry) => Math.max(max, Number((entry?.device as { sort?: number } | null)?.sort || 0)),
-      0,
-    );
-    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
-    next = { ...bundle, devices: [...(bundle.devices ?? []), hostEntry] };
-  }
-  const usedSlots = new Set(
-    (hostEntry.commands ?? []).map((row) => Number(row?.command_id || 0)),
-  );
-  let commandId = 0;
-  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
-    if (!usedSlots.has(slot)) {
-      commandId = slot;
-      break;
-    }
-  }
-  if (commandId === 0) return null;
-  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
-  next = {
-    ...next,
-    devices: (next.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
-      return { ...entry, commands: [...(entry.commands ?? []), row] };
-    }),
-  };
-  return { bundle: next, deviceId, commandId, name };
-}
-
-/**
- * Provision an HA action and put it on the Activity's screen shortcuts.
- * Returns null when provisioning fails (id space / slots exhausted).
- */
-export function addActivityHaActionFavorite(
-  bundle: BackupBundlePayload,
-  activityId: number,
-  rawName: string,
-  target: HaActionCallbackTarget,
-): BackupBundlePayload | null {
-  const provision = provisionHaAction(bundle, rawName, target);
-  if (!provision) return null;
-  return addBundleActivityFavorite(
-    provision.bundle,
-    Number(activityId),
-    provision.deviceId,
-    provision.commandId,
-    provision.name,
-  );
-}
-
-/** A user-visible reference to an HA-action slot (power-ref plumbing excluded). */
-function haActionCommandReferenced(
-  bundle: BackupBundlePayload,
-  deviceId: number,
-  commandId: number,
-): boolean {
-  for (const activity of bundle.activities ?? []) {
-    for (const slot of activity?.favorite_slots ?? []) {
-      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
-    }
-    for (const binding of activity?.button_bindings ?? []) {
-      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
-      if (
-        Number(binding?.long_press_device_id || 0) === deviceId
-        && Number(binding?.long_press_command_id || 0) === commandId
-      ) return true;
-    }
-    for (const macro of activity?.macros ?? []) {
-      for (const step of macro?.steps ?? []) {
-        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
-        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * Sweep the bundle's HA-action hosts: drop slots nothing references,
- * dissolve hosts with no slots left (incl. their membership plumbing,
- * via the ordinary device-delete cascade). Idempotent; run after every
- * editor commit.
- */
-export function pruneHaActionHosts(bundle: BackupBundlePayload): BackupBundlePayload {
-  let next = bundle;
-  const hostIds = (bundle.devices ?? [])
-    .filter((entry) => isHaActionHostEntry(entry))
-    .map((entry) => Number(entry?.device?.device_id || 0))
-    .filter((id) => id > 0);
-  for (const deviceId of hostIds) {
-    const entry = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId,
-    );
-    if (!entry) continue;
-    for (const row of [...(entry.commands ?? [])]) {
-      const commandId = Number(row?.command_id || 0);
-      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
-        next = deleteBundleDeviceCommand(next, deviceId, commandId);
-      }
-    }
-    const refreshed = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId,
-    );
-    if (refreshed && (refreshed.commands ?? []).length === 0) {
-      next = deleteBundleDevice(next, deviceId);
-    }
-  }
-  return next;
-}
-
-/** Device options for the edit overview — hidden HA hosts excluded. */
+/** Device options for the edit overview. */
 export function bundleEditableDeviceOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
-  const hidden = new Set(
-    (bundle?.devices ?? [])
-      .filter((entry) => isHaActionHostEntry(entry))
-      .map((entry) => Number(entry?.device?.device_id || 0)),
-  );
-  return bundleDeviceOptions(bundle).filter((option) => !hidden.has(option.id));
+  return bundleDeviceOptions(bundle);
 }
 
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {

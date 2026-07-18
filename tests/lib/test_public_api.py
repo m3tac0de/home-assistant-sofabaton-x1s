@@ -85,6 +85,19 @@ CURATED_EXPORTS = {
     "AckOutcome",
     "InputsBurstResult",
     "SendStepResult",
+    # live-edit sync planners
+    "SyncStep",
+    "build_activity_sync_plan",
+    "build_device_sync_plan",
+    # in-place wifi command re-sync planner
+    "ManagedWifiSnapshot",
+    "WifiActivityRefs",
+    "WifiCommandSlot",
+    "WifiInplacePlan",
+    "baseline_snapshot_from_bundle",
+    "build_wifi_inplace_plan",
+    "derive_device_level_bindings",
+    "desired_snapshot_from_config",
     # asyncio facade
     "AsyncHubBrowser",
     "AsyncXProxy",

@@ -49,6 +49,8 @@ class _Hub:
         }
         self.roku_server_enabled = True
         self.disable_calls = []
+        self.activities = {}
+        self.activities_ready = False
 
     def get_command_sync_progress(self, _device_key=None):
         return dict(self._progress)
@@ -518,3 +520,141 @@ def test_ws_delete_command_device_keeps_listener_when_another_deployed_device_re
     assert conn.error is None
     assert conn.result == (22, {"deleted_config": True, "deleted_hub_device": True})
     assert hub.disable_calls == []
+
+
+class _EventActionStore:
+    def __init__(self):
+        from custom_components.sofabaton_x1s.command_config import (
+            normalize_activity_event_actions,
+            normalize_hub_event_actions,
+        )
+        self._normalize = normalize_hub_event_actions
+        self._normalize_activity = normalize_activity_event_actions
+        self.saved = None
+        self.saved_activity = None
+        self.actions = normalize_hub_event_actions(None)
+        self.activity_actions = normalize_activity_event_actions(None)
+
+    def get_hub_event_actions(self, _entry_id):
+        return dict(self.actions)
+
+    async def async_set_hub_event_actions(self, _entry_id, actions):
+        self.actions = self._normalize(actions)
+        self.saved = dict(self.actions)
+        return dict(self.actions)
+
+    def get_activity_event_actions(self, _entry_id):
+        return dict(self.activity_actions)
+
+    async def async_set_activity_event_actions(self, _entry_id, actions):
+        self.activity_actions = self._normalize_activity(actions)
+        self.saved_activity = dict(self.activity_actions)
+        return dict(self.activity_actions)
+
+
+def test_ws_hub_event_actions_roundtrip(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+    store = _EventActionStore()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_hub_event_actions(
+                SimpleNamespace(), conn, {"id": 11, "entity_id": "remote.living_room"}
+            )
+        )
+        assert conn.error is None
+        default_actions = conn.result[1]["actions"]
+        assert set(default_actions) == {"power_off", "redundant_off", "activity_start", "activity_stop"}
+        assert conn.result[1]["activity_actions"] == {}
+
+        loop.run_until_complete(
+            integration._ws_set_hub_event_actions(
+                SimpleNamespace(),
+                conn,
+                {
+                    "id": 12,
+                    "entity_id": "remote.living_room",
+                    "actions": {
+                        "redundant_off": {
+                            "action": "perform-action",
+                            "perform_action": "light.toggle",
+                            "target": {"entity_id": "light.hallway"},
+                        }
+                    },
+                },
+            )
+        )
+        assert conn.error is None
+        saved_actions = conn.result[1]["actions"]
+        assert saved_actions["redundant_off"]["perform_action"] == "light.toggle"
+        assert saved_actions["power_off"] == {"action": "perform-action"}
+        assert store.saved is not None
+        # No activity_actions in the message: existing entries untouched.
+        assert store.saved_activity is None
+        assert conn.result[1]["activity_actions"] == {}
+    finally:
+        loop.close()
+
+
+def test_ws_set_activity_event_actions_prunes_unknown_ids(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+    hub.activities_ready = True
+    hub.activities = {101: {"name": "Movie"}, 102: {"name": "Music"}}
+    store = _EventActionStore()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_set_hub_event_actions(
+                SimpleNamespace(),
+                conn,
+                {
+                    "id": 13,
+                    "entity_id": "remote.living_room",
+                    "actions": {},
+                    "activity_actions": {
+                        "101": {
+                            "start": {
+                                "action": "perform-action",
+                                "perform_action": "scene.movie_on",
+                            }
+                        },
+                        # Not in the hub catalog: must never reach the store.
+                        "999": {
+                            "stop": {
+                                "action": "perform-action",
+                                "perform_action": "scene.ghost",
+                            }
+                        },
+                    },
+                },
+            )
+        )
+        assert conn.error is None
+        saved = conn.result[1]["activity_actions"]
+        assert set(saved) == {"101"}
+        assert saved["101"]["start"]["perform_action"] == "scene.movie_on"
+        assert store.saved_activity == saved
+    finally:
+        loop.close()

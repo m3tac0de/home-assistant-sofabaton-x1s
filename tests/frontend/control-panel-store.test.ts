@@ -12,7 +12,7 @@ import { setMaxListeners } from "node:events";
 // noisy fake failure) go away.
 setMaxListeners(0);
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
-import { deviceClassIcon } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
+import { deviceClassIcon, resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
@@ -195,7 +195,8 @@ test("loadState restores the most recent hub and tab from local storage", async 
     VIEW_STATE_STORAGE_KEY,
     JSON.stringify({
       selectedHubEntryId: "hub-2",
-      selectedTab: "blobs",
+      selectedTab: "backup",
+      selectedWifiSection: "hub_events",
     }),
   );
   const store = new ControlPanelStore(() => undefined, {
@@ -231,7 +232,8 @@ test("loadState restores the most recent hub and tab from local storage", async 
   await store.loadState();
 
   assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
-  assert.equal(store.snapshot.selectedTab, "blobs");
+  assert.equal(store.snapshot.selectedTab, "backup");
+  assert.equal(store.snapshot.selectedWifiSection, "hub_events");
 });
 
 test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
@@ -296,10 +298,10 @@ test("selectHub and selectTab persist the updated view state", async () => {
       selectedTab: "wifi_commands",
       // Keys renamed from open* to selected* in the tools-card refactor; the
       // store now persists the active per-tab section under selectedCacheSection
-      // (cache panel), selectedBackupSection, selectedBlobsSection.
+      // (cache panel) and selectedBackupSection.
       selectedCacheSection: "activities",
       selectedBackupSection: "make",
-      selectedBlobsSection: "fetch",
+      selectedWifiSection: "wifi",
     },
   );
 });
@@ -385,6 +387,135 @@ test("setSetting applies optimistic state and rolls back on failure", async () =
   await pending;
   assert.equal(store.snapshot.pendingSettingKey, null);
   assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
+});
+
+test("setHubClickAction applies optimistic state and rolls back on failure", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/set_setting": () => {
+          throw new Error("backend failed");
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  const pending = store.setHubClickAction("send");
+  assert.equal(store.snapshot.pendingSettingKey, "hub_click_action");
+  assert.equal(store.snapshot.state?.hub_click_action, "send");
+
+  await pending;
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.hub_click_action, "none");
+});
+
+test("setHubClickAction persists the value through set_setting", async () => {
+  const { store } = createStore();
+  const messages: Record<string, unknown>[] = [];
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/set_setting": (message) => {
+          messages.push(message);
+          return { ok: true, value: message.value };
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  await store.setHubClickAction("copy");
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].setting, "hub_click_action");
+  assert.equal(messages[0].value, "copy");
+  assert.equal(messages[0].entry_id, "hub-1");
+});
+
+test("sendHubClickCommand sends via the hub's remote entity and pulses the dock", async () => {
+  const { store } = createStore();
+  const calls: Array<{ domain: string; service: string; data?: Record<string, unknown> }> = [];
+  const hass = createHass({
+    states: {
+      "remote.living_room": {
+        state: "on",
+        attributes: { entry_id: "hub-1", proxy_client_connected: false },
+      },
+    },
+  });
+  hass.callService = async (domain, service, data) => {
+    calls.push({ domain, service, data });
+    return undefined;
+  };
+  store.connected();
+  store.setHass(hass);
+  await store.loadState();
+
+  await store.sendHubClickCommand({
+    kind: "command",
+    label: "Power Toggle",
+    contextLabel: "Television",
+    targetId: 1,
+    commandId: 10,
+  });
+
+  assert.deepEqual(calls, [
+    {
+      domain: "remote",
+      service: "send_command",
+      data: { entity_id: "remote.living_room", command: 10, device: 1 },
+    },
+  ]);
+  assert.equal(store.snapshot.lastCommandSend?.entryId, "hub-1");
+  assert.equal(store.snapshot.lastCommandSend?.commandLabel, "Power Toggle");
+  assert.equal(store.snapshot.lastCommandSend?.contextLabel, "Television");
+});
+
+test("copyHubClickCommand creates a persistent notification with the command YAML", async () => {
+  const { store } = createStore();
+  const calls: Array<{ domain: string; service: string; data?: Record<string, unknown> }> = [];
+  const hass = createHass({
+    states: {
+      "remote.living_room": {
+        state: "on",
+        attributes: { entry_id: "hub-1", proxy_client_connected: false },
+      },
+    },
+  });
+  hass.callService = async (domain, service, data) => {
+    calls.push({ domain, service, data });
+    return undefined;
+  };
+  store.connected();
+  store.setHass(hass);
+  await store.loadState();
+
+  await store.copyHubClickCommand({
+    kind: "favorite",
+    label: "Power",
+    contextLabel: "Watch TV",
+    targetId: 1,
+    commandId: 10,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].domain, "persistent_notification");
+  assert.equal(calls[0].service, "create");
+  const message = String(calls[0].data?.message ?? "");
+  assert.match(message, /Activity: Watch TV \| Favorite: Power/);
+  assert.match(message, /action: remote\.send_command/);
+  assert.match(message, /entity_id: remote\.living_room/);
+  assert.match(message, /command: 10/);
+  assert.match(message, /device: 1/);
+  // Sidebar copy leaves a success notice in the dock.
+  assert.equal(
+    store.snapshot.runtimeCompletionNoticeByHub["hub-1"]?.tone,
+    "success",
+  );
 });
 
 test("setHass marks cache as stale when generation changes outside refresh grace", async () => {
@@ -473,6 +604,60 @@ test("refreshForHub uses entity_id when a matching remote entity exists", async 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].entity_id, "remote.living_room");
   assert.equal(messages[0].entry_id, undefined);
+});
+
+test("busy state and completion notices stay scoped to the hub they ran on", async () => {
+  const { store } = createStore();
+  const twoHubState = {
+    ...baseState,
+    hubs: [
+      baseState.hubs[0],
+      { ...baseState.hubs[0], entry_id: "hub-2", name: "Bedroom" },
+    ],
+  };
+  let progressCallback: ((payload: unknown) => void) | null = null;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => twoHubState,
+        "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "op-1" }),
+      },
+      subscribe: async (callback, message) => {
+        if (String(message.type) === "sofabaton_x1s/backup/progress_subscribe") {
+          progressCallback = callback;
+        }
+        return () => {};
+      },
+    }),
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+
+  const refreshPromise = store.refreshAllForHub();
+  await flush();
+  await flush();
+
+  // Hub 1 selected: the running refresh surfaces in the dock.
+  assert.ok("hub-1" in store.snapshot.refreshBusyByHub);
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "notice");
+
+  // Hub 2 selected: hub 1's refresh must not leak into the dock.
+  store.selectHub("hub-2");
+  await flush();
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+
+  progressCallback?.({ status: "success" });
+  await refreshPromise;
+
+  // The completion toast belongs to hub 1 and stays invisible on hub 2...
+  assert.deepEqual(store.snapshot.refreshBusyByHub, {});
+  assert.ok(store.snapshot.runtimeCompletionNoticeByHub["hub-1"]);
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+
+  // ...but is shown when switching back to hub 1.
+  store.selectHub("hub-1");
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "completion");
 });
 
 test("deviceClassIcon maps known cache device classes to the expected icons", () => {

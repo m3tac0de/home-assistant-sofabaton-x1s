@@ -453,3 +453,256 @@ def test_async_reconcile_deployed_wifi_devices_assigns_one_owner_and_clears_conf
     assert other_payload["deployed_device_id"] == 3
     assert other_payload["deployed_commands_hash"] == "8b0425839ab9dda"
     assert store.get_deployed_wifi_commands("hub-1", device_key="default") == []
+
+
+def test_command_store_persists_activity_label_snapshot() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    default_payload = _run(store.async_get_hub_config("hub-1"))
+    assert default_payload["activity_labels"] == {}
+
+    updated = _run(
+        store.async_set_hub_commands(
+            "hub-1",
+            [
+                {
+                    "name": "Launch Netflix",
+                    "input_activity_id": "101",
+                    "activities": ["101", "102"],
+                    "action": {"action": "perform-action"},
+                }
+            ],
+            activity_labels={"101": "TV", "102": "Cinema", " ": "ignored", "103": "  "},
+        )
+    )
+    assert updated["activity_labels"] == {"101": "TV", "102": "Cinema"}
+
+    loaded = _run(store.async_get_hub_config("hub-1"))
+    assert loaded["activity_labels"] == {"101": "TV", "102": "Cinema"}
+
+    # Omitting the snapshot keeps the stored one; passing a new dict replaces it.
+    kept = _run(
+        store.async_set_hub_commands(
+            "hub-1",
+            [{"name": "Launch Netflix", "activities": ["101"]}],
+        )
+    )
+    assert kept["activity_labels"] == {"101": "TV", "102": "Cinema"}
+
+    replaced = _run(
+        store.async_set_hub_commands(
+            "hub-1",
+            [{"name": "Launch Netflix", "activities": ["101"]}],
+            activity_labels={"101": "TV Renamed"},
+        )
+    )
+    assert replaced["activity_labels"] == {"101": "TV Renamed"}
+
+
+def test_command_store_activity_labels_do_not_affect_commands_hash() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    commands = [
+        {
+            "name": "Launch Netflix",
+            "activities": ["101"],
+            "action": {"action": "perform-action"},
+        }
+    ]
+
+    without_labels = _run(store.async_set_hub_commands("hub-1", commands))
+    with_labels = _run(
+        store.async_set_hub_commands(
+            "hub-1", commands, activity_labels={"101": "TV"}
+        )
+    )
+    assert without_labels["commands_hash"] == with_labels["commands_hash"]
+
+
+def test_normalize_commands_drops_orphaned_activities() -> None:
+    """An activities list on a slot with neither favorite nor hard button is
+    an editor artifact (auto-selected default, hidden when the toggles are
+    off) and must not survive normalization (issue #258)."""
+    normalized = normalize_commands(
+        [
+            {"name": "Orphan", "add_as_favorite": False, "activities": ["101", "102"]},
+            {"name": "Favorite", "add_as_favorite": True, "activities": ["101"]},
+            {"name": "Button", "add_as_favorite": False, "hard_button": "red", "activities": ["102"]},
+        ]
+    )
+    assert normalized[0]["activities"] == []
+    assert normalized[1]["activities"] == ["101"]
+    assert normalized[2]["activities"] == ["102"]
+
+
+def test_hub_event_actions_default_to_noop_payloads() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    actions = store.get_hub_event_actions("hub-1")
+    assert set(actions) == {"power_off", "redundant_off", "activity_start", "activity_stop"}
+    for payload in actions.values():
+        assert payload == {"action": "perform-action"}
+
+
+def test_hub_event_actions_persist_and_normalize() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    saved = _run(
+        store.async_set_hub_event_actions(
+            "hub-1",
+            {
+                "power_off": {
+                    "action": "perform-action",
+                    "perform_action": "light.turn_off",
+                    "target": {"entity_id": "light.living_room"},
+                },
+                "activity_start": {"perform_action": "scene.turn_on"},
+                "unknown_key": {"perform_action": "ignored.service"},
+            },
+        )
+    )
+
+    assert set(saved) == {"power_off", "redundant_off", "activity_start", "activity_stop"}
+    assert saved["power_off"]["perform_action"] == "light.turn_off"
+    # Missing hooks come back as the default no-op payload.
+    assert saved["redundant_off"] == {"action": "perform-action"}
+    # Actions without an explicit `action` gain the default marker.
+    assert saved["activity_start"]["action"] == "perform-action"
+    assert saved["activity_start"]["perform_action"] == "scene.turn_on"
+    # Unknown keys are dropped.
+    assert "unknown_key" not in saved
+
+    loaded = store.get_hub_event_actions("hub-1")
+    assert loaded == saved
+
+
+def test_activity_event_actions_default_to_empty() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    assert store.get_activity_event_actions("hub-1") == {}
+
+
+def test_activity_event_actions_persist_and_normalize() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    saved = _run(
+        store.async_set_activity_event_actions(
+            "hub-1",
+            {
+                "101": {
+                    "start": {"perform_action": "scene.movie_on"},
+                    "stop": {"action": "perform-action"},
+                },
+                # Both phases no-op: the whole entry must be dropped so the
+                # store never accumulates unset activities.
+                "102": {
+                    "start": {"action": "perform-action"},
+                    "stop": {"action": "perform-action"},
+                },
+                # Non-numeric ids are invalid and dropped.
+                "movie-night": {"start": {"perform_action": "scene.x"}},
+                "-3": {"start": {"perform_action": "scene.negative"}},
+            },
+        )
+    )
+
+    assert set(saved) == {"101"}
+    assert saved["101"]["start"]["perform_action"] == "scene.movie_on"
+    assert saved["101"]["start"]["action"] == "perform-action"
+    assert saved["101"]["stop"] == {"action": "perform-action"}
+
+    loaded = store.get_activity_event_actions("hub-1")
+    assert loaded == saved
+
+
+def test_activity_event_actions_prune_stale_ids() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    _run(
+        store.async_set_activity_event_actions(
+            "hub-1",
+            {
+                "101": {"start": {"perform_action": "scene.a"}},
+                "102": {"stop": {"perform_action": "scene.b"}},
+            },
+        )
+    )
+
+    # No-op prune: everything still on the hub.
+    assert _run(store.async_prune_activity_event_actions("hub-1", [101, 102])) is False
+    assert set(store.get_activity_event_actions("hub-1")) == {"101", "102"}
+
+    # Activity 102 left the catalog: its actions must go with it.
+    assert _run(store.async_prune_activity_event_actions("hub-1", [101, 103])) is True
+    assert set(store.get_activity_event_actions("hub-1")) == {"101"}
+
+    # Pruning an already-clean store is a no-op (no store write).
+    assert _run(store.async_prune_activity_event_actions("hub-1", [101])) is False
+
+
+def test_hub_event_actions_do_not_leak_into_device_payloads() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    baseline = _run(store.async_get_hub_config("hub-1"))
+    _run(
+        store.async_set_hub_event_actions(
+            "hub-1",
+            {"power_off": {"perform_action": "light.turn_off"}},
+        )
+    )
+    after = _run(store.async_get_hub_config("hub-1"))
+    assert after["commands_hash"] == baseline["commands_hash"]
+    assert "event_actions" not in after
+
+
+def test_rename_hub_device_updates_name_and_optional_deployed_hash() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    created = _run(store.async_create_hub_device("hub-1", "Lights"))
+    device_key = created["device_key"]
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1", device_key, [], deployed_device_id=5, commands_hash="oldhash"
+        )
+    )
+
+    # Name-only rename leaves the deployed hash untouched.
+    assert _run(store.async_rename_hub_device("hub-1", device_key, "Lampen")) is True
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["device_name"] == "Lampen"
+    assert record["deployed_commands_hash"] == "oldhash"
+
+    # Rename with a refreshed deployed hash (in-sync rename) updates both.
+    assert _run(
+        store.async_rename_hub_device(
+            "hub-1", device_key, "Verlichting", deployed_commands_hash="newhash"
+        )
+    ) is True
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["device_name"] == "Verlichting"
+    assert record["deployed_commands_hash"] == "newhash"
+
+    # No-op rename reports no change.
+    assert _run(store.async_rename_hub_device("hub-1", device_key, "Verlichting")) is False
+
+
+def test_rename_hub_device_rejects_unknown_key_and_empty_name() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    created = _run(store.async_create_hub_device("hub-1", "Lights"))
+    device_key = created["device_key"]
+
+    assert _run(store.async_rename_hub_device("hub-1", "nosuchkey", "X")) is False
+    assert _run(store.async_rename_hub_device("hub-1", device_key, "   ")) is False
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["device_name"] == "Lights"

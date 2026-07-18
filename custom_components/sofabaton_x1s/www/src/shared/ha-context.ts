@@ -1,12 +1,16 @@
-export type TabId = "activities" | "settings" | "wifi_commands" | "blobs" | "backup" | "cache" | "logs";
+export type TabId = "settings" | "wifi_commands" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type BackupSectionId = "make" | "edit" | "restore";
-export type BlobsSectionId = "fetch" | "test" | "save";
+export type WifiSectionId = "wifi" | "hub_events";
 export type SettingKey =
   | "persistent_cache"
   | "hex_logging_enabled"
   | "proxy_enabled"
   | "wifi_device_enabled";
+/** Global setting: what clicking a row in the Hub tab drawers does. */
+export type HubClickAction = "none" | "send" | "copy";
+/** Keys the settings tab can hold pending while the backend persists them. */
+export type PendingSettingKey = SettingKey | "hub_click_action";
 export type HubAction = "find_remote" | "sync_remote";
 export type RefreshKind = "activity" | "device";
 
@@ -43,10 +47,11 @@ export interface ControlPanelHubState {
   device_count?: number;
   proxy_client_connected?: boolean;
   settings?: Partial<Record<Exclude<SettingKey, "persistent_cache">, boolean>>;
-  activities?: Array<{ id: number; name?: string; favorite_count?: number; macro_count?: number }>;
+  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;
+    sort?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
@@ -63,25 +68,18 @@ export interface ControlPanelHubState {
   >;
   active_backup_operation?: BackupProgressEvent | null;
   runtime_state?: ControlPanelRuntimeState | null;
-  remote_battery?: ControlPanelRemoteBatteryState | null;
 }
 
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
+  hub_click_action?: HubClickAction;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
 }
 
-export interface ControlPanelRemoteBatteryState {
-  supported: boolean;
-  level?: number | null;
-  last_updated?: string | null;
-  attributes?: Record<string, unknown>;
-}
-
 export interface ControlPanelRuntimeState {
   kind: "idle" | "app_connected" | "operation_running";
-  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | null;
+  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | null;
   label?: string | null;
   detail?: string | null;
   current_step?: number | null;
@@ -93,10 +91,11 @@ export interface ControlPanelRuntimeState {
 export interface CacheHubState {
   entry_id: string;
   name?: string;
-  activities?: Array<{ id: number; name?: string; favorite_count?: number; macro_count?: number }>;
+  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;
+    sort?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
@@ -178,14 +177,6 @@ export interface BlobPlayResponse {
   ok: boolean;
 }
 
-export interface BlobPersistResponse {
-  status: string;
-  device_id: number;
-  command_id: number;
-  command_name: string;
-  page_count?: number | null;
-}
-
 export interface BackupBundleDeviceBlock {
   device_id: number;
   name?: string | null;
@@ -226,11 +217,6 @@ export interface BackupBundleDevicePayload {
   // The device's input list (TV inputs etc.). Activity power-on macros
   // reference these by 1-based ordinal (input_index) via a 0xC5 step.
   input_record?: BackupBundleInputRecord | null;
-  // Editor-managed marker: this is a hidden "Home Assistant" wifi_ip
-  // device whose command slots are HA-action callbacks provisioned by
-  // the activity editor. Hidden from device-facing UI; lifecycle owned
-  // by the prune sweep. Restore treats it as an ordinary wifi_ip device.
-  ha_action_host?: boolean | null;
 }
 
 export interface BackupBundleInputEntry {
@@ -299,6 +285,11 @@ export interface BackupBundleActivityPayload {
   favorite_slots?: BackupBundleFavoriteSlot[] | null;
   macros?: BackupBundleMacroRow[] | null;
   button_bindings?: BackupBundleButtonBinding[] | null;
+  /** Quick-access display order: hub ids (favorite fav_ids / macro key ids,
+   * one shared namespace) in family-0x61 slot order. An advisory ordering
+   * hint, never an identity — a reorder rewrites this slot table WITHOUT
+   * renumbering button_ids. Absent on older bundles → button_id order. */
+  favorites_order?: number[] | null;
 }
 
 export interface BackupBundlePayload {
@@ -306,6 +297,9 @@ export interface BackupBundlePayload {
   schema_version: number;
   captured_at?: string | null;
   complete?: boolean | null;
+  /** "full_backup" (payload-bearing, restorable) or "structural" (blob-free
+   * cache bundle, never restorable). Absent on legacy files == full_backup. */
+  payload_profile?: string | null;
   hub?: {
     entry_id?: string | null;
     name?: string | null;
@@ -341,6 +335,9 @@ export interface BackupProgressEvent {
   total_steps?: number | null;
   current_device_id?: number | null;
   current_activity_id?: number | null;
+  // Activity-sync surfaces the failed plan step here (string kind + target);
+  // distinct from BackupRestoreResult.failed_at (a [phase, index] tuple).
+  failed_at?: string | null;
   filename?: string | null;
   backup?: BackupBundlePayload | null;
   backup_downloaded?: boolean | null;
@@ -352,6 +349,8 @@ export interface BackupProgressEvent {
 export interface BackupOperationStateResponse {
   backup_export?: BackupProgressEvent | null;
   backup_restore?: BackupProgressEvent | null;
+  activity_sync?: BackupProgressEvent | null;
+  device_sync?: BackupProgressEvent | null;
   active_operation?: BackupProgressEvent | null;
 }
 
@@ -371,6 +370,43 @@ export interface WifiPressEvent {
   receivedAt: number;
 }
 
+/** One clickable row in a Hub-tab drawer (favorite / macro / assigned
+ *  button inside an activity, or a device command). `targetId` is the hub
+ *  entity the command is sent to (device id for favorites and device
+ *  commands, activity id for macros and assigned buttons) and `commandId`
+ *  the key code sent to it — the same pair `remote.send_command` takes as
+ *  `device` / `command`. `contextLabel` names the activity/device the
+ *  drawer belongs to, for notifications and the dock pulse tooltip. */
+export interface HubClickItem {
+  kind: "favorite" | "macro" | "button" | "command";
+  label: string;
+  contextLabel: string;
+  targetId: number;
+  commandId: number;
+}
+
+/** Local marker that a Hub-tab click just sent a command, driving the same
+ *  dock sweep animation as an incoming Wifi press. */
+export interface CommandSendFlash {
+  entryId: string;
+  contextLabel: string;
+  commandLabel: string;
+  receivedAt: number;
+}
+
+/** A hub-level event firing (activity transition or redundant OFF press),
+ *  pushed live to drive the row glow in the Events tab. An
+ *  `activity_change` frame carries the full transition so one event can
+ *  light every affected row (global rows + per-activity start/stop). */
+export interface HubEventFireEvent {
+  entryId: string;
+  type: "activity_change" | "redundant_off";
+  fromActivityId: number | null;
+  toActivityId: number | null;
+  timestamp: number;
+  receivedAt: number;
+}
+
 export interface ControlPanelSnapshot {
   hass: HassLike | null;
   state: ControlPanelStateResponse | null;
@@ -385,15 +421,17 @@ export interface ControlPanelSnapshot {
   selectedTab: TabId;
   selectedCacheSection: SectionId;
   selectedBackupSection: BackupSectionId;
-  selectedBlobsSection: BlobsSectionId;
+  selectedWifiSection: WifiSectionId;
   openEntity: string | null;
   staleData: boolean;
-  refreshBusy: boolean;
-  activeRefreshLabel: string | null;
-  externalHubCommandBusy: boolean;
-  externalHubCommandLabel: string | null;
-  runtimeCompletionNotice: RuntimeCompletionNotice | null;
-  pendingSettingKey: SettingKey | null;
+  // Long-running/busy UI state is keyed by hub entry_id so an operation on
+  // one hub never surfaces in the dock (or locks the UI) while another hub
+  // is selected. Key presence = busy; the value is the display label
+  // (refresh entries use null for a label-less section refresh).
+  refreshBusyByHub: Record<string, string | null>;
+  externalHubCommandByHub: Record<string, string>;
+  runtimeCompletionNoticeByHub: Record<string, RuntimeCompletionNotice>;
+  pendingSettingKey: PendingSettingKey | null;
   pendingActionKey: HubAction | null;
   logsLines: ControlPanelLogLine[];
   logsError: string | null;
@@ -405,4 +443,7 @@ export interface ControlPanelSnapshot {
   pendingScrollEntityKey: string | null;
   lastWifiPress: WifiPressEvent | null;
   wifiPressSubscribedEntryId: string | null;
+  lastCommandSend: CommandSendFlash | null;
+  lastHubEvent: HubEventFireEvent | null;
+  hubEventsSubscribedEntryId: string | null;
 }

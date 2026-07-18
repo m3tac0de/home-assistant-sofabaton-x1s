@@ -1,12 +1,27 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
-import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
-import { ControlPanelStore } from "./state/control-panel-store";
+import type {
+  BackupSectionId,
+  HassLike,
+  HubAction,
+  HubClickItem,
+  SettingKey,
+  TabId,
+  WifiPressEvent,
+  WifiSectionId,
+} from "./shared/ha-context";
+import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
+  hubActivities,
+  hubDevices,
+  hubClickAction,
   hubConnected,
   hubIcon,
   persistentCacheEnabled,
+  hubActiveRefreshLabel,
+  hubExternalCommandLabel,
+  hubRefreshBusy,
   proxyClientConnected,
   resolveCardGateState,
   resolveRuntimeState,
@@ -20,7 +35,6 @@ import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
 import { TOOLS_CARD_STRINGS } from "./strings";
-import "./tabs/blobs-tab";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
@@ -50,10 +64,6 @@ const DOC_LINKS: Partial<Record<TabId, { href: string; label: string }>> = {
   backup: {
     href: TOOLS_CARD_STRINGS.docs.backupUrl,
     label: TOOLS_CARD_STRINGS.tabDocs.backup,
-  },
-  blobs: {
-    href: TOOLS_CARD_STRINGS.docs.blobsUrl,
-    label: TOOLS_CARD_STRINGS.tabDocs.blobs,
   },
 };
 
@@ -162,6 +172,26 @@ class SofabatonControlPanelCard extends LitElement {
   private _hubPickerOpen = false;
   private _toolsMenuOpen = false;
   private _lastRenderedTab: TabId | null = null;
+  // Entity currently open in the live editor (wrench buttons in the Hub
+  // tab); while set, the Hub tab renders the editor instead of the cache.
+  private _editingEntity: { kind: "activity" | "device"; id: number } | null = null;
+  // True while an open editor (live activity/device editor or a Wifi
+  // Commands device editor) holds changes that only a sync will persist to
+  // the hub. Driven by `editor-dirty-changed` events from the tab elements;
+  // cleared here on the paths where the emitting element unmounts without
+  // getting a chance to send its own dirty=false (tab switch, editor exit,
+  // hub switch while the live editor is open).
+  private _editorSyncPending = false;
+  // Re-order mode ("Change order" under the Activities / Devices list).
+  private _reorderMode = false;
+  private _reorderKind: "activity" | "device" = "activity";
+  private _reorderIds: number[] = [];
+  private _reorderSyncing = false;
+  private _reorderError: string | null = null;
+  // "Add Activity" dialog state.
+  private _addActivityOpen = false;
+  private _addActivityBusy = false;
+  private _addActivityError: string | null = null;
   private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
@@ -316,7 +346,120 @@ class SofabatonControlPanelCard extends LitElement {
 
   private handleTabSelect(tabId: TabId) {
     this._toolsMenuOpen = false;
+    // Leaving the Hub tab abandons an open edit session (same behavior the
+    // standalone Activities tab had when switching away) and any pending
+    // re-order / add-activity interaction.
+    if (tabId !== "cache") {
+      this._editingEntity = null;
+      this.resetActivityListInteractions();
+    }
+    // Switching tabs unmounts whichever editor raised the dirty flag; it
+    // can't send dirty=false itself at that point.
+    if (tabId !== this._snapshot.selectedTab) this._editorSyncPending = false;
     this._store.selectTab(tabId);
+  }
+
+  private _handleEditorDirtyChanged = (event: CustomEvent<{ dirty: boolean }>) => {
+    const dirty = Boolean(event.detail?.dirty);
+    if (dirty === this._editorSyncPending) return;
+    this._editorSyncPending = dirty;
+    this.requestUpdate();
+  };
+
+  // Drops re-order mode and the Add Activity dialog (tab switch, hub switch).
+  private resetActivityListInteractions() {
+    this._reorderMode = false;
+    this._reorderIds = [];
+    this._reorderSyncing = false;
+    this._reorderError = null;
+    this._addActivityOpen = false;
+    this._addActivityBusy = false;
+    this._addActivityError = null;
+  }
+
+  // ── Activity / Device re-order mode ────────────────────────────────
+
+  private startReorder(kind: "activity" | "device") {
+    if (this._reorderMode) return;
+    // Close any open drawer first, then snapshot the current display order
+    // as the working order.
+    const openEntity = this._snapshot.openEntity;
+    if (openEntity) this._store.toggleEntity(openEntity);
+    const cacheHub = selectedHubCache(this._snapshot);
+    this._reorderIds = (kind === "activity" ? hubActivities(cacheHub) : hubDevices(cacheHub))
+      .map((row) => Number(row.id));
+    this._reorderMode = true;
+    this._reorderKind = kind;
+    this._reorderSyncing = false;
+    this._reorderError = null;
+    this.requestUpdate();
+  }
+
+  private cancelReorder() {
+    if (this._reorderSyncing) return;
+    this.resetActivityListInteractions();
+    this.requestUpdate();
+  }
+
+  private moveReorderItem(oldIndex: number, newIndex: number) {
+    const ids = [...this._reorderIds];
+    if (oldIndex < 0 || oldIndex >= ids.length || newIndex < 0 || newIndex >= ids.length) return;
+    const [moved] = ids.splice(oldIndex, 1);
+    ids.splice(newIndex, 0, moved);
+    this._reorderIds = ids;
+    this.requestUpdate();
+  }
+
+  private async syncReorder() {
+    if (!this._reorderMode || this._reorderSyncing) return;
+    this._reorderSyncing = true;
+    this._reorderError = null;
+    this.requestUpdate();
+    const failure = this._reorderKind === "activity"
+      ? await this._store.reorderActivities(this._reorderIds)
+      : await this._store.reorderDevices(this._reorderIds);
+    this._reorderSyncing = false;
+    if (failure) {
+      this._reorderError = failure;
+    } else {
+      this.resetActivityListInteractions();
+    }
+    this.requestUpdate();
+  }
+
+  // ── Add Activity flow (name prompt → live editor) ──────────────────
+
+  private openAddActivity() {
+    this._addActivityOpen = true;
+    this._addActivityBusy = false;
+    this._addActivityError = null;
+    this.requestUpdate();
+  }
+
+  private closeAddActivity() {
+    if (this._addActivityBusy) return;
+    this._addActivityOpen = false;
+    this._addActivityError = null;
+    this.requestUpdate();
+  }
+
+  private async confirmAddActivity(name: string) {
+    if (this._addActivityBusy) return;
+    this._addActivityBusy = true;
+    this._addActivityError = null;
+    this.requestUpdate();
+    const result = await this._store.createActivity(name);
+    this._addActivityBusy = false;
+    if ("error" in result) {
+      this._addActivityError = result.error;
+      this.requestUpdate();
+      return;
+    }
+    // Open the live editor on the freshly assigned id; from here the flow
+    // mirrors the Edit (wrench) behavior exactly.
+    this._addActivityOpen = false;
+    this._editingEntity = { kind: "activity", id: result.activityId };
+    this.requestUpdate();
   }
 
   private handleSettingToggle(setting: SettingKey, enabled: boolean) {
@@ -325,6 +468,30 @@ class SofabatonControlPanelCard extends LitElement {
 
   private handleAction(action: HubAction) {
     void this._store.runAction(action);
+  }
+
+  // Inner drawer rows in the Hub tab, dispatched per the global Hub Tab
+  // Clicks setting. Sends are skipped while another hub operation runs;
+  // copies are local (a persistent notification) and always allowed.
+  private handleHubItemClick(item: HubClickItem) {
+    const action = hubClickAction(this._snapshot);
+    if (action === "send") {
+      if (this.isSharedHubCommandBusy()) return;
+      void this._store.sendHubClickCommand(item);
+    } else if (action === "copy") {
+      void this._store.copyHubClickCommand(item);
+    }
+  }
+
+  private isSharedHubCommandBusy() {
+    const hub = selectedHub(this._snapshot);
+    const hubEntryId = hub?.entry_id ?? null;
+    return Boolean(
+      resolveRuntimeState(this._snapshot)?.kind === "operation_running" ||
+      hubRefreshBusy(this._snapshot, hubEntryId) ||
+      hubExternalCommandLabel(this._snapshot, hubEntryId) !== null ||
+      this._snapshot.pendingActionKey,
+    );
   }
 
   private captureCacheScrollState() {
@@ -402,12 +569,18 @@ class SofabatonControlPanelCard extends LitElement {
 
   private renderBottomDock(hub: ReturnType<typeof selectedHub>) {
     const runtimeState = resolveRuntimeState(this._snapshot);
-    const docLink = runtimeState ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
+    // Runtime activity (running operation / completion notice) always wins
+    // over the editor dirty banner: while a sync is actually running the
+    // dock should narrate that, not nag about the changes it is persisting.
+    const editorSyncPending = this._editorSyncPending && !runtimeState;
+    const docLink = runtimeState || editorSyncPending ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
     const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
     const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
     const dockClass = runtimeState?.kind === "completion"
       ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}`
-      : "card-bottom-dock";
+      : editorSyncPending
+        ? "card-bottom-dock card-bottom-dock--dirty"
+        : "card-bottom-dock";
     const irFlash = this._activeIrFlash(hub?.entry_id ?? null);
 
     return html`
@@ -427,7 +600,7 @@ class SofabatonControlPanelCard extends LitElement {
               html`
                 <div
                   class="card-bottom-dock-ir-flash"
-                  title=${this._irFlashTitle(irFlash)}
+                  title=${irFlash.title}
                   aria-hidden="true"
                 ></div>
               `,
@@ -436,9 +609,11 @@ class SofabatonControlPanelCard extends LitElement {
         <div class="card-bottom-dock-center">
           ${runtimeState
             ? html`<span class="card-bottom-dock-status">${statusText}</span>`
-            : docLink
-              ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
-              : nothing}
+            : editorSyncPending
+              ? html`<span class="card-bottom-dock-status">${TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>`
+              : docLink
+                ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
+                : nothing}
         </div>
         <div class="card-bottom-dock-right">
           ${this.renderConnectivityPill(hub)}
@@ -447,24 +622,40 @@ class SofabatonControlPanelCard extends LitElement {
     `;
   }
 
-  private _activeIrFlash(selectedEntryId: string | null) {
+  // The dock sweep runs both for incoming Wifi presses (server push) and
+  // for commands the user just sent by clicking a Hub-tab row; whichever
+  // happened last (for the selected hub) drives the animation.
+  private _activeIrFlash(selectedEntryId: string | null): { receivedAt: number; title: string } | null {
+    if (!selectedEntryId) return null;
+    const candidates: Array<{ receivedAt: number; title: string }> = [];
     const press = this._snapshot.lastWifiPress;
-    if (!press || !selectedEntryId || press.entryId !== selectedEntryId) return null;
-    const elapsed = Date.now() - press.receivedAt;
+    if (press && press.entryId === selectedEntryId) {
+      candidates.push({ receivedAt: press.receivedAt, title: this._irFlashTitle(press) });
+    }
+    const send = this._snapshot.lastCommandSend;
+    if (send && send.entryId === selectedEntryId) {
+      candidates.push({
+        receivedAt: send.receivedAt,
+        title: `${send.contextLabel} • ${send.commandLabel}`,
+      });
+    }
+    const latest = candidates.sort((left, right) => right.receivedAt - left.receivedAt)[0] ?? null;
+    if (!latest) return null;
+    const elapsed = Date.now() - latest.receivedAt;
     if (elapsed < 0 || elapsed >= SofabatonControlPanelCard._IR_FLASH_DURATION_MS) return null;
-    if (this._irFlashClearForReceivedAt !== press.receivedAt) {
+    if (this._irFlashClearForReceivedAt !== latest.receivedAt) {
       if (this._irFlashClearTimer) clearTimeout(this._irFlashClearTimer);
-      this._irFlashClearForReceivedAt = press.receivedAt;
+      this._irFlashClearForReceivedAt = latest.receivedAt;
       this._irFlashClearTimer = setTimeout(() => {
         this._irFlashClearTimer = null;
         this._irFlashClearForReceivedAt = null;
         this.requestUpdate();
       }, SofabatonControlPanelCard._IR_FLASH_DURATION_MS - elapsed + 16);
     }
-    return press;
+    return latest;
   }
 
-  private _irFlashTitle(press: NonNullable<ReturnType<typeof this._activeIrFlash>>) {
+  private _irFlashTitle(press: WifiPressEvent) {
     const device = press.deviceName?.trim() || "Wifi device";
     const command = press.commandLabel?.trim() || "Wifi command";
     return press.pressType === "long" ? `${device} • ${command} (long press)` : `${device} • ${command}`;
@@ -535,11 +726,9 @@ class SofabatonControlPanelCard extends LitElement {
 
   private renderPreview() {
     const features: Array<{ icon: string; label: string }> = [
-      { icon: "mdi:play-circle-outline", label: TOOLS_CARD_STRINGS.tabs.activities },
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
-      { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
+      { icon: "mdi:robot-outline", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
-      { icon: "mdi:file-code-outline", label: TOOLS_CARD_STRINGS.tabs.blobs },
       { icon: "mdi:cog-outline", label: TOOLS_CARD_STRINGS.tabs.settings },
       { icon: "mdi:text-box-outline", label: TOOLS_CARD_STRINGS.tabs.logs },
     ];
@@ -549,7 +738,7 @@ class SofabatonControlPanelCard extends LitElement {
           <div class="sb-preview-header">
             <div class="sb-preview-logo">${hubIcon("hero", "sb-preview-hub")}</div>
             <div class="sb-preview-sub">
-              Tools, cache, backups, logs &amp; Wi-Fi commands for your hub
+              Tools, cache, backups, logs &amp; automations for your hub
             </div>
           </div>
           <div class="sb-preview-grid">
@@ -585,15 +774,18 @@ class SofabatonControlPanelCard extends LitElement {
     const activeBackupOperation = hub?.active_backup_operation;
     const runtimeState = resolveRuntimeState(this._snapshot);
     const runtimeOperationBusy = runtimeState?.kind === "operation_running";
+    const hubEntryId = hub?.entry_id ?? null;
+    const hubRefreshing = hubRefreshBusy(this._snapshot, hubEntryId);
+    const hubExternalLabel = hubExternalCommandLabel(this._snapshot, hubEntryId);
     const sharedHubCommandBusy = Boolean(
       runtimeOperationBusy ||
-      this._snapshot.refreshBusy ||
-      this._snapshot.externalHubCommandBusy ||
+      hubRefreshing ||
+      hubExternalLabel !== null ||
       this._snapshot.pendingActionKey,
     );
     const sharedHubCommandLabel = (runtimeOperationBusy ? (runtimeState!.detail || runtimeState!.label) : null)
-      || this._snapshot.externalHubCommandLabel
-      || (this._snapshot.refreshBusy ? "Refreshing cache…" : null)
+      || hubExternalLabel
+      || (hubRefreshing ? "Refreshing cache…" : null)
       || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
@@ -601,10 +793,12 @@ class SofabatonControlPanelCard extends LitElement {
       hub,
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
+      hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
       pendingActionKey: this._snapshot.pendingActionKey,
       onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
+      onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
       onRunAction: (action) => this.handleAction(action),
     });
 
@@ -614,21 +808,6 @@ class SofabatonControlPanelCard extends LitElement {
         loading: this._snapshot.logsLoading,
         error: this._snapshot.logsError,
       });
-    } else if (this._snapshot.selectedTab === "activities") {
-      const availability = resolveTabAvailability(this._snapshot, "activities");
-      activeTab = html`
-        <sofabaton-activities-tab
-          .loading=${this._snapshot.loading}
-          .error=${this._snapshot.loadError}
-          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
-          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
-          .hub=${hub}
-          .cacheHub=${cacheHub}
-          .hass=${this._snapshot.hass}
-          .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
-          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
-        ></sofabaton-activities-tab>
-      `;
     } else if (this._snapshot.selectedTab === "wifi_commands") {
       const availability = resolveTabAvailability(this._snapshot, "wifi_commands");
       activeTab = html`
@@ -642,29 +821,13 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
-          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
+          .lastHubEvent=${this._snapshot.lastHubEvent}
+          .selectedSection=${this._snapshot.selectedWifiSection}
+          .setSelectedSection=${(section: WifiSectionId) => this._store.setSelectedWifiSection(section)}
+          .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
+          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          @editor-dirty-changed=${this._handleEditorDirtyChanged}
         ></sofabaton-wifi-commands-tab>
-      `;
-    } else if (this._snapshot.selectedTab === "blobs") {
-      const availability = resolveTabAvailability(this._snapshot, "blobs");
-      activeTab = html`
-        <sofabaton-blobs-tab
-          .loading=${this._snapshot.loading}
-          .error=${this._snapshot.loadError}
-          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
-          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
-          .hub=${hub}
-          .cacheHub=${cacheHub}
-          .hass=${this._snapshot.hass}
-          .persistentCacheEnabled=${cacheEnabled}
-          .hubCommandBusy=${sharedHubCommandBusy}
-          .hubCommandBusyLabel=${sharedHubCommandLabel}
-          .selectedSection=${this._snapshot.selectedBlobsSection}
-          .setSelectedSection=${(section: BlobsSectionId) => this._store.setSelectedBlobsSection(section)}
-          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
-        ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
       const availability = resolveTabAvailability(this._snapshot, "backup");
@@ -683,31 +846,86 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .selectedSection=${this._snapshot.selectedBackupSection}
           .setSelectedSection=${(section: BackupSectionId) => this._store.setSelectedBackupSection(section)}
-          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
+          .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
-      activeTab = renderCacheTab({
-        loading: this._snapshot.loading,
-        error: this._snapshot.loadError,
-        hub: cacheHub,
-        persistentCacheEnabled: cacheEnabled,
-        staleData: this._snapshot.staleData,
-        refreshBusy: this._snapshot.refreshBusy,
-        hubCommandBusy: sharedHubCommandBusy,
-        activeRefreshLabel: this._snapshot.activeRefreshLabel,
-        selectedSection: this._snapshot.selectedCacheSection,
-        openEntity: this._snapshot.openEntity,
-        selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
-        enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
-        onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
-        onRefreshStale: () => void this._store.refreshStale(),
-        onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
-        onToggleEntity: (key) => this._store.toggleEntity(key),
-        onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
-        onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
-      });
+      if (this._editingEntity != null) {
+        activeTab = html`
+          <sofabaton-activities-tab
+            .loading=${this._snapshot.loading}
+            .error=${this._snapshot.loadError}
+            .hub=${hub}
+            .hass=${this._snapshot.hass}
+            .kind=${this._editingEntity.kind}
+            .entityId=${this._editingEntity.id}
+            .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
+            .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+            .startRefreshAll=${() => this._store.refreshAllForHub()}
+            @editor-dirty-changed=${this._handleEditorDirtyChanged}
+            @editor-exit=${() => {
+              this._editingEntity = null;
+              this._editorSyncPending = false;
+              this.requestUpdate();
+            }}
+          ></sofabaton-activities-tab>
+        `;
+      } else {
+        activeTab = renderCacheTab({
+          loading: this._snapshot.loading,
+          error: this._snapshot.loadError,
+          hub: cacheHub,
+          persistentCacheEnabled: cacheEnabled,
+          staleData: this._snapshot.staleData,
+          refreshBusy: hubRefreshing,
+          hubCommandBusy: sharedHubCommandBusy,
+          activeRefreshLabel: hubActiveRefreshLabel(this._snapshot, hubEntryId),
+          selectedSection: this._snapshot.selectedCacheSection,
+          openEntity: this._snapshot.openEntity,
+          selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
+          enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
+          onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
+          onRefreshStale: () => void this._store.refreshStale(),
+          onSelectSection: (sectionId) => {
+            // Switching between the Activities / Devices lists abandons any
+            // pending re-order / add-activity interaction.
+            this.resetActivityListInteractions();
+            this._store.selectCacheSection(sectionId);
+          },
+          onToggleEntity: (key) => this._store.toggleEntity(key),
+          clickAction: hubClickAction(this._snapshot),
+          onItemClick: (item) => this.handleHubItemClick(item),
+          onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
+          onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
+          refreshAllSpinning:
+            hubActiveRefreshLabel(this._snapshot, hubEntryId) === REFRESH_ALL_KEY,
+          onRefreshAll: () => void this._store.refreshAllForHub(),
+          onEditActivity: (activityId) => {
+            this._editingEntity = { kind: "activity", id: activityId };
+            this.requestUpdate();
+          },
+          onEditDevice: (deviceId) => {
+            this._editingEntity = { kind: "device", id: deviceId };
+            this.requestUpdate();
+          },
+          reorderMode: this._reorderMode,
+          reorderKind: this._reorderKind,
+          reorderIds: this._reorderIds,
+          reorderSyncing: this._reorderSyncing,
+          reorderError: this._reorderError,
+          onStartReorder: (kind) => this.startReorder(kind),
+          onCancelReorder: () => this.cancelReorder(),
+          onReorderMove: (oldIndex, newIndex) => this.moveReorderItem(oldIndex, newIndex),
+          onSyncReorder: () => void this.syncReorder(),
+          addActivityOpen: this._addActivityOpen,
+          addActivityBusy: this._addActivityBusy,
+          addActivityError: this._addActivityError,
+          onOpenAddActivity: () => this.openAddActivity(),
+          onCloseAddActivity: () => this.closeAddActivity(),
+          onConfirmAddActivity: (name) => void this.confirmAddActivity(name),
+        });
+      }
     }
 
     return html`
@@ -726,6 +944,20 @@ class SofabatonControlPanelCard extends LitElement {
                   onToggle: () => this.toggleHubPicker(),
                   onSelect: (entryId) => {
                     this._hubPickerOpen = false;
+                    // The live editor is hub-specific: left open across a
+                    // switch it would keep editing the previous hub's
+                    // entity id against the new hub's cache. The Wifi
+                    // Commands tab stays mounted across a hub switch and
+                    // resets its own state (sending dirty=false itself), so
+                    // only the unmounting live editor needs the flag
+                    // cleared here.
+                    if (entryId !== this._snapshot.selectedHubEntryId) {
+                      this._editingEntity = null;
+                      if (this._snapshot.selectedTab !== "wifi_commands") {
+                        this._editorSyncPending = false;
+                      }
+                    }
+                    this.resetActivityListInteractions();
                     this._store.selectHub(entryId);
                   },
                 })

@@ -29,6 +29,10 @@ the integration is its reference consumer.
 - **Provisioning** (protocol side): create/update/delete devices and
   activities, including virtual WiFi/IP devices.
 - **Backup / restore**: export and restore hub configuration.
+- **Live editing**: diff an edited backup bundle against the captured
+  baseline and sync the difference to the hub as targeted in-place writes
+  (activity- or device-scoped), with a pure plan builder for dry-run
+  previews.
 - **Events**: subscribe to hub/app connection state, activity changes,
   OTA progress and catalog updates.
 
@@ -165,6 +169,48 @@ they would need a fresh hub fetch. When the app disconnects, control
 returns on its own. Both waiters are plain state predicates, so a
 long-running application can simply re-await
 `wait_until_controllable()` whenever a send comes back `False`.
+
+## Live editing
+
+Editing is bundle-based: capture a backup as the baseline, modify a copy,
+and sync. The engine diffs the two bundles into an ordered plan of
+targeted in-place writes (nothing is deleted-and-restored), re-reads the
+entity first to detect concurrent changes, and applies the steps serially,
+each gated on the hub's acknowledgement:
+
+Both sync scopes take a `hub_bundle` pair — capture the baseline with
+`backup_hub_bundle`; `include_blobs=False` skips the slow IR-payload dump
+(the editor never needs blobs):
+
+```python
+import copy
+
+baseline = await proxy.backup_hub_bundle(include_blobs=False)
+edited = copy.deepcopy(baseline)
+# ... modify `edited`: rename the activity, rebind buttons, edit macros,
+#     favorites, membership ...
+
+# Optional dry run: the pure planner shows exactly what a sync would write.
+from sofabaton import build_activity_sync_plan
+for step in build_activity_sync_plan(baseline, edited, activity_id=101):
+    print(step.kind, "-", step.label)
+
+result = await proxy.sync_activity(
+    baseline=baseline, edited=edited, activity_id=101,
+    progress_callback=lambda **p: print(p.get("message")),
+)
+assert result["status"] == "success", result["message"]
+```
+
+`sync_device` / `build_device_sync_plan` are the device-scoped
+counterparts (command adds and renames, payload edits, idle behaviour,
+input records) with the same bundle-pair contract. A failed sync reports
+where it stopped (`failed_at`, `completed_steps`) rather than raising;
+`failed_at: "stale_check"` means the entity changed on the hub after the
+baseline was captured — re-capture and re-apply your edit. The planner
+refuses (with `ValueError`, surfaced as `failed_at: "plan"`) any bundle
+difference outside the entity being edited, so an editor bug cannot
+silently rewrite unrelated configuration.
 
 A CLI ships as a console script:
 

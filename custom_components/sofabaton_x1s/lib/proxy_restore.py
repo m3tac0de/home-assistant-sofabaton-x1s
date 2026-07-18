@@ -42,6 +42,7 @@ from .device_create import (
     run_device_create,
     synthesize_command_code,
 )
+from .backup_export import PAYLOAD_PROFILE_FULL
 from .blob_decoders import encode_decoded_blob, try_decode_blob
 from .devices import device_config_from_backup
 from .inputs import ControlKeyBlock, FavoriteSlot, InputEntry, build_inputs_write
@@ -82,6 +83,35 @@ def _idle_behavior_mode(device_block: dict[str, Any]) -> int:
         return int(raw) & 0xFF
     except (TypeError, ValueError):
         return 0
+
+
+def _key_sort_table_has_positions(msg_hex: str) -> bool:
+    """Return whether a captured key-sort table assigns any real position.
+
+    The table is a flat stream of ``(command_id, sort_position)`` pairs.
+    Hubs report commands that were never given a device-browse slot with
+    the ``0xFF`` "unpositioned" sentinel in the position byte (and ``0x00``
+    also means unpositioned -- positions are 1-based; the command-add sort
+    registration mirrors that by treating ``sort_id == 0`` as unset), and
+    answer KEY_SORT *reads* with STATUS_ACK status=0x07 when no table
+    exists at all -- but they reject a *write* whose pairs carry no real
+    position (STATUS_ACK status=0x06, X1S bench 2026-07-14, observed for
+    both an all-0xFF table and one whose only non-0xFF byte was 0x00).
+    Such a table orders nothing, so restore treats it the same as "no
+    key-sort data" and skips the write; tables with at least one real
+    1-based position are replayed verbatim, sentinel pairs included (the
+    hub accepts those).
+    """
+
+    try:
+        msg_bytes = bytes.fromhex(msg_hex)
+    except ValueError:
+        # Leave malformed hex to build_key_sort_steps' own validation.
+        return True
+    return any(
+        msg_bytes[index] not in (0x00, 0xFF)
+        for index in range(1, len(msg_bytes), 2)
+    )
 
 
 def _input_create_step_factory():
@@ -364,7 +394,21 @@ class RestoreMixin:
             )
             return raw_duration, True
 
+        # Real device backups carry the input list under
+        # ``input_record.entries`` (that is what ``backup_device`` /
+        # ``assemble_device_backup`` produce). A bare top-level ``inputs``
+        # list is also accepted for callers that pre-project it. The
+        # resolver historically only read ``inputs``, which no producer
+        # ever writes, so 0xC5 ordinal re-resolution silently no-op'd on
+        # every real bundle restore (live-bench finding, backup/restore
+        # chunk 4).
         source_inputs = source_device_payload.get("inputs")
+        if not isinstance(source_inputs, list):
+            input_record = source_device_payload.get("input_record")
+            if isinstance(input_record, dict):
+                entries = input_record.get("entries")
+                if isinstance(entries, list):
+                    source_inputs = entries
         if not isinstance(source_inputs, list):
             self._log.warning(
                 "[RESTORE] activity macro key=0x%02X dev=0x%02X 0xC5 step "
@@ -691,6 +735,45 @@ class RestoreMixin:
             state_byte=int(record.get("state_byte", 0)) & 0xFF,
         )
         return payload, restored_inputs
+
+    def _rollback_restored_device(self, device_id: int, failed_step: str) -> bool:
+        """Best-effort deletion of a partially-restored device.
+
+        The restore flows create the new device before replaying its
+        content, so a finalize-phase failure leaves a partial device on
+        the hub (create-before-delete ordering is deliberate: the source
+        device must never be touched until the copy is complete). Delete
+        the orphan through the full :meth:`delete_device` flow so
+        dependent-activity confirms and local cache cleanup run too.
+        Returns whether the orphan was removed; when it wasn't, the
+        partial device remains on the hub for manual cleanup.
+        """
+
+        dev_lo = device_id & 0xFF
+        self._log.warning(
+            "[RESTORE] rolling back partially-restored device 0x%02X "
+            "after finalize failure at step %s",
+            dev_lo,
+            failed_step,
+        )
+        try:
+            outcome = self.delete_device(dev_lo)
+        except Exception:
+            self._log.exception(
+                "[RESTORE] rollback delete raised for dev=0x%02X; "
+                "a partial device remains on the hub",
+                dev_lo,
+            )
+            return False
+        if not isinstance(outcome, dict) or outcome.get("status") != "success":
+            self._log.warning(
+                "[RESTORE] rollback could not delete dev=0x%02X; "
+                "a partial device remains on the hub",
+                dev_lo,
+            )
+            return False
+        self._log.info("[RESTORE] rolled back partial device 0x%02X", dev_lo)
+        return True
 
     def _finalize_restore_device_result(
         self,
@@ -1035,12 +1118,18 @@ class RestoreMixin:
         post_steps.extend(command_steps)
         if isinstance(request.key_sort, dict):
             key_sort_msg_hex = str(request.key_sort.get("msg_hex") or "").strip()
-            if key_sort_msg_hex:
+            if key_sort_msg_hex and _key_sort_table_has_positions(key_sort_msg_hex):
                 post_steps.extend(
                     build_key_sort_steps(
                         device_id=new_device_id,
                         msg_hex=key_sort_msg_hex,
                     )
+                )
+            elif key_sort_msg_hex:
+                self._log.info(
+                    "[RESTORE] skipping key-sort write for dev=0x%02X: "
+                    "captured table has no positioned commands",
+                    new_device_id,
                 )
 
         restored_inputs = 0
@@ -1156,9 +1245,10 @@ class RestoreMixin:
                 else "post-create"
             )
             self._log.warning("[RESTORE] finalize phase failed at step %s", failed)
+            rolled_back = self._rollback_restored_device(new_device_id, failed)
             return DeviceCreateResult(
                 success=False,
-                device_id=new_device_id,
+                device_id=None if rolled_back else new_device_id,
                 failed_step_label=failed,
             )
 
@@ -1391,9 +1481,10 @@ class RestoreMixin:
                 else "post-create"
             )
             self._log.warning("[RESTORE] X1 import finalize phase failed at step %s", failed)
+            rolled_back = self._rollback_restored_device(new_device_id, failed)
             return DeviceCreateResult(
                 success=False,
-                device_id=new_device_id,
+                device_id=None if rolled_back else new_device_id,
                 failed_step_label=failed,
             )
 
@@ -1605,6 +1696,16 @@ class RestoreMixin:
                 "restore_hub_bundle payload schema_version must be "
                 f"{HUB_BUNDLE_SCHEMA_VERSION} "
                 f"(got {payload.get('schema_version')!r})"
+            )
+        # Bundles without a payload_profile predate the marker and are full
+        # backups by definition; an explicitly structural bundle carries no
+        # command payloads and must never be replayed onto a hub.
+        profile = str(payload.get("payload_profile") or PAYLOAD_PROFILE_FULL)
+        if profile != PAYLOAD_PROFILE_FULL:
+            raise ValueError(
+                f"restore_hub_bundle payload_profile is {profile!r}: "
+                "structural cache bundles carry no command payloads and "
+                "cannot be restored -- export a full backup instead"
             )
         if not self.can_issue_commands():
             self._log.info(
@@ -1991,16 +2092,49 @@ class RestoreMixin:
         # post_steps CreateStep batch above.
         restored_favorites = 0
         skipped_favorites = 0
+        # Favorites are replayed into a fresh activity, so their display
+        # slots must be a dense ascending sequence in captured order — NOT
+        # the source hub's stored ``button_id`` verbatim. On X1S the 0x013E
+        # map ACK echoes the slot we send, and command_to_favorite derives
+        # the 0x61 stage length from it — a non-sequential slot produced a
+        # bogus stage length and a hub reject (status 0x06). Live-validated
+        # 2026-07-12, backup/restore chunk 3.
+        #
+        # The sequence must SKIP keys this activity already occupies: the
+        # favorite-map 0x3E step writes a keymap row at the slot's key, and
+        # user macros share that key space — assigning slot 1 to a favorite
+        # while a user macro sits at key 1 silently overwrites the macro
+        # (live finding, backup/restore chunk 6: X1S "Watch a movie" lost
+        # its key-1/2 macros to favorites compressed from 3..19 to 1..17).
+        # Allocating the lowest free keys reproduces the app's own layout,
+        # so real activities round-trip to their captured slots.
+        occupied_keys: set[int] = set()
+        for macro_row in request.macros:
+            if isinstance(macro_row, dict):
+                occupied_keys.add(int(macro_row.get("button_id", 0)) & 0xFF)
+        for binding_row in request.button_bindings:
+            if isinstance(binding_row, dict):
+                occupied_keys.add(int(binding_row.get("button_id", 0)) & 0xFF)
+        occupied_keys.discard(0)
+
+        def _next_free_slot(start: int) -> int:
+            slot = start
+            while slot in occupied_keys:
+                slot += 1
+            return slot
+
+        next_slot = 0
         for row in sorted(
             (item for item in request.favorites if isinstance(item, dict)),
             key=lambda item: int(item.get("button_id", 0)),
         ):
             new_target_device = _map_device_id(row.get("device_id"))
             target_command_id = int(row.get("command_id", 0)) & 0xFF
-            slot_id = int(row.get("button_id", 0)) & 0xFF
+            next_slot = _next_free_slot(next_slot + 1)
+            slot_id = next_slot & 0xFF
             if new_target_device is None or target_command_id == 0:
                 self._log.warning(
-                    "[RESTORE] skipped favorite slot=0x%02X: unmapped device_id=%r "
+                    "[RESTORE] skipped favorite slot=%d: unmapped device_id=%r "
                     "or zero command_id",
                     slot_id,
                     row.get("device_id"),
