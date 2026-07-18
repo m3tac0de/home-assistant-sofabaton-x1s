@@ -22,6 +22,7 @@ pytest.ini
 node_modules/
 playwright-report/
 test-results/
+tests/frontend-dist/
 artifacts/
 docs/internal/
 out/

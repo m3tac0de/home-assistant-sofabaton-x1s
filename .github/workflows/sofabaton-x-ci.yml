@@ -51,8 +51,8 @@ jobs:
           python-version: "3.13"
       - run: npm ci
       - run: pip install pytest
-      - name: Full pytest suite
-        run: pytest tests -q
+      - name: Integration pytest suite
+        run: pytest tests --ignore=tests/lib -q
 
   build-smoke:
     name: build + install smoke test

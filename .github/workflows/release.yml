@@ -17,7 +17,7 @@ jobs:
         run: zip -r ../../sofabaton_x1s.zip . -x "www/src/*"
 
       - name: Upload zip to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: sofabaton_x1s.zip
         env:
