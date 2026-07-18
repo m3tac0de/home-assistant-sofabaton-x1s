@@ -2642,10 +2642,11 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       .wifi-ir-flash { animation: none; opacity: 0; }
     }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
-    .device-card-lead { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
-    .device-card-lead ha-icon { --mdc-icon-size: 20px; }
-    .device-card-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+    .device-card-lead { color: var(--state-icon-color, var(--secondary-text-color)); display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .device-card-lead ha-icon { --mdc-icon-size: 16px; }
+    .device-card-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0; overflow: hidden; }
+    .device-card-name { display: block; font-size: 13px; font-weight: 700; line-height: 1.15; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin-left: auto; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
     .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
@@ -2659,8 +2660,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
-    .device-card-count { white-space: nowrap; font-size: 12px; color: var(--primary-text-color); flex-shrink: 0; }
-    .device-card-count-strong { font-weight: 700; }
+    .device-card-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
     .device-delete-btn:disabled {
@@ -3056,10 +3056,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       .detail-title-actions { gap: 6px; min-width: max-content; }
       .detail-sync-btn, .list-action-btn { flex: 0 0 auto; white-space: nowrap; }
       .device-card { align-items: center; gap: 10px; padding: 10px 12px; }
-      .device-card-main { align-items: center; flex-direction: row; gap: 10px; }
-      .device-card-name { flex: 1; }
+      .device-card-main { align-items: center; flex-direction: row; gap: 8px; }
       .device-card-meta { margin-left: auto; flex-wrap: nowrap; gap: 8px; }
-      .device-card-count { font-size: 12px; }
       .device-status-pill { padding: 6px; min-width: 32px; justify-content: center; }
       .device-status-pill-label { display: none; }
       .sync-row { align-items: flex-start; flex-direction: column; }
@@ -3260,13 +3258,15 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
               >
                 <div class="device-card-main">
                   <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
-                  <div class="device-card-name">${device.device_name}</div>
+                  <div class="device-card-copy">
+                    <div class="device-card-name">${device.device_name}</div>
+                    <div class="device-card-count">${Number(device.configured_slot_count || 0)} slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</div>
+                  </div>
                   <div class="device-card-meta">
                     <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
                       <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
                       <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
                     </span>
-                    <span class="device-card-count"><span class="device-card-count-strong">${Number(device.configured_slot_count || 0)}</span> slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</span>
                   </div>
                 </div>
                 <div class="device-card-actions">

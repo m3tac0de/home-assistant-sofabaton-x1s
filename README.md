@@ -1,18 +1,19 @@
 # Sofabaton X - Home Assistant Custom Integration
+
 Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Home Assistant, using **100% local APIs**.
 
 [![HACS Badge](https://img.shields.io/badge/HACS-Default-green.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s) ![Total Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/latest/total)   
+![Version](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s) ![Total Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/latest/total)
 
-> This integration is powered by a [standalone Python library](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x) for the Sofabaton hub protocol.    
+> This integration is powered by a [standalone Python library](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x) for the Sofabaton hub protocol.  
 > It is also available on [PyPI](https://pypi.org/project/sofabaton-x/).
 
 ## Start here
 
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
-- 🤖 **Send key presses to the hub**: `remote.send_command`, Sofabaton Virtual Remote, Sofabaton Control Panel, “recorded keypress”
-- ⚡ **Receive key presses from the hub**: "Wifi Commands" via the Control Panel card, see [`docs/wifi_commands.md`](docs/wifi_commands.md)
+- 🤖 **Home Assistant → Sofabaton**: send commands with `remote.send_command` or the Sofabaton Virtual Remote; find the required IDs using Virtual Remote key capture or the Control Panel.
+- ⚡ **Sofabaton → Home Assistant**: turn physical remote button presses into Home Assistant Actions with **Automation → Wifi Commands**; see the [`Wifi Commands guide`](docs/wifi_commands.md).
 - 🔄 **Fully local backup and restore**: "Backup" via the Control Panel card, see [`docs/backup.md`](docs/backup.md)
 - 💾 **Store, share and generate IR codes**: command payloads via the Hub tab's device editor, see [`docs/command_payloads.md`](docs/command_payloads.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
@@ -27,12 +28,11 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 1. **Install via HACS** (recommended) or manually (see Installation).
 2. **Restart Home Assistant**.
 3. **Add your hubs**
-   
+
    Go to **Settings → Devices & Services**.
-   
    - Your Sofabaton hubs appear at the top of the page, shortly after HA has fully started. **Add** them and follow the flow.
    - If automatic discovery fails (VLAN / mDNS), see [networking docs](docs/networking.md) or add manually.
-   - To add manually:   
+   - To add manually:  
       Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X** and follow the flow.
 
 ### X2 discovery
@@ -58,40 +58,24 @@ Sofabaton hubs allow **only one client connection at a time**. To enable this in
 
 When the official app is connected to the proxy, HA entities that can send commands become **unavailable** (intentional: prevents competing writes and weird app behavior).
 
-<details>
-<summary><b>How the proxy works (conceptually)</b></summary>
-
-- The _real_ hub is discovered via mDNS.
-- The integration starts a bundled Python proxy (`custom_components/sofabaton_x1s/lib/x1_proxy.py`).
-- The proxy connects to the real hub and **also** advertises a virtual `_x1hub._udp.local.`.
-- When the official app connects, it sends a **CALL_ME** packet to the proxy’s UDP listener. The proxy opens a TCP session back into the app (8100–8110 range).  
-  While that session is active, HA “writer” entities become unavailable.
-
-The proxy adds a TXT flag so Home Assistant ignores the virtual advertisement and doesn’t overwrite the real hub IP.
-For full networking details, see → [`docs/networking.md`](docs/networking.md)
-
-</details>
-
 ---
 
 ## ✨ Features
 
-- 🛰 **Automatic discovery** of Sofabaton hubs (X1, X1S and X2)
-- 🧩 **Multiple hubs** supported
-- 🔘 **A healthy collection of smart selects, buttons and sensors**, everything needed to create a custom UI and automations
-- ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need
-- 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
-- 🔄 **Fully local backup and restore**: Backup and restore via the Control Panel card, restore a whole hub or add individual devices from a backup
-- 💾 **Capture the hub’s real IR command payloads for sharing, testing, and creating new commands**: retrieved, tested and saved via the Hub tab’s device editor
-- 🔔 **Find Remote** diagnostic button (buzzer)
-- 🛰 **Manage the network**: decide which listeners to run and on which ports, enable/disable proxy functionality. Use detailed documentation to solve VLAN related issues.
-- 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
+- 🛰 **X1, X1S, and X2 support** — automatic discovery and support for multiple hubs.
+- 🔌 **Home Assistant and the Sofabaton app together** — the built-in local proxy lets the official app share hub access with Home Assistant.
+- 🖥️ **Live hub editing** — manage Activities, Devices, commands, button assignments, power behavior, shortcuts, and macros from the Control Panel.
+- ⚙️ **Home Assistant → Sofabaton** — send device commands, start or switch Activities, and power off the hub.
+- 💎 **Sofabaton → Home Assistant** — respond to physical remote buttons, Hub Events, and Activity Events with Home Assistant Actions or your own automations.
+- 🔄 **Local backup and restore** — restore a whole hub or selected Devices, including supported moves to newer hub models. See the [`backup guide`](docs/backup.md).
+- 💾 **Command payload tools** — retrieve, test, edit, generate, save, and share IR command payloads. See the [`command payload guide`](docs/command_payloads.md).
+- 🧰 **Maintenance and diagnostics** — persistent cache, live hub logs, Find Remote, and configurable network listeners and ports.
 
 ---
 
 ## ✅ Requirements
 
-- Home Assistant **2025.x** or newer
+- Home Assistant **2026.x** or newer
 - A Sofabaton **X1**, **X1S** or **X2** hub
 - HA must be able to **open TCP ports** (hub connects back to the proxy)
 - HA must be able to **open UDP ports** (optional; only if you want the official app to connect while HA is running)
@@ -163,7 +147,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ## 🕹️ Dashboard card - Sofabaton Virtual Remote
 
-This integration supports the **Sofabaton Virtual Remote** Lovelace card.
+This integration includes the **Sofabaton Virtual Remote** Lovelace card.
 
 - Repo + docs: https://github.com/m3tac0de/sofabaton-virtual-remote
 - The card is designed to work with **this integration** and the **official X2 integration**.
@@ -185,37 +169,47 @@ type: custom:sofabaton-control-panel
 
 The Control Panel card is the central management UI for the integration. Its main features are:
 
-- **Wifi Commands** — Configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
+- **Automation** — Configure and deploy Wifi Commands, or react to Hub and Activity Events with Home Assistant Actions (see below).
 - **Backup** — Create fully local backups, restore onto the same or a newer hub version family (`X1` → `X1S`/`X2`, `X1S` → `X2`), restore a whole hub or just add individual devices from a backup. See [`docs/backup.md`](docs/backup.md)
 - **Command payloads** — Generate, test, save, and share IR command payloads from the Hub tab's device editor. See [`docs/command_payloads.md`](docs/command_payloads.md).
 - **Persistent Cache** — Enable **persistent cache** in the **Settings** tab so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
 - **Logs** — live streaming of hub log output for real-time diagnostics.
 
-<img height="250" alt="Control Panel: Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png" /> <img height="250" alt="Control Panel: Wifi Commands tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Control Panel: Cache tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-cache-tab.png" /> <img height="250" alt="Control Panel: Logs tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-logs-tab.png" />
+<img height="250" alt="Control Panel: Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png" /> <img height="250" alt="Control Panel: Automation, Wifi Commands sub-tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Control Panel: Automation, Events sub-tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/automation-events.png" /> <img height="250" alt="Control Panel: Backup, Make sub-tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-backup-tab.png" />
 
 ---
 
 ## 🤖 Automations
 
-### Receive key presses from the hub
+Use Sofabaton in both directions: turn physical remote presses and hub events into Home Assistant Actions, or send commands from Home Assistant through your Sofabaton hub.
 
-The **Wifi Commands** feature lets you trigger Home Assistant Actions directly from physical button presses on the remote.
+### Sofabaton → Home Assistant
 
-Configure up to 5 Wifi Devices per hub (10 command slots each) via the **Control Panel** card's Wifi Commands tab. Each command can:
+#### Respond to physical button presses
 
-- run a Home Assistant Action immediately when pressed
-- participate in activity startup/shutdown sequences (power on/off, input switching)
+Configure **Automation → Wifi Commands** in the Control Panel to bring physical remote button presses into Home Assistant. You can create up to 5 Wifi Devices per hub, each with 10 command slots.
 
-> Actions can be added, changed, or removed at any time without resyncing to the hub. Only structural changes (command names, button assignments, activities) require a sync, which takes several minutes.
+Each command can run a Home Assistant Action directly. Every press also updates `sensor.<hub>_wifi_commands`, so configuring an Action is optional: you can instead trigger your own automations and inspect the command, Wifi Device, and short- or long-press type.
+
+> Actions can be added, changed, or removed without syncing. A first deployment or fallback replacement can take several minutes; later command-configuration changes normally use a targeted in-place sync and finish in seconds.
+
+<img height="250" alt="Wifi Devices list" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Automation Events" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/automation-events.png" /> <img height="250" alt="Command slot: configuring an Action" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-action.png" />
+
+#### React to Hub and Activity Events
+
+Under **Automation → Events**, attach Home Assistant Actions to changes reported by the hub:
+
+- **Hub Events** — when any Activity starts, when the hub is switched off, or when Off is pressed while the hub is already off.
+- **Activity Events** — separate start and stop hooks for every Activity. When switching directly between Activities, the old Activity stops before the new one starts.
+
+Event Actions run entirely in Home Assistant. They require no Wifi Device or command slots and are never synced to the hub.
 
 Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
-<img height="250" alt="Wifi Devices list" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Command slot grid" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-command-grid.png" /> <img height="250" alt="Command slot: power and input settings" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-advanced.png" /> <img height="250" alt="Command slot: favorite and activities" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-favorite.png" /> <img height="250" alt="Command slot: configuring an Action" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-action.png" />
+### Home Assistant → Sofabaton
 
----
-
-### Send a command in the context of the current activity
+#### Send a command in the context of the current Activity
 
 ```yaml
 action: remote.send_command
@@ -228,10 +222,9 @@ data:
 Common built-in commands include:
 `UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN, REW, PAUSE, FWD, RED, GREEN, YELLOW, BLUE, POWER_OFF`
 
-### Send a command directly to a device/activity by ID
+#### Send a command directly to a Device or Activity by ID
 
-In this mode the integration **does not** use the current activity — it targets the given entity ID directly.  
-IDs share the same range: **devices start at 1**, **activities at 101**.
+In this mode the integration **does not** use the current Activity — it targets the supplied Device or Activity ID directly. IDs share the same range: **Devices start at 1**, **Activities at 101**.
 
 ```yaml
 action: remote.send_command
@@ -242,7 +235,7 @@ data:
   device: 3
 ```
 
-### Start or switch to an Activity
+#### Start or switch to an Activity
 
 ```yaml
 action: remote.turn_on
@@ -252,7 +245,7 @@ data:
   activity: Watch a movie
 ```
 
-### Power off
+#### Power off
 
 ```yaml
 action: remote.turn_off
@@ -260,38 +253,16 @@ target:
   entity_id: remote.<hub>_remote
 ```
 
----
+#### Finding the required IDs
 
-## 🧰 Finding IDs (recommended workflow)
-
-### 1) Using Sofabaton Virtual Remote (recommended)
+##### Using the Sofabaton Virtual Remote (recommended)
 
 The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **[Automation Assist > Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md)**.
 This will give you IDs and ready-to-use YAML as Notifications in your Home Assistant side bar.
 
-### 2) Using Sofabaton Control Panel
+##### Using the Sofabaton Control Panel
 
 Another good way to retrieve the IDs is to add the **Control Panel card** to your dashboard. When you enable **persistent cache** you can use a UI to navigate your Devices and Activities and see all relevant IDs.
-
-### 3) Recorded Keypress sensor
-
-Use the official Sofabaton app connected to the **virtual hub**, press a button in the app's virtual remote, then read:
-
-- `sensor.<hub>_recorded_keypress`
-
-It contains ready-to-copy `remote.send_command` payloads.
-
-Tip: to see live updates while pressing buttons, use Settings → Developer Tools → Template:
-
-```yaml
-{% set command_data = state_attr('sensor.[YOUR_HUB_NAME]_recorded_keypress', 'example_remote_send_command') %}
-action: {{ command_data.action }}
-data:
-  command: {{ command_data.data.command }}
-  device: {{ command_data.data.device }}
-target:
-  entity_id: {{ command_data.target.entity_id }}
-```
 
 ---
 
