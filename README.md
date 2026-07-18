@@ -166,6 +166,7 @@ Find it in the dashboard card picker, or add it manually:
 
 ```yaml
 type: custom:sofabaton-control-panel
+card_height: 700
 ```
 
 ### What the tabs do
@@ -181,13 +182,11 @@ Live edits are reviewed before syncing. The card also prevents conflicting write
 
 ---
 
-## 🤖 Automations
+## ⚡ Automations — Sofabaton → Home Assistant
 
-Use Sofabaton in both directions: turn physical remote presses and hub events into Home Assistant Actions, or send commands from Home Assistant through your Sofabaton hub.
+Turn physical remote button presses and hub events into Home Assistant Actions.
 
-### Sofabaton → Home Assistant
-
-#### Respond to physical button presses
+### Wifi Commands: respond to physical button presses
 
 Configure **Automation → Wifi Commands** in the Control Panel to bring physical remote button presses into Home Assistant. You can create up to 5 Wifi Devices per hub, each with 10 command slots.
 
@@ -197,7 +196,7 @@ Each command can run a Home Assistant Action directly. Every press also updates 
 
 <img height="250" alt="Wifi Devices list" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Automation Events" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/automation-events.png" /> <img height="250" alt="Command slot: configuring an Action" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-action.png" />
 
-#### React to Hub and Activity Events
+### Events: react to Hub and Activity Events
 
 Under **Automation → Events**, attach Home Assistant Actions to changes reported by the hub:
 
@@ -208,9 +207,15 @@ Event Actions run entirely in Home Assistant. They require no Wifi Device or com
 
 Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
-### Home Assistant → Sofabaton
+---
 
-#### Send a command in the context of the current Activity
+## 🤖 Automations — Home Assistant → Sofabaton
+
+Send commands from Home Assistant through your Sofabaton hub, using the `remote.<hub>_remote` entity.
+
+### Send a command
+
+**In the context of the current Activity** — the command is resolved against whatever Activity is currently active:
 
 ```yaml
 action: remote.send_command
@@ -223,9 +228,7 @@ data:
 Common built-in commands include:
 `UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN, REW, PAUSE, FWD, RED, GREEN, YELLOW, BLUE, POWER_OFF`
 
-#### Send a command directly to a Device or Activity by ID
-
-In this mode the integration **does not** use the current Activity — it targets the supplied Device or Activity ID directly. IDs share the same range: **Devices start at 1**, **Activities at 101**.
+**Directly to a Device or Activity by ID** — the current Activity is **not** used; the supplied Device or Activity ID is targeted directly. IDs share the same range: **Devices start at 1**, **Activities at 101**.
 
 ```yaml
 action: remote.send_command
@@ -236,7 +239,7 @@ data:
   device: 3
 ```
 
-#### Start or switch to an Activity
+### Start or switch to an Activity
 
 ```yaml
 action: remote.turn_on
@@ -246,7 +249,7 @@ data:
   activity: Watch a movie
 ```
 
-#### Power off
+### Power off
 
 ```yaml
 action: remote.turn_off
@@ -254,16 +257,10 @@ target:
   entity_id: remote.<hub>_remote
 ```
 
-#### Finding the required IDs
+### Finding the required IDs
 
-##### Using the Sofabaton Virtual Remote (recommended)
-
-The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **[Automation Assist > Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md)**.
-This will give you IDs and ready-to-use YAML as Notifications in your Home Assistant side bar.
-
-##### Using the Sofabaton Control Panel
-
-Another good way to retrieve the IDs is to add the **Control Panel card** to your dashboard. When you enable **persistent cache** you can use a UI to navigate your Devices and Activities and see all relevant IDs.
+- **Using the Sofabaton Virtual Remote (recommended)** — add the **Virtual Remote card** to your dashboard and enable its **[Automation Assist > Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md)** feature. This gives you IDs and ready-to-use YAML as Notifications in your Home Assistant side bar.
+- **Using the Sofabaton Control Panel** — add the **Control Panel card** to your dashboard. When you enable **persistent cache** you can use a UI to navigate your Devices and Activities and see all relevant IDs.
 
 ---
 
