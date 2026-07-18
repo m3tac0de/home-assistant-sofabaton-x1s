@@ -27,8 +27,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 
 1. **Install via HACS** (recommended) or manually (see Installation).
 2. **Restart Home Assistant**.
-3. **Add your hubs**
-
+3. **Add your hubs**   
    Go to **Settings → Devices & Services**.
    - Your Sofabaton hubs appear at the top of the page, shortly after HA has fully started. **Add** them and follow the flow.
    - If automatic discovery fails (VLAN / mDNS), see [networking docs](docs/networking.md) or add manually.
