@@ -13,7 +13,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
 - 🤖 **Home Assistant ➜ Sofabaton**: send commands with `remote.send_command` or the Sofabaton Virtual Remote; find the required IDs using Virtual Remote key capture or the Control Panel.
-- ⚡ **Sofabaton ➜ Home Assistant**: turn physical remote button presses into Home Assistant Actions with **Automation → Wifi Commands**; see the [`Wifi Commands guide`](docs/wifi_commands.md).
+- ⚡ **Sofabaton ➜ Home Assistant**: turn selected physical remote button presses, Hub Events, and Activity Events into Home Assistant Actions using the Control Panel's **Automation** tab; see the [`Automation guide`](docs/wifi_commands.md).
 - 🔄 **Fully local backup and restore**: "Backup" via the Control Panel card, see [`docs/backup.md`](docs/backup.md)
 - 💾 **Store, share and generate IR codes**: command payloads via the Hub tab's device editor, see [`docs/command_payloads.md`](docs/command_payloads.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
@@ -65,7 +65,7 @@ When the official app is connected to the proxy, HA entities that can send comma
 - 🔌 **Home Assistant and the Sofabaton app together** — the built-in local proxy lets the official app share hub access with Home Assistant.
 - 🖥️ **Live hub editing** — manage Activities, Devices, commands, button assignments, power behavior, shortcuts, and macros from the Control Panel.
 - ⚙️ **Home Assistant ➜ Sofabaton** — send device commands, start or switch Activities, and power off the hub.
-- 💎 **Sofabaton ➜ Home Assistant** — respond to physical remote buttons, Hub Events, and Activity Events with Home Assistant Actions or your own automations.
+- 💎 **Sofabaton ➜ Home Assistant** — respond to selected physical remote buttons, Hub Events, and Activity Events with Home Assistant Actions or your own automations. See the [`Automation guide`](docs/wifi_commands.md).
 - 🔄 **Local backup and restore** — restore a whole hub or selected Devices, including supported moves to newer hub models. See the [`backup guide`](docs/backup.md).
 - 💾 **Command payload tools** — retrieve, test, edit, generate, save, and share IR command payloads. See the [`command payload guide`](docs/command_payloads.md).
 - 🧰 **Maintenance and diagnostics** — persistent cache, live hub logs, Find Remote, and configurable network listeners and ports.
@@ -198,7 +198,7 @@ Each command can run a Home Assistant Action directly. Every press also updates 
 
 Under **Automation → Events**, attach Home Assistant Actions to changes reported by the hub:
 
-- **Hub Events** — when any Activity starts, when the hub is switched off, or when Off is pressed while the hub is already off.
+- **Hub Events** — when any Activity starts or stops, when the hub is switched off, or when Off is pressed while the hub is already off.
 - **Activity Events** — separate start and stop hooks for every Activity. When switching directly between Activities, the old Activity stops before the new one starts.
 
 Event Actions run entirely in Home Assistant. They require no Wifi Device or command slots and are never synced to the hub.
