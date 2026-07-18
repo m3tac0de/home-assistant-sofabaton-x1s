@@ -15,7 +15,7 @@ In the **Sofabaton Control Panel** card, open **Automation → Wifi Commands**. 
 > - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
 > - **Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
-<img height="180" alt="Wifi Devices list" src="images/wifi-commands-devices.png" /> <img height="180" alt="Command slot grid" src="images/wifi-commands-command-grid.png" /> <img height="180" alt="Command slot: power and input settings" src="images/wifi-commands-slot-advanced.png" /> <img height="180" alt="Command slot: favorite and activities" src="images/wifi-commands-slot-favorite.png" /> <img height="180" alt="Command slot: configuring an Action" src="images/wifi-commands-slot-action.png" /> <img height="180" alt="Command grid ready to sync" src="images/wifi-commands-sync-pending.png" /> <img height="180" alt="Sync to hub in progress" src="images/wifi-commands-syncing.png" />
+<img height="180" alt="Wifi Devices list" src="images/wifi-commands-devices.png" /> <img height="180" alt="Command grid and device power controls" src="images/wifi-commands-command-grid.png" /> <img height="180" alt="Command slot: Activity-start setting" src="images/wifi-commands-slot-advanced.png" /> <img height="180" alt="Command slot: favorite, physical button and Activities" src="images/wifi-commands-slot-favorite.png" /> <img height="180" alt="Command slot: configuring an Action" src="images/wifi-commands-slot-action.png" />
 
 ## How this works
 
@@ -90,6 +90,8 @@ Each line shows its configured Action; click it to change, or use the small ✕ 
 Activity Events are tied to the hub's Activity **id** only; no name matching is attempted. If you delete an Activity, its configured hooks are cleaned up automatically the next time the integration refreshes the Activity list, and if the hub later reuses that id for a new Activity, a hook configured before the cleanup would simply apply to the new Activity.
 
 Unlike Wifi Commands, these hooks live entirely in Home Assistant: they are never synced to the hub and no sync is needed after changing them. They also require no Wifi Device or command slots — they work purely from the hub's reported activity state.
+
+<img height="250" alt="Hub and Activity Events" src="images/automation-events.png" />
 
 ## Configuration
 

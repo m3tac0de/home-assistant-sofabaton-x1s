@@ -12,8 +12,8 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
-- 🤖 **Home Assistant → Sofabaton**: send commands with `remote.send_command` or the Sofabaton Virtual Remote; find the required IDs using Virtual Remote key capture or the Control Panel.
-- ⚡ **Sofabaton → Home Assistant**: turn physical remote button presses into Home Assistant Actions with **Automation → Wifi Commands**; see the [`Wifi Commands guide`](docs/wifi_commands.md).
+- 🤖 **Home Assistant ➜ Sofabaton**: send commands with `remote.send_command` or the Sofabaton Virtual Remote; find the required IDs using Virtual Remote key capture or the Control Panel.
+- ⚡ **Sofabaton ➜ Home Assistant**: turn physical remote button presses into Home Assistant Actions with **Automation → Wifi Commands**; see the [`Wifi Commands guide`](docs/wifi_commands.md).
 - 🔄 **Fully local backup and restore**: "Backup" via the Control Panel card, see [`docs/backup.md`](docs/backup.md)
 - 💾 **Store, share and generate IR codes**: command payloads via the Hub tab's device editor, see [`docs/command_payloads.md`](docs/command_payloads.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
@@ -65,8 +65,8 @@ When the official app is connected to the proxy, HA entities that can send comma
 - 🛰 **X1, X1S, and X2 support** — automatic discovery and support for multiple hubs.
 - 🔌 **Home Assistant and the Sofabaton app together** — the built-in local proxy lets the official app share hub access with Home Assistant.
 - 🖥️ **Live hub editing** — manage Activities, Devices, commands, button assignments, power behavior, shortcuts, and macros from the Control Panel.
-- ⚙️ **Home Assistant → Sofabaton** — send device commands, start or switch Activities, and power off the hub.
-- 💎 **Sofabaton → Home Assistant** — respond to physical remote buttons, Hub Events, and Activity Events with Home Assistant Actions or your own automations.
+- ⚙️ **Home Assistant ➜ Sofabaton** — send device commands, start or switch Activities, and power off the hub.
+- 💎 **Sofabaton ➜ Home Assistant** — respond to physical remote buttons, Hub Events, and Activity Events with Home Assistant Actions or your own automations.
 - 🔄 **Local backup and restore** — restore a whole hub or selected Devices, including supported moves to newer hub models. See the [`backup guide`](docs/backup.md).
 - 💾 **Command payload tools** — retrieve, test, edit, generate, save, and share IR command payloads. See the [`command payload guide`](docs/command_payloads.md).
 - 🧰 **Maintenance and diagnostics** — persistent cache, live hub logs, Find Remote, and configurable network listeners and ports.
@@ -182,7 +182,7 @@ Live edits are reviewed before syncing. The card also prevents conflicting write
 
 ---
 
-## ⚡ Automations — Sofabaton → Home Assistant
+## ⚡ Automations — Sofabaton ➜ Home Assistant
 
 Turn physical remote button presses and hub events into Home Assistant Actions.
 
@@ -209,7 +209,7 @@ Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
 ---
 
-## 🤖 Automations — Home Assistant → Sofabaton
+## 🤖 Automations — Home Assistant ➜ Sofabaton
 
 Send commands from Home Assistant through your Sofabaton hub, using the `remote.<hub>_remote` entity.
 
