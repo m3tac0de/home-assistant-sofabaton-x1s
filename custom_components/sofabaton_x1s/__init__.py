@@ -69,7 +69,10 @@ from .command_config import (
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
-from .lib.bundle_validation import validate_hub_bundle_for_model
+from .lib.bundle_validation import (
+    collect_missing_command_refs,
+    validate_hub_bundle_for_model,
+)
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
@@ -1945,11 +1948,18 @@ def _validate_entity_sync_inputs(
             if baseline_entries.get(ent_id) != entry:
                 strict_entity_ids.add(ent_id)
 
+    # Dangling command references already present in the captured baseline
+    # are hub truth (cloud-provisioned device pages can reference commands
+    # the deploy never wrote to the hub) — grandfather them in both bundles
+    # so they cannot block a sync, while an edit that introduces a new
+    # dangling reference still fails validation.
+    tolerated_missing_commands = collect_missing_command_refs(baseline)
     baseline_model = validate_hub_bundle_for_model(
         baseline,
         hub_version=hub_version,
         payload_name="baseline",
         enforce_editor_invariants=False,
+        tolerated_missing_commands=tolerated_missing_commands,
     )
     edited_model = validate_hub_bundle_for_model(
         edited,
@@ -1957,6 +1967,7 @@ def _validate_entity_sync_inputs(
         payload_name="edited",
         enforce_editor_invariants=True,
         strict_entity_ids=strict_entity_ids,
+        tolerated_missing_commands=tolerated_missing_commands,
     )
     if baseline_model != edited_model:
         raise ValueError("baseline and edited bundles declare different hub models")

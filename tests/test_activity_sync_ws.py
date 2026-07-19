@@ -244,6 +244,34 @@ def test_ws_activity_sync_ignores_invariants_on_unchanged_bystander(monkeypatch)
     started["coro"].close()
 
 
+def test_ws_activity_sync_tolerates_hub_dangling_command_refs(monkeypatch):
+    # Issue #263: cloud-provisioned device pages can reference commands the
+    # deploy never wrote to the hub. Both bundles carry that hub truth on an
+    # unchanged bystander device — it must not block syncing an activity edit.
+    conn = _Conn()
+    started = {}
+    _patch(monkeypatch)
+    hass = SimpleNamespace(
+        async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
+        data={integration.DOMAIN: {}},
+    )
+    baseline = _bundle([])
+    edited = _bundle([{"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"}])
+    for bundle in (baseline, edited):
+        bundle["devices"][0]["button_bindings"] = [
+            {"button_id": 0xAE, "command_id": 11, "long_press_command_id": None},
+        ]
+
+    _run(integration._ws_activity_sync(hass, conn, {
+        "id": 42, "entry_id": "entry-1", "activity_id": 101,
+        "baseline": baseline, "edited": edited,
+    }))
+
+    assert conn.error is None
+    assert "operation_id" in conn.result[1]
+    started["coro"].close()
+
+
 def test_ws_activity_sync_enforces_invariants_on_changed_bystander(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch)

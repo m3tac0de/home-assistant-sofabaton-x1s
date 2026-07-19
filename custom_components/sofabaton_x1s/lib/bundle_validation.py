@@ -476,6 +476,98 @@ def _validate_activity(
             )
 
 
+def collect_missing_command_refs(bundle: Any) -> dict[int, set[int]]:
+    """Best-effort scan for command references into commands the hub does
+    not have.
+
+    Cloud-provisioned devices can arrive on the hub already inconsistent:
+    the vendor cloud template numbers the device's full command set, and the
+    deployed key-binding table references that numbering, but the deploy may
+    write only a subset of the commands (observed in issue #263 as an
+    alphabetically numbered command list truncated partway, with bindings
+    referencing the undeployed remainder). A captured baseline can therefore
+    contain button bindings (or macro steps, favorites, input records) that
+    reference command ids absent from the owning device's command list — the
+    hub tolerates those rows and simply does nothing when the key is pressed.
+
+    Returns ``{device_id: {command_id, ...}}`` for every such dangling
+    reference found in ``bundle``. Feed the result of scanning the *baseline*
+    into ``validate_hub_bundle_for_model(tolerated_missing_commands=...)`` so
+    hub truth is grandfathered while a reference newly introduced by an edit
+    is still rejected. Malformed entries are skipped here; full validation
+    reports those.
+    """
+
+    if not isinstance(bundle, Mapping):
+        return {}
+
+    known: dict[int, set[int]] = {}
+    for entry in bundle.get("devices") or []:
+        if not isinstance(entry, Mapping) or not isinstance(entry.get("device"), Mapping):
+            continue
+        device_id = entry["device"].get("device_id")
+        if not isinstance(device_id, int):
+            continue
+        known[device_id] = {
+            command["command_id"]
+            for command in entry.get("commands") or []
+            if isinstance(command, Mapping) and isinstance(command.get("command_id"), int)
+        }
+
+    missing: dict[int, set[int]] = {}
+
+    def _note(device_id: Any, command_id: Any) -> None:
+        if not isinstance(device_id, int) or not isinstance(command_id, int):
+            return
+        if device_id >= ACTIVITY_ID_BASE:
+            return
+        if command_id in _POWER_REF_COMMANDS or command_id == MACRO_DELAY_SENTINEL:
+            return
+        commands = known.get(device_id)
+        if commands is not None and command_id not in commands:
+            missing.setdefault(device_id, set()).add(command_id)
+
+    def _scan_key_rows(owner: Mapping[str, Any], default_device_id: int | None) -> None:
+        for binding in owner.get("button_bindings") or []:
+            if not isinstance(binding, Mapping):
+                continue
+            _note(binding.get("device_id") or default_device_id, binding.get("command_id"))
+            _note(
+                binding.get("long_press_device_id") or default_device_id,
+                binding.get("long_press_command_id"),
+            )
+        for macro in owner.get("macros") or []:
+            if not isinstance(macro, Mapping):
+                continue
+            for step in macro.get("steps") or []:
+                if not isinstance(step, Mapping):
+                    continue
+                _note(step.get("device_id") or default_device_id, step.get("command_id"))
+
+    for entry in bundle.get("devices") or []:
+        if not isinstance(entry, Mapping) or not isinstance(entry.get("device"), Mapping):
+            continue
+        device_id = entry["device"].get("device_id")
+        if not isinstance(device_id, int):
+            continue
+        _scan_key_rows(entry, device_id)
+        record = entry.get("input_record")
+        if isinstance(record, Mapping):
+            for row in record.get("entries") or []:
+                if isinstance(row, Mapping):
+                    _note(device_id, row.get("command_id"))
+
+    for entry in bundle.get("activities") or []:
+        if not isinstance(entry, Mapping):
+            continue
+        _scan_key_rows(entry, None)
+        for favorite in entry.get("favorite_slots") or []:
+            if isinstance(favorite, Mapping):
+                _note(favorite.get("device_id"), favorite.get("command_id"))
+
+    return missing
+
+
 def validate_hub_bundle_for_model(
     bundle: Any,
     *,
@@ -483,6 +575,7 @@ def validate_hub_bundle_for_model(
     payload_name: str = "bundle",
     enforce_editor_invariants: bool = True,
     strict_entity_ids: Collection[int] | None = None,
+    tolerated_missing_commands: Mapping[int, Collection[int]] | None = None,
 ) -> str:
     """Validate one sync bundle and return its normalized hub model.
 
@@ -498,6 +591,13 @@ def validate_hub_bundle_for_model(
     elsewhere in the bundle must not block the sync. Structural checks
     (shape, duplicates, reference integrity) always cover the whole bundle.
     ``None`` applies the invariants to every entity.
+
+    ``tolerated_missing_commands`` grandfathers dangling command references
+    that are hub truth: cloud-provisioned device pages can reference
+    commands the deploy never wrote to the hub (see
+    ``collect_missing_command_refs``). Listed ``{device_id: command_ids}``
+    pairs are treated as present for reference-integrity checks; a reference
+    outside the set is still rejected.
     """
 
     strict_ids = (
@@ -535,6 +635,15 @@ def validate_hub_bundle_for_model(
         model=model,
         strict_for=_strict_for,
     )
+    if tolerated_missing_commands:
+        # Grandfathered hub-truth references (see docstring): fold them into
+        # the per-device command index so every reference-integrity check
+        # accepts them, on strict and non-strict entities alike — the sync
+        # engine never rewrites rows that match the baseline.
+        for device_id, ids in tolerated_missing_commands.items():
+            index = commands.get(device_id)
+            if index is not None:
+                index.update(int(command_id) for command_id in ids)
     for device_id, device in devices.items():
         path = f"{payload_name}.devices[{device_id}]"
         macros = _validate_macros(
