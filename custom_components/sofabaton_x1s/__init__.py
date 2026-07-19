@@ -1894,6 +1894,24 @@ async def _ws_backup_clear_result(hass: HomeAssistant, connection, msg: dict[str
 _ACTIVITY_SYNC_PREWRITE_FAILURES = {"plan", "unavailable", "stale_check"}
 
 
+class _EntitySyncRejected(HomeAssistantError):
+    """Raised by :func:`_async_prepare_entity_sync` when a sync request is
+    rejected before any write reaches the hub — busy, locked, or failing
+    payload validation.
+
+    ``code`` mirrors the WS ``connection.send_error`` vocabulary (``busy``
+    / ``unavailable`` / ``invalid_payload``) so ``_handle_entity_sync_ws``
+    can reproduce its original error codes after the shared prep step; the
+    ``sync_from_snapshot`` service collapses it to a plain
+    ``HomeAssistantError`` (services don't have a separate error-code
+    channel).
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def _validate_entity_sync_inputs(
     msg: dict[str, Any],
     *,
@@ -2061,7 +2079,17 @@ async def _run_entity_sync_operation(
     edited: dict[str, Any],
     entity_kind: str,
     entity_id: int,
-) -> None:
+) -> dict[str, Any]:
+    """Run one activity/device sync to completion against the registry.
+
+    Shared engine entry point for both transports: the WS handler fires
+    this as a background task (progress flows through the operation
+    registry a subscriber polls); the ``sync_from_snapshot`` service
+    awaits it directly and uses the returned outcome dict as its response
+    or failure message, since a service call has no separate progress
+    channel to subscribe to.
+    """
+
     registry = _backup_operation_registry(hass)
 
     pending_wifi_rename: dict[str, Any] | None = None
@@ -2096,16 +2124,17 @@ async def _run_entity_sync_operation(
                 progress_callback=_progress,
             )
     except Exception as err:  # pragma: no cover - defensive; executor traps its own
+        outcome = {"status": "failed", "message": str(err) or "Sync failed", "transient": True}
         registry.update(
             operation_id,
             status="failed",
             phase="failed",
-            message=str(err) or "Sync failed",
-            error=str(err) or "Sync failed",
+            message=outcome["message"],
+            error=outcome["message"],
             transient=True,
         )
         registry.dismiss_operation(operation_id)
-        return
+        return outcome
 
     if isinstance(result, dict) and str(result.get("status") or "") == "failed":
         failed_at = str(result.get("failed_at") or "")
@@ -2122,7 +2151,7 @@ async def _run_entity_sync_operation(
                 transient=True,
             )
             registry.dismiss_operation(operation_id)
-            return
+            return result
         registry.update(
             operation_id,
             status="failed",
@@ -2133,7 +2162,7 @@ async def _run_entity_sync_operation(
             completed_steps=int(result.get("completed_steps") or 0),
             result=result,
         )
-        return
+        return result
 
     # Success tail: refresh the persistent cache so cache_generation bumps and
     # the remote card / Hub tab pick up the new names, macros, and bindings
@@ -2192,6 +2221,65 @@ async def _run_entity_sync_operation(
         total_steps=completed_steps,
         result=result or {"status": "success"},
     )
+    return result or {"status": "success"}
+
+
+async def _async_prepare_entity_sync(
+    hass: HomeAssistant,
+    *,
+    hub: SofabatonHub,
+    entity_kind: str,
+    sync_input: Mapping[str, Any],
+    operation_label: str,
+) -> tuple[str, dict[str, Any], dict[str, Any], int]:
+    """Busy-guard, lock-guard, validate, and register one entity sync.
+
+    The half of ``_handle_entity_sync_ws`` that has nothing to do with the
+    websocket transport, split out so the ``sync_from_snapshot`` service
+    can run the identical pre-write gauntlet — same busy/lock checks,
+    same :func:`_validate_entity_sync_inputs` payload validation, same
+    operation-registry bookkeeping — before handing off to
+    :func:`_run_entity_sync_operation` (the engine entry point both
+    transports share).
+
+    Returns ``(operation_id, baseline, edited, entity_id)``. Raises
+    :class:`_EntitySyncRejected` for every rejection reason (busy, locked,
+    invalid payload); callers translate ``.code`` / ``str(err)`` into
+    their own transport's error shape.
+    """
+
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        raise _EntitySyncRejected(
+            "busy",
+            "Another backup, restore, or sync operation is already running for this hub",
+        )
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, operation_label)
+        baseline, edited, entity_id = _validate_entity_sync_inputs(
+            sync_input,
+            entity_kind=entity_kind,
+            hub_version=getattr(hub, "version", None),
+        )
+    except HomeAssistantError as err:
+        raise _EntitySyncRejected("unavailable", str(err)) from err
+    except ValueError as err:
+        raise _EntitySyncRejected("invalid_payload", str(err)) from err
+
+    operation_id = registry.create(
+        kind=f"{entity_kind}_sync",
+        entry_id=hub.entry_id,
+        initial_state={
+            "status": "pending",
+            "phase": "queued",
+            "message": "Starting sync…",
+            "completed_steps": 0,
+            "total_steps": 0,
+            f"current_{entity_kind}_id": entity_id,
+        },
+    )
+    return operation_id, baseline, edited, entity_id
 
 
 async def _handle_entity_sync_ws(
@@ -2206,37 +2294,18 @@ async def _handle_entity_sync_ws(
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    registry = _backup_operation_registry(hass)
-    if registry.has_running_for_entry(hub.entry_id):
-        connection.send_error(msg["id"], "busy", "Another backup, restore, or sync operation is already running for this hub")
-        return
-
     try:
-        _raise_if_hub_operation_locked(hass, hub, f"_ws_{entity_kind}_sync")
-        baseline, edited, entity_id = _validate_entity_sync_inputs(
-            msg,
+        operation_id, baseline, edited, entity_id = await _async_prepare_entity_sync(
+            hass,
+            hub=hub,
             entity_kind=entity_kind,
-            hub_version=getattr(hub, "version", None),
+            sync_input=msg,
+            operation_label=f"_ws_{entity_kind}_sync",
         )
-    except HomeAssistantError as err:
-        connection.send_error(msg["id"], "unavailable", str(err))
-        return
-    except ValueError as err:
-        connection.send_error(msg["id"], "invalid_payload", str(err))
+    except _EntitySyncRejected as err:
+        connection.send_error(msg["id"], err.code, str(err))
         return
 
-    operation_id = registry.create(
-        kind=f"{entity_kind}_sync",
-        entry_id=hub.entry_id,
-        initial_state={
-            "status": "pending",
-            "phase": "queued",
-            "message": "Starting sync…",
-            "completed_steps": 0,
-            "total_steps": 0,
-            f"current_{entity_kind}_id": entity_id,
-        },
-    )
     hass.async_create_task(
         _run_entity_sync_operation(
             hass,
@@ -3329,6 +3398,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
     if not hass.services.has_service(DOMAIN, "sync_command_config"):
         hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
+    if not hass.services.has_service(DOMAIN, "export_snapshot"):
+        hass.services.async_register(
+            DOMAIN,
+            "export_snapshot",
+            _async_handle_export_snapshot,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+    if not hass.services.has_service(DOMAIN, "sync_from_snapshot"):
+        hass.services.async_register(
+            DOMAIN,
+            "sync_from_snapshot",
+            _async_handle_sync_from_snapshot,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
 
     hass.data[DOMAIN][entry.entry_id] = hub
 
@@ -3386,6 +3469,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "delete_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
             hass.services.async_remove(DOMAIN, "sync_command_config")
+            hass.services.async_remove(DOMAIN, "export_snapshot")
+            hass.services.async_remove(DOMAIN, "sync_from_snapshot")
             async_teardown_diagnostics(hass)
             if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
                 if hass.data[DOMAIN].get("storage_resources_registered"):
@@ -3913,6 +3998,114 @@ async def _async_handle_sync_command_config(call: ServiceCall):
         device_key=str(payload.get("device_key") or device_key or ""),
         device_name=device_name,
     )
+
+
+async def _async_handle_export_snapshot(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.export_snapshot``.
+
+    Wraps :meth:`SofabatonHub.async_get_structural_bundle` — the exact
+    projection the live Control Panel editor reads (WS command
+    ``sofabaton_x1s/cache/structural_bundle``, see
+    ``_ws_get_structural_bundle``). It is a pure read from the cached
+    proxy state: no hub I/O and no per-command IR blob dump, so it is
+    cheap enough to call before every ``sync_from_snapshot`` and safe to
+    call while the vendor app owns the hub.
+
+    Deliberately not ``backup_bundle``: that action always does a live
+    round trip to the hub (and, for a whole-hub backup, dumps every
+    command's IR blob) — see ``docs/protocol/write-flows.md``.
+    ``export_snapshot`` only returns what the integration already has
+    cached; open the Control Panel's Hub or Activities tab once (or run
+    a whole-hub cache refresh) to populate the cache on a fresh install.
+    """
+
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        raise HomeAssistantError(
+            "export_snapshot requires the persistent cache to be enabled "
+            "(Sofabaton X1S integration options)."
+        )
+
+    bundle = await hub.async_get_structural_bundle()
+    if not bundle:
+        raise HomeAssistantError(
+            "No cached structural snapshot is available yet. Open the "
+            "Control Panel's Hub or Activities tab once (or run a "
+            "whole-hub cache refresh) to populate it, then retry."
+        )
+    return {"bundle": bundle, "generation": hub.cache_generation}
+
+
+async def _async_handle_sync_from_snapshot(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.sync_from_snapshot``.
+
+    Script-callable counterpart of the live Control Panel editor's save
+    action. Accepts the same ``baseline``/``edited`` hub_bundle pair the
+    WS ``activity/sync`` and ``device/sync`` commands accept (see
+    ``_validate_entity_sync_inputs``), routes through the identical
+    pre-write gauntlet (``_async_prepare_entity_sync``: busy guard, lock
+    guard, payload validation, operation-registry bookkeeping) and the
+    identical engine entry point (``_run_entity_sync_operation`` ->
+    ``hub.async_sync_activity``/``async_sync_device`` ->
+    ``ActivitySyncMixin.sync_activity``/``sync_device``) the WS handler
+    uses — so paging, label-slot reuse, and ack tolerance all apply
+    exactly as they do from the Control Panel.
+
+    Typical flow: call ``export_snapshot`` to get a bundle, edit the two
+    POWER_ON/POWER_OFF steps for one device in the returned JSON, call
+    this with the untouched export as ``baseline`` and the edited copy
+    as ``edited``.
+    """
+
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    entity_kind = str(call.data.get("entity_kind") or "").strip().lower()
+    if entity_kind not in ("activity", "device"):
+        raise ValueError("entity_kind must be 'activity' or 'device'")
+
+    baseline = call.data.get("baseline")
+    edited = call.data.get("edited")
+    if not isinstance(baseline, dict) or not isinstance(edited, dict):
+        raise ValueError("baseline and edited must be hub_bundle objects")
+
+    sync_input = {
+        "baseline": baseline,
+        "edited": edited,
+        f"{entity_kind}_id": call.data.get("entity_id"),
+    }
+
+    try:
+        operation_id, baseline, edited, entity_id = await _async_prepare_entity_sync(
+            hass,
+            hub=hub,
+            entity_kind=entity_kind,
+            sync_input=sync_input,
+            operation_label=f"sync_from_snapshot[{entity_kind}]",
+        )
+    except _EntitySyncRejected as err:
+        raise HomeAssistantError(str(err)) from err
+
+    result = await _run_entity_sync_operation(
+        hass,
+        operation_id,
+        hub=hub,
+        baseline=baseline,
+        edited=edited,
+        entity_kind=entity_kind,
+        entity_id=entity_id,
+    )
+    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
+        raise HomeAssistantError(str(result.get("message") or "Sync failed"))
+    return result
+
 
 async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
     return await _async_resolve_hub_from_data(hass, call.data)
