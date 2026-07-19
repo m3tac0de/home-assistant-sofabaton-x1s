@@ -42,6 +42,17 @@ the official app's create flow (write key `0x00`, hub assigns the real key
 in the `0x0112` ack) is *not* required for a client that picks a free key
 itself. Bench-validated 2026-07-11.
 
+**Editor sync engine owns this family**: the paging, label-slot-reuse, and
+ack-tolerance behavior described above lives in `ActivitySyncMixin` /
+`X1Proxy._send_paged_macro_save` (`lib/proxy_activity_sync.py`,
+`lib/x1_proxy.py`), driven by a baseline/edited `hub_bundle` diff
+(`lib/activity_sync.py`). The live Control Panel editor's save action and
+the `sync_from_snapshot` HA service (`export_snapshot` supplies the
+baseline) are two entry points into that same engine, not separate write
+paths — a device- or activity-scoped power-row edit submitted through
+either one gets the paged write, the reused label slot, and the tolerant
+ack for free. See `services.yaml` for the service surface.
+
 ---
 
 ## Standard device-create sequence
