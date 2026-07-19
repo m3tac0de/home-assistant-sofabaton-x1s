@@ -3274,6 +3274,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
+    if not hass.services.has_service(DOMAIN, "set_power_macro"):
+        hass.services.async_register(
+            DOMAIN,
+            "set_power_macro",
+            _async_handle_set_power_macro,
+        )
+    if not hass.services.has_service(DOMAIN, "set_device_power_binding"):
+        hass.services.async_register(
+            DOMAIN,
+            "set_device_power_binding",
+            _async_handle_set_device_power_binding,
+        )
     if not hass.services.has_service(DOMAIN, "dump_ir_commands"):
         hass.services.async_register(
             DOMAIN,
@@ -3377,6 +3389,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "restore_backup")
             hass.services.async_remove(DOMAIN, "play_ir_blob")
             hass.services.async_remove(DOMAIN, "persist_ir_blob")
+            hass.services.async_remove(DOMAIN, "set_device_power_binding")
+            hass.services.async_remove(DOMAIN, "set_power_macro")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
             hass.services.async_remove(DOMAIN, "delete_device")
@@ -3450,6 +3464,88 @@ async def _async_handle_fetch_device_commands(call: ServiceCall):
 
     ent_id = call.data["ent_id"]
     await hub.async_fetch_device_commands(ent_id)
+
+
+async def _async_handle_set_power_macro(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_set_power_macro")
+
+    entity_id = int(call.data["entity_id"])
+    if entity_id < 1 or entity_id > 255:
+        raise ValueError("entity_id must be between 1 and 255")
+
+    button_raw = str(call.data["button"]).strip().lower()
+    button_map = {"power_on": 0xC6, "power_off": 0xC7}
+    if button_raw not in button_map:
+        raise ValueError("button must be power_on or power_off")
+
+    steps_raw = call.data.get("steps")
+    if not isinstance(steps_raw, list) or not steps_raw:
+        raise ValueError("steps must be a non-empty list of step objects")
+    steps: list[dict[str, int]] = []
+    for i, step in enumerate(steps_raw):
+        if not isinstance(step, dict):
+            raise ValueError(f"steps[{i}] must be an object")
+        for key in ("device_id", "command_id"):
+            if key not in step:
+                raise ValueError(f"steps[{i}] is missing {key}")
+            if int(step[key]) < 0 or int(step[key]) > 255:
+                raise ValueError(f"steps[{i}].{key} must be 0-255")
+        for key in ("duration", "delay"):
+            if int(step.get(key, 0)) < 0 or int(step.get(key, 0)) > 255:
+                raise ValueError(f"steps[{i}].{key} must be 0-255")
+        steps.append(
+            {
+                "device_id": int(step["device_id"]),
+                "command_id": int(step["command_id"]),
+                "duration": int(step.get("duration", 0)),
+                "delay": int(step.get("delay", 0)),
+            }
+        )
+
+    ok = await hub.async_set_power_macro(entity_id, button_map[button_raw], steps)
+    if not ok:
+        raise ValueError(
+            f"Hub did not ack power-macro write for entity {entity_id}"
+        )
+
+
+async def _async_handle_set_device_power_binding(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_set_device_power_binding")
+
+    device_id = int(call.data["device_id"])
+    if device_id < 1 or device_id > 255:
+        raise ValueError("device_id must be between 1 and 255")
+
+    ids: dict[str, int | None] = {}
+    for key in ("power_on_command_id", "power_off_command_id"):
+        raw = call.data.get(key)
+        if raw is None:
+            ids[key] = None
+            continue
+        value = int(raw)
+        if value < 1 or value > 255:
+            raise ValueError(f"{key} must be between 1 and 255")
+        ids[key] = value
+    if ids["power_on_command_id"] is None and ids["power_off_command_id"] is None:
+        raise ValueError("Provide power_on_command_id and/or power_off_command_id")
+
+    ok = await hub.async_set_device_power_binding(
+        device_id,
+        power_on_command_id=ids["power_on_command_id"],
+        power_off_command_id=ids["power_off_command_id"],
+    )
+    if not ok:
+        raise ValueError(f"Hub did not ack power-binding write for device {device_id}")
 
 
 async def _async_handle_dump_ir_commands(call: ServiceCall):

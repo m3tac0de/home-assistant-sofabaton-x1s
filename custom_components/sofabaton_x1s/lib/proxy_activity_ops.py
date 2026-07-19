@@ -24,8 +24,9 @@ from .hub_versions import (
     HUB_VERSION_X2,
 )
 from .hub_logging import LogTag
-from .macros import MacroRecord
+from .macros import MacroKeyEntry, MacroRecord, build_macro_save_payload
 from .device_create import (
+    ACK_OPCODE_STATUS,
     FAMILY_REMOTE_SYNC,
     build_button_binding_step,
     synthesize_command_code,
@@ -1187,6 +1188,132 @@ class ActivityOpsMixin:
             "fav_id": new_fav_id,
             "status": "success",
         }
+
+    def set_power_macro(
+        self,
+        entity_id: int,
+        button_id: int,
+        steps: list[dict[str, int]],
+        *,
+        label: str = "",
+    ) -> bool:
+        """Rewrite one POWER_ON/POWER_OFF macro row set (family 0x12).
+
+        Generic form of :meth:`set_device_power_binding`: ``entity_id`` may
+        be a device id (device-side power rows) or an activity id (the
+        activity's power macro). ``steps`` are ``{device_id, command_id,
+        duration, delay}`` dicts written verbatim as the key sequence, in
+        the exact shape live activity power macros use (``fid=0`` on
+        X1S/X2).
+        """
+
+        if self.hub_version == HUB_VERSION_X1:
+            raise ValueError(
+                "set_power_macro is not implemented for X1 hubs "
+                "(X1 rows carry a synthetic command code in fid)"
+            )
+        if button_id not in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
+            raise ValueError("button_id must be POWER_ON (0xC6) or POWER_OFF (0xC7)")
+        if not steps:
+            raise ValueError("steps must be a non-empty list")
+        if not self.can_issue_commands():
+            self._log.info(
+                "[POWER_MACRO] set_power_macro ignored: proxy client is connected"
+            )
+            return False
+
+        ent_lo = entity_id & 0xFF
+        key_sequence = [
+            MacroKeyEntry(
+                device_id=int(step["device_id"]) & 0xFF,
+                key_id=int(step["command_id"]) & 0xFF,
+                fid=0,
+                duration=int(step.get("duration", 0)) & 0xFF,
+                delay=int(step.get("delay", 0)) & 0xFF,
+            )
+            for step in steps
+        ]
+        body = build_macro_save_payload(
+            activity_id=ent_lo,
+            key_id=button_id,
+            key_sequence=key_sequence,
+            label=label,
+            hub_version=self.hub_version,
+        )
+        self.reset_ack_queues()
+        step = self.execute_exchange(
+            step_name=f"power-macro[ent=0x{ent_lo:02X} btn=0x{button_id:02X} n={len(key_sequence)}]",
+            family=0x12,
+            payload=body,
+            ack_opcode=0x0112,
+            ack_first_byte=button_id,
+            ack_fallback_opcodes=(ACK_OPCODE_STATUS,),
+        )
+        return step.ok
+
+    def set_device_power_binding(
+        self,
+        device_id: int,
+        *,
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
+    ) -> bool:
+        """Rewrite a device's POWER_ON/POWER_OFF macro rows (family 0x12).
+
+        Every activity power macro resolves ``(dev, 0xC6)/(dev, 0xC7)``
+        through these device-side rows — the same mechanism
+        ``_sync_step_wifi_power_config`` rewrites for wifi devices — so the
+        rewrite propagates to every activity without touching any of them.
+        Rows are written in the shape observed on live IR devices: a single
+        key entry with ``fid=0`` (X1S/X2 firmware resolves the command by
+        id), ``duration=0``, ``delay=0``.
+        """
+
+        if self.hub_version == HUB_VERSION_X1:
+            raise ValueError(
+                "set_device_power_binding is not implemented for X1 hubs "
+                "(X1 rows carry a synthetic command code in fid)"
+            )
+        if not self.can_issue_commands():
+            self._log.info(
+                "[DEVICE_POWER] set_device_power_binding ignored: proxy client is connected"
+            )
+            return False
+
+        dev_lo = device_id & 0xFF
+        ok = True
+        for button_id, label, command_id in (
+            (ButtonName.POWER_ON, "POWER_ON", power_on_command_id),
+            (ButtonName.POWER_OFF, "POWER_OFF", power_off_command_id),
+        ):
+            if command_id is None:
+                continue
+            body = build_macro_save_payload(
+                activity_id=dev_lo,
+                key_id=button_id,
+                key_sequence=[
+                    MacroKeyEntry(
+                        device_id=dev_lo,
+                        key_id=command_id & 0xFF,
+                        fid=0,
+                        duration=0,
+                        delay=0,
+                    )
+                ],
+                label=label,
+                hub_version=self.hub_version,
+            )
+            self.reset_ack_queues()
+            step = self.execute_exchange(
+                step_name=f"device-power[dev=0x{dev_lo:02X} btn=0x{button_id:02X}]",
+                family=0x12,
+                payload=body,
+                ack_opcode=0x0112,
+                ack_first_byte=button_id,
+                ack_fallback_opcodes=(ACK_OPCODE_STATUS,),
+            )
+            ok = ok and step.ok
+        return ok
 
     def command_to_button(
         self,

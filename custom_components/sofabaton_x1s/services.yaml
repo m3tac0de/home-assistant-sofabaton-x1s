@@ -475,3 +475,76 @@ delete_favorite:
           min: 1
           max: 255
           mode: box
+
+set_device_power_binding:
+  name: Set device power binding
+  description: Rewrites a device's POWER_ON/POWER_OFF macro rows (the (dev,0xC6)/(dev,0xC7) rows every activity power macro resolves through) to point at the given command ids. Propagates to all activities without touching them. X1S/X2 only.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_id:
+      name: Device id
+      description: Hub device id whose power rows should be rewritten.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    power_on_command_id:
+      name: Power on command id
+      description: Command id to bind to POWER_ON (0xC6). Omit to leave that row unchanged.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    power_off_command_id:
+      name: Power off command id
+      description: Command id to bind to POWER_OFF (0xC7). Omit to leave that row unchanged.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+
+set_power_macro:
+  name: Set power macro
+  description: Rewrites one POWER_ON/POWER_OFF macro row set (family 0x12) for any entity id - a device id (device-side power rows) or an activity id (that activity's power macro). Steps are written verbatim. X1S/X2 only.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    entity_id:
+      name: Entity id
+      description: Hub device id (device power rows) or activity id (activity power macro).
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    button:
+      name: Button
+      description: Which power macro to rewrite.
+      required: true
+      selector:
+        select:
+          options:
+            - power_on
+            - power_off
+    steps:
+      name: Steps
+      description: 'List of step objects: {device_id, command_id, duration, delay}. Written verbatim as the key sequence.'
+      required: true
+      selector:
+        object:

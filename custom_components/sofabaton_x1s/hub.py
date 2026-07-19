@@ -2398,6 +2398,40 @@ class SofabatonHub:
             )
         )
 
+    async def async_set_power_macro(
+        self,
+        entity_id: int,
+        button_id: int,
+        steps: list[dict[str, int]],
+    ) -> bool:
+        """Rewrite one power-macro row set on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.set_power_macro,
+                entity_id,
+                button_id,
+                steps,
+            )
+        )
+
+    async def async_set_device_power_binding(
+        self,
+        device_id: int,
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
+    ) -> bool:
+        """Rewrite a device's POWER_ON/POWER_OFF rows on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.set_device_power_binding,
+                device_id,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
+            )
+        )
+
     async def async_command_to_button(
         self,
         activity_id: int,
