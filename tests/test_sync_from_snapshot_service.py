@@ -210,6 +210,96 @@ def test_sync_from_snapshot_rejects_invalid_bundle_payload(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# sync_from_snapshot: expected_generation baseline-freshness guard
+# ---------------------------------------------------------------------------
+
+
+def _sync_call_data(**extra) -> dict:
+    return {
+        "entity_kind": "device",
+        "entity_id": 1,
+        "baseline": _device_bundle([]),
+        "edited": _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}]),
+        **extra,
+    }
+
+
+def test_sync_from_snapshot_omitted_expected_generation_skips_the_guard(monkeypatch) -> None:
+    hub = _wire_hub(monkeypatch)
+    _wire_cache_store(monkeypatch, enabled=False)
+    hub.cache_generation = 999  # would mismatch anything; must not matter
+
+    result = asyncio.run(
+        integration._async_handle_sync_from_snapshot(_FakeCall(_sync_call_data()))
+    )
+
+    assert result == hub.sync_result
+    assert any(c[0] == "sync_device" for c in hub.calls)
+
+
+def test_sync_from_snapshot_matching_expected_generation_proceeds(monkeypatch) -> None:
+    hub = _wire_hub(monkeypatch)
+    _wire_cache_store(monkeypatch, enabled=False)
+    hub.cache_generation = 41
+
+    result = asyncio.run(
+        integration._async_handle_sync_from_snapshot(
+            _FakeCall(_sync_call_data(expected_generation=41))
+        )
+    )
+    assert result == hub.sync_result
+    assert any(c[0] == "sync_device" for c in hub.calls)
+
+    # YAML script calls commonly stringify numbers; "41" must coerce.
+    hub.calls = []
+    result = asyncio.run(
+        integration._async_handle_sync_from_snapshot(
+            _FakeCall(_sync_call_data(expected_generation="41"))
+        )
+    )
+    assert result == hub.sync_result
+    assert any(c[0] == "sync_device" for c in hub.calls)
+
+
+def test_sync_from_snapshot_stale_expected_generation_refuses_loudly(monkeypatch) -> None:
+    """A moved cache generation refuses before any write AND before the
+    operation registry gets an entry — a stale request must not consume an
+    operation slot other callers would then see as busy."""
+
+    hub = _wire_hub(monkeypatch)
+    hub.cache_generation = 44
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    call = _FakeCall(
+        _sync_call_data(expected_generation=41),
+        hass=SimpleNamespace(
+            data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}}
+        ),
+    )
+
+    with pytest.raises(
+        integration.HomeAssistantError,
+        match="expected generation 41, hub cache is at 44",
+    ):
+        asyncio.run(integration._async_handle_sync_from_snapshot(call))
+
+    assert hub.calls == []
+    assert registry.latest_for_entry(hub.entry_id, kind="device_sync") is None
+
+
+def test_sync_from_snapshot_rejects_non_integer_expected_generation(monkeypatch) -> None:
+    hub = _wire_hub(monkeypatch)
+
+    with pytest.raises(ValueError, match="expected_generation must be an integer"):
+        asyncio.run(
+            integration._async_handle_sync_from_snapshot(
+                _FakeCall(_sync_call_data(expected_generation="not-a-number"))
+            )
+        )
+
+    assert hub.calls == []
+
+
+# ---------------------------------------------------------------------------
 # sync_from_snapshot: drives the same engine entry point as the WS handler
 # ---------------------------------------------------------------------------
 
@@ -318,13 +408,16 @@ def test_ws_and_service_share_the_prepare_entity_sync_helper(monkeypatch) -> Non
     canned_baseline = _bundle([])
     canned_edited = _bundle([{"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"}])
 
-    async def fake_prepare(_hass, *, hub, entity_kind, sync_input, operation_label):
+    async def fake_prepare(
+        _hass, *, hub, entity_kind, sync_input, operation_label, expected_generation=None
+    ):
         prepare_calls.append(
             {
                 "hub": hub,
                 "entity_kind": entity_kind,
                 "operation_label": operation_label,
                 "activity_id": sync_input.get("activity_id"),
+                "expected_generation": expected_generation,
             }
         )
         return f"op-{len(prepare_calls)}", canned_baseline, canned_edited, 101
@@ -384,3 +477,7 @@ def test_ws_and_service_share_the_prepare_entity_sync_helper(monkeypatch) -> Non
     assert prepare_calls[1]["operation_label"] == "sync_from_snapshot[activity]"
     # Both transports fed _async_prepare_entity_sync the same activity_id.
     assert prepare_calls[0]["activity_id"] == 101
+    # Neither transport engaged the freshness guard here: the WS path never
+    # sends an expected generation, and this service call omitted it.
+    assert prepare_calls[0]["expected_generation"] is None
+    assert prepare_calls[1]["expected_generation"] is None

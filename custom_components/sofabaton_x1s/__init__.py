@@ -1904,7 +1904,9 @@ class _EntitySyncRejected(HomeAssistantError):
     can reproduce its original error codes after the shared prep step; the
     ``sync_from_snapshot`` service collapses it to a plain
     ``HomeAssistantError`` (services don't have a separate error-code
-    channel).
+    channel). ``stale_baseline`` belongs to the service-only
+    ``expected_generation`` guard and never reaches the WS path, which
+    does not send an expected generation.
     """
 
     def __init__(self, code: str, message: str) -> None:
@@ -2231,6 +2233,7 @@ async def _async_prepare_entity_sync(
     entity_kind: str,
     sync_input: Mapping[str, Any],
     operation_label: str,
+    expected_generation: int | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any], int]:
     """Busy-guard, lock-guard, validate, and register one entity sync.
 
@@ -2242,10 +2245,17 @@ async def _async_prepare_entity_sync(
     :func:`_run_entity_sync_operation` (the engine entry point both
     transports share).
 
+    ``expected_generation`` is the service path's baseline-freshness gate:
+    when supplied, the hub's ``cache_generation`` must still equal it or
+    the sync is refused. The WS editor never passes it — it re-exports its
+    baseline from the structural bundle after every sync and relies on the
+    engine's own stale-check preflight, which stays the wire-level
+    authority for both transports.
+
     Returns ``(operation_id, baseline, edited, entity_id)``. Raises
-    :class:`_EntitySyncRejected` for every rejection reason (busy, locked,
-    invalid payload); callers translate ``.code`` / ``str(err)`` into
-    their own transport's error shape.
+    :class:`_EntitySyncRejected` for every rejection reason (busy, stale
+    baseline, locked, invalid payload); callers translate ``.code`` /
+    ``str(err)`` into their own transport's error shape.
     """
 
     registry = _backup_operation_registry(hass)
@@ -2254,6 +2264,23 @@ async def _async_prepare_entity_sync(
             "busy",
             "Another backup, restore, or sync operation is already running for this hub",
         )
+
+    # The generation compare sits after the busy guard (no registry-tracked
+    # operation is mid-flight for this entry, so no sync tail is about to
+    # bump the generation) and before ``registry.create`` (a stale request
+    # must not consume an operation slot other callers would see as busy).
+    # Everything from here through ``create`` is await-free, so the value
+    # read cannot move before the operation is registered; the successful
+    # sync's own bump happens later, inside ``_run_entity_sync_operation``'s
+    # tail, and is never re-checked against this snapshot.
+    if expected_generation is not None:
+        current_generation = int(hub.cache_generation)
+        if current_generation != expected_generation:
+            raise _EntitySyncRejected(
+                "stale_baseline",
+                f"stale baseline: expected generation {expected_generation}, "
+                f"hub cache is at {current_generation} - re-export the snapshot",
+            )
 
     try:
         _raise_if_hub_operation_locked(hass, hub, operation_label)
@@ -4017,6 +4044,11 @@ async def _async_handle_export_snapshot(call: ServiceCall):
     ``export_snapshot`` only returns what the integration already has
     cached; open the Control Panel's Hub or Activities tab once (or run
     a whole-hub cache refresh) to populate the cache on a fresh install.
+
+    Response is ``{bundle, generation}`` — the same shape the WS command
+    sends. ``generation`` is the cache generation the snapshot was
+    exported at; pass it back as ``sync_from_snapshot``'s
+    ``expected_generation`` to refuse a stale baseline loudly.
     """
 
     hass = call.hass
@@ -4056,10 +4088,13 @@ async def _async_handle_sync_from_snapshot(call: ServiceCall):
     uses — so paging, label-slot reuse, and ack tolerance all apply
     exactly as they do from the Control Panel.
 
-    Typical flow: call ``export_snapshot`` to get a bundle, edit the two
-    POWER_ON/POWER_OFF steps for one device in the returned JSON, call
-    this with the untouched export as ``baseline`` and the edited copy
-    as ``edited``.
+    Typical flow: call ``export_snapshot`` to get a bundle, keep the
+    ``generation`` it returns, edit the two POWER_ON/POWER_OFF steps for
+    one device in the returned JSON, then call this with the untouched
+    export as ``baseline``, the edited copy as ``edited``, and that
+    generation as ``expected_generation`` — the sync then refuses loudly
+    if the hub cache has moved since the export instead of failing later
+    (or writing against a rebased diff).
     """
 
     hass = call.hass
@@ -4076,6 +4111,14 @@ async def _async_handle_sync_from_snapshot(call: ServiceCall):
     if not isinstance(baseline, dict) or not isinstance(edited, dict):
         raise ValueError("baseline and edited must be hub_bundle objects")
 
+    raw_generation = call.data.get("expected_generation")
+    expected_generation: int | None = None
+    if raw_generation is not None:
+        try:
+            expected_generation = int(raw_generation)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("expected_generation must be an integer") from exc
+
     sync_input = {
         "baseline": baseline,
         "edited": edited,
@@ -4089,6 +4132,7 @@ async def _async_handle_sync_from_snapshot(call: ServiceCall):
             entity_kind=entity_kind,
             sync_input=sync_input,
             operation_label=f"sync_from_snapshot[{entity_kind}]",
+            expected_generation=expected_generation,
         )
     except _EntitySyncRejected as err:
         raise HomeAssistantError(str(err)) from err
