@@ -42,6 +42,23 @@ the official app's create flow (write key `0x00`, hub assigns the real key
 in the `0x0112` ack) is *not* required for a client that picks a free key
 itself. Bench-validated 2026-07-11.
 
+**Device-scoped power rows (family `0x12`)**: devices carry the same
+macro-row structure as activities, keyed on the device id (device and
+activity ids share one entity-id space). Every device stores two rows —
+key `0xC6` (POWER_ON) and key `0xC7` (POWER_OFF) — and every activity
+power macro resolves its per-device power steps `(dev, 0xC6)` /
+`(dev, 0xC7)` through them at run time. Rewriting a device's rows
+therefore changes the power behavior of every activity that references
+the device, without touching any activity record. The write is a bare
+single-row family-`0x12` save per key (`0x0112` ack keyed on the row id;
+no head write, no `0x41` enable, no activity write) — the same shape the
+wifi power-config sync path uses. The `set_device_power_binding` and
+`set_power_macro` services expose this write. Bench-validated on X1S
+2026-07-19: rewritten rows read back correctly and were resolved live by
+every activity power macro. Freshly built label slots were accepted on
+X1S; see the `label_slot` notes on `build_macro_save_payload` for the
+metadata-preserving variant some saves require.
+
 ---
 
 ## Standard device-create sequence
