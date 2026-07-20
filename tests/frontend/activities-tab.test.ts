@@ -50,8 +50,8 @@ test("activities tab loads the baseline from the structural cache and clones wor
   // working is an independent deep clone — mutating it must not touch baseline.
   assert.notEqual(element._working, bundle);
   assert.deepEqual(element._working, bundle);
-  element._working.activities[0].device.name = "Changed";
-  assert.equal(element._baseline.activities[0].device.name, "Watch TV");
+  (element._working as any).activities[0].device.name = "Changed";
+  assert.equal((element._baseline as any).activities[0].device.name, "Watch TV");
 });
 
 test("activities tab prompts to refresh when the structural cache is missing", async () => {

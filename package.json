@@ -5,15 +5,18 @@
   "scripts": {
     "build:tools-card": "node ./scripts/build-tools-card.mjs",
     "build:remote-card": "node ./scripts/build-remote-card.mjs",
+    "build:frontend": "npm run build:tools-card && npm run build:remote-card",
+    "typecheck": "tsc -p tsconfig.json",
     "build:frontend-tests": "node ./scripts/build-frontend-tests.mjs",
     "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist",
     "test:playwright": "playwright test",
     "test:playwright:tools": "npm run build:tools-card && playwright test tests/playwright/tools-card-editor.spec.js",
     "test:playwright:update": "playwright test --update-snapshots",
-    "test:playwright:remote": "playwright test tests/playwright/remote-card.spec.js"
+    "test:playwright:remote": "playwright test tests/playwright/remote-card.spec.js tests/playwright/remote-card-editor.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@types/node": "^20.19.43",
     "esbuild": "^0.27.0",
     "lit": "^3.3.1",
     "typescript": "^5.9.3"

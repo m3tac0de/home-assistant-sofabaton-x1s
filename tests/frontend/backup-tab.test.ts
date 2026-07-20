@@ -204,7 +204,7 @@ test("backup tab keeps the loaded restore bundle on a no-op hub update", () => {
 });
 
 test("backup tab renders native radios for scope selection", () => {
-  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
 
   const result = element._renderScopeGroup({
     value: "whole_hub",
@@ -270,7 +270,7 @@ test("backup complete dismiss clears backend result and resets the make view", a
 test("backup edit detail rename updates the selected device name in the bundle", () => {
   // The rename flow lives in the extracted edit-detail element; the
   // backup tab only routes the resulting bundle-change event.
-  const element = new EditDetailViewElement() as HTMLElement & Record<string, unknown>;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
   element.bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -295,7 +295,7 @@ test("backup edit detail rename updates the selected device name in the bundle",
 });
 
 test("edit detail element reports edits through bundle-change", () => {
-  const element = new EditDetailViewElement() as HTMLElement & Record<string, unknown>;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
   element.bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -311,7 +311,7 @@ test("edit detail element reports edits through bundle-change", () => {
   };
   element.kind = "device";
   element.entityId = 7;
-  let emitted: { devices: Array<{ device?: { name?: string } }> } | null = null;
+  let emitted: { devices: Array<{ device?: { name?: string } }> } | undefined;
   (element as unknown as EventTarget).addEventListener("bundle-change", (event) => {
     emitted = (event as CustomEvent<{ bundle: typeof emitted }>).detail.bundle;
   });

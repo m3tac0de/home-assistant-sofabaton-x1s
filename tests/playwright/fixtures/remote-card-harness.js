@@ -10,7 +10,30 @@ const COMMAND_IDS = [
 const clone = (value) =>
   value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 
-class HaCardStub extends HTMLElement {}
+// Self-styling like the real ha-card (shadow root + :host styles + slot), so
+// it renders identically whether it sits in light DOM (legacy card) or inside
+// the Lit card's shadow tree.
+class HaCardStub extends HTMLElement {
+  constructor() {
+    super();
+    const shadow = this.attachShadow({ mode: "open" });
+    shadow.innerHTML = `
+      <style>
+        *, :host { box-sizing: border-box; }
+        :host {
+          display: block;
+          background: #fff;
+          border-radius: var(--ha-card-border-radius, 18px);
+          border: 1px solid #dbdbdb;
+          box-shadow:
+            0 1px 2px rgba(0, 0, 0, 0.06),
+            0 12px 24px rgba(0, 0, 0, 0.04);
+        }
+      </style>
+      <slot></slot>
+    `;
+  }
+}
 
 const iconSvg = (paths, { viewBox = "0 0 24 24", fill = "none", stroke = "currentColor", strokeWidth = "2", linecap = "round", linejoin = "round" } = {}) =>
   `<svg viewBox="${viewBox}" width="100%" height="100%" aria-hidden="true" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="${linecap}" stroke-linejoin="${linejoin}">${paths}</svg>`;
@@ -51,8 +74,17 @@ const iconFallback = (name) => {
 };
 
 class HaIconStub extends HTMLElement {
+  // Render into shadow DOM like the real ha-icon. Light-DOM rendering would
+  // mutate Lit's cloned template fragments during the importNode upgrade
+  // (attributeChangedCallback fires mid-clone), shifting lit-html's node
+  // indexes and mis-binding every part after the icon.
   static get observedAttributes() {
     return ["icon"];
+  }
+
+  constructor() {
+    super();
+    this._shadow = this.attachShadow({ mode: "open" });
   }
 
   connectedCallback() {
@@ -65,13 +97,19 @@ class HaIconStub extends HTMLElement {
 
   _render() {
     const icon = this.getAttribute("icon") || "";
-    this.style.display = "inline-flex";
-    this.style.alignItems = "center";
-    this.style.justifyContent = "center";
-    this.style.width = "1em";
-    this.style.height = "1em";
-    this.style.color = "inherit";
-    this.innerHTML = ICONS[icon] || `<span style="font-size:0.95em;line-height:1;">${iconFallback(icon)}</span>`;
+    this._shadow.innerHTML = `
+      <style>
+        :host {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 1em;
+          height: 1em;
+          color: inherit;
+        }
+      </style>
+      ${ICONS[icon] || `<span style="font-size:0.95em;line-height:1;">${iconFallback(icon)}</span>`}
+    `;
   }
 }
 
@@ -85,7 +123,15 @@ class MwcListItemStub extends HTMLElement {
   }
 }
 
+// Shadow DOM like the real hui-button-card: the button chrome must travel
+// with the element into any render root, and light-DOM writes would corrupt
+// Lit template clones during upgrade.
 class HuiButtonCardStub extends HTMLElement {
+  constructor() {
+    super();
+    this._shadow = this.attachShadow({ mode: "open" });
+  }
+
   set hass(value) {
     this._hass = value;
   }
@@ -105,7 +151,54 @@ class HuiButtonCardStub extends HTMLElement {
       ? `<span class="button-card-icon">${ICONS[cfg.icon] || `<span style="font-size:0.95em">${iconFallback(cfg.icon)}</span>`}</span>`
       : "";
     const name = cfg.show_name ? `<span class="button-card-name">${cfg.name || ""}</span>` : "";
-    this.innerHTML = `<div class="button-card-main">${icon}${name}</div>`;
+    this._shadow.innerHTML = `
+      <style>
+        *, :host { box-sizing: border-box; }
+        :host {
+          display: block;
+          width: 100%;
+          height: 100%;
+          --ha-card-background: #ffffff;
+          --ha-card-border-width: 1px;
+          --ha-card-border-color: #dbdbdb;
+          --ha-card-border-radius: 22px;
+          --ha-card-box-shadow: none;
+        }
+        .button-card-main {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          height: 100%;
+          min-height: 100%;
+          min-width: 0;
+          padding: 0 10px;
+          border-radius: var(--ha-card-border-radius);
+          border: var(--ha-card-border-width) solid var(--ha-card-border-color);
+          background: var(--ha-card-background);
+          box-shadow: var(--ha-card-box-shadow);
+          color: inherit;
+          font: inherit;
+          text-align: center;
+        }
+        .button-card-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 1.2em;
+          height: 1.2em;
+          line-height: 1;
+          color: var(--primary-color);
+        }
+        .button-card-name {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      </style>
+      <div class="button-card-main">${icon}${name}</div>
+    `;
   }
 }
 
@@ -338,11 +431,124 @@ class HaSelectStub extends HTMLElement {
   }
 }
 
+class HaFormStub extends HTMLElement {
+  set hass(value) {
+    this._hass = value;
+  }
+
+  get schema() {
+    return this._schema || [];
+  }
+
+  set schema(value) {
+    this._schema = Array.isArray(value) ? value : [];
+    this._render();
+  }
+
+  get data() {
+    return this._data || {};
+  }
+
+  set data(value) {
+    this._data = value && typeof value === "object" ? value : {};
+    this._render();
+  }
+
+  connectedCallback() {
+    this._render();
+  }
+
+  _rowsFor(schema, depth = 0) {
+    return (schema || [])
+      .map((entry) => {
+        if (Array.isArray(entry?.schema)) {
+          const inner = this._rowsFor(entry.schema, depth + 1);
+          const title = entry.title || entry.name || "";
+          return `<div class="form-group"><div class="form-group-title">${title}</div>${inner}</div>`;
+        }
+        const label =
+          typeof this.computeLabel === "function"
+            ? this.computeLabel(entry)
+            : entry?.name || "";
+        const value = this._data?.[entry?.name];
+        const shown =
+          value === undefined || value === null
+            ? ""
+            : typeof value === "object"
+              ? JSON.stringify(value)
+              : String(value);
+        return `<div class="form-row"><span class="form-label">${label}</span><span class="form-value">${shown}</span></div>`;
+      })
+      .join("");
+  }
+
+  _render() {
+    this.innerHTML = `
+      <style>
+        .form-stub { display: grid; gap: 4px; font-size: 14px; }
+        .form-stub .form-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 6px 10px; border: 1px solid #dadada; border-radius: 8px; background: #fafafa; }
+        .form-stub .form-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .form-stub .form-value { color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .form-stub .form-group { border: 1px dashed #c4c4c4; border-radius: 8px; padding: 6px; display: grid; gap: 4px; }
+        .form-stub .form-group-title { font-weight: 700; font-size: 12px; color: #666; padding: 0 4px; }
+      </style>
+      <div class="form-stub">${this._rowsFor(this._schema)}</div>
+    `;
+  }
+}
+
+class HaSwitchStub extends HTMLElement {
+  // Shadow DOM for the same reason as HaIconStub: never mutate light DOM
+  // inside Lit-cloned fragments.
+  constructor() {
+    super();
+    this._shadow = this.attachShadow({ mode: "open" });
+  }
+
+  connectedCallback() {
+    if (!this._wired) {
+      this._wired = true;
+      this.addEventListener("click", () => {
+        this.checked = !this.checked;
+        this.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    this._render();
+  }
+
+  get checked() {
+    return this.hasAttribute("checked");
+  }
+
+  set checked(next) {
+    if (next) {
+      this.setAttribute("checked", "");
+    } else {
+      this.removeAttribute("checked");
+    }
+    this._render();
+  }
+
+  _render() {
+    const on = this.checked;
+    this._shadow.innerHTML = `
+      <style>
+        :host { display: inline-flex; cursor: pointer; }
+      </style>
+      <span style="width:34px;height:18px;border-radius:9px;background:${on ? "#4c78a8" : "#c4c4c4"};position:relative;display:inline-block;transition:none;">
+        <span style="position:absolute;top:2px;left:${on ? "18px" : "2px"};width:14px;height:14px;border-radius:50%;background:#fff;"></span>
+      </span>
+    `;
+  }
+}
+
 if (!customElements.get("ha-card")) customElements.define("ha-card", HaCardStub);
 if (!customElements.get("ha-icon")) customElements.define("ha-icon", HaIconStub);
 if (!customElements.get("mwc-list-item")) customElements.define("mwc-list-item", MwcListItemStub);
 if (!customElements.get("hui-button-card")) customElements.define("hui-button-card", HuiButtonCardStub);
 if (!customElements.get("ha-select")) customElements.define("ha-select", HaSelectStub);
+if (!customElements.get("ha-form")) customElements.define("ha-form", HaFormStub);
+if (!customElements.get("ha-switch")) customElements.define("ha-switch", HaSwitchStub);
 
 const scenarios = {
   powered_off: {
@@ -451,6 +657,7 @@ const scenarios = {
         state: "on",
         attributes: {
           hub_version: "X2",
+          hub_mac: "AA:BB:CC:11:22:33",
           current_activity: "Movie Time",
           current_activity_id: 201,
           load_state: "idle",
@@ -481,6 +688,7 @@ const harnessState = {
   hass: null,
   serviceCalls: [],
   wsCalls: [],
+  mqttSubscriptions: [],
 };
 
 function createHass(scenario) {
@@ -508,6 +716,21 @@ function createHass(scenario) {
         return { platform: scenario.platform };
       }
       return { ok: true };
+    },
+    connection: {
+      // Enough of hass.connection for the Automation Assist MQTT flows:
+      // records subscriptions; tests push messages via pushMqttMessage().
+      subscribeMessage: async (callback, message) => {
+        const sub = {
+          topic: String(message?.topic || ""),
+          callback,
+          unsubscribed: false,
+        };
+        harnessState.mqttSubscriptions.push(sub);
+        return () => {
+          sub.unsubscribed = true;
+        };
+      },
     },
     async callService(domain, service, data, target) {
       harnessState.serviceCalls.push({ domain, service, data: clone(data), target: clone(target) });
@@ -575,6 +798,30 @@ async function mountCard({ scenario = "active", config = {} } = {}) {
   return card;
 }
 
+async function mountEditor({ scenario = "active", config = {} } = {}) {
+  await ensureRemoteCardLoaded();
+  const mount = document.querySelector("#mount");
+  mount.innerHTML = "";
+
+  harnessState.scenarioName = scenario;
+  harnessState.scenario = clone(scenarios[scenario]);
+  harnessState.serviceCalls = [];
+  harnessState.wsCalls = [];
+  harnessState.config = { ...defaultConfig(), ...clone(config) };
+  harnessState.hass = createHass(harnessState.scenario);
+
+  // HA assigns hass before calling setConfig on config editors; the editor's
+  // _render() short-circuits without hass, so the order matters here.
+  const editor = document.createElement("sofabaton-virtual-remote-editor");
+  editor.hass = harnessState.hass;
+  editor.setConfig(harnessState.config);
+  mount.appendChild(editor);
+  harnessState.card = editor;
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  return editor;
+}
+
 async function updateScenarioState(patch) {
   if (!harnessState.hass) throw new Error("No harness hass available");
   const next = typeof patch === "function" ? patch(clone(harnessState.hass.states[remoteEntityId])) : patch;
@@ -590,9 +837,30 @@ async function updateScenarioState(patch) {
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
+// Query inside the mounted card regardless of render root: the legacy card
+// renders into light DOM, the Lit card into its shadow root.
+function cardRoot() {
+  const card = harnessState.card;
+  if (!card) return document;
+  return card.shadowRoot || card;
+}
+
 window.__remoteCardHarness = {
   mountCard,
+  mountEditor,
   updateScenarioState,
+  query: (selector) => cardRoot().querySelector(selector),
+  queryAll: (selector) => Array.from(cardRoot().querySelectorAll(selector)),
+  getMqttSubscriptions: () =>
+    harnessState.mqttSubscriptions.map((sub) => ({
+      topic: sub.topic,
+      unsubscribed: sub.unsubscribed,
+    })),
+  pushMqttMessage: (topic, payload) => {
+    harnessState.mqttSubscriptions
+      .filter((sub) => !sub.unsubscribed && sub.topic === topic)
+      .forEach((sub) => sub.callback({ topic, payload }));
+  },
   getServiceCalls: () => clone(harnessState.serviceCalls),
   getWsCalls: () => clone(harnessState.wsCalls),
   getRemoteState: () => clone(harnessState.hass?.states?.[remoteEntityId] || null),

@@ -13,7 +13,7 @@ import { setMaxListeners } from "node:events";
 setMaxListeners(0);
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
 import { deviceClassIcon, resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
-import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import type { HassConnectionLike, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 
@@ -150,7 +150,7 @@ function createHass(overrides: {
     },
     connection: overrides.subscribe
       ? {
-          subscribeMessage: overrides.subscribe,
+          subscribeMessage: overrides.subscribe as HassConnectionLike["subscribeMessage"],
         }
       : null,
   };
@@ -550,7 +550,7 @@ test("setHass marks cache as stale when generation changes outside refresh grace
 
 test("logs tab subscribes, loads history, and appends live lines", async () => {
   const { store } = createStore();
-  let pushMessage: ((payload: unknown) => void) | null = null;
+  let pushMessage: ((payload: unknown) => void) | undefined;
   store.connected();
   store.setHass(
     createHass({
@@ -615,7 +615,7 @@ test("busy state and completion notices stay scoped to the hub they ran on", asy
       { ...baseState.hubs[0], entry_id: "hub-2", name: "Bedroom" },
     ],
   };
-  let progressCallback: ((payload: unknown) => void) | null = null;
+  let progressCallback: ((payload: unknown) => void) | undefined;
   store.connected();
   store.setHass(
     createHass({

@@ -1,8 +1,8 @@
 import {
-  DEFAULT_KEY_LABELS,
   HARD_BUTTON_ID_MAP,
   X2_ONLY_HARD_BUTTON_IDS,
 } from "./remote-card-layout";
+import { str } from "./remote-card-strings";
 
 export function normalizeCustomFavorite(item: any, idx = 0) {
   if (!item || typeof item !== "object") return null;
@@ -125,7 +125,7 @@ export function normalizeCommandsForStorage(
       long_press_enabled:
         Boolean(item.long_press_enabled) && Boolean(String(item.hard_button ?? "")),
       activities: Array.isArray(item.activities)
-        ? item.activities.map((id) => String(id)).filter((id) => id !== "")
+        ? item.activities.map((id: unknown) => String(id)).filter((id: string) => id !== "")
         : [],
       action: normalizeCommandAction(item.action),
       long_press_action: normalizeCommandAction(item.long_press_action),
@@ -136,10 +136,10 @@ export function normalizeCommandsForStorage(
 export function editorHardButtonOptions() {
   const group = (keys: string[], title: string) =>
     keys
-      .filter((key) => DEFAULT_KEY_LABELS[key])
+      .filter((key) => str().keys[key])
       .map((key) => ({
         value: key,
-        label: `${title} • ${DEFAULT_KEY_LABELS[key]}`,
+        label: `${title} • ${str().keys[key]}`,
       }));
 
   return [

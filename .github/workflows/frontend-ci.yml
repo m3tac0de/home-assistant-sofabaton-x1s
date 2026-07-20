@@ -1,0 +1,70 @@
+# CI for the frontend cards (custom_components/sofabaton_x1s/www). Typechecks,
+# rebuilds both card bundles and fails on drift against the committed JS
+# (CONTRIBUTING: source and regenerated bundles are committed together), then
+# runs the node:test frontend suite. Playwright runs on Windows because the
+# committed screenshot baselines are *-win32.png.
+name: frontend CI
+
+on:
+  pull_request:
+    paths:
+      - "custom_components/sofabaton_x1s/www/**"
+      - "tests/frontend/**"
+      - "tests/playwright/**"
+      - "scripts/build-*.mjs"
+      - "scripts/serve-playwright-fixtures.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - "playwright.config.cjs"
+      - ".github/workflows/frontend-ci.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "custom_components/sofabaton_x1s/www/**"
+      - "tests/frontend/**"
+      - "tests/playwright/**"
+      - "scripts/build-*.mjs"
+      - "scripts/serve-playwright-fixtures.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - "playwright.config.cjs"
+      - ".github/workflows/frontend-ci.yml"
+
+jobs:
+  frontend:
+    name: typecheck, build drift, node tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build:frontend
+      - name: Committed bundles match source
+        run: git diff --exit-code custom_components/sofabaton_x1s/www/*.js
+      - run: npm run test:frontend
+
+  playwright:
+    name: playwright (win32 baselines)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:playwright
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: test-results/
+          retention-days: 7

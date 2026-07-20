@@ -1,21 +1,15 @@
 import { build } from "esbuild";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 
 await mkdir("tests/frontend-dist", { recursive: true });
 
+const entryPoints = (await readdir("tests/frontend"))
+  .filter((name) => name.endsWith(".test.ts"))
+  .sort()
+  .map((name) => `tests/frontend/${name}`);
+
 await build({
-  entryPoints: [
-    "tests/frontend/activities-tab.test.ts",
-    "tests/frontend/activity-diff.test.ts",
-    "tests/frontend/activity-reorder.test.ts",
-    "tests/frontend/backup-state.test.ts",
-    "tests/frontend/backup-tab.test.ts",
-    "tests/frontend/control-panel-store.test.ts",
-    "tests/frontend/editor-invariants.test.ts",
-    "tests/frontend/edit-detail-view.test.ts",
-    "tests/frontend/wifi-commands-tab.test.ts",
-    "tests/frontend/wifi-commands-state.test.ts",
-  ],
+  entryPoints,
   outdir: "tests/frontend-dist",
   bundle: true,
   format: "esm",

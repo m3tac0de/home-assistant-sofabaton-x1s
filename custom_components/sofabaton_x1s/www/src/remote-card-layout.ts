@@ -153,18 +153,8 @@ export function normalizedGroupOrder(configured: unknown) {
   return order;
 }
 
-export const GROUP_LABELS: Record<string, string> = {
-  activity: "Activity Selector",
-  macro_favorites: "Macros/Favorites",
-  macros_row: "Macros Row",
-  favorites_row: "Favorites Row",
-  dpad: "Direction Pad",
-  nav: "Back/Home/Menu",
-  mid: "Volume/Channel",
-  media: "Media Controls",
-  colors: "Color Buttons",
-  abc: "A/B/C",
-};
+// Group display labels live in remote-card-strings.ts (str().groups) so they
+// can be localized.
 
 export const GROUP_VISIBILITY_KEYS: Record<string, string> = {
   activity: "show_activity",
@@ -236,37 +226,13 @@ export const HARD_BUTTON_ICONS: Record<string, string> = {
   c: "mdi:alpha-c-circle-outline",
 };
 
+// Protocol/state values (NOT display labels) — these match HA state strings
+// coming from the integration and must stay English. The localized display
+// label is str().card.poweredOff.
 export const POWERED_OFF_LABELS = new Set(["powered off", "powered_off", "off"]);
 
-export const DEFAULT_KEY_LABELS: Record<string, string> = {
-  up: "Up",
-  down: "Down",
-  left: "Left",
-  right: "Right",
-  ok: "OK",
-  back: "Back",
-  home: "Home",
-  menu: "Menu",
-  volup: "Vol +",
-  voldn: "Vol -",
-  mute: "Mute",
-  chup: "Ch +",
-  chdn: "Ch -",
-  guide: "Guide",
-  dvr: "DVR",
-  play: "Play",
-  exit: "Exit",
-  rew: "Rewind",
-  pause: "Pause",
-  fwd: "Fast Forward",
-  red: "Red",
-  green: "Green",
-  yellow: "Yellow",
-  blue: "Blue",
-  a: "A",
-  b: "B",
-  c: "C",
-};
+// Default key display labels live in remote-card-strings.ts (str().keys) so
+// they can be localized.
 
 export const HARD_BUTTON_ID_MAP: Record<string, number> = {
   up: ID.UP,
@@ -298,7 +264,7 @@ export const HARD_BUTTON_ID_MAP: Record<string, number> = {
   c: ID.C,
 };
 
-export const X2_ONLY_HARD_BUTTON_IDS = new Set([
+export const X2_ONLY_HARD_BUTTON_IDS = new Set<number>([
   ID.C,
   ID.B,
   ID.A,

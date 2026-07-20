@@ -57,10 +57,14 @@ TypeScript sources:
 ```powershell
 npm run build:tools-card    # www/src/tools-card.ts  -> www/tools-card.js
 npm run build:remote-card   # www/src/remote-card.ts -> www/remote-card.js
+npm run build:frontend      # both bundles
+npm run typecheck           # tsc --noEmit over www/src + frontend tests
 ```
 
 After changing anything under `www/src/`, rebuild the affected bundle and
-commit **both** the source and the regenerated `.js` file.
+commit **both** the source and the regenerated `.js` file — frontend CI
+fails on drift between the two. Run `npm run typecheck` too; all frontend
+code must pass strict type checking.
 
 ## Running the tests
 
@@ -89,9 +93,10 @@ npm run test:frontend
 ```
 
 This bundles `tests/frontend/*.test.ts` into `tests/frontend-dist/` with
-esbuild and runs them with Node's built-in test runner. The generated
-`tests/frontend-dist/*.js` files are checked in; commit them together with
-the `.ts` test sources.
+esbuild and runs them with Node's built-in test runner. Test files are
+discovered by glob, so a new `*.test.ts` file is picked up automatically.
+`tests/frontend-dist/` is generated output and gitignored — do not commit
+it.
 
 ### 3. Playwright (visual/interaction tests for the cards)
 
@@ -127,12 +132,15 @@ CI (`sofabaton-x-ci.yml`) runs on PRs and pushes to `main`/`dev` that touch
 the library, the packaging metadata, or the tests: boundary lint, lib tests
 across supported Python versions, the full suite, and a wheel
 build-and-install smoke test. `hassfest.yaml` and `hacs.yaml` validate the
-integration side.
+integration side. `frontend-ci.yml` runs on changes under `www/` or the
+frontend test/build files: typecheck, both card builds with a
+committed-bundle drift check, the node test suite, and Playwright on a
+Windows runner (the committed screenshot baselines are `*-win32.png`).
 
 ## Pull requests
 
-- Keep generated artifacts in sync: card bundles (`www/*.js`) and frontend
-  test bundles (`tests/frontend-dist/*.js`) must match their sources.
+- Keep generated artifacts in sync: card bundles (`www/*.js`) must match
+  their sources (frontend CI enforces this).
 - Run the suites relevant to your change before opening the PR; CI will run
   them again.
 - For protocol-affecting changes, update the matching page under

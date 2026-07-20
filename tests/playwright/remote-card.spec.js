@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+const HARNESS_URL = "/tests/playwright/fixtures/remote-card-harness.html";
+
 async function mountCard(page, scenario = "active", config = {}) {
-  await page.goto("/tests/playwright/fixtures/remote-card-harness.html");
+  await page.goto(HARNESS_URL);
   await page.evaluate(
     async ({ scenarioName, nextConfig }) => {
       await window.__remoteCardHarness.mountCard({
@@ -127,6 +129,28 @@ test.describe("remote card playwright harness", () => {
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-layout-macros-before-activity.png");
   });
 
+  test("captures default-theme visual baseline", async ({ page }) => {
+    await mountCard(page, "active", { theme: "" });
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-default-theme.png");
+  });
+
+  test("captures shrunk narrow layout baseline", async ({ page }) => {
+    await mountCard(page, "active", { max_width: 360, shrink: 20 });
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-shrunk-narrow.png");
+  });
+
+  test("captures custom favorites drawer baseline", async ({ page }) => {
+    await mountCard(page, "active", {
+      custom_favorites: [
+        { name: "Netflix", icon: "mdi:play-circle", command_id: 601, device_id: 3 },
+        { name: "Cinema Scene", action: { action: "perform-action", perform_action: "scene.turn_on" } },
+      ],
+    });
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    await expect(page.locator(".mf-overlay--favorites")).toHaveClass(/open/);
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-custom-favorites-open.png");
+  });
+
   test("opens one drawer at a time and closes on outside click", async ({ page }) => {
     await mountCard(page, "active");
 
@@ -182,8 +206,8 @@ test.describe("remote card playwright harness", () => {
     await page.locator("ha-select").evaluate((node) => node.dispatchEvent(new Event("opened", { bubbles: true, composed: true })));
 
     const zIndices = await page.evaluate(() => {
-      const activityRow = document.querySelector(".activityRow");
-      const mfContainer = document.querySelector(".mf-container");
+      const activityRow = window.__remoteCardHarness.query(".activityRow");
+      const mfContainer = window.__remoteCardHarness.query(".mf-container");
       return {
         activity: activityRow ? getComputedStyle(activityRow).zIndex : null,
         drawer: mfContainer ? getComputedStyle(mfContainer).zIndex : null,
@@ -213,7 +237,8 @@ test.describe("remote card playwright harness", () => {
     });
 
     const visibleGroups = await page.evaluate(() =>
-      Array.from(document.querySelectorAll(".layout-container > *"))
+      window.__remoteCardHarness
+        .queryAll(".layout-container > *")
         .filter((node) => getComputedStyle(node).display !== "none")
         .map((node) => node.className),
     );
@@ -255,7 +280,8 @@ test.describe("remote card playwright harness", () => {
     });
 
     const visibleGroups = await page.evaluate(() =>
-      Array.from(document.querySelectorAll(".layout-container > *"))
+      window.__remoteCardHarness
+        .queryAll(".layout-container > *")
         .filter((node) => getComputedStyle(node).display !== "none")
         .map((node) => node.className),
     );
@@ -279,6 +305,47 @@ test.describe("remote card playwright harness", () => {
 
     await expect(page.locator(".mid")).toHaveClass(/mid--channel/);
     await expect(page.locator(".mid")).not.toHaveClass(/mid--dual/);
+  });
+
+  test("automation assist on X2 subscribes to hub MQTT and opens the discovery modal", async ({ page }) => {
+    await mountCard(page, "hub_x2", { show_automation_assist: true });
+
+    // Pressing any key starts a capture session, which brings up the MQTT
+    // subscription for the hub's `<mac>/up` topic.
+    await page.locator(".dpad .key").first().click();
+
+    // The subscription legitimately waits for the hub request queue to drain
+    // (three key fetches at 3s gaps), so allow well beyond that.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            window.__remoteCardHarness
+              .getMqttSubscriptions()
+              .filter((sub) => !sub.unsubscribed)
+              .map((sub) => sub.topic),
+          ),
+        { timeout: 20000 },
+      )
+      .toContain("AABBCC112233/up");
+
+    // The capture itself lands in a persistent notification.
+    const notification = await page.evaluate(() =>
+      window.__remoteCardHarness
+        .getServiceCalls()
+        .find((call) => call.domain === "persistent_notification" && call.service === "create"),
+    );
+    expect(notification).toBeTruthy();
+
+    // A remote keypress arriving over MQTT opens the device-detected modal.
+    await page.evaluate(() => {
+      window.__remoteCardHarness.pushMqttMessage(
+        "AABBCC112233/up",
+        JSON.stringify({ device_id: 7, key_id: 12 }),
+      );
+    });
+    await expect(page.locator(".sb-modal")).toHaveClass(/open/);
+    await expect(page.locator(".sb-modal__text")).toContainText("Device 7");
   });
 
   test("handles the hub x2 integration scenario without losing drawer content", async ({ page }) => {

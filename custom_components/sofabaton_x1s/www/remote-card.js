@@ -1,3 +1,555 @@
+// node_modules/@lit/reactive-element/css-tag.js
+var t = globalThis;
+var e = t.ShadowRoot && (void 0 === t.ShadyCSS || t.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype;
+var s = /* @__PURE__ */ Symbol();
+var o = /* @__PURE__ */ new WeakMap();
+var n = class {
+  constructor(t5, e6, o8) {
+    if (this._$cssResult$ = true, o8 !== s) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
+    this.cssText = t5, this.t = e6;
+  }
+  get styleSheet() {
+    let t5 = this.o;
+    const s7 = this.t;
+    if (e && void 0 === t5) {
+      const e6 = void 0 !== s7 && 1 === s7.length;
+      e6 && (t5 = o.get(s7)), void 0 === t5 && ((this.o = t5 = new CSSStyleSheet()).replaceSync(this.cssText), e6 && o.set(s7, t5));
+    }
+    return t5;
+  }
+  toString() {
+    return this.cssText;
+  }
+};
+var r = (t5) => new n("string" == typeof t5 ? t5 : t5 + "", void 0, s);
+var i = (t5, ...e6) => {
+  const o8 = 1 === t5.length ? t5[0] : e6.reduce((e7, s7, o9) => e7 + ((t6) => {
+    if (true === t6._$cssResult$) return t6.cssText;
+    if ("number" == typeof t6) return t6;
+    throw Error("Value passed to 'css' function must be a 'css' function result: " + t6 + ". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.");
+  })(s7) + t5[o9 + 1], t5[0]);
+  return new n(o8, t5, s);
+};
+var S = (s7, o8) => {
+  if (e) s7.adoptedStyleSheets = o8.map((t5) => t5 instanceof CSSStyleSheet ? t5 : t5.styleSheet);
+  else for (const e6 of o8) {
+    const o9 = document.createElement("style"), n7 = t.litNonce;
+    void 0 !== n7 && o9.setAttribute("nonce", n7), o9.textContent = e6.cssText, s7.appendChild(o9);
+  }
+};
+var c = e ? (t5) => t5 : (t5) => t5 instanceof CSSStyleSheet ? ((t6) => {
+  let e6 = "";
+  for (const s7 of t6.cssRules) e6 += s7.cssText;
+  return r(e6);
+})(t5) : t5;
+
+// node_modules/@lit/reactive-element/reactive-element.js
+var { is: i2, defineProperty: e2, getOwnPropertyDescriptor: h, getOwnPropertyNames: r2, getOwnPropertySymbols: o2, getPrototypeOf: n2 } = Object;
+var a = globalThis;
+var c2 = a.trustedTypes;
+var l = c2 ? c2.emptyScript : "";
+var p = a.reactiveElementPolyfillSupport;
+var d = (t5, s7) => t5;
+var u = { toAttribute(t5, s7) {
+  switch (s7) {
+    case Boolean:
+      t5 = t5 ? l : null;
+      break;
+    case Object:
+    case Array:
+      t5 = null == t5 ? t5 : JSON.stringify(t5);
+  }
+  return t5;
+}, fromAttribute(t5, s7) {
+  let i7 = t5;
+  switch (s7) {
+    case Boolean:
+      i7 = null !== t5;
+      break;
+    case Number:
+      i7 = null === t5 ? null : Number(t5);
+      break;
+    case Object:
+    case Array:
+      try {
+        i7 = JSON.parse(t5);
+      } catch (t6) {
+        i7 = null;
+      }
+  }
+  return i7;
+} };
+var f = (t5, s7) => !i2(t5, s7);
+var b = { attribute: true, type: String, converter: u, reflect: false, useDefault: false, hasChanged: f };
+Symbol.metadata ?? (Symbol.metadata = /* @__PURE__ */ Symbol("metadata")), a.litPropertyMetadata ?? (a.litPropertyMetadata = /* @__PURE__ */ new WeakMap());
+var y = class extends HTMLElement {
+  static addInitializer(t5) {
+    this._$Ei(), (this.l ?? (this.l = [])).push(t5);
+  }
+  static get observedAttributes() {
+    return this.finalize(), this._$Eh && [...this._$Eh.keys()];
+  }
+  static createProperty(t5, s7 = b) {
+    if (s7.state && (s7.attribute = false), this._$Ei(), this.prototype.hasOwnProperty(t5) && ((s7 = Object.create(s7)).wrapped = true), this.elementProperties.set(t5, s7), !s7.noAccessor) {
+      const i7 = /* @__PURE__ */ Symbol(), h6 = this.getPropertyDescriptor(t5, i7, s7);
+      void 0 !== h6 && e2(this.prototype, t5, h6);
+    }
+  }
+  static getPropertyDescriptor(t5, s7, i7) {
+    const { get: e6, set: r6 } = h(this.prototype, t5) ?? { get() {
+      return this[s7];
+    }, set(t6) {
+      this[s7] = t6;
+    } };
+    return { get: e6, set(s8) {
+      const h6 = e6?.call(this);
+      r6?.call(this, s8), this.requestUpdate(t5, h6, i7);
+    }, configurable: true, enumerable: true };
+  }
+  static getPropertyOptions(t5) {
+    return this.elementProperties.get(t5) ?? b;
+  }
+  static _$Ei() {
+    if (this.hasOwnProperty(d("elementProperties"))) return;
+    const t5 = n2(this);
+    t5.finalize(), void 0 !== t5.l && (this.l = [...t5.l]), this.elementProperties = new Map(t5.elementProperties);
+  }
+  static finalize() {
+    if (this.hasOwnProperty(d("finalized"))) return;
+    if (this.finalized = true, this._$Ei(), this.hasOwnProperty(d("properties"))) {
+      const t6 = this.properties, s7 = [...r2(t6), ...o2(t6)];
+      for (const i7 of s7) this.createProperty(i7, t6[i7]);
+    }
+    const t5 = this[Symbol.metadata];
+    if (null !== t5) {
+      const s7 = litPropertyMetadata.get(t5);
+      if (void 0 !== s7) for (const [t6, i7] of s7) this.elementProperties.set(t6, i7);
+    }
+    this._$Eh = /* @__PURE__ */ new Map();
+    for (const [t6, s7] of this.elementProperties) {
+      const i7 = this._$Eu(t6, s7);
+      void 0 !== i7 && this._$Eh.set(i7, t6);
+    }
+    this.elementStyles = this.finalizeStyles(this.styles);
+  }
+  static finalizeStyles(s7) {
+    const i7 = [];
+    if (Array.isArray(s7)) {
+      const e6 = new Set(s7.flat(1 / 0).reverse());
+      for (const s8 of e6) i7.unshift(c(s8));
+    } else void 0 !== s7 && i7.push(c(s7));
+    return i7;
+  }
+  static _$Eu(t5, s7) {
+    const i7 = s7.attribute;
+    return false === i7 ? void 0 : "string" == typeof i7 ? i7 : "string" == typeof t5 ? t5.toLowerCase() : void 0;
+  }
+  constructor() {
+    super(), this._$Ep = void 0, this.isUpdatePending = false, this.hasUpdated = false, this._$Em = null, this._$Ev();
+  }
+  _$Ev() {
+    this._$ES = new Promise((t5) => this.enableUpdating = t5), this._$AL = /* @__PURE__ */ new Map(), this._$E_(), this.requestUpdate(), this.constructor.l?.forEach((t5) => t5(this));
+  }
+  addController(t5) {
+    (this._$EO ?? (this._$EO = /* @__PURE__ */ new Set())).add(t5), void 0 !== this.renderRoot && this.isConnected && t5.hostConnected?.();
+  }
+  removeController(t5) {
+    this._$EO?.delete(t5);
+  }
+  _$E_() {
+    const t5 = /* @__PURE__ */ new Map(), s7 = this.constructor.elementProperties;
+    for (const i7 of s7.keys()) this.hasOwnProperty(i7) && (t5.set(i7, this[i7]), delete this[i7]);
+    t5.size > 0 && (this._$Ep = t5);
+  }
+  createRenderRoot() {
+    const t5 = this.shadowRoot ?? this.attachShadow(this.constructor.shadowRootOptions);
+    return S(t5, this.constructor.elementStyles), t5;
+  }
+  connectedCallback() {
+    this.renderRoot ?? (this.renderRoot = this.createRenderRoot()), this.enableUpdating(true), this._$EO?.forEach((t5) => t5.hostConnected?.());
+  }
+  enableUpdating(t5) {
+  }
+  disconnectedCallback() {
+    this._$EO?.forEach((t5) => t5.hostDisconnected?.());
+  }
+  attributeChangedCallback(t5, s7, i7) {
+    this._$AK(t5, i7);
+  }
+  _$ET(t5, s7) {
+    const i7 = this.constructor.elementProperties.get(t5), e6 = this.constructor._$Eu(t5, i7);
+    if (void 0 !== e6 && true === i7.reflect) {
+      const h6 = (void 0 !== i7.converter?.toAttribute ? i7.converter : u).toAttribute(s7, i7.type);
+      this._$Em = t5, null == h6 ? this.removeAttribute(e6) : this.setAttribute(e6, h6), this._$Em = null;
+    }
+  }
+  _$AK(t5, s7) {
+    const i7 = this.constructor, e6 = i7._$Eh.get(t5);
+    if (void 0 !== e6 && this._$Em !== e6) {
+      const t6 = i7.getPropertyOptions(e6), h6 = "function" == typeof t6.converter ? { fromAttribute: t6.converter } : void 0 !== t6.converter?.fromAttribute ? t6.converter : u;
+      this._$Em = e6;
+      const r6 = h6.fromAttribute(s7, t6.type);
+      this[e6] = r6 ?? this._$Ej?.get(e6) ?? r6, this._$Em = null;
+    }
+  }
+  requestUpdate(t5, s7, i7, e6 = false, h6) {
+    if (void 0 !== t5) {
+      const r6 = this.constructor;
+      if (false === e6 && (h6 = this[t5]), i7 ?? (i7 = r6.getPropertyOptions(t5)), !((i7.hasChanged ?? f)(h6, s7) || i7.useDefault && i7.reflect && h6 === this._$Ej?.get(t5) && !this.hasAttribute(r6._$Eu(t5, i7)))) return;
+      this.C(t5, s7, i7);
+    }
+    false === this.isUpdatePending && (this._$ES = this._$EP());
+  }
+  C(t5, s7, { useDefault: i7, reflect: e6, wrapped: h6 }, r6) {
+    i7 && !(this._$Ej ?? (this._$Ej = /* @__PURE__ */ new Map())).has(t5) && (this._$Ej.set(t5, r6 ?? s7 ?? this[t5]), true !== h6 || void 0 !== r6) || (this._$AL.has(t5) || (this.hasUpdated || i7 || (s7 = void 0), this._$AL.set(t5, s7)), true === e6 && this._$Em !== t5 && (this._$Eq ?? (this._$Eq = /* @__PURE__ */ new Set())).add(t5));
+  }
+  async _$EP() {
+    this.isUpdatePending = true;
+    try {
+      await this._$ES;
+    } catch (t6) {
+      Promise.reject(t6);
+    }
+    const t5 = this.scheduleUpdate();
+    return null != t5 && await t5, !this.isUpdatePending;
+  }
+  scheduleUpdate() {
+    return this.performUpdate();
+  }
+  performUpdate() {
+    if (!this.isUpdatePending) return;
+    if (!this.hasUpdated) {
+      if (this.renderRoot ?? (this.renderRoot = this.createRenderRoot()), this._$Ep) {
+        for (const [t7, s8] of this._$Ep) this[t7] = s8;
+        this._$Ep = void 0;
+      }
+      const t6 = this.constructor.elementProperties;
+      if (t6.size > 0) for (const [s8, i7] of t6) {
+        const { wrapped: t7 } = i7, e6 = this[s8];
+        true !== t7 || this._$AL.has(s8) || void 0 === e6 || this.C(s8, void 0, i7, e6);
+      }
+    }
+    let t5 = false;
+    const s7 = this._$AL;
+    try {
+      t5 = this.shouldUpdate(s7), t5 ? (this.willUpdate(s7), this._$EO?.forEach((t6) => t6.hostUpdate?.()), this.update(s7)) : this._$EM();
+    } catch (s8) {
+      throw t5 = false, this._$EM(), s8;
+    }
+    t5 && this._$AE(s7);
+  }
+  willUpdate(t5) {
+  }
+  _$AE(t5) {
+    this._$EO?.forEach((t6) => t6.hostUpdated?.()), this.hasUpdated || (this.hasUpdated = true, this.firstUpdated(t5)), this.updated(t5);
+  }
+  _$EM() {
+    this._$AL = /* @__PURE__ */ new Map(), this.isUpdatePending = false;
+  }
+  get updateComplete() {
+    return this.getUpdateComplete();
+  }
+  getUpdateComplete() {
+    return this._$ES;
+  }
+  shouldUpdate(t5) {
+    return true;
+  }
+  update(t5) {
+    this._$Eq && (this._$Eq = this._$Eq.forEach((t6) => this._$ET(t6, this[t6]))), this._$EM();
+  }
+  updated(t5) {
+  }
+  firstUpdated(t5) {
+  }
+};
+y.elementStyles = [], y.shadowRootOptions = { mode: "open" }, y[d("elementProperties")] = /* @__PURE__ */ new Map(), y[d("finalized")] = /* @__PURE__ */ new Map(), p?.({ ReactiveElement: y }), (a.reactiveElementVersions ?? (a.reactiveElementVersions = [])).push("2.1.2");
+
+// node_modules/lit-html/lit-html.js
+var t2 = globalThis;
+var i3 = (t5) => t5;
+var s2 = t2.trustedTypes;
+var e3 = s2 ? s2.createPolicy("lit-html", { createHTML: (t5) => t5 }) : void 0;
+var h2 = "$lit$";
+var o3 = `lit$${Math.random().toFixed(9).slice(2)}$`;
+var n3 = "?" + o3;
+var r3 = `<${n3}>`;
+var l2 = document;
+var c3 = () => l2.createComment("");
+var a2 = (t5) => null === t5 || "object" != typeof t5 && "function" != typeof t5;
+var u2 = Array.isArray;
+var d2 = (t5) => u2(t5) || "function" == typeof t5?.[Symbol.iterator];
+var f2 = "[ 	\n\f\r]";
+var v = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g;
+var _ = /-->/g;
+var m = />/g;
+var p2 = RegExp(`>|${f2}(?:([^\\s"'>=/]+)(${f2}*=${f2}*(?:[^ 	
+\f\r"'\`<>=]|("|')|))|$)`, "g");
+var g = /'/g;
+var $ = /"/g;
+var y2 = /^(?:script|style|textarea|title)$/i;
+var x = (t5) => (i7, ...s7) => ({ _$litType$: t5, strings: i7, values: s7 });
+var b2 = x(1);
+var w = x(2);
+var T = x(3);
+var E = /* @__PURE__ */ Symbol.for("lit-noChange");
+var A = /* @__PURE__ */ Symbol.for("lit-nothing");
+var C = /* @__PURE__ */ new WeakMap();
+var P = l2.createTreeWalker(l2, 129);
+function V(t5, i7) {
+  if (!u2(t5) || !t5.hasOwnProperty("raw")) throw Error("invalid template strings array");
+  return void 0 !== e3 ? e3.createHTML(i7) : i7;
+}
+var N = (t5, i7) => {
+  const s7 = t5.length - 1, e6 = [];
+  let n7, l4 = 2 === i7 ? "<svg>" : 3 === i7 ? "<math>" : "", c7 = v;
+  for (let i8 = 0; i8 < s7; i8++) {
+    const s8 = t5[i8];
+    let a4, u6, d3 = -1, f4 = 0;
+    for (; f4 < s8.length && (c7.lastIndex = f4, u6 = c7.exec(s8), null !== u6); ) f4 = c7.lastIndex, c7 === v ? "!--" === u6[1] ? c7 = _ : void 0 !== u6[1] ? c7 = m : void 0 !== u6[2] ? (y2.test(u6[2]) && (n7 = RegExp("</" + u6[2], "g")), c7 = p2) : void 0 !== u6[3] && (c7 = p2) : c7 === p2 ? ">" === u6[0] ? (c7 = n7 ?? v, d3 = -1) : void 0 === u6[1] ? d3 = -2 : (d3 = c7.lastIndex - u6[2].length, a4 = u6[1], c7 = void 0 === u6[3] ? p2 : '"' === u6[3] ? $ : g) : c7 === $ || c7 === g ? c7 = p2 : c7 === _ || c7 === m ? c7 = v : (c7 = p2, n7 = void 0);
+    const x2 = c7 === p2 && t5[i8 + 1].startsWith("/>") ? " " : "";
+    l4 += c7 === v ? s8 + r3 : d3 >= 0 ? (e6.push(a4), s8.slice(0, d3) + h2 + s8.slice(d3) + o3 + x2) : s8 + o3 + (-2 === d3 ? i8 : x2);
+  }
+  return [V(t5, l4 + (t5[s7] || "<?>") + (2 === i7 ? "</svg>" : 3 === i7 ? "</math>" : "")), e6];
+};
+var S2 = class _S {
+  constructor({ strings: t5, _$litType$: i7 }, e6) {
+    let r6;
+    this.parts = [];
+    let l4 = 0, a4 = 0;
+    const u6 = t5.length - 1, d3 = this.parts, [f4, v3] = N(t5, i7);
+    if (this.el = _S.createElement(f4, e6), P.currentNode = this.el.content, 2 === i7 || 3 === i7) {
+      const t6 = this.el.content.firstChild;
+      t6.replaceWith(...t6.childNodes);
+    }
+    for (; null !== (r6 = P.nextNode()) && d3.length < u6; ) {
+      if (1 === r6.nodeType) {
+        if (r6.hasAttributes()) for (const t6 of r6.getAttributeNames()) if (t6.endsWith(h2)) {
+          const i8 = v3[a4++], s7 = r6.getAttribute(t6).split(o3), e7 = /([.?@])?(.*)/.exec(i8);
+          d3.push({ type: 1, index: l4, name: e7[2], strings: s7, ctor: "." === e7[1] ? I : "?" === e7[1] ? L : "@" === e7[1] ? z : H }), r6.removeAttribute(t6);
+        } else t6.startsWith(o3) && (d3.push({ type: 6, index: l4 }), r6.removeAttribute(t6));
+        if (y2.test(r6.tagName)) {
+          const t6 = r6.textContent.split(o3), i8 = t6.length - 1;
+          if (i8 > 0) {
+            r6.textContent = s2 ? s2.emptyScript : "";
+            for (let s7 = 0; s7 < i8; s7++) r6.append(t6[s7], c3()), P.nextNode(), d3.push({ type: 2, index: ++l4 });
+            r6.append(t6[i8], c3());
+          }
+        }
+      } else if (8 === r6.nodeType) if (r6.data === n3) d3.push({ type: 2, index: l4 });
+      else {
+        let t6 = -1;
+        for (; -1 !== (t6 = r6.data.indexOf(o3, t6 + 1)); ) d3.push({ type: 7, index: l4 }), t6 += o3.length - 1;
+      }
+      l4++;
+    }
+  }
+  static createElement(t5, i7) {
+    const s7 = l2.createElement("template");
+    return s7.innerHTML = t5, s7;
+  }
+};
+function M(t5, i7, s7 = t5, e6) {
+  if (i7 === E) return i7;
+  let h6 = void 0 !== e6 ? s7._$Co?.[e6] : s7._$Cl;
+  const o8 = a2(i7) ? void 0 : i7._$litDirective$;
+  return h6?.constructor !== o8 && (h6?._$AO?.(false), void 0 === o8 ? h6 = void 0 : (h6 = new o8(t5), h6._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h6 : s7._$Cl = h6), void 0 !== h6 && (i7 = M(t5, h6._$AS(t5, i7.values), h6, e6)), i7;
+}
+var R = class {
+  constructor(t5, i7) {
+    this._$AV = [], this._$AN = void 0, this._$AD = t5, this._$AM = i7;
+  }
+  get parentNode() {
+    return this._$AM.parentNode;
+  }
+  get _$AU() {
+    return this._$AM._$AU;
+  }
+  u(t5) {
+    const { el: { content: i7 }, parts: s7 } = this._$AD, e6 = (t5?.creationScope ?? l2).importNode(i7, true);
+    P.currentNode = e6;
+    let h6 = P.nextNode(), o8 = 0, n7 = 0, r6 = s7[0];
+    for (; void 0 !== r6; ) {
+      if (o8 === r6.index) {
+        let i8;
+        2 === r6.type ? i8 = new k(h6, h6.nextSibling, this, t5) : 1 === r6.type ? i8 = new r6.ctor(h6, r6.name, r6.strings, this, t5) : 6 === r6.type && (i8 = new Z(h6, this, t5)), this._$AV.push(i8), r6 = s7[++n7];
+      }
+      o8 !== r6?.index && (h6 = P.nextNode(), o8++);
+    }
+    return P.currentNode = l2, e6;
+  }
+  p(t5) {
+    let i7 = 0;
+    for (const s7 of this._$AV) void 0 !== s7 && (void 0 !== s7.strings ? (s7._$AI(t5, s7, i7), i7 += s7.strings.length - 2) : s7._$AI(t5[i7])), i7++;
+  }
+};
+var k = class _k {
+  get _$AU() {
+    return this._$AM?._$AU ?? this._$Cv;
+  }
+  constructor(t5, i7, s7, e6) {
+    this.type = 2, this._$AH = A, this._$AN = void 0, this._$AA = t5, this._$AB = i7, this._$AM = s7, this.options = e6, this._$Cv = e6?.isConnected ?? true;
+  }
+  get parentNode() {
+    let t5 = this._$AA.parentNode;
+    const i7 = this._$AM;
+    return void 0 !== i7 && 11 === t5?.nodeType && (t5 = i7.parentNode), t5;
+  }
+  get startNode() {
+    return this._$AA;
+  }
+  get endNode() {
+    return this._$AB;
+  }
+  _$AI(t5, i7 = this) {
+    t5 = M(this, t5, i7), a2(t5) ? t5 === A || null == t5 || "" === t5 ? (this._$AH !== A && this._$AR(), this._$AH = A) : t5 !== this._$AH && t5 !== E && this._(t5) : void 0 !== t5._$litType$ ? this.$(t5) : void 0 !== t5.nodeType ? this.T(t5) : d2(t5) ? this.k(t5) : this._(t5);
+  }
+  O(t5) {
+    return this._$AA.parentNode.insertBefore(t5, this._$AB);
+  }
+  T(t5) {
+    this._$AH !== t5 && (this._$AR(), this._$AH = this.O(t5));
+  }
+  _(t5) {
+    this._$AH !== A && a2(this._$AH) ? this._$AA.nextSibling.data = t5 : this.T(l2.createTextNode(t5)), this._$AH = t5;
+  }
+  $(t5) {
+    const { values: i7, _$litType$: s7 } = t5, e6 = "number" == typeof s7 ? this._$AC(t5) : (void 0 === s7.el && (s7.el = S2.createElement(V(s7.h, s7.h[0]), this.options)), s7);
+    if (this._$AH?._$AD === e6) this._$AH.p(i7);
+    else {
+      const t6 = new R(e6, this), s8 = t6.u(this.options);
+      t6.p(i7), this.T(s8), this._$AH = t6;
+    }
+  }
+  _$AC(t5) {
+    let i7 = C.get(t5.strings);
+    return void 0 === i7 && C.set(t5.strings, i7 = new S2(t5)), i7;
+  }
+  k(t5) {
+    u2(this._$AH) || (this._$AH = [], this._$AR());
+    const i7 = this._$AH;
+    let s7, e6 = 0;
+    for (const h6 of t5) e6 === i7.length ? i7.push(s7 = new _k(this.O(c3()), this.O(c3()), this, this.options)) : s7 = i7[e6], s7._$AI(h6), e6++;
+    e6 < i7.length && (this._$AR(s7 && s7._$AB.nextSibling, e6), i7.length = e6);
+  }
+  _$AR(t5 = this._$AA.nextSibling, s7) {
+    for (this._$AP?.(false, true, s7); t5 !== this._$AB; ) {
+      const s8 = i3(t5).nextSibling;
+      i3(t5).remove(), t5 = s8;
+    }
+  }
+  setConnected(t5) {
+    void 0 === this._$AM && (this._$Cv = t5, this._$AP?.(t5));
+  }
+};
+var H = class {
+  get tagName() {
+    return this.element.tagName;
+  }
+  get _$AU() {
+    return this._$AM._$AU;
+  }
+  constructor(t5, i7, s7, e6, h6) {
+    this.type = 1, this._$AH = A, this._$AN = void 0, this.element = t5, this.name = i7, this._$AM = e6, this.options = h6, s7.length > 2 || "" !== s7[0] || "" !== s7[1] ? (this._$AH = Array(s7.length - 1).fill(new String()), this.strings = s7) : this._$AH = A;
+  }
+  _$AI(t5, i7 = this, s7, e6) {
+    const h6 = this.strings;
+    let o8 = false;
+    if (void 0 === h6) t5 = M(this, t5, i7, 0), o8 = !a2(t5) || t5 !== this._$AH && t5 !== E, o8 && (this._$AH = t5);
+    else {
+      const e7 = t5;
+      let n7, r6;
+      for (t5 = h6[0], n7 = 0; n7 < h6.length - 1; n7++) r6 = M(this, e7[s7 + n7], i7, n7), r6 === E && (r6 = this._$AH[n7]), o8 || (o8 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h6[n7 + 1]), this._$AH[n7] = r6;
+    }
+    o8 && !e6 && this.j(t5);
+  }
+  j(t5) {
+    t5 === A ? this.element.removeAttribute(this.name) : this.element.setAttribute(this.name, t5 ?? "");
+  }
+};
+var I = class extends H {
+  constructor() {
+    super(...arguments), this.type = 3;
+  }
+  j(t5) {
+    this.element[this.name] = t5 === A ? void 0 : t5;
+  }
+};
+var L = class extends H {
+  constructor() {
+    super(...arguments), this.type = 4;
+  }
+  j(t5) {
+    this.element.toggleAttribute(this.name, !!t5 && t5 !== A);
+  }
+};
+var z = class extends H {
+  constructor(t5, i7, s7, e6, h6) {
+    super(t5, i7, s7, e6, h6), this.type = 5;
+  }
+  _$AI(t5, i7 = this) {
+    if ((t5 = M(this, t5, i7, 0) ?? A) === E) return;
+    const s7 = this._$AH, e6 = t5 === A && s7 !== A || t5.capture !== s7.capture || t5.once !== s7.once || t5.passive !== s7.passive, h6 = t5 !== A && (s7 === A || e6);
+    e6 && this.element.removeEventListener(this.name, this, s7), h6 && this.element.addEventListener(this.name, this, t5), this._$AH = t5;
+  }
+  handleEvent(t5) {
+    "function" == typeof this._$AH ? this._$AH.call(this.options?.host ?? this.element, t5) : this._$AH.handleEvent(t5);
+  }
+};
+var Z = class {
+  constructor(t5, i7, s7) {
+    this.element = t5, this.type = 6, this._$AN = void 0, this._$AM = i7, this.options = s7;
+  }
+  get _$AU() {
+    return this._$AM._$AU;
+  }
+  _$AI(t5) {
+    M(this, t5);
+  }
+};
+var j = { M: h2, P: o3, A: n3, C: 1, L: N, R, D: d2, V: M, I: k, H, N: L, U: z, B: I, F: Z };
+var B = t2.litHtmlPolyfillSupport;
+B?.(S2, k), (t2.litHtmlVersions ?? (t2.litHtmlVersions = [])).push("3.3.2");
+var D = (t5, i7, s7) => {
+  const e6 = s7?.renderBefore ?? i7;
+  let h6 = e6._$litPart$;
+  if (void 0 === h6) {
+    const t6 = s7?.renderBefore ?? null;
+    e6._$litPart$ = h6 = new k(i7.insertBefore(c3(), t6), t6, void 0, s7 ?? {});
+  }
+  return h6._$AI(t5), h6;
+};
+
+// node_modules/lit-element/lit-element.js
+var s3 = globalThis;
+var i4 = class extends y {
+  constructor() {
+    super(...arguments), this.renderOptions = { host: this }, this._$Do = void 0;
+  }
+  createRenderRoot() {
+    var _a;
+    const t5 = super.createRenderRoot();
+    return (_a = this.renderOptions).renderBefore ?? (_a.renderBefore = t5.firstChild), t5;
+  }
+  update(t5) {
+    const r6 = this.render();
+    this.hasUpdated || (this.renderOptions.isConnected = this.isConnected), super.update(t5), this._$Do = D(r6, this.renderRoot, this.renderOptions);
+  }
+  connectedCallback() {
+    super.connectedCallback(), this._$Do?.setConnected(true);
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback(), this._$Do?.setConnected(false);
+  }
+  render() {
+    return E;
+  }
+};
+i4._$litElement$ = true, i4["finalized"] = true, s3.litElementHydrateSupport?.({ LitElement: i4 });
+var o4 = s3.litElementPolyfillSupport;
+o4?.({ LitElement: i4 });
+(s3.litElementVersions ?? (s3.litElementVersions = [])).push("4.2.2");
+
 // custom_components/sofabaton_x1s/www/src/remote-card-layout.ts
 var DEFAULT_GROUP_ORDER = [
   "activity",
@@ -122,18 +674,6 @@ function normalizedGroupOrder(configured) {
   }
   return order;
 }
-var GROUP_LABELS = {
-  activity: "Activity Selector",
-  macro_favorites: "Macros/Favorites",
-  macros_row: "Macros Row",
-  favorites_row: "Favorites Row",
-  dpad: "Direction Pad",
-  nav: "Back/Home/Menu",
-  mid: "Volume/Channel",
-  media: "Media Controls",
-  colors: "Color Buttons",
-  abc: "A/B/C"
-};
 var GROUP_VISIBILITY_KEYS = {
   activity: "show_activity",
   dpad: "show_dpad",
@@ -173,35 +713,6 @@ var ID = {
   BLUE: 193
 };
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
-var DEFAULT_KEY_LABELS = {
-  up: "Up",
-  down: "Down",
-  left: "Left",
-  right: "Right",
-  ok: "OK",
-  back: "Back",
-  home: "Home",
-  menu: "Menu",
-  volup: "Vol +",
-  voldn: "Vol -",
-  mute: "Mute",
-  chup: "Ch +",
-  chdn: "Ch -",
-  guide: "Guide",
-  dvr: "DVR",
-  play: "Play",
-  exit: "Exit",
-  rew: "Rewind",
-  pause: "Pause",
-  fwd: "Fast Forward",
-  red: "Red",
-  green: "Green",
-  yellow: "Yellow",
-  blue: "Blue",
-  a: "A",
-  b: "B",
-  c: "C"
-};
 var HARD_BUTTON_ID_MAP = {
   up: ID.UP,
   down: ID.DOWN,
@@ -241,47 +752,200 @@ var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([
   ID.GUIDE
 ]);
 
-// custom_components/sofabaton_x1s/www/src/remote-card-editor-helpers.ts
-function normalizeCustomFavorite(item, idx = 0) {
-  if (!item || typeof item !== "object") return null;
-  const name = String(item.name ?? item.label ?? "").trim();
-  if (!name) return null;
-  const icon = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
-  const action = item.action && typeof item.action === "object" ? item.action : item.tap_action && typeof item.tap_action === "object" ? item.tap_action : null;
-  const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
-  const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
-  const cmd = rawCmd != null ? Number(rawCmd) : null;
-  const dev = rawDev != null ? Number(rawDev) : null;
-  const hasIds = Number.isFinite(cmd) && (rawDev == null || Number.isFinite(dev));
-  const hasAction = !!(action && (action.action || action.service || action.perform_action || action.navigation_path || action.url_path));
-  if (!hasIds && !hasAction) return null;
-  return {
-    __custom: true,
-    name,
-    icon,
-    action: hasAction ? action : null,
-    command_id: Number.isFinite(cmd) ? cmd : null,
-    device_id: Number.isFinite(dev) ? dev : null,
-    _idx: idx,
-    _raw: item
-  };
-}
-function customFavoritesSignature(items) {
-  const list = Array.isArray(items) ? items : [];
-  const parts = list.map((it) => {
-    const n = String(it?.name ?? "");
-    const ic = String(it?.icon ?? "");
-    const cmd = String(it?.command_id ?? "");
-    const dev = String(it?.device_id ?? "");
-    let act = "";
-    try {
-      act = it?.action ? JSON.stringify(it.action) : "";
-    } catch (e) {
-      act = "[unserializable]";
+// custom_components/sofabaton_x1s/www/src/remote-card-strings.ts
+var REMOTE_CARD_STRINGS_EN = {
+  card: {
+    selectEntityError: "Select a Sofabaton remote entity",
+    remoteUnavailable: "Remote is unavailable (possibly because the Sofabaton app is connected).",
+    noActivitiesWarning: "No activities found in remote attributes.",
+    noMacros: "No macros available",
+    noFavorites: "No favorites available",
+    macrosTab: "Macros >",
+    favoritesTab: "Favorites >",
+    activitySelectLabel: "Activity",
+    poweredOff: "Powered Off",
+    defaultLayout: "Default Layout",
+    activityFallback: (id) => `Activity ${id}`
+  },
+  assist: {
+    label: "Key capture",
+    start: "Start",
+    waiting: "Waiting for keypress",
+    exitEditMode: "Exit Edit mode to begin",
+    captured: (label) => `Captured: ${label}`,
+    notCaptured: "Not captured.",
+    working: "Working...",
+    triggersReady: "Triggers ready for use",
+    createTriggers: "Create MQTT Discovery triggers",
+    startCapturing: "Start capturing commands",
+    deviceDetectedTitle: "Home Assistant device detected.",
+    close: "Close",
+    alsoActivityTriggers: "Also create triggers for Activity changes.",
+    seeDocs: "See documentation for this feature.",
+    dontShowAgain: "Not show this again for this device (in this session).",
+    detectedDevice: (name) => `Detected MQTT device: ${name}.`,
+    lastCommand: (name) => `Last command: ${name}.`,
+    existingTriggers: "Existing MQTT automation triggers were found.",
+    noMqttCommands: "No MQTT commands discovered yet",
+    deviceFallback: (id) => `Device ${id}`,
+    unknownDevice: "Unknown device",
+    commandFallback: (id) => `Command ${id}`,
+    createdTriggers: (count, deviceLabel) => `Created ${count} MQTT discovery triggers for ${deviceLabel}`,
+    createdActivityTriggers: (count) => `Created ${count} activity triggers for X2 \u2192 Activities`,
+    plusActivityTriggers: (count) => ` plus ${count} activity triggers`,
+    allTriggersExist: (deviceLabel) => `All MQTT discovery triggers already exist for ${deviceLabel}`,
+    buttonFallback: "Button",
+    activityFallbackLabel: "Activity",
+    unknown: "Unknown",
+    automationAssistName: "Automation Assist",
+    notification: {
+      title: "\u{1F6E0}\uFE0F Automation Assist",
+      eventButton: (label) => `Button: ${label}`,
+      eventActivity: (label) => `Activity Change: ${label}`,
+      eventOther: (label) => `Event: ${label}`,
+      header: (activityName, eventLabel) => `**Activity: ${activityName} | ${eventLabel}**`,
+      lovelaceHeading: "\u{1F4CB} **Lovelace Button Code**",
+      lovelaceCopy: "*Copy this to your Dashboard YAML:*",
+      serviceHeading: "\u2699\uFE0F **Service Call (Automation)**",
+      serviceCopy: "*Use this in your Scripts or Automations:*"
     }
-    return `${n}|${ic}|${cmd}|${dev}|${act}`;
-  });
-  return `${parts.length}:${parts.join(";;")}`;
+  },
+  editor: {
+    fieldLabels: {
+      entity: "Select a Sofabaton Remote Entity",
+      theme: "Apply a theme to the card",
+      use_background_override: "Customize background color",
+      background_override: "Select Background Color",
+      show_activity: "Activity Selector",
+      show_dpad: "Direction Pad",
+      show_nav: "Back/Home/Menu Keys",
+      show_mid: "Volume/Channel Rockers",
+      show_media: "Media Playback Controls",
+      show_colors: "Red/Green/Yellow/Blue",
+      show_abc: "A/B/C Buttons",
+      show_macros_button: "Macros Button",
+      show_favorites_button: "Favorites Button",
+      max_width: "Maximum Card Width (px)",
+      group_order: "Group Order"
+    },
+    automationAssistTitle: "Automation Assist",
+    keyCapture: "Key capture",
+    keyCaptureDescription: "Send button presses to the hub: Capture button presses to generate ready-to-use YAML for dashboard buttons and automations.",
+    keyCaptureLearnMore: "Learn more about Key capture",
+    keyCaptureDocsAria: "Key capture documentation",
+    stylingOptions: "Styling Options",
+    layoutOptions: "Layout Options",
+    layoutSelectLabel: "Layout",
+    defaultLayoutOption: "Default layout",
+    macrosFavoritesAsRows: "Macros/Favorites as rows",
+    visibleRows: "Visible rows",
+    moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
+    moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
+    macros: "Macros",
+    favorites: "Favorites",
+    volume: "Volume",
+    channel: "Channel",
+    mediaControls: "Media Controls",
+    dvr: "DVR",
+    resetCardDefault: "Reset to card default",
+    resetDefaultLayout: "Reset to default layout",
+    noteDefaultLayout: "Used for Activities without their own layout",
+    noteCustomLayout: "Using custom layout",
+    noteUsingDefault: "Using default layout"
+  },
+  groups: {
+    activity: "Activity Selector",
+    macro_favorites: "Macros/Favorites",
+    macros_row: "Macros Row",
+    favorites_row: "Favorites Row",
+    dpad: "Direction Pad",
+    nav: "Back/Home/Menu",
+    mid: "Volume/Channel",
+    media: "Media Controls",
+    colors: "Color Buttons",
+    abc: "A/B/C"
+  },
+  keys: {
+    up: "Up",
+    down: "Down",
+    left: "Left",
+    right: "Right",
+    ok: "OK",
+    back: "Back",
+    home: "Home",
+    menu: "Menu",
+    volup: "Vol +",
+    voldn: "Vol -",
+    mute: "Mute",
+    chup: "Ch +",
+    chdn: "Ch -",
+    guide: "Guide",
+    dvr: "DVR",
+    play: "Play",
+    exit: "Exit",
+    rew: "Rewind",
+    pause: "Pause",
+    fwd: "Fast Forward",
+    red: "Red",
+    green: "Green",
+    yellow: "Yellow",
+    blue: "Blue",
+    a: "A",
+    b: "B",
+    c: "C"
+  }
+};
+var TRANSLATIONS = {};
+function registerRemoteCardTranslation(language, translation) {
+  const lang = String(language || "").toLowerCase();
+  if (!lang) return;
+  TRANSLATIONS[lang] = translation;
+  if (currentLanguage === lang || currentLanguage.split(/[-_]/)[0] === lang) {
+    const active = resolveTranslation(currentLanguage);
+    currentStrings = active ? deepMerge(REMOTE_CARD_STRINGS_EN, active) : REMOTE_CARD_STRINGS_EN;
+  }
+}
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function deepMerge(base, overlay) {
+  if (!isPlainObject(overlay)) return base;
+  const out = Array.isArray(base) ? [...base] : { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    if (value === void 0) continue;
+    if (isPlainObject(value) && isPlainObject(base?.[key])) {
+      out[key] = deepMerge(base[key], value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+function resolveTranslation(language) {
+  const lang = String(language || "").toLowerCase();
+  if (!lang) return null;
+  if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
+  const base = lang.split(/[-_]/)[0];
+  if (base && TRANSLATIONS[base]) return TRANSLATIONS[base];
+  return null;
+}
+var currentLanguage = "en";
+var currentStrings = REMOTE_CARD_STRINGS_EN;
+function setRemoteCardLanguage(language) {
+  const lang = String(language || "en").toLowerCase();
+  if (lang === currentLanguage) return;
+  currentLanguage = lang;
+  const translation = resolveTranslation(lang);
+  currentStrings = translation ? deepMerge(REMOTE_CARD_STRINGS_EN, translation) : REMOTE_CARD_STRINGS_EN;
+}
+function str() {
+  return currentStrings;
+}
+function isLocalizedPoweredOffLabel(label) {
+  const s7 = String(label || "").trim().toLowerCase();
+  if (!s7) return false;
+  if (s7 === REMOTE_CARD_STRINGS_EN.card.poweredOff.toLowerCase()) return true;
+  return s7 === currentStrings.card.poweredOff.toLowerCase();
 }
 
 // custom_components/sofabaton_x1s/www/src/remote-card-editor-layout.ts
@@ -294,9 +958,9 @@ function layoutHasCustomOverride(config, selection) {
 }
 function layoutSelectionNote(config, selection) {
   if (selection === "default") {
-    return "Used for Activities without their own layout";
+    return str().editor.noteDefaultLayout;
   }
-  return layoutHasCustomOverride(config, selection) ? "Using custom layout" : "Using default layout";
+  return layoutHasCustomOverride(config, selection) ? str().editor.noteCustomLayout : str().editor.noteUsingDefault;
 }
 function editorActivitiesFromState(state) {
   const list = state?.attributes?.activities;
@@ -327,8 +991,9 @@ function applyLayoutConfigPatch(config, selection, patch) {
     return { nextConfig: next, syncFormPatch: patch };
   }
   const layouts = { ...next.layouts || {} };
-  const existing = layouts[selection] && typeof layouts[selection] === "object" ? layouts[selection] : {};
-  layouts[selection] = { ...existing, ...patch };
+  const selectionKey = String(selection);
+  const existing = layouts[selectionKey] && typeof layouts[selectionKey] === "object" ? layouts[selectionKey] : {};
+  layouts[selectionKey] = { ...existing, ...patch };
   next.layouts = layouts;
   return { nextConfig: next, syncFormPatch: null };
 }
@@ -337,7 +1002,7 @@ function groupOrderListForEditor(config, selection) {
   return normalizedGroupOrder(layout?.group_order);
 }
 function groupLabel(key) {
-  return GROUP_LABELS[key] || key;
+  return str().groups[key] || key;
 }
 function isGroupEnabled(config, selection, key) {
   const prop = GROUP_VISIBILITY_KEYS[key];
@@ -356,12 +1021,6 @@ function volumeEnabled(config, selection) {
 }
 function channelEnabled(config, selection) {
   return channelGroupEnabled(layoutConfigForSelection(config, selection));
-}
-function mediaEnabled(config, selection) {
-  return mediaGroupEnabled(layoutConfigForSelection(config, selection));
-}
-function dvrEnabled(config, selection) {
-  return dvrGroupEnabled(layoutConfigForSelection(config, selection));
 }
 function macroTogglePatch(config, selection, enabled) {
   return {
@@ -410,2997 +1069,64 @@ function groupEnabledPatch(key, enabled) {
   const prop = GROUP_VISIBILITY_KEYS[key];
   return prop ? { [prop]: !!enabled } : null;
 }
-
-// custom_components/sofabaton_x1s/www/src/remote-card-state.ts
-function hasOwn(obj, key) {
-  return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
-}
-function currentActivityIdFromRemote(remoteState) {
-  const activityId = remoteState?.attributes?.current_activity_id;
-  if (activityId != null) return Number(activityId);
-  return null;
-}
-function normalizeActivities(source) {
-  return (Array.isArray(source) ? source : []).map((activity) => ({
-    id: Number(activity?.id),
-    name: String(activity?.name ?? ""),
-    state: String(activity?.state ?? "")
-  })).filter((activity) => Number.isFinite(activity.id) && activity.name);
-}
-function activitiesFromRemote(remoteState, isHubIntegration, hubActivitiesCache) {
-  const list = remoteState?.attributes?.activities;
-  const source = Array.isArray(list) && list.length ? list : isHubIntegration && Array.isArray(hubActivitiesCache) ? hubActivitiesCache : [];
-  return {
-    activities: normalizeActivities(source),
-    nextHubActivitiesCache: isHubIntegration && Array.isArray(list) && list.length ? list : hubActivitiesCache
-  };
-}
-function activityNameForId(activities, activityId) {
-  if (activityId == null) return "";
-  const id = Number(activityId);
-  if (!Number.isFinite(id)) return "";
-  const match = Array.isArray(activities) ? activities.find((activity) => activity.id === id) : null;
-  return match?.name || "";
-}
-function currentActivityLabelFromRemote(remoteState, activities) {
-  const remoteActivity = remoteState?.attributes?.current_activity;
-  if (remoteActivity) return String(remoteActivity);
-  const activityId = currentActivityIdFromRemote(remoteState);
-  return activityNameForId(activities, activityId);
-}
-function previewSelection(editMode, previewActivity, activities) {
-  if (!editMode) return null;
-  const selection = previewActivity;
-  if (selection == null || selection === "") {
-    return {
-      activityId: null,
-      label: "Default Layout",
-      poweredOff: false
-    };
+function moveVisibleGroup(order, isVisible, fromVisible, toVisible) {
+  const visibleOrder = order.filter(isVisible);
+  if (!Number.isInteger(fromVisible) || !Number.isInteger(toVisible) || fromVisible < 0 || fromVisible >= visibleOrder.length || toVisible < 0 || toVisible >= visibleOrder.length || fromVisible === toVisible) {
+    return null;
   }
-  if (selection === "powered_off") {
-    return {
-      activityId: null,
-      label: "Powered Off",
-      poweredOff: true
-    };
-  }
-  const id = Number(selection);
-  if (!Number.isFinite(id)) return null;
-  return {
-    activityId: id,
-    label: activityNameForId(activities, id),
-    poweredOff: false
-  };
-}
-function isPoweredOffLabel(state) {
-  const s = String(state || "").trim().toLowerCase();
-  return POWERED_OFF_LABELS.has(s);
-}
-function isActivityOn(activityId, activities, currentActivityLabel) {
-  if (activityId == null) return false;
-  const id = Number(activityId);
-  if (!Number.isFinite(id)) return false;
-  const match = Array.isArray(activities) ? activities.find((activity) => Number(activity?.id) === id) : null;
-  if (match && match.state != null && String(match.state).trim() !== "") {
-    const s = String(match.state).trim().toLowerCase();
-    return !isPoweredOffLabel(s) && s !== "off";
-  }
-  return Boolean(currentActivityLabel) && !isPoweredOffLabel(currentActivityLabel);
-}
-function optionsSignature(options) {
-  const names = Array.isArray(options) ? options.map((opt) => String(opt ?? "")) : [];
-  return `${names.length}:${names.join(",")}`;
-}
-function drawerItemsSignature(items) {
-  const entries = Array.isArray(items) ? items.map((item) => {
-    const commandId = String(item?.command_id ?? item?.id ?? "");
-    const deviceId = String(item?.device_id ?? item?.device ?? "");
-    const name = String(item?.name ?? "");
-    return `${commandId}:${deviceId}:${name}`;
-  }) : [];
-  return `${entries.length}:${entries.join(",")}`;
-}
-function enabledButtonsSignature(raw) {
-  if (!Array.isArray(raw)) return String(raw ?? "");
-  return `${raw.length}:${raw.map((entry) => String(entry ?? "")).join(",")}`;
-}
-function resolveHubActivityData({
-  isHubIntegration,
-  activityId,
-  assignedKeys,
-  macroKeys,
-  favoriteKeys,
-  hubAssignedKeysCache,
-  hubMacrosCache,
-  hubFavoritesCache
-}) {
-  const nextAssignedCache = { ...hubAssignedKeysCache || {} };
-  const nextMacrosCache = { ...hubMacrosCache || {} };
-  const nextFavoritesCache = { ...hubFavoritesCache || {} };
-  const actKey = activityId != null ? String(activityId) : null;
-  const assignedMap = assignedKeys && typeof assignedKeys === "object" ? assignedKeys : null;
-  const macroMap = macroKeys && typeof macroKeys === "object" ? macroKeys : null;
-  const favoriteMap = favoriteKeys && typeof favoriteKeys === "object" ? favoriteKeys : null;
-  if (isHubIntegration && actKey != null) {
-    if (assignedMap && (hasOwn(assignedMap, actKey) || hasOwn(assignedMap, activityId))) {
-      const v = assignedMap[actKey] ?? assignedMap[activityId];
-      nextAssignedCache[actKey] = Array.isArray(v) ? v : [];
-    }
-    if (macroMap && (hasOwn(macroMap, actKey) || hasOwn(macroMap, activityId))) {
-      const v = macroMap[actKey] ?? macroMap[activityId];
-      nextMacrosCache[actKey] = Array.isArray(v) ? v : [];
-    }
-    if (favoriteMap && (hasOwn(favoriteMap, actKey) || hasOwn(favoriteMap, activityId))) {
-      const v = favoriteMap[actKey] ?? favoriteMap[activityId];
-      nextFavoritesCache[actKey] = Array.isArray(v) ? v : [];
-    }
-  }
-  const macros = macroMap && actKey != null && (hasOwn(macroMap, actKey) || hasOwn(macroMap, activityId)) ? macroMap[actKey] ?? macroMap[activityId] ?? [] : isHubIntegration && actKey != null ? nextMacrosCache[actKey] ?? [] : [];
-  const favorites = favoriteMap && actKey != null && (hasOwn(favoriteMap, actKey) || hasOwn(favoriteMap, activityId)) ? favoriteMap[actKey] ?? favoriteMap[activityId] ?? [] : isHubIntegration && actKey != null ? nextFavoritesCache[actKey] ?? [] : [];
-  const rawAssignedKeys = assignedMap && actKey != null && (hasOwn(assignedMap, actKey) || hasOwn(assignedMap, activityId)) ? assignedMap[actKey] ?? assignedMap[activityId] ?? null : isHubIntegration && actKey != null ? nextAssignedCache[actKey] ?? null : null;
-  return {
-    actKey,
-    assignedMap,
-    macroMap,
-    favoriteMap,
-    hubAssignedKeysCache: nextAssignedCache,
-    hubMacrosCache: nextMacrosCache,
-    hubFavoritesCache: nextFavoritesCache,
-    macros,
-    favorites,
-    rawAssignedKeys
-  };
+  const nextVisible = visibleOrder.slice();
+  const [moved] = nextVisible.splice(fromVisible, 1);
+  nextVisible.splice(toVisible, 0, moved);
+  let vi = 0;
+  return order.map((key) => isVisible(key) ? nextVisible[vi++] : key);
 }
 
-// custom_components/sofabaton_x1s/www/src/remote-card-runtime-display.ts
-function midModeState({
-  showVolume,
-  showChannel,
-  isX2
-}) {
-  const midMode = showVolume && showChannel ? "dual" : showVolume ? "volume" : showChannel ? "channel" : "off";
-  return {
-    midMode,
-    classMap: {
-      "mid--dual": midMode === "dual",
-      "mid--volume": midMode === "volume",
-      "mid--channel": midMode === "channel",
-      "mid--x2": isX2,
-      "mid--x1": !isX2
-    }
-  };
+// custom_components/sofabaton_x1s/www/src/remote-card-compat.ts
+function hubVersionFor(hass, entityId) {
+  const resolved = String(entityId || "").trim();
+  if (!resolved) return "";
+  return String(
+    hass?.states?.[resolved]?.attributes?.hub_version || ""
+  ).toUpperCase();
 }
-function mediaModeState({
-  isX2,
-  showMedia,
-  showDvr
-}) {
-  const mediaMode = isX2 ? showMedia && showDvr ? "both" : showMedia ? "play" : showDvr ? "dvr" : "off" : showMedia || showDvr ? "play" : "off";
-  return {
-    mediaMode,
-    classMap: {
-      "media--play": mediaMode === "play",
-      "media--dvr": mediaMode === "dvr",
-      "media--both": mediaMode === "both",
-      "media--x2": isX2,
-      "media--x1": !isX2
-    }
-  };
+function isX2Hub(hubVersion, hubIntegration) {
+  if (hubIntegration) return true;
+  return hubVersion.includes("X2");
 }
-function runtimeButtonVisibility({
-  isX2,
-  showVolume,
-  showChannel,
-  showMedia,
-  showDvr
-}) {
-  const showPause = showDvr || !isX2 && showMedia;
-  return {
-    volup: showVolume,
-    voldn: showVolume,
-    mute: showVolume,
-    guide: isX2 && showChannel,
-    chup: showChannel,
-    chdn: showChannel,
-    rew: showMedia,
-    play: showMedia && isX2,
-    fwd: showMedia,
-    dvr: isX2 && showDvr,
-    pause: showPause,
-    exit: isX2 && showDvr
-  };
+function supportsUnicodeCommandNames(hubVersion, hubIntegration) {
+  return isX2Hub(hubVersion, hubIntegration) || hubVersion.includes("X1S");
 }
-function macroFavoriteDisplayState({
-  editMode,
-  showMacrosButton,
-  showFavoritesButton,
-  macros,
-  favorites,
-  customFavorites,
-  disableAllButtons
-}) {
-  const showMF = showMacrosButton || showFavoritesButton;
-  const visibleCount = (showMacrosButton ? 1 : 0) + (showFavoritesButton ? 1 : 0);
-  const macrosEnabled = editMode ? true : macros.length > 0;
-  const favoritesEnabled2 = editMode ? true : favorites.length + customFavorites.length > 0;
-  return {
-    showMF,
-    visibleCount,
-    macrosDisabled: disableAllButtons || !macrosEnabled,
-    favoritesDisabled: disableAllButtons || !favoritesEnabled2
-  };
+function selectItemTagName() {
+  return customElements.get("ha-dropdown-item") ? "ha-dropdown-item" : "mwc-list-item";
 }
-function combinedFavoritesSignature(customFavoritesSig, favoritesSig) {
-  return `${customFavoritesSig}||${favoritesSig}`;
+function selectOpenEvents() {
+  return customElements.get("ha-dropdown-item") ? ["wa-open"] : ["opened"];
+}
+function selectCloseEvents() {
+  return customElements.get("ha-dropdown-item") ? ["wa-close"] : ["closed"];
+}
+function selectValueCompat(value, options = []) {
+  const resolvedValue = String(value ?? "");
+  const useDropdownItems = Boolean(customElements.get("ha-dropdown-item"));
+  if (!useDropdownItems) return resolvedValue;
+  const selectedOption = options.find(
+    (option) => String(option?.value ?? "") === resolvedValue
+  );
+  return selectedOption ? String(selectedOption.label ?? selectedOption.value ?? "") : resolvedValue;
+}
+async function ensureHaElements() {
+  const dropdownItemTag = selectItemTagName();
+  await Promise.all([
+    customElements.whenDefined("hui-button-card"),
+    customElements.whenDefined("ha-select"),
+    customElements.whenDefined(dropdownItemTag).catch(() => {
+    })
+    // optional
+  ]);
 }
 
-// custom_components/sofabaton_x1s/www/src/remote-card-actions.ts
-function hubAssignedKeyCommand(activityId, commandId) {
-  const activity = Number(activityId);
-  const key = Number(commandId);
-  if (!Number.isFinite(activity) || !Number.isFinite(key)) return null;
-  return [
-    "type:send_assigned_key",
-    `activity_id:${activity}`,
-    `key_id:${key}`
-  ];
-}
-function hubMacroKeyCommand(activityId, commandId) {
-  const activity = Number(activityId);
-  const key = Number(commandId);
-  if (!Number.isFinite(activity) || !Number.isFinite(key)) return null;
-  return [
-    "type:send_macro_key",
-    `activity_id:${activity}`,
-    `key_id:${key}`
-  ];
-}
-function hubFavoriteKeyCommand(deviceId, commandId) {
-  const device = Number(deviceId);
-  const key = Number(commandId);
-  if (!Number.isFinite(device) || !Number.isFinite(key)) return null;
-  return [
-    "type:send_favorite_key",
-    `device_id:${device}`,
-    `key_id:${key}`
-  ];
-}
-function remoteSendCommandData(entityId, commandId, deviceId) {
-  const command = Number(commandId);
-  const device = Number(deviceId);
-  if (!entityId || !Number.isFinite(command) || !Number.isFinite(device)) return null;
-  return {
-    entity_id: entityId,
-    command,
-    device
-  };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-render-models.ts
-function drawerCommandType(type) {
-  if (type === "macros") return "macro";
-  if (type === "favorites") return "favorite";
-  return "assigned";
-}
-function drawerButtonModel(item, type, fallbackDeviceId) {
-  return {
-    label: item?.name || "Unknown",
-    commandId: Number(item?.command_id ?? item?.id),
-    deviceId: Number(item?.device_id ?? item?.device ?? fallbackDeviceId),
-    icon: item?.icon ? String(item.icon) : null,
-    commandType: drawerCommandType(type)
-  };
-}
-function customFavoriteButtonModel(favorite, fallbackDeviceId) {
-  const commandId = Number(favorite?.command_id);
-  const explicitDeviceId = favorite?.device_id != null ? Number(favorite.device_id) : null;
-  const deviceId = explicitDeviceId != null ? explicitDeviceId : Number(fallbackDeviceId);
-  return {
-    label: String(favorite?.name ?? "Favorite"),
-    icon: favorite?.icon ? String(favorite.icon) : null,
-    action: favorite?.action ?? null,
-    commandId,
-    deviceId
-  };
-}
-function actionButtonModel({
-  label,
-  icon,
-  extraClass = ""
-}) {
-  return {
-    wrapClassName: `macroFavoritesButton ${extraClass}`.trim(),
-    buttonConfig: {
-      type: "button",
-      show_name: true,
-      show_icon: Boolean(icon),
-      name: label || "",
-      icon: icon || void 0,
-      tap_action: {
-        action: "none"
-      },
-      hold_action: { action: "none" },
-      double_tap_action: { action: "none" }
-    }
-  };
-}
-function huiButtonModel({
-  label,
-  icon,
-  extraClass = "",
-  size = "normal"
-}) {
-  return {
-    wrapClassName: `key key--${size} ${extraClass}`.trim(),
-    buttonConfig: {
-      type: "button",
-      show_name: Boolean(label),
-      show_icon: Boolean(icon),
-      name: label || "",
-      icon: icon || void 0,
-      tap_action: {
-        action: "none"
-      },
-      hold_action: { action: "none" },
-      double_tap_action: { action: "none" }
-    }
-  };
-}
-function colorKeyModel(color) {
-  return {
-    wrapClassName: "key key--color",
-    color,
-    buttonConfig: {
-      type: "button",
-      show_name: false,
-      show_icon: false,
-      tap_action: {
-        action: "none"
-      },
-      hold_action: { action: "none" },
-      double_tap_action: { action: "none" }
-    }
-  };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-drawer-row.ts
-function buildMacroFavoritesSection({
-  createActionButton,
-  onMacrosClick,
-  onFavoritesClick
-}) {
-  const container = document.createElement("div");
-  container.className = "mf-container";
-  const row = document.createElement("div");
-  row.className = "macroFavorites";
-  const grid = document.createElement("div");
-  grid.className = "macroFavoritesGrid";
-  const macrosButton = createActionButton({
-    label: "Macros >",
-    onClick: onMacrosClick
-  });
-  const favoritesButton = createActionButton({
-    label: "Favorites >",
-    onClick: onFavoritesClick
-  });
-  grid.appendChild(macrosButton.wrap);
-  grid.appendChild(favoritesButton.wrap);
-  row.appendChild(grid);
-  container.appendChild(row);
-  const macrosOverlayEl = document.createElement("div");
-  macrosOverlayEl.className = "mf-overlay mf-overlay--macros";
-  const macrosOverlayGrid = document.createElement("div");
-  macrosOverlayGrid.className = "mf-grid";
-  macrosOverlayEl.appendChild(macrosOverlayGrid);
-  container.appendChild(macrosOverlayEl);
-  const favoritesOverlayEl = document.createElement("div");
-  favoritesOverlayEl.className = "mf-overlay mf-overlay--favorites";
-  const favoritesOverlayGrid = document.createElement("div");
-  favoritesOverlayGrid.className = "mf-grid";
-  favoritesOverlayEl.appendChild(favoritesOverlayGrid);
-  container.appendChild(favoritesOverlayEl);
-  return {
-    container,
-    row,
-    grid,
-    macrosButtonWrap: macrosButton.wrap,
-    macrosButton: macrosButton.btn,
-    favoritesButtonWrap: favoritesButton.wrap,
-    favoritesButton: favoritesButton.btn,
-    macrosOverlayEl,
-    macrosOverlayGrid,
-    favoritesOverlayEl,
-    favoritesOverlayGrid
-  };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-inline-row.ts
-function buildInlineDrawerRow(kind) {
-  const container = document.createElement("div");
-  container.className = `inline-drawer-row inline-drawer-row--${kind}`;
-  const scroller = document.createElement("div");
-  scroller.className = "inline-drawer-row__scroller";
-  const grid = document.createElement("div");
-  grid.className = "inline-drawer-row__grid mf-grid";
-  scroller.appendChild(grid);
-  container.appendChild(scroller);
-  return { container, scroller, grid };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-activity-row.ts
-function buildActivityRow({
-  onSelect,
-  onMenuOpened,
-  onMenuClosed,
-  openEvents,
-  closeEvents
-}) {
-  const row = document.createElement("div");
-  row.className = "activityRow";
-  const select = document.createElement("ha-select");
-  select.label = "Activity";
-  select.classList.add("sb-activity-select");
-  select.addEventListener("selected", onSelect);
-  select.addEventListener("change", onSelect);
-  openEvents.forEach((eventName) => {
-    select.addEventListener(eventName, onMenuOpened, true);
-  });
-  closeEvents.forEach((eventName) => {
-    select.addEventListener(eventName, onMenuClosed, true);
-  });
-  select.addEventListener("change", onMenuClosed, true);
-  select.addEventListener("blur", onMenuClosed, true);
-  row.appendChild(select);
-  const loadIndicator = document.createElement("div");
-  loadIndicator.className = "loadIndicator";
-  row.appendChild(loadIndicator);
-  return {
-    row,
-    select,
-    loadIndicator
-  };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-activity-state.ts
-function buildActivitySelectState({
-  editMode,
-  preview,
-  activities,
-  currentActivityLabel,
-  pendingActivity,
-  pendingExpired
-}) {
-  const options = [
-    ...editMode ? ["Default Layout"] : [],
-    "Powered Off",
-    ...activities.map((activity) => activity.name)
-  ];
-  const previewLabel = preview ? preview.poweredOff ? "Powered Off" : preview.label || `Activity ${preview.activityId}` : null;
-  if (previewLabel && !options.includes(previewLabel)) {
-    options.push(previewLabel);
-  }
-  const current = previewLabel || currentActivityLabel || "Powered Off";
-  const poweredOff = preview ? preview.poweredOff : isPoweredOffLabel(current);
-  const resolvedValue = pendingActivity && !pendingExpired && pendingActivity !== current ? pendingActivity : current;
-  const disabled = editMode || (preview ? true : options.length <= 1);
-  return {
-    options,
-    previewLabel,
-    current,
-    poweredOff,
-    resolvedValue,
-    disabled,
-    clearPending: Boolean(pendingActivity && (pendingExpired || current === pendingActivity))
-  };
-}
-function noActivitiesWarning(isUnavailable, activitiesLength, loadState) {
-  if (!isUnavailable && activitiesLength === 0 && loadState !== "loading") {
-    return "No activities found in remote attributes.";
-  }
-  return "";
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-drawer-display.ts
-function drawerVisibilityState({
-  activeDrawer,
-  showMacrosButton,
-  showFavoritesButton,
-  editMode,
-  macros,
-  favorites,
-  customFavorites,
-  disableAllButtons
-}) {
-  const display = macroFavoriteDisplayState({
-    editMode,
-    showMacrosButton,
-    showFavoritesButton,
-    macros,
-    favorites,
-    customFavorites,
-    disableAllButtons
-  });
-  let nextActiveDrawer = activeDrawer;
-  if (!display.showMF && nextActiveDrawer) nextActiveDrawer = null;
-  if (nextActiveDrawer === "macros" && !showMacrosButton) nextActiveDrawer = null;
-  if (nextActiveDrawer === "favorites" && !showFavoritesButton) nextActiveDrawer = null;
-  return {
-    ...display,
-    nextActiveDrawer,
-    closedByVisibility: Boolean(activeDrawer && !nextActiveDrawer)
-  };
-}
-function drawerRefreshState({
-  macroDataSig,
-  macroSig,
-  customFavoritesSig,
-  favoritesSig,
-  favoritesDataSig
-}) {
-  const nextFavoritesSig = combinedFavoritesSignature(
-    customFavoritesSig,
-    favoritesSig
-  );
-  return {
-    refreshMacros: macroDataSig !== macroSig,
-    nextMacroSig: macroSig,
-    refreshFavorites: favoritesDataSig !== nextFavoritesSig,
-    nextFavoritesSig
-  };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-drawer-buttons.ts
-function buildDrawerButtonElement({
-  model,
-  rawItem,
-  itemType,
-  attachPrimaryAction,
-  onTrigger
-}) {
-  const card = document.createElement("ha-card");
-  card.classList.add("drawer-btn");
-  card.setAttribute("role", "button");
-  card.tabIndex = 0;
-  const inner = document.createElement("div");
-  inner.className = "drawer-btn__inner drawer-btn__inner--stack";
-  if (model.icon) {
-    const ic = document.createElement("ha-icon");
-    ic.className = "drawer-btn__icon";
-    ic.setAttribute("icon", model.icon);
-    inner.appendChild(ic);
-  }
-  const name = document.createElement("div");
-  name.className = "name";
-  name.textContent = model.label;
-  inner.appendChild(name);
-  card.appendChild(inner);
-  attachPrimaryAction(card, () => {
-    if (!Number.isFinite(model.commandId) || !Number.isFinite(model.deviceId)) return;
-    onTrigger({ model, itemType, rawItem });
-  });
-  return card;
-}
-function buildCustomFavoriteButtonElement({
-  model,
-  rawFavorite,
-  attachPrimaryAction,
-  onTrigger
-}) {
-  const card = document.createElement("ha-card");
-  card.classList.add("drawer-btn", "drawer-btn--custom");
-  card.setAttribute("role", "button");
-  card.tabIndex = 0;
-  card.style.gridColumn = "1 / -1";
-  const inner = document.createElement("div");
-  inner.className = "drawer-btn__inner drawer-btn__inner--row";
-  if (model.icon) {
-    const ic = document.createElement("ha-icon");
-    ic.className = "drawer-btn__icon";
-    ic.setAttribute("icon", model.icon);
-    inner.appendChild(ic);
-  }
-  const name = document.createElement("div");
-  name.className = "name";
-  name.textContent = model.label;
-  inner.appendChild(name);
-  card.appendChild(inner);
-  attachPrimaryAction(card, () => {
-    onTrigger({ model, rawFavorite });
-  });
-  return card;
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-groups.ts
-function buildRemoteGroups({
-  createHuiButton,
-  createColorKey,
-  ids
-}) {
-  const dpadEl = document.createElement("div");
-  dpadEl.className = "dpad";
-  dpadEl.appendChild(
-    createHuiButton({
-      key: "up",
-      label: "",
-      icon: "mdi:chevron-up",
-      id: ids.UP,
-      cmd: ids.UP,
-      extraClass: "area-up"
-    })
-  );
-  dpadEl.appendChild(
-    createHuiButton({
-      key: "left",
-      label: "",
-      icon: "mdi:chevron-left",
-      id: ids.LEFT,
-      cmd: ids.LEFT,
-      extraClass: "area-left"
-    })
-  );
-  dpadEl.appendChild(
-    createHuiButton({
-      key: "ok",
-      label: "OK",
-      icon: "",
-      id: ids.OK,
-      cmd: ids.OK,
-      extraClass: "area-ok okKey",
-      size: "big"
-    })
-  );
-  dpadEl.appendChild(
-    createHuiButton({
-      key: "right",
-      label: "",
-      icon: "mdi:chevron-right",
-      id: ids.RIGHT,
-      cmd: ids.RIGHT,
-      extraClass: "area-right"
-    })
-  );
-  dpadEl.appendChild(
-    createHuiButton({
-      key: "down",
-      label: "",
-      icon: "mdi:chevron-down",
-      id: ids.DOWN,
-      cmd: ids.DOWN,
-      extraClass: "area-down"
-    })
-  );
-  const navRowEl = document.createElement("div");
-  navRowEl.className = "row3";
-  navRowEl.appendChild(
-    createHuiButton({
-      key: "back",
-      label: "",
-      icon: "mdi:arrow-u-left-top",
-      id: ids.BACK,
-      cmd: ids.BACK
-    })
-  );
-  navRowEl.appendChild(
-    createHuiButton({
-      key: "home",
-      label: "",
-      icon: "mdi:home",
-      id: ids.HOME,
-      cmd: ids.HOME
-    })
-  );
-  navRowEl.appendChild(
-    createHuiButton({
-      key: "menu",
-      label: "",
-      icon: "mdi:menu",
-      id: ids.MENU,
-      cmd: ids.MENU
-    })
-  );
-  const midEl = document.createElement("div");
-  midEl.className = "mid";
-  const midButtons = {
-    volup: createHuiButton({
-      key: "volup",
-      label: "",
-      icon: "mdi:volume-plus",
-      id: ids.VOL_UP,
-      cmd: ids.VOL_UP,
-      extraClass: "mid-btn mid-btn-volup"
-    }),
-    voldn: createHuiButton({
-      key: "voldn",
-      label: "",
-      icon: "mdi:volume-minus",
-      id: ids.VOL_DOWN,
-      cmd: ids.VOL_DOWN,
-      extraClass: "mid-btn mid-btn-voldn"
-    }),
-    guide: createHuiButton({
-      key: "guide",
-      label: "Guide",
-      icon: "",
-      id: ids.GUIDE,
-      cmd: ids.GUIDE,
-      extraClass: "mid-btn mid-btn-guide"
-    }),
-    mute: createHuiButton({
-      key: "mute",
-      label: "",
-      icon: "mdi:volume-mute",
-      id: ids.MUTE,
-      cmd: ids.MUTE,
-      extraClass: "mid-btn mid-btn-mute"
-    }),
-    chup: createHuiButton({
-      key: "chup",
-      label: "",
-      icon: "mdi:chevron-up",
-      id: ids.CH_UP,
-      cmd: ids.CH_UP,
-      extraClass: "mid-btn mid-btn-chup"
-    }),
-    chdn: createHuiButton({
-      key: "chdn",
-      label: "",
-      icon: "mdi:chevron-down",
-      id: ids.CH_DOWN,
-      cmd: ids.CH_DOWN,
-      extraClass: "mid-btn mid-btn-chdn"
-    })
-  };
-  Object.values(midButtons).forEach((btn) => midEl.appendChild(btn));
-  const mediaEl = document.createElement("div");
-  mediaEl.className = "media";
-  const mediaButtons = {
-    rew: createHuiButton({
-      key: "rew",
-      label: "",
-      icon: "mdi:rewind",
-      id: ids.REW,
-      cmd: ids.REW,
-      extraClass: "area-rew"
-    }),
-    play: createHuiButton({
-      key: "play",
-      label: "",
-      icon: "mdi:play",
-      id: ids.PLAY,
-      cmd: ids.PLAY,
-      extraClass: "area-play"
-    }),
-    fwd: createHuiButton({
-      key: "fwd",
-      label: "",
-      icon: "mdi:fast-forward",
-      id: ids.FWD,
-      cmd: ids.FWD,
-      extraClass: "area-fwd"
-    }),
-    dvr: createHuiButton({
-      key: "dvr",
-      label: "DVR",
-      icon: "",
-      id: ids.DVR,
-      cmd: ids.DVR,
-      extraClass: "area-dvr"
-    }),
-    pause: createHuiButton({
-      key: "pause",
-      label: "",
-      icon: "mdi:pause",
-      id: ids.PAUSE,
-      cmd: ids.PAUSE,
-      extraClass: "area-pause"
-    }),
-    exit: createHuiButton({
-      key: "exit",
-      label: "Exit",
-      icon: "",
-      id: ids.EXIT,
-      cmd: ids.EXIT,
-      extraClass: "area-exit"
-    })
-  };
-  Object.values(mediaButtons).forEach((btn) => mediaEl.appendChild(btn));
-  const colorsEl = document.createElement("div");
-  colorsEl.className = "colors";
-  const colorsGrid = document.createElement("div");
-  colorsGrid.className = "colorsGrid";
-  colorsGrid.appendChild(
-    createColorKey({
-      key: "red",
-      id: ids.RED,
-      cmd: ids.RED,
-      color: "#d32f2f"
-    })
-  );
-  colorsGrid.appendChild(
-    createColorKey({
-      key: "green",
-      id: ids.GREEN,
-      cmd: ids.GREEN,
-      color: "#388e3c"
-    })
-  );
-  colorsGrid.appendChild(
-    createColorKey({
-      key: "yellow",
-      id: ids.YELLOW,
-      cmd: ids.YELLOW,
-      color: "#fbc02d"
-    })
-  );
-  colorsGrid.appendChild(
-    createColorKey({
-      key: "blue",
-      id: ids.BLUE,
-      cmd: ids.BLUE,
-      color: "#1976d2"
-    })
-  );
-  colorsEl.appendChild(colorsGrid);
-  const abcEl = document.createElement("div");
-  abcEl.className = "abc";
-  const abcGrid = document.createElement("div");
-  abcGrid.className = "abcGrid";
-  abcGrid.appendChild(
-    createHuiButton({
-      key: "a",
-      label: "A",
-      icon: "",
-      id: ids.A,
-      cmd: ids.A,
-      size: "small"
-    })
-  );
-  abcGrid.appendChild(
-    createHuiButton({
-      key: "b",
-      label: "B",
-      icon: "",
-      id: ids.B,
-      cmd: ids.B,
-      size: "small"
-    })
-  );
-  abcGrid.appendChild(
-    createHuiButton({
-      key: "c",
-      label: "C",
-      icon: "",
-      id: ids.C,
-      cmd: ids.C,
-      size: "small"
-    })
-  );
-  abcEl.appendChild(abcGrid);
-  return {
-    dpadEl,
-    navRowEl,
-    midEl,
-    midButtons,
-    mediaEl,
-    mediaButtons,
-    colorsEl,
-    abcEl
-  };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-key-buttons.ts
-function buildHuiButtonElement({
-  model,
-  hass
-}) {
-  const wrap = document.createElement("div");
-  wrap.className = model.wrapClassName;
-  const btn = document.createElement("hui-button-card");
-  btn.hass = hass;
-  btn.setConfig(model.buttonConfig);
-  wrap.appendChild(btn);
-  return { wrap, btn };
-}
-function buildColorKeyElement({
-  model,
-  hass
-}) {
-  const wrap = document.createElement("div");
-  wrap.className = model.wrapClassName;
-  wrap.style.setProperty("--sb-color", model.color);
-  const btn = document.createElement("hui-button-card");
-  btn.hass = hass;
-  btn.setConfig(model.buttonConfig);
-  wrap.appendChild(btn);
-  const bar = document.createElement("div");
-  bar.className = "colorBar";
-  wrap.appendChild(bar);
-  return { wrap, btn };
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-ui-helpers.ts
-function automationAssistLabelForKey(key, label) {
-  const trimmed = String(label ?? "").trim();
-  if (trimmed) return trimmed;
-  const fallback = DEFAULT_KEY_LABELS[String(key ?? "").toLowerCase()];
-  if (fallback) return fallback;
-  if (!key) return "Button";
-  return String(key).replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-function rgbToCss(rgb) {
-  if (Array.isArray(rgb) && rgb.length >= 3) {
-    const r = Number(rgb[0]);
-    const g = Number(rgb[1]);
-    const b = Number(rgb[2]);
-    if ([r, g, b].some((n) => Number.isNaN(n))) return "";
-    return `rgb(${r}, ${g}, ${b})`;
-  }
-  if (rgb && typeof rgb === "object" && rgb.r != null && rgb.g != null && rgb.b != null) {
-    const r = Number(rgb.r);
-    const g = Number(rgb.g);
-    const b = Number(rgb.b);
-    if ([r, g, b].some((n) => Number.isNaN(n))) return "";
-    return `rgb(${r}, ${g}, ${b})`;
-  }
-  return "";
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card-hub.ts
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function hasOwn2(obj, key) {
-  return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
-}
-function initHubRuntimeState(requestSeen, queue) {
-  return {
-    requestSeen: requestSeen || {},
-    queue: Array.isArray(queue) ? queue : []
-  };
-}
-function markHubRequested(requestSeen, key) {
-  if (!key) return requestSeen;
-  requestSeen[key] = true;
-  return requestSeen;
-}
-function wasHubRequested(requestSeen, key) {
-  return Boolean(key && requestSeen[key]);
-}
-function enqueueHubCommand(queue, list, { priority = false, gapMs = 150 } = {}) {
-  const item = { list, gapMs: Number(gapMs) };
-  if (priority) {
-    queue.unshift(item);
-  } else {
-    queue.push(item);
-  }
-  return queue;
-}
-function throttleHubRequest(cache, key, minIntervalMs = 3e3, now = Date.now()) {
-  const last = cache[key] || 0;
-  if (now - last < minIntervalMs) return false;
-  cache[key] = now;
-  return true;
-}
-function basicDataRequestKey(entityId) {
-  return `req:basic:${entityId}`;
-}
-function requestBasicDataCommand() {
-  return ["type:request_basic_data"];
-}
-function requestAssignedKeysCommand(activityId) {
-  if (activityId == null) return null;
-  return ["type:request_assigned_keys", `activity_id:${Number(activityId)}`];
-}
-function requestFavoriteKeysCommand(activityId) {
-  if (activityId == null) return null;
-  return ["type:request_favorite_keys", `activity_id:${Number(activityId)}`];
-}
-function requestMacroKeysCommand(activityId) {
-  if (activityId == null) return null;
-  return ["type:request_macro_keys", `activity_id:${Number(activityId)}`];
-}
-function startActivityCommand(activityId) {
-  if (activityId == null) return null;
-  return ["type:start_activity", `activity_id:${Number(activityId)}`];
-}
-function stopActivityCommand(activityId) {
-  if (activityId == null) return null;
-  return ["type:stop_activity", `activity_id:${Number(activityId)}`];
-}
-
-// custom_components/sofabaton_x1s/www/src/remote-card.ts
-var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.1.8";
-var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
-var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
-var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
-var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
-var TYPE = "sofabaton-virtual-remote";
-var EDITOR = "sofabaton-virtual-remote-editor";
-var readPreviewActivity = (entityId) => {
-  if (!entityId || typeof window === "undefined") return null;
-  const cache = window[PREVIEW_ACTIVITY_CACHE_KEY];
-  if (!cache || typeof cache !== "object") return null;
-  return cache[entityId] ?? null;
-};
-var writePreviewActivity = (entityId, value) => {
-  if (!entityId || typeof window === "undefined") return;
-  const cache = window[PREVIEW_ACTIVITY_CACHE_KEY] && typeof window[PREVIEW_ACTIVITY_CACHE_KEY] === "object" ? window[PREVIEW_ACTIVITY_CACHE_KEY] : {};
-  cache[entityId] = value ?? "";
-  window[PREVIEW_ACTIVITY_CACHE_KEY] = cache;
-};
-function logPillsOnce() {
-  if (window[LOG_ONCE_KEY]) return;
-  window[LOG_ONCE_KEY] = true;
-  const base = "padding:2px 10px;border-radius:999px;font-weight:700;font-size:12px;line-height:18px;";
-  const red = base + "background:#ef4444;color:#fff;";
-  const green = base + "background:#22c55e;color:#062b12;";
-  const yellow = base + "background:#facc15;color:#111827;";
-  const blue = base + "background:#3b82f6;color:#fff;";
-  const gap = "color:transparent;";
-  console.log(
-    `%cSofabaton%c %c Virtual %c %c  Remote  %c %c   ${CARD_VERSION}   `,
-    red,
-    gap,
-    green,
-    gap,
-    yellow,
-    gap,
-    blue
-  );
-}
-function stableJsonSignature(value) {
-  if (value == null) return "";
-  try {
-    return JSON.stringify(value);
-  } catch (_err) {
-    return String(value);
-  }
-}
-logPillsOnce();
-var SofabatonRemoteCard = class extends HTMLElement {
-  setConfig(config) {
-    if (!config || !config.entity) {
-      throw new Error("Select a Sofabaton remote entity");
-    }
-    if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
-      this._previewActivity = config?.preview_activity ?? "";
-      writePreviewActivity(config?.entity, this._previewActivity);
-    } else if (this._previewActivity == null) {
-      const cached = readPreviewActivity(config?.entity);
-      this._previewActivity = cached ?? "";
-    }
-    this._config = {
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_dvr: true,
-      show_colors: true,
-      show_abc: true,
-      theme: "",
-      background_override: null,
-      show_automation_assist: false,
-      show_macros_button: null,
-      show_favorites_button: null,
-      custom_favorites: [],
-      max_width: 360,
-      // Shrink the entire card using CSS `zoom` (0 = no shrink, higher = smaller)
-      shrink: 0,
-      group_order: DEFAULT_GROUP_ORDER.slice(),
-      ...config
-    };
-    this._activeDrawer = null;
-    this._activityMenuOpen = false;
-    this._drawerDirection = "down";
-    this._drawerResetTimer = null;
-    this._lastActivityLabel = null;
-    this._lastActivityId = null;
-    this._lastPoweredOff = null;
-    this._invalidateUpdateFingerprint();
-    this._initPromise = this._initPromise || this._ensureHaElements();
-    this._initPromise.then(() => {
-      this._render();
-      this._invalidateUpdateFingerprint();
-      this._update();
-    });
-  }
-  set hass(hass) {
-    this._hass = hass;
-    (this._initPromise || Promise.resolve()).then(async () => {
-      await this._ensureIntegration();
-      if (!this._shouldUpdateForHass(hass)) return;
-      this._update();
-    });
-  }
-  set editMode(value) {
-    this._editMode = !!value;
-    if (this._editMode && this._automationAssistActive) {
-      this._setAutomationAssistActive(false);
-    }
-    this._invalidateUpdateFingerprint();
-    this._update();
-    this._updateAutomationAssistUI();
-  }
-  // ---------- State helpers ----------
-  _remoteState() {
-    return this._hass?.states?.[this._config?.entity];
-  }
-  // ---------- Integration detection (x1s vs hub) ----------
-  async _ensureIntegration() {
-    if (!this._hass?.callWS || !this._config?.entity) return;
-    const entityId = String(this._config.entity);
-    if (this._integrationEntityId && this._integrationEntityId !== entityId) {
-      this._hubRequestCache = null;
-      this._hubRequestSeen = null;
-      this._hubQueue = null;
-      this._hubQueueBusy = false;
-      this._hubActivitiesCache = null;
-      this._hubAssignedKeysCache = null;
-      this._hubMacrosCache = null;
-      this._hubFavoritesCache = null;
-      this._x2LastFetchedActivityId = null;
-    }
-    if (this._integrationEntityId === entityId && this._integrationDomain)
-      return;
-    if (this._integrationDetectingFor === entityId) return;
-    this._integrationDetectingFor = entityId;
-    try {
-      const entry = await this._hass.callWS({
-        type: "config/entity_registry/get",
-        entity_id: entityId
-      });
-      this._integrationDomain = String(entry?.platform || "");
-      this._integrationEntityId = entityId;
-    } catch (e) {
-      this._integrationDomain = null;
-      this._integrationEntityId = entityId;
-    } finally {
-      this._integrationDetectingFor = null;
-      this._invalidateUpdateFingerprint();
-    }
-  }
-  _isHubIntegration() {
-    return String(this._integrationDomain || "") === "sofabaton_hub";
-  }
-  _showMacrosButton() {
-    const layout = layoutConfigForActivity(
-      this._config,
-      this._effectiveActivityId()
-    );
-    return macrosButtonEnabled(layout);
-  }
-  _showFavoritesButton() {
-    const layout = layoutConfigForActivity(
-      this._config,
-      this._effectiveActivityId()
-    );
-    return favoritesButtonEnabled(layout);
-  }
-  _volumeEnabled(layout) {
-    return volumeGroupEnabled(layout);
-  }
-  _channelEnabled(layout) {
-    return channelGroupEnabled(layout);
-  }
-  _mediaEnabled(layout) {
-    return mediaGroupEnabled(layout);
-  }
-  _dvrEnabled(layout) {
-    return dvrGroupEnabled(layout);
-  }
-  _automationAssistEnabled() {
-    return Boolean(this._config?.show_automation_assist);
-  }
-  _normalizeHubMac(value) {
-    if (!value) return null;
-    const normalized = String(value).replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-    if (!normalized || normalized.length < 6) return null;
-    return normalized;
-  }
-  _automationAssistLabelForKey(key, label) {
-    return automationAssistLabelForKey(key, label);
-  }
-  _customFavorites() {
-    const arr = this._config?.custom_favorites;
-    if (!Array.isArray(arr)) return [];
-    const out = [];
-    for (let i = 0; i < arr.length; i++) {
-      const norm = this._normalizeCustomFavorite(arr[i], i);
-      if (norm) out.push(norm);
-    }
-    return out;
-  }
-  _normalizeCustomFavorite(item, idx = 0) {
-    return normalizeCustomFavorite(item, idx);
-  }
-  _customFavoritesSignature(items) {
-    return customFavoritesSignature(items);
-  }
-  _groupOrderList(activityId = null) {
-    const layout = layoutConfigForActivity(
-      this._config,
-      activityId ?? this._effectiveActivityId()
-    );
-    return normalizedGroupOrder(layout?.group_order);
-  }
-  _applyGroupOrder() {
-    if (!this._layoutContainer || !this._groupEls) return;
-    const order = this._groupOrderList();
-    const sig = order.join("|");
-    if (sig === this._groupOrderSig) return;
-    this._groupOrderSig = sig;
-    for (const key of order) {
-      const el = this._groupEls[key];
-      if (el) this._layoutContainer.appendChild(el);
-    }
-    if (this._warn) {
-      this._layoutContainer.appendChild(this._warn);
-    }
-  }
-  _layoutSignature(activityId, layoutConfig) {
-    const order = this._groupOrderList(activityId);
-    const parts = [
-      `activity:${activityId ?? "off"}`,
-      `order:${order.join(",")}`
-    ];
-    for (const key of LAYOUT_KEYS) {
-      if (key === "group_order") continue;
-      parts.push(`${key}:${String(layoutConfig?.[key])}`);
-    }
-    return parts.join("|");
-  }
-  _prefersReducedMotion() {
-    return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  }
-  _clearLayoutOverlay() {
-    if (this._layoutOverlayEl) {
-      this._layoutOverlayEl.remove();
-      this._layoutOverlayEl = null;
-    }
-  }
-  _maybeAnimateLayoutChange(nextSignature) {
-    if (!this._layoutContainer || !this._wrap) return;
-    if (this._layoutSignatureCache == null) {
-      this._layoutSignatureCache = nextSignature;
-      return;
-    }
-    if (this._layoutSignatureCache === nextSignature) return;
-    this._layoutSignatureCache = nextSignature;
-    if (this._prefersReducedMotion()) {
-      this._clearLayoutOverlay();
-      return;
-    }
-    const wrapRect = this._wrap.getBoundingClientRect();
-    const layoutRect = this._layoutContainer.getBoundingClientRect();
-    if (!wrapRect.width || !layoutRect.width) return;
-    this._clearLayoutOverlay();
-    const overlay = document.createElement("div");
-    overlay.className = "layout-overlay";
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.style.top = `${layoutRect.top - wrapRect.top}px`;
-    overlay.style.left = `${layoutRect.left - wrapRect.left}px`;
-    overlay.style.width = `${layoutRect.width}px`;
-    overlay.style.height = `${layoutRect.height}px`;
-    overlay.appendChild(this._layoutContainer.cloneNode(true));
-    this._wrap.appendChild(overlay);
-    this._layoutOverlayEl = overlay;
-    const cleanup = () => {
-      if (this._layoutOverlayEl === overlay) {
-        overlay.remove();
-        this._layoutOverlayEl = null;
-      }
-    };
-    overlay.addEventListener(
-      "transitionend",
-      (ev) => {
-        if (ev.target === overlay) cleanup();
-      },
-      { once: true }
-    );
-    requestAnimationFrame(() => {
-      overlay.classList.add("layout-overlay--fade");
-    });
-    setTimeout(cleanup, 320);
-  }
-  _invalidateUpdateFingerprint() {
-    this._lastUpdateFingerprint = null;
-  }
-  _shouldUpdateForHass(hass) {
-    const nextFingerprint = this._updateFingerprint(hass);
-    if (nextFingerprint === this._lastUpdateFingerprint) return false;
-    this._lastUpdateFingerprint = nextFingerprint;
-    return true;
-  }
-  _updateFingerprint(hass = this._hass) {
-    const entityId = String(this._config?.entity || "");
-    const remote = entityId ? hass?.states?.[entityId] : null;
-    const attrs = remote?.attributes || {};
-    const themeName = String(this._config?.theme || "");
-    const themeDef = themeName ? hass?.themes?.themes?.[themeName] : null;
-    const themeMode = hass?.themes?.darkMode ? "dark" : "light";
-    return [
-      entityId,
-      String(remote?.state ?? ""),
-      String(attrs?.current_activity_id ?? ""),
-      String(attrs?.current_activity ?? ""),
-      String(attrs?.load_state ?? ""),
-      String(attrs?.hub_version ?? ""),
-      stableJsonSignature(attrs?.activities),
-      stableJsonSignature(attrs?.assigned_keys),
-      stableJsonSignature(attrs?.macro_keys),
-      stableJsonSignature(attrs?.favorite_keys),
-      stableJsonSignature(this._config?.background_override),
-      themeName,
-      themeMode,
-      stableJsonSignature(themeDef),
-      this._editMode ? "1" : "0",
-      String(this._previewActivity ?? ""),
-      this._integrationDomain || ""
-    ].join("|");
-  }
-  _syncElementHass(el) {
-    if (!el) return;
-    if (el.__sbHass === this._hass) return;
-    el.hass = this._hass;
-    el.__sbHass = this._hass;
-  }
-  // ---------- Hub request queue (prevents parallel requests) ----------
-  _hubInitState() {
-    const next = initHubRuntimeState(this._hubRequestSeen, this._hubQueue);
-    this._hubRequestSeen = next.requestSeen;
-    this._hubQueue = next.queue;
-  }
-  _sleep(ms) {
-    return sleep(ms);
-  }
-  _hasOwn(obj, key) {
-    return hasOwn2(obj, key);
-  }
-  _hubMarkRequested(key) {
-    this._hubInitState();
-    this._hubRequestSeen = markHubRequested(this._hubRequestSeen, key);
-  }
-  _hubWasRequested(key) {
-    this._hubInitState();
-    return wasHubRequested(this._hubRequestSeen, key);
-  }
-  _hubEnqueueCommand(list, { priority = false, gapMs = 150 } = {}) {
-    if (!this._isHubIntegration()) return;
-    if (!this._hass || !this._config?.entity) return;
-    this._hubInitState();
-    this._hubQueue = enqueueHubCommand(this._hubQueue, list, {
-      priority,
-      gapMs
-    });
-    this._hubDrainQueue().catch(() => {
-    });
-  }
-  _hubEnqueueRequest(list, requestKey) {
-    if (!this._isHubIntegration()) return;
-    if (!this._hass || !this._config?.entity) return;
-    this._hubInitState();
-    if (requestKey && this._hubWasRequested(requestKey)) return;
-    if (requestKey) this._hubMarkRequested(requestKey);
-    this._hubEnqueueCommand(list, { priority: false, gapMs: 3e3 });
-  }
-  async _hubDrainQueue() {
-    if (!this._isHubIntegration()) return;
-    if (!this._hass || !this._config?.entity) return;
-    this._hubInitState();
-    if (this._hubQueueBusy) return;
-    this._hubQueueBusy = true;
-    try {
-      while (this._hubQueue.length) {
-        const next = this._hubQueue.shift();
-        if (!next?.list) continue;
-        await this._callService("remote", "send_command", {
-          entity_id: this._config.entity,
-          command: next.list
-        });
-        const gap = Number.isFinite(Number(next?.gapMs)) ? Number(next.gapMs) : 750;
-        await this._sleep(gap);
-      }
-    } finally {
-      this._hubQueueBusy = false;
-      this._updateAutomationAssistUI();
-      this._syncAutomationAssistMqtt();
-    }
-  }
-  _hubThrottle(key, minIntervalMs = 3e3) {
-    this._hubRequestCache = this._hubRequestCache || {};
-    return throttleHubRequest(this._hubRequestCache, key, minIntervalMs);
-  }
-  async _hubSendCommandList(list, throttleKey = null, minIntervalMs = 3e3) {
-    if (this._editMode) return;
-    if (!this._isHubIntegration()) return;
-    if (!this._hass || !this._config?.entity) return;
-    this._hubInitState();
-    if (throttleKey) {
-      if (!this._hubThrottle(throttleKey, minIntervalMs)) return;
-    }
-    if (this._hubQueueBusy || Array.isArray(this._hubQueue) && this._hubQueue.length) {
-      this._hubEnqueueCommand(list, { priority: true, gapMs: 150 });
-      return;
-    }
-    await this._callService("remote", "send_command", {
-      entity_id: this._config.entity,
-      command: list
-    });
-  }
-  async _hubRequestBasicData() {
-    const entityId = String(this._config?.entity || "");
-    this._hubEnqueueRequest(requestBasicDataCommand(), basicDataRequestKey(entityId));
-  }
-  async _hubRequestAssignedKeys(activityId) {
-    const command = requestAssignedKeysCommand(activityId);
-    if (!command) return;
-    this._hubEnqueueCommand(command, { priority: false, gapMs: 3e3 });
-  }
-  async _hubRequestFavoriteKeys(activityId) {
-    const command = requestFavoriteKeysCommand(activityId);
-    if (!command) return;
-    this._hubEnqueueCommand(command, { priority: false, gapMs: 3e3 });
-  }
-  async _hubRequestMacroKeys(activityId) {
-    const command = requestMacroKeysCommand(activityId);
-    if (!command) return;
-    this._hubEnqueueCommand(command, { priority: false, gapMs: 3e3 });
-  }
-  async _hubStartActivity(activityId) {
-    const command = startActivityCommand(activityId);
-    if (!command) return;
-    await this._hubSendCommandList(command);
-  }
-  async _hubStopActivity(activityId) {
-    const command = stopActivityCommand(activityId);
-    if (!command) return;
-    await this._hubSendCommandList(command);
-  }
-  async _sendDrawerItem(itemType, commandId, deviceId, rawItem) {
-    if (this._editMode) return;
-    if (!this._isHubIntegration()) {
-      return this._sendCommand(commandId, deviceId);
-    }
-    if (!this._hass || !this._config?.entity) return;
-    const activityId = Number(deviceId ?? this._currentActivityId());
-    const keyId = Number(commandId);
-    if (!Number.isFinite(keyId)) return;
-    if (itemType === "macros") {
-      const command2 = hubMacroKeyCommand(activityId, keyId);
-      if (!command2) return;
-      return this._hubSendCommandList(command2);
-    }
-    if (itemType === "favorites") {
-      const device = Number(rawItem?.device_id ?? rawItem?.device);
-      const command2 = hubFavoriteKeyCommand(device, keyId);
-      if (!command2) return;
-      return this._hubSendCommandList(command2);
-    }
-    const command = hubAssignedKeyCommand(activityId, keyId);
-    if (!command) return;
-    return this._hubSendCommandList(command);
-  }
-  _hubVersion() {
-    return String(
-      this._remoteState()?.attributes?.hub_version || ""
-    ).toUpperCase();
-  }
-  _isX2() {
-    if (this._isHubIntegration()) return true;
-    return this._hubVersion().includes("X2");
-  }
-  // Returns true for X1S and X2 hubs, which encode button labels as UTF-16-LE
-  // and therefore correctly display any Unicode character in the Sofabaton app.
-  // X1 hubs encode labels as ASCII (dropping non-ASCII), so umlauts would appear
-  // garbled in the app even though routing still works.
-  _supportsUnicodeCommandNames() {
-    return this._isX2() || this._hubVersion().includes("X1S");
-  }
-  _enabledButtons() {
-    return this._enabledButtonsCache || [];
-  }
-  _isEnabled(id) {
-    const enabled = this._enabledButtons();
-    if (this._enabledButtonsInvalid) return true;
-    if (!enabled.length) return true;
-    return enabled.some((entry) => entry.command === Number(id));
-  }
-  _commandTarget(id) {
-    const enabled = this._enabledButtons();
-    const match = enabled.find((entry) => entry.command === Number(id));
-    return match || null;
-  }
-  _currentActivityId() {
-    return currentActivityIdFromRemote(this._remoteState());
-  }
-  _activities() {
-    const { activities, nextHubActivitiesCache } = activitiesFromRemote(
-      this._remoteState(),
-      this._isHubIntegration(),
-      this._hubActivitiesCache
-    );
-    this._hubActivitiesCache = nextHubActivitiesCache;
-    return activities;
-  }
-  _currentActivityLabel() {
-    return currentActivityLabelFromRemote(this._remoteState(), this._activities());
-  }
-  _activityNameForId(activityId) {
-    return activityNameForId(this._activities(), activityId);
-  }
-  _previewSelection(activities = null) {
-    return previewSelection(
-      this._editMode,
-      this._previewActivity,
-      Array.isArray(activities) ? activities : this._activities()
-    );
-  }
-  _effectiveActivityId() {
-    if (this._previewState) return this._previewState.activityId;
-    return this._currentActivityId();
-  }
-  _isPoweredOffLabel(state) {
-    return isPoweredOffLabel(state);
-  }
-  _isActivityOn(activityId, activities = null) {
-    return isActivityOn(
-      activityId,
-      Array.isArray(activities) ? activities : this._activities(),
-      this._currentActivityLabel()
-    );
-  }
-  _isLoadingActive() {
-    const isActivityLoading = Boolean(this._activityLoadActive);
-    const isPulse = this._commandPulseUntil && Date.now() < this._commandPulseUntil;
-    return isActivityLoading || isPulse;
-  }
-  _resolveCommandDeviceId(commandId, deviceId = null) {
-    const resolved = deviceId != null ? Number(deviceId) : this._commandTarget(commandId)?.activity_id ?? this._currentActivityId();
-    if (resolved == null || !Number.isFinite(Number(resolved))) return null;
-    return Number(resolved);
-  }
-  _recordAutomationAssistActivityChange({
-    activityId,
-    activityName,
-    poweredOff = false
-  }) {
-    if (!this._ensureAutomationAssistCaptureStarted()) return;
-    const id = Number(activityId);
-    const resolvedId = Number.isFinite(id) ? id : null;
-    const label = poweredOff ? "Powered Off" : String(activityName || "Activity");
-    this._automationAssistCapture = {
-      label,
-      activityId: resolvedId,
-      activityName: poweredOff ? "Powered Off" : String(activityName || label),
-      kind: poweredOff ? "power" : "activity"
-    };
-    this._automationAssistMqttMatch = false;
-    this._automationAssistMqttPayload = null;
-    this._automationAssistMqttDeviceName = null;
-    this._automationAssistMqttCommandName = null;
-    this._automationAssistMqttExisting = false;
-    this._automationAssistMqttDiscoveryCreated = false;
-    this._automationAssistMqttDiscoveryWorking = false;
-    this._automationAssistMqttDiscoveryDeviceId = null;
-    this._automationAssistStatusMessage = null;
-    this._updateAutomationAssistUI();
-    this._notifyAutomationAssistCapture();
-  }
-  _recordAutomationAssistClick({
-    label,
-    commandId,
-    deviceId = null,
-    commandType = "assigned",
-    icon = null
-  }) {
-    if (!this._ensureAutomationAssistCaptureStarted()) return;
-    const command = Number(commandId);
-    if (!Number.isFinite(command)) return;
-    const resolvedDevice = commandType === "favorite" || commandType === "macro" ? deviceId != null ? Number(deviceId) : this._currentActivityId() : this._resolveCommandDeviceId(command, deviceId);
-    if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) {
-      return;
-    }
-    const activityName = this._activityNameForId(resolvedDevice) || this._currentActivityLabel() || "Unknown";
-    this._automationAssistCapture = {
-      label: String(label ?? "Button"),
-      commandId: command,
-      deviceId: Number(resolvedDevice),
-      commandType,
-      icon: icon ? String(icon) : null,
-      activityName,
-      kind: "button"
-    };
-    this._automationAssistMqttMatch = false;
-    this._automationAssistMqttPayload = null;
-    this._automationAssistMqttDeviceName = null;
-    this._automationAssistMqttCommandName = null;
-    this._automationAssistMqttExisting = false;
-    this._automationAssistMqttDiscoveryCreated = false;
-    this._automationAssistMqttDiscoveryWorking = false;
-    this._automationAssistMqttDiscoveryDeviceId = null;
-    this._automationAssistStatusMessage = null;
-    this._updateAutomationAssistUI();
-    this._notifyAutomationAssistCapture();
-  }
-  _automationAssistRemoteYaml() {
-    const capture = this._automationAssistCapture;
-    if (!capture || !this._config?.entity) return "";
-    const entityId = this._config.entity;
-    const kind = capture.kind || "button";
-    if (kind === "activity") {
-      if (this._isHubIntegration()) {
-        if (!Number.isFinite(Number(capture.activityId))) return "";
-        return [
-          "action: remote.send_command",
-          "target:",
-          `  entity_id: ${entityId}`,
-          "data:",
-          "  command:",
-          "    - type:start_activity",
-          `    - activity_id:${capture.activityId}`
-        ].join("\n");
-      }
-      return [
-        "action: remote.turn_on",
-        "target:",
-        `  entity_id: ${entityId}`,
-        "data:",
-        `  activity: ${capture.activityName}`
-      ].join("\n");
-    }
-    if (kind === "power") {
-      if (this._isHubIntegration()) {
-        if (!Number.isFinite(Number(capture.activityId))) return "";
-        return [
-          "action: remote.send_command",
-          "target:",
-          `  entity_id: ${entityId}`,
-          "data:",
-          "  command:",
-          "    - type:stop_activity",
-          `    - activity_id:${capture.activityId}`
-        ].join("\n");
-      }
-      return [
-        "action: remote.turn_off",
-        "target:",
-        `  entity_id: ${entityId}`
-      ].join("\n");
-    }
-    if (this._isHubIntegration()) {
-      const payloadType = capture.commandType === "macro" ? "send_macro_key" : capture.commandType === "favorite" ? "send_favorite_key" : "send_assigned_key";
-      const deviceKey = capture.commandType === "favorite" ? "device_id" : "activity_id";
-      return [
-        "action: remote.send_command",
-        "target:",
-        `  entity_id: ${entityId}`,
-        "data:",
-        "  command:",
-        `    - type:${payloadType}`,
-        `    - ${deviceKey}:${capture.deviceId}`,
-        `    - key_id:${capture.commandId}`
-      ].join("\n");
-    }
-    return [
-      "action: remote.send_command",
-      "target:",
-      `  entity_id: ${entityId}`,
-      "data:",
-      `  command: ${capture.commandId}`,
-      `  device: ${capture.deviceId}`
-    ].join("\n");
-  }
-  _automationAssistButtonYaml() {
-    const capture = this._automationAssistCapture;
-    if (!capture || !this._config?.entity) return "";
-    const kind = capture.kind || "button";
-    const label = capture.label || "Automation Assist";
-    const icon = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
-    const serviceYaml = this._automationAssistRemoteYaml().split("\n").map((line) => `  ${line}`).join("\n");
-    return [
-      "type: button",
-      `name: ${label}`,
-      `icon: ${icon}`,
-      "tap_action:",
-      "  action: perform-action",
-      "  perform_" + serviceYaml.substring(2),
-      "hold_action:",
-      "  action: none"
-    ].join("\n");
-  }
-  _automationAssistNotificationBody() {
-    const capture = this._automationAssistCapture;
-    if (!capture) return "";
-    const kind = capture.kind || "button";
-    const activityName = capture.activityName || this._activityNameForId(capture.deviceId) || this._currentActivityLabel() || "Unknown";
-    const eventLabel = kind === "button" ? `Button: ${capture.label}` : kind === "activity" ? `Activity Change: ${capture.label}` : `Event: ${capture.label}`;
-    const buttonYaml = this._automationAssistButtonYaml();
-    const remoteYaml = this._automationAssistRemoteYaml();
-    return [
-      "---",
-      "",
-      `**Activity: ${activityName} | ${eventLabel}**`,
-      "",
-      "---",
-      "\u{1F4CB} **Lovelace Button Code**",
-      "",
-      "*Copy this to your Dashboard YAML:*",
-      "```yaml",
-      buttonYaml,
-      "```",
-      "\u2699\uFE0F **Service Call (Automation)**",
-      "",
-      "*Use this in your Scripts or Automations:*",
-      "```yaml",
-      remoteYaml,
-      "```"
-    ].join("\n");
-  }
-  _notifyAutomationAssistCapture() {
-    if (!this._automationAssistEnabled()) return;
-    if (!this._hass) return;
-    const body = this._automationAssistNotificationBody();
-    if (!body) return;
-    this._hass.callService("persistent_notification", "create", {
-      title: "\u{1F6E0}\uFE0F Automation Assist",
-      message: body
-    });
-  }
-  _automationAssistMqttSupported() {
-    return this._isX2();
-  }
-  _automationAssistMqttAvailable() {
-    return this._automationAssistMqttSupported() && this._automationAssistActive && Boolean(this._hubMac) && !this._automationAssistMqttDiscoveryCreated && !this._automationAssistMqttDiscoveryWorking && this._automationAssistMqttReady();
-  }
-  _automationAssistMqttReady() {
-    if (!this._isHubIntegration()) return true;
-    const queue = Array.isArray(this._hubQueue) ? this._hubQueue.length : 0;
-    return !this._hubQueueBusy && queue === 0;
-  }
-  _ensureHubMac() {
-    if (!this._hass || !this._config?.entity) return;
-    if (this._hubMac || this._hubMacDetecting) return;
-    const attrMac = this._normalizeHubMac(
-      this._remoteState()?.attributes?.hub_mac
-    );
-    if (attrMac) {
-      this._hubMac = attrMac;
-      return;
-    }
-    if (this._integrationDomain !== "sofabaton_hub") return;
-    if (!this._hass?.connection?.subscribeMessage) return;
-    this._hubMacDetecting = true;
-    const topic = "activity/+/list";
-    let timeoutId = null;
-    let unsub = null;
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      const unsubscribe = unsub;
-      unsub = null;
-      this._safeUnsubscribe(unsubscribe);
-      this._hubMacDetecting = false;
-      this._updateAutomationAssistUI();
-      this._syncAutomationAssistMqtt();
-    };
-    this._hass.connection.subscribeMessage(
-      (msg) => {
-        const topicMatch = String(msg?.topic || "").match(
-          /^activity\/([^/]+)\/list$/
-        );
-        const normalized = topicMatch?.[1] ? this._normalizeHubMac(topicMatch[1]) : null;
-        if (!normalized) return;
-        this._hubMac = normalized;
-        finish();
-      },
-      { type: "mqtt/subscribe", topic }
-    ).then((unsubscribe) => {
-      unsub = unsubscribe;
-      this._hubRequestBasicData();
-      timeoutId = setTimeout(() => finish(), 4e3);
-    }).catch(() => {
-      finish();
-    });
-  }
-  _syncAutomationAssistMqtt() {
-    if (!this._automationAssistEnabled()) {
-      this._unsubscribeAutomationAssistMqtt();
-      return;
-    }
-    if (!this._automationAssistActive) {
-      this._unsubscribeAutomationAssistMqtt();
-      return;
-    }
-    if (!this._automationAssistMqttSupported()) {
-      this._unsubscribeAutomationAssistMqtt();
-      return;
-    }
-    if (!this._automationAssistMqttReady()) {
-      return;
-    }
-    this._ensureHubMac();
-    const mac = this._hubMac;
-    if (!mac) return;
-    const topic = `${mac}/up`;
-    if (this._automationAssistMqttTopic === topic && this._mqttUnsub) return;
-    this._unsubscribeAutomationAssistMqtt();
-    if (!this._hass?.connection?.subscribeMessage) return;
-    this._automationAssistMqttTopic = topic;
-    this._hass.connection.subscribeMessage((msg) => this._handleAutomationAssistMqtt(msg), {
-      type: "mqtt/subscribe",
-      topic
-    }).then((unsub) => {
-      this._mqttUnsub = unsub;
-    }).catch(() => {
-      this._mqttUnsub = null;
-    });
-  }
-  _unsubscribeAutomationAssistMqtt() {
-    if (this._mqttUnsub) {
-      const unsubscribe = this._mqttUnsub;
-      this._mqttUnsub = null;
-      this._safeUnsubscribe(unsubscribe);
-    }
-    this._automationAssistMqttTopic = null;
-  }
-  _parseMqttPayload(payload) {
-    if (payload == null) return null;
-    if (typeof payload === "object") return payload;
-    try {
-      return JSON.parse(String(payload));
-    } catch (e) {
-      return null;
-    }
-  }
-  _automationAssistMqttTriggerExists(payload, topic) {
-    return false;
-  }
-  _automationAssistSessionState() {
-    if (!window[AUTOMATION_ASSIST_SESSION_KEY]) {
-      window[AUTOMATION_ASSIST_SESSION_KEY] = {
-        hideMqttModal: false,
-        discoveryDeviceIds: /* @__PURE__ */ new Set(),
-        activityTriggersCreated: false
-      };
-    }
-    return window[AUTOMATION_ASSIST_SESSION_KEY];
-  }
-  _shouldSuppressMqttModal(deviceId) {
-    const session = this._automationAssistSessionState();
-    if (session.hideMqttModal) return true;
-    return session.discoveryDeviceIds.has(deviceId);
-  }
-  _openAutomationAssistMqttModal(deviceId) {
-    if (!this._automationAssistMqttModal) return;
-    if (!Number.isFinite(deviceId)) return;
-    if (this._shouldSuppressMqttModal(deviceId)) return;
-    this._automationAssistMqttModalDeviceId = deviceId;
-    this._automationAssistMqttModalOpen = true;
-    if (this._automationAssistMqttModalOptOutInput) {
-      this._automationAssistMqttModalOptOutInput.checked = false;
-    }
-    if (this._automationAssistMqttModalActivityInput) {
-      this._automationAssistMqttModalActivityInput.checked = false;
-    }
-    this._updateAutomationAssistModalUI();
-  }
-  _closeAutomationAssistMqttModal() {
-    if (!this._automationAssistMqttModalOpen) return;
-    this._automationAssistMqttModalOpen = false;
-    this._updateAutomationAssistModalUI();
-  }
-  _handleAutomationAssistMqtt(msg) {
-    const payload = this._parseMqttPayload(msg?.payload);
-    if (!payload) return;
-    const deviceId = Number(payload.device_id);
-    if (Number.isFinite(deviceId) && this._automationAssistMqttDiscoveryDeviceId !== deviceId) {
-      this._automationAssistMqttDiscoveryDeviceId = deviceId;
-      this._automationAssistMqttDiscoveryCreated = false;
-      this._automationAssistMqttDiscoveryWorking = false;
-    }
-    this._automationAssistMqttMatch = true;
-    this._automationAssistMqttPayload = payload;
-    this._automationAssistMqttDeviceName = null;
-    this._automationAssistMqttCommandName = null;
-    this._automationAssistMqttExisting = this._automationAssistMqttTriggerExists(
-      payload,
-      this._automationAssistMqttTopic
-    );
-    this._updateAutomationAssistUI();
-    this._primeAutomationAssistMqttMetadata(payload);
-    this._openAutomationAssistMqttModal(deviceId);
-  }
-  async _handleAutomationAssistMqttClick() {
-    if (!this._automationAssistMqttAvailable()) return;
-    const mac = this._hubMac;
-    const payload = this._automationAssistMqttPayload;
-    if (!mac || !payload) return;
-    const deviceId = Number(payload.device_id);
-    if (!Number.isFinite(deviceId)) return;
-    this._automationAssistMqttDiscoveryWorking = true;
-    this._updateAutomationAssistUI();
-    try {
-      const [deviceName, commands] = await Promise.all([
-        this._requestMqttDeviceName(mac, deviceId),
-        this._requestMqttDeviceCommands(mac, deviceId)
-      ]);
-      if (!commands || commands.size === 0) {
-        this._setAutomationAssistStatus("No MQTT commands discovered yet");
-        return;
-      }
-      const deviceLabel = deviceName || `Device ${deviceId}`;
-      const topic = `${mac}/up`;
-      const macLower = String(mac).toLowerCase();
-      const macUpper = String(mac).toUpperCase();
-      const session = this._automationAssistSessionState();
-      const allowActivityTriggers = !session.activityTriggersCreated;
-      const includeActivityTriggers = allowActivityTriggers && Boolean(this._automationAssistMqttModalActivityInput?.checked);
-      let createdCount = 0;
-      let createdActivityCount = 0;
-      for (const [keyId, commandName] of commands.entries()) {
-        const payloadObj = { device_id: deviceId, key_id: Number(keyId) };
-        if (!Number.isFinite(payloadObj.key_id)) continue;
-        if (this._automationAssistMqttTriggerExists(payloadObj, topic)) {
-          continue;
-        }
-        const displayCommand = commandName || `Command ${payloadObj.key_id}`;
-        const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}`;
-        this._automationAssistDiscoveryIds = this._automationAssistDiscoveryIds || /* @__PURE__ */ new Set();
-        if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
-        const subtype = `X2 ${deviceLabel} ${displayCommand}`;
-        const config = {
-          automation_type: "trigger",
-          type: "button_short_press",
-          subtype,
-          payload: JSON.stringify(payloadObj),
-          topic: `${macUpper}/up`,
-          device: {
-            identifiers: [`sofabaton_x2_remote_${deviceId}`],
-            name: `X2 \u2192 ${deviceLabel}`,
-            model: "X2",
-            manufacturer: "Sofabaton"
-          }
-        };
-        await this._enqueueMqttPublish(async () => {
-          await this._callService("mqtt", "publish", {
-            topic: `homeassistant/device_automation/${uniqueId}/config`,
-            payload: JSON.stringify(config),
-            retain: true
-          });
-          this._automationAssistDiscoveryIds.add(uniqueId);
-          await this._sleep(250);
-        });
-        createdCount += 1;
-      }
-      if (includeActivityTriggers) {
-        const activityTopic = `activity/${macLower}/activity_control_up`;
-        const activityDevice = {
-          identifiers: ["sofabaton_x2_remote_activities"],
-          name: "X2 \u2192 Activities",
-          model: "X2",
-          manufacturer: "Sofabaton"
-        };
-        const activities = this._activities();
-        const activityEntries = activities.map((activity) => ({
-          id: activity.id,
-          name: activity.name,
-          state: "on"
-        }));
-        activityEntries.push({
-          id: 255,
-          name: "Powered Off",
-          state: "off"
-        });
-        for (const activity of activityEntries) {
-          const activityId = Number(activity.id);
-          if (!Number.isFinite(activityId)) continue;
-          const payloadObj = { activity_id: activityId, state: activity.state };
-          const uniqueId = `sofabaton_${macLower}_activity_${activityId}`;
-          this._automationAssistDiscoveryIds = this._automationAssistDiscoveryIds || /* @__PURE__ */ new Set();
-          if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
-          const subtype = `X2 Activity ${activity.name}`;
-          const config = {
-            automation_type: "trigger",
-            type: "button_short_press",
-            subtype,
-            payload: JSON.stringify(payloadObj),
-            topic: activityTopic,
-            device: activityDevice
-          };
-          await this._enqueueMqttPublish(async () => {
-            await this._callService("mqtt", "publish", {
-              topic: `homeassistant/device_automation/${uniqueId}/config`,
-              payload: JSON.stringify(config),
-              retain: true
-            });
-            this._automationAssistDiscoveryIds.add(uniqueId);
-            await this._sleep(250);
-          });
-          createdActivityCount += 1;
-        }
-        session.activityTriggersCreated = true;
-      }
-      this._automationAssistMqttDiscoveryCreated = true;
-      this._automationAssistMqttDiscoveryDeviceId = deviceId;
-      session.discoveryDeviceIds.add(deviceId);
-      if (createdCount > 0 || createdActivityCount > 0) {
-        const activityNote = includeActivityTriggers && createdActivityCount > 0 && createdCount > 0 ? ` plus ${createdActivityCount} activity triggers` : "";
-        const base = createdCount > 0 ? `Created ${createdCount} MQTT discovery triggers for ${deviceLabel}` : `Created ${createdActivityCount} activity triggers for X2 \u2192 Activities`;
-        this._setAutomationAssistStatus(`${base}${activityNote}`);
-      } else {
-        this._setAutomationAssistStatus(
-          `All MQTT discovery triggers already exist for ${deviceLabel}`
-        );
-      }
-    } finally {
-      this._automationAssistMqttDiscoveryWorking = false;
-      this._updateAutomationAssistUI();
-    }
-  }
-  _primeAutomationAssistMqttMetadata(payload) {
-    const mac = this._hubMac;
-    if (!mac || !payload) return;
-    const deviceId = Number(payload.device_id);
-    const keyId = Number(payload.key_id);
-    if (!Number.isFinite(deviceId) || !Number.isFinite(keyId)) return;
-    const lookupId = (this._automationAssistMqttLookupId || 0) + 1;
-    this._automationAssistMqttLookupId = lookupId;
-    Promise.all([
-      this._requestMqttDeviceName(mac, deviceId),
-      this._requestMqttDeviceCommandName(mac, deviceId, keyId)
-    ]).then(([deviceName, commandName]) => {
-      if (this._automationAssistMqttLookupId !== lookupId) return;
-      if (deviceName) this._automationAssistMqttDeviceName = deviceName;
-      if (commandName) this._automationAssistMqttCommandName = commandName;
-      this._updateAutomationAssistUI();
-    });
-  }
-  async _requestMqttDeviceName(mac, deviceId) {
-    if (!this._hass?.connection?.subscribeMessage) return null;
-    if (!Number.isFinite(deviceId)) return null;
-    this._mqttDeviceNames = this._mqttDeviceNames || /* @__PURE__ */ new Map();
-    const cacheKey = `${mac}:${deviceId}`;
-    if (this._mqttDeviceNames.has(cacheKey)) {
-      return this._mqttDeviceNames.get(cacheKey);
-    }
-    const topic = `device/${mac}/list`;
-    const requestTopic = `device/${mac}/list_request`;
-    const payload = JSON.stringify({ data: "device_list" });
-    return this._enqueueMqttRequest(
-      () => new Promise((resolve) => {
-        let timeoutId = null;
-        let unsub = null;
-        const finish = (name) => {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (unsub) {
-            const unsubscribe = unsub;
-            unsub = null;
-            this._safeUnsubscribe(unsubscribe);
-          }
-          if (name) {
-            this._mqttDeviceNames.set(cacheKey, name);
-          }
-          resolve(name || null);
-        };
-        this._hass.connection.subscribeMessage(
-          (msg) => {
-            const data = this._parseMqttPayload(msg?.payload);
-            const devices = Array.isArray(data?.data) ? data.data : [];
-            const match = devices.find(
-              (device) => Number(device?.device_id) === deviceId
-            );
-            finish(match?.device_name ? String(match.device_name) : null);
-          },
-          { type: "mqtt/subscribe", topic }
-        ).then((unsubscribe) => {
-          unsub = unsubscribe;
-          this._callService("mqtt", "publish", {
-            topic: requestTopic,
-            payload
-          });
-          timeoutId = setTimeout(() => finish(null), 4e3);
-        }).catch(() => finish(null));
-      })
-    );
-  }
-  async _requestMqttDeviceCommandName(mac, deviceId, keyId) {
-    if (!Number.isFinite(keyId)) return null;
-    const commands = await this._requestMqttDeviceCommands(mac, deviceId);
-    if (!commands) return null;
-    return commands.get(Number(keyId)) || null;
-  }
-  async _requestMqttDeviceCommands(mac, deviceId) {
-    if (!this._hass?.connection?.subscribeMessage) return null;
-    if (!Number.isFinite(deviceId)) return null;
-    this._mqttDeviceCommands = this._mqttDeviceCommands || /* @__PURE__ */ new Map();
-    const cacheKey = `${mac}:${deviceId}`;
-    if (this._mqttDeviceCommands.has(cacheKey)) {
-      return this._mqttDeviceCommands.get(cacheKey);
-    }
-    const topic = `device/${mac}/keys_list`;
-    const requestTopic = `device/${mac}/keys_request`;
-    const payload = JSON.stringify({ data: { device_id: deviceId } });
-    return this._enqueueMqttRequest(
-      () => new Promise((resolve) => {
-        let timeoutId = null;
-        let unsub = null;
-        const finish = (commands) => {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (unsub) {
-            const unsubscribe = unsub;
-            unsub = null;
-            this._safeUnsubscribe(unsubscribe);
-          }
-          if (commands) {
-            this._mqttDeviceCommands.set(cacheKey, commands);
-          }
-          resolve(commands || null);
-        };
-        this._hass.connection.subscribeMessage(
-          (msg) => {
-            const data = this._parseMqttPayload(msg?.payload);
-            if (Number(data?.device_id) !== deviceId) return;
-            const keys = Array.isArray(data?.data) ? data.data : [];
-            const commands = /* @__PURE__ */ new Map();
-            keys.forEach((entry) => {
-              const key = Number(entry?.key_id);
-              if (!Number.isFinite(key)) return;
-              const name = entry?.key_name ? String(entry.key_name) : null;
-              if (name) commands.set(key, name);
-            });
-            finish(commands);
-          },
-          { type: "mqtt/subscribe", topic }
-        ).then((unsubscribe) => {
-          unsub = unsubscribe;
-          this._callService("mqtt", "publish", {
-            topic: requestTopic,
-            payload
-          });
-          timeoutId = setTimeout(() => finish(null), 4e3);
-        }).catch(() => finish(null));
-      })
-    );
-  }
-  _enqueueMqttRequest(task) {
-    this._mqttRequestQueue = this._mqttRequestQueue || Promise.resolve();
-    const run = async () => task();
-    this._mqttRequestQueue = this._mqttRequestQueue.then(run, run);
-    return this._mqttRequestQueue;
-  }
-  _enqueueMqttPublish(task) {
-    this._mqttPublishQueue = this._mqttPublishQueue || Promise.resolve();
-    const run = async () => task();
-    this._mqttPublishQueue = this._mqttPublishQueue.then(run, run);
-    return this._mqttPublishQueue;
-  }
-  _automationAssistSlug(value) {
-    return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/_+/g, "_") || "command";
-  }
-  _setAutomationAssistStatus(text) {
-    this._automationAssistStatusMessage = String(text ?? "");
-    if (!this._automationAssistStatus) return;
-    this._automationAssistStatus.textContent = this._automationAssistStatusMessage;
-  }
-  _safeUnsubscribe(unsubscribe) {
-    if (typeof unsubscribe !== "function") return;
-    try {
-      const maybePromise = unsubscribe();
-      if (maybePromise && typeof maybePromise.catch === "function") {
-        maybePromise.catch(() => {
-        });
-      }
-    } catch (e) {
-    }
-  }
-  _ensureAutomationAssistCaptureStarted() {
-    if (!this._automationAssistEnabled()) return false;
-    if (this._editMode) return false;
-    if (!this._automationAssistActive) {
-      this._setAutomationAssistActive(true);
-    }
-    return this._automationAssistActive;
-  }
-  _primeAutomationAssistActivityBaseline() {
-    const currentLabel = this._currentActivityLabel();
-    const currentId = this._currentActivityId();
-    this._lastActivityLabel = currentLabel;
-    this._lastActivityId = Number.isFinite(Number(currentId)) ? Number(currentId) : null;
-    this._lastPoweredOff = this._isPoweredOffLabel(currentLabel);
-  }
-  _setAutomationAssistActive(active) {
-    const next = !!active;
-    if (this._automationAssistActive === next) return;
-    this._automationAssistActive = next;
-    if (!next) {
-      this._automationAssistCapture = null;
-      this._automationAssistMqttMatch = false;
-      this._automationAssistMqttPayload = null;
-      this._automationAssistMqttDeviceName = null;
-      this._automationAssistMqttCommandName = null;
-      this._automationAssistMqttExisting = false;
-      this._automationAssistMqttDiscoveryCreated = false;
-      this._automationAssistMqttDiscoveryWorking = false;
-      this._automationAssistMqttDiscoveryDeviceId = null;
-      this._automationAssistStatusMessage = null;
-      this._unsubscribeAutomationAssistMqtt();
-      this._closeAutomationAssistMqttModal();
-    } else {
-      this._automationAssistStatusMessage = null;
-      this._primeAutomationAssistActivityBaseline();
-      this._syncAutomationAssistMqtt();
-    }
-    this._updateAutomationAssistUI();
-  }
-  _updateAutomationAssistUI() {
-    if (!this._automationAssistLabel || !this._automationAssistStatus) return;
-    const capture = this._automationAssistCapture;
-    const isActive = this._automationAssistActive;
-    const hasCapture = !!capture;
-    const mqttSupported = this._automationAssistMqttSupported();
-    if (!isActive) {
-      this._automationAssistStatus.textContent = this._editMode ? "Exit Edit mode to begin" : "Waiting for keypress";
-    } else if (this._automationAssistStatusMessage) {
-      this._automationAssistStatus.textContent = this._automationAssistStatusMessage;
-    } else if (hasCapture) {
-      this._automationAssistStatus.textContent = `Captured: ${capture.label}`;
-    } else {
-      this._automationAssistStatus.textContent = "Waiting for keypress";
-    }
-    this._updateAutomationAssistModalUI();
-  }
-  _updateAutomationAssistModalUI() {
-    if (!this._automationAssistMqttModal) return;
-    const isActive = this._automationAssistActive;
-    const mqttSupported = this._automationAssistMqttSupported();
-    const modalOpen = Boolean(this._automationAssistMqttModalOpen);
-    this._automationAssistMqttModal.classList.toggle("open", modalOpen);
-    if (!modalOpen) return;
-    if (this._automationAssistMqttModalActivityRow) {
-      const session = this._automationAssistSessionState();
-      this._setVisible(
-        this._automationAssistMqttModalActivityRow,
-        !session.activityTriggersCreated
-      );
-    }
-    const payload = this._automationAssistMqttPayload;
-    const deviceId = Number(payload?.device_id);
-    const commandId = Number(payload?.key_id);
-    const deviceName = this._automationAssistMqttDeviceName || (Number.isFinite(deviceId) ? `Device ${deviceId}` : "Unknown device");
-    const commandName = this._automationAssistMqttCommandName || (Number.isFinite(commandId) ? `Command ${commandId}` : null);
-    if (this._automationAssistMqttModalText) {
-      const lines = [`Detected MQTT device: ${deviceName}.`];
-      if (commandName) {
-        lines.push(`Last command: ${commandName}.`);
-      }
-      if (this._automationAssistMqttExisting) {
-        lines.push("Existing MQTT automation triggers were found.");
-      }
-      this._automationAssistMqttModalText.textContent = lines.join(" ");
-    }
-    if (this._automationAssistMqttModalStart) {
-      this._setVisible(this._automationAssistMqttModalStart, !isActive);
-    }
-    if (this._automationAssistMqttModalCreate) {
-      const showCreate = mqttSupported && isActive;
-      this._setVisible(this._automationAssistMqttModalCreate, showCreate);
-      const discoveryWorking = this._automationAssistMqttDiscoveryWorking;
-      const discoveryReady = this._automationAssistMqttDiscoveryCreated;
-      if (discoveryWorking) {
-        this._automationAssistMqttModalCreate.textContent = "Working...";
-      } else {
-        this._automationAssistMqttModalCreate.textContent = discoveryReady ? "Triggers ready for use" : "Create MQTT Discovery triggers";
-      }
-      this._automationAssistMqttModalCreate.disabled = discoveryWorking || discoveryReady || !this._automationAssistMqttAvailable();
-      this._automationAssistMqttModalCreate.classList.toggle(
-        "disabled",
-        this._automationAssistMqttModalCreate.disabled
-      );
-    }
-  }
-  _updateLoadIndicator() {
-    if (!this._loadIndicator) return;
-    const active = this._isLoadingActive();
-    if (this._loadIndicatorActive === active) return;
-    this._loadIndicatorActive = active;
-    this._loadIndicator.classList.toggle("is-loading", active);
-  }
-  _triggerCommandPulse() {
-    this._commandPulseUntil = Date.now() + 1e3;
-    this._updateLoadIndicator();
-    clearTimeout(this._commandPulseTimeout);
-    this._commandPulseTimeout = setTimeout(() => {
-      this._updateLoadIndicator();
-    }, 1e3);
-  }
-  _startActivityLoading(target) {
-    this._activityLoadTarget = String(target ?? "");
-    this._activityLoadActive = true;
-    this._activityLoadStartedAt = Date.now();
-    this._updateLoadIndicator();
-    clearTimeout(this._activityLoadTimeout);
-    this._activityLoadTimeout = setTimeout(() => {
-      if (this._activityLoadActive) {
-        this._activityLoadActive = false;
-        this._updateLoadIndicator();
-      }
-    }, 6e4);
-  }
-  _stopActivityLoading() {
-    if (!this._activityLoadActive) return;
-    this._activityLoadActive = false;
-    this._activityLoadTarget = null;
-    this._activityLoadStartedAt = null;
-    clearTimeout(this._activityLoadTimeout);
-    this._updateLoadIndicator();
-  }
-  // ---------- Services ----------
-  async _callService(domain, service, data, target = void 0) {
-    await this._hass.callService(domain, service, data, target);
-  }
-  _fireEvent(type, detail = {}) {
-    this.dispatchEvent(
-      new CustomEvent(type, { detail, bubbles: true, composed: true })
-    );
-  }
-  async _runLovelaceAction(actionConfig, context = null) {
-    if (this._editMode) return;
-    if (!actionConfig || typeof actionConfig !== "object") return;
-    const action = String(actionConfig.action || "").toLowerCase();
-    const implicitService = (!action || action === "default") && (actionConfig.service || actionConfig.perform_action);
-    if (action === "none") return;
-    if (action === "call-service" || action === "perform-action" || implicitService) {
-      const svc = String(
-        actionConfig.service || actionConfig.perform_action || ""
-      ).trim();
-      if (!svc.includes(".")) return;
-      const [domain, service] = svc.split(".", 2);
-      const serviceData = {
-        ...actionConfig.service_data || actionConfig.data || {}
-      };
-      const target = actionConfig.target && typeof actionConfig.target === "object" ? actionConfig.target : void 0;
-      await this._callService(domain, service, serviceData, target);
-      return;
-    }
-    if (action === "toggle") {
-      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
-      if (!entityId) return;
-      await this._callService("homeassistant", "toggle", {
-        entity_id: entityId
-      });
-      return;
-    }
-    if (action === "more-info") {
-      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
-      if (!entityId) return;
-      this._fireEvent("hass-more-info", { entityId });
-      return;
-    }
-    if (action === "navigate") {
-      const path = actionConfig.navigation_path;
-      if (!path) return;
-      history.pushState(null, "", path);
-      window.dispatchEvent(
-        new Event("location-changed", { bubbles: true, composed: true })
-      );
-      return;
-    }
-    if (action === "url") {
-      const url = actionConfig.url_path;
-      if (!url) return;
-      window.open(url, "_blank");
-      return;
-    }
-    if (action === "fire-dom-event") {
-      this._fireEvent("ll-custom", actionConfig);
-      return;
-    }
-  }
-  async _sendCommand(commandId, deviceId = null) {
-    if (this._editMode) return;
-    if (!this._hass || !this._config?.entity) return;
-    const resolvedDevice = this._resolveCommandDeviceId(commandId, deviceId);
-    if (this._isHubIntegration()) {
-      const command = hubAssignedKeyCommand(resolvedDevice, commandId);
-      if (!command) return;
-      await this._hubSendCommandList(command);
-      return;
-    }
-    const serviceData = remoteSendCommandData(
-      this._config.entity,
-      commandId,
-      resolvedDevice
-    );
-    if (!serviceData) return;
-    await this._callService("remote", "send_command", serviceData);
-  }
-  async _setActivity(option) {
-    if (this._editMode) return;
-    if (option == null || option === "") return;
-    const selected = String(option);
-    const current = this._currentActivityLabel();
-    if (selected === current) return;
-    this._pendingActivity = selected;
-    this._pendingActivityAt = Date.now();
-    this._startActivityLoading(selected);
-    this._update();
-    if (this._isHubIntegration()) {
-      if (this._isPoweredOffLabel(selected)) {
-        const currentId = this._currentActivityId();
-        if (currentId != null) {
-          await this._hubStopActivity(currentId);
-        }
-        return;
-      }
-      const match = this._activities().find((a) => a.name === selected);
-      const activityId = match?.id;
-      if (activityId == null) return;
-      await this._hubStartActivity(activityId);
-      return;
-    }
-    if (this._isPoweredOffLabel(selected)) {
-      await this._callService("remote", "turn_off", {
-        entity_id: this._config.entity
-      });
-      return;
-    }
-    await this._callService("remote", "turn_on", {
-      entity_id: this._config.entity,
-      activity: selected
-    });
-  }
-  // ---------- Theme/background helpers (per-card) ----------
-  _rgbToCss(rgb) {
-    return rgbToCss(rgb);
-  }
-  _applyLocalTheme(themeName) {
-    if (!this._root || !this._hass) return;
-    const bgOverrideCss = this._rgbToCss(this._config?.background_override);
-    const appliedKey = `${themeName || ""}||${bgOverrideCss}`;
-    if (this._appliedThemeKey === appliedKey) return;
-    if (this._appliedThemeVars?.length) {
-      for (const cssVar of this._appliedThemeVars) {
-        this._root.style.removeProperty(cssVar);
-      }
-    }
-    this._appliedThemeVars = [];
-    this._appliedThemeKey = appliedKey;
-    let vars = null;
-    if (themeName) {
-      const themes = this._hass.themes?.themes;
-      const def = themes?.[themeName];
-      if (def && typeof def === "object") {
-        vars = def;
-        if (def.modes && typeof def.modes === "object") {
-          const mode = this._hass.themes?.darkMode ? "dark" : "light";
-          vars = { ...def, ...def.modes?.[mode] || {} };
-          delete vars.modes;
-        }
-        for (const [k, v] of Object.entries(vars)) {
-          if (v == null || typeof v !== "string" && typeof v !== "number")
-            continue;
-          const cssVar = k.startsWith("--") ? k : `--${k}`;
-          this._root.style.setProperty(cssVar, String(v));
-          this._appliedThemeVars.push(cssVar);
-        }
-      }
-    }
-    const themeBg = vars?.["ha-card-background"] ?? vars?.["card-background-color"] ?? vars?.["ha-card-background-color"] ?? vars?.["primary-background-color"] ?? null;
-    const finalBg = bgOverrideCss || themeBg;
-    if (finalBg) {
-      this._root.style.setProperty("--ha-card-background", String(finalBg));
-      this._root.style.setProperty("--card-background-color", String(finalBg));
-      this._root.style.setProperty(
-        "--ha-card-background-color",
-        String(finalBg)
-      );
-      this._root.style.setProperty("background", String(finalBg));
-      this._root.style.setProperty("background-color", String(finalBg));
-      this._appliedThemeVars.push(
-        "--ha-card-background",
-        "--card-background-color",
-        "--ha-card-background-color",
-        "background",
-        "background-color"
-      );
-    } else {
-      this._root.style.removeProperty("background");
-      this._root.style.removeProperty("background-color");
-    }
-  }
-  _updateGroupRadius() {
-    if (!this._root) return;
-    const cs = getComputedStyle(this._root);
-    const candidates = [
-      "--ha-card-border-radius",
-      "--ha-control-border-radius",
-      "--mdc-shape-medium",
-      "--mdc-shape-small",
-      "--mdc-shape-large"
-    ];
-    let radius = "";
-    for (const name of candidates) {
-      const v = (cs.getPropertyValue(name) || "").trim();
-      if (v) {
-        radius = v;
-        break;
-      }
-    }
-    if (!radius) radius = "18px";
-    if (this._lastGroupRadius === radius) return;
-    this._lastGroupRadius = radius;
-    this._root.style.setProperty("--sb-group-radius", radius);
-    this._appliedThemeVars = this._appliedThemeVars || [];
-    if (!this._appliedThemeVars.includes("--sb-group-radius")) {
-      this._appliedThemeVars.push("--sb-group-radius");
-    }
-  }
-  _optionsSignature(options) {
-    return optionsSignature(options);
-  }
-  _drawerItemsSignature(items) {
-    return drawerItemsSignature(items);
-  }
-  _enabledButtonsSignature(raw) {
-    return enabledButtonsSignature(raw);
-  }
-  // ---------- UI helpers ----------
-  _setVisible(el, on) {
-    if (!el) return;
-    if (on) {
-      el.style.removeProperty("display");
-    } else {
-      el.style.setProperty("display", "none", "important");
-    }
-  }
-  _installOutsideCloseHandler() {
-    if (this._outsideCloseInstalled) return;
-    this._outsideCloseInstalled = true;
-    this._onOutsidePointerDown = (e) => {
-      const path = typeof e.composedPath === "function" ? e.composedPath() : [];
-      if (this._activeDrawer) {
-        const clickedInOverlay = path.includes(this._macrosOverlayEl) || path.includes(this._favoritesOverlayEl);
-        const clickedInToggleRow = path.includes(this._macroFavoritesRow) || path.includes(this._macrosButtonWrap) || path.includes(this._favoritesButtonWrap);
-        if (!(clickedInOverlay || clickedInToggleRow)) {
-          this._activeDrawer = null;
-          this._scheduleDrawerDirectionReset();
-          this._applyDrawerVisuals();
-          this._syncLayering();
-        }
-      }
-      if (this._activityMenuOpen) {
-        const clickedInActivity = path.includes(this._activityRow) || path.includes(this._activitySelect);
-        if (!clickedInActivity) {
-          this._activityMenuOpen = false;
-          this._syncLayering();
-        }
-      }
-    };
-    document.addEventListener("pointerdown", this._onOutsidePointerDown, true);
-  }
-  _removeOutsideCloseHandler() {
-    if (!this._outsideCloseInstalled) return;
-    this._outsideCloseInstalled = false;
-    document.removeEventListener(
-      "pointerdown",
-      this._onOutsidePointerDown,
-      true
-    );
-    this._onOutsidePointerDown = null;
-  }
-  connectedCallback() {
-    this._installOutsideCloseHandler();
-    if (!this._onResize) {
-      this._onResize = () => {
-        if (!this._activeDrawer) return;
-        this._updateDrawerDirection();
-        this._applyDrawerVisuals();
-        this._syncLayering();
-      };
-    }
-    window.addEventListener("resize", this._onResize, { passive: true });
-    if (!this._onPreviewActivity) {
-      this._onPreviewActivity = (event) => {
-        const detail = event?.detail || {};
-        if (detail.entity && this._config?.entity && detail.entity !== this._config.entity) {
-          return;
-        }
-        this._previewActivity = detail.previewActivity ?? "";
-        if (this._editMode) {
-          this._invalidateUpdateFingerprint();
-          this._update();
-        }
-      };
-    }
-    window.addEventListener(
-      "sofabaton-preview-activity",
-      this._onPreviewActivity
-    );
-  }
-  disconnectedCallback() {
-    this._removeOutsideCloseHandler();
-    if (this._onResize) {
-      window.removeEventListener("resize", this._onResize);
-      this._onResize = null;
-    }
-    if (this._onPreviewActivity) {
-      window.removeEventListener(
-        "sofabaton-preview-activity",
-        this._onPreviewActivity
-      );
-    }
-    clearTimeout(this._commandPulseTimeout);
-    clearTimeout(this._activityLoadTimeout);
-    clearTimeout(this._drawerResetTimer);
-  }
-  _getDrawerDesiredHeight() {
-    const el = this._activeDrawer === "favorites" ? this._favoritesOverlayEl : this._macrosOverlayEl;
-    if (!el) return 0;
-    const maxH = 350;
-    const desired = Math.min(el.scrollHeight || 0, maxH);
-    return desired + 8;
-  }
-  _updateDrawerDirection() {
-    if (!this._macroFavoritesRow || !this._mfContainer) return;
-    if (!this._activeDrawer) return;
-    const rowRect = this._macroFavoritesRow.getBoundingClientRect();
-    const desired = this._getDrawerDesiredHeight();
-    const cardRect = this._root && typeof this._root.getBoundingClientRect === "function" ? this._root.getBoundingClientRect() : null;
-    if (!cardRect) {
-      const spaceBelow = window.innerHeight - rowRect.bottom;
-      const spaceAbove = rowRect.top;
-      const shouldOpenUp2 = spaceBelow < desired && spaceAbove > spaceBelow;
-      this._drawerDirection = shouldOpenUp2 ? "up" : "down";
-      this._mfContainer.classList.toggle("drawer-up", shouldOpenUp2);
-      return;
-    }
-    const spaceBelowInCard = cardRect.bottom - rowRect.bottom;
-    const spaceAboveInCard = rowRect.top - cardRect.top;
-    const overlapDown = Math.max(0, Math.min(desired, spaceBelowInCard));
-    const overlapUp = Math.max(0, Math.min(desired, spaceAboveInCard));
-    const shouldOpenUp = overlapUp > overlapDown;
-    this._drawerDirection = shouldOpenUp ? "up" : "down";
-    this._mfContainer.classList.toggle("drawer-up", shouldOpenUp);
-  }
-  _scheduleDrawerDirectionReset() {
-    if (!this._mfContainer) return;
-    clearTimeout(this._drawerResetTimer);
-    this._drawerResetTimer = setTimeout(() => {
-      if (this._activeDrawer) return;
-      this._drawerDirection = "down";
-      this._mfContainer.classList.remove("drawer-up");
-    }, 260);
-  }
-  _toggleDrawer(type) {
-    this._activeDrawer = this._activeDrawer === type ? null : type;
-    if (this._activeDrawer) {
-      this._updateDrawerDirection();
-    } else {
-      this._scheduleDrawerDirectionReset();
-    }
-    this._applyDrawerVisuals();
-    this._syncLayering();
-  }
-  _applyDrawerVisuals() {
-    if (!this._macrosOverlayEl || !this._favoritesOverlayEl) return;
-    const isMacro = this._activeDrawer === "macros";
-    const isFav = this._activeDrawer === "favorites";
-    this._macrosOverlayEl.classList.toggle("open", isMacro);
-    this._favoritesOverlayEl.classList.toggle("open", isFav);
-    this._macrosButtonWrap.classList.toggle("active-tab", isMacro);
-    this._favoritesButtonWrap.classList.toggle("active-tab", isFav);
-    const anyOpen = isMacro || isFav;
-    const r = "var(--sb-group-radius)";
-    const up = this._drawerDirection === "up";
-    this._macroFavoritesRow.style.borderTopLeftRadius = anyOpen && up ? "0" : r;
-    this._macroFavoritesRow.style.borderTopRightRadius = anyOpen && up ? "0" : r;
-    this._macroFavoritesRow.style.borderBottomLeftRadius = anyOpen && !up ? "0" : r;
-    this._macroFavoritesRow.style.borderBottomRightRadius = anyOpen && !up ? "0" : r;
-    this._macroFavoritesRow.style.transition = "border-radius 0.2s ease";
-  }
-  _syncLayering() {
-    if (!this._activityRow || !this._mfContainer) return;
-    const drawerOpen = Boolean(this._activeDrawer);
-    const menuOpen = Boolean(this._activityMenuOpen);
-    if (menuOpen) {
-      this._activityRow.style.zIndex = "10";
-      this._mfContainer.style.zIndex = drawerOpen ? "9" : "2";
-      return;
-    }
-    if (drawerOpen) {
-      this._activityRow.style.zIndex = "2";
-      this._mfContainer.style.zIndex = "10";
-      return;
-    }
-    this._activityRow.style.zIndex = "3";
-    this._mfContainer.style.zIndex = "2";
-  }
-  _attachPrimaryAction(els, fn) {
-    const targets = Array.isArray(els) ? els.filter(Boolean) : [els].filter(Boolean);
-    const gate = {
-      ts: 0,
-      pointerId: null,
-      type: null
-    };
-    const wrapped = (ev) => {
-      const now = Date.now();
-      const pid = ev && typeof ev.pointerId === "number" ? ev.pointerId : null;
-      const etype = ev?.type || null;
-      const delta = now - gate.ts;
-      if (delta < 450) {
-        if (pid !== null && gate.pointerId === pid) return;
-        return;
-      }
-      if (delta < 1200 && (gate.type === "pointerup" || gate.type === "touchend") && (etype === "click" || etype === "ha-click" || etype === "tap")) {
-        return;
-      }
-      gate.ts = now;
-      gate.pointerId = pid;
-      gate.type = etype;
-      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-      if (ev && typeof ev.stopImmediatePropagation === "function")
-        ev.stopImmediatePropagation();
-      try {
-        this._fireEvent("haptic", "light");
-        fn(ev);
-      } catch (e) {
-      }
-    };
-    const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
-    for (const el of targets) {
-      if (hasPointer) {
-        el.addEventListener("pointerup", wrapped, {
-          capture: true,
-          passive: false
-        });
-      } else {
-        el.addEventListener("touchend", wrapped, {
-          capture: true,
-          passive: false
-        });
-        el.addEventListener("click", wrapped, { capture: true });
-      }
-      el.addEventListener("ha-click", wrapped, { capture: true });
-    }
-  }
-  _applyButtonTextSizing(btn, sizeVar) {
-    const apply = (attempt = 0) => {
-      const root = btn?.shadowRoot;
-      if (!root) return;
-      const value = `var(${sizeVar})`;
-      const card = root.querySelector("ha-card");
-      const name = root.querySelector(".name");
-      const label = root.querySelector(".label");
-      const state = root.querySelector(".state");
-      if (card) card.style.setProperty("font-size", value);
-      if (name) name.style.fontSize = value;
-      if (label) label.style.fontSize = value;
-      if (state) state.style.fontSize = value;
-      if (!name && !label && !state && attempt < 2) {
-        requestAnimationFrame(() => apply(attempt + 1));
-      }
-    };
-    if (btn?.updateComplete && typeof btn.updateComplete.then === "function") {
-      btn.updateComplete.then(() => apply());
-    } else {
-      requestAnimationFrame(() => apply());
-    }
-  }
-  _mkHuiButton({
-    key,
-    label,
-    icon,
-    id,
-    cmd,
-    extraClass = "",
-    size = "normal"
-  }) {
-    const model = huiButtonModel({ label, icon, extraClass, size });
-    const { wrap, btn } = buildHuiButtonElement({
-      model,
-      hass: this._hass
-    });
-    this._attachPrimaryAction([wrap, btn], () => {
-      if (!wrap.classList.contains("disabled")) {
-        this._recordAutomationAssistClick({
-          label: this._automationAssistLabelForKey(key, label),
-          commandId: cmd,
-          deviceId: this._commandTarget(id)?.activity_id ?? null,
-          commandType: "assigned",
-          icon
-        });
-        this._triggerCommandPulse();
-        this._sendCommand(
-          cmd,
-          this._commandTarget(id)?.activity_id ?? this._currentActivityId()
-        );
-      }
-    });
-    this._applyButtonTextSizing(btn, "--sb-key-font-size");
-    this._keys.push({
-      key,
-      id,
-      cmd,
-      wrap,
-      btn,
-      isX2Only: this._x2OnlyIds.has(id)
-    });
-    return wrap;
-  }
-  _mkColorKey({ key, id, cmd, color }) {
-    const model = colorKeyModel(color);
-    const { wrap, btn } = buildColorKeyElement({
-      model,
-      hass: this._hass
-    });
-    this._attachPrimaryAction([wrap, btn], () => {
-      if (!wrap.classList.contains("disabled")) {
-        this._recordAutomationAssistClick({
-          label: this._automationAssistLabelForKey(key, key),
-          commandId: cmd,
-          deviceId: this._commandTarget(id)?.activity_id ?? null,
-          commandType: "assigned",
-          icon: null
-        });
-        this._triggerCommandPulse();
-        this._sendCommand(
-          cmd,
-          this._commandTarget(id)?.activity_id ?? this._currentActivityId()
-        );
-      }
-    });
-    this._keys.push({
-      key,
-      id,
-      cmd,
-      wrap,
-      btn,
-      isX2Only: false
-    });
-    return wrap;
-  }
-  _mkActionButton({ label, icon, extraClass = "", onClick = null }) {
-    const model = actionButtonModel({ label, icon, extraClass });
-    const wrap = document.createElement("div");
-    wrap.className = model.wrapClassName;
-    if (onClick) {
-      this._attachPrimaryAction(wrap, (e) => {
-        if (!wrap.classList.contains("disabled")) onClick(e);
-      });
-    }
-    const btn = document.createElement("hui-button-card");
-    btn.hass = this._hass;
-    btn.setConfig(model.buttonConfig);
-    wrap.appendChild(btn);
-    this._applyButtonTextSizing(btn, "--sb-tab-font-size");
-    return { wrap, btn };
-  }
-  _mkDrawerButton(item, type) {
-    const model = drawerButtonModel(item, type, this._currentActivityId());
-    return buildDrawerButtonElement({
-      model,
-      rawItem: item,
-      itemType: type,
-      attachPrimaryAction: (target, handler) => this._attachPrimaryAction(target, handler),
-      onTrigger: ({ model: nextModel, itemType, rawItem }) => {
-        this._recordAutomationAssistClick({
-          label: nextModel.label,
-          commandId: nextModel.commandId,
-          deviceId: nextModel.deviceId,
-          commandType: nextModel.commandType,
-          icon: nextModel.icon
-        });
-        this._triggerCommandPulse();
-        this._sendDrawerItem(
-          itemType,
-          nextModel.commandId,
-          nextModel.deviceId,
-          rawItem
-        );
-      }
-    });
-  }
-  _mkCustomFavoriteButton(fav) {
-    const model = customFavoriteButtonModel(fav, this._currentActivityId());
-    return buildCustomFavoriteButtonElement({
-      model,
-      rawFavorite: fav,
-      attachPrimaryAction: (target, handler) => this._attachPrimaryAction(target, handler),
-      onTrigger: ({ model: nextModel, rawFavorite }) => {
-        if (this._automationAssistActive) {
-          this._setAutomationAssistStatus("Not captured.");
-        }
-        if (nextModel.action) {
-          this._runLovelaceAction(nextModel.action, rawFavorite);
-          return;
-        }
-        if (!Number.isFinite(nextModel.commandId) || !Number.isFinite(nextModel.deviceId)) {
-          return;
-        }
-        this._triggerCommandPulse();
-        this._sendCustomFavoriteCommand(
-          nextModel.commandId,
-          nextModel.deviceId
-        );
-      }
-    });
-  }
-  async _sendCustomFavoriteCommand(commandId, deviceId) {
-    if (this._editMode) return;
-    if (!this._hass || !this._config?.entity) return;
-    const cmd = Number(commandId);
-    const dev = Number(deviceId);
-    if (!Number.isFinite(cmd) || !Number.isFinite(dev)) return;
-    if (this._isHubIntegration()) {
-      const command = hubFavoriteKeyCommand(dev, cmd);
-      if (!command) return;
-      await this._hubSendCommandList(command);
-      return;
-    }
-    const serviceData = remoteSendCommandData(this._config.entity, cmd, dev);
-    if (!serviceData) return;
-    await this._callService("remote", "send_command", serviceData);
-  }
-  async _ensureHaElements() {
-    const dropdownItemTag = this._selectItemTagName();
-    await Promise.all([
-      customElements.whenDefined("hui-button-card"),
-      customElements.whenDefined("ha-select"),
-      customElements.whenDefined(dropdownItemTag).catch(() => {
-      })
-      // optional
-    ]);
-  }
-  _selectItemTagName() {
-    return customElements.get("ha-dropdown-item") ? "ha-dropdown-item" : "mwc-list-item";
-  }
-  _selectOpenEvents() {
-    return customElements.get("ha-dropdown-item") ? ["wa-open"] : ["opened"];
-  }
-  _selectCloseEvents() {
-    return customElements.get("ha-dropdown-item") ? ["wa-close"] : ["closed"];
-  }
-  _setSelectValueCompat(selectEl, value, options = []) {
-    if (!selectEl) return;
-    const resolvedValue = String(value ?? "");
-    const useDropdownItems = Boolean(customElements.get("ha-dropdown-item"));
-    if (!useDropdownItems) {
-      selectEl.value = resolvedValue;
-      return;
-    }
-    const selectedOption = options.find(
-      (option) => String(option?.value ?? "") === resolvedValue
-    );
-    selectEl.value = selectedOption ? String(selectedOption.label ?? selectedOption.value ?? "") : resolvedValue;
-  }
-  // ---------- Render ----------
-  _render() {
-    if (this._root) return;
-    this._keys = [];
-    this._x2OnlyIds = /* @__PURE__ */ new Set([
-      ID.C,
-      ID.B,
-      ID.A,
-      ID.EXIT,
-      ID.DVR,
-      ID.PLAY,
-      ID.GUIDE
-    ]);
-    const card = document.createElement("ha-card");
-    this._root = card;
-    const style = document.createElement("style");
-    style.textContent = `
+// custom_components/sofabaton_x1s/www/src/remote-card-styles.ts
+var REMOTE_CARD_CSS = `
       :host {
         --sb-group-radius: var(--ha-card-border-radius, 18px);
         --remote-max-width: 360px;
@@ -4071,831 +1797,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
         text-decoration: underline;
       }
     `;
-    const wrap = document.createElement("div");
-    wrap.className = "wrap";
-    this._wrap = wrap;
-    this._layoutContainer = document.createElement("div");
-    this._layoutContainer.className = "layout-container";
-    this._automationAssistRow = document.createElement("div");
-    this._automationAssistRow.className = "automationAssist";
-    const assistLabel = document.createElement("div");
-    assistLabel.className = "automationAssist__label";
-    assistLabel.textContent = "Key capture";
-    this._automationAssistLabel = assistLabel;
-    const assistStatus = document.createElement("div");
-    assistStatus.className = "automationAssist__status";
-    this._automationAssistStatus = assistStatus;
-    const mkAssistButton = (label, onClick) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "automationAssist__startBtn";
-      btn.textContent = label || "Start";
-      this._attachPrimaryAction(btn, onClick);
-      return btn;
-    };
-    const assistHeader = document.createElement("div");
-    assistHeader.className = "automationAssist__header";
-    assistHeader.appendChild(assistLabel);
-    this._automationAssistRow.appendChild(assistHeader);
-    this._automationAssistRow.appendChild(assistStatus);
-    this._wrap.appendChild(this._automationAssistRow);
-    this._wrap.appendChild(this._layoutContainer);
-    this._automationAssistMqttModal = document.createElement("div");
-    this._automationAssistMqttModal.className = "sb-modal";
-    this._automationAssistMqttModal.setAttribute("role", "dialog");
-    this._automationAssistMqttModal.setAttribute("aria-modal", "true");
-    this._automationAssistMqttModal.addEventListener("click", (ev) => {
-      if (ev.target === this._automationAssistMqttModal) {
-        this._closeAutomationAssistMqttModal();
-      }
-    });
-    const modalDialog = document.createElement("div");
-    modalDialog.className = "sb-modal__dialog";
-    const modalHeader = document.createElement("div");
-    modalHeader.className = "sb-modal__header";
-    const modalTitle = document.createElement("div");
-    modalTitle.className = "sb-modal__title";
-    modalTitle.textContent = "Home Assistant device detected.";
-    const modalClose = document.createElement("button");
-    modalClose.type = "button";
-    modalClose.className = "sb-modal__close";
-    modalClose.setAttribute("aria-label", "Close");
-    modalClose.textContent = "\u2715";
-    modalClose.addEventListener(
-      "click",
-      () => this._closeAutomationAssistMqttModal()
-    );
-    modalHeader.appendChild(modalTitle);
-    modalHeader.appendChild(modalClose);
-    const modalBody = document.createElement("div");
-    modalBody.className = "sb-modal__body";
-    const modalText = document.createElement("div");
-    modalText.className = "sb-modal__text";
-    this._automationAssistMqttModalText = modalText;
-    modalBody.appendChild(modalText);
-    const modalActions = document.createElement("div");
-    modalActions.className = "sb-modal__actions";
-    const modalActivityToggle = document.createElement("label");
-    modalActivityToggle.className = "sb-modal__optout";
-    this._automationAssistMqttModalActivityRow = modalActivityToggle;
-    const modalActivityInput = document.createElement("input");
-    modalActivityInput.type = "checkbox";
-    this._automationAssistMqttModalActivityInput = modalActivityInput;
-    const modalActivityText = document.createElement("span");
-    modalActivityText.textContent = "Also create triggers for Activity changes.";
-    modalActivityToggle.appendChild(modalActivityInput);
-    modalActivityToggle.appendChild(modalActivityText);
-    const modalDocsLink = document.createElement("a");
-    modalDocsLink.className = "sb-modal__link";
-    modalDocsLink.href = `https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`;
-    modalDocsLink.target = "_blank";
-    modalDocsLink.rel = "noopener noreferrer";
-    modalDocsLink.textContent = "See documentation for this feature.";
-    this._automationAssistMqttModalCreate = mkAssistButton(
-      "Create MQTT Discovery triggers",
-      () => this._handleAutomationAssistMqttClick()
-    );
-    this._automationAssistMqttModalCreate.classList.add(
-      "automationAssist__mqttBtn"
-    );
-    this._automationAssistMqttModalStart = mkAssistButton(
-      "Start capturing commands",
-      () => this._setAutomationAssistActive(true)
-    );
-    const modalOptOut = document.createElement("label");
-    modalOptOut.className = "sb-modal__optout";
-    const modalOptOutInput = document.createElement("input");
-    modalOptOutInput.type = "checkbox";
-    this._automationAssistMqttModalOptOutInput = modalOptOutInput;
-    modalOptOutInput.addEventListener("change", () => {
-      if (modalOptOutInput.checked) {
-        const session = this._automationAssistSessionState();
-        session.hideMqttModal = true;
-        this._closeAutomationAssistMqttModal();
-      }
-    });
-    const modalOptOutText = document.createElement("span");
-    modalOptOutText.textContent = "Not show this again for this device (in this session).";
-    modalOptOut.appendChild(modalOptOutInput);
-    modalOptOut.appendChild(modalOptOutText);
-    modalActions.appendChild(modalActivityToggle);
-    modalActions.appendChild(modalDocsLink);
-    modalActions.appendChild(this._automationAssistMqttModalCreate);
-    modalActions.appendChild(modalOptOut);
-    modalActions.appendChild(this._automationAssistMqttModalStart);
-    modalDialog.appendChild(modalHeader);
-    modalDialog.appendChild(modalBody);
-    modalDialog.appendChild(modalActions);
-    this._automationAssistMqttModal.appendChild(modalDialog);
-    card.appendChild(this._automationAssistMqttModal);
-    let lastSelectedActivityValue = null;
-    let lastSelectedActivityAt = 0;
-    const handleActivitySelect = (ev) => {
-      if (this._editMode) return;
-      if (this._suppressActivityChange) return;
-      const value = ev?.detail?.value ?? ev?.target?.value ?? this._activitySelect.value;
-      if (value != null) {
-        const now = Date.now();
-        if (String(value) === lastSelectedActivityValue && now - lastSelectedActivityAt < 250) {
-          return;
-        }
-        lastSelectedActivityValue = String(value);
-        lastSelectedActivityAt = now;
-        this._fireEvent("haptic", "light");
-        Promise.resolve(this._setActivity(value)).catch((err) => {
-          console.error(
-            "[sofabaton-virtual-remote] Failed to set activity:",
-            err
-          );
-        });
-      }
-    };
-    const onMenuOpened = () => {
-      this._activityMenuOpen = true;
-      this._syncLayering();
-    };
-    const onMenuClosed = () => {
-      this._activityMenuOpen = false;
-      this._syncLayering();
-    };
-    const activityRowSection = buildActivityRow({
-      onSelect: handleActivitySelect,
-      onMenuOpened,
-      onMenuClosed,
-      openEvents: this._selectOpenEvents(),
-      closeEvents: this._selectCloseEvents()
-    });
-    this._activityRow = activityRowSection.row;
-    this._activitySelect = activityRowSection.select;
-    this._loadIndicator = activityRowSection.loadIndicator;
-    const macroFavoritesSection = buildMacroFavoritesSection({
-      createActionButton: (options) => this._mkActionButton(options),
-      onMacrosClick: () => this._toggleDrawer("macros"),
-      onFavoritesClick: () => this._toggleDrawer("favorites")
-    });
-    const mfContainer = macroFavoritesSection.container;
-    this._mfContainer = mfContainer;
-    this._macroFavoritesRow = macroFavoritesSection.row;
-    this._macroFavoritesGrid = macroFavoritesSection.grid;
-    this._macrosButtonWrap = macroFavoritesSection.macrosButtonWrap;
-    this._macrosButton = macroFavoritesSection.macrosButton;
-    this._favoritesButtonWrap = macroFavoritesSection.favoritesButtonWrap;
-    this._favoritesButton = macroFavoritesSection.favoritesButton;
-    this._macrosOverlayEl = macroFavoritesSection.macrosOverlayEl;
-    this._macrosOverlayGrid = macroFavoritesSection.macrosOverlayGrid;
-    this._favoritesOverlayEl = macroFavoritesSection.favoritesOverlayEl;
-    this._favoritesOverlayGrid = macroFavoritesSection.favoritesOverlayGrid;
-    this._installOutsideCloseHandler();
-    const macrosInline = buildInlineDrawerRow("macros");
-    this._macrosInlineEl = macrosInline.container;
-    this._macrosInlineScroller = macrosInline.scroller;
-    this._macrosInlineGrid = macrosInline.grid;
-    const favoritesInline = buildInlineDrawerRow("favorites");
-    this._favoritesInlineEl = favoritesInline.container;
-    this._favoritesInlineScroller = favoritesInline.scroller;
-    this._favoritesInlineGrid = favoritesInline.grid;
-    const groupSection = buildRemoteGroups({
-      createHuiButton: (options) => this._mkHuiButton(options),
-      createColorKey: (options) => this._mkColorKey(options),
-      ids: ID
-    });
-    this._dpadEl = groupSection.dpadEl;
-    this._navRowEl = groupSection.navRowEl;
-    this._midEl = groupSection.midEl;
-    this._midButtons = groupSection.midButtons;
-    this._mediaEl = groupSection.mediaEl;
-    this._mediaButtons = groupSection.mediaButtons;
-    this._colorsEl = groupSection.colorsEl;
-    this._abcEl = groupSection.abcEl;
-    this._warn = document.createElement("div");
-    this._warn.className = "warn";
-    this._warn.style.display = "none";
-    this._groupEls = {
-      activity: this._activityRow,
-      macro_favorites: mfContainer,
-      macros_row: this._macrosInlineEl,
-      favorites_row: this._favoritesInlineEl,
-      dpad: this._dpadEl,
-      nav: this._navRowEl,
-      mid: this._midEl,
-      media: this._mediaEl,
-      colors: this._colorsEl,
-      abc: this._abcEl
-    };
-    this._applyGroupOrder();
-    this._syncLayering();
-    this._updateAutomationAssistUI();
-    this._syncAutomationAssistMqtt();
-    card.appendChild(style);
-    card.appendChild(wrap);
-    this.appendChild(card);
-  }
-  _update() {
-    if (!this._root || !this._config || !this._hass) return;
-    this._applyLocalTheme(this._config?.theme);
-    this._updateGroupRadius();
-    const remote = this._remoteState();
-    const activities = this._activities();
-    const preview = this._previewSelection(activities);
-    this._previewState = preview;
-    const activityId = preview ? preview.activityId : this._currentActivityId();
-    const layoutConfig = layoutConfigForActivity(this._config, activityId);
-    this._maybeAnimateLayoutChange(
-      this._layoutSignature(activityId, layoutConfig)
-    );
-    this._applyGroupOrder();
-    const mw = this._config?.max_width;
-    if (mw == null || mw === "" || mw === 0) {
-      this.style.removeProperty("--remote-max-width");
-    } else if (typeof mw === "number" && Number.isFinite(mw) && mw > 0) {
-      this.style.setProperty("--remote-max-width", `${mw}px`);
-    } else if (typeof mw === "string" && mw.trim()) {
-      this.style.setProperty("--remote-max-width", mw.trim());
-    }
-    const shrink = this._config?.shrink;
-    const shrinkNum = typeof shrink === "number" ? shrink : typeof shrink === "string" ? Number(shrink) : 0;
-    if (!Number.isFinite(shrinkNum) || shrinkNum <= 0) {
-      this.style.removeProperty("--remote-zoom");
-    } else {
-      const z = Math.max(0.1, Math.min(1, 1 - shrinkNum / 100));
-      this.style.setProperty("--remote-zoom", String(z));
-    }
-    const isUnavailable = remote?.state === "unavailable";
-    const loadState = remote?.attributes?.load_state;
-    const assignedKeys = remote?.attributes?.assigned_keys;
-    const macroKeys = remote?.attributes?.macro_keys;
-    const favoriteKeys = remote?.attributes?.favorite_keys;
-    const resolvedHubData = resolveHubActivityData({
-      isHubIntegration: this._isHubIntegration(),
-      activityId,
-      assignedKeys,
-      macroKeys,
-      favoriteKeys,
-      hubAssignedKeysCache: this._hubAssignedKeysCache || {},
-      hubMacrosCache: this._hubMacrosCache || {},
-      hubFavoritesCache: this._hubFavoritesCache || {}
-    });
-    this._hubAssignedKeysCache = resolvedHubData.hubAssignedKeysCache;
-    this._hubMacrosCache = resolvedHubData.hubMacrosCache;
-    this._hubFavoritesCache = resolvedHubData.hubFavoritesCache;
-    const actKey = resolvedHubData.actKey;
-    const _assignedMap = resolvedHubData.assignedMap;
-    const _macroMap = resolvedHubData.macroMap;
-    const _favMap = resolvedHubData.favoriteMap;
-    const macros = resolvedHubData.macros;
-    const favorites = resolvedHubData.favorites;
-    const customFavorites = this._customFavorites();
-    const rawAssignedKeys = resolvedHubData.rawAssignedKeys;
-    if (this._isHubIntegration() && !isUnavailable) {
-      if (activities.length === 0 && loadState !== "loading") {
-        this._hubRequestBasicData();
-      }
-      if (activityId != null) {
-        const aKey = String(activityId);
-        const hasAssignedAttr = assignedKeys && typeof assignedKeys === "object" && (this._hasOwn(assignedKeys, aKey) || this._hasOwn(assignedKeys, activityId));
-        const hasMacroAttr = macroKeys && typeof macroKeys === "object" && (this._hasOwn(macroKeys, aKey) || this._hasOwn(macroKeys, activityId));
-        const hasFavAttr = favoriteKeys && typeof favoriteKeys === "object" && (this._hasOwn(favoriteKeys, aKey) || this._hasOwn(favoriteKeys, activityId));
-        const confirmedActivityId = Number(activityId);
-        if (this._x2LastFetchedActivityId !== confirmedActivityId) {
-          this._x2LastFetchedActivityId = confirmedActivityId;
-          this._hubRequestAssignedKeys(confirmedActivityId);
-          this._hubRequestMacroKeys(confirmedActivityId);
-          this._hubRequestFavoriteKeys(confirmedActivityId);
-        }
-      }
-    } else if (this._isHubIntegration() && activityId == null) {
-      this._x2LastFetchedActivityId = null;
-    }
-    const enabledButtonsSig = this._enabledButtonsSignature(rawAssignedKeys);
-    if (this._enabledButtonsCacheKey !== enabledButtonsSig) {
-      this._enabledButtonsCacheKey = enabledButtonsSig;
-      const parsed = Array.isArray(rawAssignedKeys) ? rawAssignedKeys.map((entry) => ({
-        command: Number(entry),
-        activity_id: activityId
-      })).filter((entry) => Number.isFinite(entry.command)) : [];
-      this._enabledButtonsInvalid = Array.isArray(rawAssignedKeys) && parsed.length === 0;
-      this._enabledButtonsCache = parsed;
-    }
-    const isX2 = this._isX2();
-    const showVolume = this._volumeEnabled(layoutConfig);
-    const showChannel = this._channelEnabled(layoutConfig);
-    const showMedia = this._mediaEnabled(layoutConfig);
-    const showDvr = this._dvrEnabled(layoutConfig);
-    const midEnabled = (layoutConfig.show_mid ?? true) && (showVolume || showChannel);
-    const mediaEnabled2 = isX2 ? showMedia || showDvr : showMedia;
-    if (this._midEl) {
-      const midState = midModeState({ showVolume, showChannel, isX2 });
-      Object.entries(midState.classMap).forEach(([className, enabled]) => {
-        this._midEl.classList.toggle(className, enabled);
-      });
-    }
-    if (this._mediaEl) {
-      const mediaState = mediaModeState({ isX2, showMedia, showDvr });
-      Object.entries(mediaState.classMap).forEach(([className, enabled]) => {
-        this._mediaEl.classList.toggle(className, enabled);
-      });
-    }
-    this._buttonVisibility = runtimeButtonVisibility({
-      isX2,
-      showVolume,
-      showChannel,
-      showMedia,
-      showDvr
-    });
-    let isPoweredOff = false;
-    let current = "";
-    const pendingActivity = this._pendingActivity;
-    const pendingAge = this._pendingActivityAt ? Date.now() - this._pendingActivityAt : null;
-    const pendingExpired = pendingAge != null && pendingAge > 15e3;
-    this._syncElementHass(this._activitySelect);
-    if (isUnavailable) {
-      this._activitySelect.disabled = true;
-      this._activitySelect.innerHTML = "";
-      this._activityOptionsSig = null;
-      isPoweredOff = false;
-      this._stopActivityLoading();
-    } else {
-      const selectState = buildActivitySelectState({
-        editMode: this._editMode,
-        preview,
-        activities,
-        currentActivityLabel: this._currentActivityLabel(),
-        pendingActivity,
-        pendingExpired
-      });
-      const options = selectState.options;
-      current = selectState.current;
-      isPoweredOff = preview ? Boolean(preview.poweredOff) : activityId == null || Boolean(selectState.poweredOff);
-      if (selectState.clearPending) {
-        this._pendingActivity = null;
-        this._pendingActivityAt = null;
-      }
-      const sig = this._optionsSignature(options);
-      if (this._activityOptionsSig !== sig) {
-        this._activityOptionsSig = sig;
-        this._activitySelect.innerHTML = "";
-        for (const opt of options) {
-          const item = document.createElement(this._selectItemTagName());
-          item.value = opt;
-          item.textContent = opt;
-          this._activitySelect.appendChild(item);
-        }
-      }
-      this._suppressActivityChange = true;
-      this._activitySelect.value = selectState.resolvedValue;
-      this._suppressActivityChange = false;
-      this._activitySelect.disabled = selectState.disabled;
-      const currentActivity = this._currentActivityLabel();
-      if (this._activityLoadActive && this._activityLoadTarget) {
-        const targetIsOff = this._isPoweredOffLabel(this._activityLoadTarget);
-        if (targetIsOff && isPoweredOff || currentActivity === this._activityLoadTarget) {
-          this._stopActivityLoading();
-        }
-      }
-      if (this._automationAssistEnabled() && //this._automationAssistActive &&
-      this._lastActivityLabel != null && current !== this._lastActivityLabel) {
-        if (this._isPoweredOffLabel(current)) {
-          this._recordAutomationAssistActivityChange({
-            activityId: this._lastActivityId,
-            activityName: "Powered Off",
-            poweredOff: true
-          });
-        } else {
-          this._recordAutomationAssistActivityChange({
-            activityId,
-            activityName: current,
-            poweredOff: false
-          });
-        }
-      }
-    }
-    const noActivitiesMessage = noActivitiesWarning(
-      isUnavailable,
-      activities.length,
-      loadState
-    );
-    if (noActivitiesMessage) {
-      this._warn.style.display = "block";
-      this._warn.textContent = noActivitiesMessage;
-    } else {
-      this._warn.style.display = "none";
-    }
-    if (isUnavailable) {
-      this._lastActivityLabel = null;
-      this._lastActivityId = null;
-      this._lastPoweredOff = null;
-    } else {
-      this._lastActivityLabel = current;
-      this._lastActivityId = activityId;
-      this._lastPoweredOff = isPoweredOff;
-    }
-    this._setVisible(
-      this._automationAssistRow,
-      this._config.show_automation_assist
-    );
-    if (!this._automationAssistEnabled() && this._automationAssistActive) {
-      this._setAutomationAssistActive(false);
-    }
-    this._syncAutomationAssistMqtt();
-    this._setVisible(this._activityRow, layoutConfig.show_activity);
-    const asRows = mfAsRows(layoutConfig);
-    const macrosVisible = macrosButtonEnabled(layoutConfig);
-    const favoritesVisible = favoritesButtonEnabled(layoutConfig);
-    const macrosRowOn = asRows && macrosVisible;
-    const favoritesRowOn = asRows && favoritesVisible;
-    const showMacrosBtn = !asRows && macrosVisible;
-    const showFavoritesBtn = !asRows && favoritesVisible;
-    const disableAllButtons = isUnavailable || this._activityLoadActive || !this._editMode && isPoweredOff;
-    const drawerDisplayState = drawerVisibilityState({
-      activeDrawer: this._activeDrawer,
-      showMacrosButton: showMacrosBtn,
-      showFavoritesButton: showFavoritesBtn,
-      editMode: this._editMode,
-      macros,
-      favorites,
-      customFavorites,
-      disableAllButtons
-    });
-    this._setVisible(this._mfContainer, drawerDisplayState.showMF);
-    this._setVisible(this._macrosButtonWrap, showMacrosBtn);
-    this._setVisible(this._favoritesButtonWrap, showFavoritesBtn);
-    if (this._macroFavoritesGrid) {
-      this._macroFavoritesGrid.classList.toggle(
-        "single",
-        drawerDisplayState.visibleCount === 1
-      );
-    }
-    const prevDrawer = this._activeDrawer;
-    this._activeDrawer = drawerDisplayState.nextActiveDrawer;
-    if (drawerDisplayState.closedByVisibility) {
-      this._scheduleDrawerDirectionReset();
-      this._applyDrawerVisuals();
-      this._syncLayering();
-    }
-    this._setVisible(this._dpadEl, layoutConfig.show_dpad);
-    this._setVisible(this._navRowEl, layoutConfig.show_nav);
-    this._setVisible(this._midEl, midEnabled);
-    this._setVisible(this._mediaEl, mediaEnabled2);
-    this._setVisible(this._colorsEl, layoutConfig.show_colors);
-    this._setVisible(this._abcEl, layoutConfig.show_abc && isX2);
-    if (this._macrosButton) {
-      this._syncElementHass(this._macrosButton);
-      this._macrosButtonWrap.classList.toggle(
-        "disabled",
-        drawerDisplayState.macrosDisabled
-      );
-    }
-    if (this._favoritesButton) {
-      this._syncElementHass(this._favoritesButton);
-      this._favoritesButtonWrap.classList.toggle(
-        "disabled",
-        drawerDisplayState.favoritesDisabled
-      );
-    }
-    const macroSig = this._drawerItemsSignature(macros);
-    const favSig = this._drawerItemsSignature(favorites);
-    const customFavSig = this._customFavoritesSignature(customFavorites);
-    const drawerRefresh = drawerRefreshState({
-      macroDataSig: this._macroDataSig,
-      macroSig,
-      customFavoritesSig: customFavSig,
-      favoritesSig: favSig,
-      favoritesDataSig: this._favDataSig
-    });
-    if (drawerRefresh.refreshMacros && this._macrosOverlayGrid) {
-      this._macroDataSig = drawerRefresh.nextMacroSig;
-      this._macrosOverlayGrid.innerHTML = "";
-      macros.forEach((macro) => {
-        const btn = this._mkDrawerButton(macro, "macros");
-        this._syncElementHass(btn);
-        this._macrosOverlayGrid.appendChild(btn);
-      });
-    }
-    if (drawerRefresh.refreshFavorites && this._favoritesOverlayGrid) {
-      this._favDataSig = drawerRefresh.nextFavoritesSig;
-      this._favoritesOverlayGrid.innerHTML = "";
-      customFavorites.forEach((fav) => {
-        const btn = this._mkCustomFavoriteButton(fav);
-        this._syncElementHass(btn);
-        this._favoritesOverlayGrid.appendChild(btn);
-      });
-      favorites.forEach((fav) => {
-        const btn = this._mkDrawerButton(fav, "favorites");
-        this._syncElementHass(btn);
-        this._favoritesOverlayGrid.appendChild(btn);
-      });
-    }
-    const macrosRowSig = `${macrosRowOn ? "1" : "0"}|${macroSig}|${disableAllButtons ? "1" : "0"}`;
-    if (this._macrosInlineGrid && this._macrosInlineRowSig !== macrosRowSig) {
-      this._macrosInlineRowSig = macrosRowSig;
-      this._macrosInlineGrid.innerHTML = "";
-      if (macrosRowOn) {
-        if (!macros.length) {
-          const empty = document.createElement("div");
-          empty.className = "inline-drawer-row__empty";
-          empty.style.gridColumn = "1 / -1";
-          empty.textContent = "No macros available";
-          this._macrosInlineGrid.appendChild(empty);
-        } else {
-          macros.forEach((macro) => {
-            const btn = this._mkDrawerButton(macro, "macros");
-            this._syncElementHass(btn);
-            this._macrosInlineGrid.appendChild(btn);
-          });
-        }
-      }
-    }
-    const favoritesRowSig = `${favoritesRowOn ? "1" : "0"}|${customFavSig}|${favSig}|${disableAllButtons ? "1" : "0"}`;
-    if (this._favoritesInlineGrid && this._favoritesInlineRowSig !== favoritesRowSig) {
-      this._favoritesInlineRowSig = favoritesRowSig;
-      this._favoritesInlineGrid.innerHTML = "";
-      if (favoritesRowOn) {
-        const total = customFavorites.length + favorites.length;
-        if (!total) {
-          const empty = document.createElement("div");
-          empty.className = "inline-drawer-row__empty";
-          empty.style.gridColumn = "1 / -1";
-          empty.textContent = "No favorites available";
-          this._favoritesInlineGrid.appendChild(empty);
-        } else {
-          customFavorites.forEach((fav) => {
-            const btn = this._mkCustomFavoriteButton(fav);
-            this._syncElementHass(btn);
-            this._favoritesInlineGrid.appendChild(btn);
-          });
-          favorites.forEach((fav) => {
-            const btn = this._mkDrawerButton(fav, "favorites");
-            this._syncElementHass(btn);
-            this._favoritesInlineGrid.appendChild(btn);
-          });
-        }
-      }
-    }
-    const sharedRows = mfRowVisibleRows(layoutConfig);
-    if (this._macrosInlineEl && this._macrosInlineScroller) {
-      this._macrosInlineScroller.style.setProperty(
-        "--inline-row-visible-rows",
-        String(sharedRows)
-      );
-      this._setVisible(this._macrosInlineEl, macrosRowOn);
-    }
-    if (this._favoritesInlineEl && this._favoritesInlineScroller) {
-      this._favoritesInlineScroller.style.setProperty(
-        "--inline-row-visible-rows",
-        String(sharedRows)
-      );
-      this._setVisible(this._favoritesInlineEl, favoritesRowOn);
-    }
-    this._updateDrawerDirection();
-    this._applyDrawerVisuals();
-    for (const k of this._keys) {
-      this._syncElementHass(k.btn);
-      const layoutVisible = this._buttonVisibility && k.key in this._buttonVisibility ? this._buttonVisibility[k.key] : true;
-      const shouldShow = k.isX2Only ? isX2 && layoutVisible : layoutVisible;
-      this._setVisible(k.wrap, shouldShow);
-      const enabled = !disableAllButtons && (this._editMode || this._isEnabled(k.id));
-      k.wrap.classList.toggle("disabled", !enabled);
-    }
-    if (remote?.state === "unavailable") {
-      this._warn.style.display = "block";
-      this._warn.textContent = "Remote is unavailable (possibly because the Sofabaton app is connected).";
-    }
-    this._updateLoadIndicator();
-  }
-  getCardSize() {
-    return 12;
-  }
-  static getConfigElement() {
-    return document.createElement(EDITOR);
-  }
-  static getStubConfig(hass) {
-    return {
-      entity: "",
-      theme: "",
-      background_override: null,
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_dvr: true,
-      show_colors: true,
-      show_abc: true,
-      show_automation_assist: false,
-      show_macros_button: null,
-      show_favorites_button: null,
-      custom_favorites: [],
-      max_width: 360,
-      shrink: 0,
-      group_order: DEFAULT_GROUP_ORDER.slice()
-    };
-  }
-};
-var SofabatonRemoteCardEditor = class extends HTMLElement {
-  async _ensureEditorIntegration() {
-    if (!this._hass?.callWS || !this._config?.entity) return;
-    const entityId = String(this._config.entity);
-    if (this._editorIntegrationEntityId === entityId && this._editorIntegrationDomain)
-      return;
-    if (this._editorIntegrationDetectingFor === entityId) return;
-    this._editorIntegrationDetectingFor = entityId;
-    try {
-      const entry = await this._hass.callWS({
-        type: "config/entity_registry/get",
-        entity_id: entityId
-      });
-      this._editorIntegrationDomain = String(entry?.platform || "");
-      this._editorIntegrationEntityId = entityId;
-    } catch (e) {
-      this._editorIntegrationDomain = null;
-      this._editorIntegrationEntityId = entityId;
-    } finally {
-      this._editorIntegrationDetectingFor = null;
-    }
-  }
-  _isHubIntegrationForEditor() {
-    return String(this._editorIntegrationDomain || "") === "sofabaton_hub";
-  }
-  _editorHubVersion() {
-    const entityId = String(this._config?.entity || "").trim();
-    if (!entityId) return "";
-    return String(
-      this._hass?.states?.[entityId]?.attributes?.hub_version || ""
-    ).toUpperCase();
-  }
-  _isEditorX2() {
-    if (this._isHubIntegrationForEditor()) return true;
-    return this._editorHubVersion().includes("X2");
-  }
-  _supportsUnicodeCommandNames() {
-    return this._isEditorX2() || this._editorHubVersion().includes("X1S");
-  }
-  _editorRemoteUnavailable(entityId = void 0) {
-    const resolved = String((entityId ?? this._config?.entity) || "").trim();
-    if (!resolved) return false;
-    return this._hass?.states?.[resolved]?.state === "unavailable";
-  }
-  _sanitizeCommandName(value) {
-    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N} ]+/gu : /[^A-Za-z0-9 ]+/g;
-    const cleaned = String(value ?? "").replace(pattern, "").slice(0, 20);
-    return cleaned;
-  }
-  _selectItemTagName() {
-    return customElements.get("ha-dropdown-item") ? "ha-dropdown-item" : "mwc-list-item";
-  }
-  _selectCloseEvents() {
-    return customElements.get("ha-dropdown-item") ? ["wa-close"] : ["closed"];
-  }
-  _setSelectValueCompat(selectEl, value, options = []) {
-    if (!selectEl) return;
-    const resolvedValue = String(value ?? "");
-    const useDropdownItems = Boolean(customElements.get("ha-dropdown-item"));
-    if (!useDropdownItems) {
-      selectEl.value = resolvedValue;
-      return;
-    }
-    const selectedOption = options.find(
-      (option) => String(option?.value ?? "") === resolvedValue
-    );
-    selectEl.value = selectedOption ? String(selectedOption.label ?? selectedOption.value ?? "") : resolvedValue;
-  }
-  set hass(hass) {
-    this._hass = hass;
-    if (this._form) this._form.hass = hass;
-    const entityId = String(this._config?.entity || "").trim();
-    if (!entityId) return;
-    if (this._editorIntegrationEntityId !== entityId && this._editorIntegrationDetectingFor !== entityId) {
-      this._ensureEditorIntegration().then(() => this._renderCommandsEditor());
-    }
-    const remoteUnavailable = this._editorRemoteUnavailable(entityId);
-    const availabilityChanged = this._lastEditorRemoteUnavailable !== remoteUnavailable;
-    this._lastEditorRemoteUnavailable = remoteUnavailable;
-    if (availabilityChanged) {
-      this._renderCommandsEditor();
-    }
-  }
-  setConfig(config) {
-    const incomingConfig = { ...config || {} };
-    const isInitialEditorConfig = !this._form;
-    if ("preview_activity" in incomingConfig) {
-      delete incomingConfig.preview_activity;
-    }
-    if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
-      this._previewActivity = config?.preview_activity ?? "";
-      writePreviewActivity(config?.entity, this._previewActivity);
-    } else if (this._previewActivity == null) {
-      const cached = readPreviewActivity(config?.entity);
-      this._previewActivity = cached ?? "";
-    }
-    if (isInitialEditorConfig) {
-      this._layoutSelection = "default";
-      this._previewActivity = "";
-      writePreviewActivity(config?.entity, "");
-      window.dispatchEvent(
-        new CustomEvent("sofabaton-preview-activity", {
-          detail: { entity: config?.entity, previewActivity: "" }
-        })
-      );
-    }
-    const nextEntity = String(incomingConfig?.entity || "");
-    if (nextEntity !== String(this._editorIntegrationEntityId || "")) {
-      this._editorIntegrationEntityId = null;
-      this._editorIntegrationDomain = null;
-      this._editorIntegrationDetectingFor = null;
-    }
-    if ("commands" in incomingConfig) delete incomingConfig.commands;
-    const configUnchanged = !!this._form && JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
-    this._config = incomingConfig;
-    if (configUnchanged) {
-      return;
-    }
-    if (!isInitialEditorConfig) {
-      this._syncLayoutSelectionWithPreview();
-    }
-    this._render();
-  }
-  _render() {
-    if (!this._hass) return;
-    if (!this._form) {
-      const form = document.createElement("ha-form");
-      form.hass = this._hass;
-      form.computeLabel = (schema) => {
-        const labels = {
-          entity: "Select a Sofabaton Remote Entity",
-          theme: "Apply a theme to the card",
-          use_background_override: "Customize background color",
-          background_override: "Select Background Color",
-          show_activity: "Activity Selector",
-          show_dpad: "Direction Pad",
-          show_nav: "Back/Home/Menu Keys",
-          show_mid: "Volume/Channel Rockers",
-          show_media: "Media Playback Controls",
-          show_colors: "Red/Green/Yellow/Blue",
-          show_abc: "A/B/C Buttons",
-          show_macros_button: "Macros Button",
-          show_favorites_button: "Favorites Button",
-          max_width: "Maximum Card Width (px)",
-          group_order: "Group Order"
-        };
-        return labels[schema.name] || schema.name;
-      };
-      form.addEventListener("value-changed", (ev) => {
-        ev.stopPropagation();
-        const newValue = { ...this._config, ...ev.detail.value };
-        const entityChanged = newValue.entity !== this._config.entity;
-        if (newValue.use_background_override === false) {
-          delete newValue.background_override;
-        }
-        if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
-        if (entityChanged) {
-          const prevConfig = this._config;
-          this._config = { ...prevConfig, entity: newValue.entity };
-          this._layoutSelection = "default";
-          this._setPreviewActivityForSelection("default");
-          this._config = prevConfig;
-          if (prevConfig?.entity) {
-            writePreviewActivity(prevConfig.entity, "");
-            window.dispatchEvent(
-              new CustomEvent("sofabaton-preview-activity", {
-                detail: { entity: prevConfig.entity, previewActivity: "" }
-              })
-            );
-          }
-        }
-        this._config = newValue;
-        this._fireChanged();
-        if (entityChanged) this._renderGroupOrderEditor();
-      });
-      const wrapper = document.createElement("div");
-      wrapper.style.padding = "12px 0";
-      wrapper.appendChild(form);
-      this.appendChild(wrapper);
-      this._form = form;
-      if (!this._stylingWrap) {
-        const stylingWrap = document.createElement("div");
-        stylingWrap.className = "sb-styling-wrap";
-        stylingWrap.style.padding = "0 0 12px 0";
-        this.appendChild(stylingWrap);
-        this._stylingWrap = stylingWrap;
-      }
-      if (!this._layoutWrap) {
-        const layoutWrap = document.createElement("div");
-        layoutWrap.className = "sb-layout-wrap";
-        layoutWrap.style.padding = "0 0 12px 0";
-        this.appendChild(layoutWrap);
-        this._layoutWrap = layoutWrap;
-      }
-      if (!this._commandsWrap) {
-        const commandsWrap = document.createElement("div");
-        commandsWrap.className = "sb-commands-wrap";
-        this.appendChild(commandsWrap);
-        this._commandsWrap = commandsWrap;
-      }
-      if (!this._editorStyle) {
-        const st = document.createElement("style");
-        st.textContent = `
+var REMOTE_CARD_EDITOR_CSS = `
           .sb-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); z-index: 9999; }
           .sb-modal.open { display: flex; }
           .sb-modal__dialog { width: min(560px, 92vw); max-height: 90vh; overflow: auto; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
@@ -4933,6 +1835,8 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+          /* This label explains the switch next to it \u2014 translations can be long, so wrap instead of ellipsing. */
+          .sb-mf-rows-row .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
           .sb-mf-rows-row + .sb-layout-row { border-top: 0; }
           .sb-mf-rows-stepper-item { gap: 10px; justify-self: end; }
           .sb-mf-rows-stepper-item.is-disabled { opacity: 0.45; pointer-events: none; }
@@ -4940,6 +1844,11 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
           .sb-rows-stepper .sb-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
           .sb-rows-value { min-width: 24px; text-align: center; font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
           .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
+          .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
+          .sb-drag-handle:active { cursor: grabbing; }
+          .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
+          .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
+          .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
           .sb-commands-wrap { padding: 0 0 12px 0; }
           .sb-commands-meta { margin-bottom: 12px; }
           .sb-yaml-helper-row { display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; margin-bottom: 10px; }
@@ -4952,13 +1861,6 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
           .sb-yaml-helper-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
           .sb-yaml-helper-link:hover { color: var(--primary-color); opacity: 1; }
           .sb-yaml-helper-link ha-icon { --mdc-icon-size: 16px; }
-          .sb-commands-divider { height: 1px; background: var(--divider-color); margin: 12px 0 14px; }
-          .sb-commands-section-title-wrap { display:flex; align-items:center; gap: 8px; margin-bottom: 2px; }
-          .sb-commands-section-title { font-size: 18px; font-weight: 600; line-height: 1.2; }
-          .sb-commands-section-help { color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
-          .sb-commands-section-help:hover { color: var(--primary-color); opacity: 1; }
-          .sb-commands-section-help ha-icon { --mdc-icon-size: 16px; }
-          .sb-commands-section-subtitle { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 10px; }
           .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
           .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
           .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
@@ -5053,140 +1955,785 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
             .sb-command-dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
           }
         `;
-        this.appendChild(st);
-        this._editorStyle = st;
-      }
-    }
-    this._form.schema = [
-      {
-        name: "entity",
-        selector: {
-          entity: {
-            filter: [
-              { domain: "remote", integration: "sofabaton_x1s" },
-              { domain: "remote", integration: "sofabaton_hub" }
-            ]
-          }
-        },
-        required: true
-      }
-    ];
-    this._form.data = {
-      ...this._config,
-      entity: this._config.entity || "",
-      theme: this._config.theme || "",
-      // Maintain the toggle state correctly
-      use_background_override: this._config.use_background_override ?? !!this._config.background_override,
-      background_override: this._config.background_override ?? [255, 255, 255],
-      max_width: this._config.max_width ?? 360,
-      group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
-      show_automation_assist: this._config.show_automation_assist ?? false
-    };
-    this._renderStylingOptionsEditor();
-    this._renderGroupOrderEditor();
-    this._renderCommandsEditor();
+
+// custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
+var CARD_NAME = "Sofabaton Virtual Remote";
+var CARD_VERSION = "0.1.8";
+var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
+var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
+var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
+var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
+var TYPE = "sofabaton-virtual-remote";
+var EDITOR = "sofabaton-virtual-remote-editor";
+var previewCache = () => {
+  if (typeof window === "undefined") return null;
+  const cache = window[PREVIEW_ACTIVITY_CACHE_KEY];
+  return cache && typeof cache === "object" ? cache : null;
+};
+var readPreviewActivity = (entityId) => {
+  if (!entityId) return null;
+  const cache = previewCache();
+  if (!cache) return null;
+  return cache[String(entityId)] ?? null;
+};
+var writePreviewActivity = (entityId, value) => {
+  if (!entityId || typeof window === "undefined") return;
+  const cache = previewCache() ?? {};
+  cache[String(entityId)] = value == null ? "" : String(value);
+  window[PREVIEW_ACTIVITY_CACHE_KEY] = cache;
+};
+function logPillsOnce() {
+  const win2 = window;
+  if (win2[LOG_ONCE_KEY]) return;
+  win2[LOG_ONCE_KEY] = true;
+  const base = "padding:2px 10px;border-radius:999px;font-weight:700;font-size:12px;line-height:18px;";
+  const red = base + "background:#ef4444;color:#fff;";
+  const green = base + "background:#22c55e;color:#062b12;";
+  const yellow = base + "background:#facc15;color:#111827;";
+  const blue = base + "background:#3b82f6;color:#fff;";
+  const gap = "color:transparent;";
+  console.log(
+    `%cSofabaton%c %c Virtual %c %c  Remote  %c %c   ${CARD_VERSION}   `,
+    red,
+    gap,
+    green,
+    gap,
+    yellow,
+    gap,
+    blue
+  );
+}
+function stableJsonSignature(value) {
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch (_err) {
+    return String(value);
   }
-  _renderCommandsEditor() {
-    if (!this._commandsWrap || !this._hass) return;
-    const entityId = String(this._config?.entity || "").trim();
-    if (entityId && this._editorIntegrationEntityId !== entityId && this._editorIntegrationDetectingFor !== entityId) {
-      this._ensureEditorIntegration().then(() => this._renderCommandsEditor());
+}
+
+// custom_components/sofabaton_x1s/www/src/editor-sections/expander.ts
+function renderEditorExpander(params) {
+  const toggle = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    params.onToggle();
+  };
+  return b2`
+    <div class="sb-exp${params.expanded ? "" : " sb-exp-collapsed"}">
+      <button
+        type="button"
+        class="sb-exp-hdr"
+        aria-expanded=${String(params.expanded)}
+        @click=${toggle}
+      >
+        <div class="sb-exp-hdr-left">
+          <ha-icon icon=${params.icon}></ha-icon>
+          <div class="sb-exp-title">${params.title}</div>
+        </div>
+        <ha-icon
+          class="sb-exp-chevron"
+          icon=${params.expanded ? "mdi:chevron-up" : "mdi:chevron-down"}
+        ></ha-icon>
+      </button>
+      <div class="sb-exp-body">${params.body}</div>
+    </div>
+  `;
+}
+
+// custom_components/sofabaton_x1s/www/src/editor-sections/commands-editor.ts
+function renderCommandsEditorSection(params) {
+  const onSwitchChange = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const target = ev.target;
+    params.onSetAutomationAssist(!!target.checked);
+  };
+  const onLabelClick = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    params.onSetAutomationAssist(!params.automationAssistEnabled);
+  };
+  const body = b2`
+    <div class="sb-commands-meta">
+      <label class="sb-yaml-helper-row">
+        <div class="sb-yaml-helper-drag">
+          <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
+        </div>
+        <div class="sb-yaml-helper-main">
+          <div class="sb-yaml-helper-label-wrap" @click=${onLabelClick}>
+            <span class="sb-yaml-helper-label">${str().editor.keyCapture}</span>
+            <a
+              class="sb-yaml-helper-link"
+              href=${KEY_CAPTURE_HELP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              title=${str().editor.keyCaptureLearnMore}
+              aria-label=${str().editor.keyCaptureDocsAria}
+              @click=${(ev) => ev.stopPropagation()}
+            >
+              <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+            </a>
+          </div>
+          <div class="sb-yaml-helper-desc">${str().editor.keyCaptureDescription}</div>
+        </div>
+        <ha-switch
+          .checked=${params.automationAssistEnabled}
+          @change=${onSwitchChange}
+        ></ha-switch>
+      </label>
+    </div>
+  `;
+  return renderEditorExpander({
+    expanded: params.expanded,
+    icon: "mdi:play-box-multiple-outline",
+    title: str().editor.automationAssistTitle,
+    onToggle: params.onToggleExpanded,
+    body
+  });
+}
+
+// custom_components/sofabaton_x1s/www/src/editor-sections/styling-options.ts
+var computeEditorFieldLabel = (schema) => str().editor.fieldLabels[schema.name] || schema.name;
+function renderStylingOptionsSection(params) {
+  const config = params.config;
+  const showColorPicker = params.config.use_background_override || !!params.config.background_override;
+  const schema = [
+    { name: "theme", selector: { theme: {} } },
+    {
+      name: "max_width",
+      selector: {
+        number: {
+          min: 230,
+          max: 1200,
+          step: 5,
+          unit_of_measurement: "px"
+        }
+      }
+    },
+    { name: "use_background_override", selector: { boolean: {} } },
+    ...showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []
+  ];
+  const data = {
+    theme: config.theme || "",
+    max_width: config.max_width ?? 360,
+    use_background_override: config.use_background_override ?? !!config.background_override,
+    background_override: config.background_override ?? [255, 255, 255]
+  };
+  const onValueChanged = (ev) => {
+    ev.stopPropagation();
+    params.onValueChanged(ev.detail.value);
+  };
+  const body = b2`
+    <div class="sb-styling-card">
+      <ha-form
+        .hass=${params.hass}
+        .schema=${schema}
+        .data=${data}
+        .computeLabel=${computeEditorFieldLabel}
+        @value-changed=${onValueChanged}
+      ></ha-form>
+    </div>
+  `;
+  return renderEditorExpander({
+    expanded: params.expanded,
+    icon: "mdi:palette",
+    title: str().editor.stylingOptions,
+    onToggle: params.onToggleExpanded,
+    body
+  });
+}
+
+// node_modules/lit-html/static.js
+var a3 = /* @__PURE__ */ Symbol.for("");
+var o5 = (t5) => {
+  if (t5?.r === a3) return t5?._$litStatic$;
+};
+var s4 = (t5) => ({ _$litStatic$: t5, r: a3 });
+var l3 = /* @__PURE__ */ new Map();
+var n4 = (t5) => (r6, ...e6) => {
+  const a4 = e6.length;
+  let s7, i7;
+  const n7 = [], u6 = [];
+  let c7, $3 = 0, f4 = false;
+  for (; $3 < a4; ) {
+    for (c7 = r6[$3]; $3 < a4 && void 0 !== (i7 = e6[$3], s7 = o5(i7)); ) c7 += s7 + r6[++$3], f4 = true;
+    $3 !== a4 && u6.push(i7), n7.push(c7), $3++;
+  }
+  if ($3 === a4 && n7.push(r6[a4]), f4) {
+    const t6 = n7.join("$$lit$$");
+    void 0 === (r6 = l3.get(t6)) && (n7.raw = n7, l3.set(t6, r6 = n7)), e6 = u6;
+  }
+  return t5(r6, ...e6);
+};
+var u3 = n4(b2);
+var c4 = n4(w);
+var $2 = n4(T);
+
+// node_modules/lit-html/directive-helpers.js
+var { I: t3 } = j;
+var i5 = (o8) => o8;
+var r4 = (o8) => void 0 === o8.strings;
+var s5 = () => document.createComment("");
+var v2 = (o8, n7, e6) => {
+  const l4 = o8._$AA.parentNode, d3 = void 0 === n7 ? o8._$AB : n7._$AA;
+  if (void 0 === e6) {
+    const i7 = l4.insertBefore(s5(), d3), n8 = l4.insertBefore(s5(), d3);
+    e6 = new t3(i7, n8, o8, o8.options);
+  } else {
+    const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o8;
+    if (c7) {
+      let t6;
+      e6._$AQ?.(o8), e6._$AM = o8, void 0 !== e6._$AP && (t6 = o8._$AU) !== n8._$AU && e6._$AP(t6);
     }
-    if (typeof this._commandsExpanded !== "boolean") {
-      this._commandsExpanded = false;
+    if (t5 !== d3 || c7) {
+      let o9 = e6._$AA;
+      for (; o9 !== t5; ) {
+        const t6 = i5(o9).nextSibling;
+        i5(l4).insertBefore(o9, d3), o9 = t6;
+      }
     }
-    this._commandsWrap.innerHTML = "";
-    const exp = document.createElement("section");
-    exp.className = `sb-exp ${this._commandsExpanded ? "" : "sb-exp-collapsed"}`.trim();
-    const header = document.createElement("button");
-    header.type = "button";
-    header.className = "sb-exp-hdr";
-    header.setAttribute("aria-expanded", String(!!this._commandsExpanded));
-    header.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._commandsExpanded = !this._commandsExpanded;
-      this._renderCommandsEditor();
-    });
-    const headerLeft = document.createElement("div");
-    headerLeft.className = "sb-exp-hdr-left";
-    headerLeft.innerHTML = `
-      <ha-icon icon="mdi:play-box-multiple-outline"></ha-icon>
-      <div class="sb-exp-title">Automation Assist</div>
+  }
+  return e6;
+};
+var u4 = (o8, t5, i7 = o8) => (o8._$AI(t5, i7), o8);
+var m2 = {};
+var p3 = (o8, t5 = m2) => o8._$AH = t5;
+var M2 = (o8) => o8._$AH;
+var h3 = (o8) => {
+  o8._$AR(), o8._$AA.remove();
+};
+
+// node_modules/lit-html/directive.js
+var t4 = { ATTRIBUTE: 1, CHILD: 2, PROPERTY: 3, BOOLEAN_ATTRIBUTE: 4, EVENT: 5, ELEMENT: 6 };
+var e4 = (t5) => (...e6) => ({ _$litDirective$: t5, values: e6 });
+var i6 = class {
+  constructor(t5) {
+  }
+  get _$AU() {
+    return this._$AM._$AU;
+  }
+  _$AT(t5, e6, i7) {
+    this._$Ct = t5, this._$AM = e6, this._$Ci = i7;
+  }
+  _$AS(t5, e6) {
+    return this.update(t5, e6);
+  }
+  update(t5, e6) {
+    return this.render(...e6);
+  }
+};
+
+// node_modules/lit-html/async-directive.js
+var s6 = (i7, t5) => {
+  const e6 = i7._$AN;
+  if (void 0 === e6) return false;
+  for (const i8 of e6) i8._$AO?.(t5, false), s6(i8, t5);
+  return true;
+};
+var o6 = (i7) => {
+  let t5, e6;
+  do {
+    if (void 0 === (t5 = i7._$AM)) break;
+    e6 = t5._$AN, e6.delete(i7), i7 = t5;
+  } while (0 === e6?.size);
+};
+var r5 = (i7) => {
+  for (let t5; t5 = i7._$AM; i7 = t5) {
+    let e6 = t5._$AN;
+    if (void 0 === e6) t5._$AN = e6 = /* @__PURE__ */ new Set();
+    else if (e6.has(i7)) break;
+    e6.add(i7), c5(t5);
+  }
+};
+function h4(i7) {
+  void 0 !== this._$AN ? (o6(this), this._$AM = i7, r5(this)) : this._$AM = i7;
+}
+function n5(i7, t5 = false, e6 = 0) {
+  const r6 = this._$AH, h6 = this._$AN;
+  if (void 0 !== h6 && 0 !== h6.size) if (t5) if (Array.isArray(r6)) for (let i8 = e6; i8 < r6.length; i8++) s6(r6[i8], false), o6(r6[i8]);
+  else null != r6 && (s6(r6, false), o6(r6));
+  else s6(this, i7);
+}
+var c5 = (i7) => {
+  i7.type == t4.CHILD && (i7._$AP ?? (i7._$AP = n5), i7._$AQ ?? (i7._$AQ = h4));
+};
+var f3 = class extends i6 {
+  constructor() {
+    super(...arguments), this._$AN = void 0;
+  }
+  _$AT(i7, t5, e6) {
+    super._$AT(i7, t5, e6), r5(this), this.isConnected = i7._$AU;
+  }
+  _$AO(i7, t5 = true) {
+    i7 !== this.isConnected && (this.isConnected = i7, i7 ? this.reconnected?.() : this.disconnected?.()), t5 && (s6(this, i7), o6(this));
+  }
+  setValue(t5) {
+    if (r4(this._$Ct)) this._$Ct._$AI(t5, this);
+    else {
+      const i7 = [...this._$Ct._$AH];
+      i7[this._$Ci] = t5, this._$Ct._$AI(i7, this, 0);
+    }
+  }
+  disconnected() {
+  }
+  reconnected() {
+  }
+};
+
+// node_modules/lit-html/directives/ref.js
+var e5 = () => new h5();
+var h5 = class {
+};
+var o7 = /* @__PURE__ */ new WeakMap();
+var n6 = e4(class extends f3 {
+  render(i7) {
+    return A;
+  }
+  update(i7, [s7]) {
+    const e6 = s7 !== this.G;
+    return e6 && void 0 !== this.G && this.rt(void 0), (e6 || this.lt !== this.ct) && (this.G = s7, this.ht = i7.options?.host, this.rt(this.ct = i7.element)), A;
+  }
+  rt(t5) {
+    if (this.isConnected || (t5 = void 0), "function" == typeof this.G) {
+      const i7 = this.ht ?? globalThis;
+      let s7 = o7.get(i7);
+      void 0 === s7 && (s7 = /* @__PURE__ */ new WeakMap(), o7.set(i7, s7)), void 0 !== s7.get(this.G) && this.G.call(this.ht, void 0), s7.set(this.G, t5), void 0 !== t5 && this.G.call(this.ht, t5);
+    } else this.G.value = t5;
+  }
+  get lt() {
+    return "function" == typeof this.G ? o7.get(this.ht ?? globalThis)?.get(this.G) : this.G?.value;
+  }
+  disconnected() {
+    this.lt === this.ct && this.rt(void 0);
+  }
+  reconnected() {
+    this.rt(this.ct);
+  }
+});
+
+// custom_components/sofabaton_x1s/www/src/editor-sections/group-order.ts
+var stopEvent = (ev) => {
+  ev.preventDefault();
+  ev.stopPropagation();
+};
+var containSortableEvent = (ev) => {
+  ev.stopPropagation();
+  if (typeof ev.stopImmediatePropagation === "function") {
+    ev.stopImmediatePropagation();
+  }
+};
+var containSelectCloseEvents = (el) => {
+  if (!el) return;
+  const flagged = el;
+  if (flagged.__sbCloseContained) return;
+  flagged.__sbCloseContained = true;
+  selectCloseEvents().forEach((eventName) => {
+    el.addEventListener(eventName, (ev) => ev.stopPropagation());
+  });
+};
+function renderSwitchItem(text, checked, onSet) {
+  const onChange = (ev) => {
+    stopEvent(ev);
+    const target = ev.target;
+    onSet(!!target.checked);
+  };
+  return b2`
+    <div class="sb-layout-switch-item">
+      <ha-switch .checked=${checked} @change=${onChange}></ha-switch>
+      <div class="sb-layout-switch-label">${text}</div>
+    </div>
+  `;
+}
+var emptySlot = b2`
+  <div class="sb-layout-switch-item sb-layout-switch-item-empty" aria-hidden="true"></div>
+`;
+function renderIconButton(icon, aria, disabled, onClick) {
+  return b2`
+    <button
+      type="button"
+      class="sb-icon-btn"
+      .disabled=${disabled}
+      aria-label=${aria}
+      @click=${(ev) => {
+    stopEvent(ev);
+    if (disabled) return;
+    onClick();
+  }}
+    >
+      <ha-icon icon=${icon}></ha-icon>
+    </button>
+  `;
+}
+function renderGroupOrderSection(params) {
+  const selectionValues = new Set(params.selectionOptions.map((o8) => o8.value));
+  const handleLayoutSelect = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.stopImmediatePropagation?.();
+    const detailValue = ev.detail?.value;
+    const targetValue = ev.target?.value;
+    const selected = detailValue ?? targetValue ?? "";
+    params.onSelectLayout(selectionValues.has(selected) ? selected : "default");
+  };
+  const itemTag = s4(selectItemTagName());
+  const layoutSelect = b2`
+    <ha-select
+      .fixedMenuPosition=${true}
+      .label=${str().editor.layoutSelectLabel}
+      .hass=${params.hass}
+      .value=${selectValueCompat(params.selection, params.selectionOptions)}
+      @selected=${handleLayoutSelect}
+      @change=${handleLayoutSelect}
+      ${n6(containSelectCloseEvents)}
+    >
+      ${params.selectionOptions.map(
+    (option) => u3`
+          <${itemTag} .value=${option.value}>${option.label}</${itemTag}>
+        `
+  )}
+    </ha-select>
+  `;
+  const stepButton = (icon, delta) => {
+    const disabled = !params.asRows || delta < 0 && params.visibleRows <= MIN_ROW_VISIBLE_ROWS || delta > 0 && params.visibleRows >= MAX_ROW_VISIBLE_ROWS;
+    return b2`
+      <button
+        type="button"
+        class="sb-icon-btn"
+        .disabled=${disabled}
+        @click=${(ev) => {
+      stopEvent(ev);
+      if (disabled) return;
+      const next = Math.max(
+        MIN_ROW_VISIBLE_ROWS,
+        Math.min(MAX_ROW_VISIBLE_ROWS, params.visibleRows + delta)
+      );
+      if (next === params.visibleRows) return;
+      params.onSetMfRowVisibleRows(next);
+    }}
+      >
+        <ha-icon icon=${icon}></ha-icon>
+      </button>
     `;
-    const chev = document.createElement("ha-icon");
-    chev.className = "sb-exp-chevron";
-    chev.setAttribute(
-      "icon",
-      this._commandsExpanded ? "mdi:chevron-up" : "mdi:chevron-down"
-    );
-    header.appendChild(headerLeft);
-    header.appendChild(chev);
-    const body = document.createElement("div");
-    body.className = "sb-exp-body";
-    const meta = document.createElement("div");
-    meta.className = "sb-commands-meta";
-    const helperRow = document.createElement("label");
-    helperRow.className = "sb-yaml-helper-row";
-    const helperDrag = document.createElement("div");
-    helperDrag.className = "sb-yaml-helper-drag";
-    helperDrag.innerHTML = '<ha-icon icon="mdi:drag-vertical-variant"></ha-icon>';
-    const helperMain = document.createElement("div");
-    helperMain.className = "sb-yaml-helper-main";
-    const helperLabelWrap = document.createElement("div");
-    helperLabelWrap.className = "sb-yaml-helper-label-wrap";
-    const helperLabel = document.createElement("span");
-    helperLabel.className = "sb-yaml-helper-label";
-    helperLabel.textContent = "Key capture";
-    const helperDesc = document.createElement("div");
-    helperDesc.className = "sb-yaml-helper-desc";
-    helperDesc.textContent = "Send button presses to the hub: Capture button presses to generate ready-to-use YAML for dashboard buttons and automations.";
-    const helperLink = document.createElement("a");
-    helperLink.className = "sb-yaml-helper-link";
-    helperLink.href = KEY_CAPTURE_HELP_URL;
-    helperLink.target = "_blank";
-    helperLink.rel = "noopener noreferrer";
-    helperLink.title = "Learn more about Key capture";
-    helperLink.setAttribute("aria-label", "Key capture documentation");
-    helperLink.innerHTML = '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
-    helperLink.addEventListener("click", (ev) => ev.stopPropagation());
-    helperLabelWrap.appendChild(helperLabel);
-    helperLabelWrap.appendChild(helperLink);
-    helperMain.appendChild(helperLabelWrap);
-    helperMain.appendChild(helperDesc);
-    const helperSwitch = document.createElement("ha-switch");
-    helperSwitch.checked = !!this._config.show_automation_assist;
-    helperSwitch.addEventListener("change", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._setAutomationAssistEnabled(!!helperSwitch.checked);
-    });
-    helperLabelWrap.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      helperSwitch.checked = !helperSwitch.checked;
-      this._setAutomationAssistEnabled(!!helperSwitch.checked);
-    });
-    helperRow.appendChild(helperDrag);
-    helperRow.appendChild(helperMain);
-    helperRow.appendChild(helperSwitch);
-    meta.appendChild(helperRow);
-    const divider = document.createElement("div");
-    divider.className = "sb-commands-divider";
-    meta.appendChild(divider);
-    const sectionTitle = document.createElement("div");
-    sectionTitle.className = "sb-commands-section-title";
-    sectionTitle.textContent = "Wifi Commands Moved";
-    meta.appendChild(sectionTitle);
-    const sectionSub = document.createElement("div");
-    sectionSub.className = "sb-commands-section-subtitle";
-    sectionSub.textContent = "Wifi Commands are no longer configured from the Sofabaton Virtual Remote. Open the Sofabaton Control Panel card to manage this feature.";
-    meta.appendChild(sectionSub);
-    body.appendChild(meta);
-    exp.appendChild(header);
-    exp.appendChild(body);
-    this._commandsWrap.appendChild(exp);
+  };
+  const mfRow = b2`
+    <div class="sb-layout-row sb-mf-rows-row">
+      <div class="sb-layout-switch-item">
+        <ha-switch
+          .checked=${params.asRows}
+          @change=${(ev) => {
+    stopEvent(ev);
+    const target = ev.target;
+    params.onSetMfAsRows(!!target.checked);
+  }}
+        ></ha-switch>
+        <div class="sb-layout-switch-label">${str().editor.macrosFavoritesAsRows}</div>
+      </div>
+      <div
+        class="sb-layout-switch-item sb-mf-rows-stepper-item${params.asRows ? "" : " is-disabled"}"
+      >
+        <div class="sb-layout-switch-label">${str().editor.visibleRows}</div>
+        <div class="sb-rows-stepper">
+          ${stepButton("mdi:minus", -1)}
+          <div class="sb-rows-value">${String(params.visibleRows)}</div>
+          ${stepButton("mdi:plus", 1)}
+        </div>
+      </div>
+    </div>
+  `;
+  const moveControl = (key, index) => {
+    if (params.sortableReady) {
+      return b2`
+        <div class="sb-drag-handle" aria-hidden="true">
+          <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
+        </div>
+      `;
+    }
+    return b2`
+      <div class="sb-move-wrap">
+        ${renderIconButton(
+      "mdi:chevron-up",
+      str().editor.moveGroupUp(params.groupLabel(key)),
+      index === 0,
+      () => params.onMoveGroupByKey(key, -1)
+    )}
+        ${renderIconButton(
+      "mdi:chevron-down",
+      str().editor.moveGroupDown(params.groupLabel(key)),
+      index === params.visibleOrder.length - 1,
+      () => params.onMoveGroupByKey(key, 1)
+    )}
+      </div>
+    `;
+  };
+  const orderRow = (key, index) => {
+    let cells = A;
+    if (key === "macro_favorites") {
+      cells = b2`
+        ${renderSwitchItem(str().editor.macros, params.macroEnabled, params.onSetMacro)}
+        ${renderSwitchItem(str().editor.favorites, params.favoritesEnabled, params.onSetFavorites)}
+      `;
+    } else if (key === "macros_row") {
+      cells = b2`
+        ${renderSwitchItem(str().editor.macros, params.macroEnabled, params.onSetMacro)}
+        ${emptySlot}
+      `;
+    } else if (key === "favorites_row") {
+      cells = b2`
+        ${renderSwitchItem(str().editor.favorites, params.favoritesEnabled, params.onSetFavorites)}
+        ${emptySlot}
+      `;
+    } else if (key === "mid") {
+      cells = b2`
+        ${renderSwitchItem(str().editor.volume, params.volumeEnabled, params.onSetVolume)}
+        ${renderSwitchItem(str().editor.channel, params.channelEnabled, params.onSetChannel)}
+      `;
+    } else if (key === "media") {
+      cells = b2`
+        ${renderSwitchItem(str().editor.mediaControls, params.mediaEnabled, params.onSetMedia)}
+        ${params.isEditorX2 ? renderSwitchItem(str().editor.dvr, params.dvrEnabled, params.onSetDvr) : emptySlot}
+      `;
+    } else {
+      cells = b2`
+        ${renderSwitchItem(
+        params.groupLabel(key),
+        params.isGroupEnabled(key),
+        (val) => params.onSetGroupEnabled(key, val)
+      )}
+        ${emptySlot}
+      `;
+    }
+    return b2`
+      <div class="sb-layout-row sb-layout-row-order">${cells}${moveControl(key, index)}</div>
+    `;
+  };
+  const rowsHost = b2`
+    <div class="sb-layout-rows">${params.visibleOrder.map(orderRow)}</div>
+  `;
+  const rows = params.sortableReady ? b2`
+        <ha-sortable
+          draggable-selector=".sb-layout-row-order"
+          handle-selector=".sb-drag-handle"
+          animation="180"
+          @item-added=${containSortableEvent}
+          @item-removed=${containSortableEvent}
+          @drag-start=${containSortableEvent}
+          @drag-end=${containSortableEvent}
+          @item-moved=${(ev) => {
+    containSortableEvent(ev);
+    const oldIndex = Number(ev.detail?.oldIndex);
+    const newIndex = Number(ev.detail?.newIndex);
+    if (!Number.isInteger(oldIndex) || !Number.isInteger(newIndex)) return;
+    params.onMoveGroupByVisibleIndex(oldIndex, newIndex);
+  }}
+        >
+          ${rowsHost}
+        </ha-sortable>
+      ` : rowsHost;
+  const body = b2`
+    <div class="sb-layout-card">
+      <div class="sb-layout-row">
+        <div class="sb-layout-actions sb-layout-actions-full">${layoutSelect}</div>
+      </div>
+      <div class="sb-layout-note">${params.selectionNote}</div>
+      ${rows}
+      ${mfRow}
+      <div class="sb-layout-footer">
+        <button
+          type="button"
+          class="sb-reset-btn"
+          @click=${(ev) => {
+    stopEvent(ev);
+    params.onResetGroupOrder();
+  }}
+        >
+          ${params.selection === "default" ? str().editor.resetCardDefault : str().editor.resetDefaultLayout}
+        </button>
+      </div>
+    </div>
+  `;
+  return renderEditorExpander({
+    expanded: params.expanded,
+    icon: "mdi:sort",
+    title: str().editor.layoutOptions,
+    onToggle: params.onToggleExpanded,
+    body
+  });
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-editor-element.ts
+var ENTITY_FORM_SCHEMA = [
+  {
+    name: "entity",
+    selector: {
+      entity: {
+        filter: [
+          { domain: "remote", integration: "sofabaton_x1s" },
+          { domain: "remote", integration: "sofabaton_hub" }
+        ]
+      }
+    },
+    required: true
   }
+];
+var SofabatonRemoteCardEditor = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this._hass = null;
+    this._config = { entity: "" };
+    this._configInitialized = false;
+    this._previewActivity = null;
+    this._layoutSelection = "default";
+    this._stylingExpanded = false;
+    this._layoutExpanded = false;
+    this._commandsExpanded = false;
+    this._editorIntegrationDomain = null;
+    this._editorIntegrationEntityId = null;
+    this._editorIntegrationDetectingFor = null;
+    this._sortableDefinePending = false;
+  }
+  // ---------- integration detection (x1s vs hub) ----------
+  async _ensureEditorIntegration() {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+    const entityId = String(this._config.entity);
+    if (this._editorIntegrationEntityId === entityId && this._editorIntegrationDomain)
+      return;
+    if (this._editorIntegrationDetectingFor === entityId) return;
+    this._editorIntegrationDetectingFor = entityId;
+    try {
+      const entry = await this._hass.callWS({
+        type: "config/entity_registry/get",
+        entity_id: entityId
+      });
+      this._editorIntegrationDomain = String(entry?.platform || "");
+      this._editorIntegrationEntityId = entityId;
+    } catch (e6) {
+      this._editorIntegrationDomain = null;
+      this._editorIntegrationEntityId = entityId;
+    } finally {
+      this._editorIntegrationDetectingFor = null;
+    }
+    this.requestUpdate();
+  }
+  _isHubIntegrationForEditor() {
+    return String(this._editorIntegrationDomain || "") === "sofabaton_hub";
+  }
+  _isEditorX2() {
+    return isX2Hub(
+      hubVersionFor(this._hass, this._config?.entity),
+      this._isHubIntegrationForEditor()
+    );
+  }
+  // ---------- HA wiring ----------
+  set hass(hass) {
+    this._hass = hass;
+    setRemoteCardLanguage(
+      hass?.locale?.language ?? hass?.language
+    );
+    const entityId = String(this._config?.entity || "").trim();
+    if (entityId) {
+      if (this._editorIntegrationEntityId !== entityId && this._editorIntegrationDetectingFor !== entityId) {
+        void this._ensureEditorIntegration();
+      }
+    }
+    this.requestUpdate();
+  }
+  get hass() {
+    return this._hass;
+  }
+  setConfig(config) {
+    const incomingConfig = { ...config || {} };
+    const isInitialEditorConfig = !this._configInitialized;
+    this._configInitialized = true;
+    if ("preview_activity" in incomingConfig) {
+      delete incomingConfig.preview_activity;
+    }
+    if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
+      this._previewActivity = String(config?.preview_activity ?? "");
+      writePreviewActivity(config?.entity, this._previewActivity);
+    } else if (this._previewActivity == null) {
+      const cached = readPreviewActivity(config?.entity);
+      this._previewActivity = cached ?? "";
+    }
+    if (isInitialEditorConfig) {
+      this._layoutSelection = "default";
+      this._previewActivity = "";
+      writePreviewActivity(config?.entity, "");
+      window.dispatchEvent(
+        new CustomEvent("sofabaton-preview-activity", {
+          detail: { entity: config?.entity, previewActivity: "" }
+        })
+      );
+    }
+    const nextEntity = String(incomingConfig?.entity || "");
+    if (nextEntity !== String(this._editorIntegrationEntityId || "")) {
+      this._editorIntegrationEntityId = null;
+      this._editorIntegrationDomain = null;
+      this._editorIntegrationDetectingFor = null;
+    }
+    if ("commands" in incomingConfig) delete incomingConfig.commands;
+    const configUnchanged = !isInitialEditorConfig && JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
+    this._config = incomingConfig;
+    if (configUnchanged) return;
+    if (!isInitialEditorConfig) {
+      this._syncLayoutSelectionWithPreview();
+    }
+    this.requestUpdate();
+  }
+  // ---------- config mutation plumbing ----------
+  _fireChanged() {
+    const finalConfig = { ...this._config };
+    delete finalConfig.use_background_override;
+    delete finalConfig.preview_activity;
+    delete finalConfig.commands;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: finalConfig },
+        bubbles: true,
+        composed: true
+      })
+    );
+  }
+  /** Merge handler shared by the entity form and the styling form. */
+  _mergeFormValue(value) {
+    const newValue = { ...this._config, ...value };
+    const entityChanged = newValue.entity !== this._config.entity;
+    if (newValue.use_background_override === false) {
+      delete newValue.background_override;
+    }
+    if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
+    if (entityChanged) {
+      const prevConfig = this._config;
+      this._config = { ...prevConfig, entity: newValue.entity };
+      this._layoutSelection = "default";
+      this._setPreviewActivityForSelection("default");
+      this._config = prevConfig;
+      if (prevConfig?.entity) {
+        writePreviewActivity(prevConfig.entity, "");
+        window.dispatchEvent(
+          new CustomEvent("sofabaton-preview-activity", {
+            detail: { entity: prevConfig.entity, previewActivity: "" }
+          })
+        );
+      }
+    }
+    this._config = newValue;
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  _updateLayoutConfig(patch) {
+    const selection = this._layoutSelectionKey();
+    const { nextConfig } = applyLayoutConfigPatch(this._config, selection, patch);
+    this._config = nextConfig;
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  _setAutomationAssistEnabled(enabled) {
+    this._config = { ...this._config, show_automation_assist: !!enabled };
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  // ---------- layout selection / preview ----------
   _layoutSelectionKey() {
     return this._layoutSelection ?? "default";
   }
@@ -5197,12 +2744,6 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
       return;
     }
     this._layoutSelection = String(preview);
-  }
-  _layoutHasCustomOverride(selection) {
-    return layoutHasCustomOverride(this._config, selection);
-  }
-  _layoutSelectionNote() {
-    return layoutSelectionNote(this._config, this._layoutSelectionKey());
   }
   _setPreviewActivityForSelection(selection) {
     const nextPreview = selection === "default" ? "" : String(selection);
@@ -5215,527 +2756,33 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
       })
     );
   }
-  _editorActivities() {
-    const entityId = this._config?.entity;
-    if (!entityId || !this._hass) return [];
-    return editorActivitiesFromState(this._hass?.states?.[entityId]);
+  _onSelectLayout(selection) {
+    if (selection === this._layoutSelectionKey()) return;
+    this._layoutSelection = selection;
+    this._setPreviewActivityForSelection(selection);
+    this.requestUpdate();
   }
-  _layoutConfigForSelection() {
-    return layoutConfigForSelection(this._config, this._layoutSelectionKey());
-  }
-  _updateLayoutConfig(patch) {
-    const selection = this._layoutSelectionKey();
-    const { nextConfig, syncFormPatch } = applyLayoutConfigPatch(
-      this._config,
-      selection,
-      patch
-    );
-    this._config = nextConfig;
-    if (syncFormPatch) this._syncFormData(syncFormPatch);
-    this._fireChanged();
-    this._renderGroupOrderEditor();
-  }
-  _groupOrderListForEditor() {
-    return groupOrderListForEditor(this._config, this._layoutSelectionKey());
-  }
-  _groupLabel(key) {
-    return groupLabel(key);
-  }
-  _isGroupEnabled(key) {
-    return isGroupEnabled(this._config, this._layoutSelectionKey(), key);
-  }
-  _macroEnabled(cfg = this._layoutConfigForSelection()) {
-    return cfg === void 0 ? macroEnabled(this._config, this._layoutSelectionKey()) : macrosButtonEnabled(cfg);
-  }
-  _favoritesEnabled(cfg = this._layoutConfigForSelection()) {
-    return cfg === void 0 ? favoritesEnabled(this._config, this._layoutSelectionKey()) : favoritesButtonEnabled(cfg);
-  }
-  _volumeEnabled(cfg = this._layoutConfigForSelection()) {
-    return cfg === void 0 ? volumeEnabled(this._config, this._layoutSelectionKey()) : volumeGroupEnabled(cfg);
-  }
-  _channelEnabled(cfg = this._layoutConfigForSelection()) {
-    return cfg === void 0 ? channelEnabled(this._config, this._layoutSelectionKey()) : channelGroupEnabled(cfg);
-  }
-  _mediaEnabled(cfg = this._layoutConfigForSelection()) {
-    return cfg === void 0 ? mediaEnabled(this._config, this._layoutSelectionKey()) : mediaGroupEnabled(cfg);
-  }
-  _dvrEnabled(cfg = this._layoutConfigForSelection()) {
-    return cfg === void 0 ? dvrEnabled(this._config, this._layoutSelectionKey()) : dvrGroupEnabled(cfg);
-  }
-  _syncFormData(patch) {
-    if (!this._form) return;
-    this._form.data = { ...this._form.data || {}, ...patch || {} };
-  }
-  _setMacroEnabled(enabled) {
-    this._updateLayoutConfig(
-      macroTogglePatch(this._config, this._layoutSelectionKey(), enabled)
-    );
-  }
-  _setFavoritesEnabled(enabled) {
-    this._updateLayoutConfig(
-      favoritesTogglePatch(this._config, this._layoutSelectionKey(), enabled)
-    );
-  }
-  _setVolumeEnabled(enabled) {
-    this._updateLayoutConfig(
-      volumeTogglePatch(this._config, this._layoutSelectionKey(), enabled)
-    );
-  }
-  _setChannelEnabled(enabled) {
-    this._updateLayoutConfig(
-      channelTogglePatch(this._config, this._layoutSelectionKey(), enabled)
-    );
-  }
-  _setDvrEnabled(enabled) {
-    this._updateLayoutConfig(dvrTogglePatch(enabled));
-  }
-  _setGroupEnabled(key, enabled) {
-    const patch = groupEnabledPatch(key, enabled);
-    if (patch) this._updateLayoutConfig(patch);
-  }
-  _setAutomationAssistEnabled(enabled) {
-    const next = { ...this._config, show_automation_assist: !!enabled };
-    this._config = next;
-    this._syncFormData(next);
-    this._fireChanged();
-  }
-  _renderStylingOptionsEditor() {
-    if (!this._stylingWrap || !this._hass) return;
-    if (typeof this._stylingExpanded !== "boolean")
-      this._stylingExpanded = false;
-    const showColorPicker = this._config.use_background_override || !!this._config.background_override;
-    this._stylingWrap.innerHTML = "";
-    const exp = document.createElement("div");
-    exp.className = `sb-exp ${this._stylingExpanded ? "" : "sb-exp-collapsed"}`.trim();
-    const hdr = document.createElement("button");
-    hdr.type = "button";
-    hdr.className = "sb-exp-hdr";
-    hdr.setAttribute("aria-expanded", String(!!this._stylingExpanded));
-    hdr.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._stylingExpanded = !this._stylingExpanded;
-      this._renderStylingOptionsEditor();
-    });
-    const hdrLeft = document.createElement("div");
-    hdrLeft.className = "sb-exp-hdr-left";
-    const hdrIcon = document.createElement("ha-icon");
-    hdrIcon.setAttribute("icon", "mdi:palette");
-    const hdrTitle = document.createElement("div");
-    hdrTitle.className = "sb-exp-title";
-    hdrTitle.textContent = "Styling Options";
-    hdrLeft.appendChild(hdrIcon);
-    hdrLeft.appendChild(hdrTitle);
-    const chev = document.createElement("ha-icon");
-    chev.className = "sb-exp-chevron";
-    chev.setAttribute(
-      "icon",
-      this._stylingExpanded ? "mdi:chevron-up" : "mdi:chevron-down"
-    );
-    hdr.appendChild(hdrLeft);
-    hdr.appendChild(chev);
-    exp.appendChild(hdr);
-    const body = document.createElement("div");
-    body.className = "sb-exp-body";
-    const card = document.createElement("div");
-    card.className = "sb-styling-card";
-    const form = document.createElement("ha-form");
-    form.hass = this._hass;
-    form.computeLabel = (schema) => {
-      const labels = {
-        theme: "Apply a theme to the card",
-        max_width: "Maximum Card Width (px)",
-        use_background_override: "Customize background color",
-        background_override: "Select Background Color"
-      };
-      return labels[schema.name] || schema.name;
-    };
-    form.schema = [
-      { name: "theme", selector: { theme: {} } },
-      {
-        name: "max_width",
-        selector: {
-          number: {
-            min: 230,
-            max: 1200,
-            step: 5,
-            unit_of_measurement: "px"
-          }
-        }
-      },
-      { name: "use_background_override", selector: { boolean: {} } },
-      ...showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []
-    ];
-    form.data = {
-      theme: this._config.theme || "",
-      max_width: this._config.max_width ?? 360,
-      use_background_override: this._config.use_background_override ?? !!this._config.background_override,
-      background_override: this._config.background_override ?? [255, 255, 255]
-    };
-    form.addEventListener("value-changed", (ev) => {
-      ev.stopPropagation();
-      const newValue = { ...this._config, ...ev.detail.value };
-      if (newValue.use_background_override === false) {
-        delete newValue.background_override;
-      }
-      if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
-      this._config = newValue;
-      this._syncFormData(newValue);
-      this._fireChanged();
-      this._renderStylingOptionsEditor();
-    });
-    card.appendChild(form);
-    body.appendChild(card);
-    exp.appendChild(body);
-    this._stylingWrap.appendChild(exp);
-  }
-  _renderGroupOrderEditor() {
-    if (!this._layoutWrap) return;
-    if (typeof this._layoutExpanded !== "boolean") this._layoutExpanded = false;
-    this._layoutWrap.innerHTML = "";
-    const exp = document.createElement("div");
-    exp.className = `sb-exp ${this._layoutExpanded ? "" : "sb-exp-collapsed"}`.trim();
-    const hdr = document.createElement("button");
-    hdr.type = "button";
-    hdr.className = "sb-exp-hdr";
-    hdr.setAttribute("aria-expanded", String(!!this._layoutExpanded));
-    hdr.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._layoutExpanded = !this._layoutExpanded;
-      this._renderGroupOrderEditor();
-    });
-    const hdrLeft = document.createElement("div");
-    hdrLeft.className = "sb-exp-hdr-left";
-    const hdrIcon = document.createElement("ha-icon");
-    hdrIcon.setAttribute("icon", "mdi:sort");
-    const hdrTitle = document.createElement("div");
-    hdrTitle.className = "sb-exp-title";
-    hdrTitle.textContent = "Layout Options";
-    hdrLeft.appendChild(hdrIcon);
-    hdrLeft.appendChild(hdrTitle);
-    const chev = document.createElement("ha-icon");
-    chev.className = "sb-exp-chevron";
-    chev.setAttribute(
-      "icon",
-      this._layoutExpanded ? "mdi:chevron-up" : "mdi:chevron-down"
-    );
-    hdr.appendChild(hdrLeft);
-    hdr.appendChild(chev);
-    const body = document.createElement("div");
-    body.className = "sb-exp-body";
-    const activities = this._editorActivities();
-    const selectionOptions = [
-      { value: "default", label: "Default layout" },
-      ...activities.map((activity) => ({
-        value: String(activity.id),
-        label: activity.name
-      }))
-    ];
-    const selectionValues = new Set(
-      selectionOptions.map((option) => option.value)
-    );
-    if (!selectionValues.has(this._layoutSelectionKey())) {
-      this._layoutSelection = "default";
-    }
-    const order = this._groupOrderListForEditor();
-    const card = document.createElement("div");
-    card.className = "sb-layout-card";
-    const selectRow = document.createElement("div");
-    selectRow.className = "sb-layout-row";
-    const selectActions = document.createElement("div");
-    selectActions.className = "sb-layout-actions sb-layout-actions-full";
-    const layoutSelect = document.createElement("ha-select");
-    layoutSelect.fixedMenuPosition = true;
-    layoutSelect.label = "Layout";
-    layoutSelect.hass = this._hass;
-    this._setSelectValueCompat(
-      layoutSelect,
-      this._layoutSelectionKey(),
-      selectionOptions
-    );
-    layoutSelect.innerHTML = "";
-    selectionOptions.forEach((option) => {
-      const item = document.createElement(this._selectItemTagName());
-      item.value = option.value;
-      item.textContent = option.label;
-      layoutSelect.appendChild(item);
-    });
-    const handleLayoutSelect = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation?.();
-      const selected = ev?.detail?.value ?? ev?.target?.value ?? layoutSelect.value;
-      const nextSelection = selectionValues.has(selected) ? selected : "default";
-      if (nextSelection === this._layoutSelectionKey()) return;
-      this._layoutSelection = nextSelection;
-      this._setPreviewActivityForSelection(nextSelection);
-      this._renderGroupOrderEditor();
-    };
-    layoutSelect.addEventListener("selected", handleLayoutSelect);
-    layoutSelect.addEventListener("change", handleLayoutSelect);
-    this._selectCloseEvents().forEach((eventName) => {
-      layoutSelect.addEventListener(eventName, (ev) => {
-        ev.stopPropagation();
-      });
-    });
-    selectActions.appendChild(layoutSelect);
-    selectRow.appendChild(selectActions);
-    card.appendChild(selectRow);
-    const note = document.createElement("div");
-    note.className = "sb-layout-note";
-    note.textContent = this._layoutSelectionNote();
-    card.appendChild(note);
-    const asRows = this._mfAsRows();
-    const visibleRows = this._mfRowVisibleRows();
-    const mfRow = document.createElement("div");
-    mfRow.className = "sb-layout-row sb-mf-rows-row";
-    const mfSwitchItem = document.createElement("div");
-    mfSwitchItem.className = "sb-layout-switch-item";
-    const mfSwitch = document.createElement("ha-switch");
-    mfSwitch.checked = asRows;
-    mfSwitch.addEventListener("change", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._setMfAsRows(!!mfSwitch.checked);
-    });
-    const mfSwitchLabel = document.createElement("div");
-    mfSwitchLabel.className = "sb-layout-switch-label";
-    mfSwitchLabel.textContent = "Macros/Favorites as rows";
-    mfSwitchItem.appendChild(mfSwitch);
-    mfSwitchItem.appendChild(mfSwitchLabel);
-    const stepperItem = document.createElement("div");
-    stepperItem.className = `sb-layout-switch-item sb-mf-rows-stepper-item${asRows ? "" : " is-disabled"}`;
-    const stepperLabel = document.createElement("div");
-    stepperLabel.className = "sb-layout-switch-label";
-    stepperLabel.textContent = "Visible rows";
-    const stepper = document.createElement("div");
-    stepper.className = "sb-rows-stepper";
-    const mkStepBtn = (icon, delta) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "sb-icon-btn";
-      const ic = document.createElement("ha-icon");
-      ic.setAttribute("icon", icon);
-      btn.appendChild(ic);
-      btn.disabled = !asRows || delta < 0 && visibleRows <= MIN_ROW_VISIBLE_ROWS || delta > 0 && visibleRows >= MAX_ROW_VISIBLE_ROWS;
-      btn.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        if (btn.disabled) return;
-        const next = Math.max(
-          MIN_ROW_VISIBLE_ROWS,
-          Math.min(MAX_ROW_VISIBLE_ROWS, visibleRows + delta)
-        );
-        if (next === visibleRows) return;
-        this._setMfRowVisibleRows(next);
-      });
-      return btn;
-    };
-    const valueEl = document.createElement("div");
-    valueEl.className = "sb-rows-value";
-    valueEl.textContent = String(visibleRows);
-    stepper.appendChild(mkStepBtn("mdi:minus", -1));
-    stepper.appendChild(valueEl);
-    stepper.appendChild(mkStepBtn("mdi:plus", 1));
-    stepperItem.appendChild(stepperLabel);
-    stepperItem.appendChild(stepper);
-    mfRow.appendChild(mfSwitchItem);
-    mfRow.appendChild(stepperItem);
-    const isEditorX2 = this._isEditorX2();
-    const visibleOrder = order.filter(
-      (key) => this._isEditorGroupVisible(key, isEditorX2)
-    );
-    visibleOrder.forEach((key, i) => {
-      const row = document.createElement("div");
-      row.className = "sb-layout-row sb-layout-row-order";
-      const mkIconBtn = (icon, aria, disabled, onClick) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "sb-icon-btn";
-        btn.disabled = !!disabled;
-        btn.setAttribute("aria-label", aria);
-        const ic = document.createElement("ha-icon");
-        ic.setAttribute("icon", icon);
-        btn.appendChild(ic);
-        btn.addEventListener("click", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          if (btn.disabled) return;
-          onClick();
-        });
-        return btn;
-      };
-      const upBtn = mkIconBtn(
-        "mdi:chevron-up",
-        `Move ${this._groupLabel(key)} up`,
-        i === 0,
-        () => this._moveGroupByKey(key, -1, isEditorX2)
-      );
-      const downBtn = mkIconBtn(
-        "mdi:chevron-down",
-        `Move ${this._groupLabel(key)} down`,
-        i === visibleOrder.length - 1,
-        () => this._moveGroupByKey(key, 1, isEditorX2)
-      );
-      const moveWrap = document.createElement("div");
-      moveWrap.className = "sb-move-wrap";
-      moveWrap.appendChild(upBtn);
-      moveWrap.appendChild(downBtn);
-      const makeItem = (text, checked, onSet) => {
-        const item = document.createElement("div");
-        item.className = "sb-layout-switch-item";
-        const sw = document.createElement("ha-switch");
-        sw.checked = !!checked;
-        sw.addEventListener("change", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          onSet(!!sw.checked);
-        });
-        item.appendChild(sw);
-        const t = document.createElement("div");
-        t.className = "sb-layout-switch-label";
-        t.textContent = text;
-        item.appendChild(t);
-        return item;
-      };
-      if (key === "macro_favorites") {
-        row.appendChild(
-          makeItem(
-            "Macros",
-            this._macroEnabled(),
-            (val) => this._setMacroEnabled(val)
-          )
-        );
-        row.appendChild(
-          makeItem(
-            "Favorites",
-            this._favoritesEnabled(),
-            (val) => this._setFavoritesEnabled(val)
-          )
-        );
-        row.appendChild(moveWrap);
-      } else if (key === "macros_row") {
-        row.appendChild(
-          makeItem(
-            "Macros",
-            this._macroEnabled(),
-            (val) => this._setMacroEnabled(val)
-          )
-        );
-        const emptySlot = document.createElement("div");
-        emptySlot.className = "sb-layout-switch-item sb-layout-switch-item-empty";
-        emptySlot.setAttribute("aria-hidden", "true");
-        row.appendChild(emptySlot);
-        row.appendChild(moveWrap);
-      } else if (key === "favorites_row") {
-        row.appendChild(
-          makeItem(
-            "Favorites",
-            this._favoritesEnabled(),
-            (val) => this._setFavoritesEnabled(val)
-          )
-        );
-        const emptySlot = document.createElement("div");
-        emptySlot.className = "sb-layout-switch-item sb-layout-switch-item-empty";
-        emptySlot.setAttribute("aria-hidden", "true");
-        row.appendChild(emptySlot);
-        row.appendChild(moveWrap);
-      } else if (key === "mid") {
-        row.appendChild(
-          makeItem(
-            "Volume",
-            this._volumeEnabled(),
-            (val) => this._setVolumeEnabled(val)
-          )
-        );
-        row.appendChild(
-          makeItem(
-            "Channel",
-            this._channelEnabled(),
-            (val) => this._setChannelEnabled(val)
-          )
-        );
-        row.appendChild(moveWrap);
-      } else if (key === "media") {
-        row.appendChild(
-          makeItem(
-            "Media Controls",
-            this._mediaEnabled(),
-            (val) => this._setGroupEnabled("media", val)
-          )
-        );
-        if (isEditorX2) {
-          row.appendChild(
-            makeItem(
-              "DVR",
-              this._dvrEnabled(),
-              (val) => this._setDvrEnabled(val)
-            )
-          );
-        } else {
-          const emptySlot = document.createElement("div");
-          emptySlot.className = "sb-layout-switch-item sb-layout-switch-item-empty";
-          emptySlot.setAttribute("aria-hidden", "true");
-          row.appendChild(emptySlot);
-        }
-        row.appendChild(moveWrap);
-      } else {
-        row.appendChild(
-          makeItem(
-            this._groupLabel(key),
-            this._isGroupEnabled(key),
-            (val) => this._setGroupEnabled(key, val)
-          )
-        );
-        const emptySlot = document.createElement("div");
-        emptySlot.className = "sb-layout-switch-item sb-layout-switch-item-empty";
-        emptySlot.setAttribute("aria-hidden", "true");
-        row.appendChild(emptySlot);
-        row.appendChild(moveWrap);
-      }
-      card.appendChild(row);
-    });
-    const footer = document.createElement("div");
-    footer.className = "sb-layout-footer";
-    const reset = document.createElement("button");
-    reset.type = "button";
-    reset.className = "sb-reset-btn";
-    reset.textContent = this._layoutSelectionKey() === "default" ? "Reset to card default" : "Reset to default layout";
-    reset.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._resetGroupOrder();
-    });
-    card.appendChild(mfRow);
-    footer.appendChild(reset);
-    card.appendChild(footer);
-    body.appendChild(card);
-    exp.appendChild(hdr);
-    exp.appendChild(body);
-    this._layoutWrap.appendChild(exp);
-  }
-  _isEditorGroupVisible(key, isEditorX2 = this._isEditorX2()) {
+  // ---------- group order ----------
+  _isEditorGroupVisible(key, isEditorX2) {
     if (!isEditorX2 && key === "abc") return false;
-    const asRows = this._mfAsRows();
+    const asRows = mfAsRowsForEditor(this._config, this._layoutSelectionKey());
     if (key === "macro_favorites") return !asRows;
     if (key === "macros_row" || key === "favorites_row") return asRows;
     return true;
   }
-  _mfAsRows() {
-    return mfAsRowsForEditor(this._config, this._layoutSelectionKey());
+  _moveGroupByVisibleIndex(fromVisible, toVisible) {
+    const isEditorX2 = this._isEditorX2();
+    const next = moveVisibleGroup(
+      groupOrderListForEditor(this._config, this._layoutSelectionKey()),
+      (key) => this._isEditorGroupVisible(key, isEditorX2),
+      fromVisible,
+      toVisible
+    );
+    if (next) this._updateLayoutConfig({ group_order: next });
   }
-  _mfRowVisibleRows() {
-    return mfRowVisibleRowsForEditor(this._config, this._layoutSelectionKey());
-  }
-  _setMfAsRows(enabled) {
-    this._updateLayoutConfig(mfAsRowsPatch(enabled));
-  }
-  _setMfRowVisibleRows(value) {
-    this._updateLayoutConfig(mfRowVisibleRowsPatch(value));
-  }
-  _moveGroupByKey(groupKey, delta, isEditorX2 = this._isEditorX2()) {
-    const order = this._groupOrderListForEditor();
+  _moveGroupByKey(groupKey, delta) {
+    const isEditorX2 = this._isEditorX2();
+    const order = groupOrderListForEditor(this._config, this._layoutSelectionKey());
     const visibleOrder = order.filter(
       (key) => this._isEditorGroupVisible(key, isEditorX2)
     );
@@ -5760,7 +2807,7 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
       const layouts = { ...next2.layouts || {} };
       delete layouts[selection];
       if (Number.isFinite(Number(selection))) {
-        delete layouts[Number(selection)];
+        delete layouts[String(Number(selection))];
       }
       if (Object.keys(layouts).length) {
         next2.layouts = layouts;
@@ -5769,10 +2816,9 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
       }
       this._config = next2;
       this._fireChanged();
-      this._renderGroupOrderEditor();
+      this.requestUpdate();
       return;
     }
-    const nextOrder = DEFAULT_GROUP_ORDER.slice();
     const enabledDefaults = {
       show_activity: true,
       show_dpad: true,
@@ -5788,7 +2834,7 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
       show_favorites_button: true,
       mf_as_rows: false,
       mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
-      group_order: nextOrder
+      group_order: DEFAULT_GROUP_ORDER.slice()
     };
     const next = { ...this._config };
     const defaultLayout = next.layouts?.default;
@@ -5801,35 +2847,3678 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
       Object.assign(next, enabledDefaults);
     }
     this._config = next;
-    if (this._form) {
-      this._form.data = {
-        ...this._form.data || {},
-        ...enabledDefaults
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  // ---------- render ----------
+  render() {
+    if (!this._hass) return A;
+    const selection = this._layoutSelectionKey();
+    const entityId = this._config?.entity;
+    const activities = entityId && this._hass ? editorActivitiesFromState(this._hass?.states?.[entityId]) : [];
+    const selectionOptions = [
+      { value: "default", label: str().editor.defaultLayoutOption },
+      ...activities.map((activity) => ({
+        value: String(activity.id),
+        label: activity.name
+      }))
+    ];
+    if (!selectionOptions.some((option) => option.value === selection)) {
+      this._layoutSelection = "default";
+    }
+    const isEditorX2 = this._isEditorX2();
+    const layoutCfg = layoutConfigForSelection(this._config, this._layoutSelectionKey());
+    const order = groupOrderListForEditor(this._config, this._layoutSelectionKey());
+    const visibleOrder = order.filter(
+      (key) => this._isEditorGroupVisible(key, isEditorX2)
+    );
+    const sortableReady = Boolean(customElements.get("ha-sortable"));
+    if (!sortableReady && !this._sortableDefinePending) {
+      this._sortableDefinePending = true;
+      void customElements.whenDefined("ha-sortable").then(() => {
+        this._sortableDefinePending = false;
+        this.requestUpdate();
+      });
+    }
+    const entityFormData = {
+      ...this._config,
+      entity: this._config.entity || "",
+      theme: this._config.theme || "",
+      // Maintain the toggle state correctly
+      use_background_override: this._config.use_background_override ?? !!this._config.background_override,
+      background_override: this._config.background_override ?? [255, 255, 255],
+      max_width: this._config.max_width ?? 360,
+      group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
+      show_automation_assist: this._config.show_automation_assist ?? false
+    };
+    return b2`
+      <div style="padding: 12px 0;">
+        <ha-form
+          .hass=${this._hass}
+          .schema=${ENTITY_FORM_SCHEMA}
+          .data=${entityFormData}
+          .computeLabel=${computeEditorFieldLabel}
+          @value-changed=${(ev) => {
+      ev.stopPropagation();
+      this._mergeFormValue(ev.detail.value);
+    }}
+        ></ha-form>
+      </div>
+      <div class="sb-styling-wrap" style="padding: 0 0 12px 0;">
+        ${renderStylingOptionsSection({
+      hass: this._hass,
+      config: this._config,
+      expanded: this._stylingExpanded,
+      onToggleExpanded: () => {
+        this._stylingExpanded = !this._stylingExpanded;
+        this.requestUpdate();
+      },
+      onValueChanged: (value) => this._mergeFormValue(value)
+    })}
+      </div>
+      <div class="sb-layout-wrap" style="padding: 0 0 12px 0;">
+        ${renderGroupOrderSection({
+      hass: this._hass,
+      expanded: this._layoutExpanded,
+      selection: this._layoutSelectionKey(),
+      selectionOptions,
+      selectionNote: layoutSelectionNote(this._config, this._layoutSelectionKey()),
+      visibleOrder,
+      isEditorX2,
+      asRows: mfAsRowsForEditor(this._config, this._layoutSelectionKey()),
+      visibleRows: mfRowVisibleRowsForEditor(this._config, this._layoutSelectionKey()),
+      sortableReady,
+      macroEnabled: macrosButtonEnabled(layoutCfg),
+      favoritesEnabled: favoritesButtonEnabled(layoutCfg),
+      volumeEnabled: volumeGroupEnabled(layoutCfg),
+      channelEnabled: channelGroupEnabled(layoutCfg),
+      mediaEnabled: mediaGroupEnabled(layoutCfg),
+      dvrEnabled: dvrGroupEnabled(layoutCfg),
+      isGroupEnabled: (key) => isGroupEnabled(this._config, this._layoutSelectionKey(), key),
+      groupLabel: (key) => groupLabel(key),
+      onToggleExpanded: () => {
+        this._layoutExpanded = !this._layoutExpanded;
+        this.requestUpdate();
+      },
+      onSelectLayout: (value) => this._onSelectLayout(value),
+      onSetMacro: (v3) => this._updateLayoutConfig(
+        macroTogglePatch(this._config, this._layoutSelectionKey(), v3)
+      ),
+      onSetFavorites: (v3) => this._updateLayoutConfig(
+        favoritesTogglePatch(this._config, this._layoutSelectionKey(), v3)
+      ),
+      onSetVolume: (v3) => this._updateLayoutConfig(
+        volumeTogglePatch(this._config, this._layoutSelectionKey(), v3)
+      ),
+      onSetChannel: (v3) => this._updateLayoutConfig(
+        channelTogglePatch(this._config, this._layoutSelectionKey(), v3)
+      ),
+      onSetMedia: (v3) => {
+        const patch = groupEnabledPatch("media", v3);
+        if (patch) this._updateLayoutConfig(patch);
+      },
+      onSetDvr: (v3) => this._updateLayoutConfig(dvrTogglePatch(v3)),
+      onSetGroupEnabled: (key, v3) => {
+        const patch = groupEnabledPatch(key, v3);
+        if (patch) this._updateLayoutConfig(patch);
+      },
+      onSetMfAsRows: (v3) => this._updateLayoutConfig(mfAsRowsPatch(v3)),
+      onSetMfRowVisibleRows: (v3) => this._updateLayoutConfig(mfRowVisibleRowsPatch(v3)),
+      onMoveGroupByKey: (key, delta) => this._moveGroupByKey(key, delta),
+      onMoveGroupByVisibleIndex: (from, to) => this._moveGroupByVisibleIndex(from, to),
+      onResetGroupOrder: () => this._resetGroupOrder()
+    })}
+      </div>
+      <div class="sb-commands-wrap">
+        ${renderCommandsEditorSection({
+      expanded: this._commandsExpanded,
+      automationAssistEnabled: !!this._config.show_automation_assist,
+      onToggleExpanded: () => {
+        this._commandsExpanded = !this._commandsExpanded;
+        this.requestUpdate();
+      },
+      onSetAutomationAssist: (enabled) => this._setAutomationAssistEnabled(enabled)
+    })}
+      </div>
+    `;
+  }
+};
+SofabatonRemoteCardEditor.styles = r(REMOTE_CARD_EDITOR_CSS);
+
+// node_modules/lit-html/directives/repeat.js
+var u5 = (e6, s7, t5) => {
+  const r6 = /* @__PURE__ */ new Map();
+  for (let l4 = s7; l4 <= t5; l4++) r6.set(e6[l4], l4);
+  return r6;
+};
+var c6 = e4(class extends i6 {
+  constructor(e6) {
+    if (super(e6), e6.type !== t4.CHILD) throw Error("repeat() can only be used in text expressions");
+  }
+  dt(e6, s7, t5) {
+    let r6;
+    void 0 === t5 ? t5 = s7 : void 0 !== s7 && (r6 = s7);
+    const l4 = [], o8 = [];
+    let i7 = 0;
+    for (const s8 of e6) l4[i7] = r6 ? r6(s8, i7) : i7, o8[i7] = t5(s8, i7), i7++;
+    return { values: o8, keys: l4 };
+  }
+  render(e6, s7, t5) {
+    return this.dt(e6, s7, t5).values;
+  }
+  update(s7, [t5, r6, c7]) {
+    const d3 = M2(s7), { values: p4, keys: a4 } = this.dt(t5, r6, c7);
+    if (!Array.isArray(d3)) return this.ut = a4, p4;
+    const h6 = this.ut ?? (this.ut = []), v3 = [];
+    let m3, y3, x2 = 0, j2 = d3.length - 1, k2 = 0, w2 = p4.length - 1;
+    for (; x2 <= j2 && k2 <= w2; ) if (null === d3[x2]) x2++;
+    else if (null === d3[j2]) j2--;
+    else if (h6[x2] === a4[k2]) v3[k2] = u4(d3[x2], p4[k2]), x2++, k2++;
+    else if (h6[j2] === a4[w2]) v3[w2] = u4(d3[j2], p4[w2]), j2--, w2--;
+    else if (h6[x2] === a4[w2]) v3[w2] = u4(d3[x2], p4[w2]), v2(s7, v3[w2 + 1], d3[x2]), x2++, w2--;
+    else if (h6[j2] === a4[k2]) v3[k2] = u4(d3[j2], p4[k2]), v2(s7, d3[x2], d3[j2]), j2--, k2++;
+    else if (void 0 === m3 && (m3 = u5(a4, k2, w2), y3 = u5(h6, x2, j2)), m3.has(h6[x2])) if (m3.has(h6[j2])) {
+      const e6 = y3.get(a4[k2]), t6 = void 0 !== e6 ? d3[e6] : null;
+      if (null === t6) {
+        const e7 = v2(s7, d3[x2]);
+        u4(e7, p4[k2]), v3[k2] = e7;
+      } else v3[k2] = u4(t6, p4[k2]), v2(s7, d3[x2], t6), d3[e6] = null;
+      k2++;
+    } else h3(d3[j2]), j2--;
+    else h3(d3[x2]), x2++;
+    for (; k2 <= w2; ) {
+      const e6 = v2(s7, v3[w2 + 1]);
+      u4(e6, p4[k2]), v3[k2++] = e6;
+    }
+    for (; x2 <= j2; ) {
+      const e6 = d3[x2++];
+      null !== e6 && h3(e6);
+    }
+    return this.ut = a4, p3(s7, v3), E;
+  }
+});
+
+// custom_components/sofabaton_x1s/www/src/remote-card-ui-helpers.ts
+function automationAssistLabelForKey(key, label) {
+  const trimmed = String(label ?? "").trim();
+  if (trimmed) return trimmed;
+  const fallback = str().keys[String(key ?? "").toLowerCase()];
+  if (fallback) return fallback;
+  if (!key) return str().assist.buttonFallback;
+  return String(key).replace(/[_-]+/g, " ").replace(/\b\w/g, (c7) => c7.toUpperCase());
+}
+function rgbToCss(rgb) {
+  if (Array.isArray(rgb) && rgb.length >= 3) {
+    const r6 = Number(rgb[0]);
+    const g2 = Number(rgb[1]);
+    const b3 = Number(rgb[2]);
+    if ([r6, g2, b3].some((n7) => Number.isNaN(n7))) return "";
+    return `rgb(${r6}, ${g2}, ${b3})`;
+  }
+  if (rgb && typeof rgb === "object" && rgb.r != null && rgb.g != null && rgb.b != null) {
+    const r6 = Number(rgb.r);
+    const g2 = Number(rgb.g);
+    const b3 = Number(rgb.b);
+    if ([r6, g2, b3].some((n7) => Number.isNaN(n7))) return "";
+    return `rgb(${r6}, ${g2}, ${b3})`;
+  }
+  return "";
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-runtime-display.ts
+function midModeState({
+  showVolume,
+  showChannel,
+  isX2
+}) {
+  const midMode = showVolume && showChannel ? "dual" : showVolume ? "volume" : showChannel ? "channel" : "off";
+  return {
+    midMode,
+    classMap: {
+      "mid--dual": midMode === "dual",
+      "mid--volume": midMode === "volume",
+      "mid--channel": midMode === "channel",
+      "mid--x2": isX2,
+      "mid--x1": !isX2
+    }
+  };
+}
+function mediaModeState({
+  isX2,
+  showMedia,
+  showDvr
+}) {
+  const mediaMode = isX2 ? showMedia && showDvr ? "both" : showMedia ? "play" : showDvr ? "dvr" : "off" : showMedia || showDvr ? "play" : "off";
+  return {
+    mediaMode,
+    classMap: {
+      "media--play": mediaMode === "play",
+      "media--dvr": mediaMode === "dvr",
+      "media--both": mediaMode === "both",
+      "media--x2": isX2,
+      "media--x1": !isX2
+    }
+  };
+}
+function runtimeButtonVisibility({
+  isX2,
+  showVolume,
+  showChannel,
+  showMedia,
+  showDvr
+}) {
+  const showPause = showDvr || !isX2 && showMedia;
+  return {
+    volup: showVolume,
+    voldn: showVolume,
+    mute: showVolume,
+    guide: isX2 && showChannel,
+    chup: showChannel,
+    chdn: showChannel,
+    rew: showMedia,
+    play: showMedia && isX2,
+    fwd: showMedia,
+    dvr: isX2 && showDvr,
+    pause: showPause,
+    exit: isX2 && showDvr
+  };
+}
+function macroFavoriteDisplayState({
+  editMode,
+  showMacrosButton,
+  showFavoritesButton,
+  macros,
+  favorites,
+  customFavorites,
+  disableAllButtons
+}) {
+  const showMF = showMacrosButton || showFavoritesButton;
+  const visibleCount = (showMacrosButton ? 1 : 0) + (showFavoritesButton ? 1 : 0);
+  const macrosEnabled = editMode ? true : macros.length > 0;
+  const favoritesEnabled2 = editMode ? true : favorites.length + customFavorites.length > 0;
+  return {
+    showMF,
+    visibleCount,
+    macrosDisabled: disableAllButtons || !macrosEnabled,
+    favoritesDisabled: disableAllButtons || !favoritesEnabled2
+  };
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-drawer-display.ts
+function drawerVisibilityState({
+  activeDrawer,
+  showMacrosButton,
+  showFavoritesButton,
+  editMode,
+  macros,
+  favorites,
+  customFavorites,
+  disableAllButtons
+}) {
+  const display = macroFavoriteDisplayState({
+    editMode,
+    showMacrosButton,
+    showFavoritesButton,
+    macros,
+    favorites,
+    customFavorites,
+    disableAllButtons
+  });
+  let nextActiveDrawer = activeDrawer;
+  if (!display.showMF && nextActiveDrawer) nextActiveDrawer = null;
+  if (nextActiveDrawer === "macros" && !showMacrosButton) nextActiveDrawer = null;
+  if (nextActiveDrawer === "favorites" && !showFavoritesButton) nextActiveDrawer = null;
+  return {
+    ...display,
+    nextActiveDrawer,
+    closedByVisibility: Boolean(activeDrawer && !nextActiveDrawer)
+  };
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-gestures.ts
+function createPrimaryActionGate() {
+  return { ts: 0, pointerId: null, type: null };
+}
+function primaryActionGateAllows(gate, ev, now) {
+  const pid = ev && typeof ev.pointerId === "number" ? ev.pointerId : null;
+  const etype = ev?.type || null;
+  const delta = now - gate.ts;
+  if (delta < 450) {
+    return false;
+  }
+  if (delta < 1200 && (gate.type === "pointerup" || gate.type === "touchend") && (etype === "click" || etype === "ha-click" || etype === "tap")) {
+    return false;
+  }
+  gate.ts = now;
+  gate.pointerId = pid;
+  gate.type = etype;
+  return true;
+}
+function attachPrimaryAction(els, fn, options = {}) {
+  const targets = (Array.isArray(els) ? els : [els]).filter(
+    (el) => Boolean(el)
+  );
+  const gate = createPrimaryActionGate();
+  const wrapped = (ev) => {
+    if (!primaryActionGateAllows(gate, ev, Date.now())) return;
+    if (typeof ev.preventDefault === "function") ev.preventDefault();
+    if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+    if (typeof ev.stopImmediatePropagation === "function")
+      ev.stopImmediatePropagation();
+    try {
+      options.fireHaptic?.();
+      fn(ev);
+    } catch (e6) {
+    }
+  };
+  const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
+  for (const el of targets) {
+    if (hasPointer) {
+      el.addEventListener("pointerup", wrapped, {
+        capture: true,
+        passive: false
+      });
+    } else {
+      el.addEventListener("touchend", wrapped, {
+        capture: true,
+        passive: false
+      });
+      el.addEventListener("click", wrapped, { capture: true });
+    }
+    el.addEventListener("ha-click", wrapped, { capture: true });
+  }
+}
+var DRAWER_MAX_HEIGHT = 350;
+var DRAWER_DIRECTION_RESET_MS = 260;
+function drawerDesiredHeight(scrollHeight, maxHeight = DRAWER_MAX_HEIGHT) {
+  return Math.min(scrollHeight || 0, maxHeight) + 8;
+}
+function drawerDirection(input) {
+  const { desired, rowTop, rowBottom, cardTop, cardBottom, viewportHeight } = input;
+  if (cardTop == null || cardBottom == null) {
+    const spaceBelow = viewportHeight - rowBottom;
+    const spaceAbove = rowTop;
+    const shouldOpenUp = spaceBelow < desired && spaceAbove > spaceBelow;
+    return shouldOpenUp ? "up" : "down";
+  }
+  const spaceBelowInCard = cardBottom - rowBottom;
+  const spaceAboveInCard = rowTop - cardTop;
+  const overlapDown = Math.max(0, Math.min(desired, spaceBelowInCard));
+  const overlapUp = Math.max(0, Math.min(desired, spaceAboveInCard));
+  return overlapUp > overlapDown ? "up" : "down";
+}
+function layeringZIndexes(menuOpen, drawerOpen) {
+  if (menuOpen) {
+    return { activity: "10", drawer: drawerOpen ? "9" : "2" };
+  }
+  if (drawerOpen) {
+    return { activity: "2", drawer: "10" };
+  }
+  return { activity: "3", drawer: "2" };
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-state.ts
+function hasOwn(obj, key) {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
+}
+function currentActivityIdFromRemote(remoteState) {
+  const activityId = remoteState?.attributes?.current_activity_id;
+  if (activityId != null) return Number(activityId);
+  return null;
+}
+function normalizeActivities(source) {
+  return (Array.isArray(source) ? source : []).map((activity) => ({
+    id: Number(activity?.id),
+    name: String(activity?.name ?? ""),
+    state: String(activity?.state ?? "")
+  })).filter((activity) => Number.isFinite(activity.id) && activity.name);
+}
+function activitiesFromRemote(remoteState, isHubIntegration, hubActivitiesCache) {
+  const list = remoteState?.attributes?.activities;
+  const source = Array.isArray(list) && list.length ? list : isHubIntegration && Array.isArray(hubActivitiesCache) ? hubActivitiesCache : [];
+  return {
+    activities: normalizeActivities(source),
+    nextHubActivitiesCache: isHubIntegration && Array.isArray(list) && list.length ? list : hubActivitiesCache
+  };
+}
+function activityNameForId(activities, activityId) {
+  if (activityId == null) return "";
+  const id = Number(activityId);
+  if (!Number.isFinite(id)) return "";
+  const match = Array.isArray(activities) ? activities.find((activity) => activity.id === id) : null;
+  return match?.name || "";
+}
+function currentActivityLabelFromRemote(remoteState, activities) {
+  const remoteActivity = remoteState?.attributes?.current_activity;
+  if (remoteActivity) return String(remoteActivity);
+  const activityId = currentActivityIdFromRemote(remoteState);
+  return activityNameForId(activities, activityId);
+}
+function previewSelection(editMode, previewActivity, activities) {
+  if (!editMode) return null;
+  const selection = previewActivity;
+  if (selection == null || selection === "") {
+    return {
+      activityId: null,
+      label: str().card.defaultLayout,
+      poweredOff: false
+    };
+  }
+  if (selection === "powered_off") {
+    return {
+      activityId: null,
+      label: str().card.poweredOff,
+      poweredOff: true
+    };
+  }
+  const id = Number(selection);
+  if (!Number.isFinite(id)) return null;
+  return {
+    activityId: id,
+    label: activityNameForId(activities, id),
+    poweredOff: false
+  };
+}
+function isPoweredOffLabel(state) {
+  const s7 = String(state || "").trim().toLowerCase();
+  return POWERED_OFF_LABELS.has(s7) || isLocalizedPoweredOffLabel(s7);
+}
+function isActivityOn(activityId, activities, currentActivityLabel) {
+  if (activityId == null) return false;
+  const id = Number(activityId);
+  if (!Number.isFinite(id)) return false;
+  const match = Array.isArray(activities) ? activities.find((activity) => Number(activity?.id) === id) : null;
+  if (match && match.state != null && String(match.state).trim() !== "") {
+    const s7 = String(match.state).trim().toLowerCase();
+    return !isPoweredOffLabel(s7) && s7 !== "off";
+  }
+  return Boolean(currentActivityLabel) && !isPoweredOffLabel(currentActivityLabel);
+}
+function enabledButtonsSignature(raw) {
+  if (!Array.isArray(raw)) return String(raw ?? "");
+  return `${raw.length}:${raw.map((entry) => String(entry ?? "")).join(",")}`;
+}
+function resolveHubActivityData({
+  isHubIntegration,
+  activityId,
+  assignedKeys,
+  macroKeys,
+  favoriteKeys,
+  hubAssignedKeysCache,
+  hubMacrosCache,
+  hubFavoritesCache
+}) {
+  const nextAssignedCache = { ...hubAssignedKeysCache || {} };
+  const nextMacrosCache = { ...hubMacrosCache || {} };
+  const nextFavoritesCache = { ...hubFavoritesCache || {} };
+  const actKey = activityId != null ? String(activityId) : null;
+  const assignedMap = assignedKeys && typeof assignedKeys === "object" ? assignedKeys : null;
+  const macroMap = macroKeys && typeof macroKeys === "object" ? macroKeys : null;
+  const favoriteMap = favoriteKeys && typeof favoriteKeys === "object" ? favoriteKeys : null;
+  if (isHubIntegration && actKey != null) {
+    if (assignedMap && (hasOwn(assignedMap, actKey) || hasOwn(assignedMap, activityId))) {
+      const v3 = assignedMap[actKey] ?? assignedMap[activityId];
+      nextAssignedCache[actKey] = Array.isArray(v3) ? v3 : [];
+    }
+    if (macroMap && (hasOwn(macroMap, actKey) || hasOwn(macroMap, activityId))) {
+      const v3 = macroMap[actKey] ?? macroMap[activityId];
+      nextMacrosCache[actKey] = Array.isArray(v3) ? v3 : [];
+    }
+    if (favoriteMap && (hasOwn(favoriteMap, actKey) || hasOwn(favoriteMap, activityId))) {
+      const v3 = favoriteMap[actKey] ?? favoriteMap[activityId];
+      nextFavoritesCache[actKey] = Array.isArray(v3) ? v3 : [];
+    }
+  }
+  const macros = macroMap && actKey != null && (hasOwn(macroMap, actKey) || hasOwn(macroMap, activityId)) ? macroMap[actKey] ?? macroMap[activityId] ?? [] : isHubIntegration && actKey != null ? nextMacrosCache[actKey] ?? [] : [];
+  const favorites = favoriteMap && actKey != null && (hasOwn(favoriteMap, actKey) || hasOwn(favoriteMap, activityId)) ? favoriteMap[actKey] ?? favoriteMap[activityId] ?? [] : isHubIntegration && actKey != null ? nextFavoritesCache[actKey] ?? [] : [];
+  const rawAssignedKeys = assignedMap && actKey != null && (hasOwn(assignedMap, actKey) || hasOwn(assignedMap, activityId)) ? assignedMap[actKey] ?? assignedMap[activityId] ?? null : isHubIntegration && actKey != null ? nextAssignedCache[actKey] ?? null : null;
+  return {
+    actKey,
+    assignedMap,
+    macroMap,
+    favoriteMap,
+    hubAssignedKeysCache: nextAssignedCache,
+    hubMacrosCache: nextMacrosCache,
+    hubFavoritesCache: nextFavoritesCache,
+    macros,
+    favorites,
+    rawAssignedKeys
+  };
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-activity-state.ts
+function buildActivitySelectState({
+  editMode,
+  preview,
+  activities,
+  currentActivityLabel,
+  pendingActivity,
+  pendingExpired
+}) {
+  const options = [
+    ...editMode ? [str().card.defaultLayout] : [],
+    str().card.poweredOff,
+    ...activities.map((activity) => activity.name)
+  ];
+  const previewLabel = preview ? preview.poweredOff ? str().card.poweredOff : preview.label || str().card.activityFallback(preview.activityId) : null;
+  if (previewLabel && !options.includes(previewLabel)) {
+    options.push(previewLabel);
+  }
+  const current = previewLabel || currentActivityLabel || str().card.poweredOff;
+  const poweredOff = preview ? preview.poweredOff : isPoweredOffLabel(current);
+  const resolvedValue = pendingActivity && !pendingExpired && pendingActivity !== current ? pendingActivity : current;
+  const disabled = editMode || (preview ? true : options.length <= 1);
+  return {
+    options,
+    previewLabel,
+    current,
+    poweredOff,
+    resolvedValue,
+    disabled,
+    clearPending: Boolean(pendingActivity && (pendingExpired || current === pendingActivity))
+  };
+}
+function noActivitiesWarning(isUnavailable, activitiesLength, loadState) {
+  if (!isUnavailable && activitiesLength === 0 && loadState !== "loading") {
+    return str().card.noActivitiesWarning;
+  }
+  return "";
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-hub.ts
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function initHubRuntimeState(requestSeen, queue) {
+  return {
+    requestSeen: requestSeen || {},
+    queue: Array.isArray(queue) ? queue : []
+  };
+}
+function markHubRequested(requestSeen, key) {
+  if (!key) return requestSeen;
+  requestSeen[key] = true;
+  return requestSeen;
+}
+function wasHubRequested(requestSeen, key) {
+  return Boolean(key && requestSeen[key]);
+}
+function enqueueHubCommand(queue, list, { priority = false, gapMs = 150 } = {}) {
+  const item = { list, gapMs: Number(gapMs) };
+  if (priority) {
+    queue.unshift(item);
+  } else {
+    queue.push(item);
+  }
+  return queue;
+}
+function throttleHubRequest(cache, key, minIntervalMs = 3e3, now = Date.now()) {
+  const last = cache[key] || 0;
+  if (now - last < minIntervalMs) return false;
+  cache[key] = now;
+  return true;
+}
+function basicDataRequestKey(entityId) {
+  return `req:basic:${entityId}`;
+}
+function requestBasicDataCommand() {
+  return ["type:request_basic_data"];
+}
+function requestAssignedKeysCommand(activityId) {
+  if (activityId == null) return null;
+  return ["type:request_assigned_keys", `activity_id:${Number(activityId)}`];
+}
+function requestFavoriteKeysCommand(activityId) {
+  if (activityId == null) return null;
+  return ["type:request_favorite_keys", `activity_id:${Number(activityId)}`];
+}
+function requestMacroKeysCommand(activityId) {
+  if (activityId == null) return null;
+  return ["type:request_macro_keys", `activity_id:${Number(activityId)}`];
+}
+function startActivityCommand(activityId) {
+  if (activityId == null) return null;
+  return ["type:start_activity", `activity_id:${Number(activityId)}`];
+}
+function stopActivityCommand(activityId) {
+  if (activityId == null) return null;
+  return ["type:stop_activity", `activity_id:${Number(activityId)}`];
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-actions.ts
+function hubAssignedKeyCommand(activityId, commandId) {
+  const activity = Number(activityId);
+  const key = Number(commandId);
+  if (!Number.isFinite(activity) || !Number.isFinite(key)) return null;
+  return [
+    "type:send_assigned_key",
+    `activity_id:${activity}`,
+    `key_id:${key}`
+  ];
+}
+function hubMacroKeyCommand(activityId, commandId) {
+  const activity = Number(activityId);
+  const key = Number(commandId);
+  if (!Number.isFinite(activity) || !Number.isFinite(key)) return null;
+  return [
+    "type:send_macro_key",
+    `activity_id:${activity}`,
+    `key_id:${key}`
+  ];
+}
+function hubFavoriteKeyCommand(deviceId, commandId) {
+  const device = Number(deviceId);
+  const key = Number(commandId);
+  if (!Number.isFinite(device) || !Number.isFinite(key)) return null;
+  return [
+    "type:send_favorite_key",
+    `device_id:${device}`,
+    `key_id:${key}`
+  ];
+}
+function remoteSendCommandData(entityId, commandId, deviceId) {
+  const command = Number(commandId);
+  const device = Number(deviceId);
+  if (!entityId || !Number.isFinite(command) || !Number.isFinite(device)) return null;
+  return {
+    entity_id: entityId,
+    command,
+    device
+  };
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-editor-helpers.ts
+function normalizeCustomFavorite(item, idx = 0) {
+  if (!item || typeof item !== "object") return null;
+  const name = String(item.name ?? item.label ?? "").trim();
+  if (!name) return null;
+  const icon = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+  const action = item.action && typeof item.action === "object" ? item.action : item.tap_action && typeof item.tap_action === "object" ? item.tap_action : null;
+  const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
+  const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
+  const cmd = rawCmd != null ? Number(rawCmd) : null;
+  const dev = rawDev != null ? Number(rawDev) : null;
+  const hasIds = Number.isFinite(cmd) && (rawDev == null || Number.isFinite(dev));
+  const hasAction = !!(action && (action.action || action.service || action.perform_action || action.navigation_path || action.url_path));
+  if (!hasIds && !hasAction) return null;
+  return {
+    __custom: true,
+    name,
+    icon,
+    action: hasAction ? action : null,
+    command_id: Number.isFinite(cmd) ? cmd : null,
+    device_id: Number.isFinite(dev) ? dev : null,
+    _idx: idx,
+    _raw: item
+  };
+}
+function customFavoritesSignature(items) {
+  const list = Array.isArray(items) ? items : [];
+  const parts = list.map((it) => {
+    const n7 = String(it?.name ?? "");
+    const ic = String(it?.icon ?? "");
+    const cmd = String(it?.command_id ?? "");
+    const dev = String(it?.device_id ?? "");
+    let act = "";
+    try {
+      act = it?.action ? JSON.stringify(it.action) : "";
+    } catch (e6) {
+      act = "[unserializable]";
+    }
+    return `${n7}|${ic}|${cmd}|${dev}|${act}`;
+  });
+  return `${parts.length}:${parts.join(";;")}`;
+}
+
+// custom_components/sofabaton_x1s/www/src/state/remote-card-store.ts
+function normalizeRemoteCardConfig(config) {
+  return {
+    show_activity: true,
+    show_dpad: true,
+    show_nav: true,
+    show_mid: true,
+    show_volume: true,
+    show_channel: true,
+    show_media: true,
+    show_dvr: true,
+    show_colors: true,
+    show_abc: true,
+    theme: "",
+    background_override: null,
+    show_automation_assist: false,
+    show_macros_button: null,
+    show_favorites_button: null,
+    custom_favorites: [],
+    max_width: 360,
+    // Shrink the entire card using CSS `zoom` (0 = no shrink, higher = smaller)
+    shrink: 0,
+    group_order: DEFAULT_GROUP_ORDER.slice(),
+    ...config
+  };
+}
+var RemoteCardStore = class {
+  constructor(onChange, host) {
+    this._hass = null;
+    this._config = null;
+    this._editMode = false;
+    this.previewActivity = null;
+    // Integration detection (x1s vs hub)
+    this.integrationDomain = null;
+    this.integrationEntityId = null;
+    this.integrationDetectingFor = null;
+    // Hub request queue (prevents parallel requests)
+    this.hubRequestSeen = null;
+    this.hubQueue = null;
+    this.hubQueueBusy = false;
+    this.hubRequestCache = null;
+    // Hub/X2 attribute caches (attributes may drop while switching)
+    this.hubActivitiesCache = null;
+    this.hubAssignedKeysCache = null;
+    this.hubMacrosCache = null;
+    this.hubFavoritesCache = null;
+    this.x2LastFetchedActivityId = null;
+    // Enabled-buttons cache
+    this.enabledButtonsCache = [];
+    this.enabledButtonsCacheKey = null;
+    this.enabledButtonsInvalid = false;
+    // Activity switching / load indicator
+    this.pendingActivity = null;
+    this.pendingActivityAt = null;
+    this.activityLoadActive = false;
+    this.activityLoadTarget = null;
+    this.activityLoadTimeout = null;
+    this.commandPulseUntil = 0;
+    this.commandPulseTimeout = null;
+    // Preview state resolved during the last derivation
+    this.previewState = null;
+    // Drawer / menu UI state (direction math stays in the element)
+    this.activeDrawer = null;
+    this.activityMenuOpen = false;
+    // Update gating
+    this.lastUpdateFingerprint = null;
+    this.onChange = onChange;
+    this.host = host;
+  }
+  // ---------- core wiring ----------
+  get hass() {
+    return this._hass;
+  }
+  get config() {
+    return this._config;
+  }
+  get editMode() {
+    return this._editMode;
+  }
+  setConfig(config) {
+    if (!config || !config.entity) {
+      throw new Error(str().card.selectEntityError);
+    }
+    if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
+      this.previewActivity = String(config?.preview_activity ?? "");
+      writePreviewActivity(config?.entity, this.previewActivity);
+    } else if (this.previewActivity == null) {
+      const cached = readPreviewActivity(config?.entity);
+      this.previewActivity = cached ?? "";
+    }
+    this._config = normalizeRemoteCardConfig(config);
+    this.activeDrawer = null;
+    this.activityMenuOpen = false;
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+  setHass(hass) {
+    this._hass = hass;
+    void this.ensureIntegration().then(() => {
+      if (!this.shouldNotifyForHass(hass)) return;
+      this.onChange();
+    });
+  }
+  setEditMode(value) {
+    this._editMode = !!value;
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+  setPreviewActivity(value) {
+    this.previewActivity = value ?? "";
+    this.invalidateFingerprint();
+  }
+  connected() {
+  }
+  disconnected() {
+    if (this.commandPulseTimeout) clearTimeout(this.commandPulseTimeout);
+    if (this.activityLoadTimeout) clearTimeout(this.activityLoadTimeout);
+  }
+  // ---------- update gating ----------
+  invalidateFingerprint() {
+    this.lastUpdateFingerprint = null;
+  }
+  shouldNotifyForHass(hass) {
+    const nextFingerprint = this.updateFingerprint(hass);
+    if (nextFingerprint === this.lastUpdateFingerprint) return false;
+    this.lastUpdateFingerprint = nextFingerprint;
+    return true;
+  }
+  updateFingerprint(hass = this._hass) {
+    const entityId = String(this._config?.entity || "");
+    const remote = entityId ? hass?.states?.[entityId] : null;
+    const attrs = remote?.attributes || {};
+    const themeName = String(this._config?.theme || "");
+    const themes = hass?.themes;
+    const themeDef = themeName ? themes?.themes?.[themeName] : null;
+    const themeMode = themes?.darkMode ? "dark" : "light";
+    return [
+      entityId,
+      String(remote?.state ?? ""),
+      String(attrs?.current_activity_id ?? ""),
+      String(attrs?.current_activity ?? ""),
+      String(attrs?.load_state ?? ""),
+      String(attrs?.hub_version ?? ""),
+      stableJsonSignature(attrs?.activities),
+      stableJsonSignature(attrs?.assigned_keys),
+      stableJsonSignature(attrs?.macro_keys),
+      stableJsonSignature(attrs?.favorite_keys),
+      stableJsonSignature(this._config?.background_override),
+      themeName,
+      themeMode,
+      stableJsonSignature(themeDef),
+      this._editMode ? "1" : "0",
+      String(this.previewActivity ?? ""),
+      this.integrationDomain || ""
+    ].join("|");
+  }
+  // ---------- integration detection ----------
+  async ensureIntegration() {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+    const entityId = String(this._config.entity);
+    if (this.integrationEntityId && this.integrationEntityId !== entityId) {
+      this.hubRequestCache = null;
+      this.hubRequestSeen = null;
+      this.hubQueue = null;
+      this.hubQueueBusy = false;
+      this.hubActivitiesCache = null;
+      this.hubAssignedKeysCache = null;
+      this.hubMacrosCache = null;
+      this.hubFavoritesCache = null;
+      this.x2LastFetchedActivityId = null;
+    }
+    if (this.integrationEntityId === entityId && this.integrationDomain) return;
+    if (this.integrationDetectingFor === entityId) return;
+    this.integrationDetectingFor = entityId;
+    try {
+      const entry = await this._hass.callWS({
+        type: "config/entity_registry/get",
+        entity_id: entityId
+      });
+      this.integrationDomain = String(entry?.platform || "");
+      this.integrationEntityId = entityId;
+    } catch (e6) {
+      this.integrationDomain = null;
+      this.integrationEntityId = entityId;
+    } finally {
+      this.integrationDetectingFor = null;
+      this.invalidateFingerprint();
+    }
+  }
+  isHubIntegration() {
+    return String(this.integrationDomain || "") === "sofabaton_hub";
+  }
+  hubVersion() {
+    return hubVersionFor(this._hass, this._config?.entity);
+  }
+  isX2() {
+    return isX2Hub(this.hubVersion(), this.isHubIntegration());
+  }
+  supportsUnicodeCommandNames() {
+    return supportsUnicodeCommandNames(this.hubVersion(), this.isHubIntegration());
+  }
+  // ---------- basic state helpers ----------
+  remoteState() {
+    return this._hass?.states?.[String(this._config?.entity ?? "")];
+  }
+  currentActivityId() {
+    return currentActivityIdFromRemote(this.remoteState());
+  }
+  activities() {
+    const { activities, nextHubActivitiesCache } = activitiesFromRemote(
+      this.remoteState(),
+      this.isHubIntegration(),
+      this.hubActivitiesCache
+    );
+    this.hubActivitiesCache = nextHubActivitiesCache;
+    return activities;
+  }
+  currentActivityLabel() {
+    return currentActivityLabelFromRemote(this.remoteState(), this.activities());
+  }
+  activityNameForId(activityId) {
+    return activityNameForId(this.activities(), activityId) ?? null;
+  }
+  previewSelectionState(activities) {
+    return previewSelection(
+      this._editMode,
+      this.previewActivity,
+      Array.isArray(activities) ? activities : this.activities()
+    );
+  }
+  effectiveActivityId() {
+    if (this.previewState) return this.previewState.activityId;
+    return this.currentActivityId();
+  }
+  isActivityOn(activityId, activities) {
+    return isActivityOn(
+      activityId,
+      Array.isArray(activities) ? activities : this.activities(),
+      this.currentActivityLabel()
+    );
+  }
+  // ---------- layout / capability gating ----------
+  layoutConfig(activityId = this.effectiveActivityId()) {
+    return layoutConfigForActivity(this._config, activityId);
+  }
+  groupOrderList(activityId = null) {
+    const layout = layoutConfigForActivity(
+      this._config,
+      activityId ?? this.effectiveActivityId()
+    );
+    return normalizedGroupOrder(layout?.group_order);
+  }
+  layoutSignature(activityId, layoutConfig) {
+    const order = this.groupOrderList(activityId);
+    const parts = [
+      `activity:${activityId ?? "off"}`,
+      `order:${order.join(",")}`
+    ];
+    for (const key of LAYOUT_KEYS) {
+      if (key === "group_order") continue;
+      parts.push(`${key}:${String(layoutConfig?.[key])}`);
+    }
+    return parts.join("|");
+  }
+  showMacrosButton() {
+    return macrosButtonEnabled(this.layoutConfig());
+  }
+  showFavoritesButton() {
+    return favoritesButtonEnabled(this.layoutConfig());
+  }
+  customFavorites() {
+    const arr = this._config?.custom_favorites;
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    for (let i7 = 0; i7 < arr.length; i7++) {
+      const norm = normalizeCustomFavorite(arr[i7], i7);
+      if (norm) out.push(norm);
+    }
+    return out;
+  }
+  customFavoritesSignature(items) {
+    return customFavoritesSignature(items);
+  }
+  automationAssistEnabled() {
+    return Boolean(this._config?.show_automation_assist);
+  }
+  // ---------- enabled buttons ----------
+  enabledButtons() {
+    return this.enabledButtonsCache || [];
+  }
+  isEnabled(id) {
+    const enabled = this.enabledButtons();
+    if (this.enabledButtonsInvalid) return true;
+    if (!enabled.length) return true;
+    return enabled.some((entry) => entry.command === Number(id));
+  }
+  commandTarget(id) {
+    const enabled = this.enabledButtons();
+    const match = enabled.find((entry) => entry.command === Number(id));
+    return match || null;
+  }
+  resolveCommandDeviceId(commandId, deviceId = null) {
+    const resolved = deviceId != null ? Number(deviceId) : this.commandTarget(commandId)?.activity_id ?? this.currentActivityId();
+    if (resolved == null || !Number.isFinite(Number(resolved))) return null;
+    return Number(resolved);
+  }
+  // ---------- load indicator ----------
+  /** The narrow activity-switch flag (excludes the command pulse). */
+  activityLoadingActive() {
+    return this.activityLoadActive;
+  }
+  isLoadingActive() {
+    const isActivityLoading = Boolean(this.activityLoadActive);
+    const isPulse = this.commandPulseUntil && Date.now() < this.commandPulseUntil;
+    return isActivityLoading || Boolean(isPulse);
+  }
+  triggerCommandPulse() {
+    this.commandPulseUntil = Date.now() + 1e3;
+    this.onChange();
+    if (this.commandPulseTimeout) clearTimeout(this.commandPulseTimeout);
+    this.commandPulseTimeout = setTimeout(() => {
+      this.onChange();
+    }, 1e3);
+  }
+  startActivityLoading(target) {
+    this.activityLoadTarget = String(target ?? "");
+    this.activityLoadActive = true;
+    this.onChange();
+    if (this.activityLoadTimeout) clearTimeout(this.activityLoadTimeout);
+    this.activityLoadTimeout = setTimeout(() => {
+      if (this.activityLoadActive) {
+        this.activityLoadActive = false;
+        this.onChange();
+      }
+    }, 6e4);
+  }
+  stopActivityLoading() {
+    if (!this.activityLoadActive) return;
+    this.activityLoadActive = false;
+    this.activityLoadTarget = null;
+    if (this.activityLoadTimeout) clearTimeout(this.activityLoadTimeout);
+    this.onChange();
+  }
+  // ---------- hub request queue ----------
+  hubInitState() {
+    const next = initHubRuntimeState(this.hubRequestSeen, this.hubQueue);
+    this.hubRequestSeen = next.requestSeen;
+    this.hubQueue = next.queue;
+  }
+  hubQueueIdle() {
+    const queue = Array.isArray(this.hubQueue) ? this.hubQueue.length : 0;
+    return !this.hubQueueBusy && queue === 0;
+  }
+  hubEnqueueCommand(list, { priority = false, gapMs = 150 } = {}) {
+    if (!this.isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+    this.hubInitState();
+    this.hubQueue = enqueueHubCommand(this.hubQueue, list, { priority, gapMs });
+    this.hubDrainQueue().catch(() => {
+    });
+  }
+  hubEnqueueRequest(list, requestKey) {
+    if (!this.isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+    this.hubInitState();
+    if (requestKey && wasHubRequested(this.hubRequestSeen, requestKey)) return;
+    if (requestKey) {
+      this.hubRequestSeen = markHubRequested(this.hubRequestSeen, requestKey);
+    }
+    this.hubEnqueueCommand(list, { priority: false, gapMs: 3e3 });
+  }
+  async hubDrainQueue() {
+    if (!this.isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+    this.hubInitState();
+    if (this.hubQueueBusy) return;
+    this.hubQueueBusy = true;
+    try {
+      while (this.hubQueue.length) {
+        const next = this.hubQueue.shift();
+        if (!next?.list) continue;
+        await this.callService("remote", "send_command", {
+          entity_id: this._config.entity,
+          command: next.list
+        });
+        const gap = Number.isFinite(Number(next?.gapMs)) ? Number(next.gapMs) : 750;
+        await sleep(gap);
+      }
+    } finally {
+      this.hubQueueBusy = false;
+      this.host.onHubQueueDrained?.();
+    }
+  }
+  hubThrottle(key, minIntervalMs = 3e3) {
+    this.hubRequestCache = this.hubRequestCache || {};
+    return throttleHubRequest(this.hubRequestCache, key, minIntervalMs);
+  }
+  async hubSendCommandList(list, throttleKey = null, minIntervalMs = 3e3) {
+    if (this._editMode) return;
+    if (!this.isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+    this.hubInitState();
+    if (throttleKey) {
+      if (!this.hubThrottle(throttleKey, minIntervalMs)) return;
+    }
+    if (this.hubQueueBusy || Array.isArray(this.hubQueue) && this.hubQueue.length) {
+      this.hubEnqueueCommand(list, { priority: true, gapMs: 150 });
+      return;
+    }
+    await this.callService("remote", "send_command", {
+      entity_id: this._config.entity,
+      command: list
+    });
+  }
+  hubRequestBasicData() {
+    const entityId = String(this._config?.entity || "");
+    this.hubEnqueueRequest(requestBasicDataCommand(), basicDataRequestKey(entityId));
+  }
+  hubRequestAssignedKeys(activityId) {
+    const command = requestAssignedKeysCommand(activityId);
+    if (!command) return;
+    this.hubEnqueueCommand(command, { priority: false, gapMs: 3e3 });
+  }
+  hubRequestFavoriteKeys(activityId) {
+    const command = requestFavoriteKeysCommand(activityId);
+    if (!command) return;
+    this.hubEnqueueCommand(command, { priority: false, gapMs: 3e3 });
+  }
+  hubRequestMacroKeys(activityId) {
+    const command = requestMacroKeysCommand(activityId);
+    if (!command) return;
+    this.hubEnqueueCommand(command, { priority: false, gapMs: 3e3 });
+  }
+  async hubStartActivity(activityId) {
+    const command = startActivityCommand(activityId);
+    if (!command) return;
+    await this.hubSendCommandList(command);
+  }
+  async hubStopActivity(activityId) {
+    const command = stopActivityCommand(activityId);
+    if (!command) return;
+    await this.hubSendCommandList(command);
+  }
+  // ---------- actions ----------
+  async callService(domain, service, data, target = void 0) {
+    await this._hass.callService(domain, service, data, target);
+  }
+  async runLovelaceAction(actionConfig, context = null) {
+    if (this._editMode) return;
+    if (!actionConfig || typeof actionConfig !== "object") return;
+    const action = String(actionConfig.action || "").toLowerCase();
+    const implicitService = (!action || action === "default") && (actionConfig.service || actionConfig.perform_action);
+    if (action === "none") return;
+    if (action === "call-service" || action === "perform-action" || implicitService) {
+      const svc = String(actionConfig.service || actionConfig.perform_action || "").trim();
+      if (!svc.includes(".")) return;
+      const [domain, service] = svc.split(".", 2);
+      const serviceData = {
+        ...actionConfig.service_data || actionConfig.data || {}
+      };
+      const target = actionConfig.target && typeof actionConfig.target === "object" ? actionConfig.target : void 0;
+      await this.callService(domain, service, serviceData, target);
+      return;
+    }
+    if (action === "toggle") {
+      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
+      if (!entityId) return;
+      await this.callService("homeassistant", "toggle", { entity_id: entityId });
+      return;
+    }
+    if (action === "more-info") {
+      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
+      if (!entityId) return;
+      this.host.fireEvent("hass-more-info", { entityId });
+      return;
+    }
+    if (action === "navigate") {
+      const path = actionConfig.navigation_path;
+      if (!path) return;
+      history.pushState(null, "", String(path));
+      window.dispatchEvent(
+        new Event("location-changed", { bubbles: true, composed: true })
+      );
+      return;
+    }
+    if (action === "url") {
+      const url = actionConfig.url_path;
+      if (!url) return;
+      window.open(String(url), "_blank");
+      return;
+    }
+    if (action === "fire-dom-event") {
+      this.host.fireEvent("ll-custom", actionConfig);
+      return;
+    }
+  }
+  async sendCommand(commandId, deviceId = null) {
+    if (this._editMode) return;
+    if (!this._hass || !this._config?.entity) return;
+    const resolvedDevice = this.resolveCommandDeviceId(commandId, deviceId);
+    if (this.isHubIntegration()) {
+      const command = hubAssignedKeyCommand(resolvedDevice, commandId);
+      if (!command) return;
+      await this.hubSendCommandList(command);
+      return;
+    }
+    const serviceData = remoteSendCommandData(this._config.entity, commandId, resolvedDevice);
+    if (!serviceData) return;
+    await this.callService("remote", "send_command", serviceData);
+  }
+  async sendDrawerItem(itemType, commandId, deviceId, rawItem) {
+    if (this._editMode) return;
+    if (!this.isHubIntegration()) {
+      return this.sendCommand(commandId, deviceId);
+    }
+    if (!this._hass || !this._config?.entity) return;
+    const activityId = Number(deviceId ?? this.currentActivityId());
+    const keyId = Number(commandId);
+    if (!Number.isFinite(keyId)) return;
+    if (itemType === "macros") {
+      const command2 = hubMacroKeyCommand(activityId, keyId);
+      if (!command2) return;
+      return this.hubSendCommandList(command2);
+    }
+    if (itemType === "favorites") {
+      const device = Number(rawItem?.device_id ?? rawItem?.device);
+      const command2 = hubFavoriteKeyCommand(device, keyId);
+      if (!command2) return;
+      return this.hubSendCommandList(command2);
+    }
+    const command = hubAssignedKeyCommand(activityId, keyId);
+    if (!command) return;
+    return this.hubSendCommandList(command);
+  }
+  async sendCustomFavoriteCommand(commandId, deviceId) {
+    if (this._editMode) return;
+    if (!this._hass || !this._config?.entity) return;
+    const cmd = Number(commandId);
+    const dev = Number(deviceId);
+    if (!Number.isFinite(cmd) || !Number.isFinite(dev)) return;
+    if (this.isHubIntegration()) {
+      const command = hubFavoriteKeyCommand(dev, cmd);
+      if (!command) return;
+      await this.hubSendCommandList(command);
+      return;
+    }
+    const serviceData = remoteSendCommandData(this._config.entity, cmd, dev);
+    if (!serviceData) return;
+    await this.callService("remote", "send_command", serviceData);
+  }
+  async setActivity(option) {
+    if (this._editMode) return;
+    if (option == null || option === "") return;
+    const selected = String(option);
+    const current = this.currentActivityLabel();
+    if (selected === current) return;
+    this.pendingActivity = selected;
+    this.pendingActivityAt = Date.now();
+    this.startActivityLoading(selected);
+    if (this.isHubIntegration()) {
+      if (isPoweredOffLabel(selected)) {
+        const currentId = this.currentActivityId();
+        if (currentId != null) {
+          await this.hubStopActivity(currentId);
+        }
+        return;
+      }
+      const match = this.activities().find((a4) => a4.name === selected);
+      const activityId = match?.id;
+      if (activityId == null) return;
+      await this.hubStartActivity(activityId);
+      return;
+    }
+    if (isPoweredOffLabel(selected)) {
+      await this.callService("remote", "turn_off", {
+        entity_id: this._config.entity
+      });
+      return;
+    }
+    await this.callService("remote", "turn_on", {
+      entity_id: this._config.entity,
+      activity: selected
+    });
+  }
+  // ---------- runtime derivation (the state half of the legacy _update) ----------
+  /**
+   * Resolve everything the render needs for the current hass/config state,
+   * updating the hub caches, firing the on-demand hub fetches, refreshing the
+   * enabled-buttons cache, and settling pending-activity bookkeeping — the
+   * exact sequence the legacy _update() ran before touching the DOM.
+   */
+  deriveRuntimeState() {
+    const remote = this.remoteState();
+    const activities = this.activities();
+    const preview = this.previewSelectionState(activities);
+    this.previewState = preview;
+    const activityId = preview ? preview.activityId : this.currentActivityId();
+    const layoutConfig = layoutConfigForActivity(this._config, activityId);
+    const isUnavailable = remote?.state === "unavailable";
+    const attrs = remote?.attributes ?? {};
+    const loadState = attrs?.load_state;
+    const assignedKeys = attrs?.assigned_keys;
+    const macroKeys = attrs?.macro_keys;
+    const favoriteKeys = attrs?.favorite_keys;
+    const resolvedHubData = resolveHubActivityData({
+      isHubIntegration: this.isHubIntegration(),
+      activityId,
+      assignedKeys,
+      macroKeys,
+      favoriteKeys,
+      hubAssignedKeysCache: this.hubAssignedKeysCache || {},
+      hubMacrosCache: this.hubMacrosCache || {},
+      hubFavoritesCache: this.hubFavoritesCache || {}
+    });
+    this.hubAssignedKeysCache = resolvedHubData.hubAssignedKeysCache;
+    this.hubMacrosCache = resolvedHubData.hubMacrosCache;
+    this.hubFavoritesCache = resolvedHubData.hubFavoritesCache;
+    if (this.isHubIntegration() && !isUnavailable) {
+      if (activities.length === 0 && loadState !== "loading") {
+        this.hubRequestBasicData();
+      }
+      if (activityId != null) {
+        const confirmedActivityId = Number(activityId);
+        if (this.x2LastFetchedActivityId !== confirmedActivityId) {
+          this.x2LastFetchedActivityId = confirmedActivityId;
+          this.hubRequestAssignedKeys(confirmedActivityId);
+          this.hubRequestMacroKeys(confirmedActivityId);
+          this.hubRequestFavoriteKeys(confirmedActivityId);
+        }
+      }
+    } else if (this.isHubIntegration() && activityId == null) {
+      this.x2LastFetchedActivityId = null;
+    }
+    const rawAssignedKeys = resolvedHubData.rawAssignedKeys;
+    const enabledButtonsSig = enabledButtonsSignature(rawAssignedKeys);
+    if (this.enabledButtonsCacheKey !== enabledButtonsSig) {
+      this.enabledButtonsCacheKey = enabledButtonsSig;
+      const parsed = Array.isArray(rawAssignedKeys) ? rawAssignedKeys.map((entry) => ({
+        command: Number(entry),
+        activity_id: activityId
+      })).filter((entry) => Number.isFinite(entry.command)) : [];
+      this.enabledButtonsInvalid = Array.isArray(rawAssignedKeys) && parsed.length === 0;
+      this.enabledButtonsCache = parsed;
+    }
+    const pendingAge = this.pendingActivityAt ? Date.now() - this.pendingActivityAt : null;
+    const pendingExpired = pendingAge != null && pendingAge > 15e3;
+    let selectState = null;
+    let isPoweredOff = false;
+    let currentLabel = "";
+    if (isUnavailable) {
+      this.stopActivityLoading();
+    } else {
+      selectState = buildActivitySelectState({
+        editMode: this._editMode,
+        preview,
+        activities,
+        currentActivityLabel: this.currentActivityLabel(),
+        pendingActivity: this.pendingActivity,
+        pendingExpired
+      });
+      currentLabel = selectState.current;
+      isPoweredOff = preview ? Boolean(preview.poweredOff) : activityId == null || Boolean(selectState.poweredOff);
+      if (selectState.clearPending) {
+        this.pendingActivity = null;
+        this.pendingActivityAt = null;
+      }
+      const currentActivity = this.currentActivityLabel();
+      if (this.activityLoadActive && this.activityLoadTarget) {
+        const targetIsOff = isPoweredOffLabel(this.activityLoadTarget);
+        if (targetIsOff && isPoweredOff || currentActivity === this.activityLoadTarget) {
+          this.stopActivityLoading();
+        }
+      }
+    }
+    const showVolume = volumeGroupEnabled(layoutConfig);
+    const showChannel = channelGroupEnabled(layoutConfig);
+    const showMedia = mediaGroupEnabled(layoutConfig);
+    const showDvr = dvrGroupEnabled(layoutConfig);
+    return {
+      remote,
+      isUnavailable,
+      loadState,
+      activities,
+      preview,
+      activityId,
+      layoutConfig,
+      layoutSignature: this.layoutSignature(activityId, layoutConfig),
+      macros: resolvedHubData.macros,
+      favorites: resolvedHubData.favorites,
+      customFavorites: this.customFavorites(),
+      rawAssignedKeys,
+      selectState,
+      currentLabel,
+      isPoweredOff,
+      isX2: this.isX2(),
+      showVolume,
+      showChannel,
+      showMedia,
+      showDvr,
+      noActivitiesMessage: noActivitiesWarning(isUnavailable, activities.length, loadState)
+    };
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/remote-card-assist-yaml.ts
+function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
+  if (!capture || !entityId) return "";
+  const kind = capture.kind || "button";
+  if (kind === "activity") {
+    if (hubIntegration) {
+      if (!Number.isFinite(Number(capture.activityId))) return "";
+      return [
+        "action: remote.send_command",
+        "target:",
+        `  entity_id: ${entityId}`,
+        "data:",
+        "  command:",
+        "    - type:start_activity",
+        `    - activity_id:${capture.activityId}`
+      ].join("\n");
+    }
+    return [
+      "action: remote.turn_on",
+      "target:",
+      `  entity_id: ${entityId}`,
+      "data:",
+      `  activity: ${capture.activityName}`
+    ].join("\n");
+  }
+  if (kind === "power") {
+    if (hubIntegration) {
+      if (!Number.isFinite(Number(capture.activityId))) return "";
+      return [
+        "action: remote.send_command",
+        "target:",
+        `  entity_id: ${entityId}`,
+        "data:",
+        "  command:",
+        "    - type:stop_activity",
+        `    - activity_id:${capture.activityId}`
+      ].join("\n");
+    }
+    return [
+      "action: remote.turn_off",
+      "target:",
+      `  entity_id: ${entityId}`
+    ].join("\n");
+  }
+  if (hubIntegration) {
+    const payloadType = capture.commandType === "macro" ? "send_macro_key" : capture.commandType === "favorite" ? "send_favorite_key" : "send_assigned_key";
+    const deviceKey = capture.commandType === "favorite" ? "device_id" : "activity_id";
+    return [
+      "action: remote.send_command",
+      "target:",
+      `  entity_id: ${entityId}`,
+      "data:",
+      "  command:",
+      `    - type:${payloadType}`,
+      `    - ${deviceKey}:${capture.deviceId}`,
+      `    - key_id:${capture.commandId}`
+    ].join("\n");
+  }
+  return [
+    "action: remote.send_command",
+    "target:",
+    `  entity_id: ${entityId}`,
+    "data:",
+    `  command: ${capture.commandId}`,
+    `  device: ${capture.deviceId}`
+  ].join("\n");
+}
+function automationAssistButtonYaml(capture, entityId, hubIntegration) {
+  if (!capture || !entityId) return "";
+  const kind = capture.kind || "button";
+  const label = capture.label || str().assist.automationAssistName;
+  const icon = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
+  const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
+  return [
+    "type: button",
+    `name: ${label}`,
+    `icon: ${icon}`,
+    "tap_action:",
+    "  action: perform-action",
+    "  perform_" + serviceYaml.substring(2),
+    "hold_action:",
+    "  action: none"
+  ].join("\n");
+}
+function automationAssistNotificationBody(capture, entityId, hubIntegration, fallbackActivityName) {
+  if (!capture) return "";
+  const kind = capture.kind || "button";
+  const notify = str().assist.notification;
+  const activityName = capture.activityName || fallbackActivityName || str().assist.unknown;
+  const label = capture.label ?? "";
+  const eventLabel = kind === "button" ? notify.eventButton(label) : kind === "activity" ? notify.eventActivity(label) : notify.eventOther(label);
+  const buttonYaml = automationAssistButtonYaml(capture, entityId, hubIntegration);
+  const remoteYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration);
+  return [
+    "---",
+    "",
+    notify.header(activityName, eventLabel),
+    "",
+    "---",
+    notify.lovelaceHeading,
+    "",
+    notify.lovelaceCopy,
+    "```yaml",
+    buttonYaml,
+    "```",
+    notify.serviceHeading,
+    "",
+    notify.serviceCopy,
+    "```yaml",
+    remoteYaml,
+    "```"
+  ].join("\n");
+}
+
+// custom_components/sofabaton_x1s/www/src/state/automation-assist-controller.ts
+function normalizeHubMac(value) {
+  if (!value) return null;
+  const normalized = String(value).replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+  if (!normalized || normalized.length < 6) return null;
+  return normalized;
+}
+function parseMqttPayload(payload) {
+  if (payload == null) return null;
+  if (typeof payload === "object") return payload;
+  try {
+    return JSON.parse(String(payload));
+  } catch (e6) {
+    return null;
+  }
+}
+var AutomationAssistController = class {
+  constructor(host) {
+    this.active = false;
+    this.capture = null;
+    this.statusMessage = null;
+    // MQTT discovery state
+    this.mqttMatch = false;
+    this.mqttPayload = null;
+    this.mqttDeviceName = null;
+    this.mqttCommandName = null;
+    this.mqttExisting = false;
+    this.discoveryCreated = false;
+    this.discoveryWorking = false;
+    this.discoveryDeviceId = null;
+    // Modal state (the Lit card renders from these)
+    this.modalOpen = false;
+    this.modalDeviceId = null;
+    this.modalActivityChecked = false;
+    this.hubMac = null;
+    this.hubMacDetecting = false;
+    this.mqttUnsub = null;
+    this.mqttTopic = null;
+    this.mqttLookupId = 0;
+    this.mqttDeviceNames = /* @__PURE__ */ new Map();
+    this.mqttDeviceCommands = /* @__PURE__ */ new Map();
+    this.mqttRequestQueue = Promise.resolve();
+    this.mqttPublishQueue = Promise.resolve();
+    this.discoveryIds = /* @__PURE__ */ new Set();
+    // Activity-change baseline (drives capture of activity switches)
+    this.lastActivityLabel = null;
+    this.lastActivityId = null;
+    this.lastPoweredOff = null;
+    this.host = host;
+  }
+  // ---------- session (per-tab, shared across card instances) ----------
+  sessionState() {
+    const win2 = window;
+    if (!win2[AUTOMATION_ASSIST_SESSION_KEY]) {
+      win2[AUTOMATION_ASSIST_SESSION_KEY] = {
+        hideMqttModal: false,
+        discoveryDeviceIds: /* @__PURE__ */ new Set(),
+        activityTriggersCreated: false
       };
     }
-    this._fireChanged();
-    this._renderGroupOrderEditor();
+    return win2[AUTOMATION_ASSIST_SESSION_KEY];
   }
-  _fireChanged() {
-    const finalConfig = { ...this._config };
-    delete finalConfig.use_background_override;
-    delete finalConfig.preview_activity;
-    delete finalConfig.commands;
-    this.dispatchEvent(
-      new CustomEvent("config-changed", {
-        detail: { config: finalConfig },
-        bubbles: true,
-        composed: true
+  activityTriggersCreatedInSession() {
+    return this.sessionState().activityTriggersCreated;
+  }
+  // ---------- capture lifecycle ----------
+  ensureCaptureStarted() {
+    if (!this.host.assistEnabled()) return false;
+    if (this.host.isEditMode()) return false;
+    if (!this.active) {
+      this.setActive(true);
+    }
+    return this.active;
+  }
+  primeActivityBaseline() {
+    const currentLabel = this.host.currentActivityLabel();
+    const currentId = this.host.currentActivityId();
+    this.lastActivityLabel = currentLabel;
+    this.lastActivityId = Number.isFinite(Number(currentId)) ? Number(currentId) : null;
+    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
+  }
+  resetActivityBaseline() {
+    this.lastActivityLabel = null;
+    this.lastActivityId = null;
+    this.lastPoweredOff = null;
+  }
+  setActive(active) {
+    const next = !!active;
+    if (this.active === next) return;
+    this.active = next;
+    if (!next) {
+      this.capture = null;
+      this.mqttMatch = false;
+      this.mqttPayload = null;
+      this.mqttDeviceName = null;
+      this.mqttCommandName = null;
+      this.mqttExisting = false;
+      this.discoveryCreated = false;
+      this.discoveryWorking = false;
+      this.discoveryDeviceId = null;
+      this.statusMessage = null;
+      this.unsubscribeMqtt();
+      this.closeMqttModal();
+    } else {
+      this.statusMessage = null;
+      this.primeActivityBaseline();
+      this.syncMqtt();
+    }
+    this.host.onChange();
+  }
+  resetCaptureSideState() {
+    this.mqttMatch = false;
+    this.mqttPayload = null;
+    this.mqttDeviceName = null;
+    this.mqttCommandName = null;
+    this.mqttExisting = false;
+    this.discoveryCreated = false;
+    this.discoveryWorking = false;
+    this.discoveryDeviceId = null;
+    this.statusMessage = null;
+  }
+  recordActivityChange(params) {
+    if (!this.ensureCaptureStarted()) return;
+    const id = Number(params.activityId);
+    const resolvedId = Number.isFinite(id) ? id : null;
+    const poweredOff = !!params.poweredOff;
+    const label = poweredOff ? str().card.poweredOff : String(params.activityName || str().assist.activityFallbackLabel);
+    this.capture = {
+      label,
+      activityId: resolvedId,
+      activityName: poweredOff ? str().card.poweredOff : String(params.activityName || label),
+      kind: poweredOff ? "power" : "activity"
+    };
+    this.resetCaptureSideState();
+    this.host.onChange();
+    this.notifyCapture();
+  }
+  recordClick(params) {
+    if (!this.ensureCaptureStarted()) return;
+    const command = Number(params.commandId);
+    if (!Number.isFinite(command)) return;
+    const commandType = params.commandType ?? "assigned";
+    const resolvedDevice = commandType === "favorite" || commandType === "macro" ? params.deviceId != null ? Number(params.deviceId) : this.host.currentActivityId() : this.host.resolveCommandDeviceId(command, params.deviceId ?? null);
+    if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) {
+      return;
+    }
+    const activityName = this.host.activityNameForId(resolvedDevice) || this.host.currentActivityLabel() || str().assist.unknown;
+    this.capture = {
+      label: String(params.label ?? str().assist.buttonFallback),
+      commandId: command,
+      deviceId: Number(resolvedDevice),
+      commandType,
+      icon: params.icon ? String(params.icon) : null,
+      activityName,
+      kind: "button"
+    };
+    this.resetCaptureSideState();
+    this.host.onChange();
+    this.notifyCapture();
+  }
+  /**
+   * Feed the current activity state from each hass update; detects activity
+   * switches against the baseline and records them as captures (the legacy
+   * card ran this block inside _update()).
+   */
+  observeActivityState(params) {
+    const current = params.currentLabel;
+    if (!params.unavailable && this.host.assistEnabled() && this.lastActivityLabel != null && current !== this.lastActivityLabel) {
+      if (isPoweredOffLabel(current)) {
+        this.recordActivityChange({
+          activityId: this.lastActivityId,
+          activityName: str().card.poweredOff,
+          poweredOff: true
+        });
+      } else {
+        this.recordActivityChange({
+          activityId: params.activityId,
+          activityName: current,
+          poweredOff: false
+        });
+      }
+    }
+    if (params.unavailable) {
+      this.resetActivityBaseline();
+    } else {
+      this.lastActivityLabel = current;
+      this.lastActivityId = params.activityId;
+      this.lastPoweredOff = isPoweredOffLabel(current);
+    }
+  }
+  // ---------- notification ----------
+  remoteYaml() {
+    return automationAssistRemoteYaml(
+      this.capture,
+      this.host.entityId(),
+      this.host.isHubIntegration()
+    );
+  }
+  buttonYaml() {
+    return automationAssistButtonYaml(
+      this.capture,
+      this.host.entityId(),
+      this.host.isHubIntegration()
+    );
+  }
+  notifyCapture() {
+    if (!this.host.assistEnabled()) return;
+    if (!this.host.getHass()) return;
+    const capture = this.capture;
+    const body = automationAssistNotificationBody(
+      capture,
+      this.host.entityId(),
+      this.host.isHubIntegration(),
+      this.host.activityNameForId(capture?.deviceId) || this.host.currentActivityLabel() || ""
+    );
+    if (!body) return;
+    void this.host.callService("persistent_notification", "create", {
+      title: str().assist.notification.title,
+      message: body
+    });
+  }
+  // ---------- status / modal view state ----------
+  /** The status line under the assist label (legacy _updateAutomationAssistUI). */
+  statusText() {
+    if (!this.active) {
+      return this.host.isEditMode() ? str().assist.exitEditMode : str().assist.waiting;
+    }
+    if (this.statusMessage) return this.statusMessage;
+    if (this.capture) return str().assist.captured(String(this.capture.label ?? ""));
+    return str().assist.waiting;
+  }
+  /** Derived modal content (legacy _updateAutomationAssistModalUI). */
+  modalViewState() {
+    const isActive = this.active;
+    const mqttSupported = this.mqttSupported();
+    const payload = this.mqttPayload;
+    const deviceId = Number(payload?.device_id);
+    const commandId = Number(payload?.key_id);
+    const deviceName = this.mqttDeviceName || (Number.isFinite(deviceId) ? str().assist.deviceFallback(deviceId) : str().assist.unknownDevice);
+    const commandName = this.mqttCommandName || (Number.isFinite(commandId) ? str().assist.commandFallback(commandId) : null);
+    const lines = [str().assist.detectedDevice(deviceName)];
+    if (commandName) lines.push(str().assist.lastCommand(commandName));
+    if (this.mqttExisting) lines.push(str().assist.existingTriggers);
+    const createLabel = this.discoveryWorking ? str().assist.working : this.discoveryCreated ? str().assist.triggersReady : str().assist.createTriggers;
+    return {
+      open: this.modalOpen,
+      showActivityRow: !this.sessionState().activityTriggersCreated,
+      text: lines.join(" "),
+      showStart: !isActive,
+      showCreate: mqttSupported && isActive,
+      createLabel,
+      createDisabled: this.discoveryWorking || this.discoveryCreated || !this.mqttAvailable()
+    };
+  }
+  // ---------- MQTT plumbing ----------
+  mqttSupported() {
+    return this.host.isX2();
+  }
+  mqttAvailable() {
+    return this.mqttSupported() && this.active && Boolean(this.hubMac) && !this.discoveryCreated && !this.discoveryWorking && this.mqttReady();
+  }
+  mqttReady() {
+    if (!this.host.isHubIntegration()) return true;
+    return this.host.hubQueueIdle();
+  }
+  safeUnsubscribe(unsubscribe) {
+    if (typeof unsubscribe !== "function") return;
+    try {
+      const maybePromise = unsubscribe();
+      if (maybePromise && typeof maybePromise.catch === "function") {
+        maybePromise.catch(() => {
+        });
+      }
+    } catch (e6) {
+    }
+  }
+  ensureHubMac() {
+    const hass = this.host.getHass();
+    if (!hass || !this.host.entityId()) return;
+    if (this.hubMac || this.hubMacDetecting) return;
+    const attrMac = normalizeHubMac(this.host.hubMacAttribute());
+    if (attrMac) {
+      this.hubMac = attrMac;
+      return;
+    }
+    if (!this.host.isHubIntegration()) return;
+    if (!hass.connection?.subscribeMessage) return;
+    this.hubMacDetecting = true;
+    const topic = "activity/+/list";
+    let timeoutId = null;
+    let unsub = null;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      const unsubscribe = unsub;
+      unsub = null;
+      this.safeUnsubscribe(unsubscribe);
+      this.hubMacDetecting = false;
+      this.host.onChange();
+      this.syncMqtt();
+    };
+    hass.connection.subscribeMessage(
+      (msg) => {
+        const topicMatch = String(msg?.topic || "").match(
+          /^activity\/([^/]+)\/list$/
+        );
+        const normalized = topicMatch?.[1] ? normalizeHubMac(topicMatch[1]) : null;
+        if (!normalized) return;
+        this.hubMac = normalized;
+        finish();
+      },
+      { type: "mqtt/subscribe", topic }
+    ).then((unsubscribe) => {
+      unsub = unsubscribe;
+      this.host.requestHubBasicData();
+      timeoutId = setTimeout(() => finish(), 4e3);
+    }).catch(() => {
+      finish();
+    });
+  }
+  syncMqtt() {
+    if (!this.host.assistEnabled()) {
+      this.unsubscribeMqtt();
+      return;
+    }
+    if (!this.active) {
+      this.unsubscribeMqtt();
+      return;
+    }
+    if (!this.mqttSupported()) {
+      this.unsubscribeMqtt();
+      return;
+    }
+    if (!this.mqttReady()) {
+      return;
+    }
+    this.ensureHubMac();
+    const mac = this.hubMac;
+    if (!mac) return;
+    const topic = `${mac}/up`;
+    if (this.mqttTopic === topic && this.mqttUnsub) return;
+    this.unsubscribeMqtt();
+    const hass = this.host.getHass();
+    if (!hass?.connection?.subscribeMessage) return;
+    this.mqttTopic = topic;
+    hass.connection.subscribeMessage((msg) => this.handleMqtt(msg), {
+      type: "mqtt/subscribe",
+      topic
+    }).then((unsub) => {
+      this.mqttUnsub = unsub;
+    }).catch(() => {
+      this.mqttUnsub = null;
+    });
+  }
+  unsubscribeMqtt() {
+    if (this.mqttUnsub) {
+      const unsubscribe = this.mqttUnsub;
+      this.mqttUnsub = null;
+      this.safeUnsubscribe(unsubscribe);
+    }
+    this.mqttTopic = null;
+  }
+  /** Legacy behavior kept: no automatic trigger-exists detection. */
+  mqttTriggerExists(_payload, _topic) {
+    return false;
+  }
+  // ---------- modal ----------
+  shouldSuppressMqttModal(deviceId) {
+    const session = this.sessionState();
+    if (session.hideMqttModal) return true;
+    return session.discoveryDeviceIds.has(deviceId);
+  }
+  openMqttModal(deviceId) {
+    if (!Number.isFinite(deviceId)) return;
+    if (this.shouldSuppressMqttModal(deviceId)) return;
+    this.modalDeviceId = deviceId;
+    this.modalOpen = true;
+    this.modalActivityChecked = false;
+    this.host.onChange();
+  }
+  closeMqttModal() {
+    if (!this.modalOpen) return;
+    this.modalOpen = false;
+    this.host.onChange();
+  }
+  /** The "don't show again for this session" checkbox. */
+  setModalOptOut(checked) {
+    if (!checked) return;
+    this.sessionState().hideMqttModal = true;
+    this.closeMqttModal();
+  }
+  setModalActivityChecked(checked) {
+    this.modalActivityChecked = !!checked;
+  }
+  // ---------- MQTT message handling ----------
+  handleMqtt(msg) {
+    const payload = parseMqttPayload(msg?.payload);
+    if (!payload) return;
+    const deviceId = Number(payload.device_id);
+    if (Number.isFinite(deviceId) && this.discoveryDeviceId !== deviceId) {
+      this.discoveryDeviceId = deviceId;
+      this.discoveryCreated = false;
+      this.discoveryWorking = false;
+    }
+    this.mqttMatch = true;
+    this.mqttPayload = payload;
+    this.mqttDeviceName = null;
+    this.mqttCommandName = null;
+    this.mqttExisting = this.mqttTriggerExists(payload, this.mqttTopic);
+    this.host.onChange();
+    this.primeMqttMetadata(payload);
+    this.openMqttModal(deviceId);
+  }
+  primeMqttMetadata(payload) {
+    const mac = this.hubMac;
+    if (!mac || !payload) return;
+    const deviceId = Number(payload.device_id);
+    const keyId = Number(payload.key_id);
+    if (!Number.isFinite(deviceId) || !Number.isFinite(keyId)) return;
+    const lookupId = this.mqttLookupId + 1;
+    this.mqttLookupId = lookupId;
+    void Promise.all([
+      this.requestMqttDeviceName(mac, deviceId),
+      this.requestMqttDeviceCommandName(mac, deviceId, keyId)
+    ]).then(([deviceName, commandName]) => {
+      if (this.mqttLookupId !== lookupId) return;
+      if (deviceName) this.mqttDeviceName = deviceName;
+      if (commandName) this.mqttCommandName = commandName;
+      this.host.onChange();
+    });
+  }
+  async requestMqttDeviceName(mac, deviceId) {
+    const hass = this.host.getHass();
+    if (!hass?.connection?.subscribeMessage) return null;
+    if (!Number.isFinite(deviceId)) return null;
+    const cacheKey = `${mac}:${deviceId}`;
+    if (this.mqttDeviceNames.has(cacheKey)) {
+      return this.mqttDeviceNames.get(cacheKey) ?? null;
+    }
+    const topic = `device/${mac}/list`;
+    const requestTopic = `device/${mac}/list_request`;
+    const payload = JSON.stringify({ data: "device_list" });
+    return this.enqueueMqttRequest(
+      () => new Promise((resolve) => {
+        let timeoutId = null;
+        let unsub = null;
+        const finish = (name) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          if (unsub) {
+            const unsubscribe = unsub;
+            unsub = null;
+            this.safeUnsubscribe(unsubscribe);
+          }
+          if (name) {
+            this.mqttDeviceNames.set(cacheKey, name);
+          }
+          resolve(name || null);
+        };
+        hass.connection.subscribeMessage(
+          (msg) => {
+            const data = parseMqttPayload(msg?.payload);
+            const devices = Array.isArray(data?.data) ? data.data : [];
+            const match = devices.find(
+              (device) => Number(device?.device_id) === deviceId
+            );
+            finish(match?.device_name ? String(match.device_name) : null);
+          },
+          { type: "mqtt/subscribe", topic }
+        ).then((unsubscribe) => {
+          unsub = unsubscribe;
+          void this.host.callService("mqtt", "publish", {
+            topic: requestTopic,
+            payload
+          });
+          timeoutId = setTimeout(() => finish(null), 4e3);
+        }).catch(() => finish(null));
       })
     );
   }
+  async requestMqttDeviceCommandName(mac, deviceId, keyId) {
+    if (!Number.isFinite(keyId)) return null;
+    const commands = await this.requestMqttDeviceCommands(mac, deviceId);
+    if (!commands) return null;
+    return commands.get(Number(keyId)) || null;
+  }
+  async requestMqttDeviceCommands(mac, deviceId) {
+    const hass = this.host.getHass();
+    if (!hass?.connection?.subscribeMessage) return null;
+    if (!Number.isFinite(deviceId)) return null;
+    const cacheKey = `${mac}:${deviceId}`;
+    if (this.mqttDeviceCommands.has(cacheKey)) {
+      return this.mqttDeviceCommands.get(cacheKey) ?? null;
+    }
+    const topic = `device/${mac}/keys_list`;
+    const requestTopic = `device/${mac}/keys_request`;
+    const payload = JSON.stringify({ data: { device_id: deviceId } });
+    return this.enqueueMqttRequest(
+      () => new Promise((resolve) => {
+        let timeoutId = null;
+        let unsub = null;
+        const finish = (commands) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          if (unsub) {
+            const unsubscribe = unsub;
+            unsub = null;
+            this.safeUnsubscribe(unsubscribe);
+          }
+          if (commands) {
+            this.mqttDeviceCommands.set(cacheKey, commands);
+          }
+          resolve(commands || null);
+        };
+        hass.connection.subscribeMessage(
+          (msg) => {
+            const data = parseMqttPayload(msg?.payload);
+            if (Number(data?.device_id) !== deviceId) return;
+            const keys = Array.isArray(data?.data) ? data.data : [];
+            const commands = /* @__PURE__ */ new Map();
+            keys.forEach((entry) => {
+              const key = Number(entry?.key_id);
+              if (!Number.isFinite(key)) return;
+              const name = entry?.key_name ? String(entry.key_name) : null;
+              if (name) commands.set(key, name);
+            });
+            finish(commands);
+          },
+          { type: "mqtt/subscribe", topic }
+        ).then((unsubscribe) => {
+          unsub = unsubscribe;
+          void this.host.callService("mqtt", "publish", {
+            topic: requestTopic,
+            payload
+          });
+          timeoutId = setTimeout(() => finish(null), 4e3);
+        }).catch(() => finish(null));
+      })
+    );
+  }
+  enqueueMqttRequest(task) {
+    const run = async () => task();
+    this.mqttRequestQueue = this.mqttRequestQueue.then(run, run);
+    return this.mqttRequestQueue;
+  }
+  enqueueMqttPublish(task) {
+    const run = async () => task();
+    this.mqttPublishQueue = this.mqttPublishQueue.then(run, run);
+    return this.mqttPublishQueue;
+  }
+  setStatus(text) {
+    this.statusMessage = String(text ?? "");
+    this.host.onChange();
+  }
+  // ---------- trigger discovery (the modal's Create button) ----------
+  async createTriggers() {
+    if (!this.mqttAvailable()) return;
+    const mac = this.hubMac;
+    const payload = this.mqttPayload;
+    if (!mac || !payload) return;
+    const deviceId = Number(payload.device_id);
+    if (!Number.isFinite(deviceId)) return;
+    this.discoveryWorking = true;
+    this.host.onChange();
+    try {
+      const [deviceName, commands] = await Promise.all([
+        this.requestMqttDeviceName(mac, deviceId),
+        this.requestMqttDeviceCommands(mac, deviceId)
+      ]);
+      if (!commands || commands.size === 0) {
+        this.setStatus(str().assist.noMqttCommands);
+        return;
+      }
+      const deviceLabel = deviceName || str().assist.deviceFallback(deviceId);
+      const topic = `${mac}/up`;
+      const macLower = String(mac).toLowerCase();
+      const macUpper = String(mac).toUpperCase();
+      const session = this.sessionState();
+      const allowActivityTriggers = !session.activityTriggersCreated;
+      const includeActivityTriggers = allowActivityTriggers && this.modalActivityChecked;
+      let createdCount = 0;
+      let createdActivityCount = 0;
+      for (const [keyId, commandName] of commands.entries()) {
+        const payloadObj = { device_id: deviceId, key_id: Number(keyId) };
+        if (!Number.isFinite(payloadObj.key_id)) continue;
+        if (this.mqttTriggerExists(payloadObj, topic)) {
+          continue;
+        }
+        const displayCommand = commandName || str().assist.commandFallback(payloadObj.key_id);
+        const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}`;
+        if (this.discoveryIds.has(uniqueId)) continue;
+        const subtype = `X2 ${deviceLabel} ${displayCommand}`;
+        const config = {
+          automation_type: "trigger",
+          type: "button_short_press",
+          subtype,
+          payload: JSON.stringify(payloadObj),
+          topic: `${macUpper}/up`,
+          device: {
+            identifiers: [`sofabaton_x2_remote_${deviceId}`],
+            name: `X2 \u2192 ${deviceLabel}`,
+            model: "X2",
+            manufacturer: "Sofabaton"
+          }
+        };
+        await this.enqueueMqttPublish(async () => {
+          await this.host.callService("mqtt", "publish", {
+            topic: `homeassistant/device_automation/${uniqueId}/config`,
+            payload: JSON.stringify(config),
+            retain: true
+          });
+          this.discoveryIds.add(uniqueId);
+          await sleep(250);
+        });
+        createdCount += 1;
+      }
+      if (includeActivityTriggers) {
+        const activityTopic = `activity/${macLower}/activity_control_up`;
+        const activityDevice = {
+          identifiers: ["sofabaton_x2_remote_activities"],
+          name: "X2 \u2192 Activities",
+          model: "X2",
+          manufacturer: "Sofabaton"
+        };
+        const activities = this.host.activities();
+        const activityEntries = activities.map((activity) => ({
+          id: activity.id,
+          name: activity.name,
+          state: "on"
+        }));
+        activityEntries.push({
+          id: 255,
+          name: "Powered Off",
+          state: "off"
+        });
+        for (const activity of activityEntries) {
+          const activityId = Number(activity.id);
+          if (!Number.isFinite(activityId)) continue;
+          const payloadObj = { activity_id: activityId, state: activity.state };
+          const uniqueId = `sofabaton_${macLower}_activity_${activityId}`;
+          if (this.discoveryIds.has(uniqueId)) continue;
+          const subtype = `X2 Activity ${activity.name}`;
+          const config = {
+            automation_type: "trigger",
+            type: "button_short_press",
+            subtype,
+            payload: JSON.stringify(payloadObj),
+            topic: activityTopic,
+            device: activityDevice
+          };
+          await this.enqueueMqttPublish(async () => {
+            await this.host.callService("mqtt", "publish", {
+              topic: `homeassistant/device_automation/${uniqueId}/config`,
+              payload: JSON.stringify(config),
+              retain: true
+            });
+            this.discoveryIds.add(uniqueId);
+            await sleep(250);
+          });
+          createdActivityCount += 1;
+        }
+        session.activityTriggersCreated = true;
+      }
+      this.discoveryCreated = true;
+      this.discoveryDeviceId = deviceId;
+      session.discoveryDeviceIds.add(deviceId);
+      if (createdCount > 0 || createdActivityCount > 0) {
+        const activityNote = includeActivityTriggers && createdActivityCount > 0 && createdCount > 0 ? str().assist.plusActivityTriggers(createdActivityCount) : "";
+        const base = createdCount > 0 ? str().assist.createdTriggers(createdCount, deviceLabel) : str().assist.createdActivityTriggers(createdActivityCount);
+        this.setStatus(`${base}${activityNote}`);
+      } else {
+        this.setStatus(str().assist.allTriggersExist(deviceLabel));
+      }
+    } finally {
+      this.discoveryWorking = false;
+      this.host.onChange();
+    }
+  }
+  /** Call from disconnectedCallback (fixes the legacy MQTT subscription leak). */
+  disconnected() {
+    this.unsubscribeMqtt();
+  }
 };
+
+// custom_components/sofabaton_x1s/www/src/sections/wire.ts
+function primaryActionRef(handler) {
+  return n6((el) => {
+    if (!el) return;
+    const node = el;
+    node.__sbTrigger = handler;
+    if (node.__sbActionWired) return;
+    node.__sbActionWired = true;
+    attachPrimaryAction(
+      node,
+      (ev) => node.__sbTrigger?.(ev),
+      {
+        fireHaptic: () => {
+          node.dispatchEvent(
+            new CustomEvent("haptic", {
+              detail: "light",
+              bubbles: true,
+              composed: true
+            })
+          );
+        }
+      }
+    );
+  });
+}
+function listenersRef(wire) {
+  return n6((el) => {
+    if (!el) return;
+    const node = el;
+    if (node.__sbListenersWired) return;
+    node.__sbListenersWired = true;
+    wire(node);
+  });
+}
+
+// custom_components/sofabaton_x1s/www/src/sections/activity-row.ts
+function renderActivityRow(params) {
+  const itemTag = s4(selectItemTagName());
+  const options = params.unavailable ? [] : params.options;
+  const optionObjects = options.map((opt) => ({ value: opt, label: opt }));
+  const wireSelectEvents = listenersRef((el) => {
+    el.addEventListener("selected", params.onSelect);
+    el.addEventListener("change", params.onSelect);
+    selectOpenEvents().forEach((eventName) => {
+      el.addEventListener(eventName, () => params.onMenuOpened(), true);
+    });
+    selectCloseEvents().forEach((eventName) => {
+      el.addEventListener(eventName, () => params.onMenuClosed(), true);
+    });
+    el.addEventListener("change", () => params.onMenuClosed(), true);
+    el.addEventListener("blur", () => params.onMenuClosed(), true);
+  });
+  return b2`
+    <div
+      class="activityRow"
+      style=${params.visible ? "" : "display: none !important;"}
+      ${params.rowRef ? n6(params.rowRef) : A}
+    >
+      <ha-select
+        class="sb-activity-select"
+        .label=${str().card.activitySelectLabel}
+        .hass=${params.hass}
+        .value=${params.unavailable ? "" : selectValueCompat(params.resolvedValue, optionObjects)}
+        .disabled=${params.unavailable || params.disabled}
+        ${wireSelectEvents}
+      >
+        ${optionObjects.map(
+    (option) => u3`
+            <${itemTag} .value=${option.value}>${option.label}</${itemTag}>
+          `
+  )}
+      </ha-select>
+      <div class="loadIndicator${params.loading ? " is-loading" : ""}"></div>
+    </div>
+  `;
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-render-models.ts
+function drawerCommandType(type) {
+  if (type === "macros") return "macro";
+  if (type === "favorites") return "favorite";
+  return "assigned";
+}
+function drawerButtonModel(item, type, fallbackDeviceId) {
+  return {
+    label: item?.name || "Unknown",
+    commandId: Number(item?.command_id ?? item?.id),
+    deviceId: Number(item?.device_id ?? item?.device ?? fallbackDeviceId),
+    icon: item?.icon ? String(item.icon) : null,
+    commandType: drawerCommandType(type)
+  };
+}
+function customFavoriteButtonModel(favorite, fallbackDeviceId) {
+  const commandId = Number(favorite?.command_id);
+  const explicitDeviceId = favorite?.device_id != null ? Number(favorite.device_id) : null;
+  const deviceId = explicitDeviceId != null ? explicitDeviceId : Number(fallbackDeviceId);
+  return {
+    label: String(favorite?.name ?? "Favorite"),
+    icon: favorite?.icon ? String(favorite.icon) : null,
+    action: favorite?.action ?? null,
+    commandId,
+    deviceId
+  };
+}
+function actionButtonModel({
+  label,
+  icon,
+  extraClass = ""
+}) {
+  return {
+    wrapClassName: `macroFavoritesButton ${extraClass}`.trim(),
+    buttonConfig: {
+      type: "button",
+      show_name: true,
+      show_icon: Boolean(icon),
+      name: label || "",
+      icon: icon || void 0,
+      tap_action: {
+        action: "none"
+      },
+      hold_action: { action: "none" },
+      double_tap_action: { action: "none" }
+    }
+  };
+}
+function huiButtonModel({
+  label,
+  icon,
+  extraClass = "",
+  size = "normal"
+}) {
+  return {
+    wrapClassName: `key key--${size} ${extraClass}`.trim(),
+    buttonConfig: {
+      type: "button",
+      show_name: Boolean(label),
+      show_icon: Boolean(icon),
+      name: label || "",
+      icon: icon || void 0,
+      tap_action: {
+        action: "none"
+      },
+      hold_action: { action: "none" },
+      double_tap_action: { action: "none" }
+    }
+  };
+}
+function colorKeyModel(color) {
+  return {
+    wrapClassName: "key key--color",
+    color,
+    buttonConfig: {
+      type: "button",
+      show_name: false,
+      show_icon: false,
+      tap_action: {
+        action: "none"
+      },
+      hold_action: { action: "none" },
+      double_tap_action: { action: "none" }
+    }
+  };
+}
+
+// custom_components/sofabaton_x1s/www/src/components/sb-key-button.ts
+var SbKeyButton = class extends HTMLElement {
+  constructor() {
+    super(...arguments);
+    this._btn = null;
+    this._hass = null;
+    this._syncedHass = null;
+    this._buttonConfig = null;
+    this._configApplied = false;
+    this._color = null;
+    this._sizeVar = null;
+    this._wired = false;
+    /** Called on a (gated) primary action while the host is not .disabled. */
+    this.onTrigger = null;
+  }
+  set buttonConfig(config) {
+    this._buttonConfig = config;
+    if (this._btn && config && !this._configApplied) {
+      this._configApplied = true;
+      this._btn.setConfig?.(config);
+    }
+  }
+  set hass(hass) {
+    this._hass = hass;
+    this.syncHass();
+  }
+  /** Color key accent (adds the colorBar and --sb-color). */
+  set color(value) {
+    this._color = value;
+  }
+  /** CSS var applied to the button's inner text (legacy _applyButtonTextSizing). */
+  set sizeVar(value) {
+    this._sizeVar = value;
+  }
+  syncHass() {
+    if (!this._btn || !this._hass) return;
+    if (this._syncedHass === this._hass) return;
+    this._btn.hass = this._hass;
+    this._syncedHass = this._hass;
+  }
+  connectedCallback() {
+    if (this._wired) {
+      this.syncHass();
+      return;
+    }
+    this._wired = true;
+    if (this._color) {
+      this.style.setProperty("--sb-color", this._color);
+    }
+    const btn = document.createElement("hui-button-card");
+    this._btn = btn;
+    if (this._hass) {
+      btn.hass = this._hass;
+      this._syncedHass = this._hass;
+    }
+    if (this._buttonConfig && !this._configApplied) {
+      this._configApplied = true;
+      btn.setConfig?.(this._buttonConfig);
+    }
+    this.appendChild(btn);
+    if (this._color) {
+      const bar = document.createElement("div");
+      bar.className = "colorBar";
+      this.appendChild(bar);
+    }
+    attachPrimaryAction([this, btn], (ev) => {
+      if (this.classList.contains("disabled")) return;
+      this.onTrigger?.(ev);
+    }, {
+      fireHaptic: () => {
+        this.dispatchEvent(
+          new CustomEvent("haptic", {
+            detail: "light",
+            bubbles: true,
+            composed: true
+          })
+        );
+      }
+    });
+    if (this._sizeVar) {
+      applyButtonTextSizing(btn, this._sizeVar);
+    }
+  }
+};
+function applyButtonTextSizing(btn, sizeVar) {
+  const apply = (attempt = 0) => {
+    const root = btn?.shadowRoot;
+    if (!root) return;
+    const value = `var(${sizeVar})`;
+    const card = root.querySelector("ha-card");
+    const name = root.querySelector(".name");
+    const label = root.querySelector(".label");
+    const state = root.querySelector(".state");
+    if (card) card.style.setProperty("font-size", value);
+    if (name) name.style.fontSize = value;
+    if (label) label.style.fontSize = value;
+    if (state) state.style.fontSize = value;
+    if (!name && !label && !state && attempt < 2) {
+      requestAnimationFrame(() => apply(attempt + 1));
+    }
+  };
+  if (btn?.updateComplete && typeof btn.updateComplete.then === "function") {
+    void btn.updateComplete.then(() => apply());
+  } else {
+    requestAnimationFrame(() => apply());
+  }
+}
+if (!customElements.get("sb-key-button")) {
+  customElements.define("sb-key-button", SbKeyButton);
+}
+
+// custom_components/sofabaton_x1s/www/src/sections/key-groups.ts
+var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
+  ID.C,
+  ID.B,
+  ID.A,
+  ID.EXIT,
+  ID.DVR,
+  ID.PLAY,
+  ID.GUIDE
+]);
+var dpadKeys = () => [
+  { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
+  { key: "left", id: ID.LEFT, cmd: ID.LEFT, label: "", icon: "mdi:chevron-left", extraClass: "area-left" },
+  { key: "ok", id: ID.OK, cmd: ID.OK, label: str().keys.ok, icon: "", extraClass: "area-ok okKey", size: "big" },
+  { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
+  { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" }
+];
+var navKeys = () => [
+  { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
+  { key: "home", id: ID.HOME, cmd: ID.HOME, label: "", icon: "mdi:home" },
+  { key: "menu", id: ID.MENU, cmd: ID.MENU, label: "", icon: "mdi:menu" }
+];
+var midKeys = () => [
+  { key: "volup", id: ID.VOL_UP, cmd: ID.VOL_UP, label: "", icon: "mdi:volume-plus", extraClass: "mid-btn mid-btn-volup" },
+  { key: "voldn", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN, label: "", icon: "mdi:volume-minus", extraClass: "mid-btn mid-btn-voldn" },
+  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "Guide", icon: "", extraClass: "mid-btn mid-btn-guide" },
+  { key: "mute", id: ID.MUTE, cmd: ID.MUTE, label: "", icon: "mdi:volume-mute", extraClass: "mid-btn mid-btn-mute" },
+  { key: "chup", id: ID.CH_UP, cmd: ID.CH_UP, label: "", icon: "mdi:chevron-up", extraClass: "mid-btn mid-btn-chup" },
+  { key: "chdn", id: ID.CH_DOWN, cmd: ID.CH_DOWN, label: "", icon: "mdi:chevron-down", extraClass: "mid-btn mid-btn-chdn" }
+];
+var mediaKeys = () => [
+  { key: "rew", id: ID.REW, cmd: ID.REW, label: "", icon: "mdi:rewind", extraClass: "area-rew" },
+  { key: "play", id: ID.PLAY, cmd: ID.PLAY, label: "", icon: "mdi:play", extraClass: "area-play" },
+  { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
+  { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
+  { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+];
+var colorKeys = () => [
+  { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
+  { key: "green", id: ID.GREEN, cmd: ID.GREEN, label: "", icon: "", color: "#388e3c" },
+  { key: "yellow", id: ID.YELLOW, cmd: ID.YELLOW, label: "", icon: "", color: "#fbc02d" },
+  { key: "blue", id: ID.BLUE, cmd: ID.BLUE, label: "", icon: "", color: "#1976d2" }
+];
+var abcKeys = () => [
+  { key: "a", id: ID.A, cmd: ID.A, label: "A", icon: "", size: "small" },
+  { key: "b", id: ID.B, cmd: ID.B, label: "B", icon: "", size: "small" },
+  { key: "c", id: ID.C, cmd: ID.C, label: "C", icon: "", size: "small" }
+];
+var groupStyle = (visible) => visible ? "" : "display: none !important;";
+function renderKey(params, spec) {
+  const isX2Only = X2_ONLY_KEY_IDS.has(spec.id);
+  const layoutVisible = params.buttonVisibility && spec.key in params.buttonVisibility ? params.buttonVisibility[spec.key] : true;
+  const shouldShow = isX2Only ? params.isX2 && layoutVisible : layoutVisible;
+  const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
+  const model = spec.color ? colorKeyModel(spec.color) : huiButtonModel({
+    label: spec.label,
+    icon: spec.icon,
+    extraClass: spec.extraClass ?? "",
+    size: spec.size ?? "normal"
+  });
+  return b2`
+    <sb-key-button
+      class="${model.wrapClassName}${enabled ? "" : " disabled"}"
+      style=${shouldShow ? "" : "display: none !important;"}
+      .buttonConfig=${model.buttonConfig}
+      .color=${spec.color ?? null}
+      .sizeVar=${spec.color ? null : "--sb-key-font-size"}
+      .hass=${params.hass}
+      .onTrigger=${() => params.onKeyPress(spec)}
+    ></sb-key-button>
+  `;
+}
+function renderDpad(params, visible) {
+  return b2`<div class="dpad" style=${groupStyle(visible)}>${dpadKeys().map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderNavRow(params, visible) {
+  return b2`<div class="row3" style=${groupStyle(visible)}>${navKeys().map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderMid(params, visible) {
+  const midState = midModeState({
+    showVolume: params.showVolume,
+    showChannel: params.showChannel,
+    isX2: params.isX2
+  });
+  const className = [
+    "mid",
+    ...Object.entries(midState.classMap).filter(([, on]) => on).map(([name]) => name)
+  ].join(" ");
+  return b2`<div class=${className} style=${groupStyle(visible)}>${midKeys().map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderMedia(params, visible) {
+  const mediaState = mediaModeState({
+    isX2: params.isX2,
+    showMedia: params.showMedia,
+    showDvr: params.showDvr
+  });
+  const className = [
+    "media",
+    ...Object.entries(mediaState.classMap).filter(([, on]) => on).map(([name]) => name)
+  ].join(" ");
+  return b2`<div class=${className} style=${groupStyle(visible)}>${mediaKeys().map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderColors(params, visible) {
+  return b2`
+    <div class="colors" style=${groupStyle(visible)}>
+      <div class="colorsGrid">${colorKeys().map((k2) => renderKey(params, k2))}</div>
+    </div>
+  `;
+}
+function renderAbc(params, visible) {
+  return b2`
+    <div class="abc" style=${groupStyle(visible)}>
+      <div class="abcGrid">${abcKeys().map((k2) => renderKey(params, k2))}</div>
+    </div>
+  `;
+}
+
+// custom_components/sofabaton_x1s/www/src/sections/macro-favorites.ts
+function renderDrawerButton(params, item, type) {
+  const model = drawerButtonModel(item, type, params.currentActivityId);
+  return b2`
+    <ha-card
+      class="drawer-btn"
+      role="button"
+      tabindex="0"
+      ${primaryActionRef(() => {
+    if (!Number.isFinite(model.commandId) || !Number.isFinite(model.deviceId)) return;
+    params.onDrawerItem({ model, itemType: type, rawItem: item });
+  })}
+    >
+      <div class="drawer-btn__inner drawer-btn__inner--stack">
+        ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
+        <div class="name">${model.label}</div>
+      </div>
+    </ha-card>
+  `;
+}
+function renderCustomFavoriteButton(params, favorite) {
+  const model = customFavoriteButtonModel(favorite, params.currentActivityId);
+  return b2`
+    <ha-card
+      class="drawer-btn drawer-btn--custom"
+      role="button"
+      tabindex="0"
+      style="grid-column: 1 / -1;"
+      ${primaryActionRef(() => params.onCustomFavorite({ model, rawFavorite: favorite }))}
+    >
+      <div class="drawer-btn__inner drawer-btn__inner--row">
+        ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
+        <div class="name">${model.label}</div>
+      </div>
+    </ha-card>
+  `;
+}
+function renderFavoritesItems(params) {
+  return [
+    ...params.customFavorites.map((fav) => renderCustomFavoriteButton(params, fav)),
+    ...params.favorites.map((fav) => renderDrawerButton(params, fav, "favorites"))
+  ];
+}
+function renderTab(params, label, visible, active, disabled, onClick) {
+  const model = actionButtonModel({ label });
+  const classes = [
+    "macroFavoritesButton",
+    ...active ? ["active-tab"] : [],
+    ...disabled ? ["disabled"] : []
+  ].join(" ");
+  return b2`
+    <sb-key-button
+      class=${classes}
+      style=${visible ? "" : "display: none !important;"}
+      .buttonConfig=${model.buttonConfig}
+      .sizeVar=${"--sb-tab-font-size"}
+      .hass=${params.hass}
+      .onTrigger=${onClick}
+    ></sb-key-button>
+  `;
+}
+function rowRadiusStyle(anyOpen, up) {
+  const r6 = "var(--sb-group-radius)";
+  return [
+    `border-top-left-radius: ${anyOpen && up ? "0" : r6}`,
+    `border-top-right-radius: ${anyOpen && up ? "0" : r6}`,
+    `border-bottom-left-radius: ${anyOpen && !up ? "0" : r6}`,
+    `border-bottom-right-radius: ${anyOpen && !up ? "0" : r6}`,
+    "transition: border-radius 0.2s ease"
+  ].join("; ");
+}
+function renderMacroFavorites(params) {
+  const isMacro = params.activeDrawer === "macros";
+  const isFav = params.activeDrawer === "favorites";
+  const anyOpen = isMacro || isFav;
+  const setRef = (r6) => r6 ? n6(r6) : A;
+  return b2`
+    <div
+      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
+      style=${params.visible ? "" : "display: none !important;"}
+      ${setRef(params.containerRef)}
+    >
+      <div
+        class="macroFavorites"
+        style=${rowRadiusStyle(anyOpen, params.drawerUp)}
+        ${setRef(params.rowRef)}
+      >
+        <div class="macroFavoritesGrid${params.single ? " single" : ""}">
+          ${renderTab(
+    params,
+    str().card.macrosTab,
+    params.showMacrosButton,
+    isMacro,
+    params.macrosDisabled,
+    params.onToggleMacros
+  )}
+          ${renderTab(
+    params,
+    str().card.favoritesTab,
+    params.showFavoritesButton,
+    isFav,
+    params.favoritesDisabled,
+    params.onToggleFavorites
+  )}
+        </div>
+      </div>
+      <div
+        class="mf-overlay mf-overlay--macros${isMacro ? " open" : ""}"
+        ${setRef(params.macrosOverlayRef)}
+      >
+        <div class="mf-grid">
+          ${params.macros.map((macro) => renderDrawerButton(params, macro, "macros"))}
+        </div>
+      </div>
+      <div
+        class="mf-overlay mf-overlay--favorites${isFav ? " open" : ""}"
+        ${setRef(params.favoritesOverlayRef)}
+      >
+        <div class="mf-grid">${renderFavoritesItems(params)}</div>
+      </div>
+    </div>
+  `;
+}
+function renderInlineDrawerRow(params) {
+  return b2`
+    <div
+      class="inline-drawer-row inline-drawer-row--${params.kind}"
+      style=${params.visible ? "" : "display: none !important;"}
+    >
+      <div
+        class="inline-drawer-row__scroller"
+        style="--inline-row-visible-rows: ${params.visibleRows};"
+      >
+        <div class="inline-drawer-row__grid mf-grid">
+          ${params.items.length ? params.items : b2`
+                <div class="inline-drawer-row__empty" style="grid-column: 1 / -1;">
+                  ${params.emptyText}
+                </div>
+              `}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// custom_components/sofabaton_x1s/www/src/sections/assist.ts
+function renderAssistRow(params) {
+  return b2`
+    <div
+      class="automationAssist"
+      style=${params.visible ? "" : "display: none !important;"}
+    >
+      <div class="automationAssist__header">
+        <div class="automationAssist__label">${str().assist.label}</div>
+      </div>
+      <div class="automationAssist__status">${params.controller.statusText()}</div>
+    </div>
+  `;
+}
+function renderAssistModal(params) {
+  const controller = params.controller;
+  const view = controller.modalViewState();
+  const onBackdropClick = (ev) => {
+    if (ev.target === ev.currentTarget) controller.closeMqttModal();
+  };
+  return b2`
+    <div
+      class="sb-modal${view.open ? " open" : ""}"
+      role="dialog"
+      aria-modal="true"
+      @click=${onBackdropClick}
+    >
+      <div class="sb-modal__dialog">
+        <div class="sb-modal__header">
+          <div class="sb-modal__title">${str().assist.deviceDetectedTitle}</div>
+          <button
+            type="button"
+            class="sb-modal__close"
+            aria-label=${str().assist.close}
+            @click=${() => controller.closeMqttModal()}
+          >
+            ✕
+          </button>
+        </div>
+        <div class="sb-modal__body">
+          <div class="sb-modal__text">${view.text}</div>
+        </div>
+        <div class="sb-modal__actions">
+          <label
+            class="sb-modal__optout"
+            style=${view.showActivityRow ? "" : "display: none !important;"}
+          >
+            <input
+              type="checkbox"
+              .checked=${controller.modalActivityChecked}
+              @change=${(ev) => controller.setModalActivityChecked(
+    Boolean(ev.target.checked)
+  )}
+            />
+            <span>${str().assist.alsoActivityTriggers}</span>
+          </label>
+          <a
+            class="sb-modal__link"
+            href=${`https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            ${str().assist.seeDocs}
+          </a>
+          <button
+            type="button"
+            class="automationAssist__startBtn automationAssist__mqttBtn${view.createDisabled ? " disabled" : ""}"
+            .disabled=${view.createDisabled}
+            style=${view.showCreate ? "" : "display: none !important;"}
+            ${primaryActionRef(() => void controller.createTriggers())}
+          >
+            ${view.createLabel}
+          </button>
+          <label class="sb-modal__optout">
+            <input
+              type="checkbox"
+              @change=${(ev) => {
+    if (ev.target.checked) {
+      controller.setModalOptOut(true);
+    }
+  }}
+            />
+            <span>${str().assist.dontShowAgain}</span>
+          </label>
+          <button
+            type="button"
+            class="automationAssist__startBtn"
+            style=${view.showStart ? "" : "display: none !important;"}
+            ${primaryActionRef(() => controller.setActive(true))}
+          >
+            ${str().assist.startCapturing}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// custom_components/sofabaton_x1s/www/src/remote-card-element.ts
+var SofabatonRemoteCard = class extends i4 {
+  constructor() {
+    super();
+    this._haElementsReady = false;
+    this._editMode = false;
+    // Imperative-edge state (mirrors the legacy fields)
+    this._drawerUp = false;
+    this._drawerResetTimer = null;
+    this._appliedThemeVars = [];
+    this._appliedThemeKey = null;
+    this._lastGroupRadius = null;
+    this._layoutSignatureCache = null;
+    this._layoutOverlayEl = null;
+    this._lastLayoutSignature = null;
+    // Activity select dedupe (legacy handleActivitySelect closure state)
+    this._lastSelectedActivityValue = null;
+    this._lastSelectedActivityAt = 0;
+    this._onOutsidePointerDown = null;
+    this._onResize = null;
+    this._onPreviewActivity = null;
+    this._cardRef = e5();
+    this._wrapRef = e5();
+    this._layoutContainerRef = e5();
+    this._activityRowRef = e5();
+    this._mfContainerRef = e5();
+    this._macrosOverlayRef = e5();
+    this._favoritesOverlayRef = e5();
+    this._macroFavoritesRowRef = e5();
+    this._store = new RemoteCardStore(
+      () => this.requestUpdate(),
+      {
+        fireEvent: (type, detail) => this._fireEvent(type, detail),
+        onHubQueueDrained: () => {
+          this._assist.syncMqtt();
+          this.requestUpdate();
+        }
+      }
+    );
+    this._assist = new AutomationAssistController({
+      getHass: () => this._store.hass,
+      assistEnabled: () => this._store.automationAssistEnabled(),
+      entityId: () => String(this._store.config?.entity ?? ""),
+      isEditMode: () => this._editMode,
+      isX2: () => this._store.isX2(),
+      isHubIntegration: () => this._store.isHubIntegration(),
+      hubMacAttribute: () => this._store.remoteState()?.attributes?.hub_mac,
+      hubQueueIdle: () => this._store.hubQueueIdle(),
+      requestHubBasicData: () => this._store.hubRequestBasicData(),
+      activities: () => this._store.activities(),
+      activityNameForId: (id) => this._store.activityNameForId(id),
+      currentActivityId: () => this._store.currentActivityId(),
+      currentActivityLabel: () => this._store.currentActivityLabel(),
+      resolveCommandDeviceId: (commandId, deviceId) => this._store.resolveCommandDeviceId(commandId, deviceId),
+      callService: (domain, service, data) => this._store.callService(domain, service, data),
+      onChange: () => this.requestUpdate()
+    });
+    void ensureHaElements().then(() => {
+      this._haElementsReady = true;
+      this.requestUpdate();
+    });
+  }
+  // ---------- HA card API ----------
+  setConfig(config) {
+    this._store.setConfig(config);
+    this._assist.resetActivityBaseline();
+    this._drawerUp = false;
+    if (this._drawerResetTimer) clearTimeout(this._drawerResetTimer);
+  }
+  set hass(hass) {
+    setRemoteCardLanguage(
+      hass?.locale?.language ?? hass?.language
+    );
+    this._store.setHass(hass);
+  }
+  get hass() {
+    return this._store.hass;
+  }
+  set editMode(value) {
+    this._editMode = !!value;
+    this._store.setEditMode(this._editMode);
+    if (this._editMode && this._assist.active) {
+      this._assist.setActive(false);
+    }
+  }
+  get editMode() {
+    return this._editMode;
+  }
+  getCardSize() {
+    return 12;
+  }
+  static getConfigElement() {
+    return document.createElement(EDITOR);
+  }
+  static getStubConfig() {
+    return {
+      entity: "",
+      theme: "",
+      background_override: null,
+      show_activity: true,
+      show_dpad: true,
+      show_nav: true,
+      show_mid: true,
+      show_volume: true,
+      show_channel: true,
+      show_media: true,
+      show_dvr: true,
+      show_colors: true,
+      show_abc: true,
+      show_automation_assist: false,
+      show_macros_button: null,
+      show_favorites_button: null,
+      custom_favorites: [],
+      max_width: 360,
+      shrink: 0,
+      group_order: DEFAULT_GROUP_ORDER.slice()
+    };
+  }
+  // ---------- lifecycle ----------
+  connectedCallback() {
+    super.connectedCallback();
+    this._store.connected();
+    this._installOutsideCloseHandler();
+    if (!this._onResize) {
+      this._onResize = () => {
+        if (!this._store.activeDrawer) return;
+        this._updateDrawerDirection();
+        this._syncLayering();
+      };
+    }
+    window.addEventListener("resize", this._onResize, { passive: true });
+    if (!this._onPreviewActivity) {
+      this._onPreviewActivity = (event) => {
+        const detail = event?.detail || {};
+        const entity = this._store.config?.entity;
+        if (detail.entity && entity && detail.entity !== entity) return;
+        this._store.setPreviewActivity(detail.previewActivity ?? "");
+        if (this._editMode) {
+          this.requestUpdate();
+        }
+      };
+    }
+    window.addEventListener("sofabaton-preview-activity", this._onPreviewActivity);
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._removeOutsideCloseHandler();
+    if (this._onResize) {
+      window.removeEventListener("resize", this._onResize);
+      this._onResize = null;
+    }
+    if (this._onPreviewActivity) {
+      window.removeEventListener("sofabaton-preview-activity", this._onPreviewActivity);
+    }
+    if (this._drawerResetTimer) clearTimeout(this._drawerResetTimer);
+    this._store.disconnected();
+    this._assist.disconnected();
+  }
+  _fireEvent(type, detail = {}) {
+    this.dispatchEvent(
+      new CustomEvent(type, { detail, bubbles: true, composed: true })
+    );
+  }
+  // ---------- outside close (drawers + activity menu) ----------
+  _installOutsideCloseHandler() {
+    if (this._onOutsidePointerDown) return;
+    this._onOutsidePointerDown = (e6) => {
+      const path = typeof e6.composedPath === "function" ? e6.composedPath() : [];
+      if (this._store.activeDrawer) {
+        const clickedInOverlay = this._macrosOverlayRef.value && path.includes(this._macrosOverlayRef.value) || this._favoritesOverlayRef.value && path.includes(this._favoritesOverlayRef.value);
+        const clickedInToggleRow = this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
+        if (!(clickedInOverlay || clickedInToggleRow)) {
+          this._store.activeDrawer = null;
+          this._scheduleDrawerDirectionReset();
+          this._syncLayering();
+          this.requestUpdate();
+        }
+      }
+      if (this._store.activityMenuOpen) {
+        const clickedInActivity = this._activityRowRef.value && path.includes(this._activityRowRef.value);
+        if (!clickedInActivity) {
+          this._store.activityMenuOpen = false;
+          this._syncLayering();
+        }
+      }
+    };
+    document.addEventListener("pointerdown", this._onOutsidePointerDown, true);
+  }
+  _removeOutsideCloseHandler() {
+    if (!this._onOutsidePointerDown) return;
+    document.removeEventListener("pointerdown", this._onOutsidePointerDown, true);
+    this._onOutsidePointerDown = null;
+  }
+  // ---------- drawers ----------
+  _toggleDrawer(type) {
+    this._store.activeDrawer = this._store.activeDrawer === type ? null : type;
+    if (this._store.activeDrawer) {
+      this._updateDrawerDirection();
+    } else {
+      this._scheduleDrawerDirectionReset();
+    }
+    this._syncLayering();
+    this.requestUpdate();
+  }
+  _updateDrawerDirection() {
+    if (!this._store.activeDrawer) return;
+    const row = this._macroFavoritesRowRef.value;
+    const overlay = this._store.activeDrawer === "favorites" ? this._favoritesOverlayRef.value : this._macrosOverlayRef.value;
+    if (!row || !overlay) return;
+    const rowRect = row.getBoundingClientRect();
+    const cardRect = this._cardRef.value && typeof this._cardRef.value.getBoundingClientRect === "function" ? this._cardRef.value.getBoundingClientRect() : null;
+    const nextUp = drawerDirection({
+      desired: drawerDesiredHeight(overlay.scrollHeight || 0),
+      rowTop: rowRect.top,
+      rowBottom: rowRect.bottom,
+      cardTop: cardRect?.top ?? null,
+      cardBottom: cardRect?.bottom ?? null,
+      viewportHeight: window.innerHeight
+    }) === "up";
+    if (nextUp !== this._drawerUp) {
+      this._drawerUp = nextUp;
+      this.requestUpdate();
+    }
+  }
+  _scheduleDrawerDirectionReset() {
+    if (this._drawerResetTimer) clearTimeout(this._drawerResetTimer);
+    this._drawerResetTimer = setTimeout(() => {
+      if (this._store.activeDrawer) return;
+      if (this._drawerUp) {
+        this._drawerUp = false;
+        this.requestUpdate();
+      }
+    }, DRAWER_DIRECTION_RESET_MS);
+  }
+  _syncLayering() {
+    const activityRow = this._activityRowRef.value;
+    const mfContainer = this._mfContainerRef.value;
+    if (!activityRow || !mfContainer) return;
+    const z2 = layeringZIndexes(
+      Boolean(this._store.activityMenuOpen),
+      Boolean(this._store.activeDrawer)
+    );
+    activityRow.style.zIndex = z2.activity;
+    mfContainer.style.zIndex = z2.drawer;
+  }
+  // ---------- activity select ----------
+  _handleActivitySelect(ev) {
+    if (this._editMode) return;
+    const select = ev.target;
+    const value = ev?.detail?.value ?? select?.value;
+    if (value == null) return;
+    const now = Date.now();
+    if (String(value) === this._lastSelectedActivityValue && now - this._lastSelectedActivityAt < 250) {
+      return;
+    }
+    this._lastSelectedActivityValue = String(value);
+    this._lastSelectedActivityAt = now;
+    this._fireEvent("haptic", "light");
+    Promise.resolve(this._store.setActivity(value)).catch((err) => {
+      console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
+    });
+  }
+  // ---------- theming (imperative, on the ha-card like the legacy) ----------
+  _applyLocalTheme(themeName) {
+    const root = this._cardRef.value;
+    const hass = this._store.hass;
+    if (!root || !hass) return;
+    const bgOverrideCss = rgbToCss(this._store.config?.background_override);
+    const appliedKey = `${themeName || ""}||${bgOverrideCss}`;
+    if (this._appliedThemeKey === appliedKey) return;
+    for (const cssVar of this._appliedThemeVars) {
+      root.style.removeProperty(cssVar);
+    }
+    this._appliedThemeVars = [];
+    this._appliedThemeKey = appliedKey;
+    this._lastGroupRadius = null;
+    let vars = null;
+    if (themeName) {
+      const def = hass.themes?.themes?.[themeName];
+      if (def && typeof def === "object") {
+        vars = def;
+        const defWithModes = def;
+        if (defWithModes.modes && typeof defWithModes.modes === "object") {
+          const mode = hass.themes?.darkMode ? "dark" : "light";
+          vars = { ...def, ...defWithModes.modes?.[mode] || {} };
+          delete vars.modes;
+        }
+        for (const [k2, v3] of Object.entries(vars)) {
+          if (v3 == null || typeof v3 !== "string" && typeof v3 !== "number") continue;
+          const cssVar = k2.startsWith("--") ? k2 : `--${k2}`;
+          root.style.setProperty(cssVar, String(v3));
+          this._appliedThemeVars.push(cssVar);
+        }
+      }
+    }
+    const themeBg = vars?.["ha-card-background"] ?? vars?.["card-background-color"] ?? vars?.["ha-card-background-color"] ?? vars?.["primary-background-color"] ?? null;
+    const finalBg = bgOverrideCss || themeBg;
+    if (finalBg) {
+      root.style.setProperty("--ha-card-background", String(finalBg));
+      root.style.setProperty("--card-background-color", String(finalBg));
+      root.style.setProperty("--ha-card-background-color", String(finalBg));
+      root.style.setProperty("background", String(finalBg));
+      root.style.setProperty("background-color", String(finalBg));
+      this._appliedThemeVars.push(
+        "--ha-card-background",
+        "--card-background-color",
+        "--ha-card-background-color",
+        "background",
+        "background-color"
+      );
+    } else {
+      root.style.removeProperty("background");
+      root.style.removeProperty("background-color");
+    }
+  }
+  _updateGroupRadius() {
+    const root = this._cardRef.value;
+    if (!root) return;
+    const cs = getComputedStyle(root);
+    const candidates = [
+      "--ha-card-border-radius",
+      "--ha-control-border-radius",
+      "--mdc-shape-medium",
+      "--mdc-shape-small",
+      "--mdc-shape-large"
+    ];
+    let radius = "";
+    for (const name of candidates) {
+      const v3 = (cs.getPropertyValue(name) || "").trim();
+      if (v3) {
+        radius = v3;
+        break;
+      }
+    }
+    if (!radius) radius = "18px";
+    if (this._lastGroupRadius === radius) return;
+    this._lastGroupRadius = radius;
+    root.style.setProperty("--sb-group-radius", radius);
+    if (!this._appliedThemeVars.includes("--sb-group-radius")) {
+      this._appliedThemeVars.push("--sb-group-radius");
+    }
+  }
+  _applyHostSizing() {
+    const mw = this._store.config?.max_width;
+    if (mw == null || mw === "" || mw === 0) {
+      this.style.removeProperty("--remote-max-width");
+    } else if (typeof mw === "number" && Number.isFinite(mw) && mw > 0) {
+      this.style.setProperty("--remote-max-width", `${mw}px`);
+    } else if (typeof mw === "string" && mw.trim()) {
+      this.style.setProperty("--remote-max-width", mw.trim());
+    }
+    const shrink = this._store.config?.shrink;
+    const shrinkNum = typeof shrink === "number" ? shrink : typeof shrink === "string" ? Number(shrink) : 0;
+    if (!Number.isFinite(shrinkNum) || shrinkNum <= 0) {
+      this.style.removeProperty("--remote-zoom");
+    } else {
+      const z2 = Math.max(0.1, Math.min(1, 1 - shrinkNum / 100));
+      this.style.setProperty("--remote-zoom", String(z2));
+    }
+  }
+  // ---------- layout-change crossfade ----------
+  _prefersReducedMotion() {
+    return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+  _clearLayoutOverlay() {
+    if (this._layoutOverlayEl) {
+      this._layoutOverlayEl.remove();
+      this._layoutOverlayEl = null;
+    }
+  }
+  _maybeAnimateLayoutChange(nextSignature) {
+    const layoutContainer = this._layoutContainerRef.value;
+    const wrap = this._wrapRef.value;
+    if (!layoutContainer || !wrap) return;
+    if (this._layoutSignatureCache == null) {
+      this._layoutSignatureCache = nextSignature;
+      return;
+    }
+    if (this._layoutSignatureCache === nextSignature) return;
+    this._layoutSignatureCache = nextSignature;
+    if (this._prefersReducedMotion()) {
+      this._clearLayoutOverlay();
+      return;
+    }
+    const wrapRect = wrap.getBoundingClientRect();
+    const layoutRect = layoutContainer.getBoundingClientRect();
+    if (!wrapRect.width || !layoutRect.width) return;
+    this._clearLayoutOverlay();
+    const overlay = document.createElement("div");
+    overlay.className = "layout-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.top = `${layoutRect.top - wrapRect.top}px`;
+    overlay.style.left = `${layoutRect.left - wrapRect.left}px`;
+    overlay.style.width = `${layoutRect.width}px`;
+    overlay.style.height = `${layoutRect.height}px`;
+    overlay.appendChild(layoutContainer.cloneNode(true));
+    wrap.appendChild(overlay);
+    this._layoutOverlayEl = overlay;
+    const cleanup = () => {
+      if (this._layoutOverlayEl === overlay) {
+        overlay.remove();
+        this._layoutOverlayEl = null;
+      }
+    };
+    overlay.addEventListener(
+      "transitionend",
+      (ev) => {
+        if (ev.target === overlay) cleanup();
+      },
+      { once: true }
+    );
+    requestAnimationFrame(() => {
+      overlay.classList.add("layout-overlay--fade");
+    });
+    setTimeout(cleanup, 320);
+  }
+  // ---------- render ----------
+  render() {
+    if (!this._haElementsReady || !this._store.config || !this._store.hass) {
+      return A;
+    }
+    const store = this._store;
+    const derived = store.deriveRuntimeState();
+    const layoutConfig = derived.layoutConfig;
+    this._lastLayoutSignature = derived.layoutSignature;
+    this._assist.observeActivityState({
+      currentLabel: derived.currentLabel,
+      activityId: derived.activityId != null ? Number(derived.activityId) : null,
+      unavailable: derived.isUnavailable
+    });
+    if (!store.automationAssistEnabled() && this._assist.active) {
+      this._assist.setActive(false);
+    }
+    this._assist.syncMqtt();
+    const asRows = mfAsRows(layoutConfig);
+    const macrosVisible = macrosButtonEnabled(layoutConfig);
+    const favoritesVisible = favoritesButtonEnabled(layoutConfig);
+    const macrosRowOn = asRows && macrosVisible;
+    const favoritesRowOn = asRows && favoritesVisible;
+    const showMacrosBtn = !asRows && macrosVisible;
+    const showFavoritesBtn = !asRows && favoritesVisible;
+    const disableAll = derived.isUnavailable || store.activityLoadingActive() || !this._editMode && derived.isPoweredOff;
+    const drawerDisplayState = drawerVisibilityState({
+      activeDrawer: store.activeDrawer,
+      showMacrosButton: showMacrosBtn,
+      showFavoritesButton: showFavoritesBtn,
+      editMode: this._editMode,
+      macros: derived.macros,
+      favorites: derived.favorites,
+      customFavorites: derived.customFavorites,
+      disableAllButtons: disableAll
+    });
+    if (drawerDisplayState.closedByVisibility) {
+      this._scheduleDrawerDirectionReset();
+    }
+    store.activeDrawer = drawerDisplayState.nextActiveDrawer;
+    const keyParams = {
+      hass: store.hass,
+      isX2: derived.isX2,
+      buttonVisibility: runtimeButtonVisibility({
+        isX2: derived.isX2,
+        showVolume: derived.showVolume,
+        showChannel: derived.showChannel,
+        showMedia: derived.showMedia,
+        showDvr: derived.showDvr
+      }),
+      disableAll,
+      editMode: this._editMode,
+      isEnabled: (id) => store.isEnabled(id),
+      onKeyPress: (spec) => this._onKeyPress(spec),
+      showVolume: derived.showVolume,
+      showChannel: derived.showChannel,
+      showMedia: derived.showMedia,
+      showDvr: derived.showDvr
+    };
+    const mfParams = {
+      hass: store.hass,
+      visible: drawerDisplayState.showMF,
+      showMacrosButton: showMacrosBtn,
+      showFavoritesButton: showFavoritesBtn,
+      single: drawerDisplayState.visibleCount === 1,
+      macrosDisabled: drawerDisplayState.macrosDisabled,
+      favoritesDisabled: drawerDisplayState.favoritesDisabled,
+      activeDrawer: store.activeDrawer,
+      drawerUp: this._drawerUp,
+      macros: derived.macros,
+      favorites: derived.favorites,
+      customFavorites: derived.customFavorites,
+      currentActivityId: store.currentActivityId(),
+      containerRef: this._mfContainerRef,
+      rowRef: this._macroFavoritesRowRef,
+      macrosOverlayRef: this._macrosOverlayRef,
+      favoritesOverlayRef: this._favoritesOverlayRef,
+      onToggleMacros: () => this._toggleDrawer("macros"),
+      onToggleFavorites: () => this._toggleDrawer("favorites"),
+      onDrawerItem: ({ model, itemType, rawItem }) => {
+        this._assist.recordClick({
+          label: model.label,
+          commandId: model.commandId,
+          deviceId: model.deviceId,
+          commandType: model.commandType,
+          icon: model.icon
+        });
+        store.triggerCommandPulse();
+        void store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem);
+      },
+      onCustomFavorite: ({ model, rawFavorite }) => {
+        if (this._assist.active) {
+          this._assist.setStatus(str().assist.notCaptured);
+        }
+        if (model.action) {
+          void store.runLovelaceAction(model.action, rawFavorite);
+          return;
+        }
+        if (!Number.isFinite(model.commandId) || !Number.isFinite(model.deviceId)) {
+          return;
+        }
+        store.triggerCommandPulse();
+        void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
+      }
+    };
+    const sharedRows = mfRowVisibleRows(layoutConfig);
+    const midEnabled = (layoutConfig.show_mid ?? true) && (derived.showVolume || derived.showChannel);
+    const mediaEnabled = derived.isX2 ? derived.showMedia || derived.showDvr : derived.showMedia;
+    const order = store.groupOrderList(derived.activityId);
+    const groupTemplates = {
+      activity: () => renderActivityRow({
+        hass: store.hass,
+        visible: Boolean(layoutConfig.show_activity),
+        unavailable: derived.isUnavailable,
+        options: derived.selectState?.options ?? [],
+        resolvedValue: derived.selectState?.resolvedValue ?? "",
+        disabled: Boolean(derived.selectState?.disabled),
+        loading: store.isLoadingActive(),
+        onSelect: (ev) => this._handleActivitySelect(ev),
+        onMenuOpened: () => {
+          store.activityMenuOpen = true;
+          this._syncLayering();
+        },
+        onMenuClosed: () => {
+          store.activityMenuOpen = false;
+          this._syncLayering();
+        },
+        rowRef: this._activityRowRef
+      }),
+      macro_favorites: () => renderMacroFavorites(mfParams),
+      macros_row: () => renderInlineDrawerRow({
+        kind: "macros",
+        visible: macrosRowOn,
+        visibleRows: sharedRows,
+        items: macrosRowOn ? derived.macros.map((m3) => renderDrawerButton(mfParams, m3, "macros")) : [],
+        emptyText: str().card.noMacros
+      }),
+      favorites_row: () => renderInlineDrawerRow({
+        kind: "favorites",
+        visible: favoritesRowOn,
+        visibleRows: sharedRows,
+        items: favoritesRowOn ? [
+          ...derived.customFavorites.map(
+            (f4) => renderCustomFavoriteButton(mfParams, f4)
+          ),
+          ...derived.favorites.map(
+            (f4) => renderDrawerButton(mfParams, f4, "favorites")
+          )
+        ] : [],
+        emptyText: str().card.noFavorites
+      }),
+      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad)),
+      nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
+      mid: () => renderMid(keyParams, midEnabled),
+      media: () => renderMedia(keyParams, mediaEnabled),
+      colors: () => renderColors(keyParams, Boolean(layoutConfig.show_colors)),
+      abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2)
+    };
+    const warnText = derived.isUnavailable ? str().card.remoteUnavailable : derived.noActivitiesMessage;
+    return b2`
+      <ha-card ${n6(this._cardRef)}>
+        ${renderAssistModal({ visible: true, controller: this._assist })}
+        <div class="wrap" ${n6(this._wrapRef)}>
+          ${renderAssistRow({
+      visible: Boolean(store.config?.show_automation_assist),
+      controller: this._assist
+    })}
+          <div class="layout-container" ${n6(this._layoutContainerRef)}>
+            ${c6(
+      order.filter((key) => key in groupTemplates),
+      (key) => key,
+      (key) => groupTemplates[key]()
+    )}
+            <div class="warn" style=${warnText ? "display: block;" : "display: none;"}>
+              ${warnText}
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+  _onKeyPress(spec) {
+    this._assist.recordClick({
+      label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+      commandId: spec.cmd,
+      deviceId: this._store.commandTarget(spec.id)?.activity_id ?? null,
+      commandType: "assigned",
+      icon: spec.color ? null : spec.icon || null
+    });
+    this._store.triggerCommandPulse();
+    void this._store.sendCommand(
+      spec.cmd,
+      this._store.commandTarget(spec.id)?.activity_id ?? this._store.currentActivityId()
+    );
+  }
+  updated(_changed) {
+    this._applyLocalTheme(String(this._store.config?.theme ?? ""));
+    this._updateGroupRadius();
+    this._applyHostSizing();
+    if (this._lastLayoutSignature != null) {
+      this._maybeAnimateLayoutChange(this._lastLayoutSignature);
+    }
+    this._updateDrawerDirection();
+    this._syncLayering();
+  }
+};
+SofabatonRemoteCard.styles = [
+  r(REMOTE_CARD_CSS),
+  // The legacy wrappers were plain divs; custom-element hosts default to
+  // inline, so pin the block display the layout expects.
+  i`
+      sb-key-button {
+        display: block;
+      }
+    `
+];
+
+// custom_components/sofabaton_x1s/www/src/remote-card-translations/en-gb.ts
+registerRemoteCardTranslation("en-gb", {
+  card: {
+    favoritesTab: "Favourites >",
+    noFavorites: "No favourites available"
+  },
+  editor: {
+    fieldLabels: {
+      use_background_override: "Customise background colour",
+      background_override: "Select Background Colour",
+      show_favorites_button: "Favourites Button"
+    },
+    favorites: "Favourites",
+    macrosFavoritesAsRows: "Macros/Favourites as rows"
+  },
+  groups: {
+    macro_favorites: "Macros/Favourites",
+    favorites_row: "Favourites Row",
+    colors: "Colour Buttons"
+  }
+});
+
+// custom_components/sofabaton_x1s/www/src/remote-card-translations/nl.ts
+registerRemoteCardTranslation("nl", {
+  card: {
+    selectEntityError: "Selecteer een Sofabaton remote-entiteit",
+    remoteUnavailable: "De remote is niet beschikbaar (mogelijk omdat de Sofabaton-app verbonden is).",
+    noActivitiesWarning: "Geen activiteiten gevonden in de remote-attributen.",
+    noMacros: "Geen macro's beschikbaar",
+    noFavorites: "Geen favorieten beschikbaar",
+    macrosTab: "Macro's >",
+    favoritesTab: "Favorieten >",
+    activitySelectLabel: "Activiteit",
+    poweredOff: "Uitgeschakeld",
+    defaultLayout: "Standaardindeling",
+    activityFallback: (id) => `Activiteit ${id}`
+  },
+  assist: {
+    label: "Toetsen vastleggen",
+    start: "Starten",
+    waiting: "Wachten op een toetsdruk",
+    exitEditMode: "Verlaat de bewerkmodus om te beginnen",
+    captured: (label) => `Vastgelegd: ${label}`,
+    notCaptured: "Niet vastgelegd.",
+    working: "Bezig...",
+    triggersReady: "Triggers klaar voor gebruik",
+    createTriggers: "MQTT Discovery-triggers aanmaken",
+    startCapturing: "Begin met commando's vastleggen",
+    deviceDetectedTitle: "Home Assistant-apparaat gedetecteerd.",
+    close: "Sluiten",
+    alsoActivityTriggers: "Maak ook triggers aan voor activiteitswisselingen.",
+    seeDocs: "Bekijk de documentatie voor deze functie.",
+    dontShowAgain: "Dit niet meer tonen voor dit apparaat (in deze sessie).",
+    detectedDevice: (name) => `MQTT-apparaat gedetecteerd: ${name}.`,
+    lastCommand: (name) => `Laatste commando: ${name}.`,
+    existingTriggers: "Er zijn bestaande MQTT-automatiseringstriggers gevonden.",
+    noMqttCommands: "Nog geen MQTT-commando's ontdekt",
+    deviceFallback: (id) => `Apparaat ${id}`,
+    unknownDevice: "Onbekend apparaat",
+    commandFallback: (id) => `Commando ${id}`,
+    createdTriggers: (count, deviceLabel) => `${count} MQTT Discovery-triggers aangemaakt voor ${deviceLabel}`,
+    createdActivityTriggers: (count) => `${count} activiteitstriggers aangemaakt voor X2 \u2192 Activities`,
+    plusActivityTriggers: (count) => ` plus ${count} activiteitstriggers`,
+    allTriggersExist: (deviceLabel) => `Alle MQTT Discovery-triggers bestaan al voor ${deviceLabel}`,
+    buttonFallback: "Knop",
+    activityFallbackLabel: "Activiteit",
+    unknown: "Onbekend",
+    automationAssistName: "Automation Assist",
+    notification: {
+      title: "\u{1F6E0}\uFE0F Automation Assist",
+      eventButton: (label) => `Knop: ${label}`,
+      eventActivity: (label) => `Activiteitswissel: ${label}`,
+      eventOther: (label) => `Gebeurtenis: ${label}`,
+      header: (activityName, eventLabel) => `**Activiteit: ${activityName} | ${eventLabel}**`,
+      lovelaceHeading: "\u{1F4CB} **Lovelace-knopcode**",
+      lovelaceCopy: "*Kopieer dit naar je dashboard-YAML:*",
+      serviceHeading: "\u2699\uFE0F **Service-aanroep (automatisering)**",
+      serviceCopy: "*Gebruik dit in je scripts of automatiseringen:*"
+    }
+  },
+  editor: {
+    fieldLabels: {
+      entity: "Selecteer een Sofabaton remote-entiteit",
+      theme: "Pas een thema toe op de kaart",
+      use_background_override: "Achtergrondkleur aanpassen",
+      background_override: "Kies een achtergrondkleur",
+      show_activity: "Activiteitenkiezer",
+      show_dpad: "Richtingstoetsen",
+      show_nav: "Terug/Home/Menu-toetsen",
+      show_mid: "Volume-/kanaaltoetsen",
+      show_media: "Mediabediening",
+      show_colors: "Rood/groen/geel/blauw",
+      show_abc: "A/B/C-knoppen",
+      show_macros_button: "Macro's-knop",
+      show_favorites_button: "Favorieten-knop",
+      max_width: "Maximale kaartbreedte (px)",
+      group_order: "Groepsvolgorde"
+    },
+    automationAssistTitle: "Automation Assist",
+    keyCapture: "Toetsen vastleggen",
+    keyCaptureDescription: "Stuur toetsdrukken naar de hub: leg toetsdrukken vast om kant-en-klare YAML te genereren voor dashboardknoppen en automatiseringen.",
+    keyCaptureLearnMore: "Meer informatie over Toetsen vastleggen",
+    keyCaptureDocsAria: "Documentatie over Toetsen vastleggen",
+    stylingOptions: "Stijlopties",
+    layoutOptions: "Indelingsopties",
+    layoutSelectLabel: "Indeling",
+    defaultLayoutOption: "Standaardindeling",
+    macrosFavoritesAsRows: "Macro's/favorieten als rijen",
+    visibleRows: "Zichtbare rijen",
+    moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
+    moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
+    macros: "Macro's",
+    favorites: "Favorieten",
+    volume: "Volume",
+    channel: "Kanaal",
+    mediaControls: "Mediabediening",
+    dvr: "DVR",
+    resetCardDefault: "Terug naar kaartstandaard",
+    resetDefaultLayout: "Terug naar standaardindeling",
+    noteDefaultLayout: "Gebruikt voor activiteiten zonder eigen indeling",
+    noteCustomLayout: "Aangepaste indeling in gebruik",
+    noteUsingDefault: "Standaardindeling in gebruik"
+  },
+  groups: {
+    activity: "Activiteitenkiezer",
+    macro_favorites: "Macro's/favorieten",
+    macros_row: "Macro's-rij",
+    favorites_row: "Favorietenrij",
+    dpad: "Richtingstoetsen",
+    nav: "Terug/Home/Menu",
+    mid: "Volume/kanaal",
+    media: "Mediabediening",
+    colors: "Kleurknoppen",
+    abc: "A/B/C"
+  },
+  keys: {
+    up: "Omhoog",
+    down: "Omlaag",
+    left: "Links",
+    right: "Rechts",
+    ok: "OK",
+    back: "Terug",
+    home: "Home",
+    menu: "Menu",
+    volup: "Vol +",
+    voldn: "Vol -",
+    mute: "Dempen",
+    chup: "Kan +",
+    chdn: "Kan -",
+    guide: "Gids",
+    dvr: "DVR",
+    play: "Afspelen",
+    exit: "Afsluiten",
+    rew: "Terugspoelen",
+    pause: "Pauze",
+    fwd: "Vooruitspoelen",
+    red: "Rood",
+    green: "Groen",
+    yellow: "Geel",
+    blue: "Blauw",
+    a: "A",
+    b: "B",
+    c: "C"
+  }
+});
+
+// custom_components/sofabaton_x1s/www/src/remote-card.ts
+var win = window;
+logPillsOnce();
 if (!customElements.get(EDITOR))
   customElements.define(EDITOR, SofabatonRemoteCardEditor);
 if (!customElements.get(TYPE)) customElements.define(TYPE, SofabatonRemoteCard);
-window.customCards = window.customCards || [];
-if (!window.customCards.some((c) => c.type === TYPE)) {
-  window.customCards.push({
+win.customCards = win.customCards || [];
+if (!win.customCards.some((c7) => c7.type === TYPE)) {
+  win.customCards.push({
     type: TYPE,
     name: "Sofabaton Virtual Remote",
     description: "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
