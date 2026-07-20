@@ -8,6 +8,7 @@ import {
   str,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../custom_components/sofabaton_x1s/www/src/remote-card-state";
+import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/de";
 
 test("defaults to the English table", () => {
   setRemoteCardLanguage("en");
@@ -53,6 +54,31 @@ test("regional codes fall back to the base language", () => {
   });
   setRemoteCardLanguage("yy-CH");
   assert.equal(str().card.poweredOff, "Ausgeschaltet");
+  setRemoteCardLanguage("en");
+});
+
+test("bundled German translation supports regional locales and inflection", () => {
+  setRemoteCardLanguage("de-DE");
+
+  assert.equal(
+    str().card.remoteUnavailable,
+    "Die Fernbedienung ist nicht verfügbar (möglicherweise ist die Sofabaton-App verbunden).",
+  );
+  assert.equal(str().card.activityFallback(7), "Aktivität 7");
+  assert.equal(
+    str().assist.createdTriggers(1, "Fernseher"),
+    "1 MQTT-Discovery-Auslöser für Fernseher wurde erstellt",
+  );
+  assert.equal(
+    str().assist.createdTriggers(2, "Fernseher"),
+    "2 MQTT-Discovery-Auslöser für Fernseher wurden erstellt",
+  );
+  assert.equal(
+    str().assist.plusActivityTriggers(1),
+    "; zusätzlich 1 Aktivitätsauslöser wurde erstellt",
+  );
+  assert.equal(isPoweredOffLabel("ausgeschaltet"), true);
+
   setRemoteCardLanguage("en");
 });
 

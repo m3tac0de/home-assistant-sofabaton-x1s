@@ -63,6 +63,7 @@ const ICONS = {
   "mdi:play-circle-outline": iconSvg(`<circle cx="12" cy="12" r="9"></circle><path d="M10 8l6 4-6 4z" fill="currentColor" stroke="none"></path>`),
   "mdi:television-play": iconSvg(`<rect x="4" y="6" width="16" height="11" rx="2"></rect><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"></path><path d="M9 20h6"></path>`),
   "mdi:play-circle": iconSvg(`<circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"></circle><path d="M10 8l6 4-6 4z" fill="#fff" stroke="none"></path>`),
+  "mdi:circle": iconSvg(`<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"></circle>`, { stroke: "none" }),
 };
 
 const iconFallback = (name) => {

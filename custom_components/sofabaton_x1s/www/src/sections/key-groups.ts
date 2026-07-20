@@ -38,7 +38,9 @@ export const X2_ONLY_KEY_IDS = new Set<number>([
 const dpadKeys = (): KeySpec[] => [
   { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
   { key: "left", id: ID.LEFT, cmd: ID.LEFT, label: "", icon: "mdi:chevron-left", extraClass: "area-left" },
-  { key: "ok", id: ID.OK, cmd: ID.OK, label: str().keys.ok, icon: "", extraClass: "area-ok okKey", size: "big" },
+  // Language-neutral filled circle instead of a localized "OK" label; the
+  // assist capture label still resolves to str().keys.ok via the key fallback.
+  { key: "ok", id: ID.OK, cmd: ID.OK, label: "", icon: "mdi:circle", extraClass: "area-ok okKey", size: "big" },
   { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
   { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" },
 ];

@@ -9,4 +9,5 @@
 // complete example) and add its import below.
 
 import "./en-gb";
+import "./de";
 import "./nl";
