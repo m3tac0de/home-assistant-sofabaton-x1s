@@ -2187,6 +2187,22 @@ async def _run_entity_sync_operation(
     try:
         await hub.async_request_catalog("activities" if entity_kind == "activity" else "devices")
         await hub.async_refresh_entity_structure(kind=entity_kind, ent_id=entity_id)
+        if entity_kind == "device":
+            # Command-record rewrites also change labels held by every
+            # referencing activity's cached favorite/keybinding maps;
+            # refreshing only the device would leave those stale until an
+            # unrelated activity re-read.
+            counters = (result or {}).get("counters") or {}
+            if any(
+                counters.get(kind)
+                for kind in (
+                    "command_add",
+                    "command_rename",
+                    "command_payload",
+                    "command_delete",
+                )
+            ):
+                await hub.async_refresh_activities_referencing_device(entity_id)
         store = await _async_get_persistent_cache_store(hass)
         if store.enabled:
             payload = await hub.async_export_cache_state()

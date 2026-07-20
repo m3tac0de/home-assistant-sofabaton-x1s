@@ -2395,7 +2395,6 @@ var TOOLS_CARD_STRINGS = {
     addFavoriteTitle: "Add command shortcut",
     addFavoriteDevice: "Device",
     addFavoriteCommand: "Command",
-    addFavoriteName: "Display name",
     addFavoriteAdd: "Add",
     addFavoriteCancel: "Cancel",
     addFavoriteNoDevices: "This backup has no devices with commands to add.",
@@ -2523,7 +2522,8 @@ var TOOLS_CARD_STRINGS = {
     macroTargetCreateNew: "Create new macro",
     macroTargetNoExisting: "No macros yet. Create one below.",
     addShortcutActionName: "Name",
-    addShortcutActionHelper: "You'll pick the steps next."
+    addShortcutActionHelper: "You'll pick the steps next.",
+    addShortcutCommandHelper: "The shortcut shows up under the command's name."
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
@@ -6840,12 +6840,12 @@ function commandLabelFor(bundle, deviceId, commandId) {
   return String(command?.name || "").trim();
 }
 function favoriteLabel(bundle, row) {
-  const explicit = String(row?.name || "").trim();
-  if (explicit) return explicit;
   const deviceId = Number(row?.device_id || 0);
   const commandId = Number(row?.command_id || 0);
   const derived = commandLabelFor(bundle, deviceId, commandId);
   if (derived) return derived;
+  const explicit = String(row?.name || "").trim();
+  if (explicit) return explicit;
   return `Favorite ${Number(row?.button_id || 0) || "?"}`;
 }
 function sortByButtonId(rows) {
@@ -8413,7 +8413,6 @@ var SofabatonEditDetailView = class extends i4 {
     this._addFavoriteOpen = false;
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
-    this._addFavoriteName = "";
     this._addFavoriteError = "";
     this._bindingDialogOpen = false;
     this._bindingScope = "activity";
@@ -8659,7 +8658,6 @@ var SofabatonEditDetailView = class extends i4 {
       this._addShortcutKind = "command";
       this._addFavoriteDeviceId = firstDeviceId;
       this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-      this._addFavoriteName = commands[0]?.label ?? "";
       this._addFavoriteError = "";
       this._addShortcutActionName = "";
       this._resetMacroTarget("shortcut");
@@ -8669,7 +8667,6 @@ var SofabatonEditDetailView = class extends i4 {
       this._addFavoriteOpen = false;
       this._addFavoriteDeviceId = null;
       this._addFavoriteCommandId = null;
-      this._addFavoriteName = "";
       this._addFavoriteError = "";
       this._addShortcutKind = "command";
       this._addShortcutActionName = "";
@@ -8681,20 +8678,12 @@ var SofabatonEditDetailView = class extends i4 {
       this._addFavoriteDeviceId = Number.isFinite(value) ? value : null;
       const commands = this._addFavoriteDeviceId != null && this.bundle ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId) : [];
       this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-      this._addFavoriteName = commands[0]?.label ?? "";
       this._addFavoriteError = "";
     };
     this._handleAddFavoriteCommandChange = (event) => {
       const value = Number(event.target.value);
       this._addFavoriteCommandId = Number.isFinite(value) ? value : null;
-      if (this.bundle && this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null) {
-        const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId).find((item) => item.commandId === this._addFavoriteCommandId);
-        this._addFavoriteName = command?.label ?? "";
-      }
       this._addFavoriteError = "";
-    };
-    this._handleAddFavoriteNameInput = (event) => {
-      this._addFavoriteName = event.target.value;
     };
     this._applyAddFavorite = () => {
       if (!this.bundle || this.entityId == null) return;
@@ -8702,7 +8691,8 @@ var SofabatonEditDetailView = class extends i4 {
         this._addFavoriteError = TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands;
         return;
       }
-      const name = sanitizeBundleName(this.bundle, this._addFavoriteName);
+      const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId).find((item) => item.commandId === this._addFavoriteCommandId);
+      const name = sanitizeBundleName(this.bundle, command?.label ?? "");
       this._commitEditBundleEdit(addBundleActivityFavorite(
         this.bundle,
         Number(this.entityId),
@@ -10489,16 +10479,7 @@ var SofabatonEditDetailView = class extends i4 {
                     `)}
                   </select>
                 `}
-          </div>
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-name">${S5.addFavoriteName}</label>
-            <input
-              id="sb-add-fav-name"
-              class="decoded-field-input"
-              maxlength="20"
-              .value=${this._addFavoriteName}
-              @input=${this._handleAddFavoriteNameInput}
-            />
+            <div class="decoded-field-helper">${S5.addShortcutCommandHelper}</div>
           </div>
         `;
     const actionFields = b2`
@@ -11406,7 +11387,6 @@ SofabatonEditDetailView.properties = {
   _addFavoriteOpen: { state: true },
   _addFavoriteDeviceId: { state: true },
   _addFavoriteCommandId: { state: true },
-  _addFavoriteName: { state: true },
   _addFavoriteError: { state: true },
   _bindingDialogOpen: { state: true },
   _bindingScope: { state: true },

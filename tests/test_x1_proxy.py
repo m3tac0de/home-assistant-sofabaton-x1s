@@ -31,7 +31,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     normalize_device_class,
 )
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
-from custom_components.sofabaton_x1s.lib.macros import MacroRecord
+from custom_components.sofabaton_x1s.lib.macros import MacroKeyEntry, MacroRecord
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     ActivityMapHandler,
     DeviceButtonFamilyHandler,
@@ -3873,6 +3873,7 @@ def test_delete_device_replays_delete_and_confirms_impacted_activities(monkeypat
     assert result == {
         "device_id": 0x04,
         "confirmed_activities": [0x66],
+        "impacted_activities": [0x66],
         "status": "success",
     }
     assert [opcode for opcode, _payload in sent] == [0x0109, 0x7B38]
@@ -3961,6 +3962,158 @@ def test_delete_device_requires_delete_ack(monkeypatch) -> None:
 
     assert proxy.delete_device(0x04) is None
     assert requested["count"] == 0
+
+
+def test_delete_device_clears_stale_referencing_activity_caches(monkeypatch) -> None:
+    """Activities the hub rewrote WITHOUT flagging needs_confirm must still
+    lose their cached view of the deleted device (power macros, favorites,
+    labels), and the device's own keyed caches must not survive as orphans."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: (0x0103, b"\x00"),
+    )
+
+    dev_lo = 0x04
+    # Pre-delete catalog: 0x65 references the device but will NOT be flagged
+    # needs_confirm; 0x66 will be flagged (the confirm-loop path).
+    proxy.state.activities[0x65] = {"name": "test", "active": True, "needs_confirm": False}
+    proxy.state.activities[0x66] = {"name": "heyo", "active": False, "needs_confirm": False}
+    proxy.state.activity_members[0x65] = {dev_lo, 0x06}
+    proxy.state.activity_favorite_slots[0x65] = [
+        {"device_id": dev_lo, "command_id": 1, "button_id": 3, "source": "cache"}
+    ]
+    proxy.state.activity_favorite_labels[0x65][(dev_lo, 1)] = "Zap"
+    proxy.cache_macro_record(
+        MacroRecord(
+            activity_id=0x65,
+            key_id=198,
+            label="POWER_ON",
+            key_sequence=(
+                MacroKeyEntry(device_id=dev_lo, key_id=0x01, fid=0, duration=0, delay=0),
+            ),
+        )
+    )
+    # Device-keyed caches that used to survive the bare clear as orphans.
+    proxy.state.commands[dev_lo] = {1: "Zap"}
+    proxy.state.command_metadata[dev_lo] = {1: {"library_type": 3, "button_code": 0x4E21}}
+    proxy.state.device_input_records[dev_lo] = {"entries": []}
+    proxy.state.button_details[dev_lo][0xBE] = {"device_id": dev_lo, "command_id": 1}
+    proxy.state.detail_fetched_at["device"][dev_lo] = "2026-07-20T00:00:00"
+    proxy.cache_macro_record(
+        MacroRecord(
+            activity_id=dev_lo,
+            key_id=198,
+            label="POWER_ON",
+            key_sequence=(
+                MacroKeyEntry(device_id=dev_lo, key_id=0x01, fid=0, duration=0, delay=0),
+            ),
+        )
+    )
+
+    def _request_activities() -> bool:
+        proxy._burst.active = True
+        proxy._burst.kind = "activities"
+        proxy._burst.active = False
+        proxy.state.activities[0x66]["needs_confirm"] = True
+        return True
+
+    monkeypatch.setattr(proxy, "request_activities", _request_activities)
+
+    result = proxy.delete_device(dev_lo)
+
+    assert result is not None
+    assert result["confirmed_activities"] == [0x66]
+    assert result["impacted_activities"] == [0x65, 0x66]
+    # 0x65's stale view of the deleted device is gone.
+    assert 0x65 not in proxy.state.activity_favorite_slots
+    assert 0x65 not in proxy.state.activity_favorite_labels
+    assert 0x65 not in proxy.state.activity_members
+    assert proxy.get_cached_macro_records(0x65) == []
+    # No device-keyed orphans survive.
+    assert dev_lo not in proxy.state.commands
+    assert dev_lo not in proxy.state.command_metadata
+    assert dev_lo not in proxy.state.device_input_records
+    assert dev_lo not in proxy.state.button_details
+    assert dev_lo not in proxy.state.detail_fetched_at["device"]
+    assert proxy.get_cached_macro_records(dev_lo) == []
+
+
+def test_activities_referencing_device_scans_all_cached_maps() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    dev = 0x04
+
+    for act_lo in (0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68):
+        proxy.state.activities[act_lo] = {"name": f"act{act_lo:02X}"}
+
+    proxy.state.activity_members[0x60] = {dev}
+    proxy.state.activity_command_refs[0x61] = {(dev, 1)}
+    proxy.state.activity_favorite_slots[0x62] = [
+        {"device_id": dev, "command_id": 1, "button_id": 2, "source": "cache"}
+    ]
+    proxy.state.activity_keybinding_slots[0x63] = [
+        {"device_id": dev, "command_id": 2, "button_id": 0xBE}
+    ]
+    proxy.state.activity_favorite_labels[0x64][(dev, 1)] = "Zap"
+    proxy.state.activity_keybinding_labels[0x65][(dev, 2)] = "Blast"
+    proxy.state.button_details[0x66][0xBE] = {
+        "device_id": 0x09,
+        "command_id": 3,
+        "long_press_device_id": dev,
+        "long_press_command_id": 4,
+    }
+    proxy.cache_macro_record(
+        MacroRecord(
+            activity_id=0x67,
+            key_id=198,
+            label="POWER_ON",
+            key_sequence=(
+                MacroKeyEntry(device_id=dev, key_id=0x01, fid=0, duration=0, delay=0),
+            ),
+        )
+    )
+    # 0x68 does not reference the device; 0x70 references it but is not in
+    # the catalog; the device's own rows never count as a reference.
+    proxy.state.activity_members[0x68] = {0x09}
+    proxy.state.activity_members[0x70] = {dev}
+    proxy.state.button_details[dev][0xBE] = {"device_id": dev, "command_id": 1}
+
+    assert proxy.activities_referencing_device(dev) == [
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+    ]
+
+
+def test_cache_created_wifi_device_seeds_command_labels() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._cache_created_wifi_device(
+        device_id=0x2A,
+        device_name="Lights",
+        brand_name="m3tac0de",
+        device_class=DEVICE_CLASS_WIFI_SONOS,
+        device_class_code=0x1C,
+        commands=[
+            {"display_name": "Lights On"},
+            {"display_name": "Lights Off"},
+            {"display_name": "Lights On Long Press", "press_type": "long"},
+            {"display_name": "Lights Off Long Press", "press_type": "long"},
+        ],
+    )
+
+    # The hub re-exposes wifi records as command ids 1..N in write order.
+    assert proxy.state.commands[0x2A] == {
+        1: "Lights On",
+        2: "Lights Off",
+        3: "Lights On Long Press",
+        4: "Lights Off Long Press",
+    }
+    assert proxy.state.devices[0x2A]["name"] == "Lights"
+
 
 def test_command_to_button_short_press_matches_observed_sample() -> None:
     """The 0x193E command-to-button mapping is byte-identical to the

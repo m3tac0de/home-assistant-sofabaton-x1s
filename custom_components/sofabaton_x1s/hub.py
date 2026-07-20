@@ -1236,7 +1236,11 @@ class SofabatonHub:
                 device_id = int(slot.get("device_id", 0)) & 0xFF
                 command_id = int(slot.get("command_id", 0)) & 0xFF
                 button_id = int(slot.get("button_id", 0)) & 0xFF
-                label = labels.get((device_id, command_id)) or self._proxy.state.commands.get(device_id, {}).get(command_id)
+                # Prefer the device command catalog: it is refreshed whenever
+                # records change, while the per-activity label map is a
+                # resolved copy that can lag behind a rename/redeploy until
+                # the activity itself is re-read.
+                label = self._proxy.state.commands.get(device_id, {}).get(command_id) or labels.get((device_id, command_id))
                 rows.append(
                     {
                         "button_id": button_id,
@@ -2147,11 +2151,13 @@ class SofabatonHub:
         """Delete a device and confirm impacted activities on the selected hub.
 
         The proxy delete clears the cached keymap/favorites/macros of every
-        activity the hub rewrote when it dropped the device, so by default
-        those activities are re-warmed here before the cache is persisted.
-        Callers that run their own re-warm pass afterwards (the wifi deploy
-        pipeline) pass ``refresh_impacted_activities=False`` and fold the
-        result's ``confirmed_activities`` into that pass instead.
+        activity that referenced the device (its ``impacted_activities`` —
+        the hub-flagged confirm set plus the cache scan of power macros,
+        favorites, and bindings), so by default those activities are
+        re-warmed here before the cache is persisted. Callers that run
+        their own re-warm pass afterwards (the wifi deploy pipeline) pass
+        ``refresh_impacted_activities=False`` and fold the result's
+        ``impacted_activities`` into that pass instead.
         """
 
         result = await self.hass.async_add_executor_job(
@@ -2168,7 +2174,10 @@ class SofabatonHub:
             if self.devices.pop(device_id & 0xFF, None) is not None:
                 self._devices_generation += 1
             if refresh_impacted_activities:
-                for act_id in result.get("confirmed_activities") or []:
+                impacted = result.get("impacted_activities")
+                if impacted is None:
+                    impacted = result.get("confirmed_activities") or []
+                for act_id in impacted:
                     try:
                         await self._async_fetch_activity_commands(int(act_id))
                     except Exception:  # noqa: BLE001 - the delete itself succeeded
@@ -2423,6 +2432,35 @@ class SofabatonHub:
                 refresh_after_write=refresh_after_write,
             )
         )
+
+    async def async_refresh_activities_referencing_device(
+        self, device_id: int
+    ) -> list[int]:
+        """Re-warm every cached activity that references *device_id*.
+
+        Rewriting a device's command records leaves the referencing
+        activities' cached favorite/keybinding label maps and macro views
+        holding pre-edit values (they are resolved copies, not references
+        into the device catalog). Callers that just rewrote a device's
+        records use this to mirror the full-refresh behaviour for exactly
+        the referencing activities. Returns the activity ids re-warmed.
+        """
+
+        impacted = await self.hass.async_add_executor_job(
+            self._proxy.activities_referencing_device, device_id
+        )
+        for act_id in impacted:
+            try:
+                await self._async_fetch_activity_commands(int(act_id))
+            except Exception:  # noqa: BLE001 - re-warm is best-effort
+                self._log.warning(
+                    "[%s] failed re-warming activity 0x%02X referencing device 0x%02X",
+                    self.entry_id,
+                    int(act_id) & 0xFF,
+                    int(device_id) & 0xFF,
+                    exc_info=True,
+                )
+        return list(impacted)
 
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
         self._reset_entity_cache(
@@ -3460,9 +3498,17 @@ class SofabatonHub:
             step.kind in ("command_add", "command_rename", "command_payload", "command_delete")
             for step in plan.steps
         )
+        refresh_acts: set[int] = set(touched_acts)
         if command_records_touched:
             await self.async_fetch_device_commands(dev_id)
-        for act_id in touched_acts:
+            # Record rewrites change labels that other activities' cached
+            # favorite/keybinding label maps still hold (they are resolved
+            # copies, not references into the device catalog). Re-warm
+            # every activity referencing the managed device, not just the
+            # ones the plan wrote to directly — mirroring what a full
+            # cache refresh would do for them.
+            refresh_acts.update(self._proxy.activities_referencing_device(dev_id))
+        for act_id in sorted(refresh_acts):
             await self._async_fetch_activity_commands(act_id)
             if act_id in favorite_acts:
                 await self.async_request_favorites_order(act_id)
@@ -3885,7 +3931,11 @@ class SofabatonHub:
                         )
                     delete_confirmed_acts.update(
                         int(act) & 0xFF
-                        for act in (result.get("confirmed_activities") or [])
+                        for act in (
+                            result.get("impacted_activities")
+                            if result.get("impacted_activities") is not None
+                            else result.get("confirmed_activities") or []
+                        )
                     )
 
                 # Warm the wifi-device command cache before activity refreshes

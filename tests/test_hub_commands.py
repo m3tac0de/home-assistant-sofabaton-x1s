@@ -5609,6 +5609,64 @@ def test_delete_device_rewarms_confirmed_activities(monkeypatch):
         loop.close()
 
 
+def test_delete_device_rewarms_impacted_activities_when_present(monkeypatch):
+    """When the proxy reports impacted_activities (confirm set + cache scan
+    of referencing power macros/favorites/bindings), the re-warm must cover
+    all of them — not just the hub-flagged confirm subset."""
+
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={
+            "device_id": dev_lo,
+            "confirmed_activities": [0x66],
+            "impacted_activities": [0x65, 0x66],
+            "status": "success",
+        },
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result and result.get("status") == "success"
+        assert warmed == [0x65, 0x66]
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_cache_activity_favorites_prefers_fresh_device_catalog(monkeypatch):
+    """The per-activity favorite label map is a resolved copy that lags
+    behind command renames until the activity is re-read; the device
+    command catalog must win whenever it has the command."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        act_lo = 0x65
+        dev_lo = 0x0B
+        hub._proxy.state.activity_favorite_slots[act_lo] = [
+            {"device_id": dev_lo, "command_id": 1, "button_id": 3, "source": "cache"}
+        ]
+        hub._proxy.state.activity_favorite_labels[act_lo][(dev_lo, 1)] = "Old Name"
+        hub._proxy.state.commands[dev_lo] = {1: "New Name"}
+
+        rows = hub._build_cache_activity_favorites()
+        assert rows[str(act_lo)][0]["label"] == "New Name"
+
+        # Catalog entry missing → fall back to the activity-scoped label.
+        hub._proxy.state.commands.pop(dev_lo)
+        rows = hub._build_cache_activity_favorites()
+        assert rows[str(act_lo)][0]["label"] == "Old Name"
+    finally:
+        loop.close()
+
+
 def test_delete_device_skips_rewarm_when_disabled(monkeypatch):
     dev_lo = 0x14
     hub, loop, persisted, warmed = _make_delete_device_hub(

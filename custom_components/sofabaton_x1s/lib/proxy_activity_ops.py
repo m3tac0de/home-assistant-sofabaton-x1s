@@ -167,6 +167,13 @@ class ActivityOpsMixin:
         dev_lo = device_id & 0xFF
         self.reset_ack_queues()
 
+        # Snapshot which activities the cache shows referencing the device
+        # BEFORE the delete: the hub cascades the removal into every
+        # referencing activity server-side but only flags a subset
+        # needs_confirm, so this scan (not the flag alone) scopes the
+        # cache invalidation below.
+        referencing = set(self.activities_referencing_device(dev_lo))
+
         _step = self._send_step(
             step_name=f"delete-device[dev=0x{dev_lo:02X}]",
             family=0x09,
@@ -223,15 +230,43 @@ class ActivityOpsMixin:
             self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=True, clear_macros=True)
             confirmed_activities.append(act_lo)
 
+        # Activities the hub rewrote without flagging needs_confirm still
+        # hold the deleted device in their cached power macros, favorites,
+        # and bindings. Drop those views so the stale references can't
+        # survive into exports or the persisted cache; the caller re-warms
+        # them from the hub's already-cascaded truth.
+        stale_referencing = referencing - set(confirmed_activities)
+        for act_lo in sorted(stale_referencing):
+            self.clear_entity_cache(
+                act_lo, clear_buttons=True, clear_favorites=True, clear_macros=True
+            )
+
         self.state.devices.pop(dev_lo, None)
         self.state.buttons.pop(dev_lo, None)
         self.state.ip_devices.pop(dev_lo, None)
         self.state.ip_buttons.pop(dev_lo, None)
-        self.clear_entity_cache(dev_lo)
+        self.state.device_input_records.pop(dev_lo, None)
+        self.state.detail_fetched_at["device"].pop(dev_lo, None)
+        # Full clear: the bare form leaves the device's macro records,
+        # button details, and command metadata orphaned under a dead id —
+        # nothing ever overwrites entries keyed by an id that no longer
+        # exists, so they would persist to disk indefinitely.
+        self.clear_entity_cache(
+            dev_lo, clear_buttons=True, clear_favorites=True, clear_macros=True
+        )
 
+        # Re-warm list for the caller: referencing activities that still
+        # exist after the delete (the hub's sweep purges activities left
+        # with zero members; their cleared cache entries simply stay gone).
+        impacted = sorted(
+            act_lo
+            for act_lo in (set(confirmed_activities) | stale_referencing)
+            if act_lo in self.state.activities
+        )
         return {
             "device_id": dev_lo,
             "confirmed_activities": confirmed_activities,
+            "impacted_activities": impacted,
             "status": "success",
         }
 

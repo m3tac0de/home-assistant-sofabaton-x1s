@@ -301,6 +301,49 @@ def test_rejected_inplace_write_raises_without_replace(monkeypatch):
     loop.close()
 
 
+def test_command_record_steps_rewarm_referencing_activities(monkeypatch):
+    """A plan that only rewrites command records (renames) carries no
+    activity-scoped steps, but activities referencing the managed device
+    hold resolved label copies — the epilogue must re-warm them anyway."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store(deployed_slots=[{"name": "Old Name"}])
+    calls: list[str] = []
+    # Live records still carry the deployed name (no drift), desired renames.
+    hub = _make_hub(
+        monkeypatch, loop, store=store,
+        device_entry=_device_entry(label="Old Name"),
+        call_order=calls,
+    )
+    payload = _payload()
+    payload["commands"][0]["name"] = "New Name"
+
+    # An activity that references the managed device only through its
+    # cached favorites — never named by any plan step.
+    hub._proxy.state.activities[0x65] = {"name": "Watch TV", "active": False}
+    hub._proxy.state.activity_favorite_slots[0x65] = [
+        {"device_id": DEV_ID, "command_id": 1, "button_id": 3, "source": "cache"}
+    ]
+
+    rewarmed: list[int] = []
+
+    async def _fetch_acts(act_id):
+        rewarmed.append(int(act_id))
+
+    monkeypatch.setattr(hub, "_async_fetch_activity_commands", _fetch_acts)
+
+    result = _run_sync(loop, hub, payload)
+
+    assert result["status"] == "success"
+    assert result["inplace"] is True
+    kinds = [s.kind for s in hub._inplace_plans[0].steps]
+    assert "command_rename" in kinds
+    assert all(s.payload.get("activity_id") is None for s in hub._inplace_plans[0].steps)
+    assert rewarmed == [0x65]
+    loop.close()
+
+
 def test_replace_deploy_writes_derived_device_page_bindings(monkeypatch):
     """A hard-button claim also lands as a device-page key row on the new
     device (role-group capability), addressed with the device's own id."""

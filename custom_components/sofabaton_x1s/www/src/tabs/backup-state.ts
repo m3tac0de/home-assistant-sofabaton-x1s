@@ -713,12 +713,16 @@ function commandLabelFor(bundle: BackupBundlePayload, deviceId: number, commandI
 }
 
 function favoriteLabel(bundle: BackupBundlePayload, row: BackupBundleFavoriteSlot) {
-  const explicit = String(row?.name || "").trim();
-  if (explicit) return explicit;
+  // The remote shows a favorite strictly under the referenced command's
+  // name, so the command list is the authority. The row's own name is a
+  // resolved copy kept only for rows whose command is missing from the
+  // bundle (grandfathered dangling refs from partial cloud deploys).
   const deviceId = Number(row?.device_id || 0);
   const commandId = Number(row?.command_id || 0);
   const derived = commandLabelFor(bundle, deviceId, commandId);
   if (derived) return derived;
+  const explicit = String(row?.name || "").trim();
+  if (explicit) return explicit;
   return `Favorite ${Number(row?.button_id || 0) || "?"}`;
 }
 

@@ -345,13 +345,12 @@ test("macro step Save blocks incomplete input and commits a quantized valid step
   assert.equal(element._stepDialogOpen, false);
 });
 
-test("favorite Save blocks an incomplete selection and sanitizes the committed label", () => {
+test("favorite Save blocks an incomplete selection and commits the command's label", () => {
   const element = createEditor();
   const changes = collectBundleChanges(element);
   element._addFavoriteOpen = true;
   element._addFavoriteDeviceId = null;
   element._addFavoriteCommandId = null;
-  element._addFavoriteName = "";
 
   element._applyAddFavorite();
   assert.equal(changes.length, 0);
@@ -360,13 +359,14 @@ test("favorite Save blocks an incomplete selection and sanitizes the committed l
 
   element._handleAddFavoriteDeviceChange(controlEvent("3"));
   element._handleAddFavoriteCommandChange(controlEvent("30"));
-  element._handleAddFavoriteNameInput(controlEvent("Sound+bar! " + "X".repeat(30)));
   element._applyAddFavorite();
 
   assert.equal(changes.length, 1);
   const activity = changes[0].activities[0];
   const added = activity.favorite_slots?.find((slot) => slot.device_id === 3);
-  assert.equal(added?.name, "Sound+bar! " + "X".repeat(19));
+  // A favorite has no name of its own: the remote shows it under the
+  // referenced command's name, so the row carries that label verbatim.
+  assert.equal(added?.name, "Volume Up");
   assert.deepEqual(activity.referenced_source_device_ids, [1, 3]);
   assert.equal(element._addFavoriteOpen, false);
 });

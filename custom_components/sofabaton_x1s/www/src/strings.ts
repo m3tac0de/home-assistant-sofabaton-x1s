@@ -320,7 +320,6 @@ export const TOOLS_CARD_STRINGS = {
     addFavoriteTitle: "Add command shortcut",
     addFavoriteDevice: "Device",
     addFavoriteCommand: "Command",
-    addFavoriteName: "Display name",
     addFavoriteAdd: "Add",
     addFavoriteCancel: "Cancel",
     addFavoriteNoDevices: "This backup has no devices with commands to add.",
@@ -456,6 +455,7 @@ export const TOOLS_CARD_STRINGS = {
     macroTargetNoExisting: "No macros yet. Create one below.",
     addShortcutActionName: "Name",
     addShortcutActionHelper: "You'll pick the steps next.",
+    addShortcutCommandHelper: "The shortcut shows up under the command's name.",
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",

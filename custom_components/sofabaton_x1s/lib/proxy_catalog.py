@@ -916,6 +916,11 @@ class CatalogMixin:
         ent_lo = ent_id & 0xFF
 
         self.state.commands.pop(ent_lo, None)
+        # command_metadata is captured by the same REQ_COMMANDS parse that
+        # fills state.commands; clearing one without the other leaves record
+        # metadata (library_type/button_code) describing commands that no
+        # longer exist in the label map.
+        self.state.command_metadata.pop(ent_lo, None)
         self.state.device_key_sorts.pop(ent_lo, None)
         self._commands_complete.discard(ent_lo)
         self._pending_command_requests.pop(ent_lo, None)
@@ -942,6 +947,70 @@ class CatalogMixin:
             self._macros_complete.discard(ent_lo)
             self._pending_macro_requests.discard(ent_lo)
             self.drop_cached_macro_records(ent_lo)
+
+    def activities_referencing_device(self, device_id: int) -> list[int]:
+        """Return catalog activity ids whose cached structures reference *device_id*.
+
+        The hub cascades device deletions and command-record rewrites into
+        every activity server-side, but the cache holds those references in
+        several independently-keyed maps that no single write flow owns.
+        Write paths use this scan to decide which activities need a
+        ``clear_entity_cache`` + re-fetch, instead of trusting the hub's
+        ``needs_confirm`` flag (which marks only a subset) or the write
+        plan's own step list (which omits activities that merely reference
+        an edited command).
+
+        The device itself is excluded; results are limited to ids present
+        in the activity catalog at call time.
+        """
+
+        dev_lo = device_id & 0xFF
+        referencing: set[int] = set()
+
+        for act_lo, members in self.state.activity_members.items():
+            if dev_lo in members:
+                referencing.add(act_lo)
+        for act_lo, refs in self.state.activity_command_refs.items():
+            if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in refs):
+                referencing.add(act_lo)
+        for slot_map in (
+            self.state.activity_favorite_slots,
+            self.state.activity_keybinding_slots,
+        ):
+            for act_lo, slots in slot_map.items():
+                if any(
+                    (int(slot.get("device_id", 0)) & 0xFF) == dev_lo for slot in slots
+                ):
+                    referencing.add(act_lo)
+        for label_map in (
+            self.state.activity_favorite_labels,
+            self.state.activity_keybinding_labels,
+        ):
+            for act_lo, labels in label_map.items():
+                if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in labels):
+                    referencing.add(act_lo)
+        for act_lo, details in self.state.button_details.items():
+            for meta in details.values():
+                if (int(meta.get("device_id", 0)) & 0xFF) == dev_lo or (
+                    int(meta.get("long_press_device_id") or 0) & 0xFF
+                ) == dev_lo:
+                    referencing.add(act_lo)
+                    break
+        # Power/user macros: state.activity_macros holds label-only
+        # quick-access rows (POWER_* rows are filtered out at ingest), so
+        # per-step device references only exist in the assembled
+        # MacroRecord cache — the store exports and bundle assembly read.
+        with self._macro_payload_lock:
+            record_items = list(self._macro_records_cache.items())
+        for (ent_lo, _key_id), record in record_items:
+            if any(
+                (entry.device_id & 0xFF) == dev_lo for entry in record.key_sequence
+            ):
+                referencing.add(ent_lo & 0xFF)
+
+        referencing.discard(dev_lo)
+        known = self.state.activities
+        return sorted(act_lo for act_lo in referencing if act_lo in known)
 
     def _clear_favorite_label_requests_for_activity(self, act_lo: int) -> None:
         to_delete: list[tuple[int, int]] = []

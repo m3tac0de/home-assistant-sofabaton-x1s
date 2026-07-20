@@ -108,7 +108,11 @@ test("diffActivityForReview reports a shortcut rename", () => {
   const base = baseBundle();
   const edited = renameBundleActivityFavorite(base, ACTIVITY_ID, 2, "Soundbar Power");
   const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
-  assert.match(allText(groups), /Renamed "Bar Power" → "Soundbar Power"/);
+  // The shortcut's display name is the referenced command's name ("Power"
+  // in the base command list), not the row's stale resolved copy — a
+  // favorite rename IS a command rename, and both diff lines say so.
+  assert.match(allText(groups), /Renamed "Power" → "Soundbar Power"/);
+  assert.match(allText(groups), /Renamed command "Power" → "Soundbar Power"/);
 });
 
 test("diffActivityForReview reports a shortcut reorder despite positional button_ids", () => {

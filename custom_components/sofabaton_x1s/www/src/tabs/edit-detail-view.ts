@@ -201,7 +201,6 @@ export class SofabatonEditDetailView extends LitElement {
     _addFavoriteOpen: { state: true },
     _addFavoriteDeviceId: { state: true },
     _addFavoriteCommandId: { state: true },
-    _addFavoriteName: { state: true },
     _addFavoriteError: { state: true },
     _bindingDialogOpen: { state: true },
     _bindingScope: { state: true },
@@ -398,7 +397,6 @@ export class SofabatonEditDetailView extends LitElement {
   private _addFavoriteOpen = false;
   private _addFavoriteDeviceId: number | null = null;
   private _addFavoriteCommandId: number | null = null;
-  private _addFavoriteName = "";
   private _addFavoriteError = "";
   private _bindingDialogOpen = false;
   private _bindingScope: BackupEditTargetKind = "activity";
@@ -2253,7 +2251,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._addShortcutKind = "command";
     this._addFavoriteDeviceId = firstDeviceId;
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-    this._addFavoriteName = commands[0]?.label ?? "";
     this._addFavoriteError = "";
     this._addShortcutActionName = "";
     this._resetMacroTarget("shortcut");
@@ -2264,7 +2261,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._addFavoriteOpen = false;
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
-    this._addFavoriteName = "";
     this._addFavoriteError = "";
     this._addShortcutKind = "command";
     this._addShortcutActionName = "";
@@ -2279,23 +2275,13 @@ export class SofabatonEditDetailView extends LitElement {
       ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
       : [];
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-    this._addFavoriteName = commands[0]?.label ?? "";
     this._addFavoriteError = "";
   };
 
   private _handleAddFavoriteCommandChange = (event: Event) => {
     const value = Number((event.target as HTMLSelectElement).value);
     this._addFavoriteCommandId = Number.isFinite(value) ? value : null;
-    if (this.bundle && this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null) {
-      const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
-        .find((item) => item.commandId === this._addFavoriteCommandId);
-      this._addFavoriteName = command?.label ?? "";
-    }
     this._addFavoriteError = "";
-  };
-
-  private _handleAddFavoriteNameInput = (event: Event) => {
-    this._addFavoriteName = (event.target as HTMLInputElement).value;
   };
 
   private _applyAddFavorite = () => {
@@ -2304,7 +2290,12 @@ export class SofabatonEditDetailView extends LitElement {
       this._addFavoriteError = TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands;
       return;
     }
-    const name = sanitizeBundleName(this.bundle, this._addFavoriteName);
+    // A favorite has no name of its own — the remote shows it strictly
+    // under the referenced command's name, so the row carries a copy of
+    // that label rather than anything user-entered.
+    const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
+      .find((item) => item.commandId === this._addFavoriteCommandId);
+    const name = sanitizeBundleName(this.bundle, command?.label ?? "");
     this._commitEditBundleEdit(addBundleActivityFavorite(
       this.bundle,
       Number(this.entityId),
@@ -2377,16 +2368,7 @@ export class SofabatonEditDetailView extends LitElement {
                     `)}
                   </select>
                 `}
-          </div>
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-name">${S.addFavoriteName}</label>
-            <input
-              id="sb-add-fav-name"
-              class="decoded-field-input"
-              maxlength="20"
-              .value=${this._addFavoriteName}
-              @input=${this._handleAddFavoriteNameInput}
-            />
+            <div class="decoded-field-helper">${S.addShortcutCommandHelper}</div>
           </div>
         `;
     const actionFields = html`

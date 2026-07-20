@@ -74,7 +74,6 @@ test.describe("tools-card activity editor harness", () => {
     await page.locator(".quick-access-head-actions .quick-access-add-btn").click();
     await page.locator("#sb-add-fav-device").selectOption("3");
     await page.locator("#sb-add-fav-command").selectOption("30");
-    await page.locator("#sb-add-fav-name").fill("Streamer Home");
     await page.locator(".dialog-footer .dialog-btn-primary").click();
 
     await expect(page.getByRole("button", { name: "Sync to Hub", exact: true })).toBeEnabled();
@@ -99,10 +98,12 @@ test.describe("tools-card activity editor harness", () => {
     expect(syncMessage.activity_id).toBe(101);
     const edited = syncMessage.edited;
     const activity = edited.activities.find((candidate) => candidate.device?.device_id === 101);
+    // The shortcut carries the referenced command's name — there is no
+    // separate display name (the remote shows the command name verbatim).
     expect(activity.favorite_slots).toContainEqual(expect.objectContaining({
       device_id: 3,
       command_id: 30,
-      name: "Streamer Home",
+      name: "Home",
     }));
     expect(activity.referenced_source_device_ids).toEqual([1, 2, 3]);
     assertActivityMembershipInvariant(edited, 101);
@@ -172,10 +173,9 @@ test.describe("tools-card activity editor harness", () => {
     await page.locator(".quick-access-head-actions .quick-access-add-btn").click();
     await page.locator("#sb-add-fav-device").selectOption("3");
     await page.locator("#sb-add-fav-command").selectOption("30");
-    await page.locator("#sb-add-fav-name").fill("Temporary Streamer");
     await page.locator(".dialog-footer .dialog-btn-primary").click();
 
-    const favoriteRow = page.locator('[data-kind="favorite"]').filter({ hasText: "Temporary Streamer" });
+    const favoriteRow = page.locator('[data-kind="favorite"]').filter({ hasText: "Home" });
     await favoriteRow.getByRole("button", { name: "Delete shortcut", exact: true }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
 

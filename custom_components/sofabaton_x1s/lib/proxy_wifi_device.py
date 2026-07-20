@@ -227,6 +227,7 @@ class WifiDeviceMixin:
         brand_name: str,
         device_class: str,
         device_class_code: int,
+        commands: list[Any] | None = None,
     ) -> None:
         dev_lo = device_id & 0xFF
         self.state.devices[dev_lo] = normalize_device_entry(
@@ -234,6 +235,17 @@ class WifiDeviceMixin:
             default_class=device_class,
             default_class_code=device_class_code,
         )
+        # Seed the command-name catalog with the records just written. The
+        # hub re-exposes wifi records as command ids 1..N in write order on
+        # every variant (the X1 0x18.. key ids exist only inside the 0x0E
+        # payloads), so favorites and bindings created right after the
+        # deploy resolve real labels instead of falling back to
+        # placeholders until a full cache refresh.
+        if commands:
+            self.state.commands[dev_lo] = {
+                idx + 1: _wifi_command_label(spec, idx)
+                for idx, spec in enumerate(commands)
+            }
 
     def _build_device_power_binding_payload(
         self,
@@ -865,6 +877,7 @@ class WifiDeviceMixin:
             brand_name=brand_name,
             device_class=DEVICE_CLASS_WIFI_ROKU,
             device_class_code=0x0A,
+            commands=normalized_commands[: len(_ROKU_APP_SLOTS)],
         )
 
         if not self._apply_wifi_power_configuration(
@@ -1034,6 +1047,7 @@ class WifiDeviceMixin:
             brand_name=brand_name,
             device_class=DEVICE_CLASS_WIFI_IP,
             device_class_code=0x1C,
+            commands=list(commands or [])[: len(_ROKU_APP_SLOTS)],
         )
 
         if not self._apply_virtual_ip_wifi_power_configuration(
