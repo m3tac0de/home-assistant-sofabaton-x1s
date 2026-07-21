@@ -355,46 +355,21 @@ delete_favorite:
           mode: box
 
 export_snapshot:
-  name: Export hub snapshot
-  description: >-
-    Returns the structural hub_bundle the live Control Panel editor reads --
-    cached proxy state only, no hub round trip and no per-command IR blob
-    dump (that is what backup_bundle is for). The response carries the
-    bundle plus the cache generation it was exported at; pass that
-    generation to sync_from_snapshot's expected_generation to catch a stale
-    baseline. Requires the persistent cache to be enabled and populated;
-    open the Control Panel's Hub or Activities tab once, or run a
-    whole-hub cache refresh, to populate it on a fresh install. Edit the
-    returned JSON offline and pass it back to sync_from_snapshot as
-    baseline/edited to write just the changed rows.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
 
 sync_from_snapshot:
-  name: Sync edited snapshot
-  description: >-
-    Script-callable counterpart of the live Control Panel editor's save
-    action. Diffs baseline against edited (both hub_bundle payloads from
-    export_snapshot) and writes only the rows that changed for the selected
-    activity or device -- the same engine the editor drives, so multi-page
-    macro saves, label-slot handling, and ack tolerance all apply the same
-    way. Fails if a backup, restore, or sync operation is already running
-    for this hub, or if the app client currently owns the hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     entity_kind:
-      name: Entity kind
-      description: Whether entity_id below names an activity or a device.
       required: true
       selector:
         select:
@@ -402,8 +377,6 @@ sync_from_snapshot:
             - activity
             - device
     entity_id:
-      name: Entity id
-      description: Hub device id or activity id to sync. Must be present in both baseline and edited.
       required: true
       selector:
         number:
@@ -411,22 +384,16 @@ sync_from_snapshot:
           max: 255
           mode: box
     expected_generation:
-      name: Expected cache generation
-      description: Generation returned by export_snapshot when the baseline was taken; the sync refuses loudly if the hub cache has moved past it. Omit to skip the freshness check.
       required: false
       selector:
         number:
           min: 0
           mode: box
     baseline:
-      name: Baseline snapshot
-      description: The unedited hub_bundle returned by export_snapshot, establishing what changed.
       required: true
       selector:
         object:
     edited:
-      name: Edited snapshot
-      description: Your offline-edited copy of the baseline hub_bundle. Only the rows that differ from baseline are written.
       required: true
       selector:
         object:

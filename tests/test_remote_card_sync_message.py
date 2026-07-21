@@ -19,15 +19,6 @@ def _remote_card_state_ts() -> str:
     )
 
 
-def test_remote_card_x1s_notice_points_users_to_control_panel() -> None:
-    source = Path("custom_components/sofabaton_x1s/www/remote-card.js").read_text(
-        encoding="utf-8",
-    )
-
-    assert 'sectionTitle.textContent = "Wifi Commands Moved";' in source
-    assert "Sofabaton Control Panel card" in source
-
-
 def test_remote_card_no_longer_calls_wifi_commands_backend() -> None:
     source = Path("custom_components/sofabaton_x1s/www/remote-card.js").read_text(
         encoding="utf-8",

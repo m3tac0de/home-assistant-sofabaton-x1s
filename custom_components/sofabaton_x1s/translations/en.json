@@ -496,6 +496,46 @@
           "description": "Hub-order favorite ID to delete. Use the get activity favorites action to retrieve it."
         }
       }
+    },
+    "export_snapshot": {
+      "name": "Export hub snapshot",
+      "description": "Returns the structural hub_bundle the live Control Panel editor reads (cached proxy state only, no hub round trip and no per-command IR blob dump), plus the cache generation it was exported at. Pass that generation to the sync edited snapshot action's expected generation to catch a stale baseline. Requires the persistent cache to be enabled and populated. Edit the returned JSON offline and pass it back as the baseline and edited snapshots to write just the changed rows.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub to export the cached structural snapshot from."
+        }
+      }
+    },
+    "sync_from_snapshot": {
+      "name": "Sync edited snapshot",
+      "description": "Script-callable counterpart of the live Control Panel editor's save action. Diffs the baseline against the edited snapshot (both hub_bundle payloads from the export hub snapshot action) and writes only the rows that changed for the selected activity or device. Fails if a backup, restore, or sync operation is already running for this hub, or if the app client currently owns the hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub to write the edited snapshot to."
+        },
+        "entity_kind": {
+          "name": "Entity kind",
+          "description": "Whether the entity ID below names an activity or a device."
+        },
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "Hub device ID or activity ID to sync. Must be present in both the baseline and edited snapshots."
+        },
+        "expected_generation": {
+          "name": "Expected cache generation",
+          "description": "Generation returned by the export hub snapshot action when the baseline was taken; the sync refuses loudly if the hub cache has moved past it. Omit to skip the freshness check."
+        },
+        "baseline": {
+          "name": "Baseline snapshot",
+          "description": "The unedited hub_bundle returned by the export hub snapshot action, establishing what changed."
+        },
+        "edited": {
+          "name": "Edited snapshot",
+          "description": "Your offline-edited copy of the baseline hub_bundle. Only the rows that differ from the baseline are written."
+        }
+      }
     }
   }
 }
