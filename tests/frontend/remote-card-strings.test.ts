@@ -8,6 +8,7 @@ import {
   str,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../custom_components/sofabaton_x1s/www/src/remote-card-state";
+import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/ar";
 import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/de";
 
 test("defaults to the English table", () => {
@@ -78,6 +79,23 @@ test("bundled German translation supports regional locales and inflection", () =
     "; zusätzlich 1 Aktivitätsauslöser wurde erstellt",
   );
   assert.equal(isPoweredOffLabel("ausgeschaltet"), true);
+
+  setRemoteCardLanguage("en");
+});
+
+test("bundled Arabic translation supports regional locales and bidi isolation", () => {
+  setRemoteCardLanguage("ar-SA");
+
+  assert.equal(
+    str().card.remoteUnavailable,
+    "جهاز التحكم عن بُعد غير متاح (ربما لأن تطبيق Sofabaton متصل).",
+  );
+  assert.equal(str().card.activityFallback(7), "النشاط \u20687\u2069");
+  assert.equal(
+    str().assist.detectedDevice("Living Room TV"),
+    "تم اكتشاف جهاز MQTT: \u2068Living Room TV\u2069.",
+  );
+  assert.equal(isPoweredOffLabel("متوقف عن التشغيل"), true);
 
   setRemoteCardLanguage("en");
 });

@@ -8,6 +8,7 @@
 // To add a language: create <lang>.ts next to this file (see nl.ts for a
 // complete example) and add its import below.
 
+import "./ar";
 import "./en-gb";
 import "./de";
 import "./nl";
