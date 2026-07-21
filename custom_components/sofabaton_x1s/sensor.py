@@ -39,16 +39,14 @@ async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
 
 class SofabatonIndexSensor(SensorEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "index"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_index"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} index"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -156,16 +154,14 @@ class SofabatonActivitySensor(SensorEntity):
     """Shows the current activity name (or 'Powered Off')."""
 
     _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "activity"
     # No entity_category here -> it's a normal sensor, not diagnostic
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_activity"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} activity"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -214,7 +210,7 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_has_entity_name = True
-    _attr_name = "Recorded keypress"
+    _attr_translation_key = "recorded_keypress"
     
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -362,7 +358,6 @@ class SofabatonIpCommandsSensor(SensorEntity):
     _attr_should_poll = False
     _attr_force_update = True
     _attr_has_entity_name = True
-    _attr_name = "Wifi Commands"
     # Stable identifier surfaced in the frontend entity registry; used by the
     # Control Panel card's getEntitySuggestion to recommend itself for this
     # entity. The matching translations entry keeps the displayed name intact.

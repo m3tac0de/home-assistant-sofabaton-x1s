@@ -38,6 +38,7 @@ class SofabatonClientSensor(BinarySensorEntity):
     """Is the official app connected to our proxy?"""
 
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     # Stable identifier surfaced in the frontend entity registry; used by the
     # Control Panel card's getEntitySuggestion to recommend itself for this entity.
@@ -47,10 +48,6 @@ class SofabatonClientSensor(BinarySensorEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_client"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} App connected"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -82,6 +79,7 @@ class SofabatonHubConnectionSensor(BinarySensorEntity):
     """Are we connected to the real Sofabaton hub?"""
 
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_translation_key = "hub_connected"
 
@@ -89,10 +87,6 @@ class SofabatonHubConnectionSensor(BinarySensorEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_hub_connected"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} Hub connected"
 
     @property
     def device_info(self) -> DeviceInfo:

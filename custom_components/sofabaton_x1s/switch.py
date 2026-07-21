@@ -32,6 +32,7 @@ async def async_setup_entry(
 
 class SofabatonProxySwitch(SwitchEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG  # ← this makes it show under "Configuration"
     # Stable identifier surfaced in the frontend entity registry; used by the
     # Control Panel card's getEntitySuggestion to recommend itself for this entity.
@@ -41,10 +42,6 @@ class SofabatonProxySwitch(SwitchEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_proxy"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} Proxy enabled"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -68,6 +65,7 @@ class SofabatonProxySwitch(SwitchEntity):
 
 class SofabatonHexLoggingSwitch(SwitchEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG  # ← this makes it show under "Configuration"
     _attr_translation_key = "hex_logging"
 
@@ -75,10 +73,6 @@ class SofabatonHexLoggingSwitch(SwitchEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_hex_logging"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} Hex logging"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -102,6 +96,7 @@ class SofabatonHexLoggingSwitch(SwitchEntity):
 
 class SofabatonWifiDeviceSwitch(SwitchEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
     _attr_translation_key = "wifi_device"
 
@@ -109,10 +104,6 @@ class SofabatonWifiDeviceSwitch(SwitchEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_wifi_device"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} Wifi Device"
 
     @property
     def device_info(self) -> DeviceInfo:

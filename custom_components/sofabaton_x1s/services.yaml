@@ -1,15 +1,11 @@
 fetch_device_commands:
-  name: Fetch commands for device/activity
-  description: Fetch (and cache) commands for this activity/device so they appear on the diagnostic sensor.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     ent_id:
-      name: Activity or device id
       required: true
       selector:
         number:
@@ -18,36 +14,26 @@ fetch_device_commands:
           mode: box
 
 play_ir_blob:
-  name: Play IR blob (Test)
-  description: Streams a canonical command blob body to the hub for one-shot playback. Accepts either a raw blob body without the final replay-tail checksum byte or a descriptive protocol string such as P:Sony12 R:40000 D:1 F:18 MUL:2. No data is persisted on the hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     blob:
-      name: Blob or descriptor
-      description: Hex string of the canonical blob body without the final replay-tail checksum byte, or a descriptive protocol string beginning with P:. Whitespace and newlines are ignored for hex input.
       required: true
       selector:
         text:
           multiline: true
 
 persist_ir_blob:
-  name: Persist IR blob
-  description: Adds a new command to an existing IR device by staging the current command ids, uploading a canonical command blob body, and saving it on the hub. Accepts either a raw blob body without the final replay-tail checksum byte or a descriptive protocol string beginning with P:.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     device_id:
-      name: Device id
-      description: Existing IR device id that should receive the new command.
       required: true
       selector:
         number:
@@ -55,32 +41,23 @@ persist_ir_blob:
           max: 255
           mode: box
     command_name:
-      name: Command name
-      description: Label to save on the hub for the new command.
       required: true
       selector:
         text:
     blob:
-      name: Blob or descriptor
-      description: Hex string of the canonical blob body without the final replay-tail checksum byte, or a descriptive protocol string beginning with P:. Whitespace and newlines are ignored for hex input.
       required: true
       selector:
         text:
           multiline: true
 
 fetch_blob:
-  name: Fetch normalized blob
-  description: Requests 0x020C [device_id, command_id] and returns normalized command blob records. Each record includes the canonical blob body without the final replay-tail checksum byte, the removed checksum byte for debugging, and parsed descriptor text when the blob is descriptive.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     device_id:
-      name: Device id
-      description: Hub device id to fetch via 0x020C [device_id, command_id].
       required: true
       selector:
         number:
@@ -88,8 +65,6 @@ fetch_blob:
           max: 255
           mode: box
     command_id:
-      name: Command id
-      description: Optional item id to probe via 0x020C [device_id, command_id]. Omit to request all records with ff.
       required: false
       selector:
         number:
@@ -98,67 +73,37 @@ fetch_blob:
           mode: box
 
 backup_bundle:
-  name: Backup hub bundle
-  description: >-
-    Returns a hub_bundle JSON payload (schema_version 5). With device_ids
-    omitted, backs up everything (all devices and all activities). With
-    device_ids supplied, backs up just the listed devices (activities are
-    not included; bundles that mix devices with activities are produced
-    only by the whole-hub mode). The bundle is the only backup unit -- per
-    the bundle-backup plan there is no standalone device or activity
-    payload anymore.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     device_ids:
-      name: Device ids
-      description: >-
-        Optional list of device ids (1..255) to back up. Omit (or pass an
-        empty list) to back up the whole hub.
       required: false
       selector:
         object:
 
 restore_backup:
-  name: Restore hub bundle
-  description: >-
-    Restores a hub_bundle JSON payload (schema_version 5). Devices in the
-    bundle are restored first; the action auto-builds the source->new
-    device_id map. Activities in the bundle are then restored using that
-    map. Bundles containing activities require a hub erase first; until
-    erase support ships this fails fast with a clear error and no wire
-    writes.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     backup:
-      name: Backup payload
-      description: Full hub_bundle object returned by the backup_bundle action.
       required: true
       selector:
         object:
 
 dump_ir_commands:
-  name: Dump raw IR commands
-  description: Requests 0x020C [device_id, command_id] and returns the parsed raw command blob pages for the selected device. Leave command_id empty to request all blob records with ff.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     device_id:
-      name: Device id
-      description: Hub device id to dump via 0x020C [device_id, command_id].
       required: true
       selector:
         number:
@@ -166,8 +111,6 @@ dump_ir_commands:
           max: 255
           mode: box
     command_id:
-      name: Command id
-      description: Optional item id to probe via 0x020C [device_id, command_id]. Omit to request all records with ff.
       required: false
       selector:
         number:
@@ -176,31 +119,22 @@ dump_ir_commands:
           mode: box
 
 create_wifi_device:
-  name: Create Wifi Device
-  description: Creates a Wifi device on the selected hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     device_name:
-      name: Device name
-      description: Name that the Wifi device will be given on the hub.
       required: true
       default: Home Assistant
       selector:
         text:
     commands:
-      name: Custom commands
-      description: Required list of 1 to 10 custom command names to map into the Wifi emulated app slots. Names may contain letters, numbers, and spaces. For X1S and X2 hubs unicode (accented and umlaut characters) and punctuation are supported.
       required: true
       selector:
         object:
     power_on_command_id:
-      name: Power on command id
-      description: Optional command id from the configured command list to use as the device power-on command. Use values 1 through 10, where 1 is the first command in `commands`.
       required: false
       selector:
         number:
@@ -208,8 +142,6 @@ create_wifi_device:
           max: 10
           mode: box
     power_off_command_id:
-      name: Power off command id
-      description: Optional command id from the configured command list to use as the device power-off command. Use values 1 through 10, where 1 is the first command in `commands`.
       required: false
       selector:
         number:
@@ -217,24 +149,18 @@ create_wifi_device:
           max: 10
           mode: box
     input_command_ids:
-      name: Input command ids
-      description: Optional ordered list of command positions from `commands` to register as device input switchers on X1/X1S hubs. These are command-list positions, not discovered hub command ids.
       required: false
       selector:
         object:
 
 device_to_activity:
-  name: Add device to activity
-  description: Adds a device to an activity on the selected hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     activity_id:
-      name: Activity id
       required: true
       selector:
         number:
@@ -242,7 +168,6 @@ device_to_activity:
           max: 200
           mode: box
     device_id:
-      name: Device id
       required: true
       selector:
         number:
@@ -250,8 +175,6 @@ device_to_activity:
           max: 99
           mode: box
     input_command_id:
-      name: Input command id
-      description: Optional command id to set as the device input when it powers on (X1/X1S hubs). Use the same command id as defined in create_wifi_device or discovered via the diagnostic sensor.
       required: false
       selector:
         number:
@@ -260,17 +183,13 @@ device_to_activity:
           mode: box
 
 delete_device:
-  name: Delete device
-  description: Deletes a device and confirms all impacted activities on the selected hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     device_id:
-      name: Device id
       required: true
       selector:
         number:
@@ -279,17 +198,13 @@ delete_device:
           mode: box
 
 command_to_favorite:
-  name: Add command to activity favorite
-  description: Makes a favorite from a command on the selected hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     activity_id:
-      name: Activity id
       required: true
       selector:
         number:
@@ -297,7 +212,6 @@ command_to_favorite:
           max: 255
           mode: box
     device_id:
-      name: Device id
       required: true
       selector:
         number:
@@ -305,7 +219,6 @@ command_to_favorite:
           max: 99
           mode: box
     command_id:
-      name: Command id
       required: true
       selector:
         number:
@@ -313,8 +226,6 @@ command_to_favorite:
           max: 255
           mode: box
     slot_id:
-      name: Favorite slot id
-      description: Optional slot/index value to store in the favorite mapping payload.
       required: false
       default: 0
       selector:
@@ -324,17 +235,13 @@ command_to_favorite:
           mode: box
 
 command_to_button:
-  name: Map command to activity button
-  description: Maps commands to buttons on the selected hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     activity_id:
-      name: Activity id
       required: true
       selector:
         number:
@@ -342,8 +249,6 @@ command_to_button:
           max: 255
           mode: box
     button_id:
-      name: Activity button id
-      description: Physical button code in the keymap (for example 182 for VOL_UP, 193 for BLUE).
       required: true
       selector:
         number:
@@ -351,7 +256,6 @@ command_to_button:
           max: 255
           mode: box
     device_id:
-      name: Device id
       required: true
       selector:
         number:
@@ -359,7 +263,6 @@ command_to_button:
           max: 255
           mode: box
     command_id:
-      name: Command id
       required: true
       selector:
         number:
@@ -367,8 +270,6 @@ command_to_button:
           max: 255
           mode: box
     long_press_device_id:
-      name: Long press device id
-      description: Device id for the long-press action. Must be used together with long_press_command_id.
       required: false
       selector:
         number:
@@ -376,8 +277,6 @@ command_to_button:
           max: 255
           mode: box
     long_press_command_id:
-      name: Long press command id
-      description: Command id for the long-press action. Must be used together with long_press_device_id.
       required: false
       selector:
         number:
@@ -387,35 +286,26 @@ command_to_button:
 
 
 sync_command_config:
-  name: Sync command configuration
-  description: Deploys persisted command-slot configuration to the hub by recreating the managed Wifi device and applying activity mappings.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     device_name:
-      name: Device name
-      description: Optional Wifi device name; defaults to Home Assistant.
       required: false
       default: Home Assistant
       selector:
         text:
 
 get_favorites:
-  name: Get activity favorites
-  description: Fetches the current ordered quick-access list from the hub for the given activity. The response may contain both favorites and macros, each with its shared hub-order id, display slot, type, and best-known label.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     activity_id:
-      name: Activity id
       required: true
       selector:
         number:
@@ -424,17 +314,13 @@ get_favorites:
           mode: box
 
 reorder_favorites:
-  name: Reorder activity favorites
-  description: Reorders the favorites of an activity on the hub. Provide the hub-order fav_ids in the desired new order.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     activity_id:
-      name: Activity id
       required: true
       selector:
         number:
@@ -442,24 +328,18 @@ reorder_favorites:
           max: 255
           mode: box
     ordered_fav_ids:
-      name: Ordered favorite ids
-      description: List of hub-order fav_id values in the desired display order (use get_favorites to retrieve them).
       required: true
       selector:
         object:
 
 delete_favorite:
-  name: Delete activity favorite
-  description: Deletes a single favorite from an activity on the hub.
   fields:
     device:
-      name: Sofabaton hub
       required: true
       selector:
         device:
           integration: sofabaton_x1s
     activity_id:
-      name: Activity id
       required: true
       selector:
         number:
@@ -467,8 +347,6 @@ delete_favorite:
           max: 255
           mode: box
     fav_id:
-      name: Favorite id
-      description: The hub-order fav_id of the favorite to delete (use get_favorites to retrieve it).
       required: true
       selector:
         number:

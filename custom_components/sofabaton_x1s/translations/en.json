@@ -1,62 +1,500 @@
 {
   "config": {
+    "flow_title": "{name}",
     "step": {
-      "user": {
-        "title": "Select Sofabaton hub",
-        "description": "Select the Sofabaton hub that was discovered on your network, or choose manual setup if yours isn\u2019t listed."
-      },
       "manual": {
         "title": "Manual hub setup",
-        "description": "Provide the IP address of your Sofabaton hub. The integration will learn the real hub name and model automatically after it connects.",
+        "description": "Enter the IP address of your Sofabaton hub. The integration learns its name and model after connecting.",
         "data": {
           "host": "Hub IP address"
         }
       },
       "ports": {
         "title": "Integration ports",
-        "description": "These ports are used by this integration and apply to all hubs.",
+        "description": "These ports are shared by all Sofabaton hubs configured in Home Assistant. Most users can keep the defaults.",
         "data": {
-          "hub_listen_base": "TCP listener port (for the physical hub to connect)",
-          "proxy_udp_port": "UDP Listener port (for the app to connect)",
-          "roku_listen_port": "HTTP listener port (for the hub to send button presses to Home Assistant)"
+          "hub_listen_base": "Hub TCP listener port",
+          "proxy_udp_port": "App UDP listener port",
+          "roku_listen_port": "Wi-Fi command HTTP listener port"
         },
         "data_description": {
-          "hub_listen_base": "Shared TCP port that every configured hub connects back to.",
-          "proxy_udp_port": "Shared UDP listener for official app discovery and handshake. Keep 8102 unless another service already uses it. Changing this port will break discovery in the official iOS app (Android is fine) and prevent it from connecting to your virtual hub.",
-          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working. Resync the configuration to update the hub."
+          "hub_listen_base": "TCP port used by physical hubs to connect to the integration.",
+          "proxy_udp_port": "UDP port used for official app discovery and connections. Keep port 8102 for iOS compatibility unless another service already uses it.",
+          "roku_listen_port": "HTTP port used to receive Wi-Fi device button presses. Changing it breaks X1 compatibility and requires existing Wi-Fi devices and commands to be synchronized again."
         }
       },
       "zeroconf_confirm": {
         "title": "Discovered Sofabaton hub",
-        "description": "Home Assistant found a Sofabaton hub ({{name}} @ {{host}}). Confirm to set it up."
+        "description": "Home Assistant found the Sofabaton hub **{name}** at **{host}**. Submit to configure it."
       }
     },
     "abort": {
-      "x2_disabled": "Sofabaton X2 discovery has been disabled in configuration.yaml. To re-enable it, remove `enable_x2_discovery: false` from the `sofabaton_x1s:` section (or set it to true) and restart Home Assistant."
+      "already_configured": "This Sofabaton hub is already configured.",
+      "not_x1_hub": "The discovered device is not a supported Sofabaton hub.",
+      "unknown": "An unknown error occurred.",
+      "x2_disabled": "Sofabaton X2 discovery is disabled in `configuration.yaml`. To enable it, remove `enable_x2_discovery: false` from the `sofabaton_x1s:` section (or set it to `true`) and restart Home Assistant."
     }
   },
   "options": {
     "step": {
       "ports": {
         "title": "Integration ports",
-        "description": "These ports are used by this integration and apply to all hubs.",
+        "description": "These ports are shared by all Sofabaton hubs configured in Home Assistant. Most users can keep the defaults.",
         "data": {
-          "hub_listen_base": "TCP listener port (for the physical hub to connect)",
-          "proxy_udp_port": "UDP Listener port (for the app to connect)",
-          "roku_listen_port": "HTTP listener port (for the hub to send button presses to Home Assistant)"
+          "hub_listen_base": "Hub TCP listener port",
+          "proxy_udp_port": "App UDP listener port",
+          "roku_listen_port": "Wi-Fi command HTTP listener port"
         },
         "data_description": {
-          "hub_listen_base": "Shared TCP port that every configured hub connects back to.",
-          "proxy_udp_port": "Shared UDP listener for official app discovery and handshake. Keep 8102 unless another service already uses it. Changing this port will break discovery in the official iOS app (Android is fine) and prevent it from connecting to your virtual hub.",
-          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working. Resync the configuration to update the hub."
+          "hub_listen_base": "TCP port used by physical hubs to connect to the integration.",
+          "proxy_udp_port": "UDP port used for official app discovery and connections. Keep port 8102 for iOS compatibility unless another service already uses it.",
+          "roku_listen_port": "HTTP port used to receive Wi-Fi device button presses. Changing it breaks X1 compatibility and requires existing Wi-Fi devices and commands to be synchronized again."
         }
       }
     }
   },
   "entity": {
+    "binary_sensor": {
+      "client": {
+        "name": "App connected"
+      },
+      "hub_connected": {
+        "name": "Hub connected"
+      }
+    },
+    "button": {
+      "find_remote": {
+        "name": "Find remote"
+      },
+      "resync_remote": {
+        "name": "Synchronize remote"
+      },
+      "remote_a": {
+        "name": "A button"
+      },
+      "remote_b": {
+        "name": "B button"
+      },
+      "remote_back": {
+        "name": "Back"
+      },
+      "remote_blue": {
+        "name": "Blue button"
+      },
+      "remote_c": {
+        "name": "C button"
+      },
+      "remote_ch_down": {
+        "name": "Channel down"
+      },
+      "remote_ch_up": {
+        "name": "Channel up"
+      },
+      "remote_down": {
+        "name": "Down"
+      },
+      "remote_dvr": {
+        "name": "DVR"
+      },
+      "remote_exit": {
+        "name": "Exit"
+      },
+      "remote_fwd": {
+        "name": "Fast forward"
+      },
+      "remote_green": {
+        "name": "Green button"
+      },
+      "remote_guide": {
+        "name": "Guide"
+      },
+      "remote_home": {
+        "name": "Home"
+      },
+      "remote_left": {
+        "name": "Left"
+      },
+      "remote_menu": {
+        "name": "Menu"
+      },
+      "remote_mute": {
+        "name": "Volume mute"
+      },
+      "remote_ok": {
+        "name": "OK"
+      },
+      "remote_pause": {
+        "name": "Pause"
+      },
+      "remote_play": {
+        "name": "Play"
+      },
+      "remote_red": {
+        "name": "Red button"
+      },
+      "remote_rew": {
+        "name": "Rewind"
+      },
+      "remote_right": {
+        "name": "Right"
+      },
+      "remote_up": {
+        "name": "Up"
+      },
+      "remote_vol_down": {
+        "name": "Volume down"
+      },
+      "remote_vol_up": {
+        "name": "Volume up"
+      },
+      "remote_yellow": {
+        "name": "Yellow button"
+      }
+    },
+    "remote": {
+      "remote": {
+        "name": "Remote"
+      }
+    },
+    "select": {
+      "activity": {
+        "name": "Activity"
+      }
+    },
     "sensor": {
+      "activity": {
+        "name": "Activity"
+      },
+      "index": {
+        "name": "Index"
+      },
       "ip_commands": {
-        "name": "Wifi Commands"
+        "name": "Wi-Fi commands"
+      },
+      "recorded_keypress": {
+        "name": "Recorded keypress"
+      }
+    },
+    "switch": {
+      "hex_logging": {
+        "name": "Hex logging"
+      },
+      "proxy": {
+        "name": "Proxy"
+      },
+      "wifi_device": {
+        "name": "Wi-Fi device"
+      }
+    },
+    "text": {
+      "hub_ip_address": {
+        "name": "Hub IP address"
+      }
+    }
+  },
+  "services": {
+    "fetch_device_commands": {
+      "name": "Fetch commands for device or activity",
+      "description": "Fetches and caches commands for an activity or device so they appear on the diagnostic sensor.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub from which to fetch commands."
+        },
+        "ent_id": {
+          "name": "Activity or device ID",
+          "description": "ID of the activity or device on the hub."
+        }
+      }
+    },
+    "play_ir_blob": {
+      "name": "Play IR blob",
+      "description": "Streams a command blob to the hub for one-time playback without saving it. Accepts a canonical blob body without its final replay-tail checksum byte or a descriptive protocol string such as `P:Sony12 R:40000 D:1 F:18 MUL:2`.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub on which to play the command."
+        },
+        "blob": {
+          "name": "Blob or descriptor",
+          "description": "Canonical blob body as hexadecimal without its final replay-tail checksum byte, or a descriptive protocol string beginning with `P:`. Whitespace and newlines are ignored in hexadecimal input."
+        }
+      }
+    },
+    "persist_ir_blob": {
+      "name": "Save IR blob",
+      "description": "Adds a command to an existing IR device by staging the current command IDs, uploading a canonical command blob, and saving it on the hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub on which to save the command."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "ID of the existing IR device that will receive the command."
+        },
+        "command_name": {
+          "name": "Command name",
+          "description": "Label to save on the hub for the new command."
+        },
+        "blob": {
+          "name": "Blob or descriptor",
+          "description": "Canonical blob body as hexadecimal without its final replay-tail checksum byte, or a descriptive protocol string beginning with `P:`. Whitespace and newlines are ignored in hexadecimal input."
+        }
+      }
+    },
+    "fetch_blob": {
+      "name": "Fetch normalized blob",
+      "description": "Requests `0x020C [device_id, command_id]` and returns normalized command blob records, including the canonical body, removed checksum byte, and a parsed descriptor when available.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub from which to fetch the blob."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Hub device ID to request with `0x020C`."
+        },
+        "command_id": {
+          "name": "Command ID",
+          "description": "Optional command ID to request. Omit it to request all records with `ff`."
+        }
+      }
+    },
+    "backup_bundle": {
+      "name": "Back up hub bundle",
+      "description": "Returns a `hub_bundle` JSON payload. Omit device IDs to back up all devices and activities, or provide device IDs to back up only those devices.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub to back up."
+        },
+        "device_ids": {
+          "name": "Device IDs",
+          "description": "Optional list of device IDs from 1 through 255. Omit it or provide an empty list to back up the whole hub."
+        }
+      }
+    },
+    "restore_backup": {
+      "name": "Restore hub bundle",
+      "description": "Restores a `hub_bundle` JSON payload. Devices are restored first, followed by activities using the automatically generated device ID mapping.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub to restore."
+        },
+        "backup": {
+          "name": "Backup payload",
+          "description": "Complete `hub_bundle` object returned by the back up hub bundle action."
+        }
+      }
+    },
+    "dump_ir_commands": {
+      "name": "Dump raw IR commands",
+      "description": "Requests `0x020C [device_id, command_id]` and returns parsed raw command blob pages for a device.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub from which to dump commands."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Hub device ID to request with `0x020C`."
+        },
+        "command_id": {
+          "name": "Command ID",
+          "description": "Optional command ID to request. Omit it to request all records with `ff`."
+        }
+      }
+    },
+    "create_wifi_device": {
+      "name": "Create Wi-Fi device",
+      "description": "Creates a Wi-Fi device on the selected hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub on which to create the device."
+        },
+        "device_name": {
+          "name": "Device name",
+          "description": "Name to assign to the Wi-Fi device on the hub."
+        },
+        "commands": {
+          "name": "Custom commands",
+          "description": "List of 1 through 10 command names to map to the emulated app slots. X1S and X2 hubs support Unicode characters and punctuation."
+        },
+        "power_on_command_id": {
+          "name": "Power-on command ID",
+          "description": "Optional position in `commands` to use for power on, where 1 is the first command."
+        },
+        "power_off_command_id": {
+          "name": "Power-off command ID",
+          "description": "Optional position in `commands` to use for power off, where 1 is the first command."
+        },
+        "input_command_ids": {
+          "name": "Input command IDs",
+          "description": "Optional ordered list of positions in `commands` to register as input switchers on X1 and X1S hubs."
+        }
+      }
+    },
+    "device_to_activity": {
+      "name": "Add device to activity",
+      "description": "Adds a device to an activity on the selected hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub containing the device and activity."
+        },
+        "activity_id": {
+          "name": "Activity ID",
+          "description": "ID of the activity on the hub."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "ID of the device to add."
+        },
+        "input_command_id": {
+          "name": "Input command ID",
+          "description": "Optional command ID to send when the device powers on in this activity."
+        }
+      }
+    },
+    "delete_device": {
+      "name": "Delete device",
+      "description": "Deletes a device and confirms all affected activities on the selected hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub from which to delete the device."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "ID of the device to delete."
+        }
+      }
+    },
+    "command_to_favorite": {
+      "name": "Add command to activity favorites",
+      "description": "Adds a command to an activity's favorites on the selected hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub containing the command and activity."
+        },
+        "activity_id": {
+          "name": "Activity ID",
+          "description": "ID of the activity on the hub."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "ID of the device containing the command."
+        },
+        "command_id": {
+          "name": "Command ID",
+          "description": "ID of the command to add."
+        },
+        "slot_id": {
+          "name": "Favorite slot ID",
+          "description": "Optional slot or index to store in the favorite mapping."
+        }
+      }
+    },
+    "command_to_button": {
+      "name": "Map command to activity button",
+      "description": "Maps a command to a physical button in an activity on the selected hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub containing the command and activity."
+        },
+        "activity_id": {
+          "name": "Activity ID",
+          "description": "ID of the activity on the hub."
+        },
+        "button_id": {
+          "name": "Activity button ID",
+          "description": "Physical button code in the keymap, such as 182 for `VOL_UP` or 193 for `BLUE`."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "ID of the device containing the command."
+        },
+        "command_id": {
+          "name": "Command ID",
+          "description": "ID of the command for a short press."
+        },
+        "long_press_device_id": {
+          "name": "Long-press device ID",
+          "description": "Device ID for the long-press action. Use together with long-press command ID."
+        },
+        "long_press_command_id": {
+          "name": "Long-press command ID",
+          "description": "Command ID for the long-press action. Use together with long-press device ID."
+        }
+      }
+    },
+    "sync_command_config": {
+      "name": "Synchronize command configuration",
+      "description": "Deploys the saved command-slot configuration by recreating the managed Wi-Fi device and applying activity mappings.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub to synchronize."
+        },
+        "device_name": {
+          "name": "Device name",
+          "description": "Optional Wi-Fi device name. The default is Home Assistant."
+        }
+      }
+    },
+    "get_favorites": {
+      "name": "Get activity favorites",
+      "description": "Fetches the ordered quick-access list for an activity, including favorites and macros with their order IDs, display slots, types, and labels.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub from which to fetch favorites."
+        },
+        "activity_id": {
+          "name": "Activity ID",
+          "description": "ID of the activity on the hub."
+        }
+      }
+    },
+    "reorder_favorites": {
+      "name": "Reorder activity favorites",
+      "description": "Reorders an activity's favorites using their hub-order IDs.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub containing the activity."
+        },
+        "activity_id": {
+          "name": "Activity ID",
+          "description": "ID of the activity on the hub."
+        },
+        "ordered_fav_ids": {
+          "name": "Ordered favorite IDs",
+          "description": "Hub-order favorite IDs in the desired display order. Use the get activity favorites action to retrieve them."
+        }
+      }
+    },
+    "delete_favorite": {
+      "name": "Delete activity favorite",
+      "description": "Deletes one favorite from an activity on the selected hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub containing the activity."
+        },
+        "activity_id": {
+          "name": "Activity ID",
+          "description": "ID of the activity on the hub."
+        },
+        "fav_id": {
+          "name": "Favorite ID",
+          "description": "Hub-order favorite ID to delete. Use the get activity favorites action to retrieve it."
+        }
       }
     }
   }

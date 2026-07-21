@@ -19,7 +19,7 @@ from .const import (
     signal_hub,
 )
 from .hub import SofabatonHub, get_hub_display_name, get_hub_model
-from .lib.protocol_const import ButtonName  # your proxy enum
+from .lib.protocol_const import BUTTONNAME_BY_CODE, ButtonName  # your proxy enum
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,6 +89,7 @@ async def async_setup_entry(
 
 class SofabatonFindRemoteButton(ButtonEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:remote"
     # Stable identifier surfaced in the frontend entity registry; used by the
@@ -99,10 +100,6 @@ class SofabatonFindRemoteButton(ButtonEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_find_remote"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} find remote"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -140,6 +137,7 @@ class SofabatonFindRemoteButton(ButtonEntity):
 
 class SofabatonResyncRemoteButton(ButtonEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:sync"
     _attr_translation_key = "resync_remote"
@@ -148,10 +146,6 @@ class SofabatonResyncRemoteButton(ButtonEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_resync_remote"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} resync remote"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -186,13 +180,14 @@ class SofabatonResyncRemoteButton(ButtonEntity):
 
 class SofabatonDynamicButton(ButtonEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
 
     def __init__(
         self,
         hub: SofabatonHub,
         entry: ConfigEntry,
         code: int,
-        label: str,
+        _label: str,
         icon: str,
     ) -> None:
         self._hub = hub
@@ -201,11 +196,7 @@ class SofabatonDynamicButton(ButtonEntity):
 
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_btn_{code:02x}"
         self._attr_icon = icon
-        self._label = label
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} {self._label}"
+        self._attr_translation_key = f"remote_{BUTTONNAME_BY_CODE[code].lower()}"
 
     @property
     def device_info(self) -> DeviceInfo:

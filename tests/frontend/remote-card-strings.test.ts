@@ -10,6 +10,9 @@ import {
 import { isPoweredOffLabel } from "../../custom_components/sofabaton_x1s/www/src/remote-card-state";
 import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/ar";
 import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/de";
+import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/es";
+import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/fr";
+import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/zh-hans";
 
 test("defaults to the English table", () => {
   setRemoteCardLanguage("en");
@@ -96,6 +99,66 @@ test("bundled Arabic translation supports regional locales and bidi isolation", 
     "تم اكتشاف جهاز MQTT: \u2068Living Room TV\u2069.",
   );
   assert.equal(isPoweredOffLabel("متوقف عن التشغيل"), true);
+
+  setRemoteCardLanguage("en");
+});
+
+test("bundled French translation supports regional locales and inflection", () => {
+  setRemoteCardLanguage("fr-CA");
+
+  assert.equal(
+    str().card.remoteUnavailable,
+    "La télécommande n’est pas disponible (peut-être parce que l’application Sofabaton est connectée).",
+  );
+  assert.equal(str().card.activityFallback(7), "Activité 7");
+  assert.equal(
+    str().assist.createdTriggers(1, "Téléviseur"),
+    "1 déclencheur MQTT Discovery créé pour Téléviseur",
+  );
+  assert.equal(
+    str().assist.createdTriggers(2, "Téléviseur"),
+    "2 déclencheurs MQTT Discovery créés pour Téléviseur",
+  );
+  assert.equal(isPoweredOffLabel("éteinte"), true);
+
+  setRemoteCardLanguage("en");
+});
+
+test("bundled Spanish translation supports regional locales and inflection", () => {
+  setRemoteCardLanguage("es-MX");
+
+  assert.equal(
+    str().card.remoteUnavailable,
+    "El control remoto no está disponible (posiblemente porque la aplicación Sofabaton está conectada).",
+  );
+  assert.equal(str().card.activityFallback(7), "Actividad 7");
+  assert.equal(
+    str().assist.createdTriggers(1, "Televisor"),
+    "1 desencadenante de MQTT Discovery creado para Televisor",
+  );
+  assert.equal(
+    str().assist.createdTriggers(2, "Televisor"),
+    "2 desencadenantes de MQTT Discovery creados para Televisor",
+  );
+  assert.equal(isPoweredOffLabel("apagado"), true);
+
+  setRemoteCardLanguage("en");
+});
+
+test("bundled Simplified Chinese translation supports the zh-Hans locale", () => {
+  setRemoteCardLanguage("zh-Hans");
+
+  assert.equal(
+    str().card.remoteUnavailable,
+    "遥控器不可用（可能是因为 Sofabaton 应用已连接）。",
+  );
+  assert.equal(str().card.activityFallback(7), "活动 7");
+  assert.equal(
+    str().assist.createdTriggers(2, "客厅电视"),
+    "已为“客厅电视”创建 2 个 MQTT Discovery 触发器",
+  );
+  assert.equal(str().editor.resetCardDefault, "重置卡片默认布局");
+  assert.equal(isPoweredOffLabel("已关机"), true);
 
   setRemoteCardLanguage("en");
 });

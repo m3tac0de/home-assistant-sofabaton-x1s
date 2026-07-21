@@ -30,11 +30,11 @@ async def async_setup_entry(
 
 class SofabatonRemote(RemoteEntity):
     _attr_has_entity_name = True
+    _attr_translation_key = "remote"
 
     def __init__(self, hub, entry: ConfigEntry) -> None:
         self._hub = hub
         self._entry = entry
-        self._attr_name = "Remote"
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_remote"
         self._attr_supported_features = RemoteEntityFeature.ACTIVITY
 

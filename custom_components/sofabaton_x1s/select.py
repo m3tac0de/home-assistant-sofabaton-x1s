@@ -29,6 +29,8 @@ async def async_setup_entry(
 
 class SofabatonActivitySelect(SelectEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "activity"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -36,10 +38,6 @@ class SofabatonActivitySelect(SelectEntity):
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_activity"
         self._attr_options = [POWERED_OFF]
         self._attr_available = True
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} Activity"
 
     @property
     def device_info(self) -> DeviceInfo:
