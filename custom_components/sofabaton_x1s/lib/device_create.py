@@ -1108,11 +1108,20 @@ def build_macro_step(
             f"MACRO_STEP_RECORD_SIZE ({MACRO_STEP_RECORD_SIZE})"
         )
     step_count = len(step_records) // MACRO_STEP_RECORD_SIZE
-    if step_count > 0xFF:
-        raise ValueError(f"too many steps ({step_count}); max 255")
 
     schema = schema_for(hub_version)
     label_slot_len = schema.macro_label_slot_len
+    # The family-frame opcode carries the payload length in ONE byte
+    # (``_send_family_frame``: ``(len & 0xFF) << 8``), so this single-page
+    # write caps at 255 payload bytes: 10 bytes of wrapper/preamble/checksum
+    # plus the label slot leaves room for 18 rows on X1S/X2 and 21 on X1.
+    # Past that the length byte wraps and the frame goes out corrupt.
+    max_steps = (0xFF - 10 - label_slot_len) // MACRO_STEP_RECORD_SIZE
+    if step_count > max_steps:
+        raise ValueError(
+            f"too many steps ({step_count}) for a single-page macro write; "
+            f"max {max_steps} for hub_version={hub_version!r}"
+        )
     label_encoding = schema.macro_label_encoding
     label_bytes = label.encode(label_encoding, errors="replace")[:label_slot_len]
     label_slot = label_bytes + b"\x00" * (label_slot_len - len(label_bytes))
