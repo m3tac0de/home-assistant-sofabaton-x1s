@@ -2322,6 +2322,23 @@ var TOOLS_CARD_STRINGS_EN = {
     hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
     wifiCommandsTabLabel: "Wifi Commands",
     eventsTabLabel: "Events",
+    wifiEventsTitle: "Wifi Events",
+    wifiEventsSubtitle: "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
+    wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
+    wifiEventRowPress: (name) => `When ${name} is pressed`,
+    wifiEventRowLongPress: "and on long press",
+    wifiEventModalTitle: (name) => `When ${name} is pressed`,
+    wifiEventLongModalTitle: (name) => `When ${name} is long-pressed`,
+    wifiEventLongPressToggleTitle: "Enable long press",
+    wifiEventNeedsSyncBadge: "needs sync",
+    wifiEventRetrySync: "Retry sync",
+    wifiEventDeleteTitle: "Delete Wifi Event",
+    wifiEventDeleteConfirmTitle: (name) => `Delete "${name}"?`,
+    wifiEventDeleteScanning: "Checking what references this event\u2026",
+    wifiEventDeleteNoRefs: "Nothing on the hub references this event.",
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `The hub will also remove ${favorites} shortcut${favorites === 1 ? "" : "s"} and ${bindings} button assignment${bindings === 1 ? "" : "s"} that reference it, and the step is removed from ${steps} macro${steps === 1 ? "" : "s"} (a macro left with no steps is removed).`,
+    wifiEventDeleteConfirm: "Delete",
+    wifiEventDeleteFailed: "Deleting the Wifi Event failed.",
     activityEventsTitle: "Activity Events",
     activityEventsSubtitle: "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
     activityEventStarts: (name) => `When ${name} starts`,
@@ -5750,6 +5767,23 @@ var TOOLS_CARD_STRINGS_DE = {
     wifiCommandsTabLabel: "Wifi Commands",
     eventsTabLabel: "Ereignisse",
     activityEventsTitle: "Aktivit\xE4tsereignisse",
+    wifiEventsTitle: "Wifi-Events",
+    wifiEventsSubtitle: "Events, die im Aktivit\xE4ten-Editor erstellt wurden. Ein Druck auf der Fernbedienung l\xF6st hier die Home-Assistant-Aktion aus (aktualisiert auch den Wifi-Commands-Sensor).",
+    wifiEventsEmpty: "Noch keine Wifi-Events. Erstelle sie in den Hinzuf\xFCgen-Dialogen des Aktivit\xE4ten-Editors (Shortcuts, Tasten und Makro-Schritte).",
+    wifiEventRowPress: (name) => `Wenn ${name} gedr\xFCckt wird`,
+    wifiEventRowLongPress: "und bei langem Druck",
+    wifiEventModalTitle: (name) => `Wenn ${name} gedr\xFCckt wird`,
+    wifiEventLongModalTitle: (name) => `Wenn ${name} lange gedr\xFCckt wird`,
+    wifiEventLongPressToggleTitle: "Langen Druck aktivieren",
+    wifiEventNeedsSyncBadge: "Sync erforderlich",
+    wifiEventRetrySync: "Sync erneut versuchen",
+    wifiEventDeleteTitle: "Wifi-Event l\xF6schen",
+    wifiEventDeleteConfirmTitle: (name) => `\u201E${name}\u201C l\xF6schen?`,
+    wifiEventDeleteScanning: "Verweise auf dieses Event werden gepr\xFCft\u2026",
+    wifiEventDeleteNoRefs: "Nichts auf dem Hub verweist auf dieses Event.",
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `Der Hub entfernt au\xDFerdem ${favorites} Shortcut(s) und ${bindings} Tastenzuweisung(en), die darauf verweisen; der Schritt wird aus ${steps} Makro(s) entfernt (ein Makro ohne Schritte wird gel\xF6scht).`,
+    wifiEventDeleteConfirm: "L\xF6schen",
+    wifiEventDeleteFailed: "Das Wifi-Event konnte nicht gel\xF6scht werden.",
     activityEventsSubtitle: "Eine Home-Assistant-Aktion ausf\xFChren, wenn eine bestimmte Aktivit\xE4t startet oder endet. Beim Wechsel zwischen Aktivit\xE4ten endet die alte und die neue startet.",
     activityEventStarts: (name) => `Wenn ${name} startet`,
     activityEventStops: "und wenn sie endet",
@@ -6562,6 +6596,23 @@ var TOOLS_CARD_STRINGS_ES = {
     wifiCommandsTabLabel: "Wifi Commands",
     eventsTabLabel: "Eventos",
     activityEventsTitle: "Eventos de actividad",
+    wifiEventsTitle: "Eventos Wifi",
+    wifiEventsSubtitle: "Eventos creados desde el editor de actividades. Pulsarlos en el mando dispara aqu\xED su acci\xF3n de Home Assistant (tambi\xE9n actualizan el sensor de Wifi Commands).",
+    wifiEventsEmpty: "Todav\xEDa no hay eventos Wifi. Cr\xE9alos desde los di\xE1logos de a\xF1adir del editor de actividades (atajos, botones y pasos de macro).",
+    wifiEventRowPress: (name) => `Cuando se pulsa ${name}`,
+    wifiEventRowLongPress: "y con pulsaci\xF3n larga",
+    wifiEventModalTitle: (name) => `Cuando se pulsa ${name}`,
+    wifiEventLongModalTitle: (name) => `Cuando se mantiene pulsado ${name}`,
+    wifiEventLongPressToggleTitle: "Activar pulsaci\xF3n larga",
+    wifiEventNeedsSyncBadge: "necesita sincronizar",
+    wifiEventRetrySync: "Reintentar sincronizaci\xF3n",
+    wifiEventDeleteTitle: "Eliminar evento Wifi",
+    wifiEventDeleteConfirmTitle: (name) => `\xBFEliminar \xAB${name}\xBB?`,
+    wifiEventDeleteScanning: "Comprobando qu\xE9 hace referencia a este evento\u2026",
+    wifiEventDeleteNoRefs: "Nada en el hub hace referencia a este evento.",
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `El hub tambi\xE9n eliminar\xE1 ${favorites} atajo(s) y ${bindings} asignaci\xF3n(es) de bot\xF3n que lo referencian; el paso se elimina de ${steps} macro(s) (una macro sin pasos se elimina).`,
+    wifiEventDeleteConfirm: "Eliminar",
+    wifiEventDeleteFailed: "No se pudo eliminar el evento Wifi.",
     activityEventsSubtitle: "Ejecuta una acci\xF3n de Home Assistant cuando una actividad espec\xEDfica se inicie o se detenga. Al cambiar de actividad, la anterior se detiene y se inicia la nueva.",
     activityEventStarts: (name) => `Cuando se inicia ${name}`,
     activityEventStops: "y cuando se detiene",
@@ -7375,6 +7426,23 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiCommandsTabLabel: "Wifi Commands",
     eventsTabLabel: "\xC9v\xE9nements",
     activityEventsTitle: "\xC9v\xE9nements d\u2019activit\xE9",
+    wifiEventsTitle: "\xC9v\xE9nements Wifi",
+    wifiEventsSubtitle: "\xC9v\xE9nements cr\xE9\xE9s depuis l\u2019\xE9diteur d\u2019activit\xE9s. Un appui sur la t\xE9l\xE9commande d\xE9clenche ici son action Home Assistant (met aussi \xE0 jour le capteur Wifi Commands).",
+    wifiEventsEmpty: "Aucun \xE9v\xE9nement Wifi pour le moment. Cr\xE9ez-les depuis les dialogues d\u2019ajout de l\u2019\xE9diteur d\u2019activit\xE9s (raccourcis, boutons et \xE9tapes de macro).",
+    wifiEventRowPress: (name) => `Quand ${name} est press\xE9`,
+    wifiEventRowLongPress: "et sur appui long",
+    wifiEventModalTitle: (name) => `Quand ${name} est press\xE9`,
+    wifiEventLongModalTitle: (name) => `Quand ${name} est press\xE9 longuement`,
+    wifiEventLongPressToggleTitle: "Activer l\u2019appui long",
+    wifiEventNeedsSyncBadge: "synchronisation requise",
+    wifiEventRetrySync: "R\xE9essayer la synchronisation",
+    wifiEventDeleteTitle: "Supprimer l\u2019\xE9v\xE9nement Wifi",
+    wifiEventDeleteConfirmTitle: (name) => `Supprimer \xAB ${name} \xBB ?`,
+    wifiEventDeleteScanning: "V\xE9rification des r\xE9f\xE9rences \xE0 cet \xE9v\xE9nement\u2026",
+    wifiEventDeleteNoRefs: "Rien sur le hub ne r\xE9f\xE9rence cet \xE9v\xE9nement.",
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `Le hub supprimera aussi ${favorites} raccourci(s) et ${bindings} affectation(s) de bouton qui le r\xE9f\xE9rencent ; l\u2019\xE9tape est retir\xE9e de ${steps} macro(s) (une macro sans \xE9tapes est supprim\xE9e).`,
+    wifiEventDeleteConfirm: "Supprimer",
+    wifiEventDeleteFailed: "La suppression de l\u2019\xE9v\xE9nement Wifi a \xE9chou\xE9.",
     activityEventsSubtitle: "Ex\xE9cutez une action Home Assistant lorsqu\u2019une activit\xE9 donn\xE9e d\xE9marre ou s\u2019arr\xEAte. Lors d\u2019un changement d\u2019activit\xE9, l\u2019ancienne s\u2019arr\xEAte et la nouvelle d\xE9marre.",
     activityEventStarts: (name) => `Lorsque ${name} d\xE9marre`,
     activityEventStops: "et lorsqu\u2019elle s\u2019arr\xEAte",
@@ -8188,6 +8256,23 @@ var TOOLS_CARD_STRINGS_NL = {
     hubEventModalNote: "Kies de actie die wordt uitgevoerd wanneer dit gebeurt. Wis de actie om niets te doen.",
     wifiCommandsTabLabel: "Wifi Commands",
     eventsTabLabel: "Gebeurtenissen",
+    wifiEventsTitle: "Wifi-events",
+    wifiEventsSubtitle: "Events gemaakt in de activiteiten-editor. Een druk op de afstandsbediening vuurt hier de Home Assistant-actie af (werkt ook de Wifi Commands-sensor bij).",
+    wifiEventsEmpty: "Nog geen Wifi-events. Maak ze in de toevoegen-dialogen van de activiteiten-editor (snelkoppelingen, knoppen en macrostappen).",
+    wifiEventRowPress: (name) => `Wanneer ${name} wordt ingedrukt`,
+    wifiEventRowLongPress: "en bij lang indrukken",
+    wifiEventModalTitle: (name) => `Wanneer ${name} wordt ingedrukt`,
+    wifiEventLongModalTitle: (name) => `Wanneer ${name} lang wordt ingedrukt`,
+    wifiEventLongPressToggleTitle: "Lang indrukken inschakelen",
+    wifiEventNeedsSyncBadge: "sync nodig",
+    wifiEventRetrySync: "Sync opnieuw proberen",
+    wifiEventDeleteTitle: "Wifi-event verwijderen",
+    wifiEventDeleteConfirmTitle: (name) => `"${name}" verwijderen?`,
+    wifiEventDeleteScanning: "Controleren wat naar dit event verwijst\u2026",
+    wifiEventDeleteNoRefs: "Niets op de hub verwijst naar dit event.",
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `De hub verwijdert ook ${favorites} snelkoppeling(en) en ${bindings} knoptoewijzing(en) die ernaar verwijzen; de stap wordt uit ${steps} macro('s) verwijderd (een macro zonder stappen wordt verwijderd).`,
+    wifiEventDeleteConfirm: "Verwijderen",
+    wifiEventDeleteFailed: "Het Wifi-event kon niet worden verwijderd.",
     activityEventsTitle: "Activiteitsgebeurtenissen",
     activityEventsSubtitle: "Voer een Home Assistant-actie uit wanneer een bepaalde activiteit start of stopt. Bij wisselen tussen activiteiten stopt de oude en start de nieuwe.",
     activityEventStarts: (name) => `Wanneer ${name} start`,
@@ -17111,6 +17196,12 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._maxWifiDevices = 5;
     this._hubEventActions = this._defaultHubEventActions();
     this._activityEventActions = {};
+    // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
+    this._wifiEventsRows = null;
+    this._wifiEventsLoading = false;
+    this._wifiEventsBusy = false;
+    this._wifiEventsError = "";
+    this._wifiEventDeleteConfirm = null;
     this.selectedSection = "wifi";
     this.setSelectedSection = () => {
     };
@@ -17677,8 +17768,130 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       stop: this._normalizeCommandAction(entry?.stop)
     };
   }
+  // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
+  _wifiEventBySlot(slotIndex) {
+    return (this._wifiEventsRows ?? []).find((event) => event.slot_index === slotIndex) ?? null;
+  }
+  async _loadWifiEventsRows() {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS || this._wifiEventsLoading) return;
+    this._wifiEventsLoading = true;
+    try {
+      const result = await this.hass.callWS({
+        type: "sofabaton_x1s/wifi_event/list",
+        entity_id: entityId
+      });
+      this._wifiEventsRows = result?.events ?? [];
+      this._wifiEventsError = "";
+    } catch (_error) {
+      this._wifiEventsRows = this._wifiEventsRows ?? [];
+    } finally {
+      this._wifiEventsLoading = false;
+    }
+  }
+  /** Shared error → message + refresh for the wifi-event mutations. */
+  async _runWifiEventMutation(run) {
+    if (this._wifiEventsBusy) return;
+    this._wifiEventsBusy = true;
+    this._wifiEventsError = "";
+    try {
+      const result = await run();
+      if (result?.events) this._wifiEventsRows = result.events;
+      else await this._loadWifiEventsRows();
+    } catch (error) {
+      this._wifiEventsError = String(
+        error?.message || TOOLS_CARD_STRINGS.wifiCommands.unableSaveAction
+      );
+    } finally {
+      this._wifiEventsBusy = false;
+    }
+  }
+  _toggleWifiEventLongPress(event, enabled) {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return;
+    void this._runWifiEventMutation(() => this.hass.callWS({
+      type: "sofabaton_x1s/wifi_event/set_longpress",
+      entity_id: entityId,
+      slot_index: event.slot_index,
+      enabled
+    }));
+  }
+  _retryWifiEventsSync() {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return;
+    void this._runWifiEventMutation(() => this.hass.callWS({
+      type: "sofabaton_x1s/wifi_event/sync",
+      entity_id: entityId
+    }));
+  }
+  _openWifiEventDeleteConfirm(event) {
+    this._wifiEventDeleteConfirm = { event, refs: null };
+    void this._scanWifiEventRefs(event);
+  }
+  /** Count hub references to the event (favorites / bindings / macro
+   *  steps across all activities) for the delete-confirm body. The hub
+   *  cascades these (bench-validated, plan §11): favorites + bindings are
+   *  removed, the referencing STEP is removed from each macro in place,
+   *  and a macro left with no steps is removed. */
+  async _scanWifiEventRefs(event) {
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!entryId || !this.hass?.callWS || event.device_id == null) return;
+    let favorites = 0;
+    let bindings = 0;
+    let steps = 0;
+    try {
+      const res = await this.hass.callWS({
+        type: "sofabaton_x1s/cache/structural_bundle",
+        entry_id: entryId
+      });
+      const matches = (deviceId, commandId) => Number(deviceId) === event.device_id && (Number(commandId) === event.command_id || Number(commandId) === event.long_press_command_id);
+      for (const activity of res?.bundle?.activities ?? []) {
+        const record = activity;
+        for (const slot of record.favorite_slots ?? []) {
+          if (matches(slot?.device_id, slot?.command_id)) favorites += 1;
+        }
+        for (const binding of record.button_bindings ?? []) {
+          if (matches(binding?.device_id, binding?.command_id) || matches(binding?.long_press_device_id, binding?.long_press_command_id)) bindings += 1;
+        }
+        for (const macro of record.macros ?? []) {
+          if ((macro?.steps ?? []).some((step) => matches(step?.device_id, step?.command_id))) steps += 1;
+        }
+      }
+    } catch (_error) {
+    }
+    if (this._wifiEventDeleteConfirm?.event.slot_index === event.slot_index) {
+      this._wifiEventDeleteConfirm = { event, refs: { favorites, bindings, steps } };
+    }
+  }
+  _confirmWifiEventDelete() {
+    const confirm = this._wifiEventDeleteConfirm;
+    const entityId = String(this._entityId() || "").trim();
+    if (!confirm || !entityId || !this.hass?.callWS) return;
+    void this._runWifiEventMutation(async () => {
+      try {
+        const result = await this.hass.callWS({
+          type: "sofabaton_x1s/wifi_event/delete",
+          entity_id: entityId,
+          slot_index: confirm.event.slot_index
+        });
+        this._wifiEventDeleteConfirm = null;
+        return result;
+      } catch (error) {
+        this._wifiEventDeleteConfirm = null;
+        throw new Error(String(
+          error?.message || TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteFailed
+        ));
+      }
+    });
+  }
   _actionForHubEventTarget(target) {
     if (target.kind === "hub") return this._normalizeCommandAction(this._hubEventActions[target.key]);
+    if (target.kind === "wifi_event") {
+      const event = this._wifiEventBySlot(target.slotIndex);
+      return this._normalizeCommandAction(
+        target.pressType === "long" ? event?.long_press_action : event?.action
+      );
+    }
     return this._activityEventEntry(target.id)[target.phase];
   }
   /** Persist one hub/activity event action. Always ships both maps so the
@@ -17686,6 +17899,17 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   async _writeHubEventAction(target, action) {
     const entityId = String(this._entityId() || "").trim();
     if (!entityId || !this.hass?.callWS) return false;
+    if (target.kind === "wifi_event") {
+      const result2 = await this.hass.callWS({
+        type: "sofabaton_x1s/wifi_event/set_action",
+        entity_id: entityId,
+        slot_index: target.slotIndex,
+        press_type: target.pressType,
+        action: this._normalizeCommandAction(action)
+      });
+      if (result2?.events) this._wifiEventsRows = result2.events;
+      return true;
+    }
     const nextActions = { ...this._hubEventActions };
     const nextActivityActions = Object.fromEntries(
       Object.entries(this._activityEventActions).map(([id]) => [id, this._activityEventEntry(id)])
@@ -17764,6 +17988,123 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     if (!active || !flash) return A;
     return i6(flash.receivedAt, b2`<div class="wifi-ir-flash" aria-hidden="true"></div>`);
   }
+  /** Press-glow for a WIFI EVENTS row: match on the deployed device id +
+   *  slot index (the same callback identity the hub dispatches with);
+   *  `pressType` picks which of the row's two action links glows. */
+  _pressMatchesWifiEvent(press, event, pressType) {
+    if (!press || press.deviceId == null || press.commandIndex == null) return false;
+    if (event.device_id == null || press.deviceId !== event.device_id) return false;
+    return press.commandIndex === event.slot_index && press.pressType === pressType;
+  }
+  _renderWifiEventsGroup(pressFlash) {
+    const W = TOOLS_CARD_STRINGS.wifiCommands;
+    const events = this._wifiEventsRows ?? [];
+    const needsSync = events.some((event) => !event.deployed);
+    const renderAction = (event, pressType) => {
+      const action = this._normalizeCommandAction(
+        pressType === "long" ? event.long_press_action : event.action
+      );
+      const configured = this._commandHasCustomAction(action);
+      const target = {
+        kind: "wifi_event",
+        slotIndex: event.slot_index,
+        pressType
+      };
+      const flashActive = this._pressMatchesWifiEvent(pressFlash, event, pressType);
+      return b2`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${flashActive && pressFlash ? i6(pressFlash.receivedAt, b2`<div class="wifi-ir-flash" aria-hidden="true"></div>`) : A}</span>${configured ? b2`<button
+            class="hub-event-clear"
+            title=${W.hubEventClearTitle}
+            @click=${() => {
+        void this._resetHubEventAction(target);
+      }}
+          ><ha-icon icon="mdi:close"></ha-icon></button>` : A}`;
+    };
+    return b2`
+      <div class="hub-events">
+        <div class="section-title-wrap">
+          <div class="acc-title">${W.wifiEventsTitle}</div>
+        </div>
+        <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
+        ${this._wifiEventsError ? b2`<div class="empty-hint">${this._wifiEventsError}</div>` : A}
+        ${events.length ? b2`
+          <ul class="hub-event-lines">
+            ${events.map((event) => b2`
+              <li class="hub-event-line">
+                <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
+                <span class="hub-event-text">
+                  ${W.wifiEventRowPress(event.name)}${event.deployed ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`},
+                  ${renderAction(event, "short")}${event.long_press_enabled ? b2`,
+                  ${W.wifiEventRowLongPress},
+                  ${renderAction(event, "long")}` : A}.
+                  <label class="hub-event-longpress-toggle" title=${W.wifiEventLongPressToggleTitle}>
+                    <ha-switch
+                      .checked=${event.long_press_enabled}
+                      .disabled=${this._wifiEventsBusy}
+                      @change=${(changeEvent) => {
+      this._toggleWifiEventLongPress(
+        event,
+        Boolean(changeEvent.target.checked)
+      );
+    }}
+                    ></ha-switch>
+                    <span>${W.longPress}</span>
+                  </label>
+                  <button
+                    class="hub-event-clear"
+                    title=${W.wifiEventDeleteTitle}
+                    ?disabled=${this._wifiEventsBusy}
+                    @click=${() => this._openWifiEventDeleteConfirm(event)}
+                  ><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
+                </span>
+              </li>
+            `)}
+          </ul>
+          ${needsSync ? b2`
+            <div class="slot-confirm-actions">
+              <button class="dialog-btn" ?disabled=${this._wifiEventsBusy} @click=${() => this._retryWifiEventsSync()}>
+                ${W.wifiEventRetrySync}
+              </button>
+            </div>
+          ` : A}
+        ` : b2`<div class="empty-hint">${W.wifiEventsEmpty}</div>`}
+      </div>
+    `;
+  }
+  _renderWifiEventDeleteConfirm() {
+    const confirm = this._wifiEventDeleteConfirm;
+    if (!confirm) return A;
+    const W = TOOLS_CARD_STRINGS.wifiCommands;
+    const refs = confirm.refs;
+    const body = refs == null ? W.wifiEventDeleteScanning : refs.favorites + refs.bindings + refs.steps === 0 ? W.wifiEventDeleteNoRefs : W.wifiEventDeleteRefs(refs.favorites, refs.bindings, refs.steps);
+    return b2`
+      <div class="modal-backdrop" @click=${() => {
+      this._wifiEventDeleteConfirm = null;
+    }}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${W.wifiEventDeleteConfirmTitle(confirm.event.name)}</div>
+            <button class="dialog-close" @click=${() => {
+      this._wifiEventDeleteConfirm = null;
+    }}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-note">${body}</div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${() => {
+      this._wifiEventDeleteConfirm = null;
+    }}>${W.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._wifiEventsBusy} @click=${() => this._confirmWifiEventDelete()}>
+                ${W.wifiEventDeleteConfirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
   _renderHubEventsView() {
     const flash = this._activeHubEventFlash();
     const activities = this._editorActivities();
@@ -17808,6 +18149,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             </li>
           </ul>
         </div>
+        ${this._renderWifiEventsGroup(this._activeWifiPressFlash())}
+        ${this._renderWifiEventDeleteConfirm()}
         <div class="hub-events">
           <div class="section-title-wrap">
             <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
@@ -17853,6 +18196,11 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _hubEventEditorTitle(target) {
     if (target.kind === "hub") {
       return hubEventModalTitle(target.key);
+    }
+    if (target.kind === "wifi_event") {
+      const event = this._wifiEventBySlot(target.slotIndex);
+      const name2 = event?.name || "";
+      return target.pressType === "long" ? TOOLS_CARD_STRINGS.wifiCommands.wifiEventLongModalTitle(name2) : TOOLS_CARD_STRINGS.wifiCommands.wifiEventModalTitle(name2);
     }
     const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));
     const name = activity?.name || TOOLS_CARD_STRINGS.wifiCommands.activityEventFallbackName(String(target.id));
@@ -18354,12 +18702,16 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._syncState = this._defaultSyncState();
       this._hubEventActions = this._defaultHubEventActions();
       this._activityEventActions = {};
+      this._wifiEventsRows = null;
+      this._wifiEventsError = "";
+      this._wifiEventDeleteConfirm = null;
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const entityId = String(this._entityId() || "").trim();
     const deviceListLoaded = await this._loadWifiDevices(true);
     if (!shouldFinalizeWifiHubLoad({ entryId, entityId, deviceListLoaded })) return;
     await this._loadHubEventActions(true);
+    await this._loadWifiEventsRows();
     if (!this._deviceSessionRestoreTried && !this._selectedDeviceKey) {
       this._deviceSessionRestoreTried = true;
       this._restoreSelectedDeviceSession();
@@ -19443,6 +19795,11 @@ _SofabatonWifiCommandsTab.properties = {
   _maxWifiDevices: { state: true },
   _hubEventActions: { state: true },
   _activityEventActions: { state: true },
+  _wifiEventsRows: { state: true },
+  _wifiEventsLoading: { state: true },
+  _wifiEventsBusy: { state: true },
+  _wifiEventsError: { state: true },
+  _wifiEventDeleteConfirm: { state: true },
   selectedSection: { attribute: false },
   setSelectedSection: { attribute: false },
   _devicePowerPickerKind: { state: true },
@@ -19624,6 +19981,18 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
        fine. */
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
+    .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
+    .hub-event-longpress-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 10px;
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      vertical-align: middle;
+    }
+    .hub-event-longpress-toggle ha-switch { transform: scale(0.8); }
     .hub-event-clear {
       display: inline-flex;
       align-items: center;

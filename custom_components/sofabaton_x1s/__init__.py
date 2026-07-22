@@ -1377,6 +1377,47 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/sync",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Retry the Wifi Events deploy without changing the store — the
+    needs-sync affordance for a slot whose create/delete deploy failed."""
+
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id,
+            device_key=WIFI_EVENTS_DEVICE_KEY,
+            roku_listen_port=roku_listen_port,
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "No Wifi Events device")
+        return
+    try:
+        await hub.async_sync_command_config(
+            command_payload=payload,
+            request_port=roku_listen_port,
+            device_key=WIFI_EVENTS_DEVICE_KEY,
+            device_name=str(payload.get("device_name") or ""),
+        )
+    except HomeAssistantError as err:
+        message = str(err)
+        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
+        connection.send_error(msg["id"], code, message)
+        return
+    connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/wifi_event/set_action",
         vol.Required("entity_id"): cv.entity_id,
         vol.Required("slot_index"): int,
@@ -3432,6 +3473,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_list_wifi_events)
     websocket_api.async_register_command(hass, _ws_create_wifi_event)
     websocket_api.async_register_command(hass, _ws_delete_wifi_event)
+    websocket_api.async_register_command(hass, _ws_sync_wifi_events)
     websocket_api.async_register_command(hass, _ws_set_wifi_event_action)
     websocket_api.async_register_command(hass, _ws_set_wifi_event_longpress)
     websocket_api.async_register_command(hass, _ws_get_hub_event_actions)

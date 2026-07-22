@@ -380,6 +380,30 @@ def test_listener_disabled_exactly_once_when_both_removed(monkeypatch):
     assert needed is False
 
 
+def test_ws_wifi_event_sync_retries_deploy(monkeypatch):
+    from homeassistant.exceptions import HomeAssistantError
+
+    store, hub = _setup(monkeypatch)
+    hub.sync_error = HomeAssistantError("port in use")
+    conn = _Conn()
+    _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
+    assert conn.error is not None
+    assert store.list_wifi_events("entry-1")[0]["deployed"] is False
+
+    # retry without store changes -> deploy lands, event reads deployed
+    hub.sync_error = None
+    conn = _Conn()
+    _run(integration._ws_sync_wifi_events(None, conn, _msg()))
+    assert conn.error is None
+    assert conn.result[1]["events"][0]["deployed"] is True
+
+    # no events record at all -> not_found
+    _run(store.async_delete_hub_device("entry-1", WIFI_EVENTS_DEVICE_KEY))
+    conn = _Conn()
+    _run(integration._ws_sync_wifi_events(None, conn, _msg()))
+    assert conn.error is not None and conn.error[1] == "not_found"
+
+
 # ── §6a store-reconcile-from-hub (device-editor edits) ──────────────────
 
 
