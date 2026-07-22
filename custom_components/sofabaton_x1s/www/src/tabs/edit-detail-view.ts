@@ -26,6 +26,7 @@ import {
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import type { BackupBundlePayload, BlobFetchDecodedBlock, WifiEvent } from "../shared/ha-context";
+import { WIFI_EVENTS_PLACEHOLDER_DEVICE_ID } from "../shared/ha-context";
 import {
   activityButtonBindingItems,
   activityMacroStepItems,
@@ -2750,9 +2751,9 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _deployedWifiEvents(): WifiEvent[] {
-    return (this._wifiEventsList ?? []).filter(
-      (event) => event.deployed && event.device_id != null,
-    );
+    // W7 full deferral: staged (not-yet-deployed) events are selectable —
+    // they deploy as phase 1 of the Sync press. The name is historical.
+    return this._wifiEventsList ?? [];
   }
 
   /** Fire-and-forget refresh of the event list when a dialog opens. */
@@ -2854,13 +2855,15 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this.wifiEvents || !this.bundle) throw new Error(S.bindingIncomplete);
     if (sel.mode === "existing") {
       const event = this._deployedWifiEvents().find((item) => item.slot_index === sel.slot);
-      if (!event || event.device_id == null) throw new Error(S.bindingIncomplete);
+      if (!event) throw new Error(S.bindingIncomplete);
       const grafted = await this.wifiEvents.ensureGrafted();
       if (options.long && !event.long_press_enabled) {
         await this.wifiEvents.enableLongPress(event.slot_index);
       }
       return {
-        deviceId: event.device_id,
+        // W7: refs to a not-yet-deployed device use the placeholder id;
+        // the Sync flow rewrites them after phase 1 assigns the real id.
+        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
         commandId: options.long ? event.long_press_command_id : event.command_id,
         name: event.name,
         bundle: grafted ?? this.bundle,
@@ -2870,13 +2873,13 @@ export class SofabatonEditDetailView extends LitElement {
     if (!name) throw new Error(S.wifiEventNameRequired);
     this._wifiEventBusy = true;
     try {
+      // Instant store allocation (W7) — no hub deploy happens here.
       const created = await this.wifiEvents.create(name);
       const event = created.event;
-      if (event.device_id == null) throw new Error(S.wifiEventCreateFailed);
       this._wifiEventsList = null;
       if (options.long) await this.wifiEvents.enableLongPress(event.slot_index);
       return {
-        deviceId: event.device_id,
+        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
         commandId: options.long ? event.long_press_command_id : event.command_id,
         name: event.name,
         bundle: created.bundle ?? this.bundle,

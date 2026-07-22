@@ -1767,6 +1767,7 @@ var TOOLS_CARD_STRINGS_EN = {
     // Sync flow (§4.5).
     syncingTitle: "Syncing to your hub",
     syncingMessage: "Writing your changes to the hub\u2026",
+    wifiEventsPhaseMessage: "Deploying Wifi Events to the hub first\u2026 this can take a minute the first time.",
     syncSuccess: "Synced to hub.",
     syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
@@ -2060,8 +2061,8 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventTargetLabel: "Wifi Event",
     wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
     wifiEventNameLabel: "Event name",
-    wifiEventNameHelper: "Creates the event on the hub right away; pressing it fires a Home Assistant event you can attach an action to in Automation \u2192 Events.",
-    wifiEventDeploying: "Creating the Wifi Event on the hub\u2026 this can take a minute the first time.",
+    wifiEventNameHelper: "The event is staged now and deployed to the hub when you press Sync; attach an action to it in Automation \u2192 Events.",
+    wifiEventDeploying: "Staging the Wifi Event\u2026",
     wifiEventNoneYet: "No Wifi Events yet. Create one below.",
     wifiEventNeedsSync: (name) => `${name} (needs sync)`,
     wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
@@ -2326,7 +2327,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventsSubtitle: "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
     wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
     wifiEventRowPress: (name) => `When ${name} is pressed`,
-    wifiEventRowLongPress: "and on long press",
+    wifiEventRowLongPress: "and when it's long-pressed",
     wifiEventModalTitle: (name) => `When ${name} is pressed`,
     wifiEventLongModalTitle: (name) => `When ${name} is long-pressed`,
     wifiEventLongPressToggleTitle: "Enable long press",
@@ -2676,6 +2677,13 @@ var ControlPanelApi = class {
       type: "sofabaton_x1s/wifi_event/create",
       entity_id: entityId,
       name
+    });
+  }
+  /** W7 phase 1: deploy the events record without store changes. */
+  syncWifiEvents(entityId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/wifi_event/sync",
+      entity_id: entityId
     });
   }
   deleteWifiEvent(entityId, slotIndex) {
@@ -5232,6 +5240,7 @@ var TOOLS_CARD_STRINGS_DE = {
     deletingMessage: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} wird vom Hub entfernt\u2026`,
     syncingTitle: "Synchronisierung mit deinem Hub",
     syncingMessage: "Deine \xC4nderungen werden auf den Hub geschrieben\u2026",
+    wifiEventsPhaseMessage: "Wifi-Events werden zuerst auf den Hub \xFCbertragen\u2026 beim ersten Mal kann das eine Minute dauern.",
     syncSuccess: "Mit dem Hub synchronisiert.",
     syncPlanSummary: (count) => `${count} ${count === 1 ? "Schreibvorgang" : "Schreibvorg\xE4nge"} auf dem Hub`,
     syncFailedTitle: "Synchronisierung wurde nicht abgeschlossen",
@@ -5502,8 +5511,8 @@ var TOOLS_CARD_STRINGS_DE = {
     wifiEventTargetLabel: "Wifi-Event",
     wifiEventTargetCreateNew: "Neues Wifi-Event erstellen\u2026",
     wifiEventNameLabel: "Event-Name",
-    wifiEventNameHelper: "Erstellt das Event sofort auf dem Hub; ein Druck l\xF6st ein Home-Assistant-Event aus, dem du unter Automatisierung \u2192 Events eine Aktion zuweisen kannst.",
-    wifiEventDeploying: "Wifi-Event wird auf dem Hub erstellt\u2026 beim ersten Mal kann das eine Minute dauern.",
+    wifiEventNameHelper: "Das Event wird jetzt vorgemerkt und beim Dr\xFCcken von Sync auf den Hub \xFCbertragen; eine Aktion weist du ihm unter Automatisierung \u2192 Events zu.",
+    wifiEventDeploying: "Wifi-Event wird vorgemerkt\u2026",
     wifiEventNoneYet: "Noch keine Wifi-Events. Erstelle unten eines.",
     wifiEventNeedsSync: (name) => `${name} (Sync erforderlich)`,
     wifiEventCreateFailed: "Das Wifi-Event konnte nicht erstellt werden \u2014 es bleibt vorgemerkt und wird beim n\xE4chsten Erstellen erneut versucht.",
@@ -6061,6 +6070,7 @@ var TOOLS_CARD_STRINGS_ES = {
     deletingMessage: (kind) => `Eliminando ${kind === "activity" ? "esta actividad" : "este dispositivo"} del hub\u2026`,
     syncingTitle: "Sincronizando con tu hub",
     syncingMessage: "Escribiendo tus cambios en el hub\u2026",
+    wifiEventsPhaseMessage: "Desplegando primero los eventos Wifi al hub\u2026 la primera vez puede tardar un minuto.",
     syncSuccess: "Sincronizado con el hub.",
     syncPlanSummary: (count) => `${count} ${count === 1 ? "escritura" : "escrituras"} en el hub`,
     syncFailedTitle: "La sincronizaci\xF3n no termin\xF3",
@@ -6331,8 +6341,8 @@ var TOOLS_CARD_STRINGS_ES = {
     wifiEventTargetLabel: "Evento Wifi",
     wifiEventTargetCreateNew: "Crear nuevo evento Wifi\u2026",
     wifiEventNameLabel: "Nombre del evento",
-    wifiEventNameHelper: "Crea el evento en el hub de inmediato; al pulsarlo se dispara un evento de Home Assistant al que puedes asignar una acci\xF3n en Automatizaci\xF3n \u2192 Eventos.",
-    wifiEventDeploying: "Creando el evento Wifi en el hub\u2026 la primera vez puede tardar un minuto.",
+    wifiEventNameHelper: "El evento queda preparado ahora y se despliega al hub al pulsar Sincronizar; as\xEDgnale una acci\xF3n en Automatizaci\xF3n \u2192 Eventos.",
+    wifiEventDeploying: "Preparando el evento Wifi\u2026",
     wifiEventNoneYet: "Todav\xEDa no hay eventos Wifi. Crea uno abajo.",
     wifiEventNeedsSync: (name) => `${name} (necesita sincronizar)`,
     wifiEventCreateFailed: "No se pudo crear el evento Wifi \u2014 queda pendiente y se reintentar\xE1 en la pr\xF3xima creaci\xF3n.",
@@ -6600,7 +6610,7 @@ var TOOLS_CARD_STRINGS_ES = {
     wifiEventsSubtitle: "Eventos creados desde el editor de actividades. Pulsarlos en el mando dispara aqu\xED su acci\xF3n de Home Assistant (tambi\xE9n actualizan el sensor de Wifi Commands).",
     wifiEventsEmpty: "Todav\xEDa no hay eventos Wifi. Cr\xE9alos desde los di\xE1logos de a\xF1adir del editor de actividades (atajos, botones y pasos de macro).",
     wifiEventRowPress: (name) => `Cuando se pulsa ${name}`,
-    wifiEventRowLongPress: "y con pulsaci\xF3n larga",
+    wifiEventRowLongPress: "y cuando se mantiene pulsado",
     wifiEventModalTitle: (name) => `Cuando se pulsa ${name}`,
     wifiEventLongModalTitle: (name) => `Cuando se mantiene pulsado ${name}`,
     wifiEventLongPressToggleTitle: "Activar pulsaci\xF3n larga",
@@ -6891,6 +6901,7 @@ var TOOLS_CARD_STRINGS_FR = {
     deletingMessage: (kind) => `Suppression de ${ceType(kind)} du hub\u2026`,
     syncingTitle: "Synchronisation avec votre hub",
     syncingMessage: "\xC9criture de vos modifications sur le hub\u2026",
+    wifiEventsPhaseMessage: "D\xE9ploiement des \xE9v\xE9nements Wifi sur le hub d'abord\u2026 cela peut prendre une minute la premi\xE8re fois.",
     syncSuccess: "Synchronis\xE9 avec le hub.",
     syncPlanSummary: (count) => `${count} ${count === 1 ? "\xE9criture" : "\xE9critures"} sur le hub`,
     syncFailedTitle: "La synchronisation ne s\u2019est pas termin\xE9e",
@@ -7161,8 +7172,8 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiEventTargetLabel: "\xC9v\xE9nement Wifi",
     wifiEventTargetCreateNew: "Cr\xE9er un nouvel \xE9v\xE9nement Wifi\u2026",
     wifiEventNameLabel: "Nom de l'\xE9v\xE9nement",
-    wifiEventNameHelper: "Cr\xE9e l'\xE9v\xE9nement sur le hub imm\xE9diatement ; un appui d\xE9clenche un \xE9v\xE9nement Home Assistant auquel vous pouvez associer une action dans Automatisation \u2192 \xC9v\xE9nements.",
-    wifiEventDeploying: "Cr\xE9ation de l'\xE9v\xE9nement Wifi sur le hub\u2026 cela peut prendre une minute la premi\xE8re fois.",
+    wifiEventNameHelper: "L'\xE9v\xE9nement est pr\xE9par\xE9 maintenant et d\xE9ploy\xE9 sur le hub quand vous appuyez sur Sync ; associez-lui une action dans Automatisation \u2192 \xC9v\xE9nements.",
+    wifiEventDeploying: "Pr\xE9paration de l'\xE9v\xE9nement Wifi\u2026",
     wifiEventNoneYet: "Aucun \xE9v\xE9nement Wifi pour le moment. Cr\xE9ez-en un ci-dessous.",
     wifiEventNeedsSync: (name) => `${name} (synchronisation requise)`,
     wifiEventCreateFailed: "La cr\xE9ation de l'\xE9v\xE9nement Wifi a \xE9chou\xE9 \u2014 il reste en attente et sera retent\xE9 \xE0 la prochaine cr\xE9ation.",
@@ -7430,7 +7441,7 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiEventsSubtitle: "\xC9v\xE9nements cr\xE9\xE9s depuis l\u2019\xE9diteur d\u2019activit\xE9s. Un appui sur la t\xE9l\xE9commande d\xE9clenche ici son action Home Assistant (met aussi \xE0 jour le capteur Wifi Commands).",
     wifiEventsEmpty: "Aucun \xE9v\xE9nement Wifi pour le moment. Cr\xE9ez-les depuis les dialogues d\u2019ajout de l\u2019\xE9diteur d\u2019activit\xE9s (raccourcis, boutons et \xE9tapes de macro).",
     wifiEventRowPress: (name) => `Quand ${name} est press\xE9`,
-    wifiEventRowLongPress: "et sur appui long",
+    wifiEventRowLongPress: "et quand il est press\xE9 longuement",
     wifiEventModalTitle: (name) => `Quand ${name} est press\xE9`,
     wifiEventLongModalTitle: (name) => `Quand ${name} est press\xE9 longuement`,
     wifiEventLongPressToggleTitle: "Activer l\u2019appui long",
@@ -7722,6 +7733,7 @@ var TOOLS_CARD_STRINGS_NL = {
     deletingMessage: (kind) => `${dezeDit(kind)} ${soort(kind)} van de hub verwijderen\u2026`,
     syncingTitle: "Synchroniseren met je hub",
     syncingMessage: "Je wijzigingen naar de hub schrijven\u2026",
+    wifiEventsPhaseMessage: "Wifi-events worden eerst naar de hub gestuurd\u2026 de eerste keer kan dit een minuut duren.",
     syncSuccess: "Gesynchroniseerd met de hub.",
     syncPlanSummary: (count) => `${count} ${count === 1 ? "schrijfbewerking" : "schrijfbewerkingen"} naar de hub`,
     syncFailedTitle: "Synchronisatie niet voltooid",
@@ -7993,8 +8005,8 @@ var TOOLS_CARD_STRINGS_NL = {
     wifiEventTargetLabel: "Wifi-event",
     wifiEventTargetCreateNew: "Nieuw Wifi-event maken\u2026",
     wifiEventNameLabel: "Naam van het event",
-    wifiEventNameHelper: "Maakt het event direct op de hub aan; een druk vuurt een Home Assistant-event af waaraan je onder Automatisering \u2192 Events een actie kunt koppelen.",
-    wifiEventDeploying: "Wifi-event wordt op de hub aangemaakt\u2026 de eerste keer kan dit een minuut duren.",
+    wifiEventNameHelper: "Het event staat nu klaar en wordt naar de hub gestuurd zodra je op Sync drukt; koppel er een actie aan onder Automatisering \u2192 Events.",
+    wifiEventDeploying: "Wifi-event wordt klaargezet\u2026",
     wifiEventNoneYet: "Nog geen Wifi-events. Maak er hieronder een.",
     wifiEventNeedsSync: (name) => `${name} (sync nodig)`,
     wifiEventCreateFailed: "Het Wifi-event kon niet worden aangemaakt \u2014 het blijft klaarstaan en wordt bij de volgende poging opnieuw geprobeerd.",
@@ -8260,7 +8272,7 @@ var TOOLS_CARD_STRINGS_NL = {
     wifiEventsSubtitle: "Events gemaakt in de activiteiten-editor. Een druk op de afstandsbediening vuurt hier de Home Assistant-actie af (werkt ook de Wifi Commands-sensor bij).",
     wifiEventsEmpty: "Nog geen Wifi-events. Maak ze in de toevoegen-dialogen van de activiteiten-editor (snelkoppelingen, knoppen en macrostappen).",
     wifiEventRowPress: (name) => `Wanneer ${name} wordt ingedrukt`,
-    wifiEventRowLongPress: "en bij lang indrukken",
+    wifiEventRowLongPress: "en wanneer het lang wordt ingedrukt",
     wifiEventModalTitle: (name) => `Wanneer ${name} wordt ingedrukt`,
     wifiEventLongModalTitle: (name) => `Wanneer ${name} lang wordt ingedrukt`,
     wifiEventLongPressToggleTitle: "Lang indrukken inschakelen",
@@ -10197,6 +10209,7 @@ var activityEditorStyles = i`
 `;
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
+var WIFI_EVENTS_PLACEHOLDER_DEVICE_ID = 0;
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
@@ -12150,13 +12163,46 @@ function setActivityRoleDevice(bundle, activityId, group, deviceId) {
 function bundleEditableDeviceOptions(bundle) {
   return bundleDeviceOptions(bundle);
 }
+function rewriteWifiEventPlaceholderRefs(bundle, activityId, realDeviceId, placeholderId = 0) {
+  if (!bundle || !(Number(realDeviceId) > 0)) return bundle;
+  return updateActivity(bundle, activityId, (activity) => {
+    const swap = (value) => Number(value ?? -1) === Number(placeholderId) ? Number(realDeviceId) : value;
+    return {
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).map((slot) => ({
+        ...slot,
+        device_id: swap(slot?.device_id)
+      })),
+      button_bindings: (activity.button_bindings ?? []).map((binding) => ({
+        ...binding,
+        device_id: swap(binding?.device_id),
+        ...binding?.long_press_device_id != null ? { long_press_device_id: swap(binding.long_press_device_id) } : {}
+      })),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: (macro?.steps ?? []).map((step) => ({
+          ...step,
+          ...Number(step?.device_id ?? -1) === Number(placeholderId) ? { device_id: Number(realDeviceId) } : {}
+        }))
+      }))
+    };
+  });
+}
+function removeBundleDevice(bundle, deviceId) {
+  if (!bundle) return bundle;
+  const devices = (bundle.devices ?? []).filter(
+    (entry) => Number(entry?.device?.device_id ?? -1) !== Number(deviceId)
+  );
+  if (devices.length === (bundle.devices ?? []).length) return bundle;
+  return { ...bundle, devices };
+}
 function graftDeviceIntoBundle(bundle, deviceEntry) {
   if (!bundle || !deviceEntry) return bundle;
-  const deviceId = Number(deviceEntry?.device?.device_id || 0);
-  if (deviceId <= 0) return bundle;
+  const deviceId = Number(deviceEntry?.device?.device_id ?? -1);
+  if (!Number.isFinite(deviceId) || deviceId < 0) return bundle;
   const devices = [...bundle.devices ?? []];
   const index = devices.findIndex(
-    (entry) => Number(entry?.device?.device_id || 0) === deviceId
+    (entry) => Number(entry?.device?.device_id ?? -1) === deviceId
   );
   if (index >= 0) devices[index] = deviceEntry;
   else devices.push(deviceEntry);
@@ -14670,9 +14716,7 @@ var SofabatonEditDetailView = class extends i4 {
     return this.mode === "live" && this.wifiEvents != null;
   }
   _deployedWifiEvents() {
-    return (this._wifiEventsList ?? []).filter(
-      (event) => event.deployed && event.device_id != null
-    );
+    return this._wifiEventsList ?? [];
   }
   /** Fire-and-forget refresh of the event list when a dialog opens. */
   _loadWifiEvents() {
@@ -14747,13 +14791,15 @@ var SofabatonEditDetailView = class extends i4 {
     if (!this.wifiEvents || !this.bundle) throw new Error(S5.bindingIncomplete);
     if (sel.mode === "existing") {
       const event = this._deployedWifiEvents().find((item) => item.slot_index === sel.slot);
-      if (!event || event.device_id == null) throw new Error(S5.bindingIncomplete);
+      if (!event) throw new Error(S5.bindingIncomplete);
       const grafted = await this.wifiEvents.ensureGrafted();
       if (options.long && !event.long_press_enabled) {
         await this.wifiEvents.enableLongPress(event.slot_index);
       }
       return {
-        deviceId: event.device_id,
+        // W7: refs to a not-yet-deployed device use the placeholder id;
+        // the Sync flow rewrites them after phase 1 assigns the real id.
+        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
         commandId: options.long ? event.long_press_command_id : event.command_id,
         name: event.name,
         bundle: grafted ?? this.bundle
@@ -14765,11 +14811,10 @@ var SofabatonEditDetailView = class extends i4 {
     try {
       const created = await this.wifiEvents.create(name);
       const event = created.event;
-      if (event.device_id == null) throw new Error(S5.wifiEventCreateFailed);
       this._wifiEventsList = null;
       if (options.long) await this.wifiEvents.enableLongPress(event.slot_index);
       return {
-        deviceId: event.device_id,
+        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
         commandId: options.long ? event.long_press_command_id : event.command_id,
         name: event.name,
         bundle: created.bundle ?? this.bundle
@@ -17200,9 +17245,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
     this._wifiEventsRows = null;
     this._wifiEventsLoading = false;
-    this._wifiEventsBusy = false;
-    this._wifiEventsError = "";
-    this._wifiEventDeleteConfirm = null;
     this.selectedSection = "wifi";
     this.setSelectedSection = () => {
     };
@@ -17783,107 +17825,11 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         entity_id: entityId
       });
       this._wifiEventsRows = result?.events ?? [];
-      this._wifiEventsError = "";
     } catch (_error) {
       this._wifiEventsRows = this._wifiEventsRows ?? [];
     } finally {
       this._wifiEventsLoading = false;
     }
-  }
-  /** Shared error → message + refresh for the wifi-event mutations. */
-  async _runWifiEventMutation(run) {
-    if (this._wifiEventsBusy) return;
-    this._wifiEventsBusy = true;
-    this._wifiEventsError = "";
-    try {
-      const result = await run();
-      if (result?.events) this._wifiEventsRows = result.events;
-      else await this._loadWifiEventsRows();
-    } catch (error) {
-      this._wifiEventsError = String(
-        error?.message || TOOLS_CARD_STRINGS.wifiCommands.unableSaveAction
-      );
-    } finally {
-      this._wifiEventsBusy = false;
-    }
-  }
-  _toggleWifiEventLongPress(event, enabled) {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
-    void this._runWifiEventMutation(() => this.hass.callWS({
-      type: "sofabaton_x1s/wifi_event/set_longpress",
-      entity_id: entityId,
-      slot_index: event.slot_index,
-      enabled
-    }));
-  }
-  _retryWifiEventsSync() {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
-    void this._runWifiEventMutation(() => this.hass.callWS({
-      type: "sofabaton_x1s/wifi_event/sync",
-      entity_id: entityId
-    }));
-  }
-  _openWifiEventDeleteConfirm(event) {
-    this._wifiEventDeleteConfirm = { event, refs: null };
-    void this._scanWifiEventRefs(event);
-  }
-  /** Count hub references to the event (favorites / bindings / macro
-   *  steps across all activities) for the delete-confirm body. The hub
-   *  cascades these (bench-validated, plan §11): favorites + bindings are
-   *  removed, the referencing STEP is removed from each macro in place,
-   *  and a macro left with no steps is removed. */
-  async _scanWifiEventRefs(event) {
-    const entryId = String(this.hub?.entry_id || "").trim();
-    if (!entryId || !this.hass?.callWS || event.device_id == null) return;
-    let favorites = 0;
-    let bindings = 0;
-    let steps = 0;
-    try {
-      const res = await this.hass.callWS({
-        type: "sofabaton_x1s/cache/structural_bundle",
-        entry_id: entryId
-      });
-      const matches = (deviceId, commandId) => Number(deviceId) === event.device_id && (Number(commandId) === event.command_id || Number(commandId) === event.long_press_command_id);
-      for (const activity of res?.bundle?.activities ?? []) {
-        const record = activity;
-        for (const slot of record.favorite_slots ?? []) {
-          if (matches(slot?.device_id, slot?.command_id)) favorites += 1;
-        }
-        for (const binding of record.button_bindings ?? []) {
-          if (matches(binding?.device_id, binding?.command_id) || matches(binding?.long_press_device_id, binding?.long_press_command_id)) bindings += 1;
-        }
-        for (const macro of record.macros ?? []) {
-          if ((macro?.steps ?? []).some((step) => matches(step?.device_id, step?.command_id))) steps += 1;
-        }
-      }
-    } catch (_error) {
-    }
-    if (this._wifiEventDeleteConfirm?.event.slot_index === event.slot_index) {
-      this._wifiEventDeleteConfirm = { event, refs: { favorites, bindings, steps } };
-    }
-  }
-  _confirmWifiEventDelete() {
-    const confirm = this._wifiEventDeleteConfirm;
-    const entityId = String(this._entityId() || "").trim();
-    if (!confirm || !entityId || !this.hass?.callWS) return;
-    void this._runWifiEventMutation(async () => {
-      try {
-        const result = await this.hass.callWS({
-          type: "sofabaton_x1s/wifi_event/delete",
-          entity_id: entityId,
-          slot_index: confirm.event.slot_index
-        });
-        this._wifiEventDeleteConfirm = null;
-        return result;
-      } catch (error) {
-        this._wifiEventDeleteConfirm = null;
-        throw new Error(String(
-          error?.message || TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteFailed
-        ));
-      }
-    });
   }
   _actionForHubEventTarget(target) {
     if (target.kind === "hub") return this._normalizeCommandAction(this._hubEventActions[target.key]);
@@ -17997,10 +17943,16 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     if (event.device_id == null || press.deviceId !== event.device_id) return false;
     return press.commandIndex === event.slot_index && press.pressType === pressType;
   }
+  /** WIFI EVENTS group (W7: Actions ONLY — no deletes, no toggles, no
+   *  deploy affordances here; the event lifecycle lives in the editors'
+   *  sync cycle). Row shapes per the user spec:
+   *    `When <NAME> is pressed <action>.`
+   *    `When <NAME> is pressed <action>, and when it's long-pressed <action>.`
+   *  Long-press enablement is editor-only; a passive needs-sync badge is
+   *  the only deploy-state surface. */
   _renderWifiEventsGroup(pressFlash) {
     const W = TOOLS_CARD_STRINGS.wifiCommands;
     const events = this._wifiEventsRows ?? [];
-    const needsSync = events.some((event) => !event.deployed);
     const renderAction = (event, pressType) => {
       const action = this._normalizeCommandAction(
         pressType === "long" ? event.long_press_action : event.action
@@ -18027,82 +17979,20 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           <div class="acc-title">${W.wifiEventsTitle}</div>
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
-        ${this._wifiEventsError ? b2`<div class="empty-hint">${this._wifiEventsError}</div>` : A}
         ${events.length ? b2`
           <ul class="hub-event-lines">
             ${events.map((event) => b2`
               <li class="hub-event-line">
                 <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
                 <span class="hub-event-text">
-                  ${W.wifiEventRowPress(event.name)}${event.deployed ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`},
-                  ${renderAction(event, "short")}${event.long_press_enabled ? b2`,
-                  ${W.wifiEventRowLongPress},
+                  ${W.wifiEventRowPress(event.name)}${event.deployed ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
+                  ${renderAction(event, "short")}${event.long_press_enabled ? b2`, ${W.wifiEventRowLongPress}
                   ${renderAction(event, "long")}` : A}.
-                  <label class="hub-event-longpress-toggle" title=${W.wifiEventLongPressToggleTitle}>
-                    <ha-switch
-                      .checked=${event.long_press_enabled}
-                      .disabled=${this._wifiEventsBusy}
-                      @change=${(changeEvent) => {
-      this._toggleWifiEventLongPress(
-        event,
-        Boolean(changeEvent.target.checked)
-      );
-    }}
-                    ></ha-switch>
-                    <span>${W.longPress}</span>
-                  </label>
-                  <button
-                    class="hub-event-clear"
-                    title=${W.wifiEventDeleteTitle}
-                    ?disabled=${this._wifiEventsBusy}
-                    @click=${() => this._openWifiEventDeleteConfirm(event)}
-                  ><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
                 </span>
               </li>
             `)}
           </ul>
-          ${needsSync ? b2`
-            <div class="slot-confirm-actions">
-              <button class="dialog-btn" ?disabled=${this._wifiEventsBusy} @click=${() => this._retryWifiEventsSync()}>
-                ${W.wifiEventRetrySync}
-              </button>
-            </div>
-          ` : A}
         ` : b2`<div class="empty-hint">${W.wifiEventsEmpty}</div>`}
-      </div>
-    `;
-  }
-  _renderWifiEventDeleteConfirm() {
-    const confirm = this._wifiEventDeleteConfirm;
-    if (!confirm) return A;
-    const W = TOOLS_CARD_STRINGS.wifiCommands;
-    const refs = confirm.refs;
-    const body = refs == null ? W.wifiEventDeleteScanning : refs.favorites + refs.bindings + refs.steps === 0 ? W.wifiEventDeleteNoRefs : W.wifiEventDeleteRefs(refs.favorites, refs.bindings, refs.steps);
-    return b2`
-      <div class="modal-backdrop" @click=${() => {
-      this._wifiEventDeleteConfirm = null;
-    }}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${W.wifiEventDeleteConfirmTitle(confirm.event.name)}</div>
-            <button class="dialog-close" @click=${() => {
-      this._wifiEventDeleteConfirm = null;
-    }}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="dialog-note">${body}</div>
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => {
-      this._wifiEventDeleteConfirm = null;
-    }}>${W.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._wifiEventsBusy} @click=${() => this._confirmWifiEventDelete()}>
-                ${W.wifiEventDeleteConfirm}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -18151,7 +18041,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           </ul>
         </div>
         ${this._renderWifiEventsGroup(this._activeWifiPressFlash())}
-        ${this._renderWifiEventDeleteConfirm()}
         <div class="hub-events">
           <div class="section-title-wrap">
             <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
@@ -18704,8 +18593,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._hubEventActions = this._defaultHubEventActions();
       this._activityEventActions = {};
       this._wifiEventsRows = null;
-      this._wifiEventsError = "";
-      this._wifiEventDeleteConfirm = null;
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const entityId = String(this._entityId() || "").trim();
@@ -19798,9 +19685,6 @@ _SofabatonWifiCommandsTab.properties = {
   _activityEventActions: { state: true },
   _wifiEventsRows: { state: true },
   _wifiEventsLoading: { state: true },
-  _wifiEventsBusy: { state: true },
-  _wifiEventsError: { state: true },
-  _wifiEventDeleteConfirm: { state: true },
   selectedSection: { attribute: false },
   setSelectedSection: { attribute: false },
   _devicePowerPickerKind: { state: true },
@@ -20586,6 +20470,10 @@ var SofabatonActivitiesTab = class extends i4 {
       this._syncFailedAt = null;
       this._syncProgress = null;
       this._stage = "syncing";
+      if (this.kind === "activity" && !await this._syncWifiEventsPhase()) {
+        this._exitAfterSync = false;
+        return;
+      }
       try {
         const start = this.kind === "device" ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working) : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
         this._syncOperationId = start.operation_id;
@@ -20735,20 +20623,111 @@ var SofabatonActivitiesTab = class extends i4 {
   _wifiEventsEntityId() {
     return String(entityForHub(this.hass, this.hub) || "").trim();
   }
+  /** Synthetic device block for a not-yet-deployed events record: the
+   *  staged events under the placeholder id, so refs resolve for display
+   *  and the scope guard stays balanced (grafted into BOTH bundles). The
+   *  Sync flow retires it for the real block after phase 1. */
+  _syntheticEventsBlock(events, deviceId) {
+    return {
+      device: {
+        device_id: deviceId ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
+        name: "Wifi Events",
+        brand: "m3-haevents-staged0000000",
+        device_class: "wifi_ip"
+      },
+      commands: events.flatMap((event) => [
+        { command_id: event.command_id, name: event.name },
+        { command_id: event.long_press_command_id, name: `${event.name} Long Press` }
+      ])
+    };
+  }
+  /** Graft the events device into BOTH bundles (W7): the real deployed
+   *  block when the device exists, else a synthetic placeholder block. */
   async _graftWifiEventsDevice(options = {}) {
     if (!this.hub) return this._working;
     const present = (this._working?.devices ?? []).some(
-      (entry2) => isWifiEventsBrand(String(entry2?.device?.brand ?? ""))
+      (entry2) => isWifiEventsBrand(String(entry2?.device?.brand ?? "")) || Number(entry2?.device?.device_id ?? -1) === WIFI_EVENTS_PLACEHOLDER_DEVICE_ID
     );
     if (present && !options.forceRefresh) return this._working;
-    const res = await this.api().getStructuralBundle(this.hub.entry_id);
-    const entry = (res?.bundle?.devices ?? []).find(
-      (candidate) => isWifiEventsBrand(String(candidate?.device?.brand ?? ""))
-    );
-    if (!entry) return this._working;
+    const entityId = this._wifiEventsEntityId();
+    const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
+    const deviceId = state.device_id ?? null;
+    let entry = null;
+    if (deviceId != null) {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      entry = (res?.bundle?.devices ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === deviceId
+      ) ?? null;
+    }
+    if (!entry) entry = this._syntheticEventsBlock(state.events ?? [], deviceId);
     this._baseline = graftDeviceIntoBundle(this._baseline, entry);
     this._working = graftDeviceIntoBundle(this._working, entry);
     return this._working;
+  }
+  /** W7 phase 1 of the Sync press: deploy the events record when it is
+   *  out-of-step, then resolve placeholder refs to the real device id and
+   *  swap the synthetic block for the deployed one in both bundles.
+   *  Returns false (with `_syncProgress` set) when phase 1 fails. */
+  async _syncWifiEventsPhase() {
+    const entityId = this._wifiEventsEntityId();
+    if (!entityId || this._entityId == null || !this.hub) return true;
+    const referencesEvents = (bundle) => {
+      const eventDeviceIds = /* @__PURE__ */ new Set([WIFI_EVENTS_PLACEHOLDER_DEVICE_ID]);
+      for (const entry of bundle?.devices ?? []) {
+        if (isWifiEventsBrand(String(entry?.device?.brand ?? ""))) {
+          eventDeviceIds.add(Number(entry?.device?.device_id ?? -1));
+        }
+      }
+      const activity = (bundle?.activities ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === Number(this._entityId)
+      );
+      if (!activity) return false;
+      const refs = [
+        ...(activity.favorite_slots ?? []).map((slot) => slot?.device_id),
+        ...(activity.button_bindings ?? []).flatMap((binding) => [
+          binding?.device_id,
+          binding?.long_press_device_id
+        ]),
+        ...(activity.macros ?? []).flatMap((macro) => (macro?.steps ?? []).map((step) => step?.device_id))
+      ];
+      return refs.some((value) => value != null && eventDeviceIds.has(Number(value)));
+    };
+    if (!referencesEvents(this._working)) return true;
+    let state = await this.api().listWifiEvents(entityId);
+    const hasPlaceholder = (this._working?.devices ?? []).some(
+      (entry) => Number(entry?.device?.device_id ?? -1) === WIFI_EVENTS_PLACEHOLDER_DEVICE_ID
+    );
+    if (state.record_needs_sync || hasPlaceholder && state.device_id == null) {
+      this._syncProgress = { message: S4.wifiEventsPhaseMessage };
+      try {
+        state = await this.api().syncWifiEvents(entityId);
+      } catch (error) {
+        this._syncError = formatError(error);
+        this._syncFailedAt = null;
+        this._syncProgress = null;
+        this._stage = "sync_failed";
+        return false;
+      }
+    }
+    const realId = state.device_id;
+    if (hasPlaceholder && realId != null) {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const entry = (res?.bundle?.devices ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === realId
+      );
+      const activityId = Number(this._entityId);
+      for (const key of ["_baseline", "_working"]) {
+        let bundle = this[key];
+        bundle = removeBundleDevice(bundle, WIFI_EVENTS_PLACEHOLDER_DEVICE_ID);
+        if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
+        if (key === "_working") {
+          bundle = rewriteWifiEventPlaceholderRefs(bundle, activityId, realId);
+          bundle = bundle ? reconcileActivityPowerMacros(bundle, activityId) : bundle;
+        }
+        this[key] = bundle;
+      }
+    }
+    return true;
   }
   _teardownProgressSubscription() {
     const unsub = this._progressUnsub;

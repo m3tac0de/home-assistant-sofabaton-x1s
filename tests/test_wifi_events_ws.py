@@ -106,26 +106,25 @@ def test_ws_wifi_event_list_empty(monkeypatch):
     conn = _Conn()
     _run(integration._ws_list_wifi_events(None, conn, _msg()))
     assert conn.error is None
-    assert conn.result[1] == {"events": []}
+    assert conn.result[1] == {"events": [], "record_needs_sync": False, "device_id": None}
 
 
-def test_ws_wifi_event_create_deploys_and_resolves_ids(monkeypatch):
+def test_ws_wifi_event_create_is_pure_store_allocation(monkeypatch):
+    # W7 full deferral: create NEVER deploys — the Sync press runs phase 1.
+    from homeassistant.exceptions import HomeAssistantError
+
     store, hub = _setup(monkeypatch)
+    hub.sync_error = HomeAssistantError("would explode if called")
     conn = _Conn()
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
     assert conn.error is None
     payload = conn.result[1]
+    assert hub.sync_calls == []  # no deploy from create
     assert payload["event"]["slot_index"] == 0
     assert payload["event"]["command_id"] == 1
-    assert payload["event"]["device_id"] == 10
-    assert [e["name"] for e in payload["events"]] == ["Movie Night"]
-    # the sync ran against the events record with its 50-slot payload
-    assert hub.sync_calls and hub.sync_calls[0]["device_key"] == WIFI_EVENTS_DEVICE_KEY
-    assert hub.sync_calls[0]["slot_count"] == 50
-    assert hub.sync_calls[0]["device_name"] == "Wifi Events"
-    # deploy landed -> the event reads deployed with the law-derived ids
-    assert payload["events"][0]["deployed"] is True
-    assert payload["events"][0]["device_id"] == 10
+    assert payload["event"]["device_id"] is None  # first-ever: placeholder ref
+    assert payload["record_needs_sync"] is True
+    assert payload["events"][0]["deployed"] is False
     assert payload["events"][0]["long_press_command_id"] == 51
 
     # the reserved record now exists in the store list (listener guard path)
@@ -133,26 +132,25 @@ def test_ws_wifi_event_create_deploys_and_resolves_ids(monkeypatch):
     assert WIFI_EVENTS_DEVICE_KEY in keys
 
 
-def test_ws_wifi_event_create_sync_failure_keeps_slot_staged(monkeypatch):
-    from homeassistant.exceptions import HomeAssistantError
-
+def test_ws_wifi_event_create_reports_deployed_device_id(monkeypatch):
+    # Once the device exists (phase 1 ran before), creates return the real
+    # id so refs insert verbatim — still with zero deploy calls.
     store, hub = _setup(monkeypatch)
-    hub.sync_error = HomeAssistantError("sync_in_progress")
     conn = _Conn()
-    _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
-    assert conn.error is not None and conn.error[1] == "sync_in_progress"
-    # the slot stays staged and lists as needs-sync
-    events = store.list_wifi_events("entry-1")
-    assert [e["name"] for e in events] == ["Movie Night"]
-    assert events[0]["deployed"] is False
-
-    # a later create retries the deploy for the whole record
+    _run(integration._ws_create_wifi_event(None, conn, _msg(name="First")))
     hub.sync_error = None
+    conn = _Conn()
+    _run(integration._ws_sync_wifi_events(None, conn, _msg()))  # phase 1
+    assert conn.error is None
+    hub.sync_calls.clear()
     conn = _Conn()
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Second")))
     assert conn.error is None
-    events = conn.result[1]["events"]
-    assert all(e["deployed"] for e in events)
+    payload = conn.result[1]
+    assert hub.sync_calls == []
+    assert payload["event"]["device_id"] == 10
+    assert payload["record_needs_sync"] is True  # new slot staged, not deployed
+    assert payload["device_id"] == 10
 
 
 def test_ws_wifi_event_create_error_codes(monkeypatch):
@@ -391,22 +389,31 @@ def test_listener_disabled_exactly_once_when_both_removed(monkeypatch):
     assert needed is False
 
 
-def test_ws_wifi_event_sync_retries_deploy(monkeypatch):
+def test_ws_wifi_event_sync_is_the_deploy_path(monkeypatch):
+    # W7: wifi_event/sync is phase 1 of the Sync press — the ONLY deploy.
     from homeassistant.exceptions import HomeAssistantError
 
     store, hub = _setup(monkeypatch)
-    hub.sync_error = HomeAssistantError("port in use")
     conn = _Conn()
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
-    assert conn.error is not None
+    assert conn.error is None
     assert store.list_wifi_events("entry-1")[0]["deployed"] is False
 
-    # retry without store changes -> deploy lands, event reads deployed
+    # phase-1 failure surfaces and the slot stays staged
+    hub.sync_error = HomeAssistantError("port in use")
+    conn = _Conn()
+    _run(integration._ws_sync_wifi_events(None, conn, _msg()))
+    assert conn.error is not None and conn.error[1] == "sync_failed"
+    assert store.list_wifi_events("entry-1")[0]["deployed"] is False
+
+    # retry -> deploy lands, event reads deployed with the real device id
     hub.sync_error = None
     conn = _Conn()
     _run(integration._ws_sync_wifi_events(None, conn, _msg()))
     assert conn.error is None
     assert conn.result[1]["events"][0]["deployed"] is True
+    assert conn.result[1]["device_id"] == 10
+    assert conn.result[1]["record_needs_sync"] is False
 
     # no events record at all -> not_found
     _run(store.async_delete_hub_device("entry-1", WIFI_EVENTS_DEVICE_KEY))
@@ -452,6 +459,10 @@ def test_store_reconcile_events_command_renames(monkeypatch):
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
     conn = _Conn()
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Lights")))
+    # W7: deploy happens via the sync endpoint (phase 1), not at create.
+    conn = _Conn()
+    _run(integration._ws_sync_wifi_events(None, conn, _msg()))
+    assert conn.error is None
 
     changed = _run(
         store.async_reconcile_wifi_events_command_renames(

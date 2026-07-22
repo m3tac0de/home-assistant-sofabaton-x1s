@@ -23,7 +23,14 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { entityForHub, formatError } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
-import { graftDeviceIntoBundle, isWifiEventsBrand } from "./backup-state";
+import { WIFI_EVENTS_PLACEHOLDER_DEVICE_ID } from "../shared/ha-context";
+import {
+  graftDeviceIntoBundle,
+  isWifiEventsBrand,
+  reconcileActivityPowerMacros,
+  removeBundleDevice,
+  rewriteWifiEventPlaceholderRefs,
+} from "./backup-state";
 import type { WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
@@ -354,19 +361,47 @@ class SofabatonActivitiesTab extends LitElement {
     return String(entityForHub(this.hass, this.hub) || "").trim();
   }
 
+  /** Synthetic device block for a not-yet-deployed events record: the
+   *  staged events under the placeholder id, so refs resolve for display
+   *  and the scope guard stays balanced (grafted into BOTH bundles). The
+   *  Sync flow retires it for the real block after phase 1. */
+  private _syntheticEventsBlock(events: WifiEvent[], deviceId: number | null) {
+    return {
+      device: {
+        device_id: deviceId ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
+        name: "Wifi Events",
+        brand: "m3-haevents-staged0000000",
+        device_class: "wifi_ip",
+      },
+      commands: events.flatMap((event) => [
+        { command_id: event.command_id, name: event.name },
+        { command_id: event.long_press_command_id, name: `${event.name} Long Press` },
+      ]),
+    } as never;
+  }
+
+  /** Graft the events device into BOTH bundles (W7): the real deployed
+   *  block when the device exists, else a synthetic placeholder block. */
   private async _graftWifiEventsDevice(options: { forceRefresh?: boolean } = {}): Promise<BackupBundlePayload | null> {
     if (!this.hub) return this._working;
     const present = (this._working?.devices ?? []).some(
-      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? "")),
+      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? ""))
+        || Number(entry?.device?.device_id ?? -1) === WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
     );
     if (present && !options.forceRefresh) return this._working;
-    const res = await this.api().getStructuralBundle(this.hub.entry_id);
-    const entry = (res?.bundle?.devices ?? []).find(
-      (candidate) => isWifiEventsBrand(String(candidate?.device?.brand ?? "")),
-    );
-    if (!entry) return this._working;
-    this._baseline = graftDeviceIntoBundle(this._baseline, entry);
-    this._working = graftDeviceIntoBundle(this._working, entry);
+    const entityId = this._wifiEventsEntityId();
+    const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
+    const deviceId = state.device_id ?? null;
+    let entry: unknown = null;
+    if (deviceId != null) {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      entry = (res?.bundle?.devices ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === deviceId,
+      ) ?? null;
+    }
+    if (!entry) entry = this._syntheticEventsBlock(state.events ?? [], deviceId);
+    this._baseline = graftDeviceIntoBundle(this._baseline, entry as never);
+    this._working = graftDeviceIntoBundle(this._working, entry as never);
     return this._working;
   }
 
@@ -377,6 +412,8 @@ class SofabatonActivitiesTab extends LitElement {
       return (await this.api().listWifiEvents(entityId)).events ?? [];
     },
     create: async (name: string) => {
+      // W7 full deferral: a pure store allocation — instant, no deploy.
+      // The Sync press runs the events-record deploy as phase 1.
       const entityId = this._wifiEventsEntityId();
       if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
       const res = await this.api().createWifiEvent(entityId, name);
@@ -384,8 +421,6 @@ class SofabatonActivitiesTab extends LitElement {
       const full = (res?.events ?? []).find(
         (item) => item.slot_index === created?.slot_index,
       ) ?? (created as unknown as WifiEvent);
-      // The deploy just grew the device's command catalog — refresh the
-      // grafted entry even when the device block was already present.
       const bundle = await this._graftWifiEventsDevice({ forceRefresh: true });
       return { event: full, bundle };
     },
@@ -396,6 +431,73 @@ class SofabatonActivitiesTab extends LitElement {
       await this.api().setWifiEventLongpress(entityId, slotIndex, true);
     },
   };
+
+  /** W7 phase 1 of the Sync press: deploy the events record when it is
+   *  out-of-step, then resolve placeholder refs to the real device id and
+   *  swap the synthetic block for the deployed one in both bundles.
+   *  Returns false (with `_syncProgress` set) when phase 1 fails. */
+  private async _syncWifiEventsPhase(): Promise<boolean> {
+    const entityId = this._wifiEventsEntityId();
+    if (!entityId || this._entityId == null || !this.hub) return true;
+    const referencesEvents = (bundle: BackupBundlePayload | null): boolean => {
+      const eventDeviceIds = new Set<number>([WIFI_EVENTS_PLACEHOLDER_DEVICE_ID]);
+      for (const entry of bundle?.devices ?? []) {
+        if (isWifiEventsBrand(String(entry?.device?.brand ?? ""))) {
+          eventDeviceIds.add(Number(entry?.device?.device_id ?? -1));
+        }
+      }
+      const activity = (bundle?.activities ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === Number(this._entityId),
+      );
+      if (!activity) return false;
+      const refs = [
+        ...(activity.favorite_slots ?? []).map((slot) => slot?.device_id),
+        ...(activity.button_bindings ?? []).flatMap((binding) => [
+          binding?.device_id, binding?.long_press_device_id,
+        ]),
+        ...(activity.macros ?? []).flatMap((macro) =>
+          (macro?.steps ?? []).map((step) => step?.device_id)),
+      ];
+      return refs.some((value) => value != null && eventDeviceIds.has(Number(value)));
+    };
+    if (!referencesEvents(this._working)) return true;
+
+    let state = await this.api().listWifiEvents(entityId);
+    const hasPlaceholder = (this._working?.devices ?? []).some(
+      (entry) => Number(entry?.device?.device_id ?? -1) === WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
+    );
+    if (state.record_needs_sync || (hasPlaceholder && state.device_id == null)) {
+      this._syncProgress = { message: S.wifiEventsPhaseMessage } as BackupProgressEvent;
+      try {
+        state = await this.api().syncWifiEvents(entityId);
+      } catch (error) {
+        this._syncError = formatError(error);
+        this._syncFailedAt = null;
+        this._syncProgress = null;
+        this._stage = "sync_failed";
+        return false;
+      }
+    }
+    const realId = state.device_id;
+    if (hasPlaceholder && realId != null) {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const entry = (res?.bundle?.devices ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === realId,
+      );
+      const activityId = Number(this._entityId);
+      for (const key of ["_baseline", "_working"] as const) {
+        let bundle = this[key];
+        bundle = removeBundleDevice(bundle, WIFI_EVENTS_PLACEHOLDER_DEVICE_ID);
+        if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
+        if (key === "_working") {
+          bundle = rewriteWifiEventPlaceholderRefs(bundle, activityId, realId);
+          bundle = bundle ? reconcileActivityPowerMacros(bundle, activityId) : bundle;
+        }
+        this[key] = bundle;
+      }
+    }
+    return true;
+  }
 
   private _startCapture = async (entityId: number) => {
     if (!this.hub || !this.hass) return;
@@ -461,6 +563,13 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncFailedAt = null;
     this._syncProgress = null;
     this._stage = "syncing";
+    // W7 phase 1: deploy the Wifi Events record (and resolve placeholder
+    // refs) BEFORE the entity sync, so every referenced record exists on
+    // the hub when the activity writes land.
+    if (this.kind === "activity" && !(await this._syncWifiEventsPhase())) {
+      this._exitAfterSync = false;
+      return;
+    }
     try {
       const start = this.kind === "device"
         ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working)

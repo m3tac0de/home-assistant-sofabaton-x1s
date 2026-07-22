@@ -1231,7 +1231,16 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
 
 
 def _wifi_events_state_payload(store: CommandConfigStore, entry_id: str) -> dict[str, Any]:
-    return {"events": store.list_wifi_events(entry_id)}
+    """Events plus record-level sync state (W7: the frontend defers all
+    deploys to the Sync press and needs to know whether phase 1 — the
+    events-record deploy — is required)."""
+
+    record_state = store.wifi_events_record_state(entry_id)
+    return {
+        "events": store.list_wifi_events(entry_id),
+        "record_needs_sync": bool(record_state.get("record_needs_sync")),
+        "device_id": record_state.get("device_id"),
+    }
 
 
 @websocket_api.websocket_command(
@@ -1281,39 +1290,18 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
         connection.send_error(msg["id"], code, messages.get(code, code))
         return
 
-    # Deploy: first event ever -> replace path creates the device (and
-    # auto-enables the listener); subsequent events -> the in-place planner
-    # emits a single command_add-shaped record write. On failure the slot
-    # STAYS staged — the event lists `deployed: false` (needs-sync) and the
-    # next create/sync retries it.
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
-    payload = await store.async_get_hub_config(
-        hub.entry_id,
-        device_key=WIFI_EVENTS_DEVICE_KEY,
-        roku_listen_port=roku_listen_port,
-    )
-    try:
-        result = await hub.async_sync_command_config(
-            command_payload=payload,
-            request_port=roku_listen_port,
-            device_key=WIFI_EVENTS_DEVICE_KEY,
-            device_name=str(payload.get("device_name") or ""),
-        )
-    except HomeAssistantError as err:
-        message = str(err)
-        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
-        connection.send_error(msg["id"], code, message)
-        return
-
-    # Command-id resolution is the fixed slot law (command_id = slot_index
-    # + 1, long = short + slot_count — live-validated, plan §11 W0.3/W0.4);
-    # the hub device id comes from the sync result.
-    device_id = result.get("wifi_device_id") if isinstance(result, dict) else None
+    # W7 full deferral: creation is a pure store allocation — NOTHING is
+    # deployed here. The activity editor's Sync press runs the events-record
+    # deploy as phase 1 (frontend orchestrates via wifi_event/sync) before
+    # the activity writes. command_id is already law-derived (slot + 1);
+    # device_id is the deployed id when the device exists, else None (the
+    # frontend inserts a placeholder ref and rewrites it after phase 1).
+    state = _wifi_events_state_payload(store, hub.entry_id)
     connection.send_result(
         msg["id"],
         {
-            "event": {**allocated, "device_id": device_id},
-            **_wifi_events_state_payload(store, hub.entry_id),
+            "event": {**allocated, "device_id": state.get("device_id")},
+            **state,
         },
     )
 

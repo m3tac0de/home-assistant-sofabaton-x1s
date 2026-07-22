@@ -11,6 +11,8 @@ import {
   graftDeviceIntoBundle,
   isManagedWifiBrand,
   isWifiEventsBrand,
+  removeBundleDevice,
+  rewriteWifiEventPlaceholderRefs,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
@@ -74,7 +76,62 @@ test("graftDeviceIntoBundle tolerates null bundle / entry / bad ids", () => {
   const bundle = liveBundle();
   assert.equal(graftDeviceIntoBundle(null, { device: { device_id: 1 } } as never), null);
   assert.equal(graftDeviceIntoBundle(bundle, null), bundle);
-  assert.equal(graftDeviceIntoBundle(bundle, { device: { device_id: 0 } } as never), bundle);
+  assert.equal(graftDeviceIntoBundle(bundle, { device: { device_id: -1 } } as never), bundle);
+  // id 0 is LEGAL (W7 placeholder block for a not-yet-deployed device)
+  const withPlaceholder = graftDeviceIntoBundle(
+    bundle, { device: { device_id: 0, name: "Wifi Events", brand: "m3-haevents-staged0000000" } } as never,
+  )!;
+  assert.equal(withPlaceholder.devices?.length, 4);
+});
+
+test("removeBundleDevice retires the placeholder block", () => {
+  const bundle = graftDeviceIntoBundle(
+    liveBundle(), { device: { device_id: 0, name: "Wifi Events" } } as never,
+  )!;
+  const cleaned = removeBundleDevice(bundle, 0)!;
+  assert.equal(cleaned.devices?.length, 3);
+  // no-op when absent (same object back)
+  assert.equal(removeBundleDevice(cleaned, 0), cleaned);
+});
+
+test("rewriteWifiEventPlaceholderRefs swaps id 0 for the real id in all ref kinds", () => {
+  let bundle = liveBundle();
+  bundle = {
+    ...bundle,
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        favorite_slots: [
+          { button_id: 5, device_id: 0, command_id: 1, name: "Ev" },
+          { button_id: 6, device_id: 1, command_id: 3, name: "Other" },
+        ],
+        button_bindings: [
+          { button_id: 190, device_id: 0, command_id: 1, long_press_device_id: 0, long_press_command_id: 51 },
+        ],
+        macros: [
+          { button_id: 20, name: "M", steps: [
+            { device_id: 0, command_id: 2, button_code: 20002, duration: 0, delay: 255 },
+            { device_id: 1, command_id: 9, button_code: 20009, duration: 0, delay: 255 },
+          ] },
+        ],
+      },
+    ],
+  } as never;
+  const rewritten = rewriteWifiEventPlaceholderRefs(bundle, 101, 12)!;
+  const act = rewritten.activities?.[0] as never as {
+    favorite_slots: Array<{ device_id: number }>;
+    button_bindings: Array<{ device_id: number; long_press_device_id: number }>;
+    macros: Array<{ steps: Array<{ device_id: number }> }>;
+  };
+  assert.equal(act.favorite_slots[0].device_id, 12);
+  assert.equal(act.favorite_slots[1].device_id, 1); // untouched
+  assert.equal(act.button_bindings[0].device_id, 12);
+  assert.equal(act.button_bindings[0].long_press_device_id, 12);
+  assert.equal(act.macros[0].steps[0].device_id, 12);
+  assert.equal(act.macros[0].steps[1].device_id, 1); // untouched
+  // no-op guards
+  assert.equal(rewriteWifiEventPlaceholderRefs(null, 101, 12), null);
+  assert.equal(rewriteWifiEventPlaceholderRefs(bundle, 101, 0), bundle);
 });
 
 test("bundleEditableDeviceOptions itself keeps every device (offline path)", () => {

@@ -268,6 +268,14 @@ export class ControlPanelApi {
     });
   }
 
+  /** W7 phase 1: deploy the events record without store changes. */
+  syncWifiEvents(entityId: string) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/sync",
+      entity_id: entityId,
+    });
+  }
+
   deleteWifiEvent(entityId: string, slotIndex: number) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/delete",

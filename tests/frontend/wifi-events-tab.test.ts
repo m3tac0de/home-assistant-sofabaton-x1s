@@ -92,56 +92,13 @@ test("set_action write goes through the narrow wifi_event endpoint", async () =>
   assert.equal(tab._wifiEventsRows[0].action.perform_action, "script.new");
 });
 
-test("delete reference scan counts favorites, bindings (both legs), and macros", async () => {
-  const bundle = {
-    activities: [
-      {
-        favorite_slots: [
-          { device_id: 10, command_id: 1 },
-          { device_id: 10, command_id: 2 },
-          { device_id: 9, command_id: 1 },
-        ],
-        button_bindings: [
-          { device_id: 10, command_id: 1, long_press_device_id: null, long_press_command_id: null },
-          { device_id: 4, command_id: 2, long_press_device_id: 10, long_press_command_id: 51 },
-        ],
-        macros: [
-          { steps: [{ device_id: 10, command_id: 1 }, { device_id: 10, command_id: 1 }] },
-          { steps: [{ device_id: 10, command_id: 2 }] },
-        ],
-      },
-      {
-        favorite_slots: [{ device_id: 10, command_id: 1 }],
-        button_bindings: [],
-        macros: [{ steps: [{ device_id: 10, command_id: 51 }] }],
-      },
-    ],
-  };
-  const tab = makeTab(async (msg) => {
-    assert.equal(msg.type, "sofabaton_x1s/cache/structural_bundle");
-    return { bundle };
-  });
-  tab._wifiEventDeleteConfirm = { event: EVENT, refs: null };
-  await tab._scanWifiEventRefs(EVENT);
-  // favorites: 2 (short in act1, short in act2); bindings: 2 (short leg +
-  // long leg); macros: 2 (act1 macro1 counted once despite 2 steps, act2
-  // long-record step)
-  assert.deepEqual(tab._wifiEventDeleteConfirm.refs, { favorites: 2, bindings: 2, steps: 2 });
-});
-
-test("longpress toggle and retry sync hit their endpoints", async () => {
-  const calls: Array<Record<string, unknown>> = [];
-  const tab = makeTab(async (msg) => {
-    calls.push(msg);
-    return { events: [EVENT] };
-  });
-  tab._toggleWifiEventLongPress(EVENT, false);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  tab._retryWifiEventsSync();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.deepEqual(
-    calls.map((call) => call.type),
-    ["sofabaton_x1s/wifi_event/set_longpress", "sofabaton_x1s/wifi_event/sync"],
-  );
-  assert.equal(calls[0].enabled, false);
+test("W7: the tab exposes no lifecycle mutations (actions only)", () => {
+  // Delete / long-press-toggle / retry affordances were removed — the
+  // event lifecycle lives in the editors' sync cycle.
+  const tab = makeTab();
+  assert.equal(tab._toggleWifiEventLongPress, undefined);
+  assert.equal(tab._retryWifiEventsSync, undefined);
+  assert.equal(tab._confirmWifiEventDelete, undefined);
+  assert.equal(tab._scanWifiEventRefs, undefined);
+  assert.equal(tab._renderWifiEventDeleteConfirm, undefined);
 });

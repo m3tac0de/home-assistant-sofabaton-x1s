@@ -255,9 +255,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     _activityEventActions: { state: true },
     _wifiEventsRows: { state: true },
     _wifiEventsLoading: { state: true },
-    _wifiEventsBusy: { state: true },
-    _wifiEventsError: { state: true },
-    _wifiEventDeleteConfirm: { state: true },
     selectedSection: { attribute: false },
     setSelectedSection: { attribute: false },
     _devicePowerPickerKind: { state: true },
@@ -821,11 +818,6 @@ class SofabatonWifiCommandsTab extends LitElement {
   // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
   private _wifiEventsRows: WifiEvent[] | null = null;
   private _wifiEventsLoading = false;
-  private _wifiEventsBusy = false;
-  private _wifiEventsError = "";
-  private _wifiEventDeleteConfirm:
-    | { event: WifiEvent; refs: { favorites: number; bindings: number; steps: number } | null }
-    | null = null;
   selectedSection: WifiSectionId = "wifi";
   setSelectedSection: (section: WifiSectionId) => void = () => {};
   private _devicePowerPickerKind: "on" | "off" | null = null;
@@ -1284,128 +1276,11 @@ class SofabatonWifiCommandsTab extends LitElement {
         entity_id: entityId,
       });
       this._wifiEventsRows = result?.events ?? [];
-      this._wifiEventsError = "";
     } catch (_error) {
       this._wifiEventsRows = this._wifiEventsRows ?? [];
     } finally {
       this._wifiEventsLoading = false;
     }
-  }
-
-  /** Shared error → message + refresh for the wifi-event mutations. */
-  private async _runWifiEventMutation(run: () => Promise<{ events?: WifiEvent[] } | undefined>) {
-    if (this._wifiEventsBusy) return;
-    this._wifiEventsBusy = true;
-    this._wifiEventsError = "";
-    try {
-      const result = await run();
-      if (result?.events) this._wifiEventsRows = result.events;
-      else await this._loadWifiEventsRows();
-    } catch (error) {
-      this._wifiEventsError = String(
-        (error as Error)?.message || TOOLS_CARD_STRINGS.wifiCommands.unableSaveAction,
-      );
-    } finally {
-      this._wifiEventsBusy = false;
-    }
-  }
-
-  private _toggleWifiEventLongPress(event: WifiEvent, enabled: boolean) {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
-    // Pure store-flag edit — the long record is always deployed; the flag
-    // only gates HA-side long-press action execution.
-    void this._runWifiEventMutation(() => this.hass!.callWS({
-      type: "sofabaton_x1s/wifi_event/set_longpress",
-      entity_id: entityId,
-      slot_index: event.slot_index,
-      enabled,
-    }));
-  }
-
-  private _retryWifiEventsSync() {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
-    void this._runWifiEventMutation(() => this.hass!.callWS({
-      type: "sofabaton_x1s/wifi_event/sync",
-      entity_id: entityId,
-    }));
-  }
-
-  private _openWifiEventDeleteConfirm(event: WifiEvent) {
-    this._wifiEventDeleteConfirm = { event, refs: null };
-    void this._scanWifiEventRefs(event);
-  }
-
-  /** Count hub references to the event (favorites / bindings / macro
-   *  steps across all activities) for the delete-confirm body. The hub
-   *  cascades these (bench-validated, plan §11): favorites + bindings are
-   *  removed, the referencing STEP is removed from each macro in place,
-   *  and a macro left with no steps is removed. */
-  private async _scanWifiEventRefs(event: WifiEvent) {
-    const entryId = String(this.hub?.entry_id || "").trim();
-    if (!entryId || !this.hass?.callWS || event.device_id == null) return;
-    let favorites = 0;
-    let bindings = 0;
-    let steps = 0;
-    try {
-      const res = await this.hass.callWS<{ bundle?: { activities?: Array<Record<string, unknown>> } | null }>({
-        type: "sofabaton_x1s/cache/structural_bundle",
-        entry_id: entryId,
-      });
-      const matches = (deviceId: unknown, commandId: unknown) =>
-        Number(deviceId) === event.device_id
-        && (Number(commandId) === event.command_id || Number(commandId) === event.long_press_command_id);
-      for (const activity of res?.bundle?.activities ?? []) {
-        const record = activity as {
-          favorite_slots?: Array<{ device_id?: unknown; command_id?: unknown }>;
-          button_bindings?: Array<{
-            device_id?: unknown; command_id?: unknown;
-            long_press_device_id?: unknown; long_press_command_id?: unknown;
-          }>;
-          macros?: Array<{ steps?: Array<{ device_id?: unknown; command_id?: unknown }> }>;
-        };
-        for (const slot of record.favorite_slots ?? []) {
-          if (matches(slot?.device_id, slot?.command_id)) favorites += 1;
-        }
-        for (const binding of record.button_bindings ?? []) {
-          if (
-            matches(binding?.device_id, binding?.command_id)
-            || matches(binding?.long_press_device_id, binding?.long_press_command_id)
-          ) bindings += 1;
-        }
-        for (const macro of record.macros ?? []) {
-          if ((macro?.steps ?? []).some((step) => matches(step?.device_id, step?.command_id))) steps += 1;
-        }
-      }
-    } catch (_error) {
-      // Reference counts are advisory — fall through with zeros.
-    }
-    if (this._wifiEventDeleteConfirm?.event.slot_index === event.slot_index) {
-      this._wifiEventDeleteConfirm = { event, refs: { favorites, bindings, steps } };
-    }
-  }
-
-  private _confirmWifiEventDelete() {
-    const confirm = this._wifiEventDeleteConfirm;
-    const entityId = String(this._entityId() || "").trim();
-    if (!confirm || !entityId || !this.hass?.callWS) return;
-    void this._runWifiEventMutation(async () => {
-      try {
-        const result = await this.hass!.callWS<{ events?: WifiEvent[] }>({
-          type: "sofabaton_x1s/wifi_event/delete",
-          entity_id: entityId,
-          slot_index: confirm.event.slot_index,
-        });
-        this._wifiEventDeleteConfirm = null;
-        return result;
-      } catch (error) {
-        this._wifiEventDeleteConfirm = null;
-        throw new Error(String(
-          (error as Error)?.message || TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteFailed,
-        ));
-      }
-    });
   }
 
   private _actionForHubEventTarget(target: HubEventEditorTarget): WifiCommandAction {
@@ -1567,10 +1442,16 @@ class SofabatonWifiCommandsTab extends LitElement {
     return press.commandIndex === event.slot_index && press.pressType === pressType;
   }
 
+  /** WIFI EVENTS group (W7: Actions ONLY — no deletes, no toggles, no
+   *  deploy affordances here; the event lifecycle lives in the editors'
+   *  sync cycle). Row shapes per the user spec:
+   *    `When <NAME> is pressed <action>.`
+   *    `When <NAME> is pressed <action>, and when it's long-pressed <action>.`
+   *  Long-press enablement is editor-only; a passive needs-sync badge is
+   *  the only deploy-state surface. */
   private _renderWifiEventsGroup(pressFlash: WifiPressEvent | null) {
     const W = TOOLS_CARD_STRINGS.wifiCommands;
     const events = this._wifiEventsRows ?? [];
-    const needsSync = events.some((event) => !event.deployed);
     const renderAction = (event: WifiEvent, pressType: PressType) => {
       const action = this._normalizeCommandAction(
         pressType === "long" ? event.long_press_action : event.action,
@@ -1595,83 +1476,20 @@ class SofabatonWifiCommandsTab extends LitElement {
           <div class="acc-title">${W.wifiEventsTitle}</div>
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
-        ${this._wifiEventsError
-          ? html`<div class="empty-hint">${this._wifiEventsError}</div>`
-          : nothing}
         ${events.length ? html`
           <ul class="hub-event-lines">
             ${events.map((event) => html`
               <li class="hub-event-line">
                 <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
                 <span class="hub-event-text">
-                  ${W.wifiEventRowPress(event.name)}${event.deployed ? nothing : html` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`},
-                  ${renderAction(event, "short")}${event.long_press_enabled ? html`,
-                  ${W.wifiEventRowLongPress},
+                  ${W.wifiEventRowPress(event.name)}${event.deployed ? nothing : html` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
+                  ${renderAction(event, "short")}${event.long_press_enabled ? html`, ${W.wifiEventRowLongPress}
                   ${renderAction(event, "long")}` : nothing}.
-                  <label class="hub-event-longpress-toggle" title=${W.wifiEventLongPressToggleTitle}>
-                    <ha-switch
-                      .checked=${event.long_press_enabled}
-                      .disabled=${this._wifiEventsBusy}
-                      @change=${(changeEvent: Event) => {
-                        this._toggleWifiEventLongPress(
-                          event,
-                          Boolean((changeEvent.target as { checked?: boolean }).checked),
-                        );
-                      }}
-                    ></ha-switch>
-                    <span>${W.longPress}</span>
-                  </label>
-                  <button
-                    class="hub-event-clear"
-                    title=${W.wifiEventDeleteTitle}
-                    ?disabled=${this._wifiEventsBusy}
-                    @click=${() => this._openWifiEventDeleteConfirm(event)}
-                  ><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
                 </span>
               </li>
             `)}
           </ul>
-          ${needsSync ? html`
-            <div class="slot-confirm-actions">
-              <button class="dialog-btn" ?disabled=${this._wifiEventsBusy} @click=${() => this._retryWifiEventsSync()}>
-                ${W.wifiEventRetrySync}
-              </button>
-            </div>
-          ` : nothing}
         ` : html`<div class="empty-hint">${W.wifiEventsEmpty}</div>`}
-      </div>
-    `;
-  }
-
-  private _renderWifiEventDeleteConfirm() {
-    const confirm = this._wifiEventDeleteConfirm;
-    if (!confirm) return nothing;
-    const W = TOOLS_CARD_STRINGS.wifiCommands;
-    const refs = confirm.refs;
-    const body = refs == null
-      ? W.wifiEventDeleteScanning
-      : refs.favorites + refs.bindings + refs.steps === 0
-        ? W.wifiEventDeleteNoRefs
-        : W.wifiEventDeleteRefs(refs.favorites, refs.bindings, refs.steps);
-    return html`
-      <div class="modal-backdrop" @click=${() => { this._wifiEventDeleteConfirm = null; }}>
-        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${W.wifiEventDeleteConfirmTitle(confirm.event.name)}</div>
-            <button class="dialog-close" @click=${() => { this._wifiEventDeleteConfirm = null; }}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="dialog-note">${body}</div>
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => { this._wifiEventDeleteConfirm = null; }}>${W.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._wifiEventsBusy} @click=${() => this._confirmWifiEventDelete()}>
-                ${W.wifiEventDeleteConfirm}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -1719,7 +1537,6 @@ class SofabatonWifiCommandsTab extends LitElement {
           </ul>
         </div>
         ${this._renderWifiEventsGroup(this._activeWifiPressFlash())}
-        ${this._renderWifiEventDeleteConfirm()}
         <div class="hub-events">
           <div class="section-title-wrap">
             <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
@@ -2278,8 +2095,6 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._hubEventActions = this._defaultHubEventActions();
       this._activityEventActions = {};
       this._wifiEventsRows = null;
-      this._wifiEventsError = "";
-      this._wifiEventDeleteConfirm = null;
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const entityId = String(this._entityId() || "").trim();

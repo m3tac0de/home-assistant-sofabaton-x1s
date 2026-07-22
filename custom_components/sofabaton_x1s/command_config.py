@@ -1155,6 +1155,32 @@ class CommandConfigStore:
         await self._store.async_save(self._data)
         return True
 
+    def wifi_events_record_state(
+        self,
+        entry_id: str,
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> dict[str, Any]:
+        """Record-level sync state for the Wifi Events record (W7).
+
+        ``record_needs_sync`` is the standard hash comparison every wifi
+        device uses; ``device_id`` is the deployed hub device id or None
+        before the first deploy (the frontend inserts placeholder refs
+        and the Sync flow resolves them after phase 1).
+        """
+
+        record = self._wifi_events_record(entry_id)
+        if record is None:
+            return {"exists": False, "record_needs_sync": False, "device_id": None}
+        payload = self._payload_for_device(record, roku_listen_port=roku_listen_port)
+        deployed_hash = str(payload.get("deployed_commands_hash") or "").strip()
+        raw_device_id = payload.get("deployed_device_id")
+        return {
+            "exists": True,
+            "record_needs_sync": payload.get("commands_hash") != deployed_hash,
+            "device_id": raw_device_id if isinstance(raw_device_id, int) else None,
+        }
+
     async def async_reconcile_wifi_events_command_renames(
         self,
         entry_id: str,
