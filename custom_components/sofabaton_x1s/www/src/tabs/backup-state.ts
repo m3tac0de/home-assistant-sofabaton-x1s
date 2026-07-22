@@ -936,6 +936,18 @@ export function isManagedWifiBrand(brand: string): boolean {
 }
 
 /**
+ * True when a brand string identifies the reserved, system-owned
+ * "Wifi Events" device (`m3-haevents-<hash>`). Unlike other managed
+ * wifi devices it is fully editable in the live device editor (no
+ * name-only lock) and is hidden from the live Add-dialog device pickers
+ * — its commands are offered through the dedicated "Wifi Event" kind.
+ */
+export function isWifiEventsBrand(brand: string): boolean {
+  const text = String(brand ?? "").trim();
+  return text.startsWith("m3-haevents-") && Boolean(text.slice("m3-haevents-".length).trim());
+}
+
+/**
  * Read a device's `ip_address` from the bundle's device head. Returns
  * `null` for missing devices and empty / unset values (so the UI can
  * treat "no IP" uniformly regardless of whether the field was absent
@@ -3433,6 +3445,32 @@ export function setActivityRoleDevice(
 /** Device options for the edit overview. */
 export function bundleEditableDeviceOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
   return bundleDeviceOptions(bundle);
+}
+
+/**
+ * Insert (or replace) one device entry in a bundle — used to graft the
+ * Wifi Events device block (head + commands) into the live editor's
+ * captured `_baseline` AND working bundles after `wifi_event/create`
+ * deploys a device the captures predate. Both bundles must gain it:
+ * the review diff would otherwise show phantom changes, and sync
+ * validation grandfathers missing command refs FROM THE BASELINE
+ * (`collect_missing_command_refs`) — a ref to a device absent from the
+ * baseline would be flagged as a new dangling ref and rejected.
+ */
+export function graftDeviceIntoBundle(
+  bundle: BackupBundlePayload | null,
+  deviceEntry: BackupBundleDevicePayload | null | undefined,
+): BackupBundlePayload | null {
+  if (!bundle || !deviceEntry) return bundle;
+  const deviceId = Number(deviceEntry?.device?.device_id || 0);
+  if (deviceId <= 0) return bundle;
+  const devices = [...(bundle.devices ?? [])];
+  const index = devices.findIndex(
+    (entry) => Number(entry?.device?.device_id || 0) === deviceId,
+  );
+  if (index >= 0) devices[index] = deviceEntry;
+  else devices.push(deviceEntry);
+  return { ...bundle, devices };
 }
 
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {

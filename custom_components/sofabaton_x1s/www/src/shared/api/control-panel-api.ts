@@ -14,6 +14,8 @@ import type {
   LogsResponse,
   RefreshKind,
   SettingKey,
+  WifiEventCreateResponse,
+  WifiEventsListResponse,
 } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
 
@@ -246,6 +248,55 @@ export class ControlPanelApi {
     return this.hass.callWS<{ devices?: Array<Record<string, unknown>>; max_devices?: number }>({
       type: "sofabaton_x1s/command_devices/list",
       entity_id: entityId,
+    });
+  }
+
+  // ── Wifi Events (reserved haevents record) ────────────────────────────
+
+  listWifiEvents(entityId: string) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/list",
+      entity_id: entityId,
+    });
+  }
+
+  createWifiEvent(entityId: string, name: string) {
+    return this.hass.callWS<WifiEventCreateResponse>({
+      type: "sofabaton_x1s/wifi_event/create",
+      entity_id: entityId,
+      name,
+    });
+  }
+
+  deleteWifiEvent(entityId: string, slotIndex: number) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/delete",
+      entity_id: entityId,
+      slot_index: slotIndex,
+    });
+  }
+
+  setWifiEventAction(
+    entityId: string,
+    slotIndex: number,
+    pressType: "short" | "long",
+    action: Record<string, unknown>,
+  ) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/set_action",
+      entity_id: entityId,
+      slot_index: slotIndex,
+      press_type: pressType,
+      action,
+    });
+  }
+
+  setWifiEventLongpress(entityId: string, slotIndex: number, enabled: boolean) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/set_longpress",
+      entity_id: entityId,
+      slot_index: slotIndex,
+      enabled,
     });
   }
 

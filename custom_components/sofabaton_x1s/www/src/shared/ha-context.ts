@@ -136,6 +136,37 @@ export interface LogsResponse {
   lines: ControlPanelLogLine[];
 }
 
+/** One configured Wifi Event slot (`sofabaton_x1s/wifi_event/list`). */
+export interface WifiEvent {
+  slot_index: number;
+  name: string;
+  long_press_enabled: boolean;
+  action: Record<string, unknown>;
+  long_press_action: Record<string, unknown>;
+  /** Short law: slot_index + 1. */
+  command_id: number;
+  /** Long law: command_id + slot_count. */
+  long_press_command_id: number;
+  /** The deployed hub device id, or null before the first deploy lands. */
+  device_id: number | null;
+  /** False for a staged slot whose deploy hasn't landed (needs sync). */
+  deployed: boolean;
+}
+
+export interface WifiEventsListResponse {
+  events: WifiEvent[];
+}
+
+export interface WifiEventCreateResponse extends WifiEventsListResponse {
+  event: {
+    slot_index: number;
+    name: string;
+    command_id: number;
+    long_press_command_id: number;
+    device_id: number | null;
+  };
+}
+
 /**
  * Structural view of a virtual-device command blob (wifi_ip, wifi_roku,
  * wifi_hue, wifi_sonos). Populated by the hub when the device class is

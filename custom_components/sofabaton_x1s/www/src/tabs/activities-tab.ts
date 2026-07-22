@@ -18,10 +18,13 @@ import type {
   BackupProgressEvent,
   ControlPanelHubState,
   HassLike,
+  WifiEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { formatError } from "../shared/utils/control-panel-selectors";
+import { entityForHub, formatError } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
+import { graftDeviceIntoBundle, isWifiEventsBrand } from "./backup-state";
+import type { WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 
@@ -340,6 +343,59 @@ class SofabatonActivitiesTab extends LitElement {
   // second-guesses whether the hub has since changed. That reconciliation
   // happens once, authoritatively, at sync time (the backend stale
   // pre-flight).
+
+  // ── Wifi Events facade for the Add dialogs (plan §4) ────────────────
+  // The detail view is hass-free; this host owns the WS calls AND the
+  // bundle grafting (both `_baseline` and `_working` must gain the
+  // deployed events-device block — review diff + the sync validator's
+  // baseline grandfathering depend on it).
+
+  private _wifiEventsEntityId(): string {
+    return String(entityForHub(this.hass, this.hub) || "").trim();
+  }
+
+  private async _graftWifiEventsDevice(options: { forceRefresh?: boolean } = {}): Promise<BackupBundlePayload | null> {
+    if (!this.hub) return this._working;
+    const present = (this._working?.devices ?? []).some(
+      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? "")),
+    );
+    if (present && !options.forceRefresh) return this._working;
+    const res = await this.api().getStructuralBundle(this.hub.entry_id);
+    const entry = (res?.bundle?.devices ?? []).find(
+      (candidate) => isWifiEventsBrand(String(candidate?.device?.brand ?? "")),
+    );
+    if (!entry) return this._working;
+    this._baseline = graftDeviceIntoBundle(this._baseline, entry);
+    this._working = graftDeviceIntoBundle(this._working, entry);
+    return this._working;
+  }
+
+  private _wifiEventsFacade: WifiEventsHost = {
+    list: async (): Promise<WifiEvent[]> => {
+      const entityId = this._wifiEventsEntityId();
+      if (!entityId) return [];
+      return (await this.api().listWifiEvents(entityId)).events ?? [];
+    },
+    create: async (name: string) => {
+      const entityId = this._wifiEventsEntityId();
+      if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
+      const res = await this.api().createWifiEvent(entityId, name);
+      const created = res?.event;
+      const full = (res?.events ?? []).find(
+        (item) => item.slot_index === created?.slot_index,
+      ) ?? (created as unknown as WifiEvent);
+      // The deploy just grew the device's command catalog — refresh the
+      // grafted entry even when the device block was already present.
+      const bundle = await this._graftWifiEventsDevice({ forceRefresh: true });
+      return { event: full, bundle };
+    },
+    ensureGrafted: async () => this._graftWifiEventsDevice(),
+    enableLongPress: async (slotIndex: number) => {
+      const entityId = this._wifiEventsEntityId();
+      if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
+      await this.api().setWifiEventLongpress(entityId, slotIndex, true);
+    },
+  };
 
   private _startCapture = async (entityId: number) => {
     if (!this.hub || !this.hass) return;
@@ -688,6 +744,7 @@ class SofabatonActivitiesTab extends LitElement {
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
+          .wifiEvents=${this._wifiEventsFacade}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}
           @delete-request=${this._handleDeleteRequest}
