@@ -27,7 +27,7 @@ registerRemoteCardTranslation("nl", {
     label: "Knopdrukken registreren",
     start: "Starten",
     waiting: "Wachten op een toetsdruk",
-    exitEditMode: "Verlaat de kaart configuratie om te beginnen",
+    exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label: string) => `Vastgelegd: ${label}`,
     notCaptured: "Niet vastgelegd.",
     working: "Bezig...",

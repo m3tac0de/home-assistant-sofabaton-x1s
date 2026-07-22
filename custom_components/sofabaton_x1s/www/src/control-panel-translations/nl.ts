@@ -7,6 +7,7 @@ import {
 } from "../strings";
 
 const soort = (kind: "activity" | "device") => kind === "activity" ? "activiteit" : "apparaat";
+const dezeDit = (kind: "activity" | "device") => kind === "activity" ? "Deze" : "Dit";
 
 export const TOOLS_CARD_STRINGS_NL = {
   common: {
@@ -127,18 +128,18 @@ export const TOOLS_CARD_STRINGS_NL = {
     captureFailedTitle: "Kan de hub niet uitlezen", captureFailedBody: "De hub reageerde niet meer voordat het uitlezen was voltooid.", retry: "Opnieuw proberen", back: "Terug",
     capturingFromCache: (kind: "activity" | "device") => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} uit de hubcache laden…`,
     needsRefreshTitle: "Vernieuw de hubcache om te bewerken",
-    needsRefreshBody: (kind: "activity" | "device") => `Deze ${soort(kind)} staat nog niet in de lokale hubcache. Vernieuw de hubcache om deze in de editor te laden. Dit kan enkele minuten duren, afhankelijk van de grootte van je hubconfiguratie.`,
+    needsRefreshBody: (kind: "activity" | "device") => `${dezeDit(kind)} ${soort(kind)} staat nog niet in de lokale hubcache. Vernieuw de hubcache om deze in de editor te laden. Dit kan enkele minuten duren, afhankelijk van de grootte van je hubconfiguratie.`,
     syncToHub: "Synchroniseren met hub", syncUpToDate: "Actueel",
     deletingTitle: (kind: "activity" | "device") => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} verwijderen`,
-    deletingMessage: (kind: "activity" | "device") => `Deze ${soort(kind)} van de hub verwijderen…`,
+    deletingMessage: (kind: "activity" | "device") => `${dezeDit(kind)} ${soort(kind)} van de hub verwijderen…`,
     syncingTitle: "Synchroniseren met je hub", syncingMessage: "Je wijzigingen naar de hub schrijven…", syncSuccess: "Gesynchroniseerd met de hub.",
     syncPlanSummary: (count: number) => `${count} ${count === 1 ? "schrijfbewerking" : "schrijfbewerkingen"} naar de hub`,
     syncFailedTitle: "Synchronisatie niet voltooid", syncFailedStep: (step: string) => `De hub stopte bij: ${step}`,
-    syncStaleTitle: (kind: "activity" | "device") => `Deze ${soort(kind)} is op de hub gewijzigd`,
+    syncStaleTitle: (kind: "activity" | "device") => `${dezeDit(kind)} ${soort(kind)} is op de hub gewijzigd`,
     syncStaleBody: (kind: "activity" | "device") => `De ${soort(kind)} is op de hub bewerkt nadat je deze hebt geladen. Je wijzigingen kunnen daarom niet veilig worden toegepast. Laad de huidige versie van de hub opnieuw om door te gaan — je niet-opgeslagen wijzigingen gaan verloren.`,
     syncRetry: "Synchronisatie opnieuw proberen", syncReload: "Opnieuw laden van hub", syncKeepEditing: "Doorgaan met bewerken",
     exitUnsyncedTitle: "Niet-gesynchroniseerde wijzigingen",
-    exitUnsyncedBody: (kind: "activity" | "device") => `Deze ${soort(kind)} bevat wijzigingen die niet met de hub zijn gesynchroniseerd. Synchroniseer ze nu of verlaat de editor zonder te synchroniseren en verwijder de lokale wijzigingen.`,
+    exitUnsyncedBody: (kind: "activity" | "device") => `${dezeDit(kind)} ${soort(kind)} bevat wijzigingen die niet met de hub zijn gesynchroniseerd. Synchroniseer ze nu of verlaat de editor zonder te synchroniseren en verwijder de lokale wijzigingen.`,
     exitSyncNow: "Nu synchroniseren", exitWithoutSync: "Verlaten zonder synchroniseren", discardConfirmCancel: "Doorgaan met bewerken",
     review: {
       sectionDevices: "Apparaten", sectionStart: "Bij het starten", sectionButtons: "Knoppen", sectionShortcuts: "Snelkoppelingen", sectionEnd: "Bij het stoppen", sectionDeviceWide: "Apparaatbrede wijzigingen",

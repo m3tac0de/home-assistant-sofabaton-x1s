@@ -56,7 +56,7 @@ export const REMOTE_CARD_STRINGS_AR = {
     createdTriggers: (count: number, deviceLabel: string) =>
       `تم إنشاء ${isolate(count)} من مشغّلات MQTT Discovery لـ ${isolate(deviceLabel)}`,
     createdActivityTriggers: (count: number) =>
-      `تم إنشاء ${isolate(count)} من مشغّلات النشاط لـ X2 → Activities`,
+      `تم إنشاء ${isolate(count)} من مشغّلات النشاط لـ ${isolate("X2 → Activities")}`,
     plusActivityTriggers: (count: number) =>
       `، بالإضافة إلى ${isolate(count)} من مشغّلات النشاط`,
     allTriggersExist: (deviceLabel: string) =>
