@@ -79,11 +79,11 @@ export function setSelectValueCompat(
   selectEl.value = selectValueCompat(value, options);
 }
 
-/** Elements the card calls setConfig()/value on must be defined before render. */
+/** HA elements used by the card must be defined before the first render. */
 export async function ensureHaElements(): Promise<void> {
   const dropdownItemTag = selectItemTagName();
   await Promise.all([
-    customElements.whenDefined("hui-button-card"),
+    customElements.whenDefined("ha-icon"),
     customElements.whenDefined("ha-select"),
     customElements.whenDefined(dropdownItemTag).catch(() => {}), // optional
   ]);

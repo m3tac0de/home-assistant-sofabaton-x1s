@@ -17,6 +17,13 @@ function badge(type: string, value: string | number) {
   return html`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
 }
 
+// The id badges name the remote.send_command parameters these values plug
+// into (device/command), so they are protocol identifiers and stay
+// untranslated — deliberately not in TOOLS_CARD_STRINGS.
+const DEV_ID_BADGE = "DevID";
+const FAV_ID_BADGE = "FavID";
+const COM_ID_BADGE = "ComID";
+
 export function renderCacheTab(params: {
   loading: boolean;
   error: string | null;
@@ -124,7 +131,7 @@ export function renderCacheTab(params: {
             </span>
           </span>
           <span class="entity-meta">
-            ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
+            ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditActivity(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("activity", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             ${reorder ? null : html`<span class="entity-chevron">▼</span>`}
@@ -135,7 +142,7 @@ export function renderCacheTab(params: {
             const label = favorite.label || TOOLS_CARD_STRINGS.cache.favoriteFallback(favorite.command_id);
             return innerRow(
               label,
-              html`${badge(TOOLS_CARD_STRINGS.cache.favIdBadge, favorite.button_id)}${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, favorite.device_id)}${badge(TOOLS_CARD_STRINGS.cache.comIdBadge, favorite.command_id)}`,
+              html`${badge(FAV_ID_BADGE, favorite.button_id)}${badge(DEV_ID_BADGE, favorite.device_id)}${badge(COM_ID_BADGE, favorite.command_id)}`,
               { kind: "favorite", label: String(label), contextLabel: activityName, targetId: Number(favorite.device_id), commandId: Number(favorite.command_id) },
             );
           })}` : null}
@@ -143,13 +150,13 @@ export function renderCacheTab(params: {
             const label = macro.label || macro.name || TOOLS_CARD_STRINGS.cache.macroFallback(macro.command_id);
             return innerRow(
               label,
-              html`${badge(TOOLS_CARD_STRINGS.cache.favIdBadge, macro.command_id)}${badge(TOOLS_CARD_STRINGS.cache.comIdBadge, macro.command_id)}`,
+              html`${badge(FAV_ID_BADGE, macro.command_id)}${badge(COM_ID_BADGE, macro.command_id)}`,
               { kind: "macro", label: String(label), contextLabel: activityName, targetId: id, commandId: Number(macro.command_id) },
             );
           })}` : null}
           ${buttons.length ? html`<div class="inner-section-label">${TOOLS_CARD_STRINGS.cache.buttons}</div><div class="buttons-grid">${[buttons.slice(0, Math.ceil(buttons.length / 2)), buttons.slice(Math.ceil(buttons.length / 2))].map((column) => html`<div class="buttons-col">${column.map((buttonId) => innerRow(
             buttonName(buttonId),
-            badge(TOOLS_CARD_STRINGS.cache.comIdBadge, buttonId),
+            badge(COM_ID_BADGE, buttonId),
             { kind: "button", label: buttonName(buttonId), contextLabel: activityName, targetId: id, commandId: Number(buttonId) },
           ))}</div>`)}</div>` : null}
           ${!favorites.length && !macros.length && !buttons.length ? html`<div class="inner-empty">${TOOLS_CARD_STRINGS.cache.noCachedData}</div>` : null}
@@ -184,7 +191,7 @@ export function renderCacheTab(params: {
             </span>
           </span>
           <span class="entity-meta">
-            ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
+            ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditDevice(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("device", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             ${reorder ? null : html`<span class="entity-chevron">▼</span>`}
@@ -192,7 +199,7 @@ export function renderCacheTab(params: {
         </div>
         ${isOpen ? html`<div class="entity-body">${commands.length ? commands.map((command) => innerRow(
           command.label,
-          badge(TOOLS_CARD_STRINGS.cache.comIdBadge, command.id),
+          badge(COM_ID_BADGE, command.id),
           { kind: "command", label: command.label, contextLabel: deviceName, targetId: id, commandId: command.id },
         )) : html`<div class="inner-empty">${TOOLS_CARD_STRINGS.cache.noCachedCommands}</div>`}</div>` : null}
       </div>

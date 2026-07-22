@@ -71,6 +71,8 @@ export interface RemoteCardStoreHost {
   fireEvent(type: string, detail?: unknown): void;
   /** Hub queue went idle — the assist controller re-checks MQTT readiness. */
   onHubQueueDrained?(): void;
+  /** Command pulses only affect one indicator; avoid a whole-card render. */
+  onCommandPulseChange?(active: boolean): void;
 }
 
 interface HubQueueEntry {
@@ -230,6 +232,9 @@ export class RemoteCardStore {
   disconnected(): void {
     if (this.commandPulseTimeout) clearTimeout(this.commandPulseTimeout);
     if (this.activityLoadTimeout) clearTimeout(this.activityLoadTimeout);
+    this.commandPulseTimeout = null;
+    this.commandPulseUntil = 0;
+    this.activityLoadTimeout = null;
   }
 
   // ---------- update gating ----------
@@ -479,10 +484,12 @@ export class RemoteCardStore {
 
   triggerCommandPulse(): void {
     this.commandPulseUntil = Date.now() + 1000;
-    this.onChange();
+    this.host.onCommandPulseChange?.(true);
     if (this.commandPulseTimeout) clearTimeout(this.commandPulseTimeout);
     this.commandPulseTimeout = setTimeout(() => {
-      this.onChange();
+      this.commandPulseUntil = 0;
+      this.commandPulseTimeout = null;
+      this.host.onCommandPulseChange?.(false);
     }, 1000);
   }
 
@@ -499,12 +506,13 @@ export class RemoteCardStore {
     }, 60000);
   }
 
-  stopActivityLoading(): void {
+  stopActivityLoading(notify = true): void {
     if (!this.activityLoadActive) return;
     this.activityLoadActive = false;
     this.activityLoadTarget = null;
     if (this.activityLoadTimeout) clearTimeout(this.activityLoadTimeout);
-    this.onChange();
+    this.activityLoadTimeout = null;
+    if (notify) this.onChange();
   }
 
   // ---------- hub request queue ----------
@@ -951,7 +959,7 @@ export class RemoteCardStore {
     let isPoweredOff = false;
     let currentLabel = "";
     if (isUnavailable) {
-      this.stopActivityLoading();
+      this.stopActivityLoading(false);
     } else {
       selectState = buildActivitySelectState({
         editMode: this._editMode,
@@ -974,7 +982,7 @@ export class RemoteCardStore {
       if (this.activityLoadActive && this.activityLoadTarget) {
         const targetIsOff = isPoweredOffLabel(this.activityLoadTarget);
         if ((targetIsOff && isPoweredOff) || currentActivity === this.activityLoadTarget) {
-          this.stopActivityLoading();
+          this.stopActivityLoading(false);
         }
       }
     }

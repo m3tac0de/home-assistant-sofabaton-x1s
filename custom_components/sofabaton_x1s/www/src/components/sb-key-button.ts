@@ -1,144 +1,259 @@
-// Host element for ONE hui-button-card (or color key) inside the Lit card.
-// HA's button cards must be created once and mutated (recreating them on every
-// render flickers and drops internal state), so this element owns the instance
-// imperatively while Lit renders the host. Renders into LIGHT DOM: the card's
-// shadow stylesheet targets `.key hui-button-card` etc., and the host carries
-// the legacy wrapper classes.
-//
-// The child is created in connectedCallback — never during upgrade — so Lit
-// template cloning stays index-stable (see the Phase 2 harness lesson).
+// Lightweight host for one remote-card control. Its native button lives in a
+// shadow root so Lit cannot mistake the imperative child nodes for template
+// content when the surrounding card re-renders.
 
 import { attachPrimaryAction } from "../remote-card-gestures";
-import type { HassLike } from "../remote-card-types";
 
-interface HuiButtonCardLike extends HTMLElement {
-  hass?: HassLike | null;
-  setConfig?(config: Record<string, unknown>): void;
-  updateComplete?: Promise<unknown>;
+const CONTROL_CSS = `
+  :host {
+    display: block;
+    min-width: 0;
+  }
+
+  .sb-key-control {
+    appearance: none;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 100%;
+    padding: 0 10px;
+    border-radius: var(
+      --sb-control-radius,
+      var(--sb-group-radius, var(--ha-card-border-radius, 18px))
+    );
+    border: var(--sb-control-border-width, var(--ha-card-border-width, 1px)) solid
+      var(--sb-control-border-color, var(--ha-card-border-color, var(--divider-color)));
+    background: var(
+      --sb-control-background,
+      var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))
+    );
+    box-shadow: var(--sb-control-box-shadow, var(--ha-card-box-shadow, none));
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-control-font-size, inherit);
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sb-key-control::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.08);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  @media (hover: hover) {
+    .sb-key-control:not(:disabled):hover::before {
+      opacity: 1;
+    }
+  }
+
+  .sb-key-control:not(:disabled):active::before {
+    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.16);
+    opacity: 1;
+  }
+
+  .sb-key-control:focus-visible {
+    outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+    outline-offset: -2px;
+  }
+
+  .sb-key-control:disabled {
+    cursor: default;
+  }
+
+  .sb-key-control__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.2em;
+    height: 1.2em;
+    line-height: 1;
+    flex: 0 0 auto;
+    --mdc-icon-size: 1.2em;
+    color: var(--primary-color);
+    position: relative;
+    z-index: 1;
+  }
+
+  .sb-key-control__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+`;
+
+let sharedControlSheet: CSSStyleSheet | null = null;
+
+function installControlStyles(root: ShadowRoot): void {
+  if (
+    typeof CSSStyleSheet !== "undefined" &&
+    "replaceSync" in CSSStyleSheet.prototype &&
+    "adoptedStyleSheets" in root
+  ) {
+    if (!sharedControlSheet) {
+      sharedControlSheet = new CSSStyleSheet();
+      sharedControlSheet.replaceSync(CONTROL_CSS);
+    }
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, sharedControlSheet];
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.textContent = CONTROL_CSS;
+  root.appendChild(style);
 }
 
 export class SbKeyButton extends HTMLElement {
-  private _btn: HuiButtonCardLike | null = null;
-  private _hass: HassLike | null = null;
-  private _syncedHass: HassLike | null = null;
-  private _buttonConfig: Record<string, unknown> | null = null;
-  private _configApplied = false;
+  private _control: HTMLButtonElement | null = null;
+  private _iconEl: HTMLElement | null = null;
+  private _labelEl: HTMLSpanElement | null = null;
+  private _label = "";
+  private _icon: string | null = null;
+  private _accessibilityLabel = "";
   private _color: string | null = null;
   private _sizeVar: string | null = null;
+  private _disabled = false;
   private _wired = false;
 
-  /** Called on a (gated) primary action while the host is not .disabled. */
+  /** Called on a primary pointer action or keyboard activation. */
   onTrigger: ((ev: Event) => void) | null = null;
 
-  set buttonConfig(config: Record<string, unknown> | null) {
-    this._buttonConfig = config;
-    if (this._btn && config && !this._configApplied) {
-      this._configApplied = true;
-      this._btn.setConfig?.(config);
+  set label(value: string | null) {
+    this._label = String(value ?? "");
+    this.syncContent();
+  }
+
+  set icon(value: string | null) {
+    this._icon = value ? String(value) : null;
+    this.syncContent();
+  }
+
+  set accessibilityLabel(value: string | null) {
+    this._accessibilityLabel = String(value ?? "");
+    this.syncContent();
+  }
+
+  set color(value: string | null) {
+    this._color = value ? String(value) : null;
+    if (this._color) {
+      this.style.setProperty("--sb-color", this._color);
+      this.style.setProperty("--sb-control-background", this._color);
+    } else {
+      this.style.removeProperty("--sb-color");
+      this.style.removeProperty("--sb-control-background");
     }
   }
 
-  set hass(hass: HassLike | null) {
-    this._hass = hass;
-    this.syncHass();
-  }
-
-  /** Color key accent (adds the colorBar and --sb-color). */
-  set color(value: string | null) {
-    this._color = value;
-  }
-
-  /** CSS var applied to the button's inner text (legacy _applyButtonTextSizing). */
+  /** CSS var applied to the native control's icon/name. */
   set sizeVar(value: string | null) {
-    this._sizeVar = value;
+    this._sizeVar = value ? String(value) : null;
+    if (this._sizeVar) {
+      this.style.setProperty("--sb-control-font-size", `var(${this._sizeVar})`);
+    } else {
+      this.style.removeProperty("--sb-control-font-size");
+    }
   }
 
-  private syncHass(): void {
-    if (!this._btn || !this._hass) return;
-    if (this._syncedHass === this._hass) return;
-    this._btn.hass = this._hass;
-    this._syncedHass = this._hass;
+  set disabled(value: boolean) {
+    this._disabled = Boolean(value);
+    if (this._control) this._control.disabled = this._disabled;
+  }
+
+  get disabled(): boolean {
+    return this._disabled;
+  }
+
+  private fireHaptic(): void {
+    this.dispatchEvent(
+      new CustomEvent("haptic", {
+        detail: "light",
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private trigger(ev: Event): void {
+    if (this._disabled || this.classList.contains("disabled")) return;
+    this.onTrigger?.(ev);
+  }
+
+  private syncContent(): void {
+    if (!this._control || !this._iconEl || !this._labelEl) return;
+
+    if (this._icon) {
+      this._iconEl.setAttribute("icon", this._icon);
+      this._iconEl.hidden = false;
+    } else {
+      this._iconEl.removeAttribute("icon");
+      this._iconEl.hidden = true;
+    }
+
+    this._labelEl.textContent = this._label;
+    this._labelEl.hidden = !this._label;
+    this._control.setAttribute(
+      "aria-label",
+      this._accessibilityLabel || this._label || "Remote button",
+    );
   }
 
   connectedCallback(): void {
-    if (this._wired) {
-      this.syncHass();
-      return;
-    }
+    if (this._wired) return;
     this._wired = true;
 
-    if (this._color) {
-      this.style.setProperty("--sb-color", this._color);
-    }
+    const root = this.attachShadow({ mode: "open" });
+    installControlStyles(root);
 
-    const btn = document.createElement("hui-button-card") as HuiButtonCardLike;
-    this._btn = btn;
-    if (this._hass) {
-      btn.hass = this._hass;
-      this._syncedHass = this._hass;
-    }
-    if (this._buttonConfig && !this._configApplied) {
-      this._configApplied = true;
-      btn.setConfig?.(this._buttonConfig);
-    }
-    this.appendChild(btn);
+    const control = document.createElement("button");
+    control.type = "button";
+    control.className = "sb-key-control";
+    control.disabled = this._disabled;
 
-    if (this._color) {
-      const bar = document.createElement("div");
-      bar.className = "colorBar";
-      this.appendChild(bar);
-    }
+    const icon = document.createElement("ha-icon");
+    icon.className = "sb-key-control__icon";
+    const label = document.createElement("span");
+    label.className = "sb-key-control__label";
 
-    attachPrimaryAction([this, btn], (ev) => {
-      if (this.classList.contains("disabled")) return;
-      this.onTrigger?.(ev);
-    }, {
-      fireHaptic: () => {
-        this.dispatchEvent(
-          new CustomEvent("haptic", {
-            detail: "light",
-            bubbles: true,
-            composed: true,
-          }),
-        );
-      },
+    control.append(icon, label);
+    root.appendChild(control);
+    this._control = control;
+    this._iconEl = icon;
+    this._labelEl = label;
+    this.syncContent();
+
+    attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
+      fireHaptic: () => this.fireHaptic(),
     });
 
-    if (this._sizeVar) {
-      applyButtonTextSizing(btn, this._sizeVar);
-    }
-  }
-}
-
-/** Push a font-size var into hui-button-card's shadow internals. */
-export function applyButtonTextSizing(
-  btn: HuiButtonCardLike | null,
-  sizeVar: string,
-): void {
-  const apply = (attempt = 0) => {
-    const root = btn?.shadowRoot;
-    if (!root) return;
-
-    const value = `var(${sizeVar})`;
-    const card = root.querySelector("ha-card") as HTMLElement | null;
-    const name = root.querySelector(".name") as HTMLElement | null;
-    const label = root.querySelector(".label") as HTMLElement | null;
-    const state = root.querySelector(".state") as HTMLElement | null;
-
-    if (card) card.style.setProperty("font-size", value);
-    if (name) name.style.fontSize = value;
-    if (label) label.style.fontSize = value;
-    if (state) state.style.fontSize = value;
-
-    if (!name && !label && !state && attempt < 2) {
-      requestAnimationFrame(() => apply(attempt + 1));
-    }
-  };
-
-  if (btn?.updateComplete && typeof btn.updateComplete.then === "function") {
-    void btn.updateComplete.then(() => apply());
-  } else {
-    requestAnimationFrame(() => apply());
+    // Pointer-generated clicks are handled by pointerup above. A native
+    // keyboard click has detail=0, so retain Enter/Space accessibility
+    // without opening another duplicate-send path.
+    control.addEventListener("click", (ev) => {
+      if (ev.detail !== 0 || this._disabled) return;
+      this.fireHaptic();
+      this.trigger(ev);
+    });
   }
 }
 

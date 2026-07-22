@@ -1,18 +1,16 @@
 // Macro/Favorites tabs, drawer overlays, and inline rows for the Lit card
 // (legacy buildMacroFavoritesSection / buildInlineDrawerRow / the drawer
 // population half of _update). Drawer item buttons are cheap ha-cards and
-// render declaratively; the tab buttons reuse <sb-key-button> hosts so their
-// hui-button-card instances survive re-renders.
+// render declaratively; tabs reuse lightweight <sb-key-button> hosts.
 
 import { html, nothing, type TemplateResult } from "lit";
+import { repeat } from "lit/directives/repeat.js";
 import { ref, type Ref } from "lit/directives/ref.js";
 import {
-  actionButtonModel,
   customFavoriteButtonModel,
   drawerButtonModel,
 } from "../remote-card-render-models";
 import { str } from "../remote-card-strings";
-import type { HassLike } from "../remote-card-types";
 import { primaryActionRef } from "./wire";
 import "../components/sb-key-button";
 
@@ -33,7 +31,6 @@ export interface CustomFavoriteModel {
 }
 
 export interface MacroFavoritesParams {
-  hass: HassLike | null;
   visible: boolean;
   showMacrosButton: boolean;
   showFavoritesButton: boolean;
@@ -46,6 +43,8 @@ export interface MacroFavoritesParams {
   favorites: Array<Record<string, unknown>>;
   customFavorites: Array<Record<string, unknown>>;
   currentActivityId: number | null;
+  renderMacrosContent: boolean;
+  renderFavoritesContent: boolean;
   onToggleMacros: () => void;
   onToggleFavorites: () => void;
   onDrawerItem: (args: {
@@ -113,11 +112,52 @@ export function renderCustomFavoriteButton(
   `;
 }
 
-function renderFavoritesItems(params: MacroFavoritesParams): unknown[] {
-  return [
-    ...params.customFavorites.map((fav) => renderCustomFavoriteButton(params, fav)),
-    ...params.favorites.map((fav) => renderDrawerButton(params, fav, "favorites")),
-  ];
+function itemKey(item: Record<string, unknown>, type: string): string {
+  const commandId = item.command_id ?? item.id ?? "";
+  const deviceId = item.device_id ?? item.device ?? "";
+  const name = item.name ?? "";
+  const action = item.action ? JSON.stringify(item.action) : "";
+  return `${type}:${String(deviceId)}:${String(commandId)}:${String(name)}:${action}`;
+}
+
+function withUniqueKeys<T extends { kind: string; item: Record<string, unknown> }>(
+  entries: T[],
+): Array<T & { key: string }> {
+  const occurrences = new Map<string, number>();
+  return entries.map((entry) => {
+    const base = itemKey(entry.item, entry.kind);
+    const occurrence = occurrences.get(base) ?? 0;
+    occurrences.set(base, occurrence + 1);
+    return { ...entry, key: `${base}#${occurrence}` };
+  });
+}
+
+export function renderDrawerItems(
+  params: MacroFavoritesParams,
+  items: Array<Record<string, unknown>>,
+  type: string,
+): TemplateResult {
+  const entries = withUniqueKeys(items.map((item) => ({ kind: type, item })));
+  return html`${repeat(
+    entries,
+    (entry) => entry.key,
+    (entry) => renderDrawerButton(params, entry.item, type),
+  )}`;
+}
+
+function renderFavoritesItems(params: MacroFavoritesParams): TemplateResult {
+  const items = withUniqueKeys([
+    ...params.customFavorites.map((item) => ({ kind: "custom", item })),
+    ...params.favorites.map((item) => ({ kind: "favorite", item })),
+  ]);
+  return html`${repeat(
+    items,
+    (entry) => entry.key,
+    (entry) =>
+      entry.kind === "custom"
+        ? renderCustomFavoriteButton(params, entry.item)
+        : renderDrawerButton(params, entry.item, "favorites"),
+  )}`;
 }
 
 function renderTab(
@@ -127,8 +167,8 @@ function renderTab(
   active: boolean,
   disabled: boolean,
   onClick: () => void,
-): TemplateResult {
-  const model = actionButtonModel({ label });
+): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
   const classes = [
     "macroFavoritesButton",
     ...(active ? ["active-tab"] : []),
@@ -137,10 +177,11 @@ function renderTab(
   return html`
     <sb-key-button
       class=${classes}
-      style=${visible ? "" : "display: none !important;"}
-      .buttonConfig=${model.buttonConfig}
+      .label=${label}
+      .icon=${null}
+      .accessibilityLabel=${label}
       .sizeVar=${"--sb-tab-font-size"}
-      .hass=${params.hass}
+      .disabled=${disabled}
       .onTrigger=${onClick}
     ></sb-key-button>
   `;
@@ -200,14 +241,18 @@ export function renderMacroFavorites(params: MacroFavoritesParams): TemplateResu
         ${setRef(params.macrosOverlayRef)}
       >
         <div class="mf-grid">
-          ${params.macros.map((macro) => renderDrawerButton(params, macro, "macros"))}
+          ${params.renderMacrosContent
+            ? renderDrawerItems(params, params.macros, "macros")
+            : nothing}
         </div>
       </div>
       <div
         class="mf-overlay mf-overlay--favorites${isFav ? " open" : ""}"
         ${setRef(params.favoritesOverlayRef)}
       >
-        <div class="mf-grid">${renderFavoritesItems(params)}</div>
+        <div class="mf-grid">
+          ${params.renderFavoritesContent ? renderFavoritesItems(params) : nothing}
+        </div>
       </div>
     </div>
   `;
@@ -217,8 +262,9 @@ export interface InlineRowParams {
   kind: "macros" | "favorites";
   visible: boolean;
   visibleRows: number;
-  /** Rendered content items; empty shows the localized empty text. */
-  items: unknown[];
+  /** Keyed rendered content; itemCount=0 shows the localized empty text. */
+  items: unknown;
+  itemCount: number;
   emptyText: string;
 }
 
@@ -233,7 +279,7 @@ export function renderInlineDrawerRow(params: InlineRowParams): TemplateResult {
         style="--inline-row-visible-rows: ${params.visibleRows};"
       >
         <div class="inline-drawer-row__grid mf-grid">
-          ${params.items.length
+          ${params.itemCount
             ? params.items
             : html`
                 <div class="inline-drawer-row__empty" style="grid-column: 1 / -1;">

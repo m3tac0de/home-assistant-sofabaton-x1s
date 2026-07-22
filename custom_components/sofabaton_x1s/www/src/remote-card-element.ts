@@ -43,8 +43,8 @@ import {
   type KeySpec,
 } from "./sections/key-groups";
 import {
-  renderCustomFavoriteButton,
-  renderDrawerButton,
+  renderDrawerItems,
+  renderFavoritesItems,
   renderInlineDrawerRow,
   renderMacroFavorites,
   type MacroFavoritesParams,
@@ -72,9 +72,16 @@ export class SofabatonRemoteCard extends LitElement {
   // Imperative-edge state (mirrors the legacy fields)
   private _drawerUp = false;
   private _drawerResetTimer: ReturnType<typeof setTimeout> | null = null;
+  private _drawerContentResetTimer: ReturnType<typeof setTimeout> | null = null;
+  private _closingDrawer: "macros" | "favorites" | null = null;
+  private _drawerMeasureSignature: string | null = null;
+  private _drawerMeasurePending = false;
   private _appliedThemeVars: string[] = [];
   private _appliedThemeKey: string | null = null;
   private _lastGroupRadius: string | null = null;
+  private _appliedSizingKey: string | null = null;
+  private _lastLayeringKey: string | null = null;
+  private _lastLayeringTargets: [HTMLElement | null, HTMLElement | null] = [null, null];
   private _layoutSignatureCache: string | null = null;
   private _layoutOverlayEl: HTMLElement | null = null;
   private _lastLayoutSignature: string | null = null;
@@ -91,6 +98,7 @@ export class SofabatonRemoteCard extends LitElement {
   private readonly _wrapRef: Ref<HTMLElement> = createRef();
   private readonly _layoutContainerRef: Ref<HTMLElement> = createRef();
   private readonly _activityRowRef: Ref<HTMLElement> = createRef();
+  private readonly _loadIndicatorRef: Ref<HTMLElement> = createRef();
   private readonly _mfContainerRef: Ref<HTMLElement> = createRef();
   private readonly _macrosOverlayRef: Ref<HTMLElement> = createRef();
   private readonly _favoritesOverlayRef: Ref<HTMLElement> = createRef();
@@ -106,6 +114,7 @@ export class SofabatonRemoteCard extends LitElement {
           this._assist.syncMqtt();
           this.requestUpdate();
         },
+        onCommandPulseChange: () => this._syncLoadIndicator(),
       },
     );
     this._assist = new AutomationAssistController({
@@ -144,6 +153,10 @@ export class SofabatonRemoteCard extends LitElement {
     this._assist.resetActivityBaseline();
     this._drawerUp = false;
     if (this._drawerResetTimer) clearTimeout(this._drawerResetTimer);
+    if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
+    this._closingDrawer = null;
+    this._drawerMeasureSignature = null;
+    this._drawerMeasurePending = false;
   }
 
   set hass(hass: HassLike) {
@@ -245,6 +258,7 @@ export class SofabatonRemoteCard extends LitElement {
       window.removeEventListener("sofabaton-preview-activity", this._onPreviewActivity);
     }
     if (this._drawerResetTimer) clearTimeout(this._drawerResetTimer);
+    if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
     this._store.disconnected();
     this._assist.disconnected();
   }
@@ -271,10 +285,7 @@ export class SofabatonRemoteCard extends LitElement {
           this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
 
         if (!(clickedInOverlay || clickedInToggleRow)) {
-          this._store.activeDrawer = null;
-          this._scheduleDrawerDirectionReset();
-          this._syncLayering();
-          this.requestUpdate();
+          this._setActiveDrawer(null);
         }
       }
 
@@ -300,13 +311,34 @@ export class SofabatonRemoteCard extends LitElement {
   // ---------- drawers ----------
 
   private _toggleDrawer(type: "macros" | "favorites"): void {
-    this._store.activeDrawer = this._store.activeDrawer === type ? null : type;
+    this._setActiveDrawer(this._store.activeDrawer === type ? null : type);
+  }
 
-    if (this._store.activeDrawer) {
-      this._updateDrawerDirection();
-    } else {
-      this._scheduleDrawerDirectionReset();
+  private _retainClosingDrawer(type: "macros" | "favorites"): void {
+    this._closingDrawer = type;
+    if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
+    this._drawerContentResetTimer = setTimeout(() => {
+      if (this._closingDrawer !== type) return;
+      this._closingDrawer = null;
+      this._drawerContentResetTimer = null;
+      this.requestUpdate();
+    }, DRAWER_DIRECTION_RESET_MS);
+  }
+
+  private _setActiveDrawer(type: "macros" | "favorites" | null): void {
+    const previous = this._store.activeDrawer;
+    if (previous === type) return;
+
+    if (previous) this._retainClosingDrawer(previous);
+    if (type && this._closingDrawer === type) {
+      this._closingDrawer = null;
+      if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
+      this._drawerContentResetTimer = null;
     }
+
+    this._store.activeDrawer = type;
+    this._drawerMeasurePending = Boolean(type);
+    if (!type) this._scheduleDrawerDirectionReset();
     this._syncLayering();
     this.requestUpdate();
   }
@@ -361,12 +393,24 @@ export class SofabatonRemoteCard extends LitElement {
     const mfContainer = this._mfContainerRef.value;
     if (!activityRow || !mfContainer) return;
 
+    const key = `${this._store.activityMenuOpen ? 1 : 0}:${this._store.activeDrawer || ""}`;
+    const targets: [HTMLElement | null, HTMLElement | null] = [activityRow, mfContainer];
+    if (
+      this._lastLayeringKey === key &&
+      this._lastLayeringTargets[0] === targets[0] &&
+      this._lastLayeringTargets[1] === targets[1]
+    ) {
+      return;
+    }
+
     const z = layeringZIndexes(
       Boolean(this._store.activityMenuOpen),
       Boolean(this._store.activeDrawer),
     );
     activityRow.style.zIndex = z.activity;
     mfContainer.style.zIndex = z.drawer;
+    this._lastLayeringKey = key;
+    this._lastLayeringTargets = targets;
   }
 
   // ---------- activity select ----------
@@ -394,18 +438,27 @@ export class SofabatonRemoteCard extends LitElement {
     });
   }
 
+  private _syncLoadIndicator(): void {
+    this._loadIndicatorRef.value?.classList.toggle(
+      "is-loading",
+      this._store.isLoadingActive(),
+    );
+  }
+
   // ---------- theming (imperative, on the ha-card like the legacy) ----------
 
-  private _applyLocalTheme(themeName: string | undefined): void {
+  private _applyLocalTheme(themeName: string | undefined): boolean {
     const root = this._cardRef.value;
     const hass = this._store.hass as
       | (HassLike & { themes?: { themes?: Record<string, Record<string, unknown>>; darkMode?: boolean } })
       | null;
-    if (!root || !hass) return;
+    if (!root || !hass) return false;
 
     const bgOverrideCss = rgbToCss(this._store.config?.background_override);
-    const appliedKey = `${themeName || ""}||${bgOverrideCss}`;
-    if (this._appliedThemeKey === appliedKey) return;
+    const themeDef = themeName ? hass.themes?.themes?.[themeName] : null;
+    const themeMode = hass.themes?.darkMode ? "dark" : "light";
+    const appliedKey = `${themeName || ""}||${bgOverrideCss}||${themeMode}||${JSON.stringify(themeDef ?? null)}`;
+    if (this._appliedThemeKey === appliedKey) return false;
 
     for (const cssVar of this._appliedThemeVars) {
       root.style.removeProperty(cssVar);
@@ -417,7 +470,7 @@ export class SofabatonRemoteCard extends LitElement {
 
     let vars: Record<string, unknown> | null = null;
     if (themeName) {
-      const def = hass.themes?.themes?.[themeName];
+      const def = themeDef;
       if (def && typeof def === "object") {
         vars = def;
 
@@ -464,6 +517,7 @@ export class SofabatonRemoteCard extends LitElement {
       root.style.removeProperty("background");
       root.style.removeProperty("background-color");
     }
+    return true;
   }
 
   private _updateGroupRadius(): void {
@@ -499,6 +553,11 @@ export class SofabatonRemoteCard extends LitElement {
 
   private _applyHostSizing(): void {
     const mw = this._store.config?.max_width;
+    const shrink = this._store.config?.shrink;
+    const sizingKey = `${typeof mw}:${String(mw ?? "")}||${typeof shrink}:${String(shrink ?? "")}`;
+    if (this._appliedSizingKey === sizingKey) return;
+    this._appliedSizingKey = sizingKey;
+
     if (mw == null || mw === "" || mw === 0) {
       this.style.removeProperty("--remote-max-width");
     } else if (typeof mw === "number" && Number.isFinite(mw) && mw > 0) {
@@ -507,7 +566,6 @@ export class SofabatonRemoteCard extends LitElement {
       this.style.setProperty("--remote-max-width", mw.trim());
     }
 
-    const shrink = this._store.config?.shrink;
     const shrinkNum =
       typeof shrink === "number" ? shrink : typeof shrink === "string" ? Number(shrink) : 0;
     if (!Number.isFinite(shrinkNum) || shrinkNum <= 0) {
@@ -637,6 +695,7 @@ export class SofabatonRemoteCard extends LitElement {
 
     // Drawer forced closed by visibility changes
     if (drawerDisplayState.closedByVisibility) {
+      if (store.activeDrawer) this._retainClosingDrawer(store.activeDrawer);
       this._scheduleDrawerDirectionReset();
     }
     store.activeDrawer = drawerDisplayState.nextActiveDrawer as
@@ -644,8 +703,19 @@ export class SofabatonRemoteCard extends LitElement {
       | "favorites"
       | null;
 
+    const activeDrawerCount =
+      store.activeDrawer === "macros"
+        ? derived.macros.length
+        : store.activeDrawer === "favorites"
+          ? derived.favorites.length + derived.customFavorites.length
+          : 0;
+    const drawerMeasureSignature = `${store.activeDrawer || ""}:${activeDrawerCount}:${derived.layoutSignature}`;
+    if (this._drawerMeasureSignature !== drawerMeasureSignature) {
+      this._drawerMeasureSignature = drawerMeasureSignature;
+      this._drawerMeasurePending = Boolean(store.activeDrawer);
+    }
+
     const keyParams: KeyGroupsParams = {
-      hass: store.hass,
       isX2: derived.isX2,
       buttonVisibility: runtimeButtonVisibility({
         isX2: derived.isX2,
@@ -665,7 +735,6 @@ export class SofabatonRemoteCard extends LitElement {
     };
 
     const mfParams: MacroFavoritesParams = {
-      hass: store.hass,
       visible: drawerDisplayState.showMF,
       showMacrosButton: showMacrosBtn,
       showFavoritesButton: showFavoritesBtn,
@@ -678,6 +747,10 @@ export class SofabatonRemoteCard extends LitElement {
       favorites: derived.favorites,
       customFavorites: derived.customFavorites,
       currentActivityId: store.currentActivityId(),
+      renderMacrosContent:
+        store.activeDrawer === "macros" || this._closingDrawer === "macros",
+      renderFavoritesContent:
+        store.activeDrawer === "favorites" || this._closingDrawer === "favorites",
       containerRef: this._mfContainerRef,
       rowRef: this._macroFavoritesRowRef,
       macrosOverlayRef: this._macrosOverlayRef,
@@ -722,9 +795,9 @@ export class SofabatonRemoteCard extends LitElement {
     const order = store.groupOrderList(derived.activityId);
     const groupTemplates: Record<string, () => unknown> = {
       activity: () =>
-        renderActivityRow({
+        Boolean(layoutConfig.show_activity) ? renderActivityRow({
           hass: store.hass,
-          visible: Boolean(layoutConfig.show_activity),
+          visible: true,
           unavailable: derived.isUnavailable,
           options: derived.selectState?.options ?? [],
           resolvedValue: derived.selectState?.resolvedValue ?? "",
@@ -740,35 +813,28 @@ export class SofabatonRemoteCard extends LitElement {
             this._syncLayering();
           },
           rowRef: this._activityRowRef,
-        }),
-      macro_favorites: () => renderMacroFavorites(mfParams),
+          loadIndicatorRef: this._loadIndicatorRef,
+        }) : nothing,
+      macro_favorites: () =>
+        drawerDisplayState.showMF ? renderMacroFavorites(mfParams) : nothing,
       macros_row: () =>
-        renderInlineDrawerRow({
+        macrosRowOn ? renderInlineDrawerRow({
           kind: "macros",
-          visible: macrosRowOn,
+          visible: true,
           visibleRows: sharedRows,
-          items: macrosRowOn
-            ? derived.macros.map((m: Record<string, unknown>) => renderDrawerButton(mfParams, m, "macros"))
-            : [],
+          items: renderDrawerItems(mfParams, derived.macros, "macros"),
+          itemCount: derived.macros.length,
           emptyText: str().card.noMacros,
-        }),
+        }) : nothing,
       favorites_row: () =>
-        renderInlineDrawerRow({
+        favoritesRowOn ? renderInlineDrawerRow({
           kind: "favorites",
-          visible: favoritesRowOn,
+          visible: true,
           visibleRows: sharedRows,
-          items: favoritesRowOn
-            ? [
-                ...derived.customFavorites.map((f: Record<string, unknown>) =>
-                  renderCustomFavoriteButton(mfParams, f),
-                ),
-                ...derived.favorites.map((f: Record<string, unknown>) =>
-                  renderDrawerButton(mfParams, f, "favorites"),
-                ),
-              ]
-            : [],
+          items: renderFavoritesItems(mfParams),
+          itemCount: derived.customFavorites.length + derived.favorites.length,
           emptyText: str().card.noFavorites,
-        }),
+        }) : nothing,
       dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad)),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -780,15 +846,17 @@ export class SofabatonRemoteCard extends LitElement {
     const warnText = derived.isUnavailable
       ? str().card.remoteUnavailable
       : derived.noActivitiesMessage;
+    const assistEnabled = store.automationAssistEnabled();
 
     return html`
       <ha-card ${ref(this._cardRef)}>
-        ${renderAssistModal({ visible: true, controller: this._assist })}
+        ${assistEnabled
+          ? renderAssistModal({ visible: true, controller: this._assist })
+          : nothing}
         <div class="wrap" ${ref(this._wrapRef)}>
-          ${renderAssistRow({
-            visible: Boolean(store.config?.show_automation_assist),
-            controller: this._assist,
-          })}
+          ${assistEnabled
+            ? renderAssistRow({ visible: true, controller: this._assist })
+            : nothing}
           <div class="layout-container" ${ref(this._layoutContainerRef)}>
             ${repeat(
               order.filter((key) => key in groupTemplates),
@@ -821,13 +889,17 @@ export class SofabatonRemoteCard extends LitElement {
   }
 
   protected updated(_changed: PropertyValues): void {
-    this._applyLocalTheme(String(this._store.config?.theme ?? ""));
-    this._updateGroupRadius();
+    const themeChanged = this._applyLocalTheme(String(this._store.config?.theme ?? ""));
+    if (themeChanged || this._lastGroupRadius == null) this._updateGroupRadius();
     this._applyHostSizing();
     if (this._lastLayoutSignature != null) {
       this._maybeAnimateLayoutChange(this._lastLayoutSignature);
     }
-    this._updateDrawerDirection();
+    if (this._drawerMeasurePending) {
+      this._drawerMeasurePending = false;
+      this._updateDrawerDirection();
+    }
     this._syncLayering();
+    this._syncLoadIndicator();
   }
 }

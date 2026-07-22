@@ -3,6 +3,7 @@
 
 import { html, nothing, type TemplateResult } from "lit";
 import { html as staticHtml, unsafeStatic } from "lit/static-html.js";
+import { repeat } from "lit/directives/repeat.js";
 import { ref, type Ref } from "lit/directives/ref.js";
 import {
   selectItemTagName,
@@ -27,6 +28,7 @@ export interface ActivityRowParams {
   onMenuOpened: () => void;
   onMenuClosed: () => void;
   rowRef?: Ref<HTMLElement>;
+  loadIndicatorRef?: Ref<HTMLElement>;
 }
 
 export function renderActivityRow(params: ActivityRowParams): TemplateResult {
@@ -61,13 +63,18 @@ export function renderActivityRow(params: ActivityRowParams): TemplateResult {
         .disabled=${params.unavailable || params.disabled}
         ${wireSelectEvents}
       >
-        ${optionObjects.map(
+        ${repeat(
+          optionObjects,
+          (option) => option.value,
           (option) => staticHtml`
             <${itemTag} .value=${option.value}>${option.label}</${itemTag}>
           `,
         )}
       </ha-select>
-      <div class="loadIndicator${params.loading ? " is-loading" : ""}"></div>
+      <div
+        class="loadIndicator${params.loading ? " is-loading" : ""}"
+        ${params.loadIndicatorRef ? ref(params.loadIndicatorRef) : nothing}
+      ></div>
     </div>
   `;
 }

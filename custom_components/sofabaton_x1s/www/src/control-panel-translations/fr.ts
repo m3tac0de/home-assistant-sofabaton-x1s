@@ -69,7 +69,7 @@ export const TOOLS_CARD_STRINGS_FR = {
   cache: {
     loading: "Chargement...", noHubsFound: "Aucun hub trouvé.", persistentCacheOffTitle: "Le cache persistant est désactivé",
     persistentCacheOffCopy: "Activez-le pour parcourir les activités et appareils en cache et déverrouiller les procédures de sauvegarde qui en dépendent.",
-    enablingPersistentCache: "Activation...", enablePersistentCache: "Activer le cache persistant", devIdBadge: "ID appareil", favIdBadge: "ID favori", comIdBadge: "ID commande",
+    enablingPersistentCache: "Activation...", enablePersistentCache: "Activer le cache persistant",
     activityFallback: (id: number) => `Activité ${id}`, deviceFallback: (id: number) => `Appareil ${id}`, favoriteFallback: (commandId: number) => `Favori ${commandId}`, macroFallback: (commandId: number) => `Macro ${commandId}`,
     activityCounts: (favorites: number, macros: number, buttons: number) => `${favorites} fav. / ${macros} macros / ${buttons} touches`, deviceCommandCount: (count: number) => `${count} commandes`,
     favorites: "Favoris", macros: "Macros", buttons: "Touches", noCachedData: "Aucune donnée en cache pour le moment.", noCachedCommands: "Aucune commande en cache.",

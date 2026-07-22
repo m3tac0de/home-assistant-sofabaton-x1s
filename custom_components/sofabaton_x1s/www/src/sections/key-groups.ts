@@ -2,15 +2,10 @@
 // Same structure and per-key configs as the legacy buildRemoteGroups(), but
 // rendered declaratively around create-once <sb-key-button> hosts.
 
-import { html, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { ID } from "../remote-card-layout";
-import {
-  colorKeyModel,
-  huiButtonModel,
-} from "../remote-card-render-models";
 import { midModeState, mediaModeState } from "../remote-card-runtime-display";
-import { str } from "../remote-card-strings";
-import type { HassLike } from "../remote-card-types";
+import { automationAssistLabelForKey } from "../remote-card-ui-helpers";
 import "../components/sb-key-button";
 
 export interface KeySpec {
@@ -35,7 +30,7 @@ export const X2_ONLY_KEY_IDS = new Set<number>([
   ID.GUIDE,
 ]);
 
-const dpadKeys = (): KeySpec[] => [
+const DPAD_KEYS: KeySpec[] = [
   { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
   { key: "left", id: ID.LEFT, cmd: ID.LEFT, label: "", icon: "mdi:chevron-left", extraClass: "area-left" },
   // Language-neutral filled circle instead of a localized "OK" label; the
@@ -45,13 +40,13 @@ const dpadKeys = (): KeySpec[] => [
   { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" },
 ];
 
-const navKeys = (): KeySpec[] => [
+const NAV_KEYS: KeySpec[] = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
   { key: "home", id: ID.HOME, cmd: ID.HOME, label: "", icon: "mdi:home" },
   { key: "menu", id: ID.MENU, cmd: ID.MENU, label: "", icon: "mdi:menu" },
 ];
 
-const midKeys = (): KeySpec[] => [
+const MID_KEYS: KeySpec[] = [
   { key: "volup", id: ID.VOL_UP, cmd: ID.VOL_UP, label: "", icon: "mdi:volume-plus", extraClass: "mid-btn mid-btn-volup" },
   { key: "voldn", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN, label: "", icon: "mdi:volume-minus", extraClass: "mid-btn mid-btn-voldn" },
   { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "Guide", icon: "", extraClass: "mid-btn mid-btn-guide" },
@@ -60,7 +55,7 @@ const midKeys = (): KeySpec[] => [
   { key: "chdn", id: ID.CH_DOWN, cmd: ID.CH_DOWN, label: "", icon: "mdi:chevron-down", extraClass: "mid-btn mid-btn-chdn" },
 ];
 
-const mediaKeys = (): KeySpec[] => [
+const MEDIA_KEYS: KeySpec[] = [
   { key: "rew", id: ID.REW, cmd: ID.REW, label: "", icon: "mdi:rewind", extraClass: "area-rew" },
   { key: "play", id: ID.PLAY, cmd: ID.PLAY, label: "", icon: "mdi:play", extraClass: "area-play" },
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
@@ -69,21 +64,20 @@ const mediaKeys = (): KeySpec[] => [
   { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" },
 ];
 
-const colorKeys = (): KeySpec[] => [
+const COLOR_KEYS: KeySpec[] = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
   { key: "green", id: ID.GREEN, cmd: ID.GREEN, label: "", icon: "", color: "#388e3c" },
   { key: "yellow", id: ID.YELLOW, cmd: ID.YELLOW, label: "", icon: "", color: "#fbc02d" },
   { key: "blue", id: ID.BLUE, cmd: ID.BLUE, label: "", icon: "", color: "#1976d2" },
 ];
 
-const abcKeys = (): KeySpec[] => [
+const ABC_KEYS: KeySpec[] = [
   { key: "a", id: ID.A, cmd: ID.A, label: "A", icon: "", size: "small" },
   { key: "b", id: ID.B, cmd: ID.B, label: "B", icon: "", size: "small" },
   { key: "c", id: ID.C, cmd: ID.C, label: "C", icon: "", size: "small" },
 ];
 
 export interface KeyGroupsParams {
-  hass: HassLike | null;
   isX2: boolean;
   /** runtimeButtonVisibility() map — keys absent from it default to visible. */
   buttonVisibility: Record<string, boolean> | null;
@@ -98,50 +92,50 @@ export interface KeyGroupsParams {
   showDvr: boolean;
 }
 
-const groupStyle = (visible: boolean) =>
-  visible ? "" : "display: none !important;";
-
-function renderKey(params: KeyGroupsParams, spec: KeySpec): TemplateResult {
+function renderKey(params: KeyGroupsParams, spec: KeySpec): TemplateResult | typeof nothing {
   const isX2Only = X2_ONLY_KEY_IDS.has(spec.id);
   const layoutVisible =
     params.buttonVisibility && spec.key in params.buttonVisibility
       ? params.buttonVisibility[spec.key]
       : true;
   const shouldShow = isX2Only ? params.isX2 && layoutVisible : layoutVisible;
+  if (!shouldShow) return nothing;
   const enabled =
     !params.disableAll && (params.editMode || params.isEnabled(spec.id));
-
-  const model = spec.color
-    ? colorKeyModel(spec.color)
-    : huiButtonModel({
-        label: spec.label,
-        icon: spec.icon,
-        extraClass: spec.extraClass ?? "",
-        size: spec.size ?? "normal",
-      });
+  const wrapClassName = spec.color
+    ? "key key--color"
+    : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
+  const accessibleLabel = automationAssistLabelForKey(
+    spec.key,
+    spec.color ? spec.key : spec.label,
+  );
 
   return html`
     <sb-key-button
-      class="${model.wrapClassName}${enabled ? "" : " disabled"}"
-      style=${shouldShow ? "" : "display: none !important;"}
-      .buttonConfig=${model.buttonConfig}
+      class="${wrapClassName}${enabled ? "" : " disabled"}"
+      .label=${spec.label}
+      .icon=${spec.icon || null}
+      .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
       .sizeVar=${spec.color ? null : "--sb-key-font-size"}
-      .hass=${params.hass}
+      .disabled=${!enabled}
       .onTrigger=${() => params.onKeyPress(spec)}
     ></sb-key-button>
   `;
 }
 
-export function renderDpad(params: KeyGroupsParams, visible: boolean): TemplateResult {
-  return html`<div class="dpad" style=${groupStyle(visible)}>${dpadKeys().map((k) => renderKey(params, k))}</div>`;
+export function renderDpad(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
+  return html`<div class="dpad">${DPAD_KEYS.map((k) => renderKey(params, k))}</div>`;
 }
 
-export function renderNavRow(params: KeyGroupsParams, visible: boolean): TemplateResult {
-  return html`<div class="row3" style=${groupStyle(visible)}>${navKeys().map((k) => renderKey(params, k))}</div>`;
+export function renderNavRow(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
+  return html`<div class="row3">${NAV_KEYS.map((k) => renderKey(params, k))}</div>`;
 }
 
-export function renderMid(params: KeyGroupsParams, visible: boolean): TemplateResult {
+export function renderMid(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
   const midState = midModeState({
     showVolume: params.showVolume,
     showChannel: params.showChannel,
@@ -153,10 +147,11 @@ export function renderMid(params: KeyGroupsParams, visible: boolean): TemplateRe
       .filter(([, on]) => on)
       .map(([name]) => name),
   ].join(" ");
-  return html`<div class=${className} style=${groupStyle(visible)}>${midKeys().map((k) => renderKey(params, k))}</div>`;
+  return html`<div class=${className}>${MID_KEYS.map((k) => renderKey(params, k))}</div>`;
 }
 
-export function renderMedia(params: KeyGroupsParams, visible: boolean): TemplateResult {
+export function renderMedia(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
   const mediaState = mediaModeState({
     isX2: params.isX2,
     showMedia: params.showMedia,
@@ -168,21 +163,23 @@ export function renderMedia(params: KeyGroupsParams, visible: boolean): Template
       .filter(([, on]) => on)
       .map(([name]) => name),
   ].join(" ");
-  return html`<div class=${className} style=${groupStyle(visible)}>${mediaKeys().map((k) => renderKey(params, k))}</div>`;
+  return html`<div class=${className}>${MEDIA_KEYS.map((k) => renderKey(params, k))}</div>`;
 }
 
-export function renderColors(params: KeyGroupsParams, visible: boolean): TemplateResult {
+export function renderColors(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
   return html`
-    <div class="colors" style=${groupStyle(visible)}>
-      <div class="colorsGrid">${colorKeys().map((k) => renderKey(params, k))}</div>
+    <div class="colors">
+      <div class="colorsGrid">${COLOR_KEYS.map((k) => renderKey(params, k))}</div>
     </div>
   `;
 }
 
-export function renderAbc(params: KeyGroupsParams, visible: boolean): TemplateResult {
+export function renderAbc(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
   return html`
-    <div class="abc" style=${groupStyle(visible)}>
-      <div class="abcGrid">${abcKeys().map((k) => renderKey(params, k))}</div>
+    <div class="abc">
+      <div class="abcGrid">${ABC_KEYS.map((k) => renderKey(params, k))}</div>
     </div>
   `;
 }

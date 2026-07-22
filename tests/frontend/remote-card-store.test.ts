@@ -313,12 +313,27 @@ test("lovelace actions: perform-action, toggle, more-info, none", async () => {
 });
 
 test("load indicator: command pulse and activity loading windows", async () => {
-  const { store } = createStore(createHass({ state: activeState() }));
+  let changes = 0;
+  const pulseStates: boolean[] = [];
+  const store = new RemoteCardStore(
+    () => {
+      changes += 1;
+    },
+    {
+      fireEvent: () => undefined,
+      onCommandPulseChange: (active) => pulseStates.push(active),
+    },
+  );
+  store.setConfig({ entity: ENTITY } as RemoteCardConfig);
+  store.setHass(createHass({ state: activeState() }));
   await flush();
 
   assert.equal(store.isLoadingActive(), false);
+  const beforePulse = changes;
   store.triggerCommandPulse();
   assert.equal(store.isLoadingActive(), true);
+  assert.equal(changes, beforePulse, "a command pulse must not request a whole-card render");
+  assert.deepEqual(pulseStates, [true]);
 
   store.startActivityLoading("Play Xbox");
   assert.equal(store.isLoadingActive(), true);

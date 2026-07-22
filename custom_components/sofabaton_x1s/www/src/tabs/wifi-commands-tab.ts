@@ -110,6 +110,13 @@ const HARD_BUTTON_ID_MAP: Record<string, number> = {
 const X2_ONLY_HARD_BUTTON_IDS = new Set<number>([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 const DEFAULT_ACTION = { action: "perform-action" };
 
+// The default slot name is a protocol-level value, not UI copy: the backend
+// stores it verbatim (_default_slot in command_config.py) and the configured-
+// slot detection compares against it. Localizing it makes every empty slot
+// look configured in non-English locales, so it must never go through
+// TOOLS_CARD_STRINGS.
+const defaultCommandSlotName = (idx: number) => `Command ${idx + 1}`;
+
 type PressType = "short" | "long";
 type ActiveModal = "details" | "action" | null;
 type HubEventKey = "power_off" | "redundant_off" | "activity_start" | "activity_stop";
@@ -2148,7 +2155,7 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _commandSlotDefault(idx: number): WifiCommandSlot {
     return {
-      name: TOOLS_CARD_STRINGS.common.commandFallback(idx + 1),
+      name: defaultCommandSlotName(idx),
       add_as_favorite: true,
       hard_button: "",
       long_press_enabled: false,
@@ -2219,9 +2226,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
-        name: this._sanitizeCommandName(
-          record.name ?? TOOLS_CARD_STRINGS.common.commandFallback(idx + 1),
-        ),
+        name: this._sanitizeCommandName(record.name ?? defaultCommandSlotName(idx)),
         add_as_favorite: addAsFavorite,
         hard_button: hardButton,
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),

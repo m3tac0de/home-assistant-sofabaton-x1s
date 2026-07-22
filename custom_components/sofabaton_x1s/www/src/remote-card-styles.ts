@@ -21,8 +21,8 @@ export const REMOTE_CARD_CSS = `
         margin-left: auto;
         margin-right: auto;
         --sb-key-font-size: clamp(11px, 7cqw, 50px);
-        --sb-tab-font-size: clamp(14px, 6cqw, 50px);
-        --sb-tab-height: clamp(20px, 3cqw, 50px);
+        --sb-tab-font-size: clamp(14px, 4cqw, 20px);
+        --sb-tab-height: clamp(32px, 9cqw, 44px);
         --sb-color-key-min-height: clamp(12px, 3.2cqw, 20px);
         container-type: inline-size;
       }
@@ -190,26 +190,25 @@ export const REMOTE_CARD_CSS = `
 			.macroFavoritesButton {
         cursor: pointer;
         padding: 4px 0;
+        box-sizing: border-box;
+        height: var(--sb-tab-height);
         display: block !important;
         position: relative;
         overflow: hidden;
         transition: background 0.2s ease;
-        --ha-card-box-shadow: none;
+        --sb-control-box-shadow: none;
+        --sb-control-border-width: 0;
+        --sb-control-border-color: transparent;
+        --sb-control-background: transparent;
+        --sb-control-radius: 0;
       }
       
-      .macroFavoritesButton.active-tab hui-button-card {
-         --primary-text-color: var(--primary-color);
+      .macroFavoritesButton.active-tab {
+        color: var(--primary-color);
       }
 
       .macroFavoritesButton + .macroFavoritesButton {
         border-left: 1px solid var(--divider-color);
-      }
-      .macroFavoritesButton hui-button-card {
-        height: var(--sb-tab-height);
-        display: block;
-        --mdc-typography-button-font-size: var(--sb-tab-font-size);
-        --paper-font-body1_-_font-size: var(--sb-tab-font-size);
-        font-size: var(--sb-tab-font-size);
       }
 			.macroFavoritesButton:first-child {
         border-right: 1px solid var(--divider-color);
@@ -217,14 +216,6 @@ export const REMOTE_CARD_CSS = `
 			.mf-container {
         position: relative; 
         z-index: 2;
-      }
-
-      /* Ensure taps go to the wrapper that has the click handler */
-      .macroFavoritesButton > hui-button-card {
-        pointer-events: none;
-        position: relative;
-        z-index: 1;
-        -webkit-tap-highlight-color: transparent;
       }
 
 			.macroFavorites {
@@ -328,6 +319,7 @@ export const REMOTE_CARD_CSS = `
       .drawer-btn {
         height: 50px !important;
         font-size: 13px !important;
+        border-radius: var(--sb-group-radius) !important;
         cursor: pointer;
         position: relative;
         overflow: hidden;
@@ -335,30 +327,26 @@ export const REMOTE_CARD_CSS = `
       }
 
       /* Hover/press overlay  */
-      .macroFavoritesButton::before,
       .drawer-btn::before {
         content: "";
         position: absolute;
         inset: 0;
         border-radius: inherit;
-        background: rgba(var(--sb-overlay-rgb), 0.06);
+        background: rgba(var(--sb-overlay-rgb), 0.08);
         opacity: 0;
-        transition: opacity 0.15s ease, background 0.15s ease;
+        transition: opacity 120ms ease;
         pointer-events: none;
       }
 
-      .macroFavoritesButton:hover::before,
       .drawer-btn:hover::before {
         opacity: 1;
       }
 
-      .macroFavoritesButton:active::before,
       .drawer-btn:active::before {
         opacity: 1;
-        background: rgba(var(--sb-overlay-rgb), 0.14);
+        background: rgba(var(--sb-overlay-rgb), 0.16);
       }
 
-      .macroFavoritesButton:focus-visible,
       .drawer-btn:focus-visible {
         outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
         outline-offset: 2px;
@@ -412,14 +400,6 @@ export const REMOTE_CARD_CSS = `
       .macroFavoritesButton.active-tab {
         background: rgba(var(--rgb-primary-color), 0.1);
         color: var(--primary-color);
-      }
-
-      .macroFavoritesButton hui-button-card {
-        --ha-card-box-shadow: none;
-        --ha-card-border-width: 0;
-        --ha-card-border-color: transparent;
-        --ha-card-background: transparent;
-        --ha-card-border-radius: 0;
       }
 
       /* D-pad cluster */
@@ -543,24 +523,18 @@ export const REMOTE_CARD_CSS = `
       /* sizing */
 
 /* Allow grid children to shrink (prevents overflow on mobile / narrow cards) */
-.key { min-width: 0; position: relative; width: 100%; }
-.key hui-button-card {
+.key {
   min-width: 0;
+  position: relative;
+  width: 100%;
   --mdc-typography-button-font-size: var(--sb-key-font-size);
   --paper-font-body1_-_font-size: var(--sb-key-font-size);
-  font-size: var(--sb-key-font-size);
+  --sb-control-font-size: var(--sb-key-font-size);
 }
 
 /* --- Square remote keys (scalable) --- */
 .key:not(.key--color) {
   aspect-ratio: 1 / 1;
-}
-
-/* Fill wrapper */
-.key:not(.key--color) hui-button-card {
-  display: block;
-  width: 100%;
-  height: 100% !important;
 }
 
 /* Re-introduce relative sizing (scales with card width) */
@@ -575,20 +549,10 @@ export const REMOTE_CARD_CSS = `
   min-height: var(--sb-color-key-min-height);
   transform: none;
 }
-.key--color hui-button-card {
-  height: 100% !important;
-  width: 100%;
-  display: block;
-}
-
-/* Color keys: overlay a pill/strip on top of the hui-button-card */
-
-      .key--color .colorBar {
-        position: absolute;
-        inset: 0;
-        border-radius: 999px;
-        background: var(--sb-color);
-        pointer-events: none;
+/* Color keys are native pill controls. */
+      .key--color {
+        --sb-control-radius: 999px;
+        --sb-control-background: var(--sb-color);
       }
 
       .warn {

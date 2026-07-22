@@ -49,6 +49,161 @@ test.describe("remote card playwright harness", () => {
       .toEqual(["light", "light", "light"]);
   });
 
+  test("keeps the idle DOM lean and updates command feedback without a Lit render", async ({ page }) => {
+    await mountCard(page, "active");
+
+    const baseline = await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      const root = card.shadowRoot;
+      card.__renderAuditUpdates = 0;
+      const original = card.performUpdate;
+      card.performUpdate = function (...args) {
+        this.__renderAuditUpdates += 1;
+        return original.apply(this, args);
+      };
+      return {
+        keyHosts: root.querySelectorAll("sb-key-button").length,
+        legacyButtonCards: root.querySelectorAll("hui-button-card").length,
+        assistModals: root.querySelectorAll(".sb-modal").length,
+        closedDrawerItems: root.querySelectorAll(".mf-overlay .drawer-btn").length,
+      };
+    });
+
+    expect(baseline).toEqual({
+      keyHosts: 22,
+      legacyButtonCards: 0,
+      assistModals: 0,
+      closedDrawerItems: 0,
+    });
+
+    await page.locator(".dpad .key").first().click();
+    await expect(page.locator(".loadIndicator")).toHaveClass(/is-loading/);
+    await page.waitForTimeout(1050);
+    await expect(page.locator(".loadIndicator")).not.toHaveClass(/is-loading/);
+    expect(
+      await page.evaluate(
+        () => document.querySelector("sofabaton-virtual-remote").__renderAuditUpdates,
+      ),
+    ).toBe(0);
+
+    const nativeControl = page.locator(".dpad .sb-key-control").first();
+    await expect(nativeControl).toHaveAttribute("aria-label", "Up");
+    await nativeControl.focus();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            window.__remoteCardHarness
+              .getServiceCalls()
+              .filter((call) => call.domain === "remote" && call.service === "send_command")
+              .length,
+        ),
+      )
+      .toBe(2);
+  });
+
+  test("centers native controls and keeps tab and drawer labels fully visible", async ({ page }) => {
+    await mountCard(page, "active");
+
+    const tabLabels = page.locator(".macroFavoritesButton .sb-key-control__label");
+    await expect(tabLabels).toHaveText(["Macros >", "Favorites >"]);
+
+    const closedGeometry = await page.evaluate(() => {
+      const root = document.querySelector("sofabaton-virtual-remote").shadowRoot;
+      const metrics = (hostSelector, contentSelector) => {
+        const host = root.querySelector(hostSelector);
+        const control = host.shadowRoot.querySelector(".sb-key-control");
+        const content = host.shadowRoot.querySelector(contentSelector);
+        const outer = control.getBoundingClientRect();
+        const inner = content.getBoundingClientRect();
+        return {
+          centerX: Math.abs((outer.left + outer.right) / 2 - (inner.left + inner.right) / 2),
+          centerY: Math.abs((outer.top + outer.bottom) / 2 - (inner.top + inner.bottom) / 2),
+          fullyContained:
+            inner.left >= outer.left - 0.5 &&
+            inner.right <= outer.right + 0.5 &&
+            inner.top >= outer.top - 0.5 &&
+            inner.bottom <= outer.bottom + 0.5,
+        };
+      };
+      return {
+        upIcon: metrics(".dpad .area-up", "ha-icon"),
+        favoritesTab: metrics(
+          ".macroFavoritesButton:nth-child(2)",
+          ".sb-key-control__label",
+        ),
+      };
+    });
+
+    expect(closedGeometry.upIcon.centerX).toBeLessThanOrEqual(1);
+    expect(closedGeometry.upIcon.centerY).toBeLessThanOrEqual(1);
+    expect(closedGeometry.upIcon.fullyContained).toBe(true);
+    expect(closedGeometry.favoritesTab.centerX).toBeLessThanOrEqual(1);
+    expect(closedGeometry.favoritesTab.centerY).toBeLessThanOrEqual(1);
+    expect(closedGeometry.favoritesTab.fullyContained).toBe(true);
+
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    await expect(tabLabels).toHaveText(["Macros >", "Favorites >"]);
+    const favoriteNames = page.locator(".mf-overlay--favorites .drawer-btn .name");
+    await expect(favoriteNames).toHaveText([
+      "Netflix",
+      "YouTube",
+      "Plex",
+      "Prime Video",
+      "Disney+",
+      "Spotify",
+    ]);
+    const drawerLabelsContained = await favoriteNames.evaluateAll((labels) =>
+      labels.every((label) => {
+        const button = label.closest(".drawer-btn");
+        const outer = button.getBoundingClientRect();
+        const inner = label.getBoundingClientRect();
+        return (
+          inner.left >= outer.left - 0.5 &&
+          inner.right <= outer.right + 0.5 &&
+          inner.top >= outer.top - 0.5 &&
+          inner.bottom <= outer.bottom + 0.5 &&
+          label.scrollWidth <= label.clientWidth &&
+          label.scrollHeight <= label.clientHeight
+        );
+      }),
+    );
+    expect(drawerLabelsContained).toBe(true);
+  });
+
+  test("applies the selected theme radius to groups, keys, and drawer buttons", async ({ page }) => {
+    await mountCard(page, "active", { theme: "Harness Square" });
+    await page.locator(".macroFavoritesButton").first().click();
+
+    const radii = await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      const root = card.shadowRoot;
+      const controlRadius = (host) =>
+        getComputedStyle(host.shadowRoot.querySelector(".sb-key-control")).borderRadius;
+      return {
+        resolvedTheme: getComputedStyle(root.querySelector("ha-card"))
+          .getPropertyValue("--sb-group-radius")
+          .trim(),
+        group: getComputedStyle(root.querySelector(".dpad")).borderRadius,
+        key: controlRadius(root.querySelector(".dpad .area-up")),
+        drawer: getComputedStyle(root.querySelector(".mf-overlay--macros .drawer-btn"))
+          .borderRadius,
+        segmentedTab: controlRadius(root.querySelector(".macroFavoritesButton")),
+        colorPill: controlRadius(root.querySelector(".key--color")),
+      };
+    });
+
+    expect(radii).toEqual({
+      resolvedTheme: "6px",
+      group: "6px",
+      key: "6px",
+      drawer: "6px",
+      segmentedTab: "0px",
+      colorPill: "999px",
+    });
+  });
+
   test("captures powered-off visual baseline", async ({ page }) => {
     await mountCard(page, "powered_off");
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-powered-off.png");
@@ -217,16 +372,49 @@ test.describe("remote card playwright harness", () => {
     expect(zIndices).toEqual({ activity: "10", drawer: "9" });
   });
 
-  test("shows hover and active state styling on macro tabs", async ({ page }) => {
+  test("shows consistent hover and pressed state layers on keys, tabs, and drawer buttons", async ({ page }) => {
     await mountCard(page, "active");
+    const stateLayer = (locator) =>
+      locator.evaluate((node) => {
+        const style = getComputedStyle(node, "::before");
+        return { opacity: style.opacity, background: style.backgroundColor };
+      });
+    const pressState = async (locator) => {
+      const box = await locator.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      const state = await stateLayer(locator);
+      await page.mouse.up();
+      return state;
+    };
+
+    const key = page.locator(".dpad .area-up .sb-key-control");
+    expect((await stateLayer(key)).opacity).toBe("0");
+    await key.hover();
+    await expect.poll(async () => (await stateLayer(key)).opacity).toBe("1");
+    const keyHover = await stateLayer(key);
+    const keyPressed = await pressState(key);
+    expect(keyPressed.opacity).toBe("1");
+    expect(keyPressed.background).not.toBe(keyHover.background);
+
     const macrosButton = page.locator(".macroFavoritesButton").first();
-
-    await macrosButton.hover();
-    const isHovered = await macrosButton.evaluate((node) => node.matches(":hover"));
-    expect(isHovered).toBe(true);
-
-    await macrosButton.click();
+    const tabControl = macrosButton.locator(".sb-key-control");
+    await tabControl.hover();
+    await expect.poll(async () => (await stateLayer(tabControl)).opacity).toBe("1");
+    const tabHover = await stateLayer(tabControl);
+    const tabPressed = await pressState(tabControl);
     await expect(macrosButton).toHaveClass(/active-tab/);
+
+    const drawerButton = page.locator(".mf-overlay--macros .drawer-btn").first();
+    await drawerButton.hover();
+    await expect.poll(async () => (await stateLayer(drawerButton)).opacity).toBe("1");
+    const drawerHover = await stateLayer(drawerButton);
+    const drawerPressed = await pressState(drawerButton);
+
+    expect(tabHover.background).toBe(keyHover.background);
+    expect(drawerHover.background).toBe(keyHover.background);
+    expect(tabPressed.background).toBe(keyPressed.background);
+    expect(drawerPressed.background).toBe(keyPressed.background);
   });
 
   test("respects group order and visibility overrides", async ({ page }) => {
@@ -348,14 +536,19 @@ test.describe("remote card playwright harness", () => {
     await expect(page.locator(".sb-modal__text")).toContainText("Device 7");
   });
 
-  test("handles the hub x2 integration scenario without losing drawer content", async ({ page }) => {
+  test("lazily renders hub x2 drawer content without losing it when opened", async ({ page }) => {
     await mountCard(page, "hub_x2");
 
     await expect(page.locator(".abc")).toBeVisible();
+    await expect(page.locator(".mf-overlay .drawer-btn")).toHaveCount(0);
     await page.locator(".macroFavoritesButton").first().click();
     await expect(page.locator(".mf-overlay--macros .drawer-btn")).toHaveCount(1);
     await expect(page.locator(".mf-overlay--macros")).toHaveClass(/open/);
     await expect(page.locator(".mf-overlay--favorites")).not.toHaveClass(/open/);
+    await expect(page.locator(".mf-overlay--favorites .drawer-btn")).toHaveCount(0);
+
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    await expect(page.locator(".mf-overlay--favorites")).toHaveClass(/open/);
     await expect(page.locator(".mf-overlay--favorites .drawer-btn")).toHaveCount(1);
   });
 });

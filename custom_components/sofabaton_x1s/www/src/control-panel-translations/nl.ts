@@ -93,7 +93,7 @@ export const TOOLS_CARD_STRINGS_NL = {
   cache: {
     loading: "Laden...", noHubsFound: "Geen hubs gevonden.", persistentCacheOffTitle: "Permanente cache is uitgeschakeld",
     persistentCacheOffCopy: "Schakel deze in om gecachte activiteiten en apparaten te bekijken en back-upwerkstromen te ontgrendelen die ervan afhankelijk zijn.",
-    enablingPersistentCache: "Inschakelen...", enablePersistentCache: "Permanente cache inschakelen", devIdBadge: "App-ID", favIdBadge: "Fav-ID", comIdBadge: "Cmd-ID",
+    enablingPersistentCache: "Inschakelen...", enablePersistentCache: "Permanente cache inschakelen",
     activityFallback: (id: number) => `Activiteit ${id}`, deviceFallback: (id: number) => `Apparaat ${id}`,
     favoriteFallback: (commandId: number) => `Favoriet ${commandId}`, macroFallback: (commandId: number) => `Macro ${commandId}`,
     activityCounts: (favorites: number, macros: number, buttons: number) => `${favorites} fav. / ${macros} macro's / ${buttons} knoppen`,

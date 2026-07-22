@@ -1117,7 +1117,7 @@ function selectValueCompat(value, options = []) {
 async function ensureHaElements() {
   const dropdownItemTag = selectItemTagName();
   await Promise.all([
-    customElements.whenDefined("hui-button-card"),
+    customElements.whenDefined("ha-icon"),
     customElements.whenDefined("ha-select"),
     customElements.whenDefined(dropdownItemTag).catch(() => {
     })
@@ -1144,8 +1144,8 @@ var REMOTE_CARD_CSS = `
         margin-left: auto;
         margin-right: auto;
         --sb-key-font-size: clamp(11px, 7cqw, 50px);
-        --sb-tab-font-size: clamp(14px, 6cqw, 50px);
-        --sb-tab-height: clamp(20px, 3cqw, 50px);
+        --sb-tab-font-size: clamp(14px, 4cqw, 20px);
+        --sb-tab-height: clamp(32px, 9cqw, 44px);
         --sb-color-key-min-height: clamp(12px, 3.2cqw, 20px);
         container-type: inline-size;
       }
@@ -1313,26 +1313,25 @@ var REMOTE_CARD_CSS = `
 			.macroFavoritesButton {
         cursor: pointer;
         padding: 4px 0;
+        box-sizing: border-box;
+        height: var(--sb-tab-height);
         display: block !important;
         position: relative;
         overflow: hidden;
         transition: background 0.2s ease;
-        --ha-card-box-shadow: none;
+        --sb-control-box-shadow: none;
+        --sb-control-border-width: 0;
+        --sb-control-border-color: transparent;
+        --sb-control-background: transparent;
+        --sb-control-radius: 0;
       }
       
-      .macroFavoritesButton.active-tab hui-button-card {
-         --primary-text-color: var(--primary-color);
+      .macroFavoritesButton.active-tab {
+        color: var(--primary-color);
       }
 
       .macroFavoritesButton + .macroFavoritesButton {
         border-left: 1px solid var(--divider-color);
-      }
-      .macroFavoritesButton hui-button-card {
-        height: var(--sb-tab-height);
-        display: block;
-        --mdc-typography-button-font-size: var(--sb-tab-font-size);
-        --paper-font-body1_-_font-size: var(--sb-tab-font-size);
-        font-size: var(--sb-tab-font-size);
       }
 			.macroFavoritesButton:first-child {
         border-right: 1px solid var(--divider-color);
@@ -1340,14 +1339,6 @@ var REMOTE_CARD_CSS = `
 			.mf-container {
         position: relative; 
         z-index: 2;
-      }
-
-      /* Ensure taps go to the wrapper that has the click handler */
-      .macroFavoritesButton > hui-button-card {
-        pointer-events: none;
-        position: relative;
-        z-index: 1;
-        -webkit-tap-highlight-color: transparent;
       }
 
 			.macroFavorites {
@@ -1451,6 +1442,7 @@ var REMOTE_CARD_CSS = `
       .drawer-btn {
         height: 50px !important;
         font-size: 13px !important;
+        border-radius: var(--sb-group-radius) !important;
         cursor: pointer;
         position: relative;
         overflow: hidden;
@@ -1458,30 +1450,26 @@ var REMOTE_CARD_CSS = `
       }
 
       /* Hover/press overlay  */
-      .macroFavoritesButton::before,
       .drawer-btn::before {
         content: "";
         position: absolute;
         inset: 0;
         border-radius: inherit;
-        background: rgba(var(--sb-overlay-rgb), 0.06);
+        background: rgba(var(--sb-overlay-rgb), 0.08);
         opacity: 0;
-        transition: opacity 0.15s ease, background 0.15s ease;
+        transition: opacity 120ms ease;
         pointer-events: none;
       }
 
-      .macroFavoritesButton:hover::before,
       .drawer-btn:hover::before {
         opacity: 1;
       }
 
-      .macroFavoritesButton:active::before,
       .drawer-btn:active::before {
         opacity: 1;
-        background: rgba(var(--sb-overlay-rgb), 0.14);
+        background: rgba(var(--sb-overlay-rgb), 0.16);
       }
 
-      .macroFavoritesButton:focus-visible,
       .drawer-btn:focus-visible {
         outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
         outline-offset: 2px;
@@ -1535,14 +1523,6 @@ var REMOTE_CARD_CSS = `
       .macroFavoritesButton.active-tab {
         background: rgba(var(--rgb-primary-color), 0.1);
         color: var(--primary-color);
-      }
-
-      .macroFavoritesButton hui-button-card {
-        --ha-card-box-shadow: none;
-        --ha-card-border-width: 0;
-        --ha-card-border-color: transparent;
-        --ha-card-background: transparent;
-        --ha-card-border-radius: 0;
       }
 
       /* D-pad cluster */
@@ -1666,24 +1646,18 @@ var REMOTE_CARD_CSS = `
       /* sizing */
 
 /* Allow grid children to shrink (prevents overflow on mobile / narrow cards) */
-.key { min-width: 0; position: relative; width: 100%; }
-.key hui-button-card {
+.key {
   min-width: 0;
+  position: relative;
+  width: 100%;
   --mdc-typography-button-font-size: var(--sb-key-font-size);
   --paper-font-body1_-_font-size: var(--sb-key-font-size);
-  font-size: var(--sb-key-font-size);
+  --sb-control-font-size: var(--sb-key-font-size);
 }
 
 /* --- Square remote keys (scalable) --- */
 .key:not(.key--color) {
   aspect-ratio: 1 / 1;
-}
-
-/* Fill wrapper */
-.key:not(.key--color) hui-button-card {
-  display: block;
-  width: 100%;
-  height: 100% !important;
 }
 
 /* Re-introduce relative sizing (scales with card width) */
@@ -1698,20 +1672,10 @@ var REMOTE_CARD_CSS = `
   min-height: var(--sb-color-key-min-height);
   transform: none;
 }
-.key--color hui-button-card {
-  height: 100% !important;
-  width: 100%;
-  display: block;
-}
-
-/* Color keys: overlay a pill/strip on top of the hui-button-card */
-
-      .key--color .colorBar {
-        position: absolute;
-        inset: 0;
-        border-radius: 999px;
-        background: var(--sb-color);
-        pointer-events: none;
+/* Color keys are native pill controls. */
+      .key--color {
+        --sb-control-radius: 999px;
+        --sb-control-background: var(--sb-color);
       }
 
       .warn {
@@ -3687,6 +3651,9 @@ var RemoteCardStore = class {
   disconnected() {
     if (this.commandPulseTimeout) clearTimeout(this.commandPulseTimeout);
     if (this.activityLoadTimeout) clearTimeout(this.activityLoadTimeout);
+    this.commandPulseTimeout = null;
+    this.commandPulseUntil = 0;
+    this.activityLoadTimeout = null;
   }
   // ---------- update gating ----------
   invalidateFingerprint() {
@@ -3888,10 +3855,12 @@ var RemoteCardStore = class {
   }
   triggerCommandPulse() {
     this.commandPulseUntil = Date.now() + 1e3;
-    this.onChange();
+    this.host.onCommandPulseChange?.(true);
     if (this.commandPulseTimeout) clearTimeout(this.commandPulseTimeout);
     this.commandPulseTimeout = setTimeout(() => {
-      this.onChange();
+      this.commandPulseUntil = 0;
+      this.commandPulseTimeout = null;
+      this.host.onCommandPulseChange?.(false);
     }, 1e3);
   }
   startActivityLoading(target) {
@@ -3906,12 +3875,13 @@ var RemoteCardStore = class {
       }
     }, 6e4);
   }
-  stopActivityLoading() {
+  stopActivityLoading(notify = true) {
     if (!this.activityLoadActive) return;
     this.activityLoadActive = false;
     this.activityLoadTarget = null;
     if (this.activityLoadTimeout) clearTimeout(this.activityLoadTimeout);
-    this.onChange();
+    this.activityLoadTimeout = null;
+    if (notify) this.onChange();
   }
   // ---------- hub request queue ----------
   hubInitState() {
@@ -4220,7 +4190,7 @@ var RemoteCardStore = class {
     let isPoweredOff = false;
     let currentLabel = "";
     if (isUnavailable) {
-      this.stopActivityLoading();
+      this.stopActivityLoading(false);
     } else {
       selectState = buildActivitySelectState({
         editMode: this._editMode,
@@ -4240,7 +4210,7 @@ var RemoteCardStore = class {
       if (this.activityLoadActive && this.activityLoadTarget) {
         const targetIsOff = isPoweredOffLabel(this.activityLoadTarget);
         if (targetIsOff && isPoweredOff || currentActivity === this.activityLoadTarget) {
-          this.stopActivityLoading();
+          this.stopActivityLoading(false);
         }
       }
     }
@@ -5141,13 +5111,373 @@ function renderActivityRow(params) {
         .disabled=${params.unavailable || params.disabled}
         ${wireSelectEvents}
       >
-        ${optionObjects.map(
+        ${c6(
+    optionObjects,
+    (option) => option.value,
     (option) => u3`
             <${itemTag} .value=${option.value}>${option.label}</${itemTag}>
           `
   )}
       </ha-select>
-      <div class="loadIndicator${params.loading ? " is-loading" : ""}"></div>
+      <div
+        class="loadIndicator${params.loading ? " is-loading" : ""}"
+        ${params.loadIndicatorRef ? n6(params.loadIndicatorRef) : A}
+      ></div>
+    </div>
+  `;
+}
+
+// custom_components/sofabaton_x1s/www/src/components/sb-key-button.ts
+var CONTROL_CSS = `
+  :host {
+    display: block;
+    min-width: 0;
+  }
+
+  .sb-key-control {
+    appearance: none;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 100%;
+    padding: 0 10px;
+    border-radius: var(
+      --sb-control-radius,
+      var(--sb-group-radius, var(--ha-card-border-radius, 18px))
+    );
+    border: var(--sb-control-border-width, var(--ha-card-border-width, 1px)) solid
+      var(--sb-control-border-color, var(--ha-card-border-color, var(--divider-color)));
+    background: var(
+      --sb-control-background,
+      var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))
+    );
+    box-shadow: var(--sb-control-box-shadow, var(--ha-card-box-shadow, none));
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-control-font-size, inherit);
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sb-key-control::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.08);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  @media (hover: hover) {
+    .sb-key-control:not(:disabled):hover::before {
+      opacity: 1;
+    }
+  }
+
+  .sb-key-control:not(:disabled):active::before {
+    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.16);
+    opacity: 1;
+  }
+
+  .sb-key-control:focus-visible {
+    outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+    outline-offset: -2px;
+  }
+
+  .sb-key-control:disabled {
+    cursor: default;
+  }
+
+  .sb-key-control__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.2em;
+    height: 1.2em;
+    line-height: 1;
+    flex: 0 0 auto;
+    --mdc-icon-size: 1.2em;
+    color: var(--primary-color);
+    position: relative;
+    z-index: 1;
+  }
+
+  .sb-key-control__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+`;
+var sharedControlSheet = null;
+function installControlStyles(root) {
+  if (typeof CSSStyleSheet !== "undefined" && "replaceSync" in CSSStyleSheet.prototype && "adoptedStyleSheets" in root) {
+    if (!sharedControlSheet) {
+      sharedControlSheet = new CSSStyleSheet();
+      sharedControlSheet.replaceSync(CONTROL_CSS);
+    }
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, sharedControlSheet];
+    return;
+  }
+  const style = document.createElement("style");
+  style.textContent = CONTROL_CSS;
+  root.appendChild(style);
+}
+var SbKeyButton = class extends HTMLElement {
+  constructor() {
+    super(...arguments);
+    this._control = null;
+    this._iconEl = null;
+    this._labelEl = null;
+    this._label = "";
+    this._icon = null;
+    this._accessibilityLabel = "";
+    this._color = null;
+    this._sizeVar = null;
+    this._disabled = false;
+    this._wired = false;
+    /** Called on a primary pointer action or keyboard activation. */
+    this.onTrigger = null;
+  }
+  set label(value) {
+    this._label = String(value ?? "");
+    this.syncContent();
+  }
+  set icon(value) {
+    this._icon = value ? String(value) : null;
+    this.syncContent();
+  }
+  set accessibilityLabel(value) {
+    this._accessibilityLabel = String(value ?? "");
+    this.syncContent();
+  }
+  set color(value) {
+    this._color = value ? String(value) : null;
+    if (this._color) {
+      this.style.setProperty("--sb-color", this._color);
+      this.style.setProperty("--sb-control-background", this._color);
+    } else {
+      this.style.removeProperty("--sb-color");
+      this.style.removeProperty("--sb-control-background");
+    }
+  }
+  /** CSS var applied to the native control's icon/name. */
+  set sizeVar(value) {
+    this._sizeVar = value ? String(value) : null;
+    if (this._sizeVar) {
+      this.style.setProperty("--sb-control-font-size", `var(${this._sizeVar})`);
+    } else {
+      this.style.removeProperty("--sb-control-font-size");
+    }
+  }
+  set disabled(value) {
+    this._disabled = Boolean(value);
+    if (this._control) this._control.disabled = this._disabled;
+  }
+  get disabled() {
+    return this._disabled;
+  }
+  fireHaptic() {
+    this.dispatchEvent(
+      new CustomEvent("haptic", {
+        detail: "light",
+        bubbles: true,
+        composed: true
+      })
+    );
+  }
+  trigger(ev) {
+    if (this._disabled || this.classList.contains("disabled")) return;
+    this.onTrigger?.(ev);
+  }
+  syncContent() {
+    if (!this._control || !this._iconEl || !this._labelEl) return;
+    if (this._icon) {
+      this._iconEl.setAttribute("icon", this._icon);
+      this._iconEl.hidden = false;
+    } else {
+      this._iconEl.removeAttribute("icon");
+      this._iconEl.hidden = true;
+    }
+    this._labelEl.textContent = this._label;
+    this._labelEl.hidden = !this._label;
+    this._control.setAttribute(
+      "aria-label",
+      this._accessibilityLabel || this._label || "Remote button"
+    );
+  }
+  connectedCallback() {
+    if (this._wired) return;
+    this._wired = true;
+    const root = this.attachShadow({ mode: "open" });
+    installControlStyles(root);
+    const control = document.createElement("button");
+    control.type = "button";
+    control.className = "sb-key-control";
+    control.disabled = this._disabled;
+    const icon = document.createElement("ha-icon");
+    icon.className = "sb-key-control__icon";
+    const label = document.createElement("span");
+    label.className = "sb-key-control__label";
+    control.append(icon, label);
+    root.appendChild(control);
+    this._control = control;
+    this._iconEl = icon;
+    this._labelEl = label;
+    this.syncContent();
+    attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
+      fireHaptic: () => this.fireHaptic()
+    });
+    control.addEventListener("click", (ev) => {
+      if (ev.detail !== 0 || this._disabled) return;
+      this.fireHaptic();
+      this.trigger(ev);
+    });
+  }
+};
+if (!customElements.get("sb-key-button")) {
+  customElements.define("sb-key-button", SbKeyButton);
+}
+
+// custom_components/sofabaton_x1s/www/src/sections/key-groups.ts
+var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
+  ID.C,
+  ID.B,
+  ID.A,
+  ID.EXIT,
+  ID.DVR,
+  ID.PLAY,
+  ID.GUIDE
+]);
+var DPAD_KEYS = [
+  { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
+  { key: "left", id: ID.LEFT, cmd: ID.LEFT, label: "", icon: "mdi:chevron-left", extraClass: "area-left" },
+  // Language-neutral filled circle instead of a localized "OK" label; the
+  // assist capture label still resolves to str().keys.ok via the key fallback.
+  { key: "ok", id: ID.OK, cmd: ID.OK, label: "", icon: "mdi:circle", extraClass: "area-ok okKey", size: "big" },
+  { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
+  { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" }
+];
+var NAV_KEYS = [
+  { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
+  { key: "home", id: ID.HOME, cmd: ID.HOME, label: "", icon: "mdi:home" },
+  { key: "menu", id: ID.MENU, cmd: ID.MENU, label: "", icon: "mdi:menu" }
+];
+var MID_KEYS = [
+  { key: "volup", id: ID.VOL_UP, cmd: ID.VOL_UP, label: "", icon: "mdi:volume-plus", extraClass: "mid-btn mid-btn-volup" },
+  { key: "voldn", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN, label: "", icon: "mdi:volume-minus", extraClass: "mid-btn mid-btn-voldn" },
+  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "Guide", icon: "", extraClass: "mid-btn mid-btn-guide" },
+  { key: "mute", id: ID.MUTE, cmd: ID.MUTE, label: "", icon: "mdi:volume-mute", extraClass: "mid-btn mid-btn-mute" },
+  { key: "chup", id: ID.CH_UP, cmd: ID.CH_UP, label: "", icon: "mdi:chevron-up", extraClass: "mid-btn mid-btn-chup" },
+  { key: "chdn", id: ID.CH_DOWN, cmd: ID.CH_DOWN, label: "", icon: "mdi:chevron-down", extraClass: "mid-btn mid-btn-chdn" }
+];
+var MEDIA_KEYS = [
+  { key: "rew", id: ID.REW, cmd: ID.REW, label: "", icon: "mdi:rewind", extraClass: "area-rew" },
+  { key: "play", id: ID.PLAY, cmd: ID.PLAY, label: "", icon: "mdi:play", extraClass: "area-play" },
+  { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
+  { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
+  { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+];
+var COLOR_KEYS = [
+  { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
+  { key: "green", id: ID.GREEN, cmd: ID.GREEN, label: "", icon: "", color: "#388e3c" },
+  { key: "yellow", id: ID.YELLOW, cmd: ID.YELLOW, label: "", icon: "", color: "#fbc02d" },
+  { key: "blue", id: ID.BLUE, cmd: ID.BLUE, label: "", icon: "", color: "#1976d2" }
+];
+var ABC_KEYS = [
+  { key: "a", id: ID.A, cmd: ID.A, label: "A", icon: "", size: "small" },
+  { key: "b", id: ID.B, cmd: ID.B, label: "B", icon: "", size: "small" },
+  { key: "c", id: ID.C, cmd: ID.C, label: "C", icon: "", size: "small" }
+];
+function renderKey(params, spec) {
+  const isX2Only = X2_ONLY_KEY_IDS.has(spec.id);
+  const layoutVisible = params.buttonVisibility && spec.key in params.buttonVisibility ? params.buttonVisibility[spec.key] : true;
+  const shouldShow = isX2Only ? params.isX2 && layoutVisible : layoutVisible;
+  if (!shouldShow) return A;
+  const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
+  const wrapClassName = spec.color ? "key key--color" : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
+  const accessibleLabel = automationAssistLabelForKey(
+    spec.key,
+    spec.color ? spec.key : spec.label
+  );
+  return b2`
+    <sb-key-button
+      class="${wrapClassName}${enabled ? "" : " disabled"}"
+      .label=${spec.label}
+      .icon=${spec.icon || null}
+      .accessibilityLabel=${accessibleLabel}
+      .color=${spec.color ?? null}
+      .sizeVar=${spec.color ? null : "--sb-key-font-size"}
+      .disabled=${!enabled}
+      .onTrigger=${() => params.onKeyPress(spec)}
+    ></sb-key-button>
+  `;
+}
+function renderDpad(params, visible) {
+  if (!visible) return A;
+  return b2`<div class="dpad">${DPAD_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderNavRow(params, visible) {
+  if (!visible) return A;
+  return b2`<div class="row3">${NAV_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderMid(params, visible) {
+  if (!visible) return A;
+  const midState = midModeState({
+    showVolume: params.showVolume,
+    showChannel: params.showChannel,
+    isX2: params.isX2
+  });
+  const className = [
+    "mid",
+    ...Object.entries(midState.classMap).filter(([, on]) => on).map(([name]) => name)
+  ].join(" ");
+  return b2`<div class=${className}>${MID_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderMedia(params, visible) {
+  if (!visible) return A;
+  const mediaState = mediaModeState({
+    isX2: params.isX2,
+    showMedia: params.showMedia,
+    showDvr: params.showDvr
+  });
+  const className = [
+    "media",
+    ...Object.entries(mediaState.classMap).filter(([, on]) => on).map(([name]) => name)
+  ].join(" ");
+  return b2`<div class=${className}>${MEDIA_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderColors(params, visible) {
+  if (!visible) return A;
+  return b2`
+    <div class="colors">
+      <div class="colorsGrid">${COLOR_KEYS.map((k2) => renderKey(params, k2))}</div>
+    </div>
+  `;
+}
+function renderAbc(params, visible) {
+  if (!visible) return A;
+  return b2`
+    <div class="abc">
+      <div class="abcGrid">${ABC_KEYS.map((k2) => renderKey(params, k2))}</div>
     </div>
   `;
 }
@@ -5178,296 +5508,6 @@ function customFavoriteButtonModel(favorite, fallbackDeviceId) {
     commandId,
     deviceId
   };
-}
-function actionButtonModel({
-  label,
-  icon,
-  extraClass = ""
-}) {
-  return {
-    wrapClassName: `macroFavoritesButton ${extraClass}`.trim(),
-    buttonConfig: {
-      type: "button",
-      show_name: true,
-      show_icon: Boolean(icon),
-      name: label || "",
-      icon: icon || void 0,
-      tap_action: {
-        action: "none"
-      },
-      hold_action: { action: "none" },
-      double_tap_action: { action: "none" }
-    }
-  };
-}
-function huiButtonModel({
-  label,
-  icon,
-  extraClass = "",
-  size = "normal"
-}) {
-  return {
-    wrapClassName: `key key--${size} ${extraClass}`.trim(),
-    buttonConfig: {
-      type: "button",
-      show_name: Boolean(label),
-      show_icon: Boolean(icon),
-      name: label || "",
-      icon: icon || void 0,
-      tap_action: {
-        action: "none"
-      },
-      hold_action: { action: "none" },
-      double_tap_action: { action: "none" }
-    }
-  };
-}
-function colorKeyModel(color) {
-  return {
-    wrapClassName: "key key--color",
-    color,
-    buttonConfig: {
-      type: "button",
-      show_name: false,
-      show_icon: false,
-      tap_action: {
-        action: "none"
-      },
-      hold_action: { action: "none" },
-      double_tap_action: { action: "none" }
-    }
-  };
-}
-
-// custom_components/sofabaton_x1s/www/src/components/sb-key-button.ts
-var SbKeyButton = class extends HTMLElement {
-  constructor() {
-    super(...arguments);
-    this._btn = null;
-    this._hass = null;
-    this._syncedHass = null;
-    this._buttonConfig = null;
-    this._configApplied = false;
-    this._color = null;
-    this._sizeVar = null;
-    this._wired = false;
-    /** Called on a (gated) primary action while the host is not .disabled. */
-    this.onTrigger = null;
-  }
-  set buttonConfig(config) {
-    this._buttonConfig = config;
-    if (this._btn && config && !this._configApplied) {
-      this._configApplied = true;
-      this._btn.setConfig?.(config);
-    }
-  }
-  set hass(hass) {
-    this._hass = hass;
-    this.syncHass();
-  }
-  /** Color key accent (adds the colorBar and --sb-color). */
-  set color(value) {
-    this._color = value;
-  }
-  /** CSS var applied to the button's inner text (legacy _applyButtonTextSizing). */
-  set sizeVar(value) {
-    this._sizeVar = value;
-  }
-  syncHass() {
-    if (!this._btn || !this._hass) return;
-    if (this._syncedHass === this._hass) return;
-    this._btn.hass = this._hass;
-    this._syncedHass = this._hass;
-  }
-  connectedCallback() {
-    if (this._wired) {
-      this.syncHass();
-      return;
-    }
-    this._wired = true;
-    if (this._color) {
-      this.style.setProperty("--sb-color", this._color);
-    }
-    const btn = document.createElement("hui-button-card");
-    this._btn = btn;
-    if (this._hass) {
-      btn.hass = this._hass;
-      this._syncedHass = this._hass;
-    }
-    if (this._buttonConfig && !this._configApplied) {
-      this._configApplied = true;
-      btn.setConfig?.(this._buttonConfig);
-    }
-    this.appendChild(btn);
-    if (this._color) {
-      const bar = document.createElement("div");
-      bar.className = "colorBar";
-      this.appendChild(bar);
-    }
-    attachPrimaryAction([this, btn], (ev) => {
-      if (this.classList.contains("disabled")) return;
-      this.onTrigger?.(ev);
-    }, {
-      fireHaptic: () => {
-        this.dispatchEvent(
-          new CustomEvent("haptic", {
-            detail: "light",
-            bubbles: true,
-            composed: true
-          })
-        );
-      }
-    });
-    if (this._sizeVar) {
-      applyButtonTextSizing(btn, this._sizeVar);
-    }
-  }
-};
-function applyButtonTextSizing(btn, sizeVar) {
-  const apply = (attempt = 0) => {
-    const root = btn?.shadowRoot;
-    if (!root) return;
-    const value = `var(${sizeVar})`;
-    const card = root.querySelector("ha-card");
-    const name = root.querySelector(".name");
-    const label = root.querySelector(".label");
-    const state = root.querySelector(".state");
-    if (card) card.style.setProperty("font-size", value);
-    if (name) name.style.fontSize = value;
-    if (label) label.style.fontSize = value;
-    if (state) state.style.fontSize = value;
-    if (!name && !label && !state && attempt < 2) {
-      requestAnimationFrame(() => apply(attempt + 1));
-    }
-  };
-  if (btn?.updateComplete && typeof btn.updateComplete.then === "function") {
-    void btn.updateComplete.then(() => apply());
-  } else {
-    requestAnimationFrame(() => apply());
-  }
-}
-if (!customElements.get("sb-key-button")) {
-  customElements.define("sb-key-button", SbKeyButton);
-}
-
-// custom_components/sofabaton_x1s/www/src/sections/key-groups.ts
-var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE
-]);
-var dpadKeys = () => [
-  { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
-  { key: "left", id: ID.LEFT, cmd: ID.LEFT, label: "", icon: "mdi:chevron-left", extraClass: "area-left" },
-  // Language-neutral filled circle instead of a localized "OK" label; the
-  // assist capture label still resolves to str().keys.ok via the key fallback.
-  { key: "ok", id: ID.OK, cmd: ID.OK, label: "", icon: "mdi:circle", extraClass: "area-ok okKey", size: "big" },
-  { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
-  { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" }
-];
-var navKeys = () => [
-  { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
-  { key: "home", id: ID.HOME, cmd: ID.HOME, label: "", icon: "mdi:home" },
-  { key: "menu", id: ID.MENU, cmd: ID.MENU, label: "", icon: "mdi:menu" }
-];
-var midKeys = () => [
-  { key: "volup", id: ID.VOL_UP, cmd: ID.VOL_UP, label: "", icon: "mdi:volume-plus", extraClass: "mid-btn mid-btn-volup" },
-  { key: "voldn", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN, label: "", icon: "mdi:volume-minus", extraClass: "mid-btn mid-btn-voldn" },
-  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "Guide", icon: "", extraClass: "mid-btn mid-btn-guide" },
-  { key: "mute", id: ID.MUTE, cmd: ID.MUTE, label: "", icon: "mdi:volume-mute", extraClass: "mid-btn mid-btn-mute" },
-  { key: "chup", id: ID.CH_UP, cmd: ID.CH_UP, label: "", icon: "mdi:chevron-up", extraClass: "mid-btn mid-btn-chup" },
-  { key: "chdn", id: ID.CH_DOWN, cmd: ID.CH_DOWN, label: "", icon: "mdi:chevron-down", extraClass: "mid-btn mid-btn-chdn" }
-];
-var mediaKeys = () => [
-  { key: "rew", id: ID.REW, cmd: ID.REW, label: "", icon: "mdi:rewind", extraClass: "area-rew" },
-  { key: "play", id: ID.PLAY, cmd: ID.PLAY, label: "", icon: "mdi:play", extraClass: "area-play" },
-  { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
-  { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
-  { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
-];
-var colorKeys = () => [
-  { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
-  { key: "green", id: ID.GREEN, cmd: ID.GREEN, label: "", icon: "", color: "#388e3c" },
-  { key: "yellow", id: ID.YELLOW, cmd: ID.YELLOW, label: "", icon: "", color: "#fbc02d" },
-  { key: "blue", id: ID.BLUE, cmd: ID.BLUE, label: "", icon: "", color: "#1976d2" }
-];
-var abcKeys = () => [
-  { key: "a", id: ID.A, cmd: ID.A, label: "A", icon: "", size: "small" },
-  { key: "b", id: ID.B, cmd: ID.B, label: "B", icon: "", size: "small" },
-  { key: "c", id: ID.C, cmd: ID.C, label: "C", icon: "", size: "small" }
-];
-var groupStyle = (visible) => visible ? "" : "display: none !important;";
-function renderKey(params, spec) {
-  const isX2Only = X2_ONLY_KEY_IDS.has(spec.id);
-  const layoutVisible = params.buttonVisibility && spec.key in params.buttonVisibility ? params.buttonVisibility[spec.key] : true;
-  const shouldShow = isX2Only ? params.isX2 && layoutVisible : layoutVisible;
-  const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
-  const model = spec.color ? colorKeyModel(spec.color) : huiButtonModel({
-    label: spec.label,
-    icon: spec.icon,
-    extraClass: spec.extraClass ?? "",
-    size: spec.size ?? "normal"
-  });
-  return b2`
-    <sb-key-button
-      class="${model.wrapClassName}${enabled ? "" : " disabled"}"
-      style=${shouldShow ? "" : "display: none !important;"}
-      .buttonConfig=${model.buttonConfig}
-      .color=${spec.color ?? null}
-      .sizeVar=${spec.color ? null : "--sb-key-font-size"}
-      .hass=${params.hass}
-      .onTrigger=${() => params.onKeyPress(spec)}
-    ></sb-key-button>
-  `;
-}
-function renderDpad(params, visible) {
-  return b2`<div class="dpad" style=${groupStyle(visible)}>${dpadKeys().map((k2) => renderKey(params, k2))}</div>`;
-}
-function renderNavRow(params, visible) {
-  return b2`<div class="row3" style=${groupStyle(visible)}>${navKeys().map((k2) => renderKey(params, k2))}</div>`;
-}
-function renderMid(params, visible) {
-  const midState = midModeState({
-    showVolume: params.showVolume,
-    showChannel: params.showChannel,
-    isX2: params.isX2
-  });
-  const className = [
-    "mid",
-    ...Object.entries(midState.classMap).filter(([, on]) => on).map(([name]) => name)
-  ].join(" ");
-  return b2`<div class=${className} style=${groupStyle(visible)}>${midKeys().map((k2) => renderKey(params, k2))}</div>`;
-}
-function renderMedia(params, visible) {
-  const mediaState = mediaModeState({
-    isX2: params.isX2,
-    showMedia: params.showMedia,
-    showDvr: params.showDvr
-  });
-  const className = [
-    "media",
-    ...Object.entries(mediaState.classMap).filter(([, on]) => on).map(([name]) => name)
-  ].join(" ");
-  return b2`<div class=${className} style=${groupStyle(visible)}>${mediaKeys().map((k2) => renderKey(params, k2))}</div>`;
-}
-function renderColors(params, visible) {
-  return b2`
-    <div class="colors" style=${groupStyle(visible)}>
-      <div class="colorsGrid">${colorKeys().map((k2) => renderKey(params, k2))}</div>
-    </div>
-  `;
-}
-function renderAbc(params, visible) {
-  return b2`
-    <div class="abc" style=${groupStyle(visible)}>
-      <div class="abcGrid">${abcKeys().map((k2) => renderKey(params, k2))}</div>
-    </div>
-  `;
 }
 
 // custom_components/sofabaton_x1s/www/src/sections/macro-favorites.ts
@@ -5507,14 +5547,43 @@ function renderCustomFavoriteButton(params, favorite) {
     </ha-card>
   `;
 }
+function itemKey(item, type) {
+  const commandId = item.command_id ?? item.id ?? "";
+  const deviceId = item.device_id ?? item.device ?? "";
+  const name = item.name ?? "";
+  const action = item.action ? JSON.stringify(item.action) : "";
+  return `${type}:${String(deviceId)}:${String(commandId)}:${String(name)}:${action}`;
+}
+function withUniqueKeys(entries) {
+  const occurrences = /* @__PURE__ */ new Map();
+  return entries.map((entry) => {
+    const base = itemKey(entry.item, entry.kind);
+    const occurrence = occurrences.get(base) ?? 0;
+    occurrences.set(base, occurrence + 1);
+    return { ...entry, key: `${base}#${occurrence}` };
+  });
+}
+function renderDrawerItems(params, items, type) {
+  const entries = withUniqueKeys(items.map((item) => ({ kind: type, item })));
+  return b2`${c6(
+    entries,
+    (entry) => entry.key,
+    (entry) => renderDrawerButton(params, entry.item, type)
+  )}`;
+}
 function renderFavoritesItems(params) {
-  return [
-    ...params.customFavorites.map((fav) => renderCustomFavoriteButton(params, fav)),
-    ...params.favorites.map((fav) => renderDrawerButton(params, fav, "favorites"))
-  ];
+  const items = withUniqueKeys([
+    ...params.customFavorites.map((item) => ({ kind: "custom", item })),
+    ...params.favorites.map((item) => ({ kind: "favorite", item }))
+  ]);
+  return b2`${c6(
+    items,
+    (entry) => entry.key,
+    (entry) => entry.kind === "custom" ? renderCustomFavoriteButton(params, entry.item) : renderDrawerButton(params, entry.item, "favorites")
+  )}`;
 }
 function renderTab(params, label, visible, active, disabled, onClick) {
-  const model = actionButtonModel({ label });
+  if (!visible) return A;
   const classes = [
     "macroFavoritesButton",
     ...active ? ["active-tab"] : [],
@@ -5523,10 +5592,11 @@ function renderTab(params, label, visible, active, disabled, onClick) {
   return b2`
     <sb-key-button
       class=${classes}
-      style=${visible ? "" : "display: none !important;"}
-      .buttonConfig=${model.buttonConfig}
+      .label=${label}
+      .icon=${null}
+      .accessibilityLabel=${label}
       .sizeVar=${"--sb-tab-font-size"}
-      .hass=${params.hass}
+      .disabled=${disabled}
       .onTrigger=${onClick}
     ></sb-key-button>
   `;
@@ -5581,14 +5651,16 @@ function renderMacroFavorites(params) {
         ${setRef(params.macrosOverlayRef)}
       >
         <div class="mf-grid">
-          ${params.macros.map((macro) => renderDrawerButton(params, macro, "macros"))}
+          ${params.renderMacrosContent ? renderDrawerItems(params, params.macros, "macros") : A}
         </div>
       </div>
       <div
         class="mf-overlay mf-overlay--favorites${isFav ? " open" : ""}"
         ${setRef(params.favoritesOverlayRef)}
       >
-        <div class="mf-grid">${renderFavoritesItems(params)}</div>
+        <div class="mf-grid">
+          ${params.renderFavoritesContent ? renderFavoritesItems(params) : A}
+        </div>
       </div>
     </div>
   `;
@@ -5604,7 +5676,7 @@ function renderInlineDrawerRow(params) {
         style="--inline-row-visible-rows: ${params.visibleRows};"
       >
         <div class="inline-drawer-row__grid mf-grid">
-          ${params.items.length ? params.items : b2`
+          ${params.itemCount ? params.items : b2`
                 <div class="inline-drawer-row__empty" style="grid-column: 1 / -1;">
                   ${params.emptyText}
                 </div>
@@ -5722,9 +5794,16 @@ var SofabatonRemoteCard = class extends i4 {
     // Imperative-edge state (mirrors the legacy fields)
     this._drawerUp = false;
     this._drawerResetTimer = null;
+    this._drawerContentResetTimer = null;
+    this._closingDrawer = null;
+    this._drawerMeasureSignature = null;
+    this._drawerMeasurePending = false;
     this._appliedThemeVars = [];
     this._appliedThemeKey = null;
     this._lastGroupRadius = null;
+    this._appliedSizingKey = null;
+    this._lastLayeringKey = null;
+    this._lastLayeringTargets = [null, null];
     this._layoutSignatureCache = null;
     this._layoutOverlayEl = null;
     this._lastLayoutSignature = null;
@@ -5738,6 +5817,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._wrapRef = e5();
     this._layoutContainerRef = e5();
     this._activityRowRef = e5();
+    this._loadIndicatorRef = e5();
     this._mfContainerRef = e5();
     this._macrosOverlayRef = e5();
     this._favoritesOverlayRef = e5();
@@ -5749,7 +5829,8 @@ var SofabatonRemoteCard = class extends i4 {
         onHubQueueDrained: () => {
           this._assist.syncMqtt();
           this.requestUpdate();
-        }
+        },
+        onCommandPulseChange: () => this._syncLoadIndicator()
       }
     );
     this._assist = new AutomationAssistController({
@@ -5781,6 +5862,10 @@ var SofabatonRemoteCard = class extends i4 {
     this._assist.resetActivityBaseline();
     this._drawerUp = false;
     if (this._drawerResetTimer) clearTimeout(this._drawerResetTimer);
+    if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
+    this._closingDrawer = null;
+    this._drawerMeasureSignature = null;
+    this._drawerMeasurePending = false;
   }
   set hass(hass) {
     setRemoteCardLanguage(
@@ -5868,6 +5953,7 @@ var SofabatonRemoteCard = class extends i4 {
       window.removeEventListener("sofabaton-preview-activity", this._onPreviewActivity);
     }
     if (this._drawerResetTimer) clearTimeout(this._drawerResetTimer);
+    if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
     this._store.disconnected();
     this._assist.disconnected();
   }
@@ -5885,10 +5971,7 @@ var SofabatonRemoteCard = class extends i4 {
         const clickedInOverlay = this._macrosOverlayRef.value && path.includes(this._macrosOverlayRef.value) || this._favoritesOverlayRef.value && path.includes(this._favoritesOverlayRef.value);
         const clickedInToggleRow = this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
         if (!(clickedInOverlay || clickedInToggleRow)) {
-          this._store.activeDrawer = null;
-          this._scheduleDrawerDirectionReset();
-          this._syncLayering();
-          this.requestUpdate();
+          this._setActiveDrawer(null);
         }
       }
       if (this._store.activityMenuOpen) {
@@ -5908,12 +5991,30 @@ var SofabatonRemoteCard = class extends i4 {
   }
   // ---------- drawers ----------
   _toggleDrawer(type) {
-    this._store.activeDrawer = this._store.activeDrawer === type ? null : type;
-    if (this._store.activeDrawer) {
-      this._updateDrawerDirection();
-    } else {
-      this._scheduleDrawerDirectionReset();
+    this._setActiveDrawer(this._store.activeDrawer === type ? null : type);
+  }
+  _retainClosingDrawer(type) {
+    this._closingDrawer = type;
+    if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
+    this._drawerContentResetTimer = setTimeout(() => {
+      if (this._closingDrawer !== type) return;
+      this._closingDrawer = null;
+      this._drawerContentResetTimer = null;
+      this.requestUpdate();
+    }, DRAWER_DIRECTION_RESET_MS);
+  }
+  _setActiveDrawer(type) {
+    const previous = this._store.activeDrawer;
+    if (previous === type) return;
+    if (previous) this._retainClosingDrawer(previous);
+    if (type && this._closingDrawer === type) {
+      this._closingDrawer = null;
+      if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
+      this._drawerContentResetTimer = null;
     }
+    this._store.activeDrawer = type;
+    this._drawerMeasurePending = Boolean(type);
+    if (!type) this._scheduleDrawerDirectionReset();
     this._syncLayering();
     this.requestUpdate();
   }
@@ -5951,12 +6052,19 @@ var SofabatonRemoteCard = class extends i4 {
     const activityRow = this._activityRowRef.value;
     const mfContainer = this._mfContainerRef.value;
     if (!activityRow || !mfContainer) return;
+    const key = `${this._store.activityMenuOpen ? 1 : 0}:${this._store.activeDrawer || ""}`;
+    const targets = [activityRow, mfContainer];
+    if (this._lastLayeringKey === key && this._lastLayeringTargets[0] === targets[0] && this._lastLayeringTargets[1] === targets[1]) {
+      return;
+    }
     const z2 = layeringZIndexes(
       Boolean(this._store.activityMenuOpen),
       Boolean(this._store.activeDrawer)
     );
     activityRow.style.zIndex = z2.activity;
     mfContainer.style.zIndex = z2.drawer;
+    this._lastLayeringKey = key;
+    this._lastLayeringTargets = targets;
   }
   // ---------- activity select ----------
   _handleActivitySelect(ev) {
@@ -5975,14 +6083,22 @@ var SofabatonRemoteCard = class extends i4 {
       console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
     });
   }
+  _syncLoadIndicator() {
+    this._loadIndicatorRef.value?.classList.toggle(
+      "is-loading",
+      this._store.isLoadingActive()
+    );
+  }
   // ---------- theming (imperative, on the ha-card like the legacy) ----------
   _applyLocalTheme(themeName) {
     const root = this._cardRef.value;
     const hass = this._store.hass;
-    if (!root || !hass) return;
+    if (!root || !hass) return false;
     const bgOverrideCss = rgbToCss(this._store.config?.background_override);
-    const appliedKey = `${themeName || ""}||${bgOverrideCss}`;
-    if (this._appliedThemeKey === appliedKey) return;
+    const themeDef = themeName ? hass.themes?.themes?.[themeName] : null;
+    const themeMode = hass.themes?.darkMode ? "dark" : "light";
+    const appliedKey = `${themeName || ""}||${bgOverrideCss}||${themeMode}||${JSON.stringify(themeDef ?? null)}`;
+    if (this._appliedThemeKey === appliedKey) return false;
     for (const cssVar of this._appliedThemeVars) {
       root.style.removeProperty(cssVar);
     }
@@ -5991,7 +6107,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._lastGroupRadius = null;
     let vars = null;
     if (themeName) {
-      const def = hass.themes?.themes?.[themeName];
+      const def = themeDef;
       if (def && typeof def === "object") {
         vars = def;
         const defWithModes = def;
@@ -6027,6 +6143,7 @@ var SofabatonRemoteCard = class extends i4 {
       root.style.removeProperty("background");
       root.style.removeProperty("background-color");
     }
+    return true;
   }
   _updateGroupRadius() {
     const root = this._cardRef.value;
@@ -6057,6 +6174,10 @@ var SofabatonRemoteCard = class extends i4 {
   }
   _applyHostSizing() {
     const mw = this._store.config?.max_width;
+    const shrink = this._store.config?.shrink;
+    const sizingKey = `${typeof mw}:${String(mw ?? "")}||${typeof shrink}:${String(shrink ?? "")}`;
+    if (this._appliedSizingKey === sizingKey) return;
+    this._appliedSizingKey = sizingKey;
     if (mw == null || mw === "" || mw === 0) {
       this.style.removeProperty("--remote-max-width");
     } else if (typeof mw === "number" && Number.isFinite(mw) && mw > 0) {
@@ -6064,7 +6185,6 @@ var SofabatonRemoteCard = class extends i4 {
     } else if (typeof mw === "string" && mw.trim()) {
       this.style.setProperty("--remote-max-width", mw.trim());
     }
-    const shrink = this._store.config?.shrink;
     const shrinkNum = typeof shrink === "number" ? shrink : typeof shrink === "string" ? Number(shrink) : 0;
     if (!Number.isFinite(shrinkNum) || shrinkNum <= 0) {
       this.style.removeProperty("--remote-zoom");
@@ -6166,11 +6286,17 @@ var SofabatonRemoteCard = class extends i4 {
       disableAllButtons: disableAll
     });
     if (drawerDisplayState.closedByVisibility) {
+      if (store.activeDrawer) this._retainClosingDrawer(store.activeDrawer);
       this._scheduleDrawerDirectionReset();
     }
     store.activeDrawer = drawerDisplayState.nextActiveDrawer;
+    const activeDrawerCount = store.activeDrawer === "macros" ? derived.macros.length : store.activeDrawer === "favorites" ? derived.favorites.length + derived.customFavorites.length : 0;
+    const drawerMeasureSignature = `${store.activeDrawer || ""}:${activeDrawerCount}:${derived.layoutSignature}`;
+    if (this._drawerMeasureSignature !== drawerMeasureSignature) {
+      this._drawerMeasureSignature = drawerMeasureSignature;
+      this._drawerMeasurePending = Boolean(store.activeDrawer);
+    }
     const keyParams = {
-      hass: store.hass,
       isX2: derived.isX2,
       buttonVisibility: runtimeButtonVisibility({
         isX2: derived.isX2,
@@ -6189,7 +6315,6 @@ var SofabatonRemoteCard = class extends i4 {
       showDvr: derived.showDvr
     };
     const mfParams = {
-      hass: store.hass,
       visible: drawerDisplayState.showMF,
       showMacrosButton: showMacrosBtn,
       showFavoritesButton: showFavoritesBtn,
@@ -6202,6 +6327,8 @@ var SofabatonRemoteCard = class extends i4 {
       favorites: derived.favorites,
       customFavorites: derived.customFavorites,
       currentActivityId: store.currentActivityId(),
+      renderMacrosContent: store.activeDrawer === "macros" || this._closingDrawer === "macros",
+      renderFavoritesContent: store.activeDrawer === "favorites" || this._closingDrawer === "favorites",
       containerRef: this._mfContainerRef,
       rowRef: this._macroFavoritesRowRef,
       macrosOverlayRef: this._macrosOverlayRef,
@@ -6239,9 +6366,9 @@ var SofabatonRemoteCard = class extends i4 {
     const mediaEnabled = derived.isX2 ? derived.showMedia || derived.showDvr : derived.showMedia;
     const order = store.groupOrderList(derived.activityId);
     const groupTemplates = {
-      activity: () => renderActivityRow({
+      activity: () => Boolean(layoutConfig.show_activity) ? renderActivityRow({
         hass: store.hass,
-        visible: Boolean(layoutConfig.show_activity),
+        visible: true,
         unavailable: derived.isUnavailable,
         options: derived.selectState?.options ?? [],
         resolvedValue: derived.selectState?.resolvedValue ?? "",
@@ -6256,30 +6383,26 @@ var SofabatonRemoteCard = class extends i4 {
           store.activityMenuOpen = false;
           this._syncLayering();
         },
-        rowRef: this._activityRowRef
-      }),
-      macro_favorites: () => renderMacroFavorites(mfParams),
-      macros_row: () => renderInlineDrawerRow({
+        rowRef: this._activityRowRef,
+        loadIndicatorRef: this._loadIndicatorRef
+      }) : A,
+      macro_favorites: () => drawerDisplayState.showMF ? renderMacroFavorites(mfParams) : A,
+      macros_row: () => macrosRowOn ? renderInlineDrawerRow({
         kind: "macros",
-        visible: macrosRowOn,
+        visible: true,
         visibleRows: sharedRows,
-        items: macrosRowOn ? derived.macros.map((m3) => renderDrawerButton(mfParams, m3, "macros")) : [],
+        items: renderDrawerItems(mfParams, derived.macros, "macros"),
+        itemCount: derived.macros.length,
         emptyText: str().card.noMacros
-      }),
-      favorites_row: () => renderInlineDrawerRow({
+      }) : A,
+      favorites_row: () => favoritesRowOn ? renderInlineDrawerRow({
         kind: "favorites",
-        visible: favoritesRowOn,
+        visible: true,
         visibleRows: sharedRows,
-        items: favoritesRowOn ? [
-          ...derived.customFavorites.map(
-            (f4) => renderCustomFavoriteButton(mfParams, f4)
-          ),
-          ...derived.favorites.map(
-            (f4) => renderDrawerButton(mfParams, f4, "favorites")
-          )
-        ] : [],
+        items: renderFavoritesItems(mfParams),
+        itemCount: derived.customFavorites.length + derived.favorites.length,
         emptyText: str().card.noFavorites
-      }),
+      }) : A,
       dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad)),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -6288,14 +6411,12 @@ var SofabatonRemoteCard = class extends i4 {
       abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2)
     };
     const warnText = derived.isUnavailable ? str().card.remoteUnavailable : derived.noActivitiesMessage;
+    const assistEnabled = store.automationAssistEnabled();
     return b2`
       <ha-card ${n6(this._cardRef)}>
-        ${renderAssistModal({ visible: true, controller: this._assist })}
+        ${assistEnabled ? renderAssistModal({ visible: true, controller: this._assist }) : A}
         <div class="wrap" ${n6(this._wrapRef)}>
-          ${renderAssistRow({
-      visible: Boolean(store.config?.show_automation_assist),
-      controller: this._assist
-    })}
+          ${assistEnabled ? renderAssistRow({ visible: true, controller: this._assist }) : A}
           <div class="layout-container" ${n6(this._layoutContainerRef)}>
             ${c6(
       order.filter((key) => key in groupTemplates),
@@ -6325,14 +6446,18 @@ var SofabatonRemoteCard = class extends i4 {
     );
   }
   updated(_changed) {
-    this._applyLocalTheme(String(this._store.config?.theme ?? ""));
-    this._updateGroupRadius();
+    const themeChanged = this._applyLocalTheme(String(this._store.config?.theme ?? ""));
+    if (themeChanged || this._lastGroupRadius == null) this._updateGroupRadius();
     this._applyHostSizing();
     if (this._lastLayoutSignature != null) {
       this._maybeAnimateLayoutChange(this._lastLayoutSignature);
     }
-    this._updateDrawerDirection();
+    if (this._drawerMeasurePending) {
+      this._drawerMeasurePending = false;
+      this._updateDrawerDirection();
+    }
     this._syncLayering();
+    this._syncLoadIndicator();
   }
 };
 SofabatonRemoteCard.styles = [

@@ -1660,9 +1660,6 @@ var TOOLS_CARD_STRINGS_EN = {
     persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
     enablingPersistentCache: "Enabling...",
     enablePersistentCache: "Enable persistent cache",
-    devIdBadge: "DevID",
-    favIdBadge: "FavID",
-    comIdBadge: "ComID",
     activityFallback: (id) => `Activity ${id}`,
     deviceFallback: (id) => `Device ${id}`,
     favoriteFallback: (commandId) => `Favorite ${commandId}`,
@@ -4545,6 +4542,9 @@ function renderSettingsTab(params) {
 function badge(type, value) {
   return b2`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
 }
+var DEV_ID_BADGE = "DevID";
+var FAV_ID_BADGE = "FavID";
+var COM_ID_BADGE = "ComID";
 function renderCacheTab(params) {
   if (params.loading) return b2`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return b2`<div class="cache-state error">${params.error}</div>`;
@@ -4597,7 +4597,7 @@ function renderCacheTab(params) {
             </span>
           </span>
           <span class="entity-meta">
-            ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
+            ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onEditActivity(id);
@@ -4614,7 +4614,7 @@ function renderCacheTab(params) {
       const label = favorite.label || TOOLS_CARD_STRINGS.cache.favoriteFallback(favorite.command_id);
       return innerRow(
         label,
-        b2`${badge(TOOLS_CARD_STRINGS.cache.favIdBadge, favorite.button_id)}${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, favorite.device_id)}${badge(TOOLS_CARD_STRINGS.cache.comIdBadge, favorite.command_id)}`,
+        b2`${badge(FAV_ID_BADGE, favorite.button_id)}${badge(DEV_ID_BADGE, favorite.device_id)}${badge(COM_ID_BADGE, favorite.command_id)}`,
         { kind: "favorite", label: String(label), contextLabel: activityName, targetId: Number(favorite.device_id), commandId: Number(favorite.command_id) }
       );
     })}` : null}
@@ -4622,13 +4622,13 @@ function renderCacheTab(params) {
       const label = macro.label || macro.name || TOOLS_CARD_STRINGS.cache.macroFallback(macro.command_id);
       return innerRow(
         label,
-        b2`${badge(TOOLS_CARD_STRINGS.cache.favIdBadge, macro.command_id)}${badge(TOOLS_CARD_STRINGS.cache.comIdBadge, macro.command_id)}`,
+        b2`${badge(FAV_ID_BADGE, macro.command_id)}${badge(COM_ID_BADGE, macro.command_id)}`,
         { kind: "macro", label: String(label), contextLabel: activityName, targetId: id, commandId: Number(macro.command_id) }
       );
     })}` : null}
           ${buttons.length ? b2`<div class="inner-section-label">${TOOLS_CARD_STRINGS.cache.buttons}</div><div class="buttons-grid">${[buttons.slice(0, Math.ceil(buttons.length / 2)), buttons.slice(Math.ceil(buttons.length / 2))].map((column) => b2`<div class="buttons-col">${column.map((buttonId) => innerRow(
       buttonName(buttonId),
-      badge(TOOLS_CARD_STRINGS.cache.comIdBadge, buttonId),
+      badge(COM_ID_BADGE, buttonId),
       { kind: "button", label: buttonName(buttonId), contextLabel: activityName, targetId: id, commandId: Number(buttonId) }
     ))}</div>`)}</div>` : null}
           ${!favorites.length && !macros.length && !buttons.length ? b2`<div class="inner-empty">${TOOLS_CARD_STRINGS.cache.noCachedData}</div>` : null}
@@ -4657,7 +4657,7 @@ function renderCacheTab(params) {
             </span>
           </span>
           <span class="entity-meta">
-            ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
+            ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onEditDevice(id);
@@ -4671,7 +4671,7 @@ function renderCacheTab(params) {
         </div>
         ${isOpen ? b2`<div class="entity-body">${commands.length ? commands.map((command) => innerRow(
       command.label,
-      badge(TOOLS_CARD_STRINGS.cache.comIdBadge, command.id),
+      badge(COM_ID_BADGE, command.id),
       { kind: "command", label: command.label, contextLabel: deviceName, targetId: id, commandId: command.id }
     )) : b2`<div class="inner-empty">${TOOLS_CARD_STRINGS.cache.noCachedCommands}</div>`}</div>` : null}
       </div>
@@ -5090,9 +5090,6 @@ var TOOLS_CARD_STRINGS_DE = {
     persistentCacheOffCopy: "Aktiviere ihn, um zwischengespeicherte Aktivit\xE4ten und Ger\xE4te zu durchsuchen und davon abh\xE4ngige Backup-Abl\xE4ufe freizuschalten.",
     enablingPersistentCache: "Wird aktiviert...",
     enablePersistentCache: "Dauerhaften Cache aktivieren",
-    devIdBadge: "Ger\xE4te-ID",
-    favIdBadge: "Fav-ID",
-    comIdBadge: "Befehls-ID",
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
     deviceFallback: (id) => `Ger\xE4t ${id}`,
     favoriteFallback: (commandId) => `Favorit ${commandId}`,
@@ -5895,9 +5892,6 @@ var TOOLS_CARD_STRINGS_ES = {
     persistentCacheOffCopy: "Act\xEDvala para explorar las actividades y dispositivos en cach\xE9 y habilitar los flujos de copia de seguridad que dependen de ella.",
     enablingPersistentCache: "Activando...",
     enablePersistentCache: "Activar cach\xE9 persistente",
-    devIdBadge: "ID disp.",
-    favIdBadge: "ID fav.",
-    comIdBadge: "ID com.",
     activityFallback: (id) => `Actividad ${id}`,
     deviceFallback: (id) => `Dispositivo ${id}`,
     favoriteFallback: (commandId) => `Favorito ${commandId}`,
@@ -6701,9 +6695,6 @@ var TOOLS_CARD_STRINGS_FR = {
     persistentCacheOffCopy: "Activez-le pour parcourir les activit\xE9s et appareils en cache et d\xE9verrouiller les proc\xE9dures de sauvegarde qui en d\xE9pendent.",
     enablingPersistentCache: "Activation...",
     enablePersistentCache: "Activer le cache persistant",
-    devIdBadge: "ID appareil",
-    favIdBadge: "ID favori",
-    comIdBadge: "ID commande",
     activityFallback: (id) => `Activit\xE9 ${id}`,
     deviceFallback: (id) => `Appareil ${id}`,
     favoriteFallback: (commandId) => `Favori ${commandId}`,
@@ -7507,9 +7498,6 @@ var TOOLS_CARD_STRINGS_NL = {
     persistentCacheOffCopy: "Schakel deze in om gecachte activiteiten en apparaten te bekijken en back-upwerkstromen te ontgrendelen die ervan afhankelijk zijn.",
     enablingPersistentCache: "Inschakelen...",
     enablePersistentCache: "Permanente cache inschakelen",
-    devIdBadge: "App-ID",
-    favIdBadge: "Fav-ID",
-    comIdBadge: "Cmd-ID",
     activityFallback: (id) => `Activiteit ${id}`,
     deviceFallback: (id) => `Apparaat ${id}`,
     favoriteFallback: (commandId) => `Favoriet ${commandId}`,
@@ -16590,6 +16578,7 @@ var HARD_BUTTON_ID_MAP = {
 };
 var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 var DEFAULT_ACTION = { action: "perform-action" };
+var defaultCommandSlotName = (idx) => `Command ${idx + 1}`;
 function wifiSectionRows() {
   return [
     { id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.wifiCommandsTabLabel, icon: "mdi:wifi" },
@@ -18056,7 +18045,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _commandSlotDefault(idx) {
     return {
-      name: TOOLS_CARD_STRINGS.common.commandFallback(idx + 1),
+      name: defaultCommandSlotName(idx),
       add_as_favorite: true,
       hard_button: "",
       long_press_enabled: false,
@@ -18106,9 +18095,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const activities = validActivityIds ? rawActivities.filter((id) => validActivityIds.has(id)) : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
-        name: this._sanitizeCommandName(
-          record.name ?? TOOLS_CARD_STRINGS.common.commandFallback(idx + 1)
-        ),
+        name: this._sanitizeCommandName(record.name ?? defaultCommandSlotName(idx)),
         add_as_favorite: addAsFavorite,
         hard_button: hardButton,
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),

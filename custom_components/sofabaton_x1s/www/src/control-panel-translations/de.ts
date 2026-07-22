@@ -70,7 +70,7 @@ export const TOOLS_CARD_STRINGS_DE = {
   cache: {
     loading: "Wird geladen...", noHubsFound: "Keine Hubs gefunden.", persistentCacheOffTitle: "Dauerhafter Cache ist deaktiviert",
     persistentCacheOffCopy: "Aktiviere ihn, um zwischengespeicherte Aktivitäten und Geräte zu durchsuchen und davon abhängige Backup-Abläufe freizuschalten.",
-    enablingPersistentCache: "Wird aktiviert...", enablePersistentCache: "Dauerhaften Cache aktivieren", devIdBadge: "Geräte-ID", favIdBadge: "Fav-ID", comIdBadge: "Befehls-ID",
+    enablingPersistentCache: "Wird aktiviert...", enablePersistentCache: "Dauerhaften Cache aktivieren",
     activityFallback: (id: number) => `Aktivität ${id}`, deviceFallback: (id: number) => `Gerät ${id}`, favoriteFallback: (commandId: number) => `Favorit ${commandId}`,
     macroFallback: (commandId: number) => `Makro ${commandId}`, activityCounts: (favorites: number, macros: number, buttons: number) => `${favorites} Fav. / ${macros} Makros / ${buttons} Tasten`,
     deviceCommandCount: (count: number) => `${count} Befehle`, favorites: "Favoriten", macros: "Makros", buttons: "Tasten", noCachedData: "Noch keine Daten im Cache.",

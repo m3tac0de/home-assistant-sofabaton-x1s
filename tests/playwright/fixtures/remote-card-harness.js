@@ -612,12 +612,12 @@ const scenarios = {
           },
           favorite_keys: {
             101: [
-              { command_id: 600, name: "0", device_id: 3 },
-              { command_id: 601, name: "1", device_id: 3 },
-              { command_id: 602, name: "2", device_id: 3 },
-              { command_id: 603, name: "3", device_id: 3 },
-              { command_id: 604, name: "4", device_id: 3 },
-              { command_id: 605, name: "5", device_id: 3 },
+              { command_id: 600, name: "Netflix", device_id: 3 },
+              { command_id: 601, name: "YouTube", device_id: 3 },
+              { command_id: 602, name: "Plex", device_id: 3 },
+              { command_id: 603, name: "Prime Video", device_id: 3 },
+              { command_id: 604, name: "Disney+", device_id: 3 },
+              { command_id: 605, name: "Spotify", device_id: 3 },
             ],
           },
         },
@@ -708,6 +708,9 @@ function createHass(scenario) {
           "--primary-background-color": "#fafafa",
           "--secondary-background-color": "#ffffff",
           "--input-fill-color": "#f4f4f4",
+        },
+        "Harness Square": {
+          "--ha-card-border-radius": "6px",
         },
       },
     },
