@@ -57,6 +57,7 @@ from .command_config import (
     COMMAND_BRAND_PREFIX,
     CommandConfigStore,
     MAX_WIFI_DEVICES,
+    WIFI_EVENTS_DEVICE_KEY,
     async_get_command_config_store,
     compute_commands_hash,
     count_configured_command_slots,
@@ -1279,12 +1280,41 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
         }
         connection.send_error(msg["id"], code, messages.get(code, code))
         return
-    # W2 seam: run async_sync_command_config(device_key=WIFI_EVENTS_DEVICE_KEY,
-    # device_name=WIFI_EVENTS_DEVICE_NAME, ...) here and resolve the deployed
-    # (device_id, command_id) before returning.
+
+    # Deploy: first event ever -> replace path creates the device (and
+    # auto-enables the listener); subsequent events -> the in-place planner
+    # emits a single command_add-shaped record write. On failure the slot
+    # STAYS staged — the event lists `deployed: false` (needs-sync) and the
+    # next create/sync retries it.
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_get_hub_config(
+        hub.entry_id,
+        device_key=WIFI_EVENTS_DEVICE_KEY,
+        roku_listen_port=roku_listen_port,
+    )
+    try:
+        result = await hub.async_sync_command_config(
+            command_payload=payload,
+            request_port=roku_listen_port,
+            device_key=WIFI_EVENTS_DEVICE_KEY,
+            device_name=str(payload.get("device_name") or ""),
+        )
+    except HomeAssistantError as err:
+        message = str(err)
+        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
+        connection.send_error(msg["id"], code, message)
+        return
+
+    # Command-id resolution is the fixed slot law (command_id = slot_index
+    # + 1, long = short + slot_count — live-validated, plan §11 W0.3/W0.4);
+    # the hub device id comes from the sync result.
+    device_id = result.get("wifi_device_id") if isinstance(result, dict) else None
     connection.send_result(
         msg["id"],
-        {"event": allocated, **_wifi_events_state_payload(store, hub.entry_id)},
+        {
+            "event": {**allocated, "device_id": device_id},
+            **_wifi_events_state_payload(store, hub.entry_id),
+        },
     )
 
 
@@ -1307,8 +1337,41 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     if not deleted:
         connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
         return
-    # W2 seam: in-place command_delete deploy for the freed slot (and the
-    # zero-slot device removal + store-record delete when it was the last).
+
+    # Deploy the reset. Full-table writes mean a freed slot re-labels to
+    # its "Command N" placeholder in place (slot indices stable); the LAST
+    # event freed drops configured_slots to 0 and the existing zero-slot
+    # branch removes the hub device + disables the listener only when
+    # nothing else needs it. On failure the reset stays staged (sync
+    # re-offers).
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_get_hub_config(
+        hub.entry_id,
+        device_key=WIFI_EVENTS_DEVICE_KEY,
+        roku_listen_port=roku_listen_port,
+    )
+    try:
+        result = await hub.async_sync_command_config(
+            command_payload=payload,
+            request_port=roku_listen_port,
+            device_key=WIFI_EVENTS_DEVICE_KEY,
+            device_name=str(payload.get("device_name") or ""),
+        )
+    except HomeAssistantError as err:
+        message = str(err)
+        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
+        connection.send_error(msg["id"], code, message)
+        return
+
+    # Last event gone and the hub device removed -> drop the store record
+    # too (user decision 2, plan §10). The listener guard already ran
+    # inside the zero-slot branch.
+    if (
+        int(payload.get("configured_slot_count") or 0) == 0
+        and isinstance(result, dict)
+        and result.get("wifi_device_id") is None
+    ):
+        await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
     connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
 
 
@@ -2224,12 +2287,17 @@ async def _async_prepare_managed_wifi_rename(
     in_sync = bool(deployed_hash) and commands_hash == deployed_hash
     new_hash: str | None = None
     if in_sync:
+        try:
+            record_slot_count = int(record.get("slot_count"))
+        except (TypeError, ValueError):
+            record_slot_count = 10
         new_hash = compute_commands_hash(
             list(record.get("commands") or []),
             device_name=new_name,
             roku_listen_port=roku_listen_port,
             power_on_command_id=record.get("power_on_command_id"),
             power_off_command_id=record.get("power_off_command_id"),
+            slot_count=record_slot_count,
         )
         # The reconcile pass mirrors the hub-side brand hash back into the
         # store on every device burst, so the brand must be rewritten along
@@ -2242,6 +2310,45 @@ async def _async_prepare_managed_wifi_rename(
         "device_name": new_name,
         "deployed_commands_hash": new_hash,
     }
+
+
+def _bundle_device_is_wifi_events(bundle: dict[str, Any], entity_id: int) -> bool:
+    """True when the bundle's device block carries the Wifi Events brand."""
+
+    block = _find_bundle_device_block(bundle, entity_id)
+    if block is None:
+        return False
+    device_key, _brand_hash = _parse_managed_wifi_brand(str(block.get("brand") or ""))
+    return device_key == WIFI_EVENTS_DEVICE_KEY
+
+
+def _collect_short_command_renames(
+    baseline: dict[str, Any],
+    edited: dict[str, Any],
+    entity_id: int,
+) -> dict[int, str]:
+    """Map command id -> new label for every renamed command on the device.
+
+    Long-record ids are included as-is; the store reconcile ignores ids
+    beyond the record's slot_count (short names are authoritative).
+    """
+
+    def _names(bundle: dict[str, Any]) -> dict[int, str]:
+        for device in bundle.get("devices") or []:
+            if int((device.get("device") or {}).get("device_id") or 0) == int(entity_id):
+                return {
+                    int(cmd.get("command_id")): str(cmd.get("name") or "")
+                    for cmd in device.get("commands") or []
+                    if cmd.get("command_id") is not None
+                }
+        return {}
+
+    base_names = _names(baseline)
+    renames: dict[int, str] = {}
+    for command_id, name in _names(edited).items():
+        if command_id in base_names and base_names[command_id] != name:
+            renames[command_id] = name
+    return renames
 
 
 async def _run_entity_sync_operation(
@@ -2267,6 +2374,7 @@ async def _run_entity_sync_operation(
     registry = _backup_operation_registry(hass)
 
     pending_wifi_rename: dict[str, Any] | None = None
+    events_command_renames: dict[int, str] | None = None
     if entity_kind == "device":
         try:
             pending_wifi_rename = await _async_prepare_managed_wifi_rename(
@@ -2278,6 +2386,35 @@ async def _run_entity_sync_operation(
             )
         except Exception:  # pragma: no cover - propagation must never block a sync
             _LOGGER.exception("[device_sync] managed wifi rename detection failed")
+
+        if _bundle_device_is_wifi_events(baseline, entity_id):
+            # §6a: the Hub tab's device editor is the events device's only
+            # hub-side editing UI, but command ADD is blocked — a hub-only
+            # record would have no slot, no callback payload discipline,
+            # and no deployable snapshot entry. Events are added through
+            # the activity editor's Add dialogs.
+            try:
+                planned = build_device_sync_plan(baseline, edited, entity_id)
+            except ValueError:
+                planned = []
+            if any(step.kind == "command_add" for step in planned):
+                message = (
+                    "Commands cannot be added to the Wifi Events device here — "
+                    "create Wifi Events from the activity editor instead."
+                )
+                registry.update(
+                    operation_id,
+                    status="failed",
+                    phase="plan",
+                    message=message,
+                    error=message,
+                    transient=True,
+                )
+                registry.dismiss_operation(operation_id)
+                return {"status": "failed", "failed_at": "plan", "message": message}
+            events_command_renames = _collect_short_command_renames(
+                baseline, edited, entity_id
+            )
 
     def _progress(**payload: Any) -> None:
         registry.update_from_thread(operation_id, **payload)
@@ -2366,6 +2503,22 @@ async def _run_entity_sync_operation(
             async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
         except Exception:  # pragma: no cover - propagation must never fail the sync
             _LOGGER.exception("[device_sync] managed wifi rename propagation failed")
+
+    if events_command_renames:
+        # §6a store-follows-hub: command renames on the Wifi Events device
+        # mirror into the matching slot + deployed snapshot + hash so the
+        # record never reads out-of-step from its own editor. Attached
+        # actions stay with the slot. Best-effort like the rename above.
+        try:
+            store = await _async_get_command_config_store(hass)
+            await store.async_reconcile_wifi_events_command_renames(
+                hub.entry_id,
+                events_command_renames,
+                roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id),
+            )
+            async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
+        except Exception:  # pragma: no cover - propagation must never fail the sync
+            _LOGGER.exception("[device_sync] wifi events command-rename reconcile failed")
 
     completed_steps = int((result or {}).get("total_steps") or 0)
     registry.update(

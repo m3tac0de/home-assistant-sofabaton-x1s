@@ -1155,6 +1155,65 @@ class CommandConfigStore:
         await self._store.async_save(self._data)
         return True
 
+    async def async_reconcile_wifi_events_command_renames(
+        self,
+        entry_id: str,
+        renames: dict[int, str],
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> bool:
+        """Store-follows-hub reconcile after a device/sync renamed command
+        records on the Wifi Events device (plan §6a).
+
+        *renames* maps SHORT hub command ids (1..slot_count) to their new
+        labels. The matching configured slot's name, the deployed-snapshot
+        name, and the deployed hash are all updated together so the record
+        never reads out-of-step from its own editor. Renames of
+        unconfigured placeholder records and of long records are ignored
+        (the short slot name is authoritative; a long-record rename is
+        hub-side drift the next replace-path sync heals).
+        """
+
+        record = self._wifi_events_record(entry_id)
+        if record is None or not renames:
+            return False
+        commands, slot_count = self._wifi_events_slots(record)
+        deployed = record.get("deployed_commands")
+        deployed_list = deployed if isinstance(deployed, list) else []
+        changed = False
+        for raw_id, raw_name in renames.items():
+            try:
+                command_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            name = str(raw_name or "").strip()
+            if not name or not (1 <= command_id <= slot_count):
+                continue
+            idx = command_id - 1
+            if commands[idx] == _default_slot(idx):
+                continue
+            if commands[idx].get("name") != name:
+                commands[idx]["name"] = name
+                changed = True
+            if idx < len(deployed_list) and isinstance(deployed_list[idx], dict):
+                if deployed_list[idx].get("name") != name:
+                    deployed_list[idx]["name"] = name
+                    changed = True
+        if not changed:
+            return False
+        record["commands"] = commands
+        if str(record.get("deployed_commands_hash") or "").strip():
+            record["deployed_commands_hash"] = compute_commands_hash(
+                commands,
+                device_name=str(record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
+                roku_listen_port=roku_listen_port,
+                power_on_command_id=normalize_power_command_id(record.get("power_on_command_id")),
+                power_off_command_id=normalize_power_command_id(record.get("power_off_command_id")),
+                slot_count=slot_count,
+            )
+        await self._store.async_save(self._data)
+        return True
+
     async def async_set_wifi_event_longpress(
         self,
         entry_id: str,
