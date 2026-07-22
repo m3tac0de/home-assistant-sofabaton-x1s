@@ -46,6 +46,11 @@ class _SyncHub:
         self.sync_calls = []
         self.sync_error: Exception | None = None
         self.wifi_device_id = 10
+        self.record_delete_calls: list[tuple[int, list[int]]] = []
+
+    async def async_delete_wifi_event_records(self, *, device_id, command_ids):
+        self.record_delete_calls.append((int(device_id), [int(c) for c in command_ids]))
+        return True
 
     async def async_sync_command_config(self, *, command_payload, request_port, device_key, device_name):
         self.sync_calls.append(
@@ -189,6 +194,10 @@ def test_ws_wifi_event_delete_resets_in_place(monkeypatch):
     ]
     # the reset deployed (2 configured slots remained -> normal sync)
     assert hub.sync_calls and hub.sync_calls[0]["configured"] == 2
+    # the freed slot's short + long records were REALLY deleted so the hub
+    # cascades referencing favorites/bindings/macro-steps (slot 1 -> short
+    # id 2, long id 2 + 50)
+    assert hub.record_delete_calls == [(10, [2, 52])]
     # the record survives (events remain)
     keys = [d["device_key"] for d in _run(store.async_list_hub_devices("entry-1"))]
     assert WIFI_EVENTS_DEVICE_KEY in keys
@@ -210,6 +219,8 @@ def test_ws_wifi_event_delete_last_removes_record(monkeypatch):
     assert hub.sync_calls[-1]["configured"] == 0
     keys = [d["device_key"] for d in _run(store.async_list_hub_devices("entry-1"))]
     assert WIFI_EVENTS_DEVICE_KEY not in keys
+    # the device delete cascades everything — no per-record deletes needed
+    assert hub.record_delete_calls == []
 
 
 def test_ws_wifi_event_delete_sync_failure_keeps_reset_staged(monkeypatch):

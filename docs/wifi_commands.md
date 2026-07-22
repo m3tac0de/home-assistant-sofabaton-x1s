@@ -74,7 +74,7 @@ If two commands claim the same button (for different Activities), no device-page
 
 ## Hub Events
 
-The **Events** sub-tab (next to **Wifi Commands**) contains separate **Hub Events** and **Activity Events** sections. Under **Hub Events**, you can attach a Home Assistant Action to hub state changes:
+The **Events** sub-tab (next to **Wifi Commands**) contains **Hub Events**, **Wifi Events**, and **Activity Events** sections. Under **Hub Events**, you can attach a Home Assistant Action to hub state changes:
 
 - **When the hub is switched OFF** — the hub left an Activity and is now powered off.
 - **When OFF is pressed while the hub is already OFF** — the OFF button was pressed with nothing left to turn off. Useful as a "force everything off" hook.
@@ -92,6 +92,40 @@ Activity Events are tied to the hub's Activity **id** only; no name matching is 
 Unlike Wifi Commands, these hooks live entirely in Home Assistant: they are never synced to the hub and no sync is needed after changing them. They also require no Wifi Device or command slots — they work purely from the hub's reported activity state.
 
 <img height="250" alt="Hub and Activity Events" src="images/automation-events.png" />
+
+## Wifi Events
+
+**Wifi Events** are remote-triggered Home Assistant hooks you place *inside* your Activities: a shortcut on the remote's touch screen, a physical button (short or long press), or a step in a macro. Pressing one fires its Home Assistant Action — no device control involved.
+
+They are the quickest way to say *"when I press this on the remote, do something in Home Assistant"* without configuring a full Wifi Device: creating one only asks for a name.
+
+### Creating Wifi Events
+
+Wifi Events are created from the **live activity editor** (Hub tab → Activities → Edit). Every **Add** dialog — shortcut, button assignment (either press), and macro step — offers a **Wifi Event** kind alongside device commands and macros:
+
+- Pick an existing event, or choose **Create new Wifi Event…** and give it a name.
+- Creating a new event deploys it to the hub right away (the very first one creates the events device and can take a minute; later ones are quick).
+- The reference is then inserted like any device command, and lands on the hub when you **Sync** the activity.
+
+Up to **50 events** can exist per hub, each with an optional long-press variant.
+
+### Managing Wifi Events
+
+Created events appear in the **Events** sub-tab under **WIFI EVENTS**, one row per event:
+
+- Click the action link to attach or change the Home Assistant Action — like Hub Events, action changes apply immediately, **no sync needed**. The small ✕ resets an action to *do nothing*.
+- The **long press** toggle enables a separate long-press hook with its own Action (useful when the event is assigned to a physical button — a held press then fires the long action instead). The toggle itself needs no sync either.
+- The delete button removes the event from the hub. The confirmation lists what the hub will clean up along with it: shortcuts and button assignments that reference the event are removed, and the event's step is removed from any macro (a macro left with no steps is removed too).
+- When an event's deploy didn't complete (for example the hub was busy), its row shows a **needs sync** badge and a **Retry sync** button.
+- When an event fires, its row briefly lights up — the same live indicator the Wifi Device cards show.
+
+Every Wifi Event press also updates `sensor.<hub>_wifi_commands`, so you can build automations that trigger from the sensor instead of (or in addition to) the attached Action.
+
+### The "Wifi Events" device
+
+Behind the scenes, all events live on a single hub device named **Wifi Events**. It never appears in the Wifi Devices list — the Events section above is its home — but since it is a genuine hub device you will see it on the remote's device list and in backups. It can be renamed, and unlike managed Wifi Devices it is fully editable in the live device editor (**Hub tab → Devices → Edit**); renames and command renames made there carry back automatically. New commands for it can only be created through the activity editor's Add dialogs.
+
+Wifi Events work on **all hub versions, including the X1** — the power/Activity-start restrictions below do not apply to them (they use neither power nor input slots).
 
 ## Configuration
 

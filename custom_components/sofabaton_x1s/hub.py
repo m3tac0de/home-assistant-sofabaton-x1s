@@ -3314,6 +3314,49 @@ class SofabatonHub:
         devices = await store.async_list_hub_devices(self.entry_id)
         return any(wifi_device_requires_listener(device) for device in devices)
 
+    async def async_delete_wifi_event_records(
+        self,
+        *,
+        device_id: int,
+        command_ids: list[int],
+    ) -> bool:
+        """Family-0x10 record deletes for a freed Wifi Event slot (short +
+        long record). The hub cascades referencing favorites/bindings and
+        removes the step from macros in place — a macro left with no steps
+        is removed (live-validated both hubs, wifi-events-plan §11 W0.2).
+
+        Runs AFTER the freed slot's placeholder sync; the records
+        resurrect as (ref-less) placeholders on the next full sync, which
+        is harmless — the point of the delete is the reference cascade.
+        """
+
+        async with self._command_sync_lock:
+            ok = True
+            for command_id in command_ids:
+                result = await self.hass.async_add_executor_job(
+                    partial(
+                        self._proxy._sync_step_command_delete,
+                        {"device_id": int(device_id), "command_id": int(command_id)},
+                    )
+                )
+                ok = ok and bool(result)
+            # Cascade epilogue: the deletes rewrote referencing activities'
+            # key rows hub-side; re-warm them + the device catalog so the
+            # cached views (favorite/binding labels, macro steps) follow.
+            await self.async_fetch_device_commands(int(device_id))
+            for act_id in sorted(self._proxy.activities_referencing_device(int(device_id))):
+                await self._async_fetch_activity_commands(act_id)
+            await self._async_refresh_devices_snapshot()
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+            try:
+                await self._async_persist_cache_if_enabled()
+            except Exception:  # noqa: BLE001 - persist is best-effort
+                self._log.debug(
+                    "[%s] post-event-delete cache persist failed", self.entry_id, exc_info=True
+                )
+            return ok
+
     async def _async_try_inplace_command_sync(
         self,
         *,

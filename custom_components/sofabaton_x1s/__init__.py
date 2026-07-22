@@ -1365,13 +1365,30 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
 
     # Last event gone and the hub device removed -> drop the store record
     # too (user decision 2, plan §10). The listener guard already ran
-    # inside the zero-slot branch.
+    # inside the zero-slot branch (the device delete cascades all refs).
     if (
         int(payload.get("configured_slot_count") or 0) == 0
         and isinstance(result, dict)
         and result.get("wifi_device_id") is None
     ):
         await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
+    elif isinstance(result, dict) and isinstance(result.get("wifi_device_id"), int):
+        # The sync re-labeled the freed slot's records to placeholders
+        # (full-table invariant keeps slot ids stable) — but references on
+        # the hub only cascade on a REAL record delete. Delete the freed
+        # short + long records so favorites/bindings/macro-steps that
+        # pointed at the event are cleaned up (the confirm dialog promises
+        # exactly this). Best-effort: on failure the placeholders keep the
+        # stale refs firing no-op callbacks until the next full replace.
+        try:
+            slot_count = int(payload.get("slot_count") or 10)
+            short_id = int(msg["slot_index"]) + 1
+            await hub.async_delete_wifi_event_records(
+                device_id=int(result["wifi_device_id"]),
+                command_ids=[short_id, short_id + slot_count],
+            )
+        except Exception:  # pragma: no cover - cascade is best-effort
+            _LOGGER.exception("[wifi_events] freed-slot record delete failed")
     connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
 
 
