@@ -28,6 +28,8 @@ export interface HassConnectionLike {
 
 export interface HassLike {
   states: Record<string, HassEntityState>;
+  locale?: { language?: string };
+  language?: string;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
     domain: string,

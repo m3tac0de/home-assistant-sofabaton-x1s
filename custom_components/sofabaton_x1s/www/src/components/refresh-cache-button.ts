@@ -86,7 +86,7 @@ class SofabatonRefreshCacheButton extends LitElement {
   }
 
   private _api() {
-    if (!this.hass) throw new Error("Home Assistant is not available");
+    if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
 
@@ -135,7 +135,7 @@ class SofabatonRefreshCacheButton extends LitElement {
       }
       if (payload.status === "failed") {
         this._running = false;
-        this._error = String(payload.error || payload.message || "Cache refresh failed.");
+        this._error = String(payload.error || payload.message || TOOLS_CARD_STRINGS.errors.cacheRefreshFailed);
         this._message = "";
         this._teardown();
         return;

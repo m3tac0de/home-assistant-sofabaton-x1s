@@ -1,6 +1,49 @@
 import type { TabId } from "./shared/ha-context";
 
-export const TOOLS_CARD_STRINGS = {
+// Localizable user-facing strings for the Sofabaton Control Panel card.
+//
+// English is the complete reference table. Translation tables are deep-partial
+// overlays: missing values fall back to English, including regional locales
+// (for example, "nl-BE" falls back to "nl").
+//
+// Deliberately keep protocol identifiers, Home Assistant service names,
+// documentation URLs, hub-provided labels, and log contents out of this table.
+export const TOOLS_CARD_STRINGS_EN = {
+  common: {
+    cancel: "Cancel",
+    save: "Save",
+    complete: "Complete",
+    loading: "Loading...",
+    noHubsFound: "No hubs found.",
+    homeAssistantUnavailable: "Home Assistant is not available",
+    homeAssistantContextUnavailable: "Home Assistant context is unavailable",
+    unknownError: "Unknown error",
+    unknownErrorWithLogs: "Unknown error (check Home Assistant logs)",
+    commandFallback: (id: number | string) => `Command ${id}`,
+    buttonFallback: (id: number | string) => `Button ${id}`,
+    deviceFallback: (id: number | string) => `Device ${id}`,
+    activityFallback: (id: number | string) => `Activity ${id}`,
+    macroFallback: (id: number | string) => `Macro ${id}`,
+    favoriteFallback: (id: number | string) => `Favorite ${id}`,
+    inputFallback: (id: number | string) => `Input ${id}`,
+    noInput: "no input",
+  },
+  card: {
+    connectivityAria: "Connectivity",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version: string) => `SOFABATON CONTROL PANEL - v${version}`,
+    wifiDeviceFallback: "Wifi device",
+    wifiCommandFallback: "Wifi command",
+    irLongPress: (device: string, command: string) => `${device} • ${command} (long press)`,
+    irPress: (device: string, command: string) => `${device} • ${command}`,
+    previewDescription: "Tools, cache, backups, logs & automations for your hub",
+    editorHeight: "Card height",
+    editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
+    pickerName: "Sofabaton Control Panel",
+    pickerDescription:
+      "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands.",
+  },
   docs: {
     wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
     backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
@@ -34,6 +77,64 @@ export const TOOLS_CARD_STRINGS = {
   hubUnavailable: {
     title: "Hub unavailable",
     copy: "This hub is not connected, so the control panel is unavailable until the hub reconnects.",
+  },
+  availability: {
+    operationRunning: "Operation running",
+    working: "Working...",
+    appConnectedOnlyLogs: "Only Logs is available while the Sofabaton app is connected.",
+    hubCommandInProgress: "Hub command in progress...",
+    refreshingCache: "Refreshing cache...",
+    unavailable: "Unavailable",
+    refreshDashboard: "Refresh the dashboard to load the updated Sofabaton Control Panel card.",
+    automationUnavailable: "Automation unavailable",
+    backupUnavailable: "Backup unavailable",
+    automationBlockedByProxy:
+      "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    backupBlockedByProxy:
+      "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+  },
+  buttonNames: {
+    0x97: "C",
+    0x98: "B",
+    0x99: "A",
+    0x9a: "Exit",
+    0x9b: "Dvr",
+    0x9c: "Play",
+    0x9d: "Guide",
+    0xae: "Up",
+    0xaf: "Left",
+    0xb0: "Ok",
+    0xb1: "Right",
+    0xb2: "Down",
+    0xb3: "Back",
+    0xb4: "Home",
+    0xb5: "Menu",
+    0xb6: "Vol Up",
+    0xb7: "Ch Up",
+    0xb8: "Mute",
+    0xb9: "Vol Down",
+    0xba: "Ch Down",
+    0xbb: "Rew",
+    0xbc: "Pause",
+    0xbd: "Fwd",
+    0xbe: "Red",
+    0xbf: "Green",
+    0xc0: "Yellow",
+    0xc1: "Blue",
+    0xc6: "Power On",
+    0xc7: "Power Off",
+  } as Record<number, string>,
+  errors: {
+    backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
+    logsNoSocket: "Live logs are unavailable without a websocket connection",
+    wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
+    hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    anotherOperation: "Another hub operation is already running.",
+    noHubSelected: "No hub selected.",
+    noHubSelectedLong: "No hub is selected.",
+    cacheRefreshFailed: "Cache refresh failed.",
+    syncFailed: "Sync failed.",
+    activityIdMissing: "The hub did not return the new activity id.",
   },
   settings: {
     loading: "Loading...",
@@ -107,6 +208,9 @@ export const TOOLS_CARD_STRINGS = {
     addActivityCancel: "Cancel",
     addActivityConfirm: "Create",
     addActivityCreating: "Creating…",
+    reorderingActivities: "Reordering activities…",
+    reorderingDevices: "Reordering devices…",
+    creatingActivity: "Creating activity…",
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).
   hubClick: {
@@ -256,6 +360,9 @@ export const TOOLS_CARD_STRINGS = {
     },
   },
   backup: {
+    sectionMake: "Make",
+    sectionEdit: "Edit",
+    sectionRestore: "Restore",
     loading: "Loading backup tools...",
     selectHub: "Select a hub to manage backups.",
     creatingSubtitle: "The hub is creating your backup.",
@@ -268,10 +375,39 @@ export const TOOLS_CARD_STRINGS = {
     downloadAgain: "Download again",
     downloadBackup: "Download backup",
     complete: "Complete",
+    restoreCompletedTitle: "Restore completed",
+    restoreCompletedSubtitle: "The selected Activities and Devices were restored to the hub.",
+    restoreCompletedStatus: "Restore completed.",
+    restoreCompletedSuccessfully: "Restore completed successfully.",
+    backupCompletedSuccessfully: "Backup completed successfully.",
+    wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
+    restoreRunningSubtitle: "The hub is restoring your backup.",
+    restoreFinishedSubtitle: "Your restore has completed.",
+    restoreChooseSubtitle:
+      "Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on.",
+    itemsToRestore: "Items to restore",
+    eraseExisting: "Erase existing Devices and Activities",
+    startRestore: "Start restore",
+    startingBackup: "Starting backupâ€¦",
+    startingRestore: "Starting restoreâ€¦",
+    backupFailed: "Backup failed.",
+    restoreFailed: "Restore failed.",
+    backupInProgress: "Backup in progressâ€¦",
+    restoreInProgress: "Restore in progressâ€¦",
+    failedPrepareDownload: "Failed to prepare edited backup for download.",
+    enterName: "Enter a name to continue.",
+    renameDialogTitle: "Rename Hub",
+    linked: "linked",
+    hubNameRestoreOnlyAria: "Hub name is only applied at restore time when the user opts to wipe the hub.",
     entireHub: "Entire hub",
     selectedDevices: "Selected devices",
     devicesToInclude: "Devices to include",
     selectedCount: (count: number) => `${count} selected`,
+    backupResultSummary: (activities: number, devices: number) =>
+      `${activities} ${activities === 1 ? "Activity" : "Activities"} and ${devices} ${devices === 1 ? "Device" : "Devices"} backed up`,
+    activityMeta: (favorites: number, macros: number) =>
+      `${favorites} favs · ${macros} macros`,
+    linkedDevices: (count: number) => `${count} linked devices`,
     deselectAll: "Deselect all",
     selectAll: "Select all",
     noDevicesAvailable: "No devices available.",
@@ -280,6 +416,10 @@ export const TOOLS_CARD_STRINGS = {
     editLoadPrompt: "Load a backup file, then choose an Activity or Device to edit.",
     chooseBackupFile: "Choose backup file",
     reorderHint: " Drag the handle on any row to reorder Activities and Devices.",
+    macroStepsSortableHelp:
+      "Drag to reorder. Each step plays a command; set the wait that follows it on the right.",
+    macroStepsHelp:
+      "Each step plays a command; set the wait that follows it on the right.",
     hubName: "Hub name",
     hubNameNotSet: "(not set)",
     renameHub: "Rename Hub",
@@ -456,6 +596,176 @@ export const TOOLS_CARD_STRINGS = {
     addShortcutActionName: "Name",
     addShortcutActionHelper: "You'll pick the steps next.",
     addShortcutCommandHelper: "The shortcut shows up under the command's name.",
+    unsaved: "Unsaved",
+    unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
+    renameKind: (kind: "activity" | "device") => `Rename ${kind}`,
+    managedWifiTitle: "Managed by Wifi Commands",
+    managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
+    managedWifiBody:
+      "Its commands, power, input, and button assignments are configured there â€” editing them here would be overwritten on the next sync.",
+    managedWifiRename:
+      "You can still rename it here; the new name stays in sync with your Wifi Commands configuration.",
+    detailPower: "Power",
+    detailNetwork: "Network",
+    detailCommands: "Commands",
+    detailButtons: "Buttons",
+    detailSectionsAria: "Detail sections",
+    editBindingAria: "Edit binding",
+    editIpAria: "Edit IP address",
+    networkDescription:
+      "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
+    ipv4Description: "IPv4 dotted-decimal address",
+    addCommand: "Add command",
+    addCommandTitle: "Add Command",
+    editPayloadTitle: "Edit Payload",
+    commandsLiveHelp:
+      "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup â†’ Edit.",
+    commandsBackupHelp:
+      "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
+    newCommandChip: "new command",
+    commandChip: "command",
+    buttonChip: "button",
+    ipChip: "ip",
+    thisItem: "this item",
+    noDeviceCommands: "This Device does not currently have any commands.",
+    renameCommandAria: "Rename command",
+    commandId: "Command ID",
+    editPayloadAria: "Edit payload",
+    fetchEditCommandAria: "Fetch and edit this command's payload",
+    moveUpAria: "Move up",
+    moveDownAria: "Move down",
+    deviceClass: "Device class",
+    name: "Name",
+    nameHelper: "Shown on the remote and in every command picker.",
+    verifyPayloadLive:
+      "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
+    verifyPayloadBackup:
+      "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
+    test: "Test",
+    sendingToHub: "Sending to the hubâ€¦",
+    sentToHub: "Sent to the hub for one-shot playback.",
+    testFailed: "Test failed.",
+    rawPayload: "Raw payload",
+    rawPayloadDescription:
+      "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
+    payloadHex: "Payload (hex bytes)",
+    payloadHexHelper: "Byte pairs like \"0a 4f 22\"; whitespace and 0x prefixes are tolerated.",
+    rename: "Rename",
+    renameActivity: "Rename Activity",
+    renameDevice: "Rename Device",
+    renameMacro: "Rename Macro",
+    renameFavorite: "Rename Favorite",
+    renameCommand: "Rename Command",
+    ipAddress: "IP address",
+    noPayloadReturned: "The hub returned no payload for this command.",
+    noTemplateCommand:
+      "This device has no commands to use as a template â€” add its first command with the Sofabaton app.",
+    newCommandNameRequired: "Enter a name for the new command.",
+    descriptiveIrRequired:
+      "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired:
+      "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
+    noFreeCommandSlot: "This device has no free command slot left.",
+    nothingToTest: "Nothing to test yet.",
+    ipv4Required:
+      "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
+    steps: "Steps",
+    buttonCatalog: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      home: "Home",
+      back: "Back",
+      menu: "Menu",
+      volumeUp: "Volume Up",
+      volumeDown: "Volume Down",
+      mute: "Mute",
+      channelUp: "Channel Up",
+      channelDown: "Channel Down",
+      rewind: "Rewind",
+      pause: "Pause",
+      forward: "Forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      exit: "Exit",
+      dvr: "DVR",
+      play: "Play",
+      guide: "Guide",
+      navigation: "Navigation",
+      volumeChannel: "Volume & Channel",
+      transport: "Transport",
+      colour: "Colour",
+      extra: "Extra",
+      unknown: (code: string) => `Button 0x${code}`,
+    },
+    powerOn: "Power on",
+    powerOff: "Power off",
+    powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`,
+    inputStepLabel: (device: string, input: string) => `Input · ${device}: ${input}`,
+    macroTargetLabelText: (name: string) => `Macro · ${name}`,
+  },
+  hub: {
+    loading: "Loading…",
+    unknown: "Unknown",
+    connectionStatusAria: "Hub connection status",
+    hubConnected: "Hub connected",
+    hubNotConnected: "Hub not connected",
+    appConnected: "App connected",
+    appNotConnected: "App not connected",
+    version: "Version",
+    ipAddress: "IP Address",
+    activities: "Activities",
+    devices: "Devices",
+    integrationVersion: "Integration version",
+    firmwareVersion: (version: string | number) => `FW: v${version}`,
+    productVersion: (version: string) => `Sofabaton ${version}`,
+  },
+  decodedPayload: {
+    httpTitle: "HTTP request",
+    httpSubtitle:
+      "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    hostIpv4: "Host (IPv4)",
+    hostExample: "e.g. 192.168.2.77",
+    port: "Port",
+    httpMethod: "HTTP method",
+    httpMethodExample: "e.g. GET, POST",
+    path: "Path",
+    extraHeaders: "Extra headers",
+    extraHeadersHelper: "One header per line. Host and Content-Length are added automatically.",
+    contentType: "Content type",
+    body: "Body",
+    rokuTitle: "Roku ECP request",
+    ecpPath: "ECP URL path",
+    ecpPathExample: "e.g. /launch/12 or /keypress/Home",
+    hueTitle: "Hue REST request",
+    sonosTitle: "Sonos UPnP request",
+    bodyBlockSubtitle: "Body block is injected verbatim between Host headers and the network write.",
+    urlPath: "URL path",
+    bodyBlock: "Body block (raw wire string)",
+    bodyBlockHelper:
+      "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value â€” it must match the body byte count.",
+    irTitle: "Descriptive IR payload",
+    irSubtitle:
+      "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:â€¦ D:â€¦ F:â€¦) are decodable; raw learned-IR payloads are not editable here.",
+    descriptor: "Descriptor",
+    descriptorExample: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "Backup file must contain a JSON object.",
+    invalidBundle: "Backup file is not a Sofabaton hub bundle.",
+    invalidSchema: (expected: number, actual: unknown) =>
+      `Backup file schema_version must be ${expected} (got ${String(actual)}).`,
+    structuralBundle:
+      "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
+    missingArrays: "Backup file is missing devices or activities arrays.",
+    missingSourceModel:
+      "Backup file is missing its source hub model, so compatibility cannot be verified.",
+    unknownDestinationModel:
+      "The destination hub model is unknown, so restore compatibility cannot be verified.",
+    incompatibleModels: (source: string, destination: string) =>
+      `This backup was created on a Sofabaton ${source} hub and cannot be restored onto a Sofabaton ${destination} hub.`,
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
@@ -464,6 +774,36 @@ export const TOOLS_CARD_STRINGS = {
     sectionSubtitle:
       "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDevice: "Add Wifi Device",
+    deleteDeviceAria: "Delete Wifi Device",
+    emptyDevices: "No Wifi Devices configured yet. Add one to start assigning command slots.",
+    maximumDevices: "Maximum number of devices reached",
+    configuredSlots: (count: number) => `${count} slot${count === 1 ? "" : "s"}`,
+    unableSaveAction: "Unable to save Action",
+    hubCommandInProgress: "Hub command in progress...",
+    idle: "Idle",
+    unableLoadSyncStatus: "Unable to load sync status",
+    noTargetEntity: "No target entity",
+    commandNameLeadingSpace: "Command name must start with a non-space character.",
+    navigationGroup: "Navigation",
+    transportGroup: "Transport",
+    mediaGroup: "Media",
+    abcGroup: "ABC",
+    colorGroup: "Color",
+    inputCommand: "Input command",
+    inputFor: (activity: string) => `Input for ${activity}`,
+    activitySingular: "Activity",
+    activityPlural: "Activities",
+    unconfiguredCommand: "Unconfigured command",
+    powerBothCommand: "Power ON and OFF command",
+    powerOnCommand: "Power ON command",
+    powerOffCommand: "Power OFF command",
+    thisDevice: "this device",
+    replacesOnButton: (slot: string) => `Replaces "${slot}" on this button`,
+    replacesFromDevice: (slot: string, device: string) =>
+      `Replaces "${slot}" from ${device}`,
+    none: "None",
+    commandSlotDescription:
+      "Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device...",
     syncingDeviceNamed: (deviceName: string) => `Syncing ${deviceName}...`,
     syncInProgress: "Sync in progress",
@@ -489,6 +829,7 @@ export const TOOLS_CARD_STRINGS = {
     actionButtonSyncToHub: "Sync to Hub",
     actionButtonUpToDate: "Up to Date",
     createDeviceBusy: "Creating Wifi Device...",
+    deviceName: "Device name",
     createDeviceNameRequired: "Device name is required.",
     createDeviceFailed: "Unable to create Wifi Device",
     deleteDeviceBusy: "Deleting Wifi Device...",
@@ -590,3 +931,152 @@ export const TOOLS_CARD_STRINGS = {
     } as Record<string, string>,
   },
 } as const;
+
+export type ToolsCardStrings = typeof TOOLS_CARD_STRINGS_EN;
+
+type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends (...args: infer Args) => any
+    ? (...args: Args) => string
+    : T[K] extends string
+      ? string
+      : T[K] extends number
+        ? number
+        : T[K] extends boolean
+          ? boolean
+    : T[K] extends object
+      ? DeepPartial<T[K]>
+      : T[K];
+};
+
+type DeepTranslation<T> = {
+  [K in keyof T]-?: T[K] extends (...args: infer Args) => any
+    ? (...args: Args) => string
+    : T[K] extends string
+      ? string
+      : T[K] extends number
+        ? number
+        : T[K] extends boolean
+          ? boolean
+          : T[K] extends object
+            ? DeepTranslation<T[K]>
+            : T[K];
+};
+
+export type ToolsCardTranslation = DeepPartial<ToolsCardStrings>;
+export type CompleteToolsCardTranslation = DeepTranslation<ToolsCardStrings>;
+
+const TRANSLATIONS: Record<string, ToolsCardTranslation> = {};
+let currentLanguage = "en";
+let currentStrings: ToolsCardStrings = TOOLS_CARD_STRINGS_EN;
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function deepMerge<T>(base: T, overlay: DeepPartial<T> | undefined): T {
+  if (!isPlainObject(overlay)) return base;
+  const out: any = { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    if (value === undefined) continue;
+    if (isPlainObject(value) && isPlainObject((base as any)?.[key])) {
+      out[key] = deepMerge((base as any)[key], value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function resolveTranslation(language: string): ToolsCardTranslation | null {
+  const lang = String(language || "").toLowerCase();
+  if (!lang) return null;
+  if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
+  const base = lang.split(/[-_]/)[0];
+  return base && TRANSLATIONS[base] ? TRANSLATIONS[base] : null;
+}
+
+/** Register or replace a control-panel translation table. */
+export function registerToolsCardTranslation(
+  language: string,
+  translation: ToolsCardTranslation,
+) {
+  const lang = String(language || "").toLowerCase();
+  if (!lang) return;
+  TRANSLATIONS[lang] = translation;
+  if (currentLanguage === lang || currentLanguage.split(/[-_]/)[0] === lang) {
+    const active = resolveTranslation(currentLanguage);
+    currentStrings = active
+      ? deepMerge(TOOLS_CARD_STRINGS_EN, active)
+      : TOOLS_CARD_STRINGS_EN;
+  }
+}
+
+/**
+ * Select the Home Assistant language. Returns true when the active language
+ * changed so the host card can request a render.
+ */
+export function setToolsCardLanguage(language: unknown): boolean {
+  const lang = String(language || "en").toLowerCase();
+  if (lang === currentLanguage) return false;
+  currentLanguage = lang;
+  const translation = resolveTranslation(lang);
+  currentStrings = translation
+    ? deepMerge(TOOLS_CARD_STRINGS_EN, translation)
+    : TOOLS_CARD_STRINGS_EN;
+  return true;
+}
+
+/** The currently selected locale code, normalized to lowercase. */
+export function toolsCardLanguage(): string {
+  return currentLanguage;
+}
+
+function valueAtPath(path: PropertyKey[]): any {
+  let value: any = currentStrings;
+  for (const key of path) value = value?.[key as any];
+  return value;
+}
+
+const proxyCache = new Map<string, any>();
+
+function liveStringsProxy(path: PropertyKey[]): any {
+  const cacheKey = path.map(String).join(".");
+  const cached = proxyCache.get(cacheKey);
+  if (cached) return cached;
+
+  const proxy = new Proxy(() => undefined, {
+    get(_target, property) {
+      const value = valueAtPath([...path, property]);
+      if (typeof value === "function" || isPlainObject(value)) {
+        return liveStringsProxy([...path, property]);
+      }
+      return value;
+    },
+    apply(_target, _thisArg, args) {
+      const value = valueAtPath(path);
+      return typeof value === "function" ? value(...args) : undefined;
+    },
+    ownKeys() {
+      const value = valueAtPath(path);
+      return isPlainObject(value) ? Reflect.ownKeys(value) : [];
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      const value = valueAtPath(path);
+      if (!isPlainObject(value) || !(property in value)) return undefined;
+      return { configurable: true, enumerable: true };
+    },
+  });
+  proxyCache.set(cacheKey, proxy);
+  return proxy;
+}
+
+/**
+ * Backwards-compatible live view of the active table. Nested references remain
+ * live, so `const S = TOOLS_CARD_STRINGS.backup` also follows locale changes.
+ */
+export const TOOLS_CARD_STRINGS: ToolsCardStrings = liveStringsProxy([]);
+
+/** Explicit accessor for new code and tests. */
+export function toolsStr(): ToolsCardStrings {
+  return TOOLS_CARD_STRINGS;
+}

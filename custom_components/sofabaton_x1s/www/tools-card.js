@@ -1501,6 +1501,955 @@ var cardStyles = [secondaryTabStyles, i`
   }
 `];
 
+// custom_components/sofabaton_x1s/www/src/strings.ts
+var TOOLS_CARD_STRINGS_EN = {
+  common: {
+    cancel: "Cancel",
+    save: "Save",
+    complete: "Complete",
+    loading: "Loading...",
+    noHubsFound: "No hubs found.",
+    homeAssistantUnavailable: "Home Assistant is not available",
+    homeAssistantContextUnavailable: "Home Assistant context is unavailable",
+    unknownError: "Unknown error",
+    unknownErrorWithLogs: "Unknown error (check Home Assistant logs)",
+    commandFallback: (id) => `Command ${id}`,
+    buttonFallback: (id) => `Button ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
+    activityFallback: (id) => `Activity ${id}`,
+    macroFallback: (id) => `Macro ${id}`,
+    favoriteFallback: (id) => `Favorite ${id}`,
+    inputFallback: (id) => `Input ${id}`,
+    noInput: "no input"
+  },
+  card: {
+    connectivityAria: "Connectivity",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version) => `SOFABATON CONTROL PANEL - v${version}`,
+    wifiDeviceFallback: "Wifi device",
+    wifiCommandFallback: "Wifi command",
+    irLongPress: (device, command) => `${device} \u2022 ${command} (long press)`,
+    irPress: (device, command) => `${device} \u2022 ${command}`,
+    previewDescription: "Tools, cache, backups, logs & automations for your hub",
+    editorHeight: "Card height",
+    editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
+    pickerName: "Sofabaton Control Panel",
+    pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands."
+  },
+  docs: {
+    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
+  },
+  tabs: {
+    cache: "Hub",
+    wifiCommands: "Automation",
+    backup: "Backup",
+    settings: "Settings",
+    logs: "Logs"
+  },
+  tabDocs: {
+    wifi_commands: "Automation documentation",
+    backup: "Backup documentation"
+  },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
+  },
+  backend: {
+    unavailableTitle: "Backend not available",
+    unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
+    versionMismatchTitle: "Refresh required to update the Sofabaton Control Panel card",
+    versionMismatchCopy: "This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant. Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.",
+    backendExpects: "Backend expects",
+    cardLoaded: "Card loaded",
+    unknownVersion: "unknown",
+    refreshingCache: "Refreshing cache...",
+    hubCommandInProgress: "Hub command in progress..."
+  },
+  hubUnavailable: {
+    title: "Hub unavailable",
+    copy: "This hub is not connected, so the control panel is unavailable until the hub reconnects."
+  },
+  availability: {
+    operationRunning: "Operation running",
+    working: "Working...",
+    appConnectedOnlyLogs: "Only Logs is available while the Sofabaton app is connected.",
+    hubCommandInProgress: "Hub command in progress...",
+    refreshingCache: "Refreshing cache...",
+    unavailable: "Unavailable",
+    refreshDashboard: "Refresh the dashboard to load the updated Sofabaton Control Panel card.",
+    automationUnavailable: "Automation unavailable",
+    backupUnavailable: "Backup unavailable",
+    automationBlockedByProxy: "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    backupBlockedByProxy: "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy."
+  },
+  buttonNames: {
+    151: "C",
+    152: "B",
+    153: "A",
+    154: "Exit",
+    155: "Dvr",
+    156: "Play",
+    157: "Guide",
+    174: "Up",
+    175: "Left",
+    176: "Ok",
+    177: "Right",
+    178: "Down",
+    179: "Back",
+    180: "Home",
+    181: "Menu",
+    182: "Vol Up",
+    183: "Ch Up",
+    184: "Mute",
+    185: "Vol Down",
+    186: "Ch Down",
+    187: "Rew",
+    188: "Pause",
+    189: "Fwd",
+    190: "Red",
+    191: "Green",
+    192: "Yellow",
+    193: "Blue",
+    198: "Power On",
+    199: "Power Off"
+  },
+  errors: {
+    backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
+    logsNoSocket: "Live logs are unavailable without a websocket connection",
+    wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
+    hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    anotherOperation: "Another hub operation is already running.",
+    noHubSelected: "No hub selected.",
+    noHubSelectedLong: "No hub is selected.",
+    cacheRefreshFailed: "Cache refresh failed.",
+    syncFailed: "Sync failed.",
+    activityIdMissing: "The hub did not return the new activity id."
+  },
+  settings: {
+    loading: "Loading...",
+    noHubsFound: "No hubs found.",
+    unknownHubName: "Unknown",
+    activities: "Activities",
+    devices: "Devices",
+    persistentCacheTitle: "Persistent Cache",
+    persistentCacheDescription: "Store activity and device data locally for faster access.",
+    persistentCacheFooter: "GLOBAL",
+    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
+    hubClickActionTitle: "Hub Tab Clicks",
+    hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "Do nothing",
+    hubClickActionOptionSend: "Send the command",
+    hubClickActionOptionCopy: "Copy the command",
+    hexLoggingTitle: "Hex Logging",
+    hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
+    wifiDeviceTitle: "WiFi Device",
+    wifiDeviceDescription: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
+    findRemoteTitle: "Find Remote",
+    findRemoteDescription: "Make the remote beep so you can locate it.",
+    syncRemoteTitle: "Sync Remote",
+    syncRemoteDescription: "Push the latest configuration to the physical remote."
+  },
+  cache: {
+    loading: "Loading...",
+    noHubsFound: "No hubs found.",
+    persistentCacheOffTitle: "Persistent cache is off",
+    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
+    enablingPersistentCache: "Enabling...",
+    enablePersistentCache: "Enable persistent cache",
+    devIdBadge: "DevID",
+    favIdBadge: "FavID",
+    comIdBadge: "ComID",
+    activityFallback: (id) => `Activity ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
+    favoriteFallback: (commandId) => `Favorite ${commandId}`,
+    macroFallback: (commandId) => `Macro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} favs / ${macros} macros / ${buttons} btns`,
+    deviceCommandCount: (count) => `${count} cmds`,
+    favorites: "Favorites",
+    macros: "Macros",
+    buttons: "Buttons",
+    noCachedData: "No cached data yet.",
+    noCachedCommands: "No cached commands.",
+    staleBanner: "Cache was updated externally. Refresh to see latest data.",
+    refresh: "Refresh",
+    activities: "Activities",
+    devices: "Devices",
+    refreshList: "Refresh list",
+    refreshAll: "Refresh all",
+    editActivity: "Edit activity",
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026",
+    reorderingActivities: "Reordering activities\u2026",
+    reorderingDevices: "Reordering devices\u2026",
+    creatingActivity: "Creating activity\u2026"
+  },
+  // Hub-tab row clicks ("send the command" / "copy the command" modes).
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Activity",
+    contextDevice: "Device",
+    kindLabels: {
+      favorite: "Favorite",
+      macro: "Macro",
+      button: "Button",
+      command: "Command"
+    },
+    lovelaceHeading: "Lovelace Button Code",
+    lovelaceHint: "Copy this to your Dashboard YAML:",
+    actionHeading: "Service Call (Automation)",
+    actionHint: "Use this in your Scripts or Automations:",
+    noRemoteEntity: "The hub's remote entity is unavailable.",
+    copied: (label) => `Copied "${label}" to notifications.`,
+    sendTooltip: "Click to send this command to the hub",
+    copyTooltip: "Click to copy this command to a notification"
+  },
+  logs: {
+    loading: "Loading log stream...",
+    empty: "No log lines captured for this hub yet.",
+    liveConsole: "Live Console"
+  },
+  cacheRefresh: {
+    label: "Refresh all",
+    running: "Refreshing\u2026",
+    starting: "Starting hub cache refresh\u2026",
+    working: "Reading your hub's configuration\u2026",
+    done: "Hub cache refreshed."
+  },
+  progress: {
+    homeAssistant: "Home Assistant",
+    sofabatonHub: "Sofabaton Hub",
+    working: "Working...",
+    backupTitle: "Creating backup",
+    restoreTitle: "Restoring backup"
+  },
+  activities: {
+    loading: "Loading activities...",
+    selectHub: "Select a hub to edit its activities.",
+    activityFallback: (id) => `Activity ${id}`,
+    // Guard panels (§4.1), rendered inside the editor view.
+    appConnectedTitle: "The Sofabaton app is connected",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
+    operationRunningTitle: "Another operation is running",
+    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
+    // Capture flow (§4.2).
+    captureTitle: "Reading your hub",
+    captureMessage: "Reading your hub's configuration\u2026",
+    captureMessageWithStep: (current, total) => `Reading your hub's configuration\u2026 (device ${current} of ${total})`,
+    captureFailedTitle: "Couldn't read the hub",
+    captureFailedBody: "The hub stopped responding before we finished reading it.",
+    retry: "Retry",
+    back: "Back",
+    // Cache-sourced capture (blob-free structural bundle).
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
+    needsRefreshTitle: "Refresh the hub cache to edit",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
+    // Session restore banner (§4.6).
+    // Live-mode edit header (§4.3). The header mirrors the Wifi command
+    // editor: a single stateful Sync button (no dirty chip, no review/discard).
+    syncToHub: "Sync to Hub",
+    syncUpToDate: "Up to date",
+    // Immediate entity delete (executed on the hub right away).
+    deletingTitle: (kind) => `Deleting ${kind}`,
+    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
+    // Sync flow (§4.5).
+    syncingTitle: "Syncing to your hub",
+    syncingMessage: "Writing your changes to the hub\u2026",
+    syncSuccess: "Synced to hub.",
+    syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
+    syncFailedTitle: "Sync didn't finish",
+    syncFailedStep: (step) => `The hub stopped at: ${step}`,
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
+    syncRetry: "Retry sync",
+    syncReload: "Reload from hub",
+    syncKeepEditing: "Keep editing",
+    exitUnsyncedTitle: "Unsynced changes",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
+    exitSyncNow: "Sync now",
+    exitWithoutSync: "Leave without syncing",
+    // Dismiss label reused by the sync-success / delete-error banners.
+    discardConfirmCancel: "Keep editing",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
+      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device) => `"${device}" input cleared.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group, device) => `${group} now control "${device}".`,
+      roleCustomized: (group) => `${group} customized.`,
+      roleCleared: (group) => `${group} no longer assigned.`,
+      shortcutAdded: (name) => `Added "${name}".`,
+      shortcutRemoved: (name) => `Removed "${name}".`,
+      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons"
+      },
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub"
+      }
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "Power",
+      sectionNetwork: "Network",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name) => `Added macro "${name}".`,
+      macroRemoved: (name) => `Removed macro "${name}".`,
+      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
+      macroChanged: (name) => `Edited macro "${name}".`,
+      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button) => `"${button}" no longer bound.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
+    }
+  },
+  backup: {
+    sectionMake: "Make",
+    sectionEdit: "Edit",
+    sectionRestore: "Restore",
+    loading: "Loading backup tools...",
+    selectHub: "Select a hub to manage backups.",
+    creatingSubtitle: "The hub is creating your backup.",
+    readySubtitle: "Your backup is ready.",
+    chooseSubtitle: "Choose what to include in this backup.",
+    enablePersistentCache: "Enable persistent cache to choose backup contents from the card.",
+    completedTitle: "Backup completed",
+    expired: "Backup expired. Start a new backup to download again.",
+    downloaded: "Downloaded",
+    downloadAgain: "Download again",
+    downloadBackup: "Download backup",
+    complete: "Complete",
+    restoreCompletedTitle: "Restore completed",
+    restoreCompletedSubtitle: "The selected Activities and Devices were restored to the hub.",
+    restoreCompletedStatus: "Restore completed.",
+    restoreCompletedSuccessfully: "Restore completed successfully.",
+    backupCompletedSuccessfully: "Backup completed successfully.",
+    wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
+    restoreRunningSubtitle: "The hub is restoring your backup.",
+    restoreFinishedSubtitle: "Your restore has completed.",
+    restoreChooseSubtitle: "Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on.",
+    itemsToRestore: "Items to restore",
+    eraseExisting: "Erase existing Devices and Activities",
+    startRestore: "Start restore",
+    startingBackup: "Starting backup\xE2\u20AC\xA6",
+    startingRestore: "Starting restore\xE2\u20AC\xA6",
+    backupFailed: "Backup failed.",
+    restoreFailed: "Restore failed.",
+    backupInProgress: "Backup in progress\xE2\u20AC\xA6",
+    restoreInProgress: "Restore in progress\xE2\u20AC\xA6",
+    failedPrepareDownload: "Failed to prepare edited backup for download.",
+    enterName: "Enter a name to continue.",
+    renameDialogTitle: "Rename Hub",
+    linked: "linked",
+    hubNameRestoreOnlyAria: "Hub name is only applied at restore time when the user opts to wipe the hub.",
+    entireHub: "Entire hub",
+    selectedDevices: "Selected devices",
+    devicesToInclude: "Devices to include",
+    selectedCount: (count) => `${count} selected`,
+    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "Activity" : "Activities"} and ${devices} ${devices === 1 ? "Device" : "Devices"} backed up`,
+    activityMeta: (favorites, macros) => `${favorites} favs \xB7 ${macros} macros`,
+    linkedDevices: (count) => `${count} linked devices`,
+    deselectAll: "Deselect all",
+    selectAll: "Select all",
+    noDevicesAvailable: "No devices available.",
+    working: "Working",
+    startBackup: "Start backup",
+    editLoadPrompt: "Load a backup file, then choose an Activity or Device to edit.",
+    chooseBackupFile: "Choose backup file",
+    reorderHint: " Drag the handle on any row to reorder Activities and Devices.",
+    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the wait that follows it on the right.",
+    macroStepsHelp: "Each step plays a command; set the wait that follows it on the right.",
+    hubName: "Hub name",
+    hubNameNotSet: "(not set)",
+    renameHub: "Rename Hub",
+    activities: "Activities",
+    noActivitiesInFile: "This backup file has no activities.",
+    devices: "Devices",
+    noDevicesInFile: "This backup file has no devices.",
+    unsavedChanges: "Unsaved changes. Click ",
+    downloadEditedBackupStrong: "Download edited backup",
+    unsavedChangesSuffix: " to save them to a file.",
+    downloadEditedBackup: "Download edited backup",
+    deleteActivityTitle: (name) => `Delete activity "${name}"?`,
+    deleteDeviceTitle: (name) => `Delete device "${name}"?`,
+    deleteCommandTitle: (name) => `Delete command "${name}"?`,
+    deleteFavoriteTitle: (name) => `Delete shortcut "${name}"?`,
+    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
+    deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
+    deleteSimpleBody: "This removes it from the loaded backup.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
+    deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+    deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    // Live-edit variants: deletions here act on the hub, not a backup file.
+    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
+    deleteSimpleBodyLive: "This removes it.",
+    deleteImmediateNote: "This is applied to the hub immediately.",
+    deleteSyncNote: "This change is written to the hub on the next Sync.",
+    deleteCancel: "Cancel",
+    deleteConfirm: "Delete",
+    deleteActivityAria: "Delete activity",
+    deleteDeviceAria: "Delete device",
+    deleteCommandAria: "Delete command",
+    addFavoriteTitle: "Add command shortcut",
+    addFavoriteDevice: "Device",
+    addFavoriteCommand: "Command",
+    addFavoriteAdd: "Add",
+    addFavoriteCancel: "Cancel",
+    addFavoriteNoDevices: "This backup has no devices with commands to add.",
+    addFavoriteNoCommands: "This device has no commands to add.",
+    buttonBindingsTitle: "Button bindings",
+    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this Activity.",
+    buttonBindingsDeviceSub: "Bind remote buttons to this Device's own commands.",
+    buttonBindingsEmpty: "No button bindings configured.",
+    addBinding: "Add binding",
+    bindingButton: "Button",
+    bindingTargetDevice: "Device",
+    bindingCommand: "Command",
+    bindingEnableLongPress: "Enable long-press binding",
+    bindingLongPressDevice: "Long-press device",
+    bindingLongPressCommand: "Long-press command",
+    bindingIncomplete: "Choose a button and target first.",
+    bindingNoButtons: "Every button on this hub model is already bound.",
+    bindingNoCommands: "This device has no commands to bind.",
+    bindingNoDevices: "This backup has no devices with commands to bind.",
+    bindingAdd: "Add",
+    bindingSave: "Save",
+    bindingCancel: "Cancel",
+    bindingDialogAddTitle: "Add button binding",
+    bindingDialogEditTitle: (name) => `Edit ${name} binding`,
+    bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Delete ${name} binding?`,
+    deleteBindingAria: "Delete binding",
+    deleteImpactBindings: (count) => `${count} button binding${count === 1 ? "" : "s"} will be cleared`,
+    macrosTitle: "Macros",
+    macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
+    macroPowerChip: "power",
+    powerSetupTitle: "Power",
+    powerSetupDeviceSub: "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
+    powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
+    powerOnLabel: "Power-on sequence",
+    powerOffLabel: "Power-off sequence",
+    // Automatic-power dropdown (device only). One hub byte encodes the whole
+    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
+    powerControlTitle: "Automatic power control",
+    powerControlUnset: "Not captured",
+    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+    powerControlDisabled: "Don't control power",
+    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+    powerControlAutoOff: "Turn off when idle",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
+    powerControlStayOn: "Stay on between Activities",
+    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+    powerControlAlwaysOn: "Always stay on",
+    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
+    inputStepTitle: "Set input",
+    inputStepCommand: "Input command",
+    inputStepNone: "\u2014 no input \u2014",
+    macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
+    noMacroSteps: "No steps yet.",
+    addStep: "Add step",
+    stepDialogAddTitle: "Add step",
+    stepDialogEditTitle: "Edit step",
+    stepDevice: "Device",
+    stepCommand: "Command",
+    stepHoldSeconds: "Hold (seconds, 0 = click)",
+    holdLabel: (seconds) => `Hold ${seconds}s`,
+    stepAdd: "Add",
+    stepSave: "Save",
+    stepCancel: "Cancel",
+    stepNoCommands: "This device has no commands.",
+    stepWaitAria: "Wait after this step (seconds)",
+    stepWaitLabel: "Delay",
+    stepWaitUnit: "s",
+    renameMacroAria: "Rename macro",
+    deleteStepAria: "Delete step",
+    editStepAria: "Edit step",
+    newMacroName: "Macro",
+    shortcutChipCommand: "command",
+    shortcutChipAction: "macro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
+    powerSectionTitle: "Power",
+    powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
+    powerInputLabel: "Input",
+    powerInputNone: "\u2014 none \u2014",
+    powerDelayLabel: "Delay (s)",
+    powerNoDevices: "No devices yet. Add a favorite, binding, or macro that uses one.",
+    powerOnSequence: "Power-on sequence",
+    powerOffSequence: "Power-off sequence",
+    powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
+    macroRenameAria: "Rename macro",
+    editStepsAria: "Edit steps",
+    crumbActivities: "Activities",
+    crumbDevices: "Devices",
+    // Activity-detail copy.
+    activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
+    activityRunningTitle: "Buttons on the remote",
+    activityRunningSub: "Which device each remote button controls in this activity.",
+    activityShortcutsTitle: "Shortcuts on the remote screen",
+    activityShortcutsSubSortable: "Commands and macros shown on the remote's screen. Drag the handle to reorder.",
+    activityShortcutsSubStatic: "Commands and macros shown on the remote's screen. Use the move buttons to reorder.",
+    activityShortcutsEmpty: "No shortcuts yet. Add a command or a macro.",
+    // Role-based button assignment (Phase B).
+    roleVolume: "Volume buttons control",
+    roleNavigation: "Navigation and OK control",
+    rolePlayback: "Playback buttons control",
+    roleChannels: "Channel buttons control",
+    roleNotUsed: "Not used",
+    roleCustom: "Custom",
+    roleCustomized: (name) => `${name} (customized)`,
+    roleMappedNote: (bound, total) => `${bound} of ${total} buttons mapped`,
+    roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
+    roleMenuAria: (roleLabel) => `Choose a device for: ${roleLabel}`,
+    roleConfirmTitle: "Replace custom button setup?",
+    roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
+    roleConfirmReplace: "Replace",
+    roleConfirmCancel: "Cancel",
+    customizeButtonsToggle: "Customize individual buttons",
+    bindingsViewTitle: "Individual buttons",
+    bindingsConfiguredCount: (count) => `${count} configured`,
+    bindingsNoneConfigured: "None customized",
+    // Unified "add to shortcuts" flow.
+    addShortcutButton: "Add",
+    addShortcutTitle: "Add to shortcuts",
+    addShortcutKindLabel: "Type",
+    shortcutKindCommand: "Device command",
+    shortcutKindAction: "Macro",
+    macroTargetLabel: "Macro",
+    macroTargetCreateNew: "Create new macro",
+    macroTargetNoExisting: "No macros yet. Create one below.",
+    addShortcutActionName: "Name",
+    addShortcutActionHelper: "You'll pick the steps next.",
+    addShortcutCommandHelper: "The shortcut shows up under the command's name.",
+    unsaved: "Unsaved",
+    unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
+    renameKind: (kind) => `Rename ${kind}`,
+    managedWifiTitle: "Managed by Wifi Commands",
+    managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
+    managedWifiBody: "Its commands, power, input, and button assignments are configured there \xE2\u20AC\u201D editing them here would be overwritten on the next sync.",
+    managedWifiRename: "You can still rename it here; the new name stays in sync with your Wifi Commands configuration.",
+    detailPower: "Power",
+    detailNetwork: "Network",
+    detailCommands: "Commands",
+    detailButtons: "Buttons",
+    detailSectionsAria: "Detail sections",
+    editBindingAria: "Edit binding",
+    editIpAria: "Edit IP address",
+    networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
+    ipv4Description: "IPv4 dotted-decimal address",
+    addCommand: "Add command",
+    addCommandTitle: "Add Command",
+    editPayloadTitle: "Edit Payload",
+    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \xE2\u2020\u2019 Edit.",
+    commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
+    newCommandChip: "new command",
+    commandChip: "command",
+    buttonChip: "button",
+    ipChip: "ip",
+    thisItem: "this item",
+    noDeviceCommands: "This Device does not currently have any commands.",
+    renameCommandAria: "Rename command",
+    commandId: "Command ID",
+    editPayloadAria: "Edit payload",
+    fetchEditCommandAria: "Fetch and edit this command's payload",
+    moveUpAria: "Move up",
+    moveDownAria: "Move down",
+    deviceClass: "Device class",
+    name: "Name",
+    nameHelper: "Shown on the remote and in every command picker.",
+    verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
+    verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
+    test: "Test",
+    sendingToHub: "Sending to the hub\xE2\u20AC\xA6",
+    sentToHub: "Sent to the hub for one-shot playback.",
+    testFailed: "Test failed.",
+    rawPayload: "Raw payload",
+    rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
+    payloadHex: "Payload (hex bytes)",
+    payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
+    rename: "Rename",
+    renameActivity: "Rename Activity",
+    renameDevice: "Rename Device",
+    renameMacro: "Rename Macro",
+    renameFavorite: "Rename Favorite",
+    renameCommand: "Rename Command",
+    ipAddress: "IP address",
+    noPayloadReturned: "The hub returned no payload for this command.",
+    noTemplateCommand: "This device has no commands to use as a template \xE2\u20AC\u201D add its first command with the Sofabaton app.",
+    newCommandNameRequired: "Enter a name for the new command.",
+    descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
+    noFreeCommandSlot: "This device has no free command slot left.",
+    nothingToTest: "Nothing to test yet.",
+    ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
+    steps: "Steps",
+    buttonCatalog: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      home: "Home",
+      back: "Back",
+      menu: "Menu",
+      volumeUp: "Volume Up",
+      volumeDown: "Volume Down",
+      mute: "Mute",
+      channelUp: "Channel Up",
+      channelDown: "Channel Down",
+      rewind: "Rewind",
+      pause: "Pause",
+      forward: "Forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      exit: "Exit",
+      dvr: "DVR",
+      play: "Play",
+      guide: "Guide",
+      navigation: "Navigation",
+      volumeChannel: "Volume & Channel",
+      transport: "Transport",
+      colour: "Colour",
+      extra: "Extra",
+      unknown: (code) => `Button 0x${code}`
+    },
+    powerOn: "Power on",
+    powerOff: "Power off",
+    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
+    inputStepLabel: (device, input) => `Input \xB7 ${device}: ${input}`,
+    macroTargetLabelText: (name) => `Macro \xB7 ${name}`
+  },
+  hub: {
+    loading: "Loading\u2026",
+    unknown: "Unknown",
+    connectionStatusAria: "Hub connection status",
+    hubConnected: "Hub connected",
+    hubNotConnected: "Hub not connected",
+    appConnected: "App connected",
+    appNotConnected: "App not connected",
+    version: "Version",
+    ipAddress: "IP Address",
+    activities: "Activities",
+    devices: "Devices",
+    integrationVersion: "Integration version",
+    firmwareVersion: (version) => `FW: v${version}`,
+    productVersion: (version) => `Sofabaton ${version}`
+  },
+  decodedPayload: {
+    httpTitle: "HTTP request",
+    httpSubtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    hostIpv4: "Host (IPv4)",
+    hostExample: "e.g. 192.168.2.77",
+    port: "Port",
+    httpMethod: "HTTP method",
+    httpMethodExample: "e.g. GET, POST",
+    path: "Path",
+    extraHeaders: "Extra headers",
+    extraHeadersHelper: "One header per line. Host and Content-Length are added automatically.",
+    contentType: "Content type",
+    body: "Body",
+    rokuTitle: "Roku ECP request",
+    ecpPath: "ECP URL path",
+    ecpPathExample: "e.g. /launch/12 or /keypress/Home",
+    hueTitle: "Hue REST request",
+    sonosTitle: "Sonos UPnP request",
+    bodyBlockSubtitle: "Body block is injected verbatim between Host headers and the network write.",
+    urlPath: "URL path",
+    bodyBlock: "Body block (raw wire string)",
+    bodyBlockHelper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \xE2\u20AC\u201D it must match the body byte count.",
+    irTitle: "Descriptive IR payload",
+    irSubtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\xE2\u20AC\xA6 D:\xE2\u20AC\xA6 F:\xE2\u20AC\xA6) are decodable; raw learned-IR payloads are not editable here.",
+    descriptor: "Descriptor",
+    descriptorExample: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "Backup file must contain a JSON object.",
+    invalidBundle: "Backup file is not a Sofabaton hub bundle.",
+    invalidSchema: (expected, actual) => `Backup file schema_version must be ${expected} (got ${String(actual)}).`,
+    structuralBundle: "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
+    missingArrays: "Backup file is missing devices or activities arrays.",
+    missingSourceModel: "Backup file is missing its source hub model, so compatibility cannot be verified.",
+    unknownDestinationModel: "The destination hub model is unknown, so restore compatibility cannot be verified.",
+    incompatibleModels: (source, destination) => `This backup was created on a Sofabaton ${source} hub and cannot be restored onto a Sofabaton ${destination} hub.`
+  },
+  wifiCommands: {
+    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    sectionLabel: "Wifi Devices",
+    deployingTitle: "Deploying Wifi Commands",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
+    addDevice: "Add Wifi Device",
+    deleteDeviceAria: "Delete Wifi Device",
+    emptyDevices: "No Wifi Devices configured yet. Add one to start assigning command slots.",
+    maximumDevices: "Maximum number of devices reached",
+    configuredSlots: (count) => `${count} slot${count === 1 ? "" : "s"}`,
+    unableSaveAction: "Unable to save Action",
+    hubCommandInProgress: "Hub command in progress...",
+    idle: "Idle",
+    unableLoadSyncStatus: "Unable to load sync status",
+    noTargetEntity: "No target entity",
+    commandNameLeadingSpace: "Command name must start with a non-space character.",
+    navigationGroup: "Navigation",
+    transportGroup: "Transport",
+    mediaGroup: "Media",
+    abcGroup: "ABC",
+    colorGroup: "Color",
+    inputCommand: "Input command",
+    inputFor: (activity) => `Input for ${activity}`,
+    activitySingular: "Activity",
+    activityPlural: "Activities",
+    unconfiguredCommand: "Unconfigured command",
+    powerBothCommand: "Power ON and OFF command",
+    powerOnCommand: "Power ON command",
+    powerOffCommand: "Power OFF command",
+    thisDevice: "this device",
+    replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
+    replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
+    none: "None",
+    commandSlotDescription: "Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
+    syncingDeviceFallback: "Syncing Wifi Device...",
+    syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
+    syncInProgress: "Sync in progress",
+    startSync: "Starting sync",
+    syncFailedToStart: "Sync failed to start",
+    syncMessageRemoteUnavailable: "Remote entity unavailable. Is the app connected?",
+    syncMessageFailed: "Last sync failed.",
+    syncMessageNeeded: "Command config changes need to be synced to the hub.",
+    syncMessageUpToDate: "Hub command configuration is up to date.",
+    syncMessageIdle: "No sync needed.",
+    syncShortUnavailable: "Unavailable",
+    syncShortRunning: "Syncing",
+    syncShortFailed: "Sync failed",
+    syncShortNeeded: "Sync needed",
+    syncShortUpToDate: "Up to date",
+    syncShortIdle: "Idle",
+    deviceDeleting: "Deleting...",
+    deviceSynced: "Synced",
+    seeDocumentation: "See documentation",
+    actionButtonUnavailable: "Unavailable",
+    actionButtonSyncing: "Syncing...",
+    actionButtonBusy: "Busy",
+    actionButtonSyncToHub: "Sync to Hub",
+    actionButtonUpToDate: "Up to Date",
+    createDeviceBusy: "Creating Wifi Device...",
+    deviceName: "Device name",
+    createDeviceNameRequired: "Device name is required.",
+    createDeviceFailed: "Unable to create Wifi Device",
+    deleteDeviceBusy: "Deleting Wifi Device...",
+    deleteDeviceFailed: "Unable to delete Wifi Device",
+    createModalCancel: "Cancel",
+    createModalCreate: "Create",
+    deleteModalTitle: "Delete Wifi Device?",
+    deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
+    deleteModalDelete: "Delete",
+    clearSlotTitle: "Clear command slot?",
+    clearSlotSubtitle: "Resets configuration.",
+    clearSlotNo: "No",
+    clearSlotYes: "Yes",
+    makeCommand: "Make Command",
+    noActionConfigured: "No Action configured",
+    commandSlotTitle: (slotIndex) => `Command Slot ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Command Slot ${slotIndex + 1} Action`,
+    commandDisplayName: "Command Display Name",
+    advanced: "Advanced",
+    activityInput: "Perform this command when an Activity starts",
+    activityInputHint: "The command is set as the Activity's input on the hub, so it runs during the Activity's startup sequence.",
+    activityInputReplaces: (slotName, activityName) => `Replaces "${slotName}" when ${activityName} starts`,
+    noActivitiesForHub: "No Activities available for this hub.",
+    activityInputLabel: "Activity that performs this command",
+    devicePowerOnLabel: "When the hub turns this device ON",
+    devicePowerOffLabel: "When the hub turns this device OFF",
+    devicePowerNothing: "Nothing",
+    devicePowerHint: "Runs as part of this device's power sequence in your Activities. Synced to the hub.",
+    devicePowerPerform: (commandName) => `perform ${commandName}`,
+    hubEventsTitle: "Hub Events",
+    hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
+    hubEventPowerOff: "When the hub is switched OFF",
+    hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
+    hubEventActivityStart: "When any Activity starts",
+    hubEventActivityStops: "and when one stops",
+    hubEventActivityStopModalTitle: "When any Activity stops",
+    hubEventDoNothing: "do nothing",
+    hubEventPerform: (service) => `perform ${service}`,
+    hubEventClearTitle: "Reset to do nothing",
+    hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Events",
+    activityEventsTitle: "Activity Events",
+    activityEventsSubtitle: "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
+    activityEventStarts: (name) => `When ${name} starts`,
+    activityEventStops: "and when it stops",
+    activityEventStartModalTitle: (name) => `When ${name} starts`,
+    activityEventStopModalTitle: (name) => `When ${name} stops`,
+    activityEventFallbackName: (id) => `Activity ${id}`,
+    noActivitiesForEvents: "No Activities on this hub yet.",
+    favorite: "Set as Favorite",
+    physicalButtonAssignment: "Physical Button Assignment",
+    enableLongPress: "Enable long-press",
+    applyToActivities: "Apply to these Activities",
+    actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
+    shortPress: "Short press",
+    longPress: "Long press",
+    selectLongPressAction: "Select Long-Press Action",
+    selectTriggeredAction: "Select Triggered Action",
+    action: "Action",
+    save: "Save",
+    syncWarningTitle: "Sync commands to hub?",
+    syncWarningBody: "This sync can run for several minutes. During this process, other interactions with the hub are blocked.",
+    syncWarningBody2: "At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.",
+    syncWarningOptOut: "Don't show this warning again for this remote.",
+    syncWarningStart: "Start sync",
+    keyLabels: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      back: "Back",
+      home: "Home",
+      menu: "Menu",
+      volup: "Vol +",
+      voldn: "Vol -",
+      mute: "Mute",
+      chup: "Ch +",
+      chdn: "Ch -",
+      guide: "Guide",
+      dvr: "DVR",
+      play: "Play",
+      exit: "Exit",
+      rew: "Rewind",
+      pause: "Pause",
+      fwd: "Fast Forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  }
+};
+var TRANSLATIONS = {};
+var currentLanguage = "en";
+var currentStrings = TOOLS_CARD_STRINGS_EN;
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function deepMerge(base, overlay) {
+  if (!isPlainObject(overlay)) return base;
+  const out = { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    if (value === void 0) continue;
+    if (isPlainObject(value) && isPlainObject(base?.[key])) {
+      out[key] = deepMerge(base[key], value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+function resolveTranslation(language) {
+  const lang = String(language || "").toLowerCase();
+  if (!lang) return null;
+  if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
+  const base = lang.split(/[-_]/)[0];
+  return base && TRANSLATIONS[base] ? TRANSLATIONS[base] : null;
+}
+function registerToolsCardTranslation(language, translation) {
+  const lang = String(language || "").toLowerCase();
+  if (!lang) return;
+  TRANSLATIONS[lang] = translation;
+  if (currentLanguage === lang || currentLanguage.split(/[-_]/)[0] === lang) {
+    const active = resolveTranslation(currentLanguage);
+    currentStrings = active ? deepMerge(TOOLS_CARD_STRINGS_EN, active) : TOOLS_CARD_STRINGS_EN;
+  }
+}
+function setToolsCardLanguage(language) {
+  const lang = String(language || "en").toLowerCase();
+  if (lang === currentLanguage) return false;
+  currentLanguage = lang;
+  const translation = resolveTranslation(lang);
+  currentStrings = translation ? deepMerge(TOOLS_CARD_STRINGS_EN, translation) : TOOLS_CARD_STRINGS_EN;
+  return true;
+}
+function valueAtPath(path) {
+  let value = currentStrings;
+  for (const key of path) value = value?.[key];
+  return value;
+}
+var proxyCache = /* @__PURE__ */ new Map();
+function liveStringsProxy(path) {
+  const cacheKey = path.map(String).join(".");
+  const cached = proxyCache.get(cacheKey);
+  if (cached) return cached;
+  const proxy = new Proxy(() => void 0, {
+    get(_target, property) {
+      const value = valueAtPath([...path, property]);
+      if (typeof value === "function" || isPlainObject(value)) {
+        return liveStringsProxy([...path, property]);
+      }
+      return value;
+    },
+    apply(_target, _thisArg, args) {
+      const value = valueAtPath(path);
+      return typeof value === "function" ? value(...args) : void 0;
+    },
+    ownKeys() {
+      const value = valueAtPath(path);
+      return isPlainObject(value) ? Reflect.ownKeys(value) : [];
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      const value = valueAtPath(path);
+      if (!isPlainObject(value) || !(property in value)) return void 0;
+      return { configurable: true, enumerable: true };
+    }
+  });
+  proxyCache.set(cacheKey, proxy);
+  return proxy;
+}
+var TOOLS_CARD_STRINGS = liveStringsProxy([]);
+
 // custom_components/sofabaton_x1s/www/src/shared/api/control-panel-api.ts
 var ControlPanelApi = class {
   constructor(hass) {
@@ -1672,7 +2621,7 @@ var ControlPanelApi = class {
   }
   subscribeBackupProgress(operationId, onMessage) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Backup progress is unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.backupProgressNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -1729,7 +2678,7 @@ var ControlPanelApi = class {
   }
   subscribeLogs(entryId, onMessage) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Live logs are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.logsNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -1738,7 +2687,7 @@ var ControlPanelApi = class {
   }
   subscribeWifiPresses(entryId, onMessage) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Wifi press events are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.wifiPressNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -1747,7 +2696,7 @@ var ControlPanelApi = class {
   }
   subscribeHubEvents(entryId, onMessage) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.hubEventsNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -1757,37 +2706,6 @@ var ControlPanelApi = class {
 };
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors.ts
-var BUTTON_NAMES = {
-  151: "C",
-  152: "B",
-  153: "A",
-  154: "Exit",
-  155: "Dvr",
-  156: "Play",
-  157: "Guide",
-  174: "Up",
-  175: "Left",
-  176: "Ok",
-  177: "Right",
-  178: "Down",
-  179: "Back",
-  180: "Home",
-  181: "Menu",
-  182: "Vol Up",
-  183: "Ch Up",
-  184: "Mute",
-  185: "Vol Down",
-  186: "Ch Down",
-  187: "Rew",
-  188: "Pause",
-  189: "Fwd",
-  190: "Red",
-  191: "Green",
-  192: "Yellow",
-  193: "Blue",
-  198: "Power On",
-  199: "Power Off"
-};
 function selectedHub(snapshot) {
   const hubs = snapshot.state?.hubs ?? [];
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
@@ -1847,10 +2765,10 @@ function activityButtons(hub, activityId) {
 }
 function deviceCommands(hub, deviceId) {
   const commands = hub?.commands?.[String(deviceId)] ?? {};
-  return Object.entries(commands).map(([id, label]) => ({ id: Number(id), label: String(label || `Command ${id}`) })).sort((left, right) => left.label.localeCompare(right.label));
+  return Object.entries(commands).map(([id, label]) => ({ id: Number(id), label: String(label || TOOLS_CARD_STRINGS.common.commandFallback(id)) })).sort((left, right) => left.label.localeCompare(right.label));
 }
 function buttonName(buttonId) {
-  return BUTTON_NAMES[buttonId] ?? `Button ${buttonId}`;
+  return TOOLS_CARD_STRINGS.buttonNames[buttonId] ?? TOOLS_CARD_STRINGS.common.buttonFallback(buttonId);
 }
 function isBackendUnavailableError(error, hass) {
   if (hass && hass.connected === false) return true;
@@ -1870,7 +2788,7 @@ function isBackendUnavailableError(error, hass) {
   return false;
 }
 function formatError(error) {
-  if (!error) return "Unknown error";
+  if (!error) return TOOLS_CARD_STRINGS.common.unknownError;
   if (typeof error === "string") return error;
   if (error instanceof Error && error.message.trim()) return error.message;
   const candidateError = error;
@@ -1886,7 +2804,7 @@ function formatError(error) {
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate;
   }
-  return "Unknown error (check Home Assistant logs)";
+  return TOOLS_CARD_STRINGS.common.unknownErrorWithLogs;
 }
 function formatLogEntry(entry) {
   const rawLine = String(entry.line ?? entry.message ?? entry.msg ?? "");
@@ -1977,8 +2895,8 @@ function resolveRuntimeState(snapshot) {
     return {
       kind: "operation_running",
       operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy",
-      label: String(hubRuntime.label || "Operation running"),
-      detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
+      label: String(hubRuntime.label || TOOLS_CARD_STRINGS.availability.operationRunning),
+      detail: String(hubRuntime.detail || hubRuntime.label || TOOLS_CARD_STRINGS.availability.working),
       progress: {
         current: Number.isFinite(current) ? current : null,
         total: Number.isFinite(total) && total > 0 ? total : null,
@@ -1990,14 +2908,14 @@ function resolveRuntimeState(snapshot) {
   if (hubRuntime?.kind === "app_connected") {
     return {
       kind: "app_connected",
-      label: String(hubRuntime.label || "Only Logs is available while the Sofabaton app is connected."),
+      label: String(hubRuntime.label || TOOLS_CARD_STRINGS.availability.appConnectedOnlyLogs),
       detail: String(hubRuntime.detail || "")
     };
   }
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
     return {
       kind: "app_connected",
-      label: "Only Logs is available while the Sofabaton app is connected.",
+      label: TOOLS_CARD_STRINGS.availability.appConnectedOnlyLogs,
       detail: null
     };
   }
@@ -2005,14 +2923,14 @@ function resolveRuntimeState(snapshot) {
   if (externalLabel !== null) {
     return {
       kind: "notice",
-      label: externalLabel || "Hub command in progress...",
+      label: externalLabel || TOOLS_CARD_STRINGS.availability.hubCommandInProgress,
       detail: null
     };
   }
   if (hubRefreshBusy(snapshot, entryId)) {
     return {
       kind: "notice",
-      label: "Refreshing cache...",
+      label: TOOLS_CARD_STRINGS.availability.refreshingCache,
       detail: null
     };
   }
@@ -2023,8 +2941,8 @@ function resolveTabAvailability(snapshot, tabId) {
   if (gateState.kind !== "pass") {
     return {
       kind: "blocked",
-      title: gateState.kind === "hub_unavailable" ? "Hub unavailable" : "Unavailable",
-      message: gateState.kind === "version_mismatch" ? "Refresh the dashboard to load the updated Sofabaton Control Panel card." : gateState.kind === "backend_unavailable" ? "Waiting for the Sofabaton X integration to finish starting." : "This hub is not connected, so the control panel is unavailable until the hub reconnects."
+      title: gateState.kind === "hub_unavailable" ? TOOLS_CARD_STRINGS.hubUnavailable.title : TOOLS_CARD_STRINGS.availability.unavailable,
+      message: gateState.kind === "version_mismatch" ? TOOLS_CARD_STRINGS.availability.refreshDashboard : gateState.kind === "backend_unavailable" ? TOOLS_CARD_STRINGS.backend.unavailableCopy : TOOLS_CARD_STRINGS.hubUnavailable.copy
     };
   }
   if (tabId === "logs" || tabId === "settings" || tabId === "cache") {
@@ -2032,8 +2950,8 @@ function resolveTabAvailability(snapshot, tabId) {
   }
   const hub = selectedHub(snapshot);
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
-    const title = tabId === "wifi_commands" ? "Automation unavailable" : "Backup unavailable";
-    const message = tabId === "wifi_commands" ? "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy." : "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.";
+    const title = tabId === "wifi_commands" ? TOOLS_CARD_STRINGS.availability.automationUnavailable : TOOLS_CARD_STRINGS.availability.backupUnavailable;
+    const message = tabId === "wifi_commands" ? TOOLS_CARD_STRINGS.availability.automationBlockedByProxy : TOOLS_CARD_STRINGS.availability.backupBlockedByProxy;
     return { kind: "blocked", title, message };
   }
   return { kind: "available" };
@@ -2086,573 +3004,6 @@ function hubIcon(kind, classes = "") {
   }[kind];
   return b2`<ha-icon class=${className.trim()} icon=${icon}></ha-icon>`;
 }
-
-// custom_components/sofabaton_x1s/www/src/strings.ts
-var TOOLS_CARD_STRINGS = {
-  docs: {
-    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
-  },
-  tabs: {
-    cache: "Hub",
-    wifiCommands: "Automation",
-    backup: "Backup",
-    settings: "Settings",
-    logs: "Logs"
-  },
-  tabDocs: {
-    wifi_commands: "Automation documentation",
-    backup: "Backup documentation"
-  },
-  dock: {
-    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
-  },
-  backend: {
-    unavailableTitle: "Backend not available",
-    unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
-    versionMismatchTitle: "Refresh required to update the Sofabaton Control Panel card",
-    versionMismatchCopy: "This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant. Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.",
-    backendExpects: "Backend expects",
-    cardLoaded: "Card loaded",
-    unknownVersion: "unknown",
-    refreshingCache: "Refreshing cache...",
-    hubCommandInProgress: "Hub command in progress..."
-  },
-  hubUnavailable: {
-    title: "Hub unavailable",
-    copy: "This hub is not connected, so the control panel is unavailable until the hub reconnects."
-  },
-  settings: {
-    loading: "Loading...",
-    noHubsFound: "No hubs found.",
-    unknownHubName: "Unknown",
-    activities: "Activities",
-    devices: "Devices",
-    persistentCacheTitle: "Persistent Cache",
-    persistentCacheDescription: "Store activity and device data locally for faster access.",
-    persistentCacheFooter: "GLOBAL",
-    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
-    hubClickActionTitle: "Hub Tab Clicks",
-    hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
-    hubClickActionFooter: "GLOBAL",
-    hubClickActionOptionNone: "Do nothing",
-    hubClickActionOptionSend: "Send the command",
-    hubClickActionOptionCopy: "Copy the command",
-    hexLoggingTitle: "Hex Logging",
-    hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
-    proxyTitle: "Proxy",
-    proxyDescription: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
-    wifiDeviceTitle: "WiFi Device",
-    wifiDeviceDescription: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
-    findRemoteTitle: "Find Remote",
-    findRemoteDescription: "Make the remote beep so you can locate it.",
-    syncRemoteTitle: "Sync Remote",
-    syncRemoteDescription: "Push the latest configuration to the physical remote."
-  },
-  cache: {
-    loading: "Loading...",
-    noHubsFound: "No hubs found.",
-    persistentCacheOffTitle: "Persistent cache is off",
-    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
-    enablingPersistentCache: "Enabling...",
-    enablePersistentCache: "Enable persistent cache",
-    devIdBadge: "DevID",
-    favIdBadge: "FavID",
-    comIdBadge: "ComID",
-    activityFallback: (id) => `Activity ${id}`,
-    deviceFallback: (id) => `Device ${id}`,
-    favoriteFallback: (commandId) => `Favorite ${commandId}`,
-    macroFallback: (commandId) => `Macro ${commandId}`,
-    activityCounts: (favorites, macros, buttons) => `${favorites} favs / ${macros} macros / ${buttons} btns`,
-    deviceCommandCount: (count) => `${count} cmds`,
-    favorites: "Favorites",
-    macros: "Macros",
-    buttons: "Buttons",
-    noCachedData: "No cached data yet.",
-    noCachedCommands: "No cached commands.",
-    staleBanner: "Cache was updated externally. Refresh to see latest data.",
-    refresh: "Refresh",
-    activities: "Activities",
-    devices: "Devices",
-    refreshList: "Refresh list",
-    refreshAll: "Refresh all",
-    editActivity: "Edit activity",
-    editDevice: "Edit device",
-    changeOrder: "Change order",
-    addActivity: "Add Activity",
-    reorderSync: "Sync to hub",
-    reorderCancel: "Cancel",
-    reorderHint: "Drag activities into the desired order, then sync to the hub.",
-    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
-    reorderSyncing: "Writing the new order to the hub\u2026",
-    addActivityTitle: "Add Activity",
-    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
-    addActivityPlaceholder: "Activity name",
-    addActivityCancel: "Cancel",
-    addActivityConfirm: "Create",
-    addActivityCreating: "Creating\u2026"
-  },
-  // Hub-tab row clicks ("send the command" / "copy the command" modes).
-  hubClick: {
-    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
-    contextActivity: "Activity",
-    contextDevice: "Device",
-    kindLabels: {
-      favorite: "Favorite",
-      macro: "Macro",
-      button: "Button",
-      command: "Command"
-    },
-    lovelaceHeading: "Lovelace Button Code",
-    lovelaceHint: "Copy this to your Dashboard YAML:",
-    actionHeading: "Service Call (Automation)",
-    actionHint: "Use this in your Scripts or Automations:",
-    noRemoteEntity: "The hub's remote entity is unavailable.",
-    copied: (label) => `Copied "${label}" to notifications.`,
-    sendTooltip: "Click to send this command to the hub",
-    copyTooltip: "Click to copy this command to a notification"
-  },
-  logs: {
-    loading: "Loading log stream...",
-    empty: "No log lines captured for this hub yet.",
-    liveConsole: "Live Console"
-  },
-  cacheRefresh: {
-    label: "Refresh all",
-    running: "Refreshing\u2026",
-    starting: "Starting hub cache refresh\u2026",
-    working: "Reading your hub's configuration\u2026",
-    done: "Hub cache refreshed."
-  },
-  progress: {
-    homeAssistant: "Home Assistant",
-    sofabatonHub: "Sofabaton Hub",
-    working: "Working...",
-    backupTitle: "Creating backup",
-    restoreTitle: "Restoring backup"
-  },
-  activities: {
-    loading: "Loading activities...",
-    selectHub: "Select a hub to edit its activities.",
-    activityFallback: (id) => `Activity ${id}`,
-    // Guard panels (§4.1), rendered inside the editor view.
-    appConnectedTitle: "The Sofabaton app is connected",
-    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
-    operationRunningTitle: "Another operation is running",
-    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
-    // Capture flow (§4.2).
-    captureTitle: "Reading your hub",
-    captureMessage: "Reading your hub's configuration\u2026",
-    captureMessageWithStep: (current, total) => `Reading your hub's configuration\u2026 (device ${current} of ${total})`,
-    captureFailedTitle: "Couldn't read the hub",
-    captureFailedBody: "The hub stopped responding before we finished reading it.",
-    retry: "Retry",
-    back: "Back",
-    // Cache-sourced capture (blob-free structural bundle).
-    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
-    needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Session restore banner (§4.6).
-    // Live-mode edit header (§4.3). The header mirrors the Wifi command
-    // editor: a single stateful Sync button (no dirty chip, no review/discard).
-    syncToHub: "Sync to Hub",
-    syncUpToDate: "Up to date",
-    // Immediate entity delete (executed on the hub right away).
-    deletingTitle: (kind) => `Deleting ${kind}`,
-    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
-    // Sync flow (§4.5).
-    syncingTitle: "Syncing to your hub",
-    syncingMessage: "Writing your changes to the hub\u2026",
-    syncSuccess: "Synced to hub.",
-    syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
-    syncFailedTitle: "Sync didn't finish",
-    syncFailedStep: (step) => `The hub stopped at: ${step}`,
-    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
-    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
-    syncRetry: "Retry sync",
-    syncReload: "Reload from hub",
-    syncKeepEditing: "Keep editing",
-    exitUnsyncedTitle: "Unsynced changes",
-    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
-    exitSyncNow: "Sync now",
-    exitWithoutSync: "Leave without syncing",
-    // Dismiss label reused by the sync-success / delete-error banners.
-    discardConfirmCancel: "Keep editing",
-    // Review-list section titles + entry templates (activity-diff.ts).
-    review: {
-      sectionDevices: "Devices",
-      sectionStart: "When it starts",
-      sectionButtons: "Buttons",
-      sectionShortcuts: "Shortcuts",
-      sectionEnd: "When it ends",
-      sectionDeviceWide: "Device-wide changes",
-      deviceAdded: (name) => `Added "${name}" to this activity.`,
-      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
-      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
-      inputCleared: (device) => `"${device}" input cleared.`,
-      startReordered: "Start sequence reordered.",
-      roleNowControls: (group, device) => `${group} now control "${device}".`,
-      roleCustomized: (group) => `${group} customized.`,
-      roleCleared: (group) => `${group} no longer assigned.`,
-      shortcutAdded: (name) => `Added "${name}".`,
-      shortcutRemoved: (name) => `Removed "${name}".`,
-      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
-      shortcutsReordered: "Reordered shortcuts.",
-      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
-      roleGroups: {
-        volume: "Volume buttons",
-        navigation: "Navigation buttons",
-        playback: "Playback buttons",
-        channels: "Channel buttons"
-      },
-      idleShort: {
-        0: "not set",
-        1: "turns off when idle",
-        2: "never switches off",
-        3: "stays on",
-        4: "not managed by the hub"
-      }
-    },
-    // Review-list section titles + entry templates for the live *device*
-    // editor (activity-diff.ts, diffDeviceForReview).
-    deviceReview: {
-      sectionPower: "Power",
-      sectionNetwork: "Network",
-      sectionButtons: "Buttons",
-      sectionMacros: "Macros",
-      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
-      powerOnChanged: "Power-on sequence updated.",
-      powerOffChanged: "Power-off sequence updated.",
-      macroAdded: (name) => `Added macro "${name}".`,
-      macroRemoved: (name) => `Removed macro "${name}".`,
-      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
-      macroChanged: (name) => `Edited macro "${name}".`,
-      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" no longer bound.`,
-      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
-      ipCleared: "IP address cleared."
-    }
-  },
-  backup: {
-    loading: "Loading backup tools...",
-    selectHub: "Select a hub to manage backups.",
-    creatingSubtitle: "The hub is creating your backup.",
-    readySubtitle: "Your backup is ready.",
-    chooseSubtitle: "Choose what to include in this backup.",
-    enablePersistentCache: "Enable persistent cache to choose backup contents from the card.",
-    completedTitle: "Backup completed",
-    expired: "Backup expired. Start a new backup to download again.",
-    downloaded: "Downloaded",
-    downloadAgain: "Download again",
-    downloadBackup: "Download backup",
-    complete: "Complete",
-    entireHub: "Entire hub",
-    selectedDevices: "Selected devices",
-    devicesToInclude: "Devices to include",
-    selectedCount: (count) => `${count} selected`,
-    deselectAll: "Deselect all",
-    selectAll: "Select all",
-    noDevicesAvailable: "No devices available.",
-    working: "Working",
-    startBackup: "Start backup",
-    editLoadPrompt: "Load a backup file, then choose an Activity or Device to edit.",
-    chooseBackupFile: "Choose backup file",
-    reorderHint: " Drag the handle on any row to reorder Activities and Devices.",
-    hubName: "Hub name",
-    hubNameNotSet: "(not set)",
-    renameHub: "Rename Hub",
-    activities: "Activities",
-    noActivitiesInFile: "This backup file has no activities.",
-    devices: "Devices",
-    noDevicesInFile: "This backup file has no devices.",
-    unsavedChanges: "Unsaved changes. Click ",
-    downloadEditedBackupStrong: "Download edited backup",
-    unsavedChangesSuffix: " to save them to a file.",
-    downloadEditedBackup: "Download edited backup",
-    deleteActivityTitle: (name) => `Delete activity "${name}"?`,
-    deleteDeviceTitle: (name) => `Delete device "${name}"?`,
-    deleteCommandTitle: (name) => `Delete command "${name}"?`,
-    deleteFavoriteTitle: (name) => `Delete shortcut "${name}"?`,
-    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
-    deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
-    deleteSimpleBody: "This removes it from the loaded backup.",
-    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
-    deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
-    deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
-    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-    deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
-    // Live-edit variants: deletions here act on the hub, not a backup file.
-    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
-    deleteSimpleBodyLive: "This removes it.",
-    deleteImmediateNote: "This is applied to the hub immediately.",
-    deleteSyncNote: "This change is written to the hub on the next Sync.",
-    deleteCancel: "Cancel",
-    deleteConfirm: "Delete",
-    deleteActivityAria: "Delete activity",
-    deleteDeviceAria: "Delete device",
-    deleteCommandAria: "Delete command",
-    addFavoriteTitle: "Add command shortcut",
-    addFavoriteDevice: "Device",
-    addFavoriteCommand: "Command",
-    addFavoriteAdd: "Add",
-    addFavoriteCancel: "Cancel",
-    addFavoriteNoDevices: "This backup has no devices with commands to add.",
-    addFavoriteNoCommands: "This device has no commands to add.",
-    buttonBindingsTitle: "Button bindings",
-    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this Activity.",
-    buttonBindingsDeviceSub: "Bind remote buttons to this Device's own commands.",
-    buttonBindingsEmpty: "No button bindings configured.",
-    addBinding: "Add binding",
-    bindingButton: "Button",
-    bindingTargetDevice: "Device",
-    bindingCommand: "Command",
-    bindingEnableLongPress: "Enable long-press binding",
-    bindingLongPressDevice: "Long-press device",
-    bindingLongPressCommand: "Long-press command",
-    bindingIncomplete: "Choose a button and target first.",
-    bindingNoButtons: "Every button on this hub model is already bound.",
-    bindingNoCommands: "This device has no commands to bind.",
-    bindingNoDevices: "This backup has no devices with commands to bind.",
-    bindingAdd: "Add",
-    bindingSave: "Save",
-    bindingCancel: "Cancel",
-    bindingDialogAddTitle: "Add button binding",
-    bindingDialogEditTitle: (name) => `Edit ${name} binding`,
-    bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
-    deleteBindingTitle: (name) => `Delete ${name} binding?`,
-    deleteBindingAria: "Delete binding",
-    deleteImpactBindings: (count) => `${count} button binding${count === 1 ? "" : "s"} will be cleared`,
-    macrosTitle: "Macros",
-    macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
-    macroPowerChip: "power",
-    powerSetupTitle: "Power",
-    powerSetupDeviceSub: "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
-    powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
-    powerOnLabel: "Power-on sequence",
-    powerOffLabel: "Power-off sequence",
-    // Automatic-power dropdown (device only). One hub byte encodes the whole
-    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
-    powerControlTitle: "Automatic power control",
-    powerControlUnset: "Not captured",
-    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
-    powerControlDisabled: "Don't control power",
-    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
-    powerControlAutoOff: "Turn off when idle",
-    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
-    powerControlStayOn: "Stay on between Activities",
-    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
-    powerControlAlwaysOn: "Always stay on",
-    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
-    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
-    inputStepTitle: "Set input",
-    inputStepCommand: "Input command",
-    inputStepNone: "\u2014 no input \u2014",
-    macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
-    noMacroSteps: "No steps yet.",
-    addStep: "Add step",
-    stepDialogAddTitle: "Add step",
-    stepDialogEditTitle: "Edit step",
-    stepDevice: "Device",
-    stepCommand: "Command",
-    stepHoldSeconds: "Hold (seconds, 0 = click)",
-    holdLabel: (seconds) => `Hold ${seconds}s`,
-    stepAdd: "Add",
-    stepSave: "Save",
-    stepCancel: "Cancel",
-    stepNoCommands: "This device has no commands.",
-    stepWaitAria: "Wait after this step (seconds)",
-    stepWaitLabel: "Delay",
-    stepWaitUnit: "s",
-    renameMacroAria: "Rename macro",
-    deleteStepAria: "Delete step",
-    editStepAria: "Edit step",
-    newMacroName: "Macro",
-    shortcutChipCommand: "command",
-    shortcutChipAction: "macro",
-    shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
-    shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
-    powerSectionTitle: "Power",
-    powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
-    powerInputLabel: "Input",
-    powerInputNone: "\u2014 none \u2014",
-    powerDelayLabel: "Delay (s)",
-    powerNoDevices: "No devices yet. Add a favorite, binding, or macro that uses one.",
-    powerOnSequence: "Power-on sequence",
-    powerOffSequence: "Power-off sequence",
-    powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
-    macroRenameAria: "Rename macro",
-    editStepsAria: "Edit steps",
-    crumbActivities: "Activities",
-    crumbDevices: "Devices",
-    // Activity-detail copy.
-    activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
-    activityRunningTitle: "Buttons on the remote",
-    activityRunningSub: "Which device each remote button controls in this activity.",
-    activityShortcutsTitle: "Shortcuts on the remote screen",
-    activityShortcutsSubSortable: "Commands and macros shown on the remote's screen. Drag the handle to reorder.",
-    activityShortcutsSubStatic: "Commands and macros shown on the remote's screen. Use the move buttons to reorder.",
-    activityShortcutsEmpty: "No shortcuts yet. Add a command or a macro.",
-    // Role-based button assignment (Phase B).
-    roleVolume: "Volume buttons control",
-    roleNavigation: "Navigation and OK control",
-    rolePlayback: "Playback buttons control",
-    roleChannels: "Channel buttons control",
-    roleNotUsed: "Not used",
-    roleCustom: "Custom",
-    roleCustomized: (name) => `${name} (customized)`,
-    roleMappedNote: (bound, total) => `${bound} of ${total} buttons mapped`,
-    roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
-    roleMenuAria: (roleLabel) => `Choose a device for: ${roleLabel}`,
-    roleConfirmTitle: "Replace custom button setup?",
-    roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
-    roleConfirmReplace: "Replace",
-    roleConfirmCancel: "Cancel",
-    customizeButtonsToggle: "Customize individual buttons",
-    bindingsViewTitle: "Individual buttons",
-    bindingsConfiguredCount: (count) => `${count} configured`,
-    bindingsNoneConfigured: "None customized",
-    // Unified "add to shortcuts" flow.
-    addShortcutButton: "Add",
-    addShortcutTitle: "Add to shortcuts",
-    addShortcutKindLabel: "Type",
-    shortcutKindCommand: "Device command",
-    shortcutKindAction: "Macro",
-    macroTargetLabel: "Macro",
-    macroTargetCreateNew: "Create new macro",
-    macroTargetNoExisting: "No macros yet. Create one below.",
-    addShortcutActionName: "Name",
-    addShortcutActionHelper: "You'll pick the steps next.",
-    addShortcutCommandHelper: "The shortcut shows up under the command's name."
-  },
-  wifiCommands: {
-    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    sectionLabel: "Wifi Devices",
-    deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
-    addDevice: "Add Wifi Device",
-    syncingDeviceFallback: "Syncing Wifi Device...",
-    syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}...`,
-    syncInProgress: "Sync in progress",
-    startSync: "Starting sync",
-    syncFailedToStart: "Sync failed to start",
-    syncMessageRemoteUnavailable: "Remote entity unavailable. Is the app connected?",
-    syncMessageFailed: "Last sync failed.",
-    syncMessageNeeded: "Command config changes need to be synced to the hub.",
-    syncMessageUpToDate: "Hub command configuration is up to date.",
-    syncMessageIdle: "No sync needed.",
-    syncShortUnavailable: "Unavailable",
-    syncShortRunning: "Syncing",
-    syncShortFailed: "Sync failed",
-    syncShortNeeded: "Sync needed",
-    syncShortUpToDate: "Up to date",
-    syncShortIdle: "Idle",
-    deviceDeleting: "Deleting...",
-    deviceSynced: "Synced",
-    seeDocumentation: "See documentation",
-    actionButtonUnavailable: "Unavailable",
-    actionButtonSyncing: "Syncing...",
-    actionButtonBusy: "Busy",
-    actionButtonSyncToHub: "Sync to Hub",
-    actionButtonUpToDate: "Up to Date",
-    createDeviceBusy: "Creating Wifi Device...",
-    createDeviceNameRequired: "Device name is required.",
-    createDeviceFailed: "Unable to create Wifi Device",
-    deleteDeviceBusy: "Deleting Wifi Device...",
-    deleteDeviceFailed: "Unable to delete Wifi Device",
-    createModalCancel: "Cancel",
-    createModalCreate: "Create",
-    deleteModalTitle: "Delete Wifi Device?",
-    deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
-    deleteModalDelete: "Delete",
-    clearSlotTitle: "Clear command slot?",
-    clearSlotSubtitle: "Resets configuration.",
-    clearSlotNo: "No",
-    clearSlotYes: "Yes",
-    makeCommand: "Make Command",
-    noActionConfigured: "No Action configured",
-    commandSlotTitle: (slotIndex) => `Command Slot ${slotIndex + 1}`,
-    commandSlotActionTitle: (slotIndex) => `Command Slot ${slotIndex + 1} Action`,
-    commandDisplayName: "Command Display Name",
-    advanced: "Advanced",
-    activityInput: "Perform this command when an Activity starts",
-    activityInputHint: "The command is set as the Activity's input on the hub, so it runs during the Activity's startup sequence.",
-    activityInputReplaces: (slotName, activityName) => `Replaces "${slotName}" when ${activityName} starts`,
-    noActivitiesForHub: "No Activities available for this hub.",
-    activityInputLabel: "Activity that performs this command",
-    devicePowerOnLabel: "When the hub turns this device ON",
-    devicePowerOffLabel: "When the hub turns this device OFF",
-    devicePowerNothing: "Nothing",
-    devicePowerHint: "Runs as part of this device's power sequence in your Activities. Synced to the hub.",
-    devicePowerPerform: (commandName) => `perform ${commandName}`,
-    hubEventsTitle: "Hub Events",
-    hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
-    hubEventPowerOff: "When the hub is switched OFF",
-    hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
-    hubEventActivityStart: "When any Activity starts",
-    hubEventActivityStops: "and when one stops",
-    hubEventActivityStopModalTitle: "When any Activity stops",
-    hubEventDoNothing: "do nothing",
-    hubEventPerform: (service) => `perform ${service}`,
-    hubEventClearTitle: "Reset to do nothing",
-    hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
-    wifiCommandsTabLabel: "Wifi Commands",
-    eventsTabLabel: "Events",
-    activityEventsTitle: "Activity Events",
-    activityEventsSubtitle: "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
-    activityEventStarts: (name) => `When ${name} starts`,
-    activityEventStops: "and when it stops",
-    activityEventStartModalTitle: (name) => `When ${name} starts`,
-    activityEventStopModalTitle: (name) => `When ${name} stops`,
-    activityEventFallbackName: (id) => `Activity ${id}`,
-    noActivitiesForEvents: "No Activities on this hub yet.",
-    favorite: "Set as Favorite",
-    physicalButtonAssignment: "Physical Button Assignment",
-    enableLongPress: "Enable long-press",
-    applyToActivities: "Apply to these Activities",
-    actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
-    shortPress: "Short press",
-    longPress: "Long press",
-    selectLongPressAction: "Select Long-Press Action",
-    selectTriggeredAction: "Select Triggered Action",
-    action: "Action",
-    save: "Save",
-    syncWarningTitle: "Sync commands to hub?",
-    syncWarningBody: "This sync can run for several minutes. During this process, other interactions with the hub are blocked.",
-    syncWarningBody2: "At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.",
-    syncWarningOptOut: "Don't show this warning again for this remote.",
-    syncWarningStart: "Start sync",
-    keyLabels: {
-      up: "Up",
-      down: "Down",
-      left: "Left",
-      right: "Right",
-      ok: "OK",
-      back: "Back",
-      home: "Home",
-      menu: "Menu",
-      volup: "Vol +",
-      voldn: "Vol -",
-      mute: "Mute",
-      chup: "Ch +",
-      chdn: "Ch -",
-      guide: "Guide",
-      dvr: "DVR",
-      play: "Play",
-      exit: "Exit",
-      rew: "Rewind",
-      pause: "Pause",
-      fwd: "Fast Forward",
-      red: "Red",
-      green: "Green",
-      yellow: "Yellow",
-      blue: "Blue",
-      a: "A",
-      b: "B",
-      c: "C"
-    }
-  }
-};
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/hub-click-notification.ts
 var KIND_ICONS = {
@@ -3070,7 +3421,7 @@ var ControlPanelStore = class {
     const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
     if (!key) return;
     const byHub = { ...this._snapshot.externalHubCommandByHub };
-    if (busy) byHub[key] = String(label || "").trim() || "Hub command in progress\u2026";
+    if (busy) byHub[key] = String(label || "").trim() || TOOLS_CARD_STRINGS.backend.hubCommandInProgress;
     else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
@@ -3330,9 +3681,9 @@ var ControlPanelStore = class {
    * can react to the outcome.
    */
   async refreshAllForHub() {
-    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
     const hub = selectedHub(this._snapshot);
-    if (!hub) return "No hub selected.";
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
     this._setRefreshBusy(hub.entry_id, REFRESH_ALL_KEY);
     let unsubscribe = null;
     try {
@@ -3342,14 +3693,14 @@ var ControlPanelStore = class {
         this.api().subscribeBackupProgress(start.operation_id, (payload) => {
           if (payload.status === "success") resolve(null);
           else if (payload.status === "failed") {
-            resolve(String(payload.error || payload.message || "Cache refresh failed."));
+            resolve(String(payload.error || payload.message || TOOLS_CARD_STRINGS.errors.cacheRefreshFailed));
           }
         }).then((unsub) => {
           unsubscribe = unsub;
         }).catch((error) => resolve(formatError(error)));
       });
       this.showRuntimeCompletion(
-        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." },
+        failure ? { tone: "error", label: failure } : { tone: "success", label: TOOLS_CARD_STRINGS.cacheRefresh.done },
         hub.entry_id
       );
       await this.loadState({ silent: true });
@@ -3374,10 +3725,10 @@ var ControlPanelStore = class {
    * Resolves with `null` on success or a failure message for the caller's UI.
    */
   async reorderActivities(orderedIds) {
-    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
     const hub = selectedHub(this._snapshot);
-    if (!hub) return "No hub selected.";
-    this.setExternalHubCommandBusy(true, "Reordering activities\u2026", hub.entry_id);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.reorderingActivities, hub.entry_id);
     try {
       await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
@@ -3394,10 +3745,10 @@ var ControlPanelStore = class {
    * Resolves with `null` on success or a failure message for the caller's UI.
    */
   async reorderDevices(orderedIds) {
-    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
     const hub = selectedHub(this._snapshot);
-    if (!hub) return "No hub selected.";
-    this.setExternalHubCommandBusy(true, "Reordering devices\u2026", hub.entry_id);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.reorderingDevices, hub.entry_id);
     try {
       await this.api().reorderDevices(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
@@ -3414,15 +3765,15 @@ var ControlPanelStore = class {
    * activity id or an error message.
    */
   async createActivity(name) {
-    if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
+    if (this._isHubCommandBusy()) return { error: TOOLS_CARD_STRINGS.errors.anotherOperation };
     const hub = selectedHub(this._snapshot);
-    if (!hub) return { error: "No hub selected." };
-    this.setExternalHubCommandBusy(true, "Creating activity\u2026", hub.entry_id);
+    if (!hub) return { error: TOOLS_CARD_STRINGS.errors.noHubSelected };
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingActivity, hub.entry_id);
     let activityId = 0;
     try {
       const result = await this.api().createActivity(hub.entry_id, name);
       activityId = Number(result?.activity_id || 0);
-      if (!activityId) return { error: "The hub did not return the new activity id." };
+      if (!activityId) return { error: TOOLS_CARD_STRINGS.errors.activityIdMissing };
     } catch (error) {
       return { error: formatError(error) };
     } finally {
@@ -3592,7 +3943,7 @@ var ControlPanelStore = class {
     const nextRuntime = nextHub?.runtime_state;
     if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
-      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : operation === "entity_sync" ? "Synced to hub." : "Wifi Device deployed successfully.";
+      const successLabel = operation === "backup_restore" ? TOOLS_CARD_STRINGS.backup.restoreCompletedSuccessfully : operation === "backup_export" ? TOOLS_CARD_STRINGS.backup.backupCompletedSuccessfully : operation === "entity_sync" ? TOOLS_CARD_STRINGS.activities.syncSuccess : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
       this.showRuntimeCompletion(
         {
           tone: "success",
@@ -3663,7 +4014,7 @@ var ControlPanelStore = class {
     }
   }
   api() {
-    if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
+    if (!this._snapshot.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantContextUnavailable);
     return new ControlPanelApi(this._snapshot.hass);
   }
   persistViewState() {
@@ -3907,7 +4258,7 @@ var ControlPanelStore = class {
 
 // custom_components/sofabaton_x1s/www/src/components/hub-picker.ts
 function renderHubPicker(params) {
-  const prefix = params.prefixLabel ?? "HUB";
+  const prefix = params.prefixLabel ?? TOOLS_CARD_STRINGS.card.hubShort;
   if (!params.interactive) {
     return b2`
       <div class="hub-picker hub-picker--static" id="hub-picker-root">
@@ -4058,8 +4409,11 @@ function renderSettingsTab(params) {
   const connected = hubConnected(params.hass, hub);
   const proxyOn = proxyClientConnected(params.hass, hub);
   const hubVersion = String(hub.version ?? "").trim();
-  const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
-  const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
+  const firmwareVersion = hub.firmware_version != null ? TOOLS_CARD_STRINGS.hub.firmwareVersion(hub.firmware_version) : "";
+  const versionLine = [
+    hubVersion ? TOOLS_CARD_STRINGS.hub.productVersion(hubVersion) : "",
+    firmwareVersion
+  ].filter(Boolean).join(" / ");
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key) => !!params.hub?.settings?.[key];
@@ -4554,6 +4908,3265 @@ function renderLogsTab(params) {
     error: params.error
   });
 }
+
+// custom_components/sofabaton_x1s/www/src/control-panel-translations/en-gb.ts
+registerToolsCardTranslation("en-gb", {
+  common: {
+    favoriteFallback: (id) => `Favourite ${id}`
+  },
+  settings: {
+    hubClickActionDescription: "Choose what happens when you click a command, favourite, macro, or button in the Hub tab lists."
+  },
+  cache: {
+    favoriteFallback: (commandId) => `Favourite ${commandId}`,
+    favorites: "Favourites"
+  },
+  hubClick: {
+    kindLabels: {
+      favorite: "Favourite"
+    }
+  },
+  activities: {
+    review: {
+      roleCustomized: (group) => `${group} customised.`,
+      idleChanged: (device, label) => `"${device}" idle behaviour \u2192 ${label}.`
+    }
+  },
+  backup: {
+    powerNoDevices: "No devices yet. Add a favourite, binding, or macro that uses one.",
+    roleCustomized: (name) => `${name} (customised)`,
+    customizeButtonsToggle: "Customise individual buttons",
+    bindingsNoneConfigured: "None customised",
+    renameFavorite: "Rename Favourite"
+  },
+  wifiCommands: {
+    colorGroup: "Colour",
+    favorite: "Set as Favourite"
+  }
+});
+
+// custom_components/sofabaton_x1s/www/src/control-panel-translations/de.ts
+var art = (kind) => kind === "activity" ? "Aktivit\xE4t" : "Ger\xE4t";
+var TOOLS_CARD_STRINGS_DE = {
+  common: {
+    cancel: "Abbrechen",
+    save: "Speichern",
+    complete: "Fertig",
+    loading: "Wird geladen...",
+    noHubsFound: "Keine Hubs gefunden.",
+    homeAssistantUnavailable: "Home Assistant ist nicht verf\xFCgbar",
+    homeAssistantContextUnavailable: "Home-Assistant-Kontext ist nicht verf\xFCgbar",
+    unknownError: "Unbekannter Fehler",
+    unknownErrorWithLogs: "Unbekannter Fehler (Home-Assistant-Protokolle pr\xFCfen)",
+    commandFallback: (id) => `Befehl ${id}`,
+    buttonFallback: (id) => `Taste ${id}`,
+    deviceFallback: (id) => `Ger\xE4t ${id}`,
+    activityFallback: (id) => `Aktivit\xE4t ${id}`,
+    macroFallback: (id) => `Makro ${id}`,
+    favoriteFallback: (id) => `Favorit ${id}`,
+    inputFallback: (id) => `Eingang ${id}`,
+    noInput: "kein Eingang"
+  },
+  card: {
+    connectivityAria: "Verbindungsstatus",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version) => `SOFABATON-STEUERZENTRALE - v${version}`,
+    wifiDeviceFallback: "WLAN-Ger\xE4t",
+    wifiCommandFallback: "WLAN-Befehl",
+    irLongPress: (device, command) => `${device} \u2022 ${command} (lang dr\xFCcken)`,
+    irPress: (device, command) => `${device} \u2022 ${command}`,
+    previewDescription: "Werkzeuge, Cache, Backups, Protokolle und Automatisierungen f\xFCr deinen Hub",
+    editorHeight: "Kartenh\xF6he",
+    editorHeightHint: "Legt fest, wie viel von den Aktivit\xE4ts-/Ger\xE4telisten sichtbar ist. Standard: 600 px.",
+    pickerName: "Sofabaton-Steuerzentrale",
+    pickerDescription: "Eine Steuerzentrale f\xFCr Sofabaton-Hubwerkzeuge, Cache, Protokolle, Einstellungen und WLAN-Befehle."
+  },
+  docs: {
+    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
+  },
+  tabs: { cache: "Hub", wifiCommands: "Automatisierung", backup: "Backup", settings: "Einstellungen", logs: "Protokolle" },
+  tabDocs: { wifi_commands: "Dokumentation zur Automatisierung", backup: "Backup-Dokumentation" },
+  dock: { unsyncedChanges: "Nicht synchronisierte \xC4nderungen \u2014 mit dem Hub synchronisieren, um sie anzuwenden" },
+  backend: {
+    unavailableTitle: "Backend nicht verf\xFCgbar",
+    unavailableCopy: "Warten auf den Start der Sofabaton-X-Integration...",
+    versionMismatchTitle: "Aktualisierung zum Laden der neuen Sofabaton-Steuerzentrale erforderlich",
+    versionMismatchCopy: "Dieses Dashboard verwendet noch eine \xE4ltere zwischengespeicherte Version der Sofabaton-Steuerzentrale als die derzeit in Home Assistant laufende Version. Aktualisiere oder \xF6ffne das Dashboard bzw. den Browser erneut, bevor du die Steuerzentrale wieder verwendest, damit die aktualisierte Karte geladen wird.",
+    backendExpects: "Backend erwartet",
+    cardLoaded: "Geladene Karte",
+    unknownVersion: "unbekannt",
+    refreshingCache: "Cache wird aktualisiert...",
+    hubCommandInProgress: "Hub-Befehl wird ausgef\xFChrt..."
+  },
+  hubUnavailable: { title: "Hub nicht verf\xFCgbar", copy: "Dieser Hub ist nicht verbunden. Die Steuerzentrale ist erst wieder verf\xFCgbar, wenn der Hub erneut verbunden ist." },
+  availability: {
+    operationRunning: "Vorgang l\xE4uft",
+    working: "Wird ausgef\xFChrt...",
+    appConnectedOnlyLogs: "Nur Protokolle ist verf\xFCgbar, w\xE4hrend die Sofabaton-App verbunden ist.",
+    hubCommandInProgress: "Hub-Befehl wird ausgef\xFChrt...",
+    refreshingCache: "Cache wird aktualisiert...",
+    unavailable: "Nicht verf\xFCgbar",
+    refreshDashboard: "Aktualisiere das Dashboard, um die neue Sofabaton-Steuerzentrale zu laden.",
+    automationUnavailable: "Automatisierung nicht verf\xFCgbar",
+    backupUnavailable: "Backup nicht verf\xFCgbar",
+    automationBlockedByProxy: "Die Automatisierung kann nicht verwendet werden, w\xE4hrend die Sofabaton-App \xFCber den Proxy mit dem Hub verbunden ist.",
+    backupBlockedByProxy: "Backups k\xF6nnen nicht verwendet werden, w\xE4hrend die Sofabaton-App \xFCber den Proxy mit dem Hub verbunden ist."
+  },
+  buttonNames: {
+    151: "C",
+    152: "B",
+    153: "A",
+    154: "Beenden",
+    155: "DVR",
+    156: "Wiedergabe",
+    157: "Programm\xFCbersicht",
+    174: "Nach oben",
+    175: "Nach links",
+    176: "OK",
+    177: "Nach rechts",
+    178: "Nach unten",
+    179: "Zur\xFCck",
+    180: "Home",
+    181: "Men\xFC",
+    182: "Lautst\xE4rke +",
+    183: "Kanal +",
+    184: "Stumm",
+    185: "Lautst\xE4rke -",
+    186: "Kanal -",
+    187: "Zur\xFCckspulen",
+    188: "Pause",
+    189: "Vorspulen",
+    190: "Rot",
+    191: "Gr\xFCn",
+    192: "Gelb",
+    193: "Blau",
+    198: "Einschalten",
+    199: "Ausschalten"
+  },
+  errors: {
+    backupProgressNoSocket: "Der Backup-Fortschritt ist ohne Websocket-Verbindung nicht verf\xFCgbar",
+    logsNoSocket: "Live-Protokolle sind ohne Websocket-Verbindung nicht verf\xFCgbar",
+    wifiPressNoSocket: "WLAN-Tastendruckereignisse sind ohne Websocket-Verbindung nicht verf\xFCgbar",
+    hubEventsNoSocket: "Hub-Ereignisse sind ohne Websocket-Verbindung nicht verf\xFCgbar",
+    anotherOperation: "Ein anderer Hub-Vorgang wird bereits ausgef\xFChrt.",
+    noHubSelected: "Kein Hub ausgew\xE4hlt.",
+    noHubSelectedLong: "Es ist kein Hub ausgew\xE4hlt.",
+    cacheRefreshFailed: "Cache-Aktualisierung fehlgeschlagen.",
+    syncFailed: "Synchronisierung fehlgeschlagen.",
+    activityIdMissing: "Der Hub hat keine ID f\xFCr die neue Aktivit\xE4t zur\xFCckgegeben."
+  },
+  settings: {
+    loading: "Wird geladen...",
+    noHubsFound: "Keine Hubs gefunden.",
+    unknownHubName: "Unbekannt",
+    activities: "Aktivit\xE4ten",
+    devices: "Ger\xE4te",
+    persistentCacheTitle: "Dauerhafter Cache",
+    persistentCacheDescription: "Aktivit\xE4ts- und Ger\xE4tedaten f\xFCr schnelleren Zugriff lokal speichern.",
+    persistentCacheFooter: "GLOBAL",
+    hubClickActionTitle: "Klicks im Hub-Tab",
+    hubClickActionDescription: "W\xE4hle aus, was beim Anklicken eines Befehls, Favoriten, Makros oder einer Taste in den Listen des Hub-Tabs geschieht.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "Nichts tun",
+    hubClickActionOptionSend: "Befehl senden",
+    hubClickActionOptionCopy: "Befehl kopieren",
+    hexLoggingTitle: "Hex-Protokollierung",
+    hexLoggingDescription: "Unformatierten Hex-Datenverkehr zwischen Hub, Integration und App protokollieren.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Der offiziellen Sofabaton-App und HA erlauben, die Hub-Verbindung gleichzeitig zu verwenden.",
+    wifiDeviceTitle: "WLAN-Ger\xE4t",
+    wifiDeviceDescription: "Den HTTP-Listener aktivieren, der Tastendr\xFCcke der Fernbedienung erfasst und an HA-Aktionen weiterleitet.",
+    findRemoteTitle: "Fernbedienung finden",
+    findRemoteDescription: "Die Fernbedienung piepen lassen, damit du sie finden kannst.",
+    syncRemoteTitle: "Fernbedienung synchronisieren",
+    syncRemoteDescription: "Die neueste Konfiguration an die physische Fernbedienung \xFCbertragen."
+  },
+  cache: {
+    loading: "Wird geladen...",
+    noHubsFound: "Keine Hubs gefunden.",
+    persistentCacheOffTitle: "Dauerhafter Cache ist deaktiviert",
+    persistentCacheOffCopy: "Aktiviere ihn, um zwischengespeicherte Aktivit\xE4ten und Ger\xE4te zu durchsuchen und davon abh\xE4ngige Backup-Abl\xE4ufe freizuschalten.",
+    enablingPersistentCache: "Wird aktiviert...",
+    enablePersistentCache: "Dauerhaften Cache aktivieren",
+    devIdBadge: "Ger\xE4te-ID",
+    favIdBadge: "Fav-ID",
+    comIdBadge: "Befehls-ID",
+    activityFallback: (id) => `Aktivit\xE4t ${id}`,
+    deviceFallback: (id) => `Ger\xE4t ${id}`,
+    favoriteFallback: (commandId) => `Favorit ${commandId}`,
+    macroFallback: (commandId) => `Makro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} Fav. / ${macros} Makros / ${buttons} Tasten`,
+    deviceCommandCount: (count) => `${count} Befehle`,
+    favorites: "Favoriten",
+    macros: "Makros",
+    buttons: "Tasten",
+    noCachedData: "Noch keine Daten im Cache.",
+    noCachedCommands: "Keine Befehle im Cache.",
+    staleBanner: "Der Cache wurde extern aktualisiert. Aktualisiere die Ansicht, um die neuesten Daten zu sehen.",
+    refresh: "Aktualisieren",
+    activities: "Aktivit\xE4ten",
+    devices: "Ger\xE4te",
+    refreshList: "Liste aktualisieren",
+    refreshAll: "Alles aktualisieren",
+    editActivity: "Aktivit\xE4t bearbeiten",
+    editDevice: "Ger\xE4t bearbeiten",
+    changeOrder: "Reihenfolge \xE4ndern",
+    addActivity: "Aktivit\xE4t hinzuf\xFCgen",
+    reorderSync: "Mit Hub synchronisieren",
+    reorderCancel: "Abbrechen",
+    reorderHint: "Ziehe die Aktivit\xE4ten in die gew\xFCnschte Reihenfolge und synchronisiere sie anschlie\xDFend mit dem Hub.",
+    reorderDevicesHint: "Ziehe die Ger\xE4te in die gew\xFCnschte Reihenfolge und synchronisiere sie anschlie\xDFend mit dem Hub.",
+    reorderSyncing: "Neue Reihenfolge wird auf den Hub geschrieben\u2026",
+    addActivityTitle: "Aktivit\xE4t hinzuf\xFCgen",
+    addActivityBody: "Benenne die neue Aktivit\xE4t. Sie wird auf dem Hub erstellt und im Editor ge\xF6ffnet.",
+    addActivityPlaceholder: "Name der Aktivit\xE4t",
+    addActivityCancel: "Abbrechen",
+    addActivityConfirm: "Erstellen",
+    addActivityCreating: "Wird erstellt\u2026",
+    reorderingActivities: "Aktivit\xE4ten werden neu geordnet\u2026",
+    reorderingDevices: "Ger\xE4te werden neu geordnet\u2026",
+    creatingActivity: "Aktivit\xE4t wird erstellt\u2026"
+  },
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Aktivit\xE4t",
+    contextDevice: "Ger\xE4t",
+    kindLabels: { favorite: "Favorit", macro: "Makro", button: "Taste", command: "Befehl" },
+    lovelaceHeading: "Lovelace-Schaltfl\xE4chencode",
+    lovelaceHint: "In das Dashboard-YAML kopieren:",
+    actionHeading: "Dienstaufruf (Automatisierung)",
+    actionHint: "In Skripten oder Automatisierungen verwenden:",
+    noRemoteEntity: "Die Remote-Entit\xE4t des Hubs ist nicht verf\xFCgbar.",
+    copied: (label) => `"${label}" wurde in die Benachrichtigungen kopiert.`,
+    sendTooltip: "Klicken, um diesen Befehl an den Hub zu senden",
+    copyTooltip: "Klicken, um diesen Befehl in eine Benachrichtigung zu kopieren"
+  },
+  logs: { loading: "Protokollstream wird geladen...", empty: "F\xFCr diesen Hub wurden noch keine Protokollzeilen erfasst.", liveConsole: "Live-Konsole" },
+  cacheRefresh: { label: "Alles aktualisieren", running: "Wird aktualisiert\u2026", starting: "Hub-Cache-Aktualisierung wird gestartet\u2026", working: "Konfiguration deines Hubs wird gelesen\u2026", done: "Hub-Cache aktualisiert." },
+  progress: { homeAssistant: "Home Assistant", sofabatonHub: "Sofabaton-Hub", working: "Wird ausgef\xFChrt...", backupTitle: "Backup wird erstellt", restoreTitle: "Backup wird wiederhergestellt" },
+  activities: {
+    loading: "Aktivit\xE4ten werden geladen...",
+    selectHub: "W\xE4hle einen Hub aus, um seine Aktivit\xE4ten zu bearbeiten.",
+    activityFallback: (id) => `Aktivit\xE4t ${id}`,
+    appConnectedTitle: "Die Sofabaton-App ist verbunden",
+    appConnectedBody: "Schlie\xDFe die Sofabaton-App, um die Hub-Konfiguration zu bearbeiten.",
+    operationRunningTitle: "Ein anderer Vorgang wird ausgef\xFChrt",
+    operationRunningBody: "Warte, bis das aktuelle Backup, die Wiederherstellung oder die Synchronisierung abgeschlossen ist, und versuche es dann erneut.",
+    captureTitle: "Hub wird ausgelesen",
+    captureMessage: "Konfiguration deines Hubs wird ausgelesen\u2026",
+    captureMessageWithStep: (current, total) => `Konfiguration deines Hubs wird ausgelesen\u2026 (Ger\xE4t ${current} von ${total})`,
+    captureFailedTitle: "Hub konnte nicht ausgelesen werden",
+    captureFailedBody: "Der Hub antwortete nicht mehr, bevor das Auslesen abgeschlossen war.",
+    retry: "Erneut versuchen",
+    back: "Zur\xFCck",
+    capturingFromCache: (kind) => `${art(kind)} wird aus dem Hub-Cache geladen\u2026`,
+    needsRefreshTitle: "Hub-Cache zum Bearbeiten aktualisieren",
+    needsRefreshBody: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} befindet sich noch nicht im lokalen Hub-Cache. Aktualisiere den Hub-Cache, um ${kind === "activity" ? "sie" : "es"} in den Editor zu laden. Dies kann je nach Gr\xF6\xDFe deiner Hub-Konfiguration einige Minuten dauern.`,
+    syncToHub: "Mit Hub synchronisieren",
+    syncUpToDate: "Aktuell",
+    deletingTitle: (kind) => `${art(kind)} wird gel\xF6scht`,
+    deletingMessage: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} wird vom Hub entfernt\u2026`,
+    syncingTitle: "Synchronisierung mit deinem Hub",
+    syncingMessage: "Deine \xC4nderungen werden auf den Hub geschrieben\u2026",
+    syncSuccess: "Mit dem Hub synchronisiert.",
+    syncPlanSummary: (count) => `${count} ${count === 1 ? "Schreibvorgang" : "Schreibvorg\xE4nge"} auf dem Hub`,
+    syncFailedTitle: "Synchronisierung wurde nicht abgeschlossen",
+    syncFailedStep: (step) => `Der Hub stoppte bei: ${step}`,
+    syncStaleTitle: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} wurde auf dem Hub ge\xE4ndert`,
+    syncStaleBody: (kind) => `${kind === "activity" ? "Die Aktivit\xE4t" : "Das Ger\xE4t"} wurde auf dem Hub bearbeitet, nachdem du ${kind === "activity" ? "sie" : "es"} geladen hast. Deine \xC4nderungen k\xF6nnen deshalb nicht sicher angewendet werden. Lade die aktuelle Version vom Hub neu, um fortzufahren \u2014 deine nicht gespeicherten \xC4nderungen werden verworfen.`,
+    syncRetry: "Synchronisierung erneut versuchen",
+    syncReload: "Vom Hub neu laden",
+    syncKeepEditing: "Weiter bearbeiten",
+    exitUnsyncedTitle: "Nicht synchronisierte \xC4nderungen",
+    exitUnsyncedBody: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} enth\xE4lt \xC4nderungen, die nicht mit dem Hub synchronisiert wurden. Synchronisiere sie jetzt oder verlasse den Editor ohne Synchronisierung und verwirf die lokale Bearbeitung.`,
+    exitSyncNow: "Jetzt synchronisieren",
+    exitWithoutSync: "Ohne Synchronisierung verlassen",
+    discardConfirmCancel: "Weiter bearbeiten",
+    review: {
+      sectionDevices: "Ger\xE4te",
+      sectionStart: "Beim Start",
+      sectionButtons: "Tasten",
+      sectionShortcuts: "Verkn\xFCpfungen",
+      sectionEnd: "Beim Beenden",
+      sectionDeviceWide: "Ger\xE4teweite \xC4nderungen",
+      deviceAdded: (name) => `"${name}" wurde dieser Aktivit\xE4t hinzugef\xFCgt.`,
+      deviceRemoved: (name) => `"${name}" wurde aus dieser Aktivit\xE4t entfernt.`,
+      inputChanged: (device, input) => `Eingang von "${device}" wurde auf ${input} ge\xE4ndert.`,
+      inputCleared: (device) => `Eingang von "${device}" wurde gel\xF6scht.`,
+      startReordered: "Startsequenz wurde neu geordnet.",
+      roleNowControls: (group, device) => `${group} steuern jetzt "${device}".`,
+      roleCustomized: (group) => `${group} angepasst.`,
+      roleCleared: (group) => `${group} nicht mehr zugewiesen.`,
+      shortcutAdded: (name) => `"${name}" hinzugef\xFCgt.`,
+      shortcutRemoved: (name) => `"${name}" entfernt.`,
+      shortcutRenamed: (oldName, newName) => `"${oldName}" in "${newName}" umbenannt.`,
+      shortcutsReordered: "Verkn\xFCpfungen neu geordnet.",
+      idleChanged: (device, label) => `Leerlaufverhalten von "${device}" \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Befehl "${oldName}" auf "${device}" in "${newName}" umbenannt.`,
+      roleGroups: { volume: "Lautst\xE4rketasten", navigation: "Navigationstasten", playback: "Wiedergabetasten", channels: "Kanaltasten" },
+      idleShort: { 0: "nicht festgelegt", 1: "schaltet sich im Leerlauf aus", 2: "schaltet sich nie aus", 3: "bleibt eingeschaltet", 4: "wird nicht vom Hub verwaltet" }
+    },
+    deviceReview: {
+      sectionPower: "Stromversorgung",
+      sectionNetwork: "Netzwerk",
+      sectionButtons: "Tasten",
+      sectionMacros: "Makros",
+      powerControlChanged: (label) => `Automatische Stromsteuerung \u2192 ${label}.`,
+      powerOnChanged: "Einschaltsequenz aktualisiert.",
+      powerOffChanged: "Ausschaltsequenz aktualisiert.",
+      macroAdded: (name) => `Makro "${name}" hinzugef\xFCgt.`,
+      macroRemoved: (name) => `Makro "${name}" entfernt.`,
+      macroRenamed: (oldName, newName) => `Makro "${oldName}" in "${newName}" umbenannt.`,
+      macroChanged: (name) => `Makro "${name}" bearbeitet.`,
+      bindingBound: (button, command) => `"${button}" sendet jetzt "${command}".`,
+      bindingCleared: (button) => `"${button}" ist nicht mehr belegt.`,
+      ipChanged: (ip) => `IP-Adresse \u2192 ${ip}.`,
+      ipCleared: "IP-Adresse gel\xF6scht."
+    }
+  },
+  backup: {
+    sectionMake: "Erstellen",
+    sectionEdit: "Bearbeiten",
+    sectionRestore: "Wiederherstellen",
+    loading: "Backup-Werkzeuge werden geladen...",
+    selectHub: "W\xE4hle einen Hub aus, um Backups zu verwalten.",
+    creatingSubtitle: "Der Hub erstellt dein Backup.",
+    readySubtitle: "Dein Backup ist bereit.",
+    chooseSubtitle: "W\xE4hle aus, was in dieses Backup aufgenommen werden soll.",
+    enablePersistentCache: "Aktiviere den dauerhaften Cache, um den Backup-Inhalt auf der Karte auszuw\xE4hlen.",
+    completedTitle: "Backup abgeschlossen",
+    expired: "Backup abgelaufen. Starte ein neues Backup, um es erneut herunterzuladen.",
+    downloaded: "Heruntergeladen",
+    downloadAgain: "Erneut herunterladen",
+    downloadBackup: "Backup herunterladen",
+    complete: "Fertig",
+    restoreCompletedTitle: "Wiederherstellung abgeschlossen",
+    restoreCompletedSubtitle: "Die ausgew\xE4hlten Aktivit\xE4ten und Ger\xE4te wurden auf dem Hub wiederhergestellt.",
+    restoreCompletedStatus: "Wiederherstellung abgeschlossen.",
+    restoreCompletedSuccessfully: "Wiederherstellung erfolgreich abgeschlossen.",
+    backupCompletedSuccessfully: "Backup erfolgreich abgeschlossen.",
+    wifiDeviceDeployedSuccessfully: "WLAN-Ger\xE4t erfolgreich bereitgestellt.",
+    restoreRunningSubtitle: "Der Hub stellt dein Backup wieder her.",
+    restoreFinishedSubtitle: "Deine Wiederherstellung ist abgeschlossen.",
+    restoreChooseSubtitle: "Lade eine Backup-Datei und w\xE4hle genau aus, was wiederhergestellt werden soll. Aktivit\xE4ten schlie\xDFen automatisch die Ger\xE4te ein, von denen sie abh\xE4ngen.",
+    itemsToRestore: "Wiederherzustellende Elemente",
+    eraseExisting: "Vorhandene Ger\xE4te und Aktivit\xE4ten l\xF6schen",
+    startRestore: "Wiederherstellung starten",
+    startingBackup: "Backup wird gestartet\u2026",
+    startingRestore: "Wiederherstellung wird gestartet\u2026",
+    backupFailed: "Backup fehlgeschlagen.",
+    restoreFailed: "Wiederherstellung fehlgeschlagen.",
+    backupInProgress: "Backup l\xE4uft\u2026",
+    restoreInProgress: "Wiederherstellung l\xE4uft\u2026",
+    failedPrepareDownload: "Das bearbeitete Backup konnte nicht zum Herunterladen vorbereitet werden.",
+    enterName: "Gib einen Namen ein, um fortzufahren.",
+    renameDialogTitle: "Hub umbenennen",
+    linked: "verkn\xFCpft",
+    hubNameRestoreOnlyAria: "Der Hub-Name wird bei der Wiederherstellung nur angewendet, wenn der Benutzer das L\xF6schen des Hubs ausw\xE4hlt.",
+    entireHub: "Gesamter Hub",
+    selectedDevices: "Ausgew\xE4hlte Ger\xE4te",
+    devicesToInclude: "Einzuschlie\xDFende Ger\xE4te",
+    selectedCount: (count) => `${count} ausgew\xE4hlt`,
+    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "Aktivit\xE4t" : "Aktivit\xE4ten"} und ${devices} ${devices === 1 ? "Ger\xE4t" : "Ger\xE4te"} gesichert`,
+    activityMeta: (favorites, macros) => `${favorites} Favoriten \xB7 ${macros} Makros`,
+    linkedDevices: (count) => `${count} ${count === 1 ? "verkn\xFCpftes Ger\xE4t" : "verkn\xFCpfte Ger\xE4te"}`,
+    deselectAll: "Auswahl aufheben",
+    selectAll: "Alle ausw\xE4hlen",
+    noDevicesAvailable: "Keine Ger\xE4te verf\xFCgbar.",
+    working: "Wird ausgef\xFChrt",
+    startBackup: "Backup starten",
+    editLoadPrompt: "Lade eine Backup-Datei und w\xE4hle anschlie\xDFend eine Aktivit\xE4t oder ein Ger\xE4t zum Bearbeiten aus.",
+    chooseBackupFile: "Backup-Datei ausw\xE4hlen",
+    reorderHint: " Ziehe den Griff einer Zeile, um Aktivit\xE4ten und Ger\xE4te neu zu ordnen.",
+    macroStepsSortableHelp: "Zum Neuordnen ziehen. Jeder Schritt spielt einen Befehl ab; stelle rechts die anschlie\xDFende Wartezeit ein.",
+    macroStepsHelp: "Jeder Schritt spielt einen Befehl ab; stelle rechts die anschlie\xDFende Wartezeit ein.",
+    hubName: "Hub-Name",
+    hubNameNotSet: "(nicht festgelegt)",
+    renameHub: "Hub umbenennen",
+    activities: "Aktivit\xE4ten",
+    noActivitiesInFile: "Diese Backup-Datei enth\xE4lt keine Aktivit\xE4ten.",
+    devices: "Ger\xE4te",
+    noDevicesInFile: "Diese Backup-Datei enth\xE4lt keine Ger\xE4te.",
+    unsavedChanges: "Nicht gespeicherte \xC4nderungen. Klicke auf ",
+    downloadEditedBackupStrong: "Bearbeitetes Backup herunterladen",
+    unsavedChangesSuffix: ", um sie in einer Datei zu speichern.",
+    downloadEditedBackup: "Bearbeitetes Backup herunterladen",
+    deleteActivityTitle: (name) => `Aktivit\xE4t "${name}" l\xF6schen?`,
+    deleteDeviceTitle: (name) => `Ger\xE4t "${name}" l\xF6schen?`,
+    deleteCommandTitle: (name) => `Befehl "${name}" l\xF6schen?`,
+    deleteFavoriteTitle: (name) => `Verkn\xFCpfung "${name}" l\xF6schen?`,
+    deleteMacroTitle: (name) => `Makro "${name}" l\xF6schen?`,
+    deleteCascadeIntro: "Dadurch werden auch Verweise an anderen Stellen im Backup entfernt:",
+    deleteSimpleBody: "Dadurch wird das Element aus dem geladenen Backup entfernt.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "Aktivit\xE4t verweist" : "Aktivit\xE4ten verweisen"} darauf`,
+    deleteImpactFavorites: (count) => `${count} ${count === 1 ? "Verkn\xFCpfung wird" : "Verkn\xFCpfungen werden"} entfernt`,
+    deleteImpactMacroSteps: (count) => `${count} ${count === 1 ? "Sequenzschritt wird" : "Sequenzschritte werden"} entfernt`,
+    deleteImpactPowerSteps: (count) => `${count} ${count === 1 ? "Stromsequenzschritt wird" : "Stromsequenzschritte werden"} gel\xF6scht`,
+    deleteReplaceNote: "L\xF6schungen gelangen nur bei einer Wiederherstellung mit Ersetzen auf den Hub.",
+    deleteCascadeIntroLive: "Beim L\xF6schen werden auch die Verweise auf dem Hub entfernt:",
+    deleteSimpleBodyLive: "Dadurch wird das Element entfernt.",
+    deleteImmediateNote: "Dies wird sofort auf dem Hub angewendet.",
+    deleteSyncNote: "Diese \xC4nderung wird bei der n\xE4chsten Synchronisierung auf den Hub geschrieben.",
+    deleteCancel: "Abbrechen",
+    deleteConfirm: "L\xF6schen",
+    deleteActivityAria: "Aktivit\xE4t l\xF6schen",
+    deleteDeviceAria: "Ger\xE4t l\xF6schen",
+    deleteCommandAria: "Befehl l\xF6schen",
+    addFavoriteTitle: "Befehlsverkn\xFCpfung hinzuf\xFCgen",
+    addFavoriteDevice: "Ger\xE4t",
+    addFavoriteCommand: "Befehl",
+    addFavoriteAdd: "Hinzuf\xFCgen",
+    addFavoriteCancel: "Abbrechen",
+    addFavoriteNoDevices: "Dieses Backup enth\xE4lt keine Ger\xE4te mit hinzuf\xFCgbaren Befehlen.",
+    addFavoriteNoCommands: "Dieses Ger\xE4t enth\xE4lt keine hinzuf\xFCgbaren Befehle.",
+    buttonBindingsTitle: "Tastenbelegungen",
+    buttonBindingsActivitySub: "Tasten der Fernbedienung innerhalb dieser Aktivit\xE4t mit einem Ger\xE4tebefehl belegen.",
+    buttonBindingsDeviceSub: "Tasten der Fernbedienung mit den eigenen Befehlen dieses Ger\xE4ts belegen.",
+    buttonBindingsEmpty: "Keine Tastenbelegungen konfiguriert.",
+    addBinding: "Belegung hinzuf\xFCgen",
+    bindingButton: "Taste",
+    bindingTargetDevice: "Ger\xE4t",
+    bindingCommand: "Befehl",
+    bindingEnableLongPress: "Belegung f\xFCr langes Dr\xFCcken aktivieren",
+    bindingLongPressDevice: "Ger\xE4t bei langem Dr\xFCcken",
+    bindingLongPressCommand: "Befehl bei langem Dr\xFCcken",
+    bindingIncomplete: "W\xE4hle zuerst eine Taste und ein Ziel aus.",
+    bindingNoButtons: "Jede Taste dieses Hub-Modells ist bereits belegt.",
+    bindingNoCommands: "Dieses Ger\xE4t hat keine Befehle zum Belegen.",
+    bindingNoDevices: "Dieses Backup enth\xE4lt keine Ger\xE4te mit Befehlen zum Belegen.",
+    bindingAdd: "Hinzuf\xFCgen",
+    bindingSave: "Speichern",
+    bindingCancel: "Abbrechen",
+    bindingDialogAddTitle: "Tastenbelegung hinzuf\xFCgen",
+    bindingDialogEditTitle: (name) => `Belegung f\xFCr ${name} bearbeiten`,
+    bindingLongPressMeta: (label) => `Lang dr\xFCcken \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Belegung f\xFCr ${name} l\xF6schen?`,
+    deleteBindingAria: "Belegung l\xF6schen",
+    deleteImpactBindings: (count) => `${count} ${count === 1 ? "Tastenbelegung wird" : "Tastenbelegungen werden"} gel\xF6scht`,
+    macrosTitle: "Makros",
+    macrosDeviceSub: "Bearbeite die Befehlssequenzen, die dieses Ger\xE4t abspielt, einschlie\xDFlich Ein- und Ausschalten.",
+    macroPowerChip: "Strom",
+    powerSetupTitle: "Stromversorgung",
+    powerSetupDeviceSub: "Wie der Hub die Stromversorgung dieses Ger\xE4ts f\xFCr Aktivit\xE4ten verwaltet und welche Sequenzen er zum Ein- und Ausschalten sendet.",
+    powerSetupActivitySub: "Die Start- und Abschaltsequenz, die diese Aktivit\xE4t ausf\xFChrt.",
+    powerOnLabel: "Einschaltsequenz",
+    powerOffLabel: "Ausschaltsequenz",
+    powerControlTitle: "Automatische Stromsteuerung",
+    powerControlUnset: "Nicht erfasst",
+    powerControlUnsetSub: "Dieses Backup wurde vor der Erfassung der Stromsteuerung erstellt. W\xE4hle eine Option zum Festlegen oder stelle es unver\xE4ndert wieder her, um den alten Wert beizubehalten.",
+    powerControlDisabled: "Strom nicht steuern",
+    powerControlDisabledSub: "Der Hub schaltet dieses Ger\xE4t nie ein oder aus. Die folgenden Sequenzen werden ignoriert.",
+    powerControlAutoOff: "Im Leerlauf ausschalten",
+    powerControlAutoOffSub: "Empfohlen. Schaltet das Ger\xE4t aus, wenn keine Aktivit\xE4t es ben\xF6tigt.",
+    powerControlStayOn: "Zwischen Aktivit\xE4ten eingeschaltet lassen",
+    powerControlStayOnSub: "\xDCberspringt die Wartezeit beim erneuten Einschalten; wird weiterhin \xFCber die Aus-Taste der Fernbedienung ausgeschaltet.",
+    powerControlAlwaysOn: "Immer eingeschaltet lassen",
+    powerControlAlwaysOnSub: "Der Hub schaltet das Ger\xE4t ein, aber nie automatisch aus.",
+    powerSequencesDisabledNote: "Die Stromsteuerung ist deaktiviert, daher werden diese Sequenzen nicht verwendet. Aktiviere sie oben, um sie zu bearbeiten.",
+    inputStepTitle: "Eingang festlegen",
+    inputStepCommand: "Eingangsbefehl",
+    inputStepNone: "\u2014 kein Eingang \u2014",
+    macroStepsCount: (count) => `${count} ${count === 1 ? "Schritt" : "Schritte"}`,
+    noMacroSteps: "Noch keine Schritte.",
+    addStep: "Schritt hinzuf\xFCgen",
+    stepDialogAddTitle: "Schritt hinzuf\xFCgen",
+    stepDialogEditTitle: "Schritt bearbeiten",
+    stepDevice: "Ger\xE4t",
+    stepCommand: "Befehl",
+    stepHoldSeconds: "Halten (Sekunden, 0 = Klick)",
+    holdLabel: (seconds) => `${seconds}s halten`,
+    stepAdd: "Hinzuf\xFCgen",
+    stepSave: "Speichern",
+    stepCancel: "Abbrechen",
+    stepNoCommands: "Dieses Ger\xE4t hat keine Befehle.",
+    stepWaitAria: "Nach diesem Schritt warten (Sekunden)",
+    stepWaitLabel: "Verz\xF6gerung",
+    stepWaitUnit: "s",
+    renameMacroAria: "Makro umbenennen",
+    deleteStepAria: "Schritt l\xF6schen",
+    editStepAria: "Schritt bearbeiten",
+    newMacroName: "Makro",
+    shortcutChipCommand: "Befehl",
+    shortcutChipAction: "Makro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Makro umbenennen" : "Verkn\xFCpfung umbenennen",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Makro l\xF6schen" : "Verkn\xFCpfung l\xF6schen",
+    powerSectionTitle: "Stromversorgung",
+    powerActivitySub: "Jedes von der Aktivit\xE4t verwendete Ger\xE4t wird hier eingeschaltet. W\xE4hle seinen Eingang und passe die Zeitsteuerung an.",
+    powerInputLabel: "Eingang",
+    powerInputNone: "\u2014 keiner \u2014",
+    powerDelayLabel: "Verz\xF6gerung (s)",
+    powerNoDevices: "Noch keine Ger\xE4te. F\xFCge einen Favoriten, eine Belegung oder ein Makro hinzu, das ein Ger\xE4t verwendet.",
+    powerOnSequence: "Einschaltsequenz",
+    powerOffSequence: "Ausschaltsequenz",
+    powerSequenceSub: "Ordne Schritte neu und f\xFCge eigene Befehle oder Wartezeiten hinzu. Erforderliche Ger\xE4teschritte k\xF6nnen neu geordnet, aber nicht entfernt werden.",
+    macroRenameAria: "Makro umbenennen",
+    editStepsAria: "Schritte bearbeiten",
+    crumbActivities: "Aktivit\xE4ten",
+    crumbDevices: "Ger\xE4te",
+    activityRemoveDeviceTitle: (name) => `${name} aus dieser Aktivit\xE4t entfernen?`,
+    activityRunningTitle: "Tasten auf der Fernbedienung",
+    activityRunningSub: "Welches Ger\xE4t jede Fernbedienungstaste in dieser Aktivit\xE4t steuert.",
+    activityShortcutsTitle: "Verkn\xFCpfungen auf dem Display der Fernbedienung",
+    activityShortcutsSubSortable: "Befehle und Makros auf dem Display der Fernbedienung. Ziehe den Griff, um sie neu zu ordnen.",
+    activityShortcutsSubStatic: "Befehle und Makros auf dem Display der Fernbedienung. Verwende die Verschiebetasten, um sie neu zu ordnen.",
+    activityShortcutsEmpty: "Noch keine Verkn\xFCpfungen. F\xFCge einen Befehl oder ein Makro hinzu.",
+    roleVolume: "Lautst\xE4rketasten steuern",
+    roleNavigation: "Navigations- und OK-Tasten steuern",
+    rolePlayback: "Wiedergabetasten steuern",
+    roleChannels: "Kanaltasten steuern",
+    roleNotUsed: "Nicht verwendet",
+    roleCustom: "Benutzerdefiniert",
+    roleCustomized: (name) => `${name} (angepasst)`,
+    roleMappedNote: (bound, total) => `${bound} von ${total} Tasten belegt`,
+    roleOptionNoMapping: (name) => `${name} \u2014 keine Tastenbelegung`,
+    roleMenuAria: (roleLabel) => `Ger\xE4t ausw\xE4hlen f\xFCr: ${roleLabel}`,
+    roleConfirmTitle: "Benutzerdefinierte Tastenbelegung ersetzen?",
+    roleConfirmBody: "Diese Gruppe enth\xE4lt Tastenbelegungen, die nicht aus der Standardbelegung eines einzelnen Ger\xE4ts stammen. Eine Zuweisung hier ersetzt sie.",
+    roleConfirmReplace: "Ersetzen",
+    roleConfirmCancel: "Abbrechen",
+    customizeButtonsToggle: "Einzelne Tasten anpassen",
+    bindingsViewTitle: "Einzelne Tasten",
+    bindingsConfiguredCount: (count) => `${count} konfiguriert`,
+    bindingsNoneConfigured: "Keine einzelnen Tasten angepasst",
+    addShortcutButton: "Hinzuf\xFCgen",
+    addShortcutTitle: "Zu Verkn\xFCpfungen hinzuf\xFCgen",
+    addShortcutKindLabel: "Typ",
+    shortcutKindCommand: "Ger\xE4tebefehl",
+    shortcutKindAction: "Makro",
+    macroTargetLabel: "Makro",
+    macroTargetCreateNew: "Neues Makro erstellen",
+    macroTargetNoExisting: "Noch keine Makros. Erstelle unten eines.",
+    addShortcutActionName: "Name",
+    addShortcutActionHelper: "Als N\xE4chstes w\xE4hlst du die Schritte aus.",
+    addShortcutCommandHelper: "Die Verkn\xFCpfung wird unter dem Namen des Befehls angezeigt.",
+    unsaved: "Nicht gespeichert",
+    unsavedTooltip: "Du hast nicht gespeicherte \xC4nderungen. Lade das Backup herunter, um sie zu speichern.",
+    renameKind: (kind) => `${art(kind)} umbenennen`,
+    managedWifiTitle: "Von Wifi Commands verwaltet",
+    managedWifiIntro: "Dieses Ger\xE4t wurde \xFCber den Tab Wifi Commands bereitgestellt.",
+    managedWifiBody: "Seine Befehle, Stromversorgung, Eing\xE4nge und Tastenbelegungen werden dort konfiguriert \u2014 \xC4nderungen hier w\xFCrden bei der n\xE4chsten Synchronisierung \xFCberschrieben.",
+    managedWifiRename: "Du kannst es hier weiterhin umbenennen; der neue Name bleibt mit deiner Wifi-Commands-Konfiguration synchronisiert.",
+    detailPower: "Stromversorgung",
+    detailNetwork: "Netzwerk",
+    detailCommands: "Befehle",
+    detailButtons: "Tasten",
+    detailSectionsAria: "Detailbereiche",
+    editBindingAria: "Belegung bearbeiten",
+    editIpAria: "IP-Adresse bearbeiten",
+    networkDescription: "Die IP-Adresse des Ger\xE4ts befindet sich im Ger\xE4tedatensatz. Der Hub verwendet sie bei der Wiedergabe zur Adressierung des Ger\xE4ts (Host-Header f\xFCr Hue/Sonos, Basis-URL f\xFCr Roku).",
+    ipv4Description: "IPv4-Adresse in Punktnotation",
+    addCommand: "Befehl hinzuf\xFCgen",
+    addCommandTitle: "Befehl hinzuf\xFCgen",
+    editPayloadTitle: "Nutzdaten bearbeiten",
+    commandsLiveHelp: "Verwende den Stift, um einen Befehl umzubenennen, und die geschweiften Klammern, um seine Nutzdaten vom Hub abzurufen und zu bearbeiten. Befehle werden weiterhin unter Backup \u2192 Bearbeiten gel\xF6scht.",
+    commandsBackupHelp: "Verwende den Stift, um einen Befehl umzubenennen (Namen werden \xFCberall aktualisiert, wo sie referenziert werden), und die geschweiften Klammern, um seine Nutzdaten zu bearbeiten.",
+    newCommandChip: "neuer Befehl",
+    commandChip: "Befehl",
+    buttonChip: "Taste",
+    ipChip: "IP",
+    thisItem: "dieses Element",
+    noDeviceCommands: "Dieses Ger\xE4t hat derzeit keine Befehle.",
+    renameCommandAria: "Befehl umbenennen",
+    commandId: "Befehls-ID",
+    editPayloadAria: "Nutzdaten bearbeiten",
+    fetchEditCommandAria: "Nutzdaten dieses Befehls abrufen und bearbeiten",
+    moveUpAria: "Nach oben verschieben",
+    moveDownAria: "Nach unten verschieben",
+    deviceClass: "Ger\xE4teklasse",
+    name: "Name",
+    nameHelper: "Wird auf der Fernbedienung und in jeder Befehlsauswahl angezeigt.",
+    verifyPayloadLive: "Pr\xFCfe ge\xE4nderte Nutzdaten vor dem Speichern: Test spielt die aktuellen Bytes auf dem Hub ab, ohne zu speichern. Speichern \xFCbernimmt die Nutzdaten in die n\xE4chste Synchronisierung des Ger\xE4ts.",
+    verifyPayloadBackup: "Pr\xFCfe ge\xE4nderte Nutzdaten, bevor du ihnen vertraust: Test spielt die Bytes auf dem Hub ab, ohne zu speichern. Speichere hier erst, wenn die Nutzdaten wie erwartet funktionieren.",
+    test: "Testen",
+    sendingToHub: "Wird an den Hub gesendet\u2026",
+    sentToHub: "Zur einmaligen Wiedergabe an den Hub gesendet.",
+    testFailed: "Test fehlgeschlagen.",
+    rawPayload: "Unformatierte Nutzdaten",
+    rawPayloadDescription: "F\xFCr diese Ger\xE4teklasse gibt es keinen strukturierten Editor; die folgenden Bytes werden bei der Wiederherstellung unver\xE4ndert auf dem Hub wiedergegeben.",
+    payloadHex: "Nutzdaten (Hex-Bytes)",
+    payloadHexHelper: 'Bytepaare wie "0a 4f 22"; Leerzeichen und 0x-Pr\xE4fixe sind zul\xE4ssig.',
+    rename: "Umbenennen",
+    renameActivity: "Aktivit\xE4t umbenennen",
+    renameDevice: "Ger\xE4t umbenennen",
+    renameMacro: "Makro umbenennen",
+    renameFavorite: "Favorit umbenennen",
+    renameCommand: "Befehl umbenennen",
+    ipAddress: "IP-Adresse",
+    noPayloadReturned: "Der Hub hat keine Nutzdaten f\xFCr diesen Befehl zur\xFCckgegeben.",
+    noTemplateCommand: "Dieses Ger\xE4t hat keine Befehle, die als Vorlage dienen k\xF6nnen \u2014 f\xFCge den ersten Befehl mit der Sofabaton-App hinzu.",
+    newCommandNameRequired: "Gib einen Namen f\xFCr den neuen Befehl ein.",
+    descriptiveIrRequired: "Gib beschreibende IR-Nutzdaten ein, die mit P: beginnen (z. B. P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired: "Gib die Nutzdaten als Hex-Bytes ein (eine gerade Anzahl von Hex-Ziffern; Leerzeichen sind zul\xE4ssig).",
+    noFreeCommandSlot: "Dieses Ger\xE4t hat keinen freien Befehlsplatz mehr.",
+    nothingToTest: "Noch nichts zum Testen.",
+    ipv4Required: "Gib eine IPv4-Adresse in Punktnotation ein (z. B. 192.168.1.42) oder leere das Feld, um die IP-Adresse zu entfernen.",
+    steps: "Schritte",
+    buttonCatalog: {
+      up: "Nach oben",
+      down: "Nach unten",
+      left: "Nach links",
+      right: "Nach rechts",
+      ok: "OK",
+      home: "Home",
+      back: "Zur\xFCck",
+      menu: "Men\xFC",
+      volumeUp: "Lautst\xE4rke +",
+      volumeDown: "Lautst\xE4rke -",
+      mute: "Stumm",
+      channelUp: "Kanal +",
+      channelDown: "Kanal -",
+      rewind: "Zur\xFCckspulen",
+      pause: "Pause",
+      forward: "Vorspulen",
+      red: "Rot",
+      green: "Gr\xFCn",
+      yellow: "Gelb",
+      blue: "Blau",
+      exit: "Beenden",
+      dvr: "DVR",
+      play: "Wiedergabe",
+      guide: "Programm\xFCbersicht",
+      navigation: "Navigation",
+      volumeChannel: "Lautst\xE4rke und Kanal",
+      transport: "Mediensteuerung",
+      colour: "Farbe",
+      extra: "Extra",
+      unknown: (code) => `Taste 0x${code}`
+    },
+    powerOn: "Einschalten",
+    powerOff: "Ausschalten",
+    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
+    inputStepLabel: (device, input) => `Eingang \xB7 ${device}: ${input}`,
+    macroTargetLabelText: (name) => `Makro \xB7 ${name}`
+  },
+  hub: {
+    loading: "Wird geladen\u2026",
+    unknown: "Unbekannt",
+    connectionStatusAria: "Hub-Verbindungsstatus",
+    hubConnected: "Hub verbunden",
+    hubNotConnected: "Hub nicht verbunden",
+    appConnected: "App verbunden",
+    appNotConnected: "App nicht verbunden",
+    version: "Version",
+    ipAddress: "IP-Adresse",
+    activities: "Aktivit\xE4ten",
+    devices: "Ger\xE4te",
+    integrationVersion: "Integrationsversion",
+    firmwareVersion: (version) => `FW: v${version}`,
+    productVersion: (version) => `Sofabaton ${version}`
+  },
+  decodedPayload: {
+    httpTitle: "HTTP-Anfrage",
+    httpSubtitle: "\xC4nderungen werden \xFCber den wifi_ip-Schreiber des Hubs wiedergegeben. Host, Port und Content-Length werden abgeleitet und hier nicht festgelegt.",
+    hostIpv4: "Host (IPv4)",
+    hostExample: "z. B. 192.168.2.77",
+    port: "Port",
+    httpMethod: "HTTP-Methode",
+    httpMethodExample: "z. B. GET, POST",
+    path: "Pfad",
+    extraHeaders: "Zus\xE4tzliche Header",
+    extraHeadersHelper: "Ein Header pro Zeile. Host und Content-Length werden automatisch hinzugef\xFCgt.",
+    contentType: "Inhaltstyp",
+    body: "Body",
+    rokuTitle: "Roku-ECP-Anfrage",
+    ecpPath: "ECP-URL-Pfad",
+    ecpPathExample: "z. B. /launch/12 oder /keypress/Home",
+    hueTitle: "Hue-REST-Anfrage",
+    sonosTitle: "Sonos-UPnP-Anfrage",
+    bodyBlockSubtitle: "Der Body-Block wird unver\xE4ndert zwischen den Host-Headern und dem Netzwerkschreibvorgang eingef\xFCgt.",
+    urlPath: "URL-Pfad",
+    bodyBlock: "Body-Block (unformatierte \xDCbertragungszeichenfolge)",
+    bodyBlockHelper: "Eine einzelne Zeichenfolge, die unver\xE4ndert an das Ger\xE4t gesendet wird. Zeilenumbr\xFCche werden als \\n angezeigt. Du verwaltest Content-Length selbst \u2014 der Wert muss der Byteanzahl des Bodys entsprechen.",
+    irTitle: "Beschreibende IR-Nutzdaten",
+    irSubtitle: "\xC4nderungen werden \xFCber den beschreibenden IR-Schreiber des Hubs wiedergegeben. Nur Nutzdaten beschreibender Protokolle (P:\u2026 D:\u2026 F:\u2026) k\xF6nnen dekodiert werden; unformatierte angelernte IR-Nutzdaten k\xF6nnen hier nicht bearbeitet werden.",
+    descriptor: "Deskriptor",
+    descriptorExample: "z. B. P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "Die Backup-Datei muss ein JSON-Objekt enthalten.",
+    invalidBundle: "Die Backup-Datei ist kein Sofabaton-Hub-Paket.",
+    invalidSchema: (expected, actual) => `schema_version der Backup-Datei muss ${expected} sein (erhalten: ${String(actual)}).`,
+    structuralBundle: "Diese Datei ist ein strukturelles Cache-Paket (ohne Befehlsnutzdaten); sie kann nicht bearbeitet oder wiederhergestellt werden. Exportiere stattdessen ein vollst\xE4ndiges Backup.",
+    missingArrays: "In der Backup-Datei fehlen Ger\xE4te- oder Aktivit\xE4tslisten.",
+    missingSourceModel: "In der Backup-Datei fehlt das Quell-Hub-Modell, daher kann die Kompatibilit\xE4t nicht gepr\xFCft werden.",
+    unknownDestinationModel: "Das Ziel-Hub-Modell ist unbekannt, daher kann die Wiederherstellungskompatibilit\xE4t nicht gepr\xFCft werden.",
+    incompatibleModels: (source, destination) => `Dieses Backup wurde auf einem Sofabaton-${source}-Hub erstellt und kann nicht auf einem Sofabaton-${destination}-Hub wiederhergestellt werden.`
+  },
+  wifiCommands: {
+    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    sectionLabel: "WLAN-Ger\xE4te",
+    deployingTitle: "Wifi Commands werden bereitgestellt",
+    sectionSubtitle: "Verwende Wifi Commands, um Home-Assistant-Aktionen mit Tasten deiner physischen Fernbedienung auszuf\xFChren. W\xE4hle ein WLAN-Ger\xE4t aus, um seine Befehlspl\xE4tze zu bearbeiten, oder f\xFCge ein neues hinzu.",
+    addDevice: "WLAN-Ger\xE4t hinzuf\xFCgen",
+    deleteDeviceAria: "WLAN-Ger\xE4t l\xF6schen",
+    emptyDevices: "Noch keine WLAN-Ger\xE4te konfiguriert. F\xFCge eines hinzu, um Befehlspl\xE4tze zuzuweisen.",
+    maximumDevices: "Maximale Ger\xE4teanzahl erreicht",
+    configuredSlots: (count) => `${count} ${count === 1 ? "Platz" : "Pl\xE4tze"}`,
+    unableSaveAction: "Aktion konnte nicht gespeichert werden",
+    hubCommandInProgress: "Hub-Befehl wird ausgef\xFChrt...",
+    idle: "Leerlauf",
+    unableLoadSyncStatus: "Synchronisierungsstatus konnte nicht geladen werden",
+    noTargetEntity: "Keine Zielentit\xE4t",
+    commandNameLeadingSpace: "Der Befehlsname muss mit einem Zeichen beginnen, das kein Leerzeichen ist.",
+    navigationGroup: "Navigation",
+    transportGroup: "Mediensteuerung",
+    mediaGroup: "Medien",
+    abcGroup: "ABC",
+    colorGroup: "Farbe",
+    inputCommand: "Eingangsbefehl",
+    inputFor: (activity) => `Eingang f\xFCr ${activity}`,
+    activitySingular: "Aktivit\xE4t",
+    activityPlural: "Aktivit\xE4ten",
+    unconfiguredCommand: "Nicht konfigurierter Befehl",
+    powerBothCommand: "Befehl zum EIN- und AUSschalten",
+    powerOnCommand: "Einschaltbefehl",
+    powerOffCommand: "Ausschaltbefehl",
+    thisDevice: "dieses Ger\xE4t",
+    replacesOnButton: (slot) => `Ersetzt "${slot}" auf dieser Taste`,
+    replacesFromDevice: (slot, device) => `Ersetzt "${slot}" von ${device}`,
+    none: "Keine",
+    commandSlotDescription: "Erstelle einen Befehl an diesem Platz. Gib ihm einen Namen und w\xE4hle aus, auf welche Aktivit\xE4ten er angewendet wird. Der Name erscheint auf dem Display deiner Fernbedienung, in der mobilen App und als Sensorstatus des WLAN-Befehls.",
+    syncingDeviceFallback: "WLAN-Ger\xE4t wird synchronisiert...",
+    syncingDeviceNamed: (deviceName) => `${deviceName} wird synchronisiert...`,
+    syncInProgress: "Synchronisierung l\xE4uft",
+    startSync: "Synchronisierung wird gestartet",
+    syncFailedToStart: "Synchronisierung konnte nicht gestartet werden",
+    syncMessageRemoteUnavailable: "Remote-Entit\xE4t nicht verf\xFCgbar. Ist die App verbunden?",
+    syncMessageFailed: "Letzte Synchronisierung fehlgeschlagen.",
+    syncMessageNeeded: "\xC4nderungen an der Befehlskonfiguration m\xFCssen mit dem Hub synchronisiert werden.",
+    syncMessageUpToDate: "Die Befehlskonfiguration des Hubs ist aktuell.",
+    syncMessageIdle: "Keine Synchronisierung erforderlich.",
+    syncShortUnavailable: "Nicht verf\xFCgbar",
+    syncShortRunning: "Synchronisierung",
+    syncShortFailed: "Synchronisierung fehlgeschlagen",
+    syncShortNeeded: "Synchronisierung erforderlich",
+    syncShortUpToDate: "Aktuell",
+    syncShortIdle: "Leerlauf",
+    deviceDeleting: "Wird gel\xF6scht...",
+    deviceSynced: "Synchronisiert",
+    seeDocumentation: "Dokumentation anzeigen",
+    actionButtonUnavailable: "Nicht verf\xFCgbar",
+    actionButtonSyncing: "Wird synchronisiert...",
+    actionButtonBusy: "Besch\xE4ftigt",
+    actionButtonSyncToHub: "Mit Hub synchronisieren",
+    actionButtonUpToDate: "Aktuell",
+    createDeviceBusy: "WLAN-Ger\xE4t wird erstellt...",
+    deviceName: "Ger\xE4tename",
+    createDeviceNameRequired: "Ger\xE4tename ist erforderlich.",
+    createDeviceFailed: "WLAN-Ger\xE4t konnte nicht erstellt werden",
+    deleteDeviceBusy: "WLAN-Ger\xE4t wird gel\xF6scht...",
+    deleteDeviceFailed: "WLAN-Ger\xE4t konnte nicht gel\xF6scht werden",
+    createModalCancel: "Abbrechen",
+    createModalCreate: "Erstellen",
+    deleteModalTitle: "WLAN-Ger\xE4t l\xF6schen?",
+    deleteModalBody: (deviceName) => `"${deviceName}" vom Hub l\xF6schen und seine gespeicherte Befehlsplatzkonfiguration entfernen?`,
+    deleteModalDelete: "L\xF6schen",
+    clearSlotTitle: "Befehlsplatz leeren?",
+    clearSlotSubtitle: "Setzt die Konfiguration zur\xFCck.",
+    clearSlotNo: "Nein",
+    clearSlotYes: "Ja",
+    makeCommand: "Befehl erstellen",
+    noActionConfigured: "Keine Aktion konfiguriert",
+    commandSlotTitle: (slotIndex) => `Befehlsplatz ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Aktion f\xFCr Befehlsplatz ${slotIndex + 1}`,
+    commandDisplayName: "Anzeigename des Befehls",
+    advanced: "Erweitert",
+    activityInput: "Diesen Befehl beim Start einer Aktivit\xE4t ausf\xFChren",
+    activityInputHint: "Der Befehl wird auf dem Hub als Eingang der Aktivit\xE4t festgelegt und daher w\xE4hrend ihrer Startsequenz ausgef\xFChrt.",
+    activityInputReplaces: (slotName, activityName) => `Ersetzt "${slotName}", wenn ${activityName} startet`,
+    noActivitiesForHub: "F\xFCr diesen Hub sind keine Aktivit\xE4ten verf\xFCgbar.",
+    activityInputLabel: "Aktivit\xE4t, die diesen Befehl ausf\xFChrt",
+    devicePowerOnLabel: "Wenn der Hub dieses Ger\xE4t EINSCHALTET",
+    devicePowerOffLabel: "Wenn der Hub dieses Ger\xE4t AUSSCHALTET",
+    devicePowerNothing: "Nichts",
+    devicePowerHint: "Wird als Teil der Stromsequenz dieses Ger\xE4ts in deinen Aktivit\xE4ten ausgef\xFChrt. Wird mit dem Hub synchronisiert.",
+    devicePowerPerform: (commandName) => `${commandName} ausf\xFChren`,
+    hubEventsTitle: "Hub-Ereignisse",
+    hubEventsSubtitle: "Eine Home-Assistant-Aktion ausf\xFChren, wenn sich der Hub-Status \xE4ndert. Diese Aktionen laufen nur in Home Assistant und werden nie mit dem Hub synchronisiert.",
+    hubEventPowerOff: "Wenn der Hub AUSGESCHALTET wird",
+    hubEventRedundantOff: "Wenn AUS gedr\xFCckt wird, w\xE4hrend der Hub bereits AUS ist",
+    hubEventActivityStart: "Wenn eine Aktivit\xE4t startet",
+    hubEventActivityStops: "und wenn eine endet",
+    hubEventActivityStopModalTitle: "Wenn eine Aktivit\xE4t endet",
+    hubEventDoNothing: "nichts tun",
+    hubEventPerform: (service) => `${service} ausf\xFChren`,
+    hubEventClearTitle: "Auf nichts tun zur\xFCcksetzen",
+    hubEventModalNote: "W\xE4hle die Aktion aus, die bei diesem Ereignis ausgef\xFChrt wird. L\xF6sche die Aktion, um nichts zu tun.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Ereignisse",
+    activityEventsTitle: "Aktivit\xE4tsereignisse",
+    activityEventsSubtitle: "Eine Home-Assistant-Aktion ausf\xFChren, wenn eine bestimmte Aktivit\xE4t startet oder endet. Beim Wechsel zwischen Aktivit\xE4ten endet die alte und die neue startet.",
+    activityEventStarts: (name) => `Wenn ${name} startet`,
+    activityEventStops: "und wenn sie endet",
+    activityEventStartModalTitle: (name) => `Wenn ${name} startet`,
+    activityEventStopModalTitle: (name) => `Wenn ${name} endet`,
+    activityEventFallbackName: (id) => `Aktivit\xE4t ${id}`,
+    noActivitiesForEvents: "Noch keine Aktivit\xE4ten auf diesem Hub.",
+    favorite: "Als Favorit festlegen",
+    physicalButtonAssignment: "Belegung physischer Tasten",
+    enableLongPress: "Langes Dr\xFCcken aktivieren",
+    applyToActivities: "Auf diese Aktivit\xE4ten anwenden",
+    actionModalNote: "Eine Aktion ausf\xFChren, sobald der Befehl ausgef\xFChrt wird. Die Konfiguration einer Aktion ist optional; du kannst eigene Automatisierungen erstellen, die vom Wifi-Commands-Sensor ausgel\xF6st werden.",
+    shortPress: "Kurz dr\xFCcken",
+    longPress: "Lang dr\xFCcken",
+    selectLongPressAction: "Aktion f\xFCr langes Dr\xFCcken ausw\xE4hlen",
+    selectTriggeredAction: "Ausgel\xF6ste Aktion ausw\xE4hlen",
+    action: "Aktion",
+    save: "Speichern",
+    syncWarningTitle: "Befehle mit dem Hub synchronisieren?",
+    syncWarningBody: "Diese Synchronisierung kann mehrere Minuten dauern. W\xE4hrenddessen sind andere Interaktionen mit dem Hub blockiert.",
+    syncWarningBody2: "Am Ende der Bereitstellung wird die physische Fernbedienung zwangsweise neu synchronisiert. Es wird empfohlen, zuerst die vollst\xE4ndige Wifi-Commands-Konfiguration abzuschlie\xDFen und dann einmal zu synchronisieren.",
+    syncWarningOptOut: "Diese Warnung f\xFCr diese Fernbedienung nicht erneut anzeigen.",
+    syncWarningStart: "Synchronisierung starten",
+    keyLabels: {
+      up: "Nach oben",
+      down: "Nach unten",
+      left: "Nach links",
+      right: "Nach rechts",
+      ok: "OK",
+      back: "Zur\xFCck",
+      home: "Home",
+      menu: "Men\xFC",
+      volup: "Lautst\xE4rke +",
+      voldn: "Lautst\xE4rke -",
+      mute: "Stumm",
+      chup: "Kanal +",
+      chdn: "Kanal -",
+      guide: "Programm\xFCbersicht",
+      dvr: "DVR",
+      play: "Wiedergabe",
+      exit: "Beenden",
+      rew: "Zur\xFCckspulen",
+      pause: "Pause",
+      fwd: "Vorspulen",
+      red: "Rot",
+      green: "Gr\xFCn",
+      yellow: "Gelb",
+      blue: "Blau",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  }
+};
+registerToolsCardTranslation("de", TOOLS_CARD_STRINGS_DE);
+
+// custom_components/sofabaton_x1s/www/src/control-panel-translations/es.ts
+var TOOLS_CARD_STRINGS_ES = {
+  common: {
+    cancel: "Cancelar",
+    save: "Guardar",
+    complete: "Completar",
+    loading: "Cargando...",
+    noHubsFound: "No se encontraron hubs.",
+    homeAssistantUnavailable: "Home Assistant no est\xE1 disponible",
+    homeAssistantContextUnavailable: "El contexto de Home Assistant no est\xE1 disponible",
+    unknownError: "Error desconocido",
+    unknownErrorWithLogs: "Error desconocido (consulta los registros de Home Assistant)",
+    commandFallback: (id) => `Comando ${id}`,
+    buttonFallback: (id) => `Bot\xF3n ${id}`,
+    deviceFallback: (id) => `Dispositivo ${id}`,
+    activityFallback: (id) => `Actividad ${id}`,
+    macroFallback: (id) => `Macro ${id}`,
+    favoriteFallback: (id) => `Favorito ${id}`,
+    inputFallback: (id) => `Entrada ${id}`,
+    noInput: "sin entrada"
+  },
+  card: {
+    connectivityAria: "Conectividad",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version) => `PANEL DE CONTROL SOFABATON - v${version}`,
+    wifiDeviceFallback: "Dispositivo wifi",
+    wifiCommandFallback: "Comando wifi",
+    irLongPress: (device, command) => `${device} \u2022 ${command} (pulsaci\xF3n larga)`,
+    irPress: (device, command) => `${device} \u2022 ${command}`,
+    previewDescription: "Herramientas, cach\xE9, copias de seguridad, registros y automatizaciones para tu hub",
+    editorHeight: "Altura de la tarjeta",
+    editorHeightHint: "Controla cu\xE1nto se muestra de las listas de actividades y dispositivos. Valor predeterminado: 600 px.",
+    pickerName: "Panel de control Sofabaton",
+    pickerDescription: "Un panel de control para las herramientas del hub Sofabaton, la cach\xE9, los registros, los ajustes y los comandos wifi."
+  },
+  docs: {
+    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
+  },
+  tabs: { cache: "Hub", wifiCommands: "Automatizaci\xF3n", backup: "Copia de seguridad", settings: "Ajustes", logs: "Registros" },
+  tabDocs: { wifi_commands: "Documentaci\xF3n de automatizaci\xF3n", backup: "Documentaci\xF3n de copias de seguridad" },
+  dock: { unsyncedChanges: "Cambios sin sincronizar \u2014 sincron\xEDzalos con el hub para aplicarlos" },
+  backend: {
+    unavailableTitle: "Backend no disponible",
+    unavailableCopy: "Esperando a que termine de iniciarse la integraci\xF3n Sofabaton X...",
+    versionMismatchTitle: "Es necesario actualizar el panel de control Sofabaton",
+    versionMismatchCopy: "Este panel a\xFAn usa una versi\xF3n anterior en cach\xE9 de la tarjeta Panel de control Sofabaton, distinta de la que se est\xE1 ejecutando ahora en Home Assistant. Actualiza o vuelve a abrir el panel o el navegador antes de usar de nuevo el panel de control para que pueda cargarse la tarjeta actualizada.",
+    backendExpects: "El backend espera",
+    cardLoaded: "Tarjeta cargada",
+    unknownVersion: "desconocida",
+    refreshingCache: "Actualizando la cach\xE9...",
+    hubCommandInProgress: "Comando del hub en curso..."
+  },
+  hubUnavailable: { title: "Hub no disponible", copy: "Este hub no est\xE1 conectado. El panel de control no estar\xE1 disponible hasta que el hub vuelva a conectarse." },
+  availability: {
+    operationRunning: "Operaci\xF3n en curso",
+    working: "Procesando...",
+    appConnectedOnlyLogs: "Solo Registros est\xE1 disponible mientras la aplicaci\xF3n Sofabaton est\xE1 conectada.",
+    hubCommandInProgress: "Comando del hub en curso...",
+    refreshingCache: "Actualizando la cach\xE9...",
+    unavailable: "No disponible",
+    refreshDashboard: "Actualiza el panel para cargar la tarjeta Panel de control Sofabaton actualizada.",
+    automationUnavailable: "Automatizaci\xF3n no disponible",
+    backupUnavailable: "Copia de seguridad no disponible",
+    automationBlockedByProxy: "La automatizaci\xF3n no se puede usar mientras la aplicaci\xF3n Sofabaton est\xE1 conectada al hub mediante el proxy.",
+    backupBlockedByProxy: "La copia de seguridad no se puede usar mientras la aplicaci\xF3n Sofabaton est\xE1 conectada al hub mediante el proxy."
+  },
+  buttonNames: {
+    151: "C",
+    152: "B",
+    153: "A",
+    154: "Salir",
+    155: "DVR",
+    156: "Reproducir",
+    157: "Gu\xEDa",
+    174: "Arriba",
+    175: "Izquierda",
+    176: "OK",
+    177: "Derecha",
+    178: "Abajo",
+    179: "Atr\xE1s",
+    180: "Inicio",
+    181: "Men\xFA",
+    182: "Vol +",
+    183: "Can +",
+    184: "Silencio",
+    185: "Vol -",
+    186: "Can -",
+    187: "Retroceder",
+    188: "Pausa",
+    189: "Avanzar",
+    190: "Rojo",
+    191: "Verde",
+    192: "Amarillo",
+    193: "Azul",
+    198: "Encender",
+    199: "Apagar"
+  },
+  errors: {
+    backupProgressNoSocket: "El progreso de la copia de seguridad no est\xE1 disponible sin una conexi\xF3n WebSocket",
+    logsNoSocket: "Los registros en directo no est\xE1n disponibles sin una conexi\xF3n WebSocket",
+    wifiPressNoSocket: "Los eventos de pulsaci\xF3n wifi no est\xE1n disponibles sin una conexi\xF3n WebSocket",
+    hubEventsNoSocket: "Los eventos del hub no est\xE1n disponibles sin una conexi\xF3n WebSocket",
+    anotherOperation: "Ya hay otra operaci\xF3n del hub en curso.",
+    noHubSelected: "No se ha seleccionado ning\xFAn hub.",
+    noHubSelectedLong: "No hay ning\xFAn hub seleccionado.",
+    cacheRefreshFailed: "No se pudo actualizar la cach\xE9.",
+    syncFailed: "Error de sincronizaci\xF3n.",
+    activityIdMissing: "El hub no devolvi\xF3 el identificador de la nueva actividad."
+  },
+  settings: {
+    loading: "Cargando...",
+    noHubsFound: "No se encontraron hubs.",
+    unknownHubName: "Desconocido",
+    activities: "Actividades",
+    devices: "Dispositivos",
+    persistentCacheTitle: "Cach\xE9 persistente",
+    persistentCacheDescription: "Guarda localmente los datos de actividades y dispositivos para acceder m\xE1s r\xE1pido.",
+    persistentCacheFooter: "GLOBAL",
+    hubClickActionTitle: "Clics en la pesta\xF1a Hub",
+    hubClickActionDescription: "Elige qu\xE9 ocurre al hacer clic en un comando, favorito, macro o bot\xF3n de las listas de la pesta\xF1a Hub.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "No hacer nada",
+    hubClickActionOptionSend: "Enviar el comando",
+    hubClickActionOptionCopy: "Copiar el comando",
+    hexLoggingTitle: "Registro hexadecimal",
+    hexLoggingDescription: "Registra el tr\xE1fico hexadecimal sin procesar entre el hub, la integraci\xF3n y la aplicaci\xF3n.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Permite que la aplicaci\xF3n oficial de Sofabaton y HA compartan simult\xE1neamente la conexi\xF3n con el hub.",
+    wifiDeviceTitle: "Dispositivo wifi",
+    wifiDeviceDescription: "Activa el listener HTTP que captura pulsaciones del control remoto y las dirige a acciones de HA.",
+    findRemoteTitle: "Buscar control remoto",
+    findRemoteDescription: "Haz que el control remoto emita un pitido para poder encontrarlo.",
+    syncRemoteTitle: "Sincronizar control remoto",
+    syncRemoteDescription: "Env\xEDa la configuraci\xF3n m\xE1s reciente al control remoto f\xEDsico."
+  },
+  cache: {
+    loading: "Cargando...",
+    noHubsFound: "No se encontraron hubs.",
+    persistentCacheOffTitle: "La cach\xE9 persistente est\xE1 desactivada",
+    persistentCacheOffCopy: "Act\xEDvala para explorar las actividades y dispositivos en cach\xE9 y habilitar los flujos de copia de seguridad que dependen de ella.",
+    enablingPersistentCache: "Activando...",
+    enablePersistentCache: "Activar cach\xE9 persistente",
+    devIdBadge: "ID disp.",
+    favIdBadge: "ID fav.",
+    comIdBadge: "ID com.",
+    activityFallback: (id) => `Actividad ${id}`,
+    deviceFallback: (id) => `Dispositivo ${id}`,
+    favoriteFallback: (commandId) => `Favorito ${commandId}`,
+    macroFallback: (commandId) => `Macro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} fav. / ${macros} macros / ${buttons} botones`,
+    deviceCommandCount: (count) => `${count} comandos`,
+    favorites: "Favoritos",
+    macros: "Macros",
+    buttons: "Botones",
+    noCachedData: "Todav\xEDa no hay datos en cach\xE9.",
+    noCachedCommands: "No hay comandos en cach\xE9.",
+    staleBanner: "La cach\xE9 se actualiz\xF3 externamente. Actualiza para ver los datos m\xE1s recientes.",
+    refresh: "Actualizar",
+    activities: "Actividades",
+    devices: "Dispositivos",
+    refreshList: "Actualizar lista",
+    refreshAll: "Actualizar todo",
+    editActivity: "Editar actividad",
+    editDevice: "Editar dispositivo",
+    changeOrder: "Cambiar orden",
+    addActivity: "A\xF1adir actividad",
+    reorderSync: "Sincronizar con el hub",
+    reorderCancel: "Cancelar",
+    reorderHint: "Arrastra las actividades al orden deseado y sincron\xEDzalas despu\xE9s con el hub.",
+    reorderDevicesHint: "Arrastra los dispositivos al orden deseado y sincron\xEDzalos despu\xE9s con el hub.",
+    reorderSyncing: "Escribiendo el nuevo orden en el hub\u2026",
+    addActivityTitle: "A\xF1adir actividad",
+    addActivityBody: "Asigna un nombre a la nueva actividad. Se crear\xE1 en el hub y se abrir\xE1 en el editor.",
+    addActivityPlaceholder: "Nombre de la actividad",
+    addActivityCancel: "Cancelar",
+    addActivityConfirm: "Crear",
+    addActivityCreating: "Creando\u2026",
+    reorderingActivities: "Reordenando actividades\u2026",
+    reorderingDevices: "Reordenando dispositivos\u2026",
+    creatingActivity: "Creando actividad\u2026"
+  },
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Actividad",
+    contextDevice: "Dispositivo",
+    kindLabels: { favorite: "Favorito", macro: "Macro", button: "Bot\xF3n", command: "Comando" },
+    lovelaceHeading: "C\xF3digo de bot\xF3n Lovelace",
+    lovelaceHint: "Copia esto en el YAML de tu panel:",
+    actionHeading: "Llamada de servicio (automatizaci\xF3n)",
+    actionHint: "Usa esto en tus scripts o automatizaciones:",
+    noRemoteEntity: "La entidad de control remoto del hub no est\xE1 disponible.",
+    copied: (label) => `Se copi\xF3 \xAB${label}\xBB en las notificaciones.`,
+    sendTooltip: "Haz clic para enviar este comando al hub",
+    copyTooltip: "Haz clic para copiar este comando en una notificaci\xF3n"
+  },
+  logs: { loading: "Cargando el flujo de registros...", empty: "Todav\xEDa no se han capturado l\xEDneas de registro para este hub.", liveConsole: "Consola en directo" },
+  cacheRefresh: { label: "Actualizar todo", running: "Actualizando\u2026", starting: "Iniciando la actualizaci\xF3n de la cach\xE9 del hub\u2026", working: "Leyendo la configuraci\xF3n de tu hub\u2026", done: "Cach\xE9 del hub actualizada." },
+  progress: { homeAssistant: "Home Assistant", sofabatonHub: "Hub Sofabaton", working: "Procesando...", backupTitle: "Creando copia de seguridad", restoreTitle: "Restaurando copia de seguridad" },
+  activities: {
+    loading: "Cargando actividades...",
+    selectHub: "Selecciona un hub para editar sus actividades.",
+    activityFallback: (id) => `Actividad ${id}`,
+    appConnectedTitle: "La aplicaci\xF3n Sofabaton est\xE1 conectada",
+    appConnectedBody: "Cierra la aplicaci\xF3n Sofabaton para editar la configuraci\xF3n del hub.",
+    operationRunningTitle: "Hay otra operaci\xF3n en curso",
+    operationRunningBody: "Espera a que termine la copia de seguridad, restauraci\xF3n o sincronizaci\xF3n actual y vuelve a intentarlo.",
+    captureTitle: "Leyendo tu hub",
+    captureMessage: "Leyendo la configuraci\xF3n de tu hub\u2026",
+    captureMessageWithStep: (current, total) => `Leyendo la configuraci\xF3n de tu hub\u2026 (dispositivo ${current} de ${total})`,
+    captureFailedTitle: "No se pudo leer el hub",
+    captureFailedBody: "El hub dej\xF3 de responder antes de que termin\xE1ramos de leerlo.",
+    retry: "Reintentar",
+    back: "Atr\xE1s",
+    capturingFromCache: (kind) => `Cargando ${kind === "activity" ? "la actividad" : "el dispositivo"} desde la cach\xE9 del hub\u2026`,
+    needsRefreshTitle: "Actualiza la cach\xE9 del hub para editar",
+    needsRefreshBody: (kind) => `${kind === "activity" ? "Esta actividad" : "Este dispositivo"} todav\xEDa no est\xE1 en la cach\xE9 local del hub. Actualiza la cach\xE9 del hub para ${kind === "activity" ? "cargarla" : "cargarlo"} en el editor. Puede tardar unos minutos, seg\xFAn el tama\xF1o de la configuraci\xF3n del hub.`,
+    syncToHub: "Sincronizar con el hub",
+    syncUpToDate: "Actualizado",
+    deletingTitle: (kind) => `Eliminando ${kind === "activity" ? "la actividad" : "el dispositivo"}`,
+    deletingMessage: (kind) => `Eliminando ${kind === "activity" ? "esta actividad" : "este dispositivo"} del hub\u2026`,
+    syncingTitle: "Sincronizando con tu hub",
+    syncingMessage: "Escribiendo tus cambios en el hub\u2026",
+    syncSuccess: "Sincronizado con el hub.",
+    syncPlanSummary: (count) => `${count} ${count === 1 ? "escritura" : "escrituras"} en el hub`,
+    syncFailedTitle: "La sincronizaci\xF3n no termin\xF3",
+    syncFailedStep: (step) => `El hub se detuvo en: ${step}`,
+    syncStaleTitle: (kind) => `${kind === "activity" ? "Esta actividad" : "Este dispositivo"} cambi\xF3 en el hub`,
+    syncStaleBody: (kind) => `${kind === "activity" ? "La actividad" : "El dispositivo"} se edit\xF3 en el hub despu\xE9s de ${kind === "activity" ? "cargarla" : "cargarlo"}, por lo que tus cambios no se pueden aplicar de forma segura. Vuelve a cargar la versi\xF3n actual del hub para continuar \u2014 se descartar\xE1n tus cambios sin guardar.`,
+    syncRetry: "Reintentar sincronizaci\xF3n",
+    syncReload: "Volver a cargar desde el hub",
+    syncKeepEditing: "Seguir editando",
+    exitUnsyncedTitle: "Cambios sin sincronizar",
+    exitUnsyncedBody: (kind) => `${kind === "activity" ? "Esta actividad" : "Este dispositivo"} tiene cambios que no se han sincronizado con el hub. Sincron\xEDzalos ahora o sal sin sincronizar y descarta la edici\xF3n local.`,
+    exitSyncNow: "Sincronizar ahora",
+    exitWithoutSync: "Salir sin sincronizar",
+    discardConfirmCancel: "Seguir editando",
+    review: {
+      sectionDevices: "Dispositivos",
+      sectionStart: "Al iniciar",
+      sectionButtons: "Botones",
+      sectionShortcuts: "Accesos directos",
+      sectionEnd: "Al finalizar",
+      sectionDeviceWide: "Cambios de todo el dispositivo",
+      deviceAdded: (name) => `Se a\xF1adi\xF3 \xAB${name}\xBB a esta actividad.`,
+      deviceRemoved: (name) => `Se elimin\xF3 \xAB${name}\xBB de esta actividad.`,
+      inputChanged: (device, input) => `La entrada de \xAB${device}\xBB cambi\xF3 a ${input}.`,
+      inputCleared: (device) => `Se borr\xF3 la entrada de \xAB${device}\xBB.`,
+      startReordered: "Se reorden\xF3 la secuencia de inicio.",
+      roleNowControls: (group, device) => `${group} ahora controlan \xAB${device}\xBB.`,
+      roleCustomized: (group) => `${group} personalizados.`,
+      roleCleared: (group) => `${group} ya no est\xE1n asignados.`,
+      shortcutAdded: (name) => `Se a\xF1adi\xF3 \xAB${name}\xBB.`,
+      shortcutRemoved: (name) => `Se elimin\xF3 \xAB${name}\xBB.`,
+      shortcutRenamed: (oldName, newName) => `Se cambi\xF3 el nombre de \xAB${oldName}\xBB a \xAB${newName}\xBB.`,
+      shortcutsReordered: "Se reordenaron los accesos directos.",
+      idleChanged: (device, label) => `Comportamiento en inactividad de \xAB${device}\xBB \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `El comando \xAB${oldName}\xBB de \xAB${device}\xBB cambi\xF3 de nombre a \xAB${newName}\xBB.`,
+      roleGroups: { volume: "Botones de volumen", navigation: "Botones de navegaci\xF3n", playback: "Botones de reproducci\xF3n", channels: "Botones de canal" },
+      idleShort: { 0: "sin definir", 1: "se apaga cuando est\xE1 inactivo", 2: "nunca se apaga", 3: "permanece encendido", 4: "no gestionado por el hub" }
+    },
+    deviceReview: {
+      sectionPower: "Alimentaci\xF3n",
+      sectionNetwork: "Red",
+      sectionButtons: "Botones",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Control autom\xE1tico de alimentaci\xF3n \u2192 ${label}.`,
+      powerOnChanged: "Secuencia de encendido actualizada.",
+      powerOffChanged: "Secuencia de apagado actualizada.",
+      macroAdded: (name) => `Se a\xF1adi\xF3 la macro \xAB${name}\xBB.`,
+      macroRemoved: (name) => `Se elimin\xF3 la macro \xAB${name}\xBB.`,
+      macroRenamed: (oldName, newName) => `La macro \xAB${oldName}\xBB cambi\xF3 de nombre a \xAB${newName}\xBB.`,
+      macroChanged: (name) => `Se edit\xF3 la macro \xAB${name}\xBB.`,
+      bindingBound: (button, command) => `\xAB${button}\xBB ahora env\xEDa \xAB${command}\xBB.`,
+      bindingCleared: (button) => `\xAB${button}\xBB ya no est\xE1 asignado.`,
+      ipChanged: (ip) => `Direcci\xF3n IP \u2192 ${ip}.`,
+      ipCleared: "Direcci\xF3n IP borrada."
+    }
+  },
+  backup: {
+    sectionMake: "Crear",
+    sectionEdit: "Editar",
+    sectionRestore: "Restaurar",
+    loading: "Cargando herramientas de copia de seguridad...",
+    selectHub: "Selecciona un hub para gestionar copias de seguridad.",
+    creatingSubtitle: "El hub est\xE1 creando tu copia de seguridad.",
+    readySubtitle: "Tu copia de seguridad est\xE1 lista.",
+    chooseSubtitle: "Elige qu\xE9 incluir en esta copia de seguridad.",
+    enablePersistentCache: "Activa la cach\xE9 persistente para elegir el contenido de la copia de seguridad desde la tarjeta.",
+    completedTitle: "Copia de seguridad completada",
+    expired: "La copia de seguridad ha caducado. Inicia una nueva para volver a descargarla.",
+    downloaded: "Descargada",
+    downloadAgain: "Volver a descargar",
+    downloadBackup: "Descargar copia de seguridad",
+    complete: "Completar",
+    restoreCompletedTitle: "Restauraci\xF3n completada",
+    restoreCompletedSubtitle: "Las actividades y dispositivos seleccionados se restauraron en el hub.",
+    restoreCompletedStatus: "Restauraci\xF3n completada.",
+    restoreCompletedSuccessfully: "Restauraci\xF3n completada correctamente.",
+    backupCompletedSuccessfully: "Copia de seguridad completada correctamente.",
+    wifiDeviceDeployedSuccessfully: "Dispositivo wifi desplegado correctamente.",
+    restoreRunningSubtitle: "El hub est\xE1 restaurando tu copia de seguridad.",
+    restoreFinishedSubtitle: "La restauraci\xF3n ha finalizado.",
+    restoreChooseSubtitle: "Carga un archivo de copia de seguridad y elige exactamente qu\xE9 restaurar. Las actividades incluyen autom\xE1ticamente los dispositivos de los que dependen.",
+    itemsToRestore: "Elementos que se restaurar\xE1n",
+    eraseExisting: "Borrar los dispositivos y actividades existentes",
+    startRestore: "Iniciar restauraci\xF3n",
+    startingBackup: "Iniciando copia de seguridad\u2026",
+    startingRestore: "Iniciando restauraci\xF3n\u2026",
+    backupFailed: "Error en la copia de seguridad.",
+    restoreFailed: "Error en la restauraci\xF3n.",
+    backupInProgress: "Copia de seguridad en curso\u2026",
+    restoreInProgress: "Restauraci\xF3n en curso\u2026",
+    failedPrepareDownload: "No se pudo preparar la copia de seguridad editada para descargarla.",
+    enterName: "Introduce un nombre para continuar.",
+    renameDialogTitle: "Cambiar nombre del hub",
+    linked: "vinculado",
+    hubNameRestoreOnlyAria: "El nombre del hub solo se aplica durante la restauraci\xF3n si el usuario elige borrar el hub.",
+    entireHub: "Hub completo",
+    selectedDevices: "Dispositivos seleccionados",
+    devicesToInclude: "Dispositivos que se incluir\xE1n",
+    selectedCount: (count) => `${count} ${count === 1 ? "seleccionado" : "seleccionados"}`,
+    backupResultSummary: (activities, devices) => `Copia de seguridad de ${activities} ${activities === 1 ? "actividad" : "actividades"} y ${devices} ${devices === 1 ? "dispositivo" : "dispositivos"}`,
+    activityMeta: (favorites, macros) => `${favorites} favoritos \xB7 ${macros} macros`,
+    linkedDevices: (count) => `${count} ${count === 1 ? "dispositivo vinculado" : "dispositivos vinculados"}`,
+    deselectAll: "Deseleccionar todo",
+    selectAll: "Seleccionar todo",
+    noDevicesAvailable: "No hay dispositivos disponibles.",
+    working: "Procesando",
+    startBackup: "Iniciar copia de seguridad",
+    editLoadPrompt: "Carga un archivo de copia de seguridad y elige una actividad o un dispositivo para editarlo.",
+    chooseBackupFile: "Elegir archivo de copia de seguridad",
+    reorderHint: " Arrastra el controlador de una fila para reordenar actividades y dispositivos.",
+    macroStepsSortableHelp: "Arrastra para reordenar. Cada paso reproduce un comando; configura a la derecha la espera que le sigue.",
+    macroStepsHelp: "Cada paso reproduce un comando; configura a la derecha la espera que le sigue.",
+    hubName: "Nombre del hub",
+    hubNameNotSet: "(sin definir)",
+    renameHub: "Cambiar nombre del hub",
+    activities: "Actividades",
+    noActivitiesInFile: "Este archivo de copia de seguridad no contiene actividades.",
+    devices: "Dispositivos",
+    noDevicesInFile: "Este archivo de copia de seguridad no contiene dispositivos.",
+    unsavedChanges: "Cambios sin guardar. Haz clic en ",
+    downloadEditedBackupStrong: "Descargar copia de seguridad editada",
+    unsavedChangesSuffix: " para guardarlos en un archivo.",
+    downloadEditedBackup: "Descargar copia de seguridad editada",
+    deleteActivityTitle: (name) => `\xBFEliminar la actividad \xAB${name}\xBB?`,
+    deleteDeviceTitle: (name) => `\xBFEliminar el dispositivo \xAB${name}\xBB?`,
+    deleteCommandTitle: (name) => `\xBFEliminar el comando \xAB${name}\xBB?`,
+    deleteFavoriteTitle: (name) => `\xBFEliminar el acceso directo \xAB${name}\xBB?`,
+    deleteMacroTitle: (name) => `\xBFEliminar la macro \xAB${name}\xBB?`,
+    deleteCascadeIntro: "Al eliminarlo tambi\xE9n se borran sus referencias en otras partes de la copia de seguridad:",
+    deleteSimpleBody: "Esto lo elimina de la copia de seguridad cargada.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "actividad hace" : "actividades hacen"} referencia a \xE9l`,
+    deleteImpactFavorites: (count) => `Se ${count === 1 ? "eliminar\xE1" : "eliminar\xE1n"} ${count} ${count === 1 ? "acceso directo" : "accesos directos"}`,
+    deleteImpactMacroSteps: (count) => `Se ${count === 1 ? "eliminar\xE1" : "eliminar\xE1n"} ${count} ${count === 1 ? "paso de secuencia" : "pasos de secuencia"}`,
+    deleteImpactPowerSteps: (count) => `Se ${count === 1 ? "borrar\xE1" : "borrar\xE1n"} ${count} ${count === 1 ? "paso de alimentaci\xF3n" : "pasos de alimentaci\xF3n"}`,
+    deleteReplaceNote: "Las eliminaciones solo llegan al hub durante una restauraci\xF3n con Reemplazar.",
+    deleteCascadeIntroLive: "Al eliminarlo tambi\xE9n se borran sus referencias en el hub:",
+    deleteSimpleBodyLive: "Esto lo elimina.",
+    deleteImmediateNote: "Esto se aplica al hub inmediatamente.",
+    deleteSyncNote: "Este cambio se escribe en el hub durante la pr\xF3xima sincronizaci\xF3n.",
+    deleteCancel: "Cancelar",
+    deleteConfirm: "Eliminar",
+    deleteActivityAria: "Eliminar actividad",
+    deleteDeviceAria: "Eliminar dispositivo",
+    deleteCommandAria: "Eliminar comando",
+    addFavoriteTitle: "A\xF1adir acceso directo de comando",
+    addFavoriteDevice: "Dispositivo",
+    addFavoriteCommand: "Comando",
+    addFavoriteAdd: "A\xF1adir",
+    addFavoriteCancel: "Cancelar",
+    addFavoriteNoDevices: "Esta copia de seguridad no contiene dispositivos con comandos que se puedan a\xF1adir.",
+    addFavoriteNoCommands: "Este dispositivo no contiene comandos que se puedan a\xF1adir.",
+    buttonBindingsTitle: "Asignaciones de botones",
+    buttonBindingsActivitySub: "Asigna botones del control remoto a un comando de dispositivo dentro de esta actividad.",
+    buttonBindingsDeviceSub: "Asigna botones del control remoto a los comandos propios de este dispositivo.",
+    buttonBindingsEmpty: "No hay asignaciones de botones configuradas.",
+    addBinding: "A\xF1adir asignaci\xF3n",
+    bindingButton: "Bot\xF3n",
+    bindingTargetDevice: "Dispositivo",
+    bindingCommand: "Comando",
+    bindingEnableLongPress: "Activar asignaci\xF3n de pulsaci\xF3n larga",
+    bindingLongPressDevice: "Dispositivo de pulsaci\xF3n larga",
+    bindingLongPressCommand: "Comando de pulsaci\xF3n larga",
+    bindingIncomplete: "Elige primero un bot\xF3n y un destino.",
+    bindingNoButtons: "Todos los botones de este modelo de hub ya est\xE1n asignados.",
+    bindingNoCommands: "Este dispositivo no tiene comandos que asignar.",
+    bindingNoDevices: "Esta copia de seguridad no contiene dispositivos con comandos que asignar.",
+    bindingAdd: "A\xF1adir",
+    bindingSave: "Guardar",
+    bindingCancel: "Cancelar",
+    bindingDialogAddTitle: "A\xF1adir asignaci\xF3n de bot\xF3n",
+    bindingDialogEditTitle: (name) => `Editar asignaci\xF3n de ${name}`,
+    bindingLongPressMeta: (label) => `Pulsaci\xF3n larga \xB7 ${label}`,
+    deleteBindingTitle: (name) => `\xBFEliminar la asignaci\xF3n de ${name}?`,
+    deleteBindingAria: "Eliminar asignaci\xF3n",
+    deleteImpactBindings: (count) => `Se ${count === 1 ? "borrar\xE1" : "borrar\xE1n"} ${count} ${count === 1 ? "asignaci\xF3n de bot\xF3n" : "asignaciones de botones"}`,
+    macrosTitle: "Macros",
+    macrosDeviceSub: "Edita las secuencias de comandos que reproduce este dispositivo, incluido su encendido y apagado.",
+    macroPowerChip: "alimentaci\xF3n",
+    powerSetupTitle: "Alimentaci\xF3n",
+    powerSetupDeviceSub: "C\xF3mo gestiona el hub la alimentaci\xF3n de este dispositivo para las actividades y las secuencias que env\xEDa para encenderlo y apagarlo.",
+    powerSetupActivitySub: "La secuencia de inicio y apagado que ejecuta esta actividad.",
+    powerOnLabel: "Secuencia de encendido",
+    powerOffLabel: "Secuencia de apagado",
+    powerControlTitle: "Control autom\xE1tico de alimentaci\xF3n",
+    powerControlUnset: "No capturado",
+    powerControlUnsetSub: "Esta copia de seguridad es anterior a la captura del control de alimentaci\xF3n. Elige una opci\xF3n para definirlo o restaura sin cambios para conservar el valor anterior.",
+    powerControlDisabled: "No controlar la alimentaci\xF3n",
+    powerControlDisabledSub: "El hub nunca enciende ni apaga este dispositivo. Las secuencias siguientes se ignoran.",
+    powerControlAutoOff: "Apagar cuando est\xE9 inactivo",
+    powerControlAutoOffSub: "Recomendado. Apaga el dispositivo cuando ninguna actividad lo necesita.",
+    powerControlStayOn: "Permanecer encendido entre actividades",
+    powerControlStayOnSub: "Evita la espera para volver a encenderlo; aun as\xED se apaga con el bot\xF3n Apagar del control remoto.",
+    powerControlAlwaysOn: "Permanecer siempre encendido",
+    powerControlAlwaysOnSub: "El hub lo enciende, pero nunca lo apaga autom\xE1ticamente.",
+    powerSequencesDisabledNote: "El control de alimentaci\xF3n est\xE1 desactivado, por lo que estas secuencias no se utilizan. Act\xEDvalo arriba para editarlas.",
+    inputStepTitle: "Definir entrada",
+    inputStepCommand: "Comando de entrada",
+    inputStepNone: "\u2014 sin entrada \u2014",
+    macroStepsCount: (count) => `${count} ${count === 1 ? "paso" : "pasos"}`,
+    noMacroSteps: "Todav\xEDa no hay pasos.",
+    addStep: "A\xF1adir paso",
+    stepDialogAddTitle: "A\xF1adir paso",
+    stepDialogEditTitle: "Editar paso",
+    stepDevice: "Dispositivo",
+    stepCommand: "Comando",
+    stepHoldSeconds: "Mantener (segundos, 0 = clic)",
+    holdLabel: (seconds) => `Mantener ${seconds} s`,
+    stepAdd: "A\xF1adir",
+    stepSave: "Guardar",
+    stepCancel: "Cancelar",
+    stepNoCommands: "Este dispositivo no tiene comandos.",
+    stepWaitAria: "Esperar despu\xE9s de este paso (segundos)",
+    stepWaitLabel: "Retraso",
+    stepWaitUnit: "s",
+    renameMacroAria: "Cambiar nombre de la macro",
+    deleteStepAria: "Eliminar paso",
+    editStepAria: "Editar paso",
+    newMacroName: "Macro",
+    shortcutChipCommand: "comando",
+    shortcutChipAction: "macro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Cambiar nombre de la macro" : "Cambiar nombre del acceso directo",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Eliminar macro" : "Eliminar acceso directo",
+    powerSectionTitle: "Alimentaci\xF3n",
+    powerActivitySub: "Aqu\xED se enciende cada dispositivo que usa la actividad. Elige su entrada y ajusta los tiempos.",
+    powerInputLabel: "Entrada",
+    powerInputNone: "\u2014 ninguna \u2014",
+    powerDelayLabel: "Retraso (s)",
+    powerNoDevices: "Todav\xEDa no hay dispositivos. A\xF1ade un favorito, una asignaci\xF3n o una macro que use uno.",
+    powerOnSequence: "Secuencia de encendido",
+    powerOffSequence: "Secuencia de apagado",
+    powerSequenceSub: "Reordena pasos y a\xF1ade tus propios comandos o esperas. Los pasos obligatorios de dispositivos pueden reordenarse, pero no eliminarse.",
+    macroRenameAria: "Cambiar nombre de la macro",
+    editStepsAria: "Editar pasos",
+    crumbActivities: "Actividades",
+    crumbDevices: "Dispositivos",
+    activityRemoveDeviceTitle: (name) => `\xBFEliminar ${name} de esta actividad?`,
+    activityRunningTitle: "Botones del control remoto",
+    activityRunningSub: "Qu\xE9 dispositivo controla cada bot\xF3n del control remoto en esta actividad.",
+    activityShortcutsTitle: "Accesos directos en la pantalla del control remoto",
+    activityShortcutsSubSortable: "Comandos y macros mostrados en la pantalla del control remoto. Arrastra el controlador para reordenarlos.",
+    activityShortcutsSubStatic: "Comandos y macros mostrados en la pantalla del control remoto. Usa los botones de movimiento para reordenarlos.",
+    activityShortcutsEmpty: "Todav\xEDa no hay accesos directos. A\xF1ade un comando o una macro.",
+    roleVolume: "Control de botones de volumen",
+    roleNavigation: "Control de botones de navegaci\xF3n y OK",
+    rolePlayback: "Control de botones de reproducci\xF3n",
+    roleChannels: "Control de botones de canal",
+    roleNotUsed: "No utilizado",
+    roleCustom: "Personalizado",
+    roleCustomized: (name) => `${name} (personalizado)`,
+    roleMappedNote: (bound, total) => `${bound} de ${total} botones asignados`,
+    roleOptionNoMapping: (name) => `${name} \u2014 sin asignaci\xF3n de botones`,
+    roleMenuAria: (roleLabel) => `Elige un dispositivo para: ${roleLabel}`,
+    roleConfirmTitle: "\xBFReemplazar la configuraci\xF3n personalizada de botones?",
+    roleConfirmBody: "Este grupo tiene asignaciones de botones que no proceden de la asignaci\xF3n est\xE1ndar de un \xFAnico dispositivo. Al asignarlo aqu\xED se reemplazar\xE1n.",
+    roleConfirmReplace: "Reemplazar",
+    roleConfirmCancel: "Cancelar",
+    customizeButtonsToggle: "Personalizar botones individuales",
+    bindingsViewTitle: "Botones individuales",
+    bindingsConfiguredCount: (count) => `${count} configurados`,
+    bindingsNoneConfigured: "Ning\xFAn bot\xF3n personalizado",
+    addShortcutButton: "A\xF1adir",
+    addShortcutTitle: "A\xF1adir a accesos directos",
+    addShortcutKindLabel: "Tipo",
+    shortcutKindCommand: "Comando de dispositivo",
+    shortcutKindAction: "Macro",
+    macroTargetLabel: "Macro",
+    macroTargetCreateNew: "Crear macro nueva",
+    macroTargetNoExisting: "Todav\xEDa no hay macros. Crea una abajo.",
+    addShortcutActionName: "Nombre",
+    addShortcutActionHelper: "A continuaci\xF3n elegir\xE1s los pasos.",
+    addShortcutCommandHelper: "El acceso directo aparece con el nombre del comando.",
+    unsaved: "Sin guardar",
+    unsavedTooltip: "Tienes cambios sin guardar. Descarga la copia de seguridad para conservarlos.",
+    renameKind: (kind) => `Cambiar nombre ${kind === "activity" ? "de la actividad" : "del dispositivo"}`,
+    managedWifiTitle: "Gestionado por Wifi Commands",
+    managedWifiIntro: "Este dispositivo se despleg\xF3 desde la pesta\xF1a Wifi Commands.",
+    managedWifiBody: "Sus comandos, alimentaci\xF3n, entrada y asignaciones de botones se configuran all\xED \u2014 si los editas aqu\xED, se sobrescribir\xE1n en la pr\xF3xima sincronizaci\xF3n.",
+    managedWifiRename: "Aun as\xED puedes cambiarle el nombre aqu\xED; el nombre nuevo se mantiene sincronizado con la configuraci\xF3n de Wifi Commands.",
+    detailPower: "Alimentaci\xF3n",
+    detailNetwork: "Red",
+    detailCommands: "Comandos",
+    detailButtons: "Botones",
+    detailSectionsAria: "Secciones de detalles",
+    editBindingAria: "Editar asignaci\xF3n",
+    editIpAria: "Editar direcci\xF3n IP",
+    networkDescription: "La direcci\xF3n IP del dispositivo est\xE1 en su registro. El hub la usa para dirigirse al dispositivo durante la reproducci\xF3n (encabezado Host para Hue/Sonos, URL base para Roku).",
+    ipv4Description: "Direcci\xF3n IPv4 con notaci\xF3n decimal punteada",
+    addCommand: "A\xF1adir comando",
+    addCommandTitle: "A\xF1adir comando",
+    editPayloadTitle: "Editar carga \xFAtil",
+    commandsLiveHelp: "Usa el l\xE1piz para cambiar el nombre de un comando y las llaves para obtener su carga \xFAtil del hub y editarla. La eliminaci\xF3n de comandos permanece en Copia de seguridad \u2192 Editar.",
+    commandsBackupHelp: "Usa el l\xE1piz para cambiar el nombre de un comando (los nombres se actualizan en todas sus referencias) y las llaves para editar su carga \xFAtil.",
+    newCommandChip: "comando nuevo",
+    commandChip: "comando",
+    buttonChip: "bot\xF3n",
+    ipChip: "IP",
+    thisItem: "este elemento",
+    noDeviceCommands: "Este dispositivo no tiene comandos actualmente.",
+    renameCommandAria: "Cambiar nombre del comando",
+    commandId: "ID de comando",
+    editPayloadAria: "Editar carga \xFAtil",
+    fetchEditCommandAria: "Obtener y editar la carga \xFAtil de este comando",
+    moveUpAria: "Mover hacia arriba",
+    moveDownAria: "Mover hacia abajo",
+    deviceClass: "Clase de dispositivo",
+    name: "Nombre",
+    nameHelper: "Se muestra en el control remoto y en todos los selectores de comandos.",
+    verifyPayloadLive: "Verifica una carga \xFAtil modificada antes de guardarla: Probar reproduce los bytes actuales en el hub sin guardarlos. Guardar incorpora la carga \xFAtil a la pr\xF3xima sincronizaci\xF3n del dispositivo.",
+    verifyPayloadBackup: "Verifica una carga \xFAtil modificada antes de confiar en ella: Probar reproduce los bytes en el hub sin guardarlos. Gu\xE1rdala aqu\xED solo cuando haga lo que esperas.",
+    test: "Probar",
+    sendingToHub: "Enviando al hub\u2026",
+    sentToHub: "Enviado al hub para una reproducci\xF3n \xFAnica.",
+    testFailed: "Error en la prueba.",
+    rawPayload: "Carga \xFAtil sin procesar",
+    rawPayloadDescription: "No existe un editor estructurado para esta clase de dispositivo; los bytes siguientes se reproducen sin cambios en el hub durante la restauraci\xF3n.",
+    payloadHex: "Carga \xFAtil (bytes hexadecimales)",
+    payloadHexHelper: "Pares de bytes como \xAB0a 4f 22\xBB; se permiten espacios y prefijos 0x.",
+    rename: "Cambiar nombre",
+    renameActivity: "Cambiar nombre de la actividad",
+    renameDevice: "Cambiar nombre del dispositivo",
+    renameMacro: "Cambiar nombre de la macro",
+    renameFavorite: "Cambiar nombre del favorito",
+    renameCommand: "Cambiar nombre del comando",
+    ipAddress: "Direcci\xF3n IP",
+    noPayloadReturned: "El hub no devolvi\xF3 ninguna carga \xFAtil para este comando.",
+    noTemplateCommand: "Este dispositivo no tiene comandos para usar como plantilla \u2014 a\xF1ade el primero con la aplicaci\xF3n Sofabaton.",
+    newCommandNameRequired: "Introduce un nombre para el comando nuevo.",
+    descriptiveIrRequired: "Introduce una carga \xFAtil IR descriptiva que empiece por P: (p. ej., P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired: "Introduce la carga \xFAtil como bytes hexadecimales (un n\xFAmero par de d\xEDgitos hexadecimales; se permiten espacios).",
+    noFreeCommandSlot: "Este dispositivo ya no tiene espacios de comando libres.",
+    nothingToTest: "Todav\xEDa no hay nada que probar.",
+    ipv4Required: "Introduce una direcci\xF3n IPv4 con notaci\xF3n decimal punteada (p. ej., 192.168.1.42) o borra el campo para quitar la IP.",
+    steps: "Pasos",
+    buttonCatalog: {
+      up: "Arriba",
+      down: "Abajo",
+      left: "Izquierda",
+      right: "Derecha",
+      ok: "OK",
+      home: "Inicio",
+      back: "Atr\xE1s",
+      menu: "Men\xFA",
+      volumeUp: "Volumen +",
+      volumeDown: "Volumen -",
+      mute: "Silencio",
+      channelUp: "Canal +",
+      channelDown: "Canal -",
+      rewind: "Retroceder",
+      pause: "Pausa",
+      forward: "Avanzar",
+      red: "Rojo",
+      green: "Verde",
+      yellow: "Amarillo",
+      blue: "Azul",
+      exit: "Salir",
+      dvr: "DVR",
+      play: "Reproducir",
+      guide: "Gu\xEDa",
+      navigation: "Navegaci\xF3n",
+      volumeChannel: "Volumen y canal",
+      transport: "Controles de reproducci\xF3n",
+      colour: "Color",
+      extra: "Extra",
+      unknown: (code) => `Bot\xF3n 0x${code}`
+    },
+    powerOn: "Encender",
+    powerOff: "Apagar",
+    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
+    inputStepLabel: (device, input) => `Entrada \xB7 ${device}: ${input}`,
+    macroTargetLabelText: (name) => `Macro \xB7 ${name}`
+  },
+  hub: {
+    loading: "Cargando\u2026",
+    unknown: "Desconocido",
+    connectionStatusAria: "Estado de conexi\xF3n del hub",
+    hubConnected: "Hub conectado",
+    hubNotConnected: "Hub no conectado",
+    appConnected: "Aplicaci\xF3n conectada",
+    appNotConnected: "Aplicaci\xF3n no conectada",
+    version: "Versi\xF3n",
+    ipAddress: "Direcci\xF3n IP",
+    activities: "Actividades",
+    devices: "Dispositivos",
+    integrationVersion: "Versi\xF3n de la integraci\xF3n",
+    firmwareVersion: (version) => `FW: v${version}`,
+    productVersion: (version) => `Sofabaton ${version}`
+  },
+  decodedPayload: {
+    httpTitle: "Solicitud HTTP",
+    httpSubtitle: "Los cambios se reproducen mediante el escritor wifi_ip del hub. El host, el puerto y Content-Length se deducen; no se configuran aqu\xED.",
+    hostIpv4: "Host (IPv4)",
+    hostExample: "p. ej., 192.168.2.77",
+    port: "Puerto",
+    httpMethod: "M\xE9todo HTTP",
+    httpMethodExample: "p. ej., GET, POST",
+    path: "Ruta",
+    extraHeaders: "Encabezados adicionales",
+    extraHeadersHelper: "Un encabezado por l\xEDnea. Host y Content-Length se a\xF1aden autom\xE1ticamente.",
+    contentType: "Tipo de contenido",
+    body: "Cuerpo",
+    rokuTitle: "Solicitud Roku ECP",
+    ecpPath: "Ruta URL de ECP",
+    ecpPathExample: "p. ej., /launch/12 o /keypress/Home",
+    hueTitle: "Solicitud REST de Hue",
+    sonosTitle: "Solicitud UPnP de Sonos",
+    bodyBlockSubtitle: "El bloque del cuerpo se inserta sin cambios entre los encabezados Host y la escritura de red.",
+    urlPath: "Ruta URL",
+    bodyBlock: "Bloque del cuerpo (cadena de red sin procesar)",
+    bodyBlockHelper: "Cadena literal \xFAnica enviada al dispositivo. Los saltos de l\xEDnea se muestran como \\n. T\xFA controlas el valor de Content-Length \u2014 debe coincidir con el n\xFAmero de bytes del cuerpo.",
+    irTitle: "Carga \xFAtil IR descriptiva",
+    irSubtitle: "Los cambios se reproducen mediante el escritor de IR descriptivo del hub. Solo se pueden decodificar cargas \xFAtiles de protocolos descriptivos (P:\u2026 D:\u2026 F:\u2026); las cargas IR aprendidas sin procesar no se pueden editar aqu\xED.",
+    descriptor: "Descriptor",
+    descriptorExample: "p. ej., P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "El archivo de copia de seguridad debe contener un objeto JSON.",
+    invalidBundle: "El archivo de copia de seguridad no es un paquete de hub Sofabaton.",
+    invalidSchema: (expected, actual) => `El valor schema_version del archivo de copia de seguridad debe ser ${expected} (se recibi\xF3 ${String(actual)}).`,
+    structuralBundle: "Este archivo es un paquete de cach\xE9 estructural (sin cargas \xFAtiles de comandos); no se puede editar ni restaurar. Exporta una copia de seguridad completa.",
+    missingArrays: "Al archivo de copia de seguridad le faltan las matrices de dispositivos o actividades.",
+    missingSourceModel: "Al archivo de copia de seguridad le falta el modelo del hub de origen, por lo que no se puede comprobar la compatibilidad.",
+    unknownDestinationModel: "Se desconoce el modelo del hub de destino, por lo que no se puede comprobar la compatibilidad de restauraci\xF3n.",
+    incompatibleModels: (source, destination) => `Esta copia de seguridad se cre\xF3 en un hub Sofabaton ${source} y no se puede restaurar en un hub Sofabaton ${destination}.`
+  },
+  wifiCommands: {
+    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    sectionLabel: "Dispositivos wifi",
+    deployingTitle: "Desplegando Wifi Commands",
+    sectionSubtitle: "Usa Wifi Commands para ejecutar acciones de Home Assistant desde los botones de tu control remoto f\xEDsico. Elige un dispositivo wifi para editar sus espacios de comandos o a\xF1ade uno nuevo.",
+    addDevice: "A\xF1adir dispositivo wifi",
+    deleteDeviceAria: "Eliminar dispositivo wifi",
+    emptyDevices: "Todav\xEDa no hay dispositivos wifi configurados. A\xF1ade uno para empezar a asignar espacios de comandos.",
+    maximumDevices: "Se alcanz\xF3 el n\xFAmero m\xE1ximo de dispositivos",
+    configuredSlots: (count) => `${count} ${count === 1 ? "espacio" : "espacios"}`,
+    unableSaveAction: "No se pudo guardar la acci\xF3n",
+    hubCommandInProgress: "Comando del hub en curso...",
+    idle: "Inactivo",
+    unableLoadSyncStatus: "No se pudo cargar el estado de sincronizaci\xF3n",
+    noTargetEntity: "Sin entidad de destino",
+    commandNameLeadingSpace: "El nombre del comando debe comenzar con un car\xE1cter que no sea un espacio.",
+    navigationGroup: "Navegaci\xF3n",
+    transportGroup: "Reproducci\xF3n",
+    mediaGroup: "Multimedia",
+    abcGroup: "ABC",
+    colorGroup: "Color",
+    inputCommand: "Comando de entrada",
+    inputFor: (activity) => `Entrada para ${activity}`,
+    activitySingular: "Actividad",
+    activityPlural: "Actividades",
+    unconfiguredCommand: "Comando sin configurar",
+    powerBothCommand: "Comando de encendido y apagado",
+    powerOnCommand: "Comando de encendido",
+    powerOffCommand: "Comando de apagado",
+    thisDevice: "este dispositivo",
+    replacesOnButton: (slot) => `Reemplaza \xAB${slot}\xBB en este bot\xF3n`,
+    replacesFromDevice: (slot, device) => `Reemplaza \xAB${slot}\xBB de ${device}`,
+    none: "Ninguno",
+    commandSlotDescription: "Crea un comando en este espacio. As\xEDgnale un nombre y decide a qu\xE9 actividades aplicarlo. El nombre aparecer\xE1 en la pantalla del control remoto, en la aplicaci\xF3n m\xF3vil y como estado del sensor del comando wifi.",
+    syncingDeviceFallback: "Sincronizando dispositivo wifi...",
+    syncingDeviceNamed: (deviceName) => `Sincronizando ${deviceName}...`,
+    syncInProgress: "Sincronizaci\xF3n en curso",
+    startSync: "Iniciando sincronizaci\xF3n",
+    syncFailedToStart: "No se pudo iniciar la sincronizaci\xF3n",
+    syncMessageRemoteUnavailable: "Entidad de control remoto no disponible. \xBFEst\xE1 conectada la aplicaci\xF3n?",
+    syncMessageFailed: "La \xFAltima sincronizaci\xF3n fall\xF3.",
+    syncMessageNeeded: "Los cambios en la configuraci\xF3n de comandos deben sincronizarse con el hub.",
+    syncMessageUpToDate: "La configuraci\xF3n de comandos del hub est\xE1 actualizada.",
+    syncMessageIdle: "No se necesita sincronizaci\xF3n.",
+    syncShortUnavailable: "No disponible",
+    syncShortRunning: "Sincronizando",
+    syncShortFailed: "Error de sincronizaci\xF3n",
+    syncShortNeeded: "Se necesita sincronizar",
+    syncShortUpToDate: "Actualizado",
+    syncShortIdle: "Inactivo",
+    deviceDeleting: "Eliminando...",
+    deviceSynced: "Sincronizado",
+    seeDocumentation: "Ver documentaci\xF3n",
+    actionButtonUnavailable: "No disponible",
+    actionButtonSyncing: "Sincronizando...",
+    actionButtonBusy: "Ocupado",
+    actionButtonSyncToHub: "Sincronizar con el hub",
+    actionButtonUpToDate: "Actualizado",
+    createDeviceBusy: "Creando dispositivo wifi...",
+    deviceName: "Nombre del dispositivo",
+    createDeviceNameRequired: "El nombre del dispositivo es obligatorio.",
+    createDeviceFailed: "No se pudo crear el dispositivo wifi",
+    deleteDeviceBusy: "Eliminando dispositivo wifi...",
+    deleteDeviceFailed: "No se pudo eliminar el dispositivo wifi",
+    createModalCancel: "Cancelar",
+    createModalCreate: "Crear",
+    deleteModalTitle: "\xBFEliminar dispositivo wifi?",
+    deleteModalBody: (deviceName) => `\xBFEliminar \xAB${deviceName}\xBB del hub y borrar su configuraci\xF3n guardada de espacios de comandos?`,
+    deleteModalDelete: "Eliminar",
+    clearSlotTitle: "\xBFBorrar espacio de comando?",
+    clearSlotSubtitle: "Restablece la configuraci\xF3n.",
+    clearSlotNo: "No",
+    clearSlotYes: "S\xED",
+    makeCommand: "Crear comando",
+    noActionConfigured: "No hay ninguna acci\xF3n configurada",
+    commandSlotTitle: (slotIndex) => `Espacio de comando ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Acci\xF3n del espacio de comando ${slotIndex + 1}`,
+    commandDisplayName: "Nombre mostrado del comando",
+    advanced: "Avanzado",
+    activityInput: "Ejecutar este comando cuando se inicie una actividad",
+    activityInputHint: "El comando se establece como entrada de la actividad en el hub, por lo que se ejecuta durante la secuencia de inicio de la actividad.",
+    activityInputReplaces: (slotName, activityName) => `Reemplaza \xAB${slotName}\xBB cuando se inicia ${activityName}`,
+    noActivitiesForHub: "No hay actividades disponibles para este hub.",
+    activityInputLabel: "Actividad que ejecuta este comando",
+    devicePowerOnLabel: "Cuando el hub ENCIENDE este dispositivo",
+    devicePowerOffLabel: "Cuando el hub APAGA este dispositivo",
+    devicePowerNothing: "Nada",
+    devicePowerHint: "Se ejecuta como parte de la secuencia de alimentaci\xF3n de este dispositivo en tus actividades. Se sincroniza con el hub.",
+    devicePowerPerform: (commandName) => `ejecutar ${commandName}`,
+    hubEventsTitle: "Eventos del hub",
+    hubEventsSubtitle: "Ejecuta una acci\xF3n de Home Assistant cuando cambie el estado del hub. Estas acciones solo se ejecutan en Home Assistant y nunca se sincronizan con el hub.",
+    hubEventPowerOff: "Cuando el hub se APAGA",
+    hubEventRedundantOff: "Cuando se pulsa APAGAR y el hub ya est\xE1 APAGADO",
+    hubEventActivityStart: "Cuando se inicia cualquier actividad",
+    hubEventActivityStops: "y cuando una se detiene",
+    hubEventActivityStopModalTitle: "Cuando se detiene cualquier actividad",
+    hubEventDoNothing: "no hacer nada",
+    hubEventPerform: (service) => `ejecutar ${service}`,
+    hubEventClearTitle: "Restablecer a No hacer nada",
+    hubEventModalNote: "Elige la acci\xF3n que se ejecutar\xE1 cuando ocurra esto. Borra la acci\xF3n para no hacer nada.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Eventos",
+    activityEventsTitle: "Eventos de actividad",
+    activityEventsSubtitle: "Ejecuta una acci\xF3n de Home Assistant cuando una actividad espec\xEDfica se inicie o se detenga. Al cambiar de actividad, la anterior se detiene y se inicia la nueva.",
+    activityEventStarts: (name) => `Cuando se inicia ${name}`,
+    activityEventStops: "y cuando se detiene",
+    activityEventStartModalTitle: (name) => `Cuando se inicia ${name}`,
+    activityEventStopModalTitle: (name) => `Cuando se detiene ${name}`,
+    activityEventFallbackName: (id) => `Actividad ${id}`,
+    noActivitiesForEvents: "Todav\xEDa no hay actividades en este hub.",
+    favorite: "Marcar como favorito",
+    physicalButtonAssignment: "Asignaci\xF3n de botones f\xEDsicos",
+    enableLongPress: "Activar pulsaci\xF3n larga",
+    applyToActivities: "Aplicar a estas actividades",
+    actionModalNote: "Ejecuta una acci\xF3n cada vez que se ejecute el comando. Configurar una acci\xF3n es opcional; puedes crear tus propias automatizaciones que se activen desde el sensor Wifi Commands.",
+    shortPress: "Pulsaci\xF3n corta",
+    longPress: "Pulsaci\xF3n larga",
+    selectLongPressAction: "Seleccionar acci\xF3n de pulsaci\xF3n larga",
+    selectTriggeredAction: "Seleccionar acci\xF3n activada",
+    action: "Acci\xF3n",
+    save: "Guardar",
+    syncWarningTitle: "\xBFSincronizar comandos con el hub?",
+    syncWarningBody: "Esta sincronizaci\xF3n puede tardar varios minutos. Durante el proceso se bloquean otras interacciones con el hub.",
+    syncWarningBody2: "Al final del despliegue, el control remoto f\xEDsico se volver\xE1 a sincronizar de forma forzada. Se recomienda terminar primero toda la configuraci\xF3n de Wifi Commands y sincronizar una sola vez.",
+    syncWarningOptOut: "No volver a mostrar esta advertencia para este control remoto.",
+    syncWarningStart: "Iniciar sincronizaci\xF3n",
+    keyLabels: {
+      up: "Arriba",
+      down: "Abajo",
+      left: "Izquierda",
+      right: "Derecha",
+      ok: "OK",
+      back: "Atr\xE1s",
+      home: "Inicio",
+      menu: "Men\xFA",
+      volup: "Vol +",
+      voldn: "Vol -",
+      mute: "Silencio",
+      chup: "Can +",
+      chdn: "Can -",
+      guide: "Gu\xEDa",
+      dvr: "DVR",
+      play: "Reproducir",
+      exit: "Salir",
+      rew: "Retroceder",
+      pause: "Pausa",
+      fwd: "Avance r\xE1pido",
+      red: "Rojo",
+      green: "Verde",
+      yellow: "Amarillo",
+      blue: "Azul",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  }
+};
+registerToolsCardTranslation("es", TOOLS_CARD_STRINGS_ES);
+
+// custom_components/sofabaton_x1s/www/src/control-panel-translations/fr.ts
+var ceType = (kind) => kind === "activity" ? "cette activit\xE9" : "cet appareil";
+var TOOLS_CARD_STRINGS_FR = {
+  common: {
+    cancel: "Annuler",
+    save: "Enregistrer",
+    complete: "Terminer",
+    loading: "Chargement...",
+    noHubsFound: "Aucun hub trouv\xE9.",
+    homeAssistantUnavailable: "Home Assistant n\u2019est pas disponible",
+    homeAssistantContextUnavailable: "Le contexte Home Assistant n\u2019est pas disponible",
+    unknownError: "Erreur inconnue",
+    unknownErrorWithLogs: "Erreur inconnue (consultez les journaux Home Assistant)",
+    commandFallback: (id) => `Commande ${id}`,
+    buttonFallback: (id) => `Touche ${id}`,
+    deviceFallback: (id) => `Appareil ${id}`,
+    activityFallback: (id) => `Activit\xE9 ${id}`,
+    macroFallback: (id) => `Macro ${id}`,
+    favoriteFallback: (id) => `Favori ${id}`,
+    inputFallback: (id) => `Entr\xE9e ${id}`,
+    noInput: "aucune entr\xE9e"
+  },
+  card: {
+    connectivityAria: "Connectivit\xE9",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version) => `PANNEAU DE CONTR\xD4LE SOFABATON - v${version}`,
+    wifiDeviceFallback: "Appareil Wi-Fi",
+    wifiCommandFallback: "Commande Wi-Fi",
+    irLongPress: (device, command) => `${device} \u2022 ${command} (appui long)`,
+    irPress: (device, command) => `${device} \u2022 ${command}`,
+    previewDescription: "Outils, cache, sauvegardes, journaux et automatisations pour votre hub",
+    editorHeight: "Hauteur de la carte",
+    editorHeightHint: "D\xE9finit la partie visible des listes d\u2019activit\xE9s et d\u2019appareils. Valeur par d\xE9faut : 600 px.",
+    pickerName: "Panneau de contr\xF4le Sofabaton",
+    pickerDescription: "Un panneau de contr\xF4le pour les outils du hub Sofabaton, le cache, les journaux, les param\xE8tres et les commandes Wi-Fi."
+  },
+  docs: {
+    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
+  },
+  tabs: { cache: "Hub", wifiCommands: "Automatisation", backup: "Sauvegarde", settings: "Param\xE8tres", logs: "Journaux" },
+  tabDocs: { wifi_commands: "Documentation de l\u2019automatisation", backup: "Documentation des sauvegardes" },
+  dock: { unsyncedChanges: "Modifications non synchronis\xE9es \u2014 synchronisez-les avec le hub pour les appliquer" },
+  backend: {
+    unavailableTitle: "Backend indisponible",
+    unavailableCopy: "En attente du d\xE9marrage de l\u2019int\xE9gration Sofabaton X...",
+    versionMismatchTitle: "Actualisation requise pour mettre \xE0 jour le panneau de contr\xF4le Sofabaton",
+    versionMismatchCopy: "Ce tableau de bord utilise encore une version en cache du panneau de contr\xF4le Sofabaton plus ancienne que celle qui s\u2019ex\xE9cute maintenant dans Home Assistant. Actualisez ou rouvrez le tableau de bord ou le navigateur avant de r\xE9utiliser le panneau afin que la carte mise \xE0 jour puisse se charger.",
+    backendExpects: "Version attendue par le backend",
+    cardLoaded: "Carte charg\xE9e",
+    unknownVersion: "inconnue",
+    refreshingCache: "Actualisation du cache...",
+    hubCommandInProgress: "Commande du hub en cours..."
+  },
+  hubUnavailable: { title: "Hub indisponible", copy: "Ce hub n\u2019est pas connect\xE9. Le panneau de contr\xF4le restera indisponible jusqu\u2019\xE0 sa reconnexion." },
+  availability: {
+    operationRunning: "Op\xE9ration en cours",
+    working: "Traitement en cours...",
+    appConnectedOnlyLogs: "Seuls les journaux sont disponibles lorsque l\u2019application Sofabaton est connect\xE9e.",
+    hubCommandInProgress: "Commande du hub en cours...",
+    refreshingCache: "Actualisation du cache...",
+    unavailable: "Indisponible",
+    refreshDashboard: "Actualisez le tableau de bord pour charger le panneau de contr\xF4le Sofabaton mis \xE0 jour.",
+    automationUnavailable: "Automatisation indisponible",
+    backupUnavailable: "Sauvegarde indisponible",
+    automationBlockedByProxy: "L\u2019automatisation ne peut pas \xEAtre utilis\xE9e lorsque l\u2019application Sofabaton est connect\xE9e au hub par le proxy.",
+    backupBlockedByProxy: "La sauvegarde ne peut pas \xEAtre utilis\xE9e lorsque l\u2019application Sofabaton est connect\xE9e au hub par le proxy."
+  },
+  buttonNames: {
+    151: "C",
+    152: "B",
+    153: "A",
+    154: "Quitter",
+    155: "DVR",
+    156: "Lecture",
+    157: "Guide",
+    174: "Haut",
+    175: "Gauche",
+    176: "OK",
+    177: "Droite",
+    178: "Bas",
+    179: "Retour",
+    180: "Accueil",
+    181: "Menu",
+    182: "Volume +",
+    183: "Cha\xEEne +",
+    184: "Muet",
+    185: "Volume -",
+    186: "Cha\xEEne -",
+    187: "Retour rapide",
+    188: "Pause",
+    189: "Avance rapide",
+    190: "Rouge",
+    191: "Vert",
+    192: "Jaune",
+    193: "Bleu",
+    198: "Allumer",
+    199: "\xC9teindre"
+  },
+  errors: {
+    backupProgressNoSocket: "La progression de la sauvegarde n\u2019est pas disponible sans connexion WebSocket",
+    logsNoSocket: "Les journaux en direct ne sont pas disponibles sans connexion WebSocket",
+    wifiPressNoSocket: "Les \xE9v\xE9nements d\u2019appui Wi-Fi ne sont pas disponibles sans connexion WebSocket",
+    hubEventsNoSocket: "Les \xE9v\xE9nements du hub ne sont pas disponibles sans connexion WebSocket",
+    anotherOperation: "Une autre op\xE9ration du hub est d\xE9j\xE0 en cours.",
+    noHubSelected: "Aucun hub s\xE9lectionn\xE9.",
+    noHubSelectedLong: "Aucun hub n\u2019est s\xE9lectionn\xE9.",
+    cacheRefreshFailed: "\xC9chec de l\u2019actualisation du cache.",
+    syncFailed: "\xC9chec de la synchronisation.",
+    activityIdMissing: "Le hub n\u2019a pas renvoy\xE9 l\u2019identifiant de la nouvelle activit\xE9."
+  },
+  settings: {
+    loading: "Chargement...",
+    noHubsFound: "Aucun hub trouv\xE9.",
+    unknownHubName: "Inconnu",
+    activities: "Activit\xE9s",
+    devices: "Appareils",
+    persistentCacheTitle: "Cache persistant",
+    persistentCacheDescription: "Stocker localement les donn\xE9es des activit\xE9s et des appareils pour un acc\xE8s plus rapide.",
+    persistentCacheFooter: "GLOBAL",
+    hubClickActionTitle: "Clics dans l\u2019onglet Hub",
+    hubClickActionDescription: "Choisissez ce qui se passe lorsque vous cliquez sur une commande, un favori, une macro ou une touche dans les listes de l\u2019onglet Hub.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "Ne rien faire",
+    hubClickActionOptionSend: "Envoyer la commande",
+    hubClickActionOptionCopy: "Copier la commande",
+    hexLoggingTitle: "Journalisation hexad\xE9cimale",
+    hexLoggingDescription: "Consigner le trafic hexad\xE9cimal brut entre le hub, l\u2019int\xE9gration et l\u2019application.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Permettre \xE0 l\u2019application Sofabaton officielle et \xE0 HA de partager simultan\xE9ment la connexion au hub.",
+    wifiDeviceTitle: "Appareil Wi-Fi",
+    wifiDeviceDescription: "Activer l\u2019\xE9couteur HTTP qui capture les appuis sur la t\xE9l\xE9commande et les achemine vers des actions HA.",
+    findRemoteTitle: "Trouver la t\xE9l\xE9commande",
+    findRemoteDescription: "Faire biper la t\xE9l\xE9commande pour pouvoir la localiser.",
+    syncRemoteTitle: "Synchroniser la t\xE9l\xE9commande",
+    syncRemoteDescription: "Envoyer la derni\xE8re configuration \xE0 la t\xE9l\xE9commande physique."
+  },
+  cache: {
+    loading: "Chargement...",
+    noHubsFound: "Aucun hub trouv\xE9.",
+    persistentCacheOffTitle: "Le cache persistant est d\xE9sactiv\xE9",
+    persistentCacheOffCopy: "Activez-le pour parcourir les activit\xE9s et appareils en cache et d\xE9verrouiller les proc\xE9dures de sauvegarde qui en d\xE9pendent.",
+    enablingPersistentCache: "Activation...",
+    enablePersistentCache: "Activer le cache persistant",
+    devIdBadge: "ID appareil",
+    favIdBadge: "ID favori",
+    comIdBadge: "ID commande",
+    activityFallback: (id) => `Activit\xE9 ${id}`,
+    deviceFallback: (id) => `Appareil ${id}`,
+    favoriteFallback: (commandId) => `Favori ${commandId}`,
+    macroFallback: (commandId) => `Macro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} fav. / ${macros} macros / ${buttons} touches`,
+    deviceCommandCount: (count) => `${count} commandes`,
+    favorites: "Favoris",
+    macros: "Macros",
+    buttons: "Touches",
+    noCachedData: "Aucune donn\xE9e en cache pour le moment.",
+    noCachedCommands: "Aucune commande en cache.",
+    staleBanner: "Le cache a \xE9t\xE9 mis \xE0 jour depuis l\u2019ext\xE9rieur. Actualisez pour voir les derni\xE8res donn\xE9es.",
+    refresh: "Actualiser",
+    activities: "Activit\xE9s",
+    devices: "Appareils",
+    refreshList: "Actualiser la liste",
+    refreshAll: "Tout actualiser",
+    editActivity: "Modifier l\u2019activit\xE9",
+    editDevice: "Modifier l\u2019appareil",
+    changeOrder: "Modifier l\u2019ordre",
+    addActivity: "Ajouter une activit\xE9",
+    reorderSync: "Synchroniser avec le hub",
+    reorderCancel: "Annuler",
+    reorderHint: "Faites glisser les activit\xE9s dans l\u2019ordre souhait\xE9, puis synchronisez-les avec le hub.",
+    reorderDevicesHint: "Faites glisser les appareils dans l\u2019ordre souhait\xE9, puis synchronisez-les avec le hub.",
+    reorderSyncing: "\xC9criture du nouvel ordre sur le hub\u2026",
+    addActivityTitle: "Ajouter une activit\xE9",
+    addActivityBody: "Nommez la nouvelle activit\xE9. Elle sera cr\xE9\xE9e sur le hub et ouverte dans l\u2019\xE9diteur.",
+    addActivityPlaceholder: "Nom de l\u2019activit\xE9",
+    addActivityCancel: "Annuler",
+    addActivityConfirm: "Cr\xE9er",
+    addActivityCreating: "Cr\xE9ation\u2026",
+    reorderingActivities: "R\xE9organisation des activit\xE9s\u2026",
+    reorderingDevices: "R\xE9organisation des appareils\u2026",
+    creatingActivity: "Cr\xE9ation de l\u2019activit\xE9\u2026"
+  },
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Activit\xE9",
+    contextDevice: "Appareil",
+    kindLabels: { favorite: "Favori", macro: "Macro", button: "Touche", command: "Commande" },
+    lovelaceHeading: "Code de bouton Lovelace",
+    lovelaceHint: "Copiez ceci dans le YAML de votre tableau de bord :",
+    actionHeading: "Appel de service (automatisation)",
+    actionHint: "Utilisez ceci dans vos scripts ou automatisations :",
+    noRemoteEntity: "L\u2019entit\xE9 de t\xE9l\xE9commande du hub n\u2019est pas disponible.",
+    copied: (label) => `\xAB ${label} \xBB a \xE9t\xE9 copi\xE9 dans les notifications.`,
+    sendTooltip: "Cliquer pour envoyer cette commande au hub",
+    copyTooltip: "Cliquer pour copier cette commande dans une notification"
+  },
+  logs: { loading: "Chargement du flux de journaux...", empty: "Aucune ligne de journal n\u2019a encore \xE9t\xE9 captur\xE9e pour ce hub.", liveConsole: "Console en direct" },
+  cacheRefresh: { label: "Tout actualiser", running: "Actualisation\u2026", starting: "D\xE9marrage de l\u2019actualisation du cache du hub\u2026", working: "Lecture de la configuration de votre hub\u2026", done: "Cache du hub actualis\xE9." },
+  progress: { homeAssistant: "Home Assistant", sofabatonHub: "Hub Sofabaton", working: "Traitement en cours...", backupTitle: "Cr\xE9ation de la sauvegarde", restoreTitle: "Restauration de la sauvegarde" },
+  activities: {
+    loading: "Chargement des activit\xE9s...",
+    selectHub: "S\xE9lectionnez un hub pour modifier ses activit\xE9s.",
+    activityFallback: (id) => `Activit\xE9 ${id}`,
+    appConnectedTitle: "L\u2019application Sofabaton est connect\xE9e",
+    appConnectedBody: "Fermez l\u2019application Sofabaton pour modifier la configuration du hub.",
+    operationRunningTitle: "Une autre op\xE9ration est en cours",
+    operationRunningBody: "Attendez la fin de la sauvegarde, de la restauration ou de la synchronisation en cours, puis r\xE9essayez.",
+    captureTitle: "Lecture de votre hub",
+    captureMessage: "Lecture de la configuration de votre hub\u2026",
+    captureMessageWithStep: (current, total) => `Lecture de la configuration de votre hub\u2026 (appareil ${current} sur ${total})`,
+    captureFailedTitle: "Impossible de lire le hub",
+    captureFailedBody: "Le hub a cess\xE9 de r\xE9pondre avant la fin de la lecture.",
+    retry: "R\xE9essayer",
+    back: "Retour",
+    capturingFromCache: (kind) => `Chargement de ${kind === "activity" ? "l\u2019activit\xE9" : "l\u2019appareil"} depuis le cache du hub\u2026`,
+    needsRefreshTitle: "Actualisez le cache du hub pour modifier",
+    needsRefreshBody: (kind) => `${kind === "activity" ? "Cette activit\xE9" : "Cet appareil"} ne figure pas encore dans le cache local du hub. Actualisez le cache du hub pour ${kind === "activity" ? "la" : "le"} charger dans l\u2019\xE9diteur. Cela peut prendre quelques minutes selon la taille de la configuration de votre hub.`,
+    syncToHub: "Synchroniser avec le hub",
+    syncUpToDate: "\xC0 jour",
+    deletingTitle: (kind) => `Suppression de ${kind === "activity" ? "l\u2019activit\xE9" : "l\u2019appareil"}`,
+    deletingMessage: (kind) => `Suppression de ${ceType(kind)} du hub\u2026`,
+    syncingTitle: "Synchronisation avec votre hub",
+    syncingMessage: "\xC9criture de vos modifications sur le hub\u2026",
+    syncSuccess: "Synchronis\xE9 avec le hub.",
+    syncPlanSummary: (count) => `${count} ${count === 1 ? "\xE9criture" : "\xE9critures"} sur le hub`,
+    syncFailedTitle: "La synchronisation ne s\u2019est pas termin\xE9e",
+    syncFailedStep: (step) => `Le hub s\u2019est arr\xEAt\xE9 \xE0 l\u2019\xE9tape : ${step}`,
+    syncStaleTitle: (kind) => `${kind === "activity" ? "Cette activit\xE9 a \xE9t\xE9 modifi\xE9e" : "Cet appareil a \xE9t\xE9 modifi\xE9"} sur le hub`,
+    syncStaleBody: (kind) => `${kind === "activity" ? "L\u2019activit\xE9 a \xE9t\xE9 modifi\xE9e" : "L\u2019appareil a \xE9t\xE9 modifi\xE9"} sur le hub depuis son chargement. Vos modifications ne peuvent donc pas \xEAtre appliqu\xE9es en toute s\xE9curit\xE9. Rechargez la version actuelle du hub pour continuer \u2014 vos modifications non enregistr\xE9es seront abandonn\xE9es.`,
+    syncRetry: "R\xE9essayer la synchronisation",
+    syncReload: "Recharger depuis le hub",
+    syncKeepEditing: "Continuer la modification",
+    exitUnsyncedTitle: "Modifications non synchronis\xE9es",
+    exitUnsyncedBody: (kind) => `${kind === "activity" ? "Cette activit\xE9" : "Cet appareil"} comporte des modifications qui n\u2019ont pas \xE9t\xE9 synchronis\xE9es avec le hub. Synchronisez-les maintenant, ou quittez sans synchroniser et abandonnez la modification locale.`,
+    exitSyncNow: "Synchroniser maintenant",
+    exitWithoutSync: "Quitter sans synchroniser",
+    discardConfirmCancel: "Continuer la modification",
+    review: {
+      sectionDevices: "Appareils",
+      sectionStart: "Au d\xE9marrage",
+      sectionButtons: "Touches",
+      sectionShortcuts: "Raccourcis",
+      sectionEnd: "\xC0 l\u2019arr\xEAt",
+      sectionDeviceWide: "Modifications concernant tout l\u2019appareil",
+      deviceAdded: (name) => `\xAB ${name} \xBB a \xE9t\xE9 ajout\xE9 \xE0 cette activit\xE9.`,
+      deviceRemoved: (name) => `\xAB ${name} \xBB a \xE9t\xE9 retir\xE9 de cette activit\xE9.`,
+      inputChanged: (device, input) => `L\u2019entr\xE9e de \xAB ${device} \xBB a \xE9t\xE9 remplac\xE9e par ${input}.`,
+      inputCleared: (device) => `L\u2019entr\xE9e de \xAB ${device} \xBB a \xE9t\xE9 effac\xE9e.`,
+      startReordered: "La s\xE9quence de d\xE9marrage a \xE9t\xE9 r\xE9organis\xE9e.",
+      roleNowControls: (group, device) => `${group} contr\xF4lent maintenant \xAB ${device} \xBB.`,
+      roleCustomized: (group) => `${group} personnalis\xE9es.`,
+      roleCleared: (group) => `${group} ne sont plus attribu\xE9es.`,
+      shortcutAdded: (name) => `\xAB ${name} \xBB ajout\xE9.`,
+      shortcutRemoved: (name) => `\xAB ${name} \xBB supprim\xE9.`,
+      shortcutRenamed: (oldName, newName) => `\xAB ${oldName} \xBB renomm\xE9 en \xAB ${newName} \xBB.`,
+      shortcutsReordered: "Raccourcis r\xE9organis\xE9s.",
+      idleChanged: (device, label) => `Comportement d\u2019inactivit\xE9 de \xAB ${device} \xBB \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Commande \xAB ${oldName} \xBB renomm\xE9e en \xAB ${newName} \xBB sur \xAB ${device} \xBB.`,
+      roleGroups: { volume: "Touches de volume", navigation: "Touches de navigation", playback: "Touches de lecture", channels: "Touches de cha\xEEne" },
+      idleShort: { 0: "non d\xE9fini", 1: "s\u2019\xE9teint en cas d\u2019inactivit\xE9", 2: "ne s\u2019\xE9teint jamais", 3: "reste allum\xE9", 4: "non g\xE9r\xE9 par le hub" }
+    },
+    deviceReview: {
+      sectionPower: "Alimentation",
+      sectionNetwork: "R\xE9seau",
+      sectionButtons: "Touches",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Contr\xF4le automatique de l\u2019alimentation \u2192 ${label}.`,
+      powerOnChanged: "S\xE9quence d\u2019allumage mise \xE0 jour.",
+      powerOffChanged: "S\xE9quence d\u2019extinction mise \xE0 jour.",
+      macroAdded: (name) => `Macro \xAB ${name} \xBB ajout\xE9e.`,
+      macroRemoved: (name) => `Macro \xAB ${name} \xBB supprim\xE9e.`,
+      macroRenamed: (oldName, newName) => `Macro \xAB ${oldName} \xBB renomm\xE9e en \xAB ${newName} \xBB.`,
+      macroChanged: (name) => `Macro \xAB ${name} \xBB modifi\xE9e.`,
+      bindingBound: (button, command) => `\xAB ${button} \xBB envoie maintenant \xAB ${command} \xBB.`,
+      bindingCleared: (button) => `\xAB ${button} \xBB n\u2019est plus attribu\xE9e.`,
+      ipChanged: (ip) => `Adresse IP \u2192 ${ip}.`,
+      ipCleared: "Adresse IP effac\xE9e."
+    }
+  },
+  backup: {
+    sectionMake: "Cr\xE9er",
+    sectionEdit: "Modifier",
+    sectionRestore: "Restaurer",
+    loading: "Chargement des outils de sauvegarde...",
+    selectHub: "S\xE9lectionnez un hub pour g\xE9rer les sauvegardes.",
+    creatingSubtitle: "Le hub cr\xE9e votre sauvegarde.",
+    readySubtitle: "Votre sauvegarde est pr\xEAte.",
+    chooseSubtitle: "Choisissez les \xE9l\xE9ments \xE0 inclure dans cette sauvegarde.",
+    enablePersistentCache: "Activez le cache persistant pour choisir le contenu de la sauvegarde depuis la carte.",
+    completedTitle: "Sauvegarde termin\xE9e",
+    expired: "La sauvegarde a expir\xE9. Lancez-en une nouvelle pour la t\xE9l\xE9charger \xE0 nouveau.",
+    downloaded: "T\xE9l\xE9charg\xE9e",
+    downloadAgain: "T\xE9l\xE9charger \xE0 nouveau",
+    downloadBackup: "T\xE9l\xE9charger la sauvegarde",
+    complete: "Terminer",
+    restoreCompletedTitle: "Restauration termin\xE9e",
+    restoreCompletedSubtitle: "Les activit\xE9s et appareils s\xE9lectionn\xE9s ont \xE9t\xE9 restaur\xE9s sur le hub.",
+    restoreCompletedStatus: "Restauration termin\xE9e.",
+    restoreCompletedSuccessfully: "Restauration r\xE9ussie.",
+    backupCompletedSuccessfully: "Sauvegarde r\xE9ussie.",
+    wifiDeviceDeployedSuccessfully: "Appareil Wi-Fi d\xE9ploy\xE9 avec succ\xE8s.",
+    restoreRunningSubtitle: "Le hub restaure votre sauvegarde.",
+    restoreFinishedSubtitle: "Votre restauration est termin\xE9e.",
+    restoreChooseSubtitle: "Chargez un fichier de sauvegarde, puis choisissez pr\xE9cis\xE9ment les \xE9l\xE9ments \xE0 restaurer. Les activit\xE9s incluent automatiquement les appareils dont elles d\xE9pendent.",
+    itemsToRestore: "\xC9l\xE9ments \xE0 restaurer",
+    eraseExisting: "Effacer les appareils et activit\xE9s existants",
+    startRestore: "D\xE9marrer la restauration",
+    startingBackup: "D\xE9marrage de la sauvegarde\u2026",
+    startingRestore: "D\xE9marrage de la restauration\u2026",
+    backupFailed: "\xC9chec de la sauvegarde.",
+    restoreFailed: "\xC9chec de la restauration.",
+    backupInProgress: "Sauvegarde en cours\u2026",
+    restoreInProgress: "Restauration en cours\u2026",
+    failedPrepareDownload: "Impossible de pr\xE9parer la sauvegarde modifi\xE9e pour le t\xE9l\xE9chargement.",
+    enterName: "Saisissez un nom pour continuer.",
+    renameDialogTitle: "Renommer le hub",
+    linked: "li\xE9",
+    hubNameRestoreOnlyAria: "Le nom du hub n\u2019est appliqu\xE9 lors de la restauration que si l\u2019utilisateur choisit d\u2019effacer le hub.",
+    entireHub: "Hub complet",
+    selectedDevices: "Appareils s\xE9lectionn\xE9s",
+    devicesToInclude: "Appareils \xE0 inclure",
+    selectedCount: (count) => `${count} ${count === 1 ? "s\xE9lectionn\xE9" : "s\xE9lectionn\xE9s"}`,
+    backupResultSummary: (activities, devices) => `Sauvegarde de ${activities} ${activities === 1 ? "activit\xE9" : "activit\xE9s"} et ${devices} ${devices === 1 ? "appareil" : "appareils"}`,
+    activityMeta: (favorites, macros) => `${favorites} favoris \xB7 ${macros} macros`,
+    linkedDevices: (count) => `${count} ${count === 1 ? "appareil li\xE9" : "appareils li\xE9s"}`,
+    deselectAll: "Tout d\xE9s\xE9lectionner",
+    selectAll: "Tout s\xE9lectionner",
+    noDevicesAvailable: "Aucun appareil disponible.",
+    working: "Traitement en cours",
+    startBackup: "D\xE9marrer la sauvegarde",
+    editLoadPrompt: "Chargez un fichier de sauvegarde, puis choisissez une activit\xE9 ou un appareil \xE0 modifier.",
+    chooseBackupFile: "Choisir un fichier de sauvegarde",
+    reorderHint: " Faites glisser la poign\xE9e d\u2019une ligne pour r\xE9organiser les activit\xE9s et les appareils.",
+    macroStepsSortableHelp: "Faites glisser pour r\xE9organiser. Chaque \xE9tape lit une commande ; r\xE9glez \xE0 droite l\u2019attente qui la suit.",
+    macroStepsHelp: "Chaque \xE9tape lit une commande ; r\xE9glez \xE0 droite l\u2019attente qui la suit.",
+    hubName: "Nom du hub",
+    hubNameNotSet: "(non d\xE9fini)",
+    renameHub: "Renommer le hub",
+    activities: "Activit\xE9s",
+    noActivitiesInFile: "Ce fichier de sauvegarde ne contient aucune activit\xE9.",
+    devices: "Appareils",
+    noDevicesInFile: "Ce fichier de sauvegarde ne contient aucun appareil.",
+    unsavedChanges: "Modifications non enregistr\xE9es. Cliquez sur ",
+    downloadEditedBackupStrong: "T\xE9l\xE9charger la sauvegarde modifi\xE9e",
+    unsavedChangesSuffix: " pour les enregistrer dans un fichier.",
+    downloadEditedBackup: "T\xE9l\xE9charger la sauvegarde modifi\xE9e",
+    deleteActivityTitle: (name) => `Supprimer l\u2019activit\xE9 \xAB ${name} \xBB ?`,
+    deleteDeviceTitle: (name) => `Supprimer l\u2019appareil \xAB ${name} \xBB ?`,
+    deleteCommandTitle: (name) => `Supprimer la commande \xAB ${name} \xBB ?`,
+    deleteFavoriteTitle: (name) => `Supprimer le raccourci \xAB ${name} \xBB ?`,
+    deleteMacroTitle: (name) => `Supprimer la macro \xAB ${name} \xBB ?`,
+    deleteCascadeIntro: "Cette suppression efface \xE9galement les r\xE9f\xE9rences pr\xE9sentes ailleurs dans la sauvegarde :",
+    deleteSimpleBody: "Cet \xE9l\xE9ment sera supprim\xE9 de la sauvegarde charg\xE9e.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activit\xE9 y fait" : "activit\xE9s y font"} r\xE9f\xE9rence`,
+    deleteImpactFavorites: (count) => `${count} ${count === 1 ? "raccourci sera supprim\xE9" : "raccourcis seront supprim\xE9s"}`,
+    deleteImpactMacroSteps: (count) => `${count} ${count === 1 ? "\xE9tape de s\xE9quence sera supprim\xE9e" : "\xE9tapes de s\xE9quence seront supprim\xE9es"}`,
+    deleteImpactPowerSteps: (count) => `${count} ${count === 1 ? "\xE9tape d\u2019alimentation sera effac\xE9e" : "\xE9tapes d\u2019alimentation seront effac\xE9es"}`,
+    deleteReplaceNote: "Les suppressions n\u2019atteignent le hub que lors d\u2019une restauration avec remplacement.",
+    deleteCascadeIntroLive: "Cette suppression efface \xE9galement ses r\xE9f\xE9rences sur le hub :",
+    deleteSimpleBodyLive: "Cet \xE9l\xE9ment sera supprim\xE9.",
+    deleteImmediateNote: "Cette modification est appliqu\xE9e imm\xE9diatement au hub.",
+    deleteSyncNote: "Cette modification sera \xE9crite sur le hub lors de la prochaine synchronisation.",
+    deleteCancel: "Annuler",
+    deleteConfirm: "Supprimer",
+    deleteActivityAria: "Supprimer l\u2019activit\xE9",
+    deleteDeviceAria: "Supprimer l\u2019appareil",
+    deleteCommandAria: "Supprimer la commande",
+    addFavoriteTitle: "Ajouter un raccourci de commande",
+    addFavoriteDevice: "Appareil",
+    addFavoriteCommand: "Commande",
+    addFavoriteAdd: "Ajouter",
+    addFavoriteCancel: "Annuler",
+    addFavoriteNoDevices: "Cette sauvegarde ne contient aucun appareil avec des commandes \xE0 ajouter.",
+    addFavoriteNoCommands: "Cet appareil ne contient aucune commande \xE0 ajouter.",
+    buttonBindingsTitle: "Attributions de touches",
+    buttonBindingsActivitySub: "Attribuer les touches de la t\xE9l\xE9commande \xE0 la commande d\u2019un appareil dans cette activit\xE9.",
+    buttonBindingsDeviceSub: "Attribuer les touches de la t\xE9l\xE9commande aux propres commandes de cet appareil.",
+    buttonBindingsEmpty: "Aucune attribution de touche configur\xE9e.",
+    addBinding: "Ajouter une attribution",
+    bindingButton: "Touche",
+    bindingTargetDevice: "Appareil",
+    bindingCommand: "Commande",
+    bindingEnableLongPress: "Activer l\u2019attribution par appui long",
+    bindingLongPressDevice: "Appareil pour l\u2019appui long",
+    bindingLongPressCommand: "Commande pour l\u2019appui long",
+    bindingIncomplete: "Choisissez d\u2019abord une touche et une cible.",
+    bindingNoButtons: "Toutes les touches de ce mod\xE8le de hub sont d\xE9j\xE0 attribu\xE9es.",
+    bindingNoCommands: "Cet appareil ne comporte aucune commande \xE0 attribuer.",
+    bindingNoDevices: "Cette sauvegarde ne contient aucun appareil avec des commandes \xE0 attribuer.",
+    bindingAdd: "Ajouter",
+    bindingSave: "Enregistrer",
+    bindingCancel: "Annuler",
+    bindingDialogAddTitle: "Ajouter une attribution de touche",
+    bindingDialogEditTitle: (name) => `Modifier l\u2019attribution de ${name}`,
+    bindingLongPressMeta: (label) => `Appui long \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Supprimer l\u2019attribution de ${name} ?`,
+    deleteBindingAria: "Supprimer l\u2019attribution",
+    deleteImpactBindings: (count) => `${count} ${count === 1 ? "attribution de touche sera effac\xE9e" : "attributions de touches seront effac\xE9es"}`,
+    macrosTitle: "Macros",
+    macrosDeviceSub: "Modifiez les s\xE9quences de commandes lues par cet appareil, y compris son allumage et son extinction.",
+    macroPowerChip: "alimentation",
+    powerSetupTitle: "Alimentation",
+    powerSetupDeviceSub: "La mani\xE8re dont le hub g\xE8re l\u2019alimentation de cet appareil pour les activit\xE9s, ainsi que les s\xE9quences envoy\xE9es pour l\u2019allumer et l\u2019\xE9teindre.",
+    powerSetupActivitySub: "La s\xE9quence de d\xE9marrage et d\u2019arr\xEAt ex\xE9cut\xE9e par cette activit\xE9.",
+    powerOnLabel: "S\xE9quence d\u2019allumage",
+    powerOffLabel: "S\xE9quence d\u2019extinction",
+    powerControlTitle: "Contr\xF4le automatique de l\u2019alimentation",
+    powerControlUnset: "Non captur\xE9",
+    powerControlUnsetSub: "Cette sauvegarde est ant\xE9rieure \xE0 la capture du contr\xF4le de l\u2019alimentation. Choisissez une option pour le d\xE9finir, ou restaurez sans modification pour conserver l\u2019ancienne valeur.",
+    powerControlDisabled: "Ne pas contr\xF4ler l\u2019alimentation",
+    powerControlDisabledSub: "Le hub n\u2019allume ni n\u2019\xE9teint jamais cet appareil. Les s\xE9quences ci-dessous sont ignor\xE9es.",
+    powerControlAutoOff: "\xC9teindre en cas d\u2019inactivit\xE9",
+    powerControlAutoOffSub: "Recommand\xE9. \xC9teint l\u2019appareil lorsqu\u2019aucune activit\xE9 n\u2019en a besoin.",
+    powerControlStayOn: "Rester allum\xE9 entre les activit\xE9s",
+    powerControlStayOnSub: "\xC9vite d\u2019attendre le rallumage ; l\u2019appareil s\u2019\xE9teint toujours avec la touche Arr\xEAt de la t\xE9l\xE9commande.",
+    powerControlAlwaysOn: "Toujours rester allum\xE9",
+    powerControlAlwaysOnSub: "Le hub allume l\u2019appareil, mais ne l\u2019\xE9teint jamais automatiquement.",
+    powerSequencesDisabledNote: "Le contr\xF4le de l\u2019alimentation est d\xE9sactiv\xE9 ; ces s\xE9quences ne sont donc pas utilis\xE9es. Activez-le ci-dessus pour les modifier.",
+    inputStepTitle: "D\xE9finir l\u2019entr\xE9e",
+    inputStepCommand: "Commande d\u2019entr\xE9e",
+    inputStepNone: "\u2014 aucune entr\xE9e \u2014",
+    macroStepsCount: (count) => `${count} ${count === 1 ? "\xE9tape" : "\xE9tapes"}`,
+    noMacroSteps: "Aucune \xE9tape pour le moment.",
+    addStep: "Ajouter une \xE9tape",
+    stepDialogAddTitle: "Ajouter une \xE9tape",
+    stepDialogEditTitle: "Modifier l\u2019\xE9tape",
+    stepDevice: "Appareil",
+    stepCommand: "Commande",
+    stepHoldSeconds: "Maintien (secondes, 0 = clic)",
+    holdLabel: (seconds) => `Maintenir ${seconds} s`,
+    stepAdd: "Ajouter",
+    stepSave: "Enregistrer",
+    stepCancel: "Annuler",
+    stepNoCommands: "Cet appareil ne comporte aucune commande.",
+    stepWaitAria: "Attendre apr\xE8s cette \xE9tape (secondes)",
+    stepWaitLabel: "D\xE9lai",
+    stepWaitUnit: "s",
+    renameMacroAria: "Renommer la macro",
+    deleteStepAria: "Supprimer l\u2019\xE9tape",
+    editStepAria: "Modifier l\u2019\xE9tape",
+    newMacroName: "Macro",
+    shortcutChipCommand: "commande",
+    shortcutChipAction: "macro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Renommer la macro" : "Renommer le raccourci",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Supprimer la macro" : "Supprimer le raccourci",
+    powerSectionTitle: "Alimentation",
+    powerActivitySub: "Chaque appareil utilis\xE9 par l\u2019activit\xE9 est allum\xE9 ici. Choisissez son entr\xE9e et ajustez la temporisation.",
+    powerInputLabel: "Entr\xE9e",
+    powerInputNone: "\u2014 aucune \u2014",
+    powerDelayLabel: "D\xE9lai (s)",
+    powerNoDevices: "Aucun appareil pour le moment. Ajoutez un favori, une attribution ou une macro qui en utilise un.",
+    powerOnSequence: "S\xE9quence d\u2019allumage",
+    powerOffSequence: "S\xE9quence d\u2019extinction",
+    powerSequenceSub: "R\xE9organisez les \xE9tapes et ajoutez vos propres commandes ou attentes. Les \xE9tapes d\u2019appareil obligatoires peuvent \xEAtre r\xE9organis\xE9es, mais pas supprim\xE9es.",
+    macroRenameAria: "Renommer la macro",
+    editStepsAria: "Modifier les \xE9tapes",
+    crumbActivities: "Activit\xE9s",
+    crumbDevices: "Appareils",
+    activityRemoveDeviceTitle: (name) => `Retirer ${name} de cette activit\xE9 ?`,
+    activityRunningTitle: "Touches de la t\xE9l\xE9commande",
+    activityRunningSub: "L\u2019appareil que contr\xF4le chaque touche de la t\xE9l\xE9commande dans cette activit\xE9.",
+    activityShortcutsTitle: "Raccourcis sur l\u2019\xE9cran de la t\xE9l\xE9commande",
+    activityShortcutsSubSortable: "Commandes et macros affich\xE9es sur l\u2019\xE9cran de la t\xE9l\xE9commande. Faites glisser la poign\xE9e pour les r\xE9organiser.",
+    activityShortcutsSubStatic: "Commandes et macros affich\xE9es sur l\u2019\xE9cran de la t\xE9l\xE9commande. Utilisez les boutons de d\xE9placement pour les r\xE9organiser.",
+    activityShortcutsEmpty: "Aucun raccourci pour le moment. Ajoutez une commande ou une macro.",
+    roleVolume: "Contr\xF4le des touches de volume",
+    roleNavigation: "Contr\xF4le des touches de navigation et OK",
+    rolePlayback: "Contr\xF4le des touches de lecture",
+    roleChannels: "Contr\xF4le des touches de cha\xEEne",
+    roleNotUsed: "Non utilis\xE9",
+    roleCustom: "Personnalis\xE9",
+    roleCustomized: (name) => `${name} (personnalis\xE9)`,
+    roleMappedNote: (bound, total) => `${bound} touches sur ${total} attribu\xE9es`,
+    roleOptionNoMapping: (name) => `${name} \u2014 aucune correspondance de touches`,
+    roleMenuAria: (roleLabel) => `Choisir un appareil pour : ${roleLabel}`,
+    roleConfirmTitle: "Remplacer la configuration personnalis\xE9e des touches ?",
+    roleConfirmBody: "Ce groupe contient des attributions de touches qui ne proviennent pas de la correspondance standard d\u2019un seul appareil. Une attribution ici les remplacera.",
+    roleConfirmReplace: "Remplacer",
+    roleConfirmCancel: "Annuler",
+    customizeButtonsToggle: "Personnaliser les touches individuellement",
+    bindingsViewTitle: "Touches individuelles",
+    bindingsConfiguredCount: (count) => `${count} configur\xE9es`,
+    bindingsNoneConfigured: "Aucune touche personnalis\xE9e",
+    addShortcutButton: "Ajouter",
+    addShortcutTitle: "Ajouter aux raccourcis",
+    addShortcutKindLabel: "Type",
+    shortcutKindCommand: "Commande d\u2019appareil",
+    shortcutKindAction: "Macro",
+    macroTargetLabel: "Macro",
+    macroTargetCreateNew: "Cr\xE9er une nouvelle macro",
+    macroTargetNoExisting: "Aucune macro pour le moment. Cr\xE9ez-en une ci-dessous.",
+    addShortcutActionName: "Nom",
+    addShortcutActionHelper: "Vous choisirez ensuite les \xE9tapes.",
+    addShortcutCommandHelper: "Le raccourci appara\xEEt sous le nom de la commande.",
+    unsaved: "Non enregistr\xE9",
+    unsavedTooltip: "Vous avez des modifications non enregistr\xE9es. T\xE9l\xE9chargez la sauvegarde pour les conserver.",
+    renameKind: (kind) => `Renommer ${kind === "activity" ? "l\u2019activit\xE9" : "l\u2019appareil"}`,
+    managedWifiTitle: "G\xE9r\xE9 par Wifi Commands",
+    managedWifiIntro: "Cet appareil a \xE9t\xE9 d\xE9ploy\xE9 depuis l\u2019onglet Wifi Commands.",
+    managedWifiBody: "Ses commandes, son alimentation, son entr\xE9e et ses attributions de touches sont configur\xE9es dans cet onglet \u2014 toute modification ici serait \xE9cras\xE9e lors de la prochaine synchronisation.",
+    managedWifiRename: "Vous pouvez toujours le renommer ici ; le nouveau nom restera synchronis\xE9 avec votre configuration Wifi Commands.",
+    detailPower: "Alimentation",
+    detailNetwork: "R\xE9seau",
+    detailCommands: "Commandes",
+    detailButtons: "Touches",
+    detailSectionsAria: "Sections d\xE9taill\xE9es",
+    editBindingAria: "Modifier l\u2019attribution",
+    editIpAria: "Modifier l\u2019adresse IP",
+    networkDescription: "L\u2019adresse IP de l\u2019appareil se trouve dans son enregistrement. Le hub l\u2019utilise pour adresser l\u2019appareil lors de la lecture (en-t\xEAte Host pour Hue/Sonos, URL de base pour Roku).",
+    ipv4Description: "Adresse IPv4 en notation d\xE9cimale point\xE9e",
+    addCommand: "Ajouter une commande",
+    addCommandTitle: "Ajouter une commande",
+    editPayloadTitle: "Modifier les donn\xE9es utiles",
+    commandsLiveHelp: "Utilisez le crayon pour renommer une commande et les accolades pour r\xE9cup\xE9rer ses donn\xE9es utiles depuis le hub et les modifier. La suppression des commandes reste dans Sauvegarde \u2192 Modifier.",
+    commandsBackupHelp: "Utilisez le crayon pour renommer une commande (les noms sont mis \xE0 jour partout o\xF9 ils sont r\xE9f\xE9renc\xE9s) et les accolades pour modifier ses donn\xE9es utiles.",
+    newCommandChip: "nouvelle commande",
+    commandChip: "commande",
+    buttonChip: "touche",
+    ipChip: "IP",
+    thisItem: "cet \xE9l\xE9ment",
+    noDeviceCommands: "Cet appareil ne comporte actuellement aucune commande.",
+    renameCommandAria: "Renommer la commande",
+    commandId: "ID de commande",
+    editPayloadAria: "Modifier les donn\xE9es utiles",
+    fetchEditCommandAria: "R\xE9cup\xE9rer et modifier les donn\xE9es utiles de cette commande",
+    moveUpAria: "D\xE9placer vers le haut",
+    moveDownAria: "D\xE9placer vers le bas",
+    deviceClass: "Classe d\u2019appareil",
+    name: "Nom",
+    nameHelper: "Affich\xE9 sur la t\xE9l\xE9commande et dans chaque s\xE9lecteur de commande.",
+    verifyPayloadLive: "V\xE9rifiez les donn\xE9es utiles modifi\xE9es avant de les enregistrer : Tester lit les octets actuels sur le hub sans les enregistrer. Enregistrer les inclut dans la prochaine synchronisation de l\u2019appareil.",
+    verifyPayloadBackup: "V\xE9rifiez les donn\xE9es utiles modifi\xE9es avant de leur faire confiance : Tester lit les octets sur le hub sans les enregistrer. Ne les enregistrez ici qu\u2019une fois leur comportement confirm\xE9.",
+    test: "Tester",
+    sendingToHub: "Envoi au hub\u2026",
+    sentToHub: "Envoy\xE9 au hub pour une lecture unique.",
+    testFailed: "\xC9chec du test.",
+    rawPayload: "Donn\xE9es utiles brutes",
+    rawPayloadDescription: "Aucun \xE9diteur structur\xE9 n\u2019existe pour cette classe d\u2019appareil ; les octets ci-dessous seront relus tels quels sur le hub lors de la restauration.",
+    payloadHex: "Donn\xE9es utiles (octets hexad\xE9cimaux)",
+    payloadHexHelper: "Paires d\u2019octets comme \xAB 0a 4f 22 \xBB ; les espaces et les pr\xE9fixes 0x sont accept\xE9s.",
+    rename: "Renommer",
+    renameActivity: "Renommer l\u2019activit\xE9",
+    renameDevice: "Renommer l\u2019appareil",
+    renameMacro: "Renommer la macro",
+    renameFavorite: "Renommer le favori",
+    renameCommand: "Renommer la commande",
+    ipAddress: "Adresse IP",
+    noPayloadReturned: "Le hub n\u2019a renvoy\xE9 aucune donn\xE9e utile pour cette commande.",
+    noTemplateCommand: "Cet appareil ne comporte aucune commande pouvant servir de mod\xE8le \u2014 ajoutez sa premi\xE8re commande avec l\u2019application Sofabaton.",
+    newCommandNameRequired: "Saisissez un nom pour la nouvelle commande.",
+    descriptiveIrRequired: "Saisissez des donn\xE9es utiles IR descriptives commen\xE7ant par P: (p. ex. P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired: "Saisissez les donn\xE9es utiles sous forme d\u2019octets hexad\xE9cimaux (nombre pair de chiffres hexad\xE9cimaux ; les espaces sont accept\xE9s).",
+    noFreeCommandSlot: "Cet appareil ne comporte plus aucun emplacement de commande libre.",
+    nothingToTest: "Rien \xE0 tester pour le moment.",
+    ipv4Required: "Saisissez une adresse IPv4 en notation d\xE9cimale point\xE9e (p. ex. 192.168.1.42), ou videz le champ pour supprimer l\u2019adresse IP.",
+    steps: "\xC9tapes",
+    buttonCatalog: {
+      up: "Haut",
+      down: "Bas",
+      left: "Gauche",
+      right: "Droite",
+      ok: "OK",
+      home: "Accueil",
+      back: "Retour",
+      menu: "Menu",
+      volumeUp: "Volume +",
+      volumeDown: "Volume -",
+      mute: "Muet",
+      channelUp: "Cha\xEEne +",
+      channelDown: "Cha\xEEne -",
+      rewind: "Retour rapide",
+      pause: "Pause",
+      forward: "Avance rapide",
+      red: "Rouge",
+      green: "Vert",
+      yellow: "Jaune",
+      blue: "Bleu",
+      exit: "Quitter",
+      dvr: "DVR",
+      play: "Lecture",
+      guide: "Guide",
+      navigation: "Navigation",
+      volumeChannel: "Volume et cha\xEEne",
+      transport: "Commandes de lecture",
+      colour: "Couleur",
+      extra: "Extra",
+      unknown: (code) => `Touche 0x${code}`
+    },
+    powerOn: "Allumer",
+    powerOff: "\xC9teindre",
+    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
+    inputStepLabel: (device, input) => `Entr\xE9e \xB7 ${device} : ${input}`,
+    macroTargetLabelText: (name) => `Macro \xB7 ${name}`
+  },
+  hub: {
+    loading: "Chargement\u2026",
+    unknown: "Inconnu",
+    connectionStatusAria: "\xC9tat de la connexion du hub",
+    hubConnected: "Hub connect\xE9",
+    hubNotConnected: "Hub non connect\xE9",
+    appConnected: "Application connect\xE9e",
+    appNotConnected: "Application non connect\xE9e",
+    version: "Version",
+    ipAddress: "Adresse IP",
+    activities: "Activit\xE9s",
+    devices: "Appareils",
+    integrationVersion: "Version de l\u2019int\xE9gration",
+    firmwareVersion: (version) => `FW : v${version}`,
+    productVersion: (version) => `Sofabaton ${version}`
+  },
+  decodedPayload: {
+    httpTitle: "Requ\xEAte HTTP",
+    httpSubtitle: "Les modifications sont relues par le r\xE9dacteur wifi_ip du hub. L\u2019h\xF4te, le port et Content-Length sont d\xE9riv\xE9s ; vous ne les d\xE9finissez pas ici.",
+    hostIpv4: "H\xF4te (IPv4)",
+    hostExample: "p. ex. 192.168.2.77",
+    port: "Port",
+    httpMethod: "M\xE9thode HTTP",
+    httpMethodExample: "p. ex. GET, POST",
+    path: "Chemin",
+    extraHeaders: "En-t\xEAtes suppl\xE9mentaires",
+    extraHeadersHelper: "Un en-t\xEAte par ligne. Host et Content-Length sont ajout\xE9s automatiquement.",
+    contentType: "Type de contenu",
+    body: "Corps",
+    rokuTitle: "Requ\xEAte Roku ECP",
+    ecpPath: "Chemin d\u2019URL ECP",
+    ecpPathExample: "p. ex. /launch/12 ou /keypress/Home",
+    hueTitle: "Requ\xEAte REST Hue",
+    sonosTitle: "Requ\xEAte UPnP Sonos",
+    bodyBlockSubtitle: "Le bloc de corps est inject\xE9 tel quel entre les en-t\xEAtes Host et l\u2019\xE9criture r\xE9seau.",
+    urlPath: "Chemin d\u2019URL",
+    bodyBlock: "Bloc de corps (cha\xEEne r\xE9seau brute)",
+    bodyBlockHelper: "Une seule cha\xEEne litt\xE9rale envoy\xE9e \xE0 l\u2019appareil. Les retours \xE0 la ligne sont affich\xE9s sous la forme \\n. Vous g\xE9rez vous-m\xEAme la valeur Content-Length \u2014 elle doit correspondre au nombre d\u2019octets du corps.",
+    irTitle: "Donn\xE9es utiles IR descriptives",
+    irSubtitle: "Les modifications sont relues par le r\xE9dacteur IR descriptif du hub. Seules les donn\xE9es utiles de protocoles descriptifs (P:\u2026 D:\u2026 F:\u2026) sont d\xE9codables ; les donn\xE9es IR brutes apprises ne sont pas modifiables ici.",
+    descriptor: "Descripteur",
+    descriptorExample: "p. ex. P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "Le fichier de sauvegarde doit contenir un objet JSON.",
+    invalidBundle: "Le fichier de sauvegarde n\u2019est pas un paquet de hub Sofabaton.",
+    invalidSchema: (expected, actual) => `La valeur schema_version du fichier de sauvegarde doit \xEAtre ${expected} (valeur re\xE7ue : ${String(actual)}).`,
+    structuralBundle: "Ce fichier est un paquet de cache structurel (sans donn\xE9es utiles de commande) ; il ne peut \xEAtre ni modifi\xE9 ni restaur\xE9. Exportez plut\xF4t une sauvegarde compl\xE8te.",
+    missingArrays: "Les tableaux d\u2019appareils ou d\u2019activit\xE9s sont absents du fichier de sauvegarde.",
+    missingSourceModel: "Le mod\xE8le du hub source est absent du fichier de sauvegarde ; la compatibilit\xE9 ne peut donc pas \xEAtre v\xE9rifi\xE9e.",
+    unknownDestinationModel: "Le mod\xE8le du hub de destination est inconnu ; la compatibilit\xE9 de restauration ne peut donc pas \xEAtre v\xE9rifi\xE9e.",
+    incompatibleModels: (source, destination) => `Cette sauvegarde a \xE9t\xE9 cr\xE9\xE9e sur un hub Sofabaton ${source} et ne peut pas \xEAtre restaur\xE9e sur un hub Sofabaton ${destination}.`
+  },
+  wifiCommands: {
+    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    sectionLabel: "Appareils Wi-Fi",
+    deployingTitle: "D\xE9ploiement de Wifi Commands",
+    sectionSubtitle: "Utilisez Wifi Commands pour ex\xE9cuter des actions Home Assistant depuis les touches de votre t\xE9l\xE9commande physique. Choisissez un appareil Wi-Fi pour modifier ses emplacements de commande, ou ajoutez-en un nouveau.",
+    addDevice: "Ajouter un appareil Wi-Fi",
+    deleteDeviceAria: "Supprimer l\u2019appareil Wi-Fi",
+    emptyDevices: "Aucun appareil Wi-Fi n\u2019est encore configur\xE9. Ajoutez-en un pour commencer \xE0 attribuer des emplacements de commande.",
+    maximumDevices: "Nombre maximal d\u2019appareils atteint",
+    configuredSlots: (count) => `${count} ${count === 1 ? "emplacement" : "emplacements"}`,
+    unableSaveAction: "Impossible d\u2019enregistrer l\u2019action",
+    hubCommandInProgress: "Commande du hub en cours...",
+    idle: "Inactif",
+    unableLoadSyncStatus: "Impossible de charger l\u2019\xE9tat de synchronisation",
+    noTargetEntity: "Aucune entit\xE9 cible",
+    commandNameLeadingSpace: "Le nom de la commande doit commencer par un caract\xE8re autre qu\u2019une espace.",
+    navigationGroup: "Navigation",
+    transportGroup: "Lecture",
+    mediaGroup: "M\xE9dia",
+    abcGroup: "ABC",
+    colorGroup: "Couleur",
+    inputCommand: "Commande d\u2019entr\xE9e",
+    inputFor: (activity) => `Entr\xE9e pour ${activity}`,
+    activitySingular: "Activit\xE9",
+    activityPlural: "Activit\xE9s",
+    unconfiguredCommand: "Commande non configur\xE9e",
+    powerBothCommand: "Commande de mise sous et hors tension",
+    powerOnCommand: "Commande d\u2019allumage",
+    powerOffCommand: "Commande d\u2019extinction",
+    thisDevice: "cet appareil",
+    replacesOnButton: (slot) => `Remplace \xAB ${slot} \xBB sur cette touche`,
+    replacesFromDevice: (slot, device) => `Remplace \xAB ${slot} \xBB de ${device}`,
+    none: "Aucun",
+    commandSlotDescription: "Cr\xE9ez une commande dans cet emplacement. Nommez-la et choisissez les activit\xE9s auxquelles elle s\u2019applique. Son nom appara\xEEtra sur l\u2019\xE9cran de la t\xE9l\xE9commande, dans l\u2019application mobile et comme \xE9tat du capteur de la commande Wi-Fi.",
+    syncingDeviceFallback: "Synchronisation de l\u2019appareil Wi-Fi...",
+    syncingDeviceNamed: (deviceName) => `Synchronisation de ${deviceName}...`,
+    syncInProgress: "Synchronisation en cours",
+    startSync: "D\xE9marrage de la synchronisation",
+    syncFailedToStart: "Impossible de d\xE9marrer la synchronisation",
+    syncMessageRemoteUnavailable: "Entit\xE9 de t\xE9l\xE9commande indisponible. L\u2019application est-elle connect\xE9e ?",
+    syncMessageFailed: "\xC9chec de la derni\xE8re synchronisation.",
+    syncMessageNeeded: "Les modifications de la configuration des commandes doivent \xEAtre synchronis\xE9es avec le hub.",
+    syncMessageUpToDate: "La configuration des commandes du hub est \xE0 jour.",
+    syncMessageIdle: "Aucune synchronisation n\xE9cessaire.",
+    syncShortUnavailable: "Indisponible",
+    syncShortRunning: "Synchronisation",
+    syncShortFailed: "\xC9chec de la synchronisation",
+    syncShortNeeded: "Synchronisation n\xE9cessaire",
+    syncShortUpToDate: "\xC0 jour",
+    syncShortIdle: "Inactif",
+    deviceDeleting: "Suppression...",
+    deviceSynced: "Synchronis\xE9",
+    seeDocumentation: "Voir la documentation",
+    actionButtonUnavailable: "Indisponible",
+    actionButtonSyncing: "Synchronisation...",
+    actionButtonBusy: "Occup\xE9",
+    actionButtonSyncToHub: "Synchroniser avec le hub",
+    actionButtonUpToDate: "\xC0 jour",
+    createDeviceBusy: "Cr\xE9ation de l\u2019appareil Wi-Fi...",
+    deviceName: "Nom de l\u2019appareil",
+    createDeviceNameRequired: "Le nom de l\u2019appareil est obligatoire.",
+    createDeviceFailed: "Impossible de cr\xE9er l\u2019appareil Wi-Fi",
+    deleteDeviceBusy: "Suppression de l\u2019appareil Wi-Fi...",
+    deleteDeviceFailed: "Impossible de supprimer l\u2019appareil Wi-Fi",
+    createModalCancel: "Annuler",
+    createModalCreate: "Cr\xE9er",
+    deleteModalTitle: "Supprimer l\u2019appareil Wi-Fi ?",
+    deleteModalBody: (deviceName) => `Supprimer \xAB ${deviceName} \xBB du hub et effacer sa configuration enregistr\xE9e des emplacements de commande ?`,
+    deleteModalDelete: "Supprimer",
+    clearSlotTitle: "Effacer l\u2019emplacement de commande ?",
+    clearSlotSubtitle: "R\xE9initialise la configuration.",
+    clearSlotNo: "Non",
+    clearSlotYes: "Oui",
+    makeCommand: "Cr\xE9er une commande",
+    noActionConfigured: "Aucune action configur\xE9e",
+    commandSlotTitle: (slotIndex) => `Emplacement de commande ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Action de l\u2019emplacement de commande ${slotIndex + 1}`,
+    commandDisplayName: "Nom d\u2019affichage de la commande",
+    advanced: "Avanc\xE9",
+    activityInput: "Ex\xE9cuter cette commande au d\xE9marrage d\u2019une activit\xE9",
+    activityInputHint: "La commande est d\xE9finie comme entr\xE9e de l\u2019activit\xE9 sur le hub ; elle s\u2019ex\xE9cute donc pendant la s\xE9quence de d\xE9marrage de l\u2019activit\xE9.",
+    activityInputReplaces: (slotName, activityName) => `Remplace \xAB ${slotName} \xBB au d\xE9marrage de ${activityName}`,
+    noActivitiesForHub: "Aucune activit\xE9 disponible pour ce hub.",
+    activityInputLabel: "Activit\xE9 qui ex\xE9cute cette commande",
+    devicePowerOnLabel: "Lorsque le hub ALLUME cet appareil",
+    devicePowerOffLabel: "Lorsque le hub \xC9TEINT cet appareil",
+    devicePowerNothing: "Rien",
+    devicePowerHint: "S\u2019ex\xE9cute dans la s\xE9quence d\u2019alimentation de cet appareil pour vos activit\xE9s. Synchronis\xE9 avec le hub.",
+    devicePowerPerform: (commandName) => `ex\xE9cuter ${commandName}`,
+    hubEventsTitle: "\xC9v\xE9nements du hub",
+    hubEventsSubtitle: "Ex\xE9cutez une action Home Assistant lorsque l\u2019\xE9tat du hub change. Ces actions ne s\u2019ex\xE9cutent que dans Home Assistant et ne sont jamais synchronis\xE9es avec le hub.",
+    hubEventPowerOff: "Lorsque le hub est \xC9TEINT",
+    hubEventRedundantOff: "Lorsque ARR\xCAT est press\xE9 alors que le hub est d\xE9j\xE0 \xC9TEINT",
+    hubEventActivityStart: "Lorsqu\u2019une activit\xE9 d\xE9marre",
+    hubEventActivityStops: "et lorsqu\u2019une activit\xE9 s\u2019arr\xEAte",
+    hubEventActivityStopModalTitle: "Lorsqu\u2019une activit\xE9 s\u2019arr\xEAte",
+    hubEventDoNothing: "ne rien faire",
+    hubEventPerform: (service) => `ex\xE9cuter ${service}`,
+    hubEventClearTitle: "R\xE9initialiser sur Ne rien faire",
+    hubEventModalNote: "Choisissez l\u2019action \xE0 ex\xE9cuter lorsque cela se produit. Effacez l\u2019action pour ne rien faire.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "\xC9v\xE9nements",
+    activityEventsTitle: "\xC9v\xE9nements d\u2019activit\xE9",
+    activityEventsSubtitle: "Ex\xE9cutez une action Home Assistant lorsqu\u2019une activit\xE9 donn\xE9e d\xE9marre ou s\u2019arr\xEAte. Lors d\u2019un changement d\u2019activit\xE9, l\u2019ancienne s\u2019arr\xEAte et la nouvelle d\xE9marre.",
+    activityEventStarts: (name) => `Lorsque ${name} d\xE9marre`,
+    activityEventStops: "et lorsqu\u2019elle s\u2019arr\xEAte",
+    activityEventStartModalTitle: (name) => `Lorsque ${name} d\xE9marre`,
+    activityEventStopModalTitle: (name) => `Lorsque ${name} s\u2019arr\xEAte`,
+    activityEventFallbackName: (id) => `Activit\xE9 ${id}`,
+    noActivitiesForEvents: "Aucune activit\xE9 sur ce hub pour le moment.",
+    favorite: "D\xE9finir comme favori",
+    physicalButtonAssignment: "Attribution des touches physiques",
+    enableLongPress: "Activer l\u2019appui long",
+    applyToActivities: "Appliquer \xE0 ces activit\xE9s",
+    actionModalNote: "Ex\xE9cutez une action chaque fois que la commande est ex\xE9cut\xE9e. La configuration d\u2019une action est facultative ; vous pouvez cr\xE9er vos propres automatisations d\xE9clench\xE9es par le capteur Wifi Commands.",
+    shortPress: "Appui court",
+    longPress: "Appui long",
+    selectLongPressAction: "S\xE9lectionner l\u2019action d\u2019appui long",
+    selectTriggeredAction: "S\xE9lectionner l\u2019action d\xE9clench\xE9e",
+    action: "Action",
+    save: "Enregistrer",
+    syncWarningTitle: "Synchroniser les commandes avec le hub ?",
+    syncWarningBody: "Cette synchronisation peut prendre plusieurs minutes. Pendant ce processus, les autres interactions avec le hub sont bloqu\xE9es.",
+    syncWarningBody2: "\xC0 la fin du d\xE9ploiement, la t\xE9l\xE9commande physique sera resynchronis\xE9e de force. Il est recommand\xE9 de terminer d\u2019abord toute votre configuration Wifi Commands, puis de synchroniser une seule fois.",
+    syncWarningOptOut: "Ne plus afficher cet avertissement pour cette t\xE9l\xE9commande.",
+    syncWarningStart: "D\xE9marrer la synchronisation",
+    keyLabels: {
+      up: "Haut",
+      down: "Bas",
+      left: "Gauche",
+      right: "Droite",
+      ok: "OK",
+      back: "Retour",
+      home: "Accueil",
+      menu: "Menu",
+      volup: "Volume +",
+      voldn: "Volume -",
+      mute: "Muet",
+      chup: "Cha\xEEne +",
+      chdn: "Cha\xEEne -",
+      guide: "Guide",
+      dvr: "DVR",
+      play: "Lecture",
+      exit: "Quitter",
+      rew: "Retour rapide",
+      pause: "Pause",
+      fwd: "Avance rapide",
+      red: "Rouge",
+      green: "Vert",
+      yellow: "Jaune",
+      blue: "Bleu",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  }
+};
+registerToolsCardTranslation("fr", TOOLS_CARD_STRINGS_FR);
+
+// custom_components/sofabaton_x1s/www/src/control-panel-translations/nl.ts
+var soort = (kind) => kind === "activity" ? "activiteit" : "apparaat";
+var TOOLS_CARD_STRINGS_NL = {
+  common: {
+    cancel: "Annuleren",
+    save: "Opslaan",
+    complete: "Voltooien",
+    loading: "Laden...",
+    noHubsFound: "Geen hubs gevonden.",
+    homeAssistantUnavailable: "Home Assistant is niet beschikbaar",
+    homeAssistantContextUnavailable: "Home Assistant-context is niet beschikbaar",
+    unknownError: "Onbekende fout",
+    unknownErrorWithLogs: "Onbekende fout (controleer de Home Assistant-logboeken)",
+    commandFallback: (id) => `Commando ${id}`,
+    buttonFallback: (id) => `Knop ${id}`,
+    deviceFallback: (id) => `Apparaat ${id}`,
+    activityFallback: (id) => `Activiteit ${id}`,
+    macroFallback: (id) => `Macro ${id}`,
+    favoriteFallback: (id) => `Favoriet ${id}`,
+    inputFallback: (id) => `Ingang ${id}`,
+    noInput: "geen ingang"
+  },
+  card: {
+    connectivityAria: "Verbindingsstatus",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version) => `SOFABATON-BEDIENINGSPANEEL - v${version}`,
+    wifiDeviceFallback: "Wifi-apparaat",
+    wifiCommandFallback: "Wifi-commando",
+    irLongPress: (device, command) => `${device} \u2022 ${command} (lang indrukken)`,
+    irPress: (device, command) => `${device} \u2022 ${command}`,
+    previewDescription: "Hulpmiddelen, cache, back-ups, logboeken en automatiseringen voor je hub",
+    editorHeight: "Kaarthoogte",
+    editorHeightHint: "Bepaalt hoeveel van de activiteiten-/apparatenlijsten zichtbaar is. Standaard: 600 px.",
+    pickerName: "Sofabaton-bedieningspaneel",
+    pickerDescription: "Een bedieningspaneel voor Sofabaton-hulpmiddelen, cache, logboeken, instellingen en wifi-commando's."
+  },
+  docs: {
+    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
+  },
+  tabs: { cache: "Hub", wifiCommands: "Automatisering", backup: "Back-up", settings: "Instellingen", logs: "Logboeken" },
+  tabDocs: { wifi_commands: "Documentatie over automatisering", backup: "Documentatie over back-ups" },
+  dock: { unsyncedChanges: "Niet-gesynchroniseerde wijzigingen \u2014 synchroniseer met de hub om ze toe te passen" },
+  backend: {
+    unavailableTitle: "Backend niet beschikbaar",
+    unavailableCopy: "Wachten tot de Sofabaton X-integratie is opgestart...",
+    versionMismatchTitle: "Vernieuwen vereist om het Sofabaton-bedieningspaneel bij te werken",
+    versionMismatchCopy: "Dit dashboard gebruikt nog een oudere gecachte versie van het Sofabaton-bedieningspaneel dan de versie die nu in Home Assistant draait. Vernieuw of heropen het dashboard/de browser voordat je het bedieningspaneel opnieuw gebruikt, zodat de bijgewerkte kaart kan worden geladen.",
+    backendExpects: "Backend verwacht",
+    cardLoaded: "Geladen kaart",
+    unknownVersion: "onbekend",
+    refreshingCache: "Cache vernieuwen...",
+    hubCommandInProgress: "Hubcommando wordt uitgevoerd..."
+  },
+  hubUnavailable: { title: "Hub niet beschikbaar", copy: "Deze hub is niet verbonden. Het bedieningspaneel blijft niet beschikbaar totdat de hub opnieuw verbinding maakt." },
+  availability: {
+    operationRunning: "Bewerking wordt uitgevoerd",
+    working: "Bezig...",
+    appConnectedOnlyLogs: "Alleen Logboeken is beschikbaar zolang de Sofabaton-app verbonden is.",
+    hubCommandInProgress: "Hubcommando wordt uitgevoerd...",
+    refreshingCache: "Cache vernieuwen...",
+    unavailable: "Niet beschikbaar",
+    refreshDashboard: "Vernieuw het dashboard om het bijgewerkte Sofabaton-bedieningspaneel te laden.",
+    automationUnavailable: "Automatisering niet beschikbaar",
+    backupUnavailable: "Back-up niet beschikbaar",
+    automationBlockedByProxy: "Automatisering kan niet worden gebruikt zolang de Sofabaton-app via de proxy met de hub is verbonden.",
+    backupBlockedByProxy: "Back-up kan niet worden gebruikt zolang de Sofabaton-app via de proxy met de hub is verbonden."
+  },
+  buttonNames: {
+    151: "C",
+    152: "B",
+    153: "A",
+    154: "Afsluiten",
+    155: "DVR",
+    156: "Afspelen",
+    157: "Gids",
+    174: "Omhoog",
+    175: "Links",
+    176: "OK",
+    177: "Rechts",
+    178: "Omlaag",
+    179: "Terug",
+    180: "Home",
+    181: "Menu",
+    182: "Vol +",
+    183: "Kan +",
+    184: "Dempen",
+    185: "Vol -",
+    186: "Kan -",
+    187: "Terugspoelen",
+    188: "Pauze",
+    189: "Vooruitspoelen",
+    190: "Rood",
+    191: "Groen",
+    192: "Geel",
+    193: "Blauw",
+    198: "Inschakelen",
+    199: "Uitschakelen"
+  },
+  errors: {
+    backupProgressNoSocket: "Back-upvoortgang is niet beschikbaar zonder websocketverbinding",
+    logsNoSocket: "Live-logboeken zijn niet beschikbaar zonder websocketverbinding",
+    wifiPressNoSocket: "Wifi-knopgebeurtenissen zijn niet beschikbaar zonder websocketverbinding",
+    hubEventsNoSocket: "Hubgebeurtenissen zijn niet beschikbaar zonder websocketverbinding",
+    anotherOperation: "Er wordt al een andere hubbewerking uitgevoerd.",
+    noHubSelected: "Geen hub geselecteerd.",
+    noHubSelectedLong: "Er is geen hub geselecteerd.",
+    cacheRefreshFailed: "Vernieuwen van cache mislukt.",
+    syncFailed: "Synchronisatie mislukt.",
+    activityIdMissing: "De hub heeft geen ID voor de nieuwe activiteit teruggegeven."
+  },
+  settings: {
+    loading: "Laden...",
+    noHubsFound: "Geen hubs gevonden.",
+    unknownHubName: "Onbekend",
+    activities: "Activiteiten",
+    devices: "Apparaten",
+    persistentCacheTitle: "Permanente cache",
+    persistentCacheDescription: "Sla activiteit- en apparaatgegevens lokaal op voor snellere toegang.",
+    persistentCacheFooter: "ALGEMEEN",
+    hubClickActionTitle: "Klikken op het tabblad Hub",
+    hubClickActionDescription: "Kies wat er gebeurt wanneer je in de lijsten op het tabblad Hub op een commando, favoriet, macro of knop klikt.",
+    hubClickActionFooter: "ALGEMEEN",
+    hubClickActionOptionNone: "Niets doen",
+    hubClickActionOptionSend: "Commando verzenden",
+    hubClickActionOptionCopy: "Commando kopi\xEBren",
+    hexLoggingTitle: "Hex-logboekregistratie",
+    hexLoggingDescription: "Registreer onbewerkt hex-verkeer tussen hub, integratie en app.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Laat de offici\xEBle Sofabaton-app en HA tegelijkertijd de hubverbinding delen.",
+    wifiDeviceTitle: "Wifi-apparaat",
+    wifiDeviceDescription: "Schakel de HTTP-listener in die knopdrukken van de afstandsbediening opvangt en doorstuurt naar HA-acties.",
+    findRemoteTitle: "Afstandsbediening zoeken",
+    findRemoteDescription: "Laat de afstandsbediening piepen zodat je hem kunt vinden.",
+    syncRemoteTitle: "Afstandsbediening synchroniseren",
+    syncRemoteDescription: "Stuur de nieuwste configuratie naar de fysieke afstandsbediening."
+  },
+  cache: {
+    loading: "Laden...",
+    noHubsFound: "Geen hubs gevonden.",
+    persistentCacheOffTitle: "Permanente cache is uitgeschakeld",
+    persistentCacheOffCopy: "Schakel deze in om gecachte activiteiten en apparaten te bekijken en back-upwerkstromen te ontgrendelen die ervan afhankelijk zijn.",
+    enablingPersistentCache: "Inschakelen...",
+    enablePersistentCache: "Permanente cache inschakelen",
+    devIdBadge: "App-ID",
+    favIdBadge: "Fav-ID",
+    comIdBadge: "Cmd-ID",
+    activityFallback: (id) => `Activiteit ${id}`,
+    deviceFallback: (id) => `Apparaat ${id}`,
+    favoriteFallback: (commandId) => `Favoriet ${commandId}`,
+    macroFallback: (commandId) => `Macro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} fav. / ${macros} macro's / ${buttons} knoppen`,
+    deviceCommandCount: (count) => `${count} commando's`,
+    favorites: "Favorieten",
+    macros: "Macro's",
+    buttons: "Knoppen",
+    noCachedData: "Nog geen gecachte gegevens.",
+    noCachedCommands: "Geen gecachte commando's.",
+    staleBanner: "De cache is extern bijgewerkt. Vernieuw om de nieuwste gegevens te zien.",
+    refresh: "Vernieuwen",
+    activities: "Activiteiten",
+    devices: "Apparaten",
+    refreshList: "Lijst vernieuwen",
+    refreshAll: "Alles vernieuwen",
+    editActivity: "Activiteit bewerken",
+    editDevice: "Apparaat bewerken",
+    changeOrder: "Volgorde wijzigen",
+    addActivity: "Activiteit toevoegen",
+    reorderSync: "Synchroniseren met hub",
+    reorderCancel: "Annuleren",
+    reorderHint: "Sleep activiteiten naar de gewenste volgorde en synchroniseer daarna met de hub.",
+    reorderDevicesHint: "Sleep apparaten naar de gewenste volgorde en synchroniseer daarna met de hub.",
+    reorderSyncing: "Nieuwe volgorde naar de hub schrijven\u2026",
+    addActivityTitle: "Activiteit toevoegen",
+    addActivityBody: "Geef de nieuwe activiteit een naam. De activiteit wordt op de hub aangemaakt en in de editor geopend.",
+    addActivityPlaceholder: "Naam van activiteit",
+    addActivityCancel: "Annuleren",
+    addActivityConfirm: "Aanmaken",
+    addActivityCreating: "Aanmaken\u2026",
+    reorderingActivities: "Activiteiten opnieuw ordenen\u2026",
+    reorderingDevices: "Apparaten opnieuw ordenen\u2026",
+    creatingActivity: "Activiteit aanmaken\u2026"
+  },
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Activiteit",
+    contextDevice: "Apparaat",
+    kindLabels: { favorite: "Favoriet", macro: "Macro", button: "Knop", command: "Commando" },
+    lovelaceHeading: "Lovelace-knopcode",
+    lovelaceHint: "Kopieer dit naar je dashboard-YAML:",
+    actionHeading: "Service-aanroep (automatisering)",
+    actionHint: "Gebruik dit in je scripts of automatiseringen:",
+    noRemoteEntity: "De remote-entiteit van de hub is niet beschikbaar.",
+    copied: (label) => `"${label}" naar meldingen gekopieerd.`,
+    sendTooltip: "Klik om dit commando naar de hub te sturen",
+    copyTooltip: "Klik om dit commando naar een melding te kopi\xEBren"
+  },
+  logs: { loading: "Logboekstream laden...", empty: "Voor deze hub zijn nog geen logboekregels vastgelegd.", liveConsole: "Liveconsole" },
+  cacheRefresh: { label: "Alles vernieuwen", running: "Vernieuwen\u2026", starting: "Vernieuwen van hubcache starten\u2026", working: "Configuratie van je hub lezen\u2026", done: "Hubcache vernieuwd." },
+  progress: { homeAssistant: "Home Assistant", sofabatonHub: "Sofabaton-hub", working: "Bezig...", backupTitle: "Back-up maken", restoreTitle: "Back-up herstellen" },
+  activities: {
+    loading: "Activiteiten laden...",
+    selectHub: "Selecteer een hub om de activiteiten te bewerken.",
+    activityFallback: (id) => `Activiteit ${id}`,
+    appConnectedTitle: "De Sofabaton-app is verbonden",
+    appConnectedBody: "Sluit de Sofabaton-app om de hubconfiguratie te bewerken.",
+    operationRunningTitle: "Er wordt een andere bewerking uitgevoerd",
+    operationRunningBody: "Wacht tot de huidige back-up, herstelbewerking of synchronisatie is voltooid en probeer het daarna opnieuw.",
+    captureTitle: "Je hub uitlezen",
+    captureMessage: "Configuratie van je hub uitlezen\u2026",
+    captureMessageWithStep: (current, total) => `Configuratie van je hub uitlezen\u2026 (apparaat ${current} van ${total})`,
+    captureFailedTitle: "Kan de hub niet uitlezen",
+    captureFailedBody: "De hub reageerde niet meer voordat het uitlezen was voltooid.",
+    retry: "Opnieuw proberen",
+    back: "Terug",
+    capturingFromCache: (kind) => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} uit de hubcache laden\u2026`,
+    needsRefreshTitle: "Vernieuw de hubcache om te bewerken",
+    needsRefreshBody: (kind) => `Deze ${soort(kind)} staat nog niet in de lokale hubcache. Vernieuw de hubcache om deze in de editor te laden. Dit kan enkele minuten duren, afhankelijk van de grootte van je hubconfiguratie.`,
+    syncToHub: "Synchroniseren met hub",
+    syncUpToDate: "Actueel",
+    deletingTitle: (kind) => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} verwijderen`,
+    deletingMessage: (kind) => `Deze ${soort(kind)} van de hub verwijderen\u2026`,
+    syncingTitle: "Synchroniseren met je hub",
+    syncingMessage: "Je wijzigingen naar de hub schrijven\u2026",
+    syncSuccess: "Gesynchroniseerd met de hub.",
+    syncPlanSummary: (count) => `${count} ${count === 1 ? "schrijfbewerking" : "schrijfbewerkingen"} naar de hub`,
+    syncFailedTitle: "Synchronisatie niet voltooid",
+    syncFailedStep: (step) => `De hub stopte bij: ${step}`,
+    syncStaleTitle: (kind) => `Deze ${soort(kind)} is op de hub gewijzigd`,
+    syncStaleBody: (kind) => `De ${soort(kind)} is op de hub bewerkt nadat je deze hebt geladen. Je wijzigingen kunnen daarom niet veilig worden toegepast. Laad de huidige versie van de hub opnieuw om door te gaan \u2014 je niet-opgeslagen wijzigingen gaan verloren.`,
+    syncRetry: "Synchronisatie opnieuw proberen",
+    syncReload: "Opnieuw laden van hub",
+    syncKeepEditing: "Doorgaan met bewerken",
+    exitUnsyncedTitle: "Niet-gesynchroniseerde wijzigingen",
+    exitUnsyncedBody: (kind) => `Deze ${soort(kind)} bevat wijzigingen die niet met de hub zijn gesynchroniseerd. Synchroniseer ze nu of verlaat de editor zonder te synchroniseren en verwijder de lokale wijzigingen.`,
+    exitSyncNow: "Nu synchroniseren",
+    exitWithoutSync: "Verlaten zonder synchroniseren",
+    discardConfirmCancel: "Doorgaan met bewerken",
+    review: {
+      sectionDevices: "Apparaten",
+      sectionStart: "Bij het starten",
+      sectionButtons: "Knoppen",
+      sectionShortcuts: "Snelkoppelingen",
+      sectionEnd: "Bij het stoppen",
+      sectionDeviceWide: "Apparaatbrede wijzigingen",
+      deviceAdded: (name) => `"${name}" aan deze activiteit toegevoegd.`,
+      deviceRemoved: (name) => `"${name}" uit deze activiteit verwijderd.`,
+      inputChanged: (device, input) => `Ingang van "${device}" gewijzigd in ${input}.`,
+      inputCleared: (device) => `Ingang van "${device}" gewist.`,
+      startReordered: "Startvolgorde opnieuw geordend.",
+      roleNowControls: (group, device) => `${group} bedienen nu "${device}".`,
+      roleCustomized: (group) => `${group} aangepast.`,
+      roleCleared: (group) => `${group} niet meer toegewezen.`,
+      shortcutAdded: (name) => `"${name}" toegevoegd.`,
+      shortcutRemoved: (name) => `"${name}" verwijderd.`,
+      shortcutRenamed: (oldName, newName) => `"${oldName}" hernoemd naar "${newName}".`,
+      shortcutsReordered: "Snelkoppelingen opnieuw geordend.",
+      idleChanged: (device, label) => `Inactief gedrag van "${device}" \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Commando "${oldName}" op "${device}" hernoemd naar "${newName}".`,
+      roleGroups: { volume: "Volumeknoppen", navigation: "Navigatieknoppen", playback: "Afspeelknoppen", channels: "Kanaalknoppen" },
+      idleShort: { 0: "niet ingesteld", 1: "schakelt uit bij inactiviteit", 2: "schakelt nooit uit", 3: "blijft aan", 4: "niet beheerd door de hub" }
+    },
+    deviceReview: {
+      sectionPower: "Voeding",
+      sectionNetwork: "Netwerk",
+      sectionButtons: "Knoppen",
+      sectionMacros: "Macro's",
+      powerControlChanged: (label) => `Automatische voedingsregeling \u2192 ${label}.`,
+      powerOnChanged: "Inschakelvolgorde bijgewerkt.",
+      powerOffChanged: "Uitschakelvolgorde bijgewerkt.",
+      macroAdded: (name) => `Macro "${name}" toegevoegd.`,
+      macroRemoved: (name) => `Macro "${name}" verwijderd.`,
+      macroRenamed: (oldName, newName) => `Macro "${oldName}" hernoemd naar "${newName}".`,
+      macroChanged: (name) => `Macro "${name}" bewerkt.`,
+      bindingBound: (button, command) => `"${button}" stuurt nu "${command}".`,
+      bindingCleared: (button) => `"${button}" is niet langer gekoppeld.`,
+      ipChanged: (ip) => `IP-adres \u2192 ${ip}.`,
+      ipCleared: "IP-adres gewist."
+    }
+  },
+  backup: {
+    sectionMake: "Maken",
+    sectionEdit: "Bewerken",
+    sectionRestore: "Herstellen",
+    loading: "Back-uphulpmiddelen laden...",
+    selectHub: "Selecteer een hub om back-ups te beheren.",
+    creatingSubtitle: "De hub maakt je back-up.",
+    readySubtitle: "Je back-up is klaar.",
+    chooseSubtitle: "Kies wat je in deze back-up wilt opnemen.",
+    enablePersistentCache: "Schakel permanente cache in om de inhoud van de back-up op de kaart te kiezen.",
+    completedTitle: "Back-up voltooid",
+    expired: "Back-up verlopen. Start een nieuwe back-up om opnieuw te downloaden.",
+    downloaded: "Gedownload",
+    downloadAgain: "Opnieuw downloaden",
+    downloadBackup: "Back-up downloaden",
+    complete: "Voltooien",
+    restoreCompletedTitle: "Herstel voltooid",
+    restoreCompletedSubtitle: "De geselecteerde activiteiten en apparaten zijn op de hub hersteld.",
+    restoreCompletedStatus: "Herstel voltooid.",
+    restoreCompletedSuccessfully: "Herstel geslaagd.",
+    backupCompletedSuccessfully: "Back-up geslaagd.",
+    wifiDeviceDeployedSuccessfully: "Wifi-apparaat succesvol ge\xEFmplementeerd.",
+    restoreRunningSubtitle: "De hub herstelt je back-up.",
+    restoreFinishedSubtitle: "Je herstelbewerking is voltooid.",
+    restoreChooseSubtitle: "Laad een back-upbestand en kies precies wat je wilt herstellen. Activiteiten nemen automatisch de apparaten mee waarvan ze afhankelijk zijn.",
+    itemsToRestore: "Te herstellen items",
+    eraseExisting: "Bestaande apparaten en activiteiten wissen",
+    startRestore: "Herstel starten",
+    startingBackup: "Back-up starten\u2026",
+    startingRestore: "Herstel starten\u2026",
+    backupFailed: "Back-up mislukt.",
+    restoreFailed: "Herstel mislukt.",
+    backupInProgress: "Back-up wordt gemaakt\u2026",
+    restoreInProgress: "Herstel wordt uitgevoerd\u2026",
+    failedPrepareDownload: "Voorbereiden van bewerkte back-up voor downloaden is mislukt.",
+    enterName: "Voer een naam in om door te gaan.",
+    renameDialogTitle: "Hub hernoemen",
+    linked: "gekoppeld",
+    hubNameRestoreOnlyAria: "De hubnaam wordt alleen tijdens het herstellen toegepast wanneer de gebruiker ervoor kiest de hub te wissen.",
+    entireHub: "Volledige hub",
+    selectedDevices: "Geselecteerde apparaten",
+    devicesToInclude: "Op te nemen apparaten",
+    selectedCount: (count) => `${count} geselecteerd`,
+    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activiteit" : "activiteiten"} en ${devices} ${devices === 1 ? "apparaat" : "apparaten"} opgenomen in de back-up`,
+    activityMeta: (favorites, macros) => `${favorites} favorieten \xB7 ${macros} macro's`,
+    linkedDevices: (count) => `${count} ${count === 1 ? "gekoppeld apparaat" : "gekoppelde apparaten"}`,
+    deselectAll: "Alles deselecteren",
+    selectAll: "Alles selecteren",
+    noDevicesAvailable: "Geen apparaten beschikbaar.",
+    working: "Bezig",
+    startBackup: "Back-up starten",
+    editLoadPrompt: "Laad een back-upbestand en kies daarna een activiteit of apparaat om te bewerken.",
+    chooseBackupFile: "Back-upbestand kiezen",
+    reorderHint: " Sleep de greep van een rij om activiteiten en apparaten opnieuw te ordenen.",
+    macroStepsSortableHelp: "Sleep om opnieuw te ordenen. Elke stap speelt een commando af; stel rechts de wachttijd in die erop volgt.",
+    macroStepsHelp: "Elke stap speelt een commando af; stel rechts de wachttijd in die erop volgt.",
+    hubName: "Hubnaam",
+    hubNameNotSet: "(niet ingesteld)",
+    renameHub: "Hub hernoemen",
+    activities: "Activiteiten",
+    noActivitiesInFile: "Dit back-upbestand bevat geen activiteiten.",
+    devices: "Apparaten",
+    noDevicesInFile: "Dit back-upbestand bevat geen apparaten.",
+    unsavedChanges: "Niet-opgeslagen wijzigingen. Klik op ",
+    downloadEditedBackupStrong: "Bewerkte back-up downloaden",
+    unsavedChangesSuffix: " om ze in een bestand op te slaan.",
+    downloadEditedBackup: "Bewerkte back-up downloaden",
+    deleteActivityTitle: (name) => `Activiteit "${name}" verwijderen?`,
+    deleteDeviceTitle: (name) => `Apparaat "${name}" verwijderen?`,
+    deleteCommandTitle: (name) => `Commando "${name}" verwijderen?`,
+    deleteFavoriteTitle: (name) => `Snelkoppeling "${name}" verwijderen?`,
+    deleteMacroTitle: (name) => `Macro "${name}" verwijderen?`,
+    deleteCascadeIntro: "Hierdoor worden ook verwijzingen ernaar elders in de back-up gewist:",
+    deleteSimpleBody: "Hiermee wordt het uit de geladen back-up verwijderd.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activiteit verwijst" : "activiteiten verwijzen"} ernaar`,
+    deleteImpactFavorites: (count) => `${count} ${count === 1 ? "snelkoppeling wordt" : "snelkoppelingen worden"} verwijderd`,
+    deleteImpactMacroSteps: (count) => `${count} ${count === 1 ? "volgordestap wordt" : "volgordestappen worden"} verwijderd`,
+    deleteImpactPowerSteps: (count) => `${count} ${count === 1 ? "voedingsstap wordt" : "voedingsstappen worden"} gewist`,
+    deleteReplaceNote: "Verwijderingen bereiken de hub alleen bij een herstelbewerking met Vervangen.",
+    deleteCascadeIntroLive: "Hierdoor worden ook verwijzingen ernaar op de hub verwijderd:",
+    deleteSimpleBodyLive: "Hiermee wordt het verwijderd.",
+    deleteImmediateNote: "Dit wordt onmiddellijk op de hub toegepast.",
+    deleteSyncNote: "Deze wijziging wordt bij de volgende synchronisatie naar de hub geschreven.",
+    deleteCancel: "Annuleren",
+    deleteConfirm: "Verwijderen",
+    deleteActivityAria: "Activiteit verwijderen",
+    deleteDeviceAria: "Apparaat verwijderen",
+    deleteCommandAria: "Commando verwijderen",
+    addFavoriteTitle: "Commandosnelkoppeling toevoegen",
+    addFavoriteDevice: "Apparaat",
+    addFavoriteCommand: "Commando",
+    addFavoriteAdd: "Toevoegen",
+    addFavoriteCancel: "Annuleren",
+    addFavoriteNoDevices: "Deze back-up bevat geen apparaten met commando's die kunnen worden toegevoegd.",
+    addFavoriteNoCommands: "Dit apparaat bevat geen commando's die kunnen worden toegevoegd.",
+    buttonBindingsTitle: "Knopkoppelingen",
+    buttonBindingsActivitySub: "Koppel knoppen van de afstandsbediening binnen deze activiteit aan een apparaatcommando.",
+    buttonBindingsDeviceSub: "Koppel knoppen van de afstandsbediening aan de eigen commando's van dit apparaat.",
+    buttonBindingsEmpty: "Geen knopkoppelingen geconfigureerd.",
+    addBinding: "Koppeling toevoegen",
+    bindingButton: "Knop",
+    bindingTargetDevice: "Apparaat",
+    bindingCommand: "Commando",
+    bindingEnableLongPress: "Koppeling voor lang indrukken inschakelen",
+    bindingLongPressDevice: "Apparaat bij lang indrukken",
+    bindingLongPressCommand: "Commando bij lang indrukken",
+    bindingIncomplete: "Kies eerst een knop en doel.",
+    bindingNoButtons: "Elke knop op dit hubmodel is al gekoppeld.",
+    bindingNoCommands: "Dit apparaat heeft geen commando's om te koppelen.",
+    bindingNoDevices: "Deze back-up bevat geen apparaten met commando's om te koppelen.",
+    bindingAdd: "Toevoegen",
+    bindingSave: "Opslaan",
+    bindingCancel: "Annuleren",
+    bindingDialogAddTitle: "Knopkoppeling toevoegen",
+    bindingDialogEditTitle: (name) => `Koppeling voor ${name} bewerken`,
+    bindingLongPressMeta: (label) => `Lang indrukken \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Koppeling voor ${name} verwijderen?`,
+    deleteBindingAria: "Koppeling verwijderen",
+    deleteImpactBindings: (count) => `${count} ${count === 1 ? "knopkoppeling wordt" : "knopkoppelingen worden"} gewist`,
+    macrosTitle: "Macro's",
+    macrosDeviceSub: "Bewerk de commandoreeksen die dit apparaat afspeelt, inclusief in- en uitschakelen.",
+    macroPowerChip: "voeding",
+    powerSetupTitle: "Voeding",
+    powerSetupDeviceSub: "Hoe de hub de voeding van dit apparaat voor activiteiten beheert en welke reeksen worden verzonden om het in en uit te schakelen.",
+    powerSetupActivitySub: "De start- en afsluitvolgorde die deze activiteit uitvoert.",
+    powerOnLabel: "Inschakelvolgorde",
+    powerOffLabel: "Uitschakelvolgorde",
+    powerControlTitle: "Automatische voedingsregeling",
+    powerControlUnset: "Niet vastgelegd",
+    powerControlUnsetSub: "Deze back-up is ouder dan de registratie van voedingsregeling. Kies een optie om deze in te stellen of herstel ongewijzigd om de oude waarde te behouden.",
+    powerControlDisabled: "Voeding niet regelen",
+    powerControlDisabledSub: "De hub schakelt dit apparaat nooit in of uit. De onderstaande reeksen worden genegeerd.",
+    powerControlAutoOff: "Uitschakelen bij inactiviteit",
+    powerControlAutoOffSub: "Aanbevolen. Schakelt het apparaat uit wanneer geen activiteit het nodig heeft.",
+    powerControlStayOn: "Aan laten tussen activiteiten",
+    powerControlStayOnSub: "Slaat het wachten op opnieuw inschakelen over; schakelt nog steeds uit met de Uit-knop van de afstandsbediening.",
+    powerControlAlwaysOn: "Altijd aan laten",
+    powerControlAlwaysOnSub: "De hub schakelt het apparaat in, maar nooit automatisch uit.",
+    powerSequencesDisabledNote: "Voedingsregeling is uitgeschakeld, dus deze reeksen worden niet gebruikt. Schakel deze hierboven in om ze te bewerken.",
+    inputStepTitle: "Ingang instellen",
+    inputStepCommand: "Ingangscommando",
+    inputStepNone: "\u2014 geen ingang \u2014",
+    macroStepsCount: (count) => `${count} ${count === 1 ? "stap" : "stappen"}`,
+    noMacroSteps: "Nog geen stappen.",
+    addStep: "Stap toevoegen",
+    stepDialogAddTitle: "Stap toevoegen",
+    stepDialogEditTitle: "Stap bewerken",
+    stepDevice: "Apparaat",
+    stepCommand: "Commando",
+    stepHoldSeconds: "Vasthouden (seconden, 0 = klikken)",
+    holdLabel: (seconds) => `${seconds}s vasthouden`,
+    stepAdd: "Toevoegen",
+    stepSave: "Opslaan",
+    stepCancel: "Annuleren",
+    stepNoCommands: "Dit apparaat heeft geen commando's.",
+    stepWaitAria: "Wachten na deze stap (seconden)",
+    stepWaitLabel: "Vertraging",
+    stepWaitUnit: "s",
+    renameMacroAria: "Macro hernoemen",
+    deleteStepAria: "Stap verwijderen",
+    editStepAria: "Stap bewerken",
+    newMacroName: "Macro",
+    shortcutChipCommand: "commando",
+    shortcutChipAction: "macro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Macro hernoemen" : "Snelkoppeling hernoemen",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Macro verwijderen" : "Snelkoppeling verwijderen",
+    powerSectionTitle: "Voeding",
+    powerActivitySub: "Elk apparaat dat de activiteit gebruikt, wordt hier ingeschakeld. Kies de ingang en pas de timing aan.",
+    powerInputLabel: "Ingang",
+    powerInputNone: "\u2014 geen \u2014",
+    powerDelayLabel: "Vertraging (s)",
+    powerNoDevices: "Nog geen apparaten. Voeg een favoriet, koppeling of macro toe die er een gebruikt.",
+    powerOnSequence: "Inschakelvolgorde",
+    powerOffSequence: "Uitschakelvolgorde",
+    powerSequenceSub: "Orden stappen opnieuw en voeg eigen commando's of wachttijden toe. Vereiste apparaatstappen kunnen worden verplaatst maar niet verwijderd.",
+    macroRenameAria: "Macro hernoemen",
+    editStepsAria: "Stappen bewerken",
+    crumbActivities: "Activiteiten",
+    crumbDevices: "Apparaten",
+    activityRemoveDeviceTitle: (name) => `${name} uit deze activiteit verwijderen?`,
+    activityRunningTitle: "Knoppen op de afstandsbediening",
+    activityRunningSub: "Welk apparaat elke knop van de afstandsbediening in deze activiteit bedient.",
+    activityShortcutsTitle: "Snelkoppelingen op het scherm van de afstandsbediening",
+    activityShortcutsSubSortable: "Commando's en macro's op het scherm van de afstandsbediening. Sleep de greep om ze opnieuw te ordenen.",
+    activityShortcutsSubStatic: "Commando's en macro's op het scherm van de afstandsbediening. Gebruik de verplaatsknoppen om ze opnieuw te ordenen.",
+    activityShortcutsEmpty: "Nog geen snelkoppelingen. Voeg een commando of macro toe.",
+    roleVolume: "Volumeknoppen bedienen",
+    roleNavigation: "Navigatie- en OK-knoppen bedienen",
+    rolePlayback: "Afspeelknoppen bedienen",
+    roleChannels: "Kanaalknoppen bedienen",
+    roleNotUsed: "Niet gebruikt",
+    roleCustom: "Aangepast",
+    roleCustomized: (name) => `${name} (aangepast)`,
+    roleMappedNote: (bound, total) => `${bound} van ${total} knoppen gekoppeld`,
+    roleOptionNoMapping: (name) => `${name} \u2014 geen knoptoewijzing`,
+    roleMenuAria: (roleLabel) => `Kies een apparaat voor: ${roleLabel}`,
+    roleConfirmTitle: "Aangepaste knopinstelling vervangen?",
+    roleConfirmBody: "Deze groep bevat knoptoewijzingen die niet uit de standaardtoewijzing van \xE9\xE9n apparaat komen. Als je hier een apparaat toewijst, worden ze vervangen.",
+    roleConfirmReplace: "Vervangen",
+    roleConfirmCancel: "Annuleren",
+    customizeButtonsToggle: "Afzonderlijke knoppen aanpassen",
+    bindingsViewTitle: "Afzonderlijke knoppen",
+    bindingsConfiguredCount: (count) => `${count} geconfigureerd`,
+    bindingsNoneConfigured: "Geen afzonderlijke knoppen aangepast",
+    addShortcutButton: "Toevoegen",
+    addShortcutTitle: "Aan snelkoppelingen toevoegen",
+    addShortcutKindLabel: "Type",
+    shortcutKindCommand: "Apparaatcommando",
+    shortcutKindAction: "Macro",
+    macroTargetLabel: "Macro",
+    macroTargetCreateNew: "Nieuwe macro maken",
+    macroTargetNoExisting: "Nog geen macro's. Maak er hieronder een.",
+    addShortcutActionName: "Naam",
+    addShortcutActionHelper: "Hierna kies je de stappen.",
+    addShortcutCommandHelper: "De snelkoppeling wordt onder de naam van het commando weergegeven.",
+    unsaved: "Niet opgeslagen",
+    unsavedTooltip: "Je hebt niet-opgeslagen wijzigingen. Download de back-up om ze op te slaan.",
+    renameKind: (kind) => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} hernoemen`,
+    managedWifiTitle: "Beheerd door Wifi Commands",
+    managedWifiIntro: "Dit apparaat is vanuit het tabblad Wifi Commands ge\xEFmplementeerd.",
+    managedWifiBody: "De commando's, voeding, ingang en knoptoewijzingen worden daar geconfigureerd \u2014 wijzigingen hier worden bij de volgende synchronisatie overschreven.",
+    managedWifiRename: "Je kunt het hier wel hernoemen; de nieuwe naam blijft gesynchroniseerd met je Wifi Commands-configuratie.",
+    detailPower: "Voeding",
+    detailNetwork: "Netwerk",
+    detailCommands: "Commando's",
+    detailButtons: "Knoppen",
+    detailSectionsAria: "Detailsecties",
+    editBindingAria: "Koppeling bewerken",
+    editIpAria: "IP-adres bewerken",
+    networkDescription: "Het IP-adres van het apparaat staat in het apparaatrecord. De hub gebruikt het bij het afspelen om het apparaat te adresseren (Host-header voor Hue/Sonos, basis-URL voor Roku).",
+    ipv4Description: "IPv4-adres in puntnotatie",
+    addCommand: "Commando toevoegen",
+    addCommandTitle: "Commando toevoegen",
+    editPayloadTitle: "Payload bewerken",
+    commandsLiveHelp: "Gebruik het potlood om een commando te hernoemen en de accolades om de payload van de hub op te halen en te bewerken. Commando's verwijderen blijft onder Back-up \u2192 Bewerken.",
+    commandsBackupHelp: "Gebruik het potlood om een commando te hernoemen (namen worden overal bijgewerkt waarnaar wordt verwezen) en de accolades om de payload te bewerken.",
+    newCommandChip: "nieuw commando",
+    commandChip: "commando",
+    buttonChip: "knop",
+    ipChip: "ip",
+    thisItem: "dit item",
+    noDeviceCommands: "Dit apparaat heeft momenteel geen commando's.",
+    renameCommandAria: "Commando hernoemen",
+    commandId: "Commando-ID",
+    editPayloadAria: "Payload bewerken",
+    fetchEditCommandAria: "Payload van dit commando ophalen en bewerken",
+    moveUpAria: "Omhoog verplaatsen",
+    moveDownAria: "Omlaag verplaatsen",
+    deviceClass: "Apparaatklasse",
+    name: "Naam",
+    nameHelper: "Wordt weergegeven op de afstandsbediening en in elke commandokiezer.",
+    verifyPayloadLive: "Controleer een gewijzigde payload v\xF3\xF3r het opslaan: Test speelt de huidige bytes op de hub af zonder op te slaan. Opslaan neemt de payload mee bij de volgende synchronisatie van het apparaat.",
+    verifyPayloadBackup: "Controleer een gewijzigde payload voordat je erop vertrouwt: Test speelt de bytes op de hub af zonder op te slaan. Sla hier pas op wanneer de payload doet wat je verwacht.",
+    test: "Testen",
+    sendingToHub: "Naar de hub sturen\u2026",
+    sentToHub: "Naar de hub gestuurd voor eenmalig afspelen.",
+    testFailed: "Test mislukt.",
+    rawPayload: "Onbewerkte payload",
+    rawPayloadDescription: "Voor deze apparaatklasse bestaat geen gestructureerde editor; de onderstaande bytes worden bij het herstellen ongewijzigd naar de hub afgespeeld.",
+    payloadHex: "Payload (hex-bytes)",
+    payloadHexHelper: 'Byteparen zoals "0a 4f 22"; witruimte en 0x-voorvoegsels zijn toegestaan.',
+    rename: "Hernoemen",
+    renameActivity: "Activiteit hernoemen",
+    renameDevice: "Apparaat hernoemen",
+    renameMacro: "Macro hernoemen",
+    renameFavorite: "Favoriet hernoemen",
+    renameCommand: "Commando hernoemen",
+    ipAddress: "IP-adres",
+    noPayloadReturned: "De hub heeft geen payload voor dit commando teruggegeven.",
+    noTemplateCommand: "Dit apparaat heeft geen commando's om als sjabloon te gebruiken \u2014 voeg het eerste commando toe met de Sofabaton-app.",
+    newCommandNameRequired: "Voer een naam voor het nieuwe commando in.",
+    descriptiveIrRequired: "Voer een beschrijvende IR-payload in die begint met P: (bijv. P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired: "Voer de payload in als hex-bytes (een even aantal hex-cijfers; spaties zijn toegestaan).",
+    noFreeCommandSlot: "Dit apparaat heeft geen vrije commandopositie meer.",
+    nothingToTest: "Nog niets om te testen.",
+    ipv4Required: "Voer een IPv4-adres in puntnotatie in (bijv. 192.168.1.42), of wis het veld om het IP-adres te verwijderen.",
+    steps: "Stappen",
+    buttonCatalog: {
+      up: "Omhoog",
+      down: "Omlaag",
+      left: "Links",
+      right: "Rechts",
+      ok: "OK",
+      home: "Home",
+      back: "Terug",
+      menu: "Menu",
+      volumeUp: "Volume omhoog",
+      volumeDown: "Volume omlaag",
+      mute: "Dempen",
+      channelUp: "Kanaal omhoog",
+      channelDown: "Kanaal omlaag",
+      rewind: "Terugspoelen",
+      pause: "Pauze",
+      forward: "Vooruitspoelen",
+      red: "Rood",
+      green: "Groen",
+      yellow: "Geel",
+      blue: "Blauw",
+      exit: "Afsluiten",
+      dvr: "DVR",
+      play: "Afspelen",
+      guide: "Gids",
+      navigation: "Navigatie",
+      volumeChannel: "Volume en kanaal",
+      transport: "Transportbediening",
+      colour: "Kleur",
+      extra: "Extra",
+      unknown: (code) => `Knop 0x${code}`
+    },
+    powerOn: "Inschakelen",
+    powerOff: "Uitschakelen",
+    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
+    inputStepLabel: (device, input) => `Ingang \xB7 ${device}: ${input}`,
+    macroTargetLabelText: (name) => `Macro \xB7 ${name}`
+  },
+  hub: {
+    loading: "Laden\u2026",
+    unknown: "Onbekend",
+    connectionStatusAria: "Hubverbindingsstatus",
+    hubConnected: "Hub verbonden",
+    hubNotConnected: "Hub niet verbonden",
+    appConnected: "App verbonden",
+    appNotConnected: "App niet verbonden",
+    version: "Versie",
+    ipAddress: "IP-adres",
+    activities: "Activiteiten",
+    devices: "Apparaten",
+    integrationVersion: "Integratieversie",
+    firmwareVersion: (version) => `FW: v${version}`,
+    productVersion: (version) => `Sofabaton ${version}`
+  },
+  decodedPayload: {
+    httpTitle: "HTTP-verzoek",
+    httpSubtitle: "Wijzigingen worden afgespeeld via de wifi_ip-schrijver van de hub. Host, poort en Content-Length worden afgeleid; je stelt ze hier niet in.",
+    hostIpv4: "Host (IPv4)",
+    hostExample: "bijv. 192.168.2.77",
+    port: "Poort",
+    httpMethod: "HTTP-methode",
+    httpMethodExample: "bijv. GET, POST",
+    path: "Pad",
+    extraHeaders: "Extra headers",
+    extraHeadersHelper: "E\xE9n header per regel. Host en Content-Length worden automatisch toegevoegd.",
+    contentType: "Inhoudstype",
+    body: "Body",
+    rokuTitle: "Roku ECP-verzoek",
+    ecpPath: "ECP-URL-pad",
+    ecpPathExample: "bijv. /launch/12 of /keypress/Home",
+    hueTitle: "Hue REST-verzoek",
+    sonosTitle: "Sonos UPnP-verzoek",
+    bodyBlockSubtitle: "Het bodyblok wordt ongewijzigd tussen de Host-headers en de netwerkschrijfactie ingevoegd.",
+    urlPath: "URL-pad",
+    bodyBlock: "Bodyblok (onbewerkte wire-tekenreeks)",
+    bodyBlockHelper: "E\xE9n letterlijke tekenreeks die naar het apparaat wordt gestuurd. Nieuwe regels worden als \\n weergegeven. Je beheert zelf Content-Length \u2014 deze moet overeenkomen met het aantal bytes van de body.",
+    irTitle: "Beschrijvende IR-payload",
+    irSubtitle: "Wijzigingen worden afgespeeld via de beschrijvende IR-schrijver van de hub. Alleen payloads met een beschrijvend protocol (P:\u2026 D:\u2026 F:\u2026) kunnen worden gedecodeerd; onbewerkte aangeleerde IR-payloads zijn hier niet bewerkbaar.",
+    descriptor: "Descriptor",
+    descriptorExample: "bijv. P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "Het back-upbestand moet een JSON-object bevatten.",
+    invalidBundle: "Het back-upbestand is geen Sofabaton-hubbundel.",
+    invalidSchema: (expected, actual) => `schema_version van het back-upbestand moet ${expected} zijn (ontvangen: ${String(actual)}).`,
+    structuralBundle: "Dit bestand is een structurele cachebundel (zonder commandopayloads); het kan niet worden bewerkt of hersteld. Exporteer in plaats daarvan een volledige back-up.",
+    missingArrays: "In het back-upbestand ontbreken de lijsten met apparaten of activiteiten.",
+    missingSourceModel: "In het back-upbestand ontbreekt het bronhubmodel, waardoor compatibiliteit niet kan worden gecontroleerd.",
+    unknownDestinationModel: "Het model van de doelhub is onbekend, waardoor herstelcompatibiliteit niet kan worden gecontroleerd.",
+    incompatibleModels: (source, destination) => `Deze back-up is gemaakt op een Sofabaton ${source}-hub en kan niet worden hersteld op een Sofabaton ${destination}-hub.`
+  },
+  wifiCommands: {
+    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    sectionLabel: "Wifi-apparaten",
+    deployingTitle: "Wifi Commands implementeren",
+    sectionSubtitle: "Gebruik Wifi Commands om Home Assistant-acties uit te voeren met knoppen op je fysieke afstandsbediening. Kies een wifi-apparaat om de commandoposities te bewerken of voeg een nieuw apparaat toe.",
+    addDevice: "Wifi-apparaat toevoegen",
+    deleteDeviceAria: "Wifi-apparaat verwijderen",
+    emptyDevices: "Nog geen wifi-apparaten geconfigureerd. Voeg er een toe om commandoposities toe te wijzen.",
+    maximumDevices: "Maximumaantal apparaten bereikt",
+    configuredSlots: (count) => `${count} ${count === 1 ? "positie" : "posities"}`,
+    unableSaveAction: "Actie kan niet worden opgeslagen",
+    hubCommandInProgress: "Hubcommando wordt uitgevoerd...",
+    idle: "Inactief",
+    unableLoadSyncStatus: "Synchronisatiestatus kan niet worden geladen",
+    noTargetEntity: "Geen doelentiteit",
+    commandNameLeadingSpace: "De commandonaam moet beginnen met een teken dat geen spatie is.",
+    navigationGroup: "Navigatie",
+    transportGroup: "Afspelen",
+    mediaGroup: "Media",
+    abcGroup: "ABC",
+    colorGroup: "Kleur",
+    inputCommand: "Ingangscommando",
+    inputFor: (activity) => `Ingang voor ${activity}`,
+    activitySingular: "Activiteit",
+    activityPlural: "Activiteiten",
+    unconfiguredCommand: "Niet-geconfigureerd commando",
+    powerBothCommand: "Commando voor in- en uitschakelen",
+    powerOnCommand: "Inschakelcommando",
+    powerOffCommand: "Uitschakelcommando",
+    thisDevice: "dit apparaat",
+    replacesOnButton: (slot) => `Vervangt "${slot}" op deze knop`,
+    replacesFromDevice: (slot, device) => `Vervangt "${slot}" van ${device}`,
+    none: "Geen",
+    commandSlotDescription: "Maak een commando in deze positie. Geef het een naam en kies op welke activiteiten het wordt toegepast. De naam verschijnt op het scherm van je afstandsbediening, in de mobiele app en als sensorstatus van het Wifi-commando.",
+    syncingDeviceFallback: "Wifi-apparaat synchroniseren...",
+    syncingDeviceNamed: (deviceName) => `${deviceName} synchroniseren...`,
+    syncInProgress: "Synchronisatie wordt uitgevoerd",
+    startSync: "Synchronisatie starten",
+    syncFailedToStart: "Synchronisatie kon niet starten",
+    syncMessageRemoteUnavailable: "Remote-entiteit niet beschikbaar. Is de app verbonden?",
+    syncMessageFailed: "Laatste synchronisatie mislukt.",
+    syncMessageNeeded: "Wijzigingen in de commandoconfiguratie moeten met de hub worden gesynchroniseerd.",
+    syncMessageUpToDate: "De commandoconfiguratie van de hub is actueel.",
+    syncMessageIdle: "Geen synchronisatie nodig.",
+    syncShortUnavailable: "Niet beschikbaar",
+    syncShortRunning: "Synchroniseren",
+    syncShortFailed: "Synchronisatie mislukt",
+    syncShortNeeded: "Synchronisatie nodig",
+    syncShortUpToDate: "Actueel",
+    syncShortIdle: "Inactief",
+    deviceDeleting: "Verwijderen...",
+    deviceSynced: "Gesynchroniseerd",
+    seeDocumentation: "Documentatie bekijken",
+    actionButtonUnavailable: "Niet beschikbaar",
+    actionButtonSyncing: "Synchroniseren...",
+    actionButtonBusy: "Bezig",
+    actionButtonSyncToHub: "Synchroniseren met hub",
+    actionButtonUpToDate: "Actueel",
+    createDeviceBusy: "Wifi-apparaat aanmaken...",
+    deviceName: "Apparaatnaam",
+    createDeviceNameRequired: "Apparaatnaam is verplicht.",
+    createDeviceFailed: "Wifi-apparaat kan niet worden aangemaakt",
+    deleteDeviceBusy: "Wifi-apparaat verwijderen...",
+    deleteDeviceFailed: "Wifi-apparaat kan niet worden verwijderd",
+    createModalCancel: "Annuleren",
+    createModalCreate: "Aanmaken",
+    deleteModalTitle: "Wifi-apparaat verwijderen?",
+    deleteModalBody: (deviceName) => `"${deviceName}" van de hub verwijderen en de opgeslagen configuratie van commandoposities wissen?`,
+    deleteModalDelete: "Verwijderen",
+    clearSlotTitle: "Commandopositie wissen?",
+    clearSlotSubtitle: "Stelt de configuratie opnieuw in.",
+    clearSlotNo: "Nee",
+    clearSlotYes: "Ja",
+    makeCommand: "Commando maken",
+    noActionConfigured: "Geen actie geconfigureerd",
+    commandSlotTitle: (slotIndex) => `Commandopositie ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Actie voor commandopositie ${slotIndex + 1}`,
+    commandDisplayName: "Weergavenaam van commando",
+    advanced: "Geavanceerd",
+    activityInput: "Dit commando uitvoeren wanneer een activiteit start",
+    activityInputHint: "Het commando wordt op de hub ingesteld als ingang van de activiteit en wordt daarom uitgevoerd tijdens de startvolgorde van de activiteit.",
+    activityInputReplaces: (slotName, activityName) => `Vervangt "${slotName}" wanneer ${activityName} start`,
+    noActivitiesForHub: "Geen activiteiten beschikbaar voor deze hub.",
+    activityInputLabel: "Activiteit die dit commando uitvoert",
+    devicePowerOnLabel: "Wanneer de hub dit apparaat INSCHAKELT",
+    devicePowerOffLabel: "Wanneer de hub dit apparaat UITSCHAKELT",
+    devicePowerNothing: "Niets",
+    devicePowerHint: "Wordt uitgevoerd als onderdeel van de voedingsreeks van dit apparaat in je activiteiten. Wordt met de hub gesynchroniseerd.",
+    devicePowerPerform: (commandName) => `${commandName} uitvoeren`,
+    hubEventsTitle: "Hubgebeurtenissen",
+    hubEventsSubtitle: "Voer een Home Assistant-actie uit wanneer de status van de hub verandert. Deze acties draaien alleen in Home Assistant en worden nooit met de hub gesynchroniseerd.",
+    hubEventPowerOff: "Wanneer de hub wordt UITGESCHAKELD",
+    hubEventRedundantOff: "Wanneer UIT wordt ingedrukt terwijl de hub al UIT staat",
+    hubEventActivityStart: "Wanneer een activiteit start",
+    hubEventActivityStops: "en wanneer er een stopt",
+    hubEventActivityStopModalTitle: "Wanneer een activiteit stopt",
+    hubEventDoNothing: "niets doen",
+    hubEventPerform: (service) => `${service} uitvoeren`,
+    hubEventClearTitle: "Terugzetten op niets doen",
+    hubEventModalNote: "Kies de actie die wordt uitgevoerd wanneer dit gebeurt. Wis de actie om niets te doen.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Gebeurtenissen",
+    activityEventsTitle: "Activiteitsgebeurtenissen",
+    activityEventsSubtitle: "Voer een Home Assistant-actie uit wanneer een bepaalde activiteit start of stopt. Bij wisselen tussen activiteiten stopt de oude en start de nieuwe.",
+    activityEventStarts: (name) => `Wanneer ${name} start`,
+    activityEventStops: "en wanneer deze stopt",
+    activityEventStartModalTitle: (name) => `Wanneer ${name} start`,
+    activityEventStopModalTitle: (name) => `Wanneer ${name} stopt`,
+    activityEventFallbackName: (id) => `Activiteit ${id}`,
+    noActivitiesForEvents: "Nog geen activiteiten op deze hub.",
+    favorite: "Instellen als favoriet",
+    physicalButtonAssignment: "Toewijzing van fysieke knop",
+    enableLongPress: "Lang indrukken inschakelen",
+    applyToActivities: "Toepassen op deze activiteiten",
+    actionModalNote: "Voer een actie uit telkens wanneer het commando wordt uitgevoerd. Een actie configureren is optioneel; je kunt eigen automatiseringen maken die door de Wifi Commands-sensor worden geactiveerd.",
+    shortPress: "Kort indrukken",
+    longPress: "Lang indrukken",
+    selectLongPressAction: "Actie voor lang indrukken selecteren",
+    selectTriggeredAction: "Geactiveerde actie selecteren",
+    action: "Actie",
+    save: "Opslaan",
+    syncWarningTitle: "Commando's met de hub synchroniseren?",
+    syncWarningBody: "Deze synchronisatie kan enkele minuten duren. Gedurende dit proces worden andere interacties met de hub geblokkeerd.",
+    syncWarningBody2: "Aan het einde van de implementatie wordt de fysieke afstandsbediening gedwongen opnieuw gesynchroniseerd. Het wordt aanbevolen eerst je volledige Wifi Commands-configuratie af te ronden en daarna \xE9\xE9n keer te synchroniseren.",
+    syncWarningOptOut: "Deze waarschuwing niet opnieuw tonen voor deze afstandsbediening.",
+    syncWarningStart: "Synchronisatie starten",
+    keyLabels: {
+      up: "Omhoog",
+      down: "Omlaag",
+      left: "Links",
+      right: "Rechts",
+      ok: "OK",
+      back: "Terug",
+      home: "Home",
+      menu: "Menu",
+      volup: "Vol +",
+      voldn: "Vol -",
+      mute: "Dempen",
+      chup: "Kan +",
+      chdn: "Kan -",
+      guide: "Gids",
+      dvr: "DVR",
+      play: "Afspelen",
+      exit: "Afsluiten",
+      rew: "Terugspoelen",
+      pause: "Pauze",
+      fwd: "Vooruitspoelen",
+      red: "Rood",
+      green: "Groen",
+      yellow: "Geel",
+      blue: "Blauw",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  }
+};
+registerToolsCardTranslation("nl", TOOLS_CARD_STRINGS_NL);
 
 // custom_components/sofabaton_x1s/www/src/components/operation-progress.ts
 var operationProgressStyles = i`
@@ -6425,72 +10038,93 @@ var activityEditorStyles = i`
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
-var DECODED_CLASS_FORM_SPECS = {
-  wifi_ip: {
-    title: "HTTP request",
-    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
-    fields: [
-      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
-      { key: "port", label: "Port", numeric: true },
-      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
-      { key: "path", label: "Path" },
-      {
-        key: "header",
-        label: "Extra headers",
-        multiline: true,
-        crlfOnWire: true,
-        helper: "One header per line. Host and Content-Length are added automatically."
-      },
-      { key: "content_type", label: "Content type" },
-      { key: "body", label: "Body", multiline: true }
-    ]
-  },
-  wifi_roku: {
-    title: "Roku ECP request",
-    fields: [
-      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" }
-    ]
-  },
-  wifi_hue: {
-    title: "Hue REST request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
-    fields: [
-      { key: "path", label: "URL path" },
-      {
-        key: "body_block",
-        label: "Body block (raw wire string)",
-        multiline: true,
-        escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
-      }
-    ]
-  },
-  wifi_sonos: {
-    title: "Sonos UPnP request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
-    fields: [
-      { key: "path", label: "URL path" },
-      {
-        key: "body_block",
-        label: "Body block (raw wire string)",
-        multiline: true,
-        escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
-      }
-    ]
-  },
-  ir: {
-    title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
-    fields: [
-      {
-        key: "descriptor",
-        label: "Descriptor",
-        helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2"
-      }
-    ]
+function decodedClassFormSpecs() {
+  const S5 = TOOLS_CARD_STRINGS.decodedPayload;
+  return {
+    wifi_ip: {
+      title: S5.httpTitle,
+      subtitle: S5.httpSubtitle,
+      fields: [
+        { key: "host", label: S5.hostIpv4, helper: S5.hostExample },
+        { key: "port", label: S5.port, numeric: true },
+        { key: "method", label: S5.httpMethod, helper: S5.httpMethodExample },
+        { key: "path", label: S5.path },
+        {
+          key: "header",
+          label: S5.extraHeaders,
+          multiline: true,
+          crlfOnWire: true,
+          helper: S5.extraHeadersHelper
+        },
+        { key: "content_type", label: S5.contentType },
+        { key: "body", label: S5.body, multiline: true }
+      ]
+    },
+    wifi_roku: {
+      title: S5.rokuTitle,
+      fields: [
+        { key: "path", label: S5.ecpPath, helper: S5.ecpPathExample }
+      ]
+    },
+    wifi_hue: {
+      title: S5.hueTitle,
+      subtitle: S5.bodyBlockSubtitle,
+      fields: [
+        { key: "path", label: S5.urlPath },
+        {
+          key: "body_block",
+          label: S5.bodyBlock,
+          multiline: true,
+          escapedDisplay: true,
+          helper: S5.bodyBlockHelper
+        }
+      ]
+    },
+    wifi_sonos: {
+      title: S5.sonosTitle,
+      subtitle: S5.bodyBlockSubtitle,
+      fields: [
+        { key: "path", label: S5.urlPath },
+        {
+          key: "body_block",
+          label: S5.bodyBlock,
+          multiline: true,
+          escapedDisplay: true,
+          helper: S5.bodyBlockHelper
+        }
+      ]
+    },
+    ir: {
+      title: S5.irTitle,
+      subtitle: S5.irSubtitle,
+      fields: [
+        {
+          key: "descriptor",
+          label: S5.descriptor,
+          helper: S5.descriptorExample
+        }
+      ]
+    }
+  };
+}
+var DECODED_CLASS_FORM_SPECS = new Proxy(
+  {},
+  {
+    get(_target, property) {
+      return decodedClassFormSpecs()[property];
+    },
+    has(_target, property) {
+      return property in decodedClassFormSpecs();
+    },
+    ownKeys() {
+      return Reflect.ownKeys(decodedClassFormSpecs());
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      if (!(property in decodedClassFormSpecs())) return void 0;
+      return { configurable: true, enumerable: true };
+    }
   }
-};
+);
 function normalizeDecodableClass(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized in DECODED_CLASS_FORM_SPECS) {
@@ -6630,7 +10264,7 @@ var INTERNAL_POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 function backupDeviceOptions(hub) {
   return hubDevices(hub).map((device) => ({
     id: Number(device.id),
-    label: String(device.name || `Device ${device.id}`),
+    label: String(device.name || TOOLS_CARD_STRINGS.common.deviceFallback(device.id)),
     meta: String(device.device_class || "").trim() || void 0
   }));
 }
@@ -6648,8 +10282,10 @@ function bundleActivityOptions(bundle) {
     return {
       id,
       sortKey: readSortKey(block),
-      label: String(block?.name || `Activity ${id}`),
-      meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`
+      label: String(block?.name || TOOLS_CARD_STRINGS.common.activityFallback(id)),
+      meta: TOOLS_CARD_STRINGS.backup.linkedDevices(
+        (activity?.referenced_source_device_ids ?? []).length
+      )
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
@@ -6660,7 +10296,7 @@ function bundleDeviceOptions(bundle) {
     return {
       id,
       sortKey: readSortKey(block),
-      label: String(block?.name || `Device ${id}`),
+      label: String(block?.name || TOOLS_CARD_STRINGS.common.deviceFallback(id)),
       meta: String(block?.device_class || "").trim() || void 0
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
@@ -6753,25 +10389,28 @@ function pruneBackupBundle(params) {
 }
 function validateBackupBundle(raw) {
   if (!raw || typeof raw !== "object") {
-    throw new Error("Backup file must contain a JSON object.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.invalidObject);
   }
   const bundle = raw;
   if (String(bundle.kind || "") !== "hub_bundle") {
-    throw new Error("Backup file is not a Sofabaton hub bundle.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.invalidBundle);
   }
   if (Number(bundle.schema_version || 0) !== BACKUP_BUNDLE_SCHEMA_VERSION) {
     throw new Error(
-      `Backup file schema_version must be ${BACKUP_BUNDLE_SCHEMA_VERSION} (got ${String(bundle.schema_version || "") || "unknown"}).`
+      TOOLS_CARD_STRINGS.decodedPayload.invalidSchema(
+        BACKUP_BUNDLE_SCHEMA_VERSION,
+        String(bundle.schema_version || "") || TOOLS_CARD_STRINGS.backend.unknownVersion
+      )
     );
   }
   const profile = String(bundle.payload_profile || "full_backup");
   if (profile !== "full_backup") {
     throw new Error(
-      "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead."
+      TOOLS_CARD_STRINGS.decodedPayload.structuralBundle
     );
   }
   if (!Array.isArray(bundle.devices) || !Array.isArray(bundle.activities)) {
-    throw new Error("Backup file is missing devices or activities arrays.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.missingArrays);
   }
   return bundle;
 }
@@ -6796,7 +10435,10 @@ function renameInList(list, id, name) {
   return (list ?? []).map((entry) => {
     const block = entry?.device;
     if (!block || Number(block.device_id || 0) !== id) return entry;
-    return { ...entry, device: { ...block, name: trimmed || block.name || `Device ${id}` } };
+    return {
+      ...entry,
+      device: { ...block, name: trimmed || block.name || TOOLS_CARD_STRINGS.common.deviceFallback(id) }
+    };
   });
 }
 function renameBundleActivity(bundle, activityId, name) {
@@ -6846,7 +10488,7 @@ function favoriteLabel(bundle, row) {
   if (derived) return derived;
   const explicit = String(row?.name || "").trim();
   if (explicit) return explicit;
-  return `Favorite ${Number(row?.button_id || 0) || "?"}`;
+  return TOOLS_CARD_STRINGS.common.favoriteFallback(Number(row?.button_id || 0) || "?");
 }
 function sortByButtonId(rows) {
   return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
@@ -6870,7 +10512,7 @@ function activityQuickAccessItems(bundle, activityId) {
       kind: "macro",
       activityId: Number(activityId),
       buttonId,
-      label: String(row?.name || `Macro ${buttonId}`)
+      label: String(row?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId))
     });
   }
   for (const row of sortByButtonId(activity.favorite_slots)) {
@@ -6935,7 +10577,7 @@ function deviceCommandItems(bundle, deviceId) {
   for (const row of device.commands ?? []) {
     const commandId = Number(row?.command_id || 0);
     if (commandId <= 0) continue;
-    const label = String(row?.name || "").trim() || `Command ${commandId}`;
+    const label = String(row?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(commandId);
     items.push({ deviceId: normalizedDeviceId, commandId, label });
   }
   return items.sort((left, right) => left.commandId - right.commandId);
@@ -7058,7 +10700,7 @@ function addBundleDeviceCommand(bundle, deviceId, commandId, name, restoreData) 
           ...commands,
           {
             command_id: normalizedCommandId,
-            name: trimmed || `Command ${normalizedCommandId}`,
+            name: trimmed || TOOLS_CARD_STRINGS.common.commandFallback(normalizedCommandId),
             restore_data: { ...restoreData, new: true }
           }
         ]
@@ -7702,7 +11344,7 @@ function ensureDeviceInput(bundle, deviceId, commandId) {
     command_id: cId,
     fid: synthesizeCommandCode(cId),
     input_index: nextOrdinal,
-    name: commandLabelFor(bundle, dId, cId) || `Input ${cId}`
+    name: commandLabelFor(bundle, dId, cId) || TOOLS_CARD_STRINGS.common.inputFallback(cId)
   };
   const nextBundle = {
     ...bundle,
@@ -7756,7 +11398,7 @@ function isPowerRefStep(step) {
 function defaultMacroName(buttonId) {
   if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
   if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
-  return `Macro ${buttonId}`;
+  return TOOLS_CARD_STRINGS.common.macroFallback(buttonId);
 }
 function deviceMacroDelayStep(delay) {
   return { command_id: 255, duration: 255, delay: Number(delay) & 255 };
@@ -7888,7 +11530,7 @@ function activityUserMacroSummaries(bundle, activityId) {
   const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
   return (activity?.macros ?? []).map((macro) => ({ buttonId: Number(macro?.button_id || 0), macro })).filter(({ buttonId }) => buttonId > 0 && buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID).map(({ buttonId, macro }) => ({
     buttonId,
-    name: String(macro?.name || `Macro ${buttonId}`),
+    name: String(macro?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId)),
     commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length
   })).sort((left, right) => left.buttonId - right.buttonId);
 }
@@ -7903,14 +11545,32 @@ function activityMacroStepItems(bundle, activityId, buttonId) {
     const commandId = Number(head?.command_id || 0);
     const deviceName = deviceNameFor(bundle, deviceId);
     if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
-      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
-      return { index, kind: "power", commandId, deviceId, label: `${verb} \xB7 ${deviceName}`, hold: 0, wait, protected: true };
+      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? TOOLS_CARD_STRINGS.backup.powerOn : TOOLS_CARD_STRINGS.backup.powerOff;
+      return {
+        index,
+        kind: "power",
+        commandId,
+        deviceId,
+        label: TOOLS_CARD_STRINGS.backup.powerStepLabel(verb, deviceName),
+        hold: 0,
+        wait,
+        protected: true
+      };
     }
     if (commandId === DEVICE_INPUT_REF_COMMAND) {
       const ordinal = Number(head?.duration || 0);
       const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
-      const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
-      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input \xB7 ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
+      const inputLabel = input?.name || (ordinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(ordinal) : TOOLS_CARD_STRINGS.common.noInput);
+      return {
+        index,
+        kind: "input",
+        commandId: input?.commandId ?? null,
+        deviceId,
+        label: TOOLS_CARD_STRINGS.backup.inputStepLabel(deviceName, inputLabel),
+        hold: 0,
+        wait,
+        protected: true
+      };
     }
     return {
       index,
@@ -7932,7 +11592,7 @@ function updateActivityMacro(bundle, activityId, buttonId, transform) {
     const nextMacro = {
       ...existing ?? {},
       button_id: bId,
-      name: existing?.name ?? `Macro ${bId}`,
+      name: existing?.name ?? TOOLS_CARD_STRINGS.common.macroFallback(bId),
       steps: transform(existing?.steps ?? [])
     };
     if (index >= 0) macros[index] = nextMacro;
@@ -7946,7 +11606,7 @@ function addActivityUserMacro(bundle, activityId, name) {
     ...activity,
     macros: [...activity.macros ?? [], {
       button_id: nextQuickAccessButtonId(activity),
-      name: String(name ?? "").trim() || "Macro",
+      name: String(name ?? "").trim() || TOOLS_CARD_STRINGS.backup.newMacroName,
       steps: []
     }]
   }));
@@ -7997,64 +11657,70 @@ function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices)
     return flattenMacroGroups(prefix, reordered);
   });
 }
-var SHARED_BUTTON_CATALOG = [
-  { code: 174, name: "Up", group: "Navigation" },
-  { code: 178, name: "Down", group: "Navigation" },
-  { code: 175, name: "Left", group: "Navigation" },
-  { code: 177, name: "Right", group: "Navigation" },
-  { code: 176, name: "OK", group: "Navigation" },
-  { code: 180, name: "Home", group: "Navigation" },
-  { code: 179, name: "Back", group: "Navigation" },
-  { code: 181, name: "Menu", group: "Navigation" },
-  { code: 182, name: "Volume Up", group: "Volume & Channel" },
-  { code: 185, name: "Volume Down", group: "Volume & Channel" },
-  { code: 184, name: "Mute", group: "Volume & Channel" },
-  { code: 183, name: "Channel Up", group: "Volume & Channel" },
-  { code: 186, name: "Channel Down", group: "Volume & Channel" },
-  { code: 187, name: "Rewind", group: "Transport" },
-  { code: 188, name: "Pause", group: "Transport" },
-  { code: 189, name: "Forward", group: "Transport" },
-  { code: 190, name: "Red", group: "Colour" },
-  { code: 191, name: "Green", group: "Colour" },
-  { code: 192, name: "Yellow", group: "Colour" },
-  { code: 193, name: "Blue", group: "Colour" }
-];
-var X2_EXTRA_BUTTON_CATALOG = [
-  { code: 153, name: "A", group: "Extra" },
-  { code: 152, name: "B", group: "Extra" },
-  { code: 151, name: "C", group: "Extra" },
-  { code: 154, name: "Exit", group: "Extra" },
-  { code: 155, name: "DVR", group: "Extra" },
-  { code: 156, name: "Play", group: "Extra" },
-  { code: 157, name: "Guide", group: "Extra" }
-];
-var BUTTON_NAME_BY_CODE = new Map(
-  [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG].map((entry) => [entry.code, entry.name])
-);
+function sharedButtonCatalog() {
+  const S5 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 174, name: S5.up, group: S5.navigation },
+    { code: 178, name: S5.down, group: S5.navigation },
+    { code: 175, name: S5.left, group: S5.navigation },
+    { code: 177, name: S5.right, group: S5.navigation },
+    { code: 176, name: S5.ok, group: S5.navigation },
+    { code: 180, name: S5.home, group: S5.navigation },
+    { code: 179, name: S5.back, group: S5.navigation },
+    { code: 181, name: S5.menu, group: S5.navigation },
+    { code: 182, name: S5.volumeUp, group: S5.volumeChannel },
+    { code: 185, name: S5.volumeDown, group: S5.volumeChannel },
+    { code: 184, name: S5.mute, group: S5.volumeChannel },
+    { code: 183, name: S5.channelUp, group: S5.volumeChannel },
+    { code: 186, name: S5.channelDown, group: S5.volumeChannel },
+    { code: 187, name: S5.rewind, group: S5.transport },
+    { code: 188, name: S5.pause, group: S5.transport },
+    { code: 189, name: S5.forward, group: S5.transport },
+    { code: 190, name: S5.red, group: S5.colour },
+    { code: 191, name: S5.green, group: S5.colour },
+    { code: 192, name: S5.yellow, group: S5.colour },
+    { code: 193, name: S5.blue, group: S5.colour }
+  ];
+}
+function x2ExtraButtonCatalog() {
+  const S5 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 153, name: "A", group: S5.extra },
+    { code: 152, name: "B", group: S5.extra },
+    { code: 151, name: "C", group: S5.extra },
+    { code: 154, name: S5.exit, group: S5.extra },
+    { code: 155, name: S5.dvr, group: S5.extra },
+    { code: 156, name: S5.play, group: S5.extra },
+    { code: 157, name: S5.guide, group: S5.extra }
+  ];
+}
 function bundleButtonCatalog(bundle) {
   if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
-    return [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG];
+    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()];
   }
-  return [...SHARED_BUTTON_CATALOG];
+  return sharedButtonCatalog();
 }
 function buttonName2(code) {
-  return BUTTON_NAME_BY_CODE.get(Number(code)) ?? `Button 0x${Number(code).toString(16).toUpperCase()}`;
+  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()].find((entry) => entry.code === Number(code));
+  return known?.name ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
 }
 function deviceNameFor(bundle, deviceId) {
   const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
-  return String(device?.device?.name || "").trim() || `Device ${Number(deviceId)}`;
+  return String(device?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(Number(deviceId));
 }
 function commandNameOrFallback(bundle, deviceId, commandId) {
-  return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
+  return commandLabelFor(bundle, deviceId, commandId) || TOOLS_CARD_STRINGS.common.commandFallback(Number(commandId));
 }
 function activityMacroName(bundle, activityId, buttonId) {
   const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
   const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
+  return String(macro?.name || "").trim() || TOOLS_CARD_STRINGS.common.macroFallback(Number(buttonId));
 }
 function activityBindingTargetLabel(bundle, activityId, targetDeviceId, targetCommandId) {
   if (targetDeviceId === Number(activityId)) {
-    return `Macro \xB7 ${activityMacroName(bundle, activityId, targetCommandId)}`;
+    return TOOLS_CARD_STRINGS.backup.macroTargetLabelText(
+      activityMacroName(bundle, activityId, targetCommandId)
+    );
   }
   return `${deviceNameFor(bundle, targetDeviceId)} \xB7 ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
 }
@@ -8321,15 +11987,15 @@ function bundleEditableDeviceOptions(bundle) {
 function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
   if (!sourceVersion) {
-    throw new Error("Backup file is missing its source hub model, so compatibility cannot be verified.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.missingSourceModel);
   }
   const destinationVersion = normalizeHubVersion(destinationHubVersion);
   if (!destinationVersion) {
-    throw new Error("The destination hub model is unknown, so restore compatibility cannot be verified.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.unknownDestinationModel);
   }
   if (HUB_VERSION_RANK[destinationVersion] < HUB_VERSION_RANK[sourceVersion]) {
     throw new Error(
-      `This backup was created on a Sofabaton ${sourceVersion} hub and cannot be restored onto a Sofabaton ${destinationVersion} hub.`
+      TOOLS_CARD_STRINGS.decodedPayload.incompatibleModels(sourceVersion, destinationVersion)
     );
   }
 }
@@ -8599,7 +12265,7 @@ var SofabatonEditDetailView = class extends i4 {
       }
       const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
       if (!normalized) {
-        this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
         return;
       }
       if (normalized !== normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
@@ -8733,7 +12399,7 @@ var SofabatonEditDetailView = class extends i4 {
       if (target.kind === "device_ip") {
         const draft = this._editRenameDialogDraft.trim();
         if (draft && !IPV4_PATTERN.test(draft)) {
-          this._editRenameDialogError = "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.";
+          this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.ipv4Required;
           return;
         }
         this._commitEditBundleEdit(updateBundleDeviceIp(this.bundle, target.deviceId, draft));
@@ -8742,7 +12408,7 @@ var SofabatonEditDetailView = class extends i4 {
       }
       const next = sanitizeBundleName(this.bundle, this._editRenameDialogDraft);
       if (!next) {
-        this._editRenameDialogError = "Enter a name to continue.";
+        this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.enterName;
         return;
       }
       if (target.kind === "detail") {
@@ -9152,7 +12818,7 @@ var SofabatonEditDetailView = class extends i4 {
   }
   _renderDirtyChip() {
     if (this.mode === "live" || !this.dirty) return A;
-    return b2`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
+    return b2`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.backup.unsavedTooltip}>${TOOLS_CARD_STRINGS.backup.unsaved}</span>`;
   }
   _renderLiveSyncButton() {
     const S5 = TOOLS_CARD_STRINGS.activities;
@@ -9169,7 +12835,7 @@ var SofabatonEditDetailView = class extends i4 {
   _renderDetailRenameDeleteButtons(kind) {
     const managed = this._isManagedWifiLiveDevice();
     return b2`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${kind}`}>
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
       ${managed ? A : b2`
@@ -9188,16 +12854,14 @@ var SofabatonEditDetailView = class extends i4 {
       <div class="managed-wifi-lock">
         <div class="managed-wifi-lock-chip">
           <ha-icon icon="mdi:wifi-cog"></ha-icon>
-          <span>Managed by Wifi Commands</span>
+          <span>${TOOLS_CARD_STRINGS.backup.managedWifiTitle}</span>
         </div>
         <p class="managed-wifi-lock-copy">
-          This device was deployed from the <strong>Wifi Commands</strong> tab.
-          Its commands, power, input, and button assignments are configured
-          there — editing them here would be overwritten on the next sync.
+          ${TOOLS_CARD_STRINGS.backup.managedWifiIntro}
+          ${TOOLS_CARD_STRINGS.backup.managedWifiBody}
         </p>
         <p class="managed-wifi-lock-copy">
-          You can still rename it here; the new name stays in sync with your
-          Wifi Commands configuration.
+          ${TOOLS_CARD_STRINGS.backup.managedWifiRename}
         </p>
       </div>
     `;
@@ -9284,17 +12948,17 @@ var SofabatonEditDetailView = class extends i4 {
     }
     const hasNetworkSection = this.entityId != null && this.bundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "") : false;
     return [
-      { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
-      ...hasNetworkSection ? [{ id: "network", icon: "mdi:lan-connect", label: "Network" }] : [],
-      { id: "commands", icon: "mdi:format-list-bulleted", label: "Commands" },
-      { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" }
+      { id: "power", icon: "mdi:power-plug-outline", label: TOOLS_CARD_STRINGS.backup.detailPower },
+      ...hasNetworkSection ? [{ id: "network", icon: "mdi:lan-connect", label: TOOLS_CARD_STRINGS.backup.detailNetwork }] : [],
+      { id: "commands", icon: "mdi:format-list-bulleted", label: TOOLS_CARD_STRINGS.backup.detailCommands },
+      { id: "bindings", icon: "mdi:gesture-tap-button", label: TOOLS_CARD_STRINGS.backup.detailButtons }
     ];
   }
   _renderEditDetailSectionNav(items) {
     if (items.length <= 1) return A;
     const activeId = items.some((item) => item.id === this._editDetailActiveSection) ? this._editDetailActiveSection : items[0].id;
     return b2`
-      <div class="detail-section-nav" role="tablist" aria-label="Detail sections">
+      <div class="detail-section-nav" role="tablist" aria-label=${TOOLS_CARD_STRINGS.backup.detailSectionsAria}>
         ${items.map((item) => b2`
           <button
             class=${`detail-section-nav-btn${item.id === activeId ? " active" : ""}`}
@@ -9482,7 +13146,7 @@ var SofabatonEditDetailView = class extends i4 {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.buttonName}</div>
-              <div class="quick-access-chip">button</div>
+              <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.buttonChip}</div>
             </div>
             <div class="quick-access-meta">${item.shortPressLabel}</div>
             ${item.longPress ? b2`<div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.bindingLongPressMeta(item.longPress.label)}</div>` : A}
@@ -9491,7 +13155,7 @@ var SofabatonEditDetailView = class extends i4 {
             <button
               class="icon-btn"
               @click=${() => this._openEditBindingDialog(kind, item.buttonId)}
-              aria-label="Edit binding"
+              aria-label=${TOOLS_CARD_STRINGS.backup.editBindingAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -9524,9 +13188,9 @@ var SofabatonEditDetailView = class extends i4 {
     return b2`
       <div class="quick-access-section" data-edit-section="network">
         <div class="quick-access-head">
-          <div class="quick-access-title">Network</div>
+          <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailNetwork}</div>
           <div class="quick-access-sub">
-            The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).
+            ${TOOLS_CARD_STRINGS.backup.networkDescription}
           </div>
         </div>
         <div class="quick-access-list">
@@ -9535,16 +13199,16 @@ var SofabatonEditDetailView = class extends i4 {
               <div class="quick-access-row quick-access-row--no-drag">
                 <div class="quick-access-main">
                   <div class="quick-access-label-row">
-                    <div class="quick-access-label">${ip ?? "(not set)"}</div>
-                    <div class="quick-access-chip">ip</div>
+                    <div class="quick-access-label">${ip ?? TOOLS_CARD_STRINGS.backup.hubNameNotSet}</div>
+                    <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.ipChip}</div>
                   </div>
-                  <div class="quick-access-meta">IPv4 dotted-decimal address</div>
+                  <div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.ipv4Description}</div>
                 </div>
                 <div class="quick-access-actions">
                   <button
                     class="icon-btn"
                     @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label="Edit IP address"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editIpAria}
                   >
                     <ha-icon icon="mdi:pencil"></ha-icon>
                   </button>
@@ -9562,9 +13226,9 @@ var SofabatonEditDetailView = class extends i4 {
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">Commands</div>
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailCommands}</div>
             <div class="quick-access-sub">
-              ${this.mode === "live" ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+              ${this.mode === "live" ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
             </div>
           </div>
           ${this.mode === "live" ? b2`
@@ -9578,7 +13242,7 @@ var SofabatonEditDetailView = class extends i4 {
                       icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
                       class=${this._addCommandPreparing ? "sb-spin" : ""}
                     ></ha-icon>
-                    <span>Add command</span>
+                    <span>${TOOLS_CARD_STRINGS.backup.addCommand}</span>
                   </button>
                 </div>
               ` : A}
@@ -9595,7 +13259,7 @@ var SofabatonEditDetailView = class extends i4 {
                   ${items.map((item) => this._renderDeviceCommandRow(item))}
                 </div>
               </div>
-            ` : b2`<div class="quick-access-empty">This Device does not currently have any commands.</div>`}
+            ` : b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noDeviceCommands}</div>`}
       </div>
     `;
   }
@@ -9607,17 +13271,17 @@ var SofabatonEditDetailView = class extends i4 {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${pendingAdd ? "new command" : "command"}</div>
+              <div class="quick-access-chip">${pendingAdd ? TOOLS_CARD_STRINGS.backup.newCommandChip : TOOLS_CARD_STRINGS.backup.commandChip}</div>
             </div>
             <div class="quick-access-meta">
-              Command ID ${item.commandId}
+              ${TOOLS_CARD_STRINGS.backup.commandId} ${item.commandId}
             </div>
           </div>
           <div class="quick-access-actions">
             <button
               class="icon-btn"
               @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-              aria-label="Rename command"
+              aria-label=${TOOLS_CARD_STRINGS.backup.renameCommandAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -9625,8 +13289,8 @@ var SofabatonEditDetailView = class extends i4 {
                   <button
                     class="icon-btn"
                     @click=${() => this._openCommandPayloadDialog(item.commandId)}
-                    aria-label="Edit payload"
-                    title="Edit payload"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                   >
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
@@ -9636,8 +13300,8 @@ var SofabatonEditDetailView = class extends i4 {
                     class="icon-btn"
                     @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
                     ?disabled=${this._payloadFetchingCommandId != null}
-                    aria-label="Edit payload"
-                    title="Fetch and edit this command's payload"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.fetchEditCommandAria}
                   >
                     <ha-icon
                       icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
@@ -9706,7 +13370,7 @@ var SofabatonEditDetailView = class extends i4 {
       return TOOLS_CARD_STRINGS.backup.macroStepsCount(summary?.commandStepCount ?? 0);
     }
     const device = (this.bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
-    return String(device?.device?.name || "").trim() || `Device ${item.deviceId ?? "?"}`;
+    return String(device?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(item.deviceId ?? "?");
   }
   _renderActivityQuickAccessRow(item) {
     return b2`
@@ -9729,14 +13393,14 @@ var SofabatonEditDetailView = class extends i4 {
               <button
                 class="icon-btn"
                 @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, -1)}
-                aria-label="Move up"
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveUpAria}
               >
                 <ha-icon icon="mdi:chevron-up"></ha-icon>
               </button>
               <button
                 class="icon-btn"
                 @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, 1)}
-                aria-label="Move down"
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveDownAria}
               >
                 <ha-icon icon="mdi:chevron-down"></ha-icon>
               </button>
@@ -9818,8 +13482,8 @@ var SofabatonEditDetailView = class extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>Save</button>
+              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -9843,15 +13507,15 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog medium" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">${this._payloadDialogAddMode ? "Add Command" : "Edit Payload"}</div>
-              ${deviceClass ? b2`<span class="payload-class-badge" title="Device class">${deviceClass}</span>` : A}
+              <div class="dialog-title">${this._payloadDialogAddMode ? TOOLS_CARD_STRINGS.backup.addCommandTitle : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
+              ${deviceClass ? b2`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>` : A}
             </div>
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${this._payloadDialogAddMode ? b2`
                   <label class="decoded-field">
-                    <span class="decoded-field-label">Name</span>
+                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
                     <input
                       class="decoded-field-input"
                       type="text"
@@ -9861,7 +13525,7 @@ var SofabatonEditDetailView = class extends i4 {
                       @input=${this._handleAddCommandNameInput}
                       @change=${this._handleAddCommandNameInput}
                     />
-                    <span class="decoded-field-helper">Shown on the remote and in every command picker.</span>
+                    <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
                   </label>
                 ` : A}
             ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._renderRawPayloadForm()}
@@ -9869,7 +13533,7 @@ var SofabatonEditDetailView = class extends i4 {
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
-                      ${this.mode === "live" ? b2`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.` : b2`Verify a changed payload before trusting it: <strong>Test</strong> plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                      ${this.mode === "live" ? TOOLS_CARD_STRINGS.backup.verifyPayloadLive : TOOLS_CARD_STRINGS.backup.verifyPayloadBackup}
                     </span>
                   </div>
                 ` : A}
@@ -9877,7 +13541,7 @@ var SofabatonEditDetailView = class extends i4 {
                   <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
                     <ha-icon icon=${this._payloadDialogTestStatus === "success" ? "mdi:check-circle-outline" : this._payloadDialogTestStatus === "error" ? "mdi:alert-circle-outline" : "mdi:progress-clock"}></ha-icon>
                     <span>
-                      ${this._payloadDialogTestStatus === "testing" ? "Sending to the hub\u2026" : this._payloadDialogTestStatus === "success" ? "Sent to the hub for one-shot playback." : this._payloadDialogTestError || "Test failed."}
+                      ${this._payloadDialogTestStatus === "testing" ? TOOLS_CARD_STRINGS.backup.sendingToHub : this._payloadDialogTestStatus === "success" ? TOOLS_CARD_STRINGS.backup.sentToHub : this._payloadDialogTestError || TOOLS_CARD_STRINGS.backup.testFailed}
                     </span>
                   </div>
                 ` : A}
@@ -9892,11 +13556,11 @@ var SofabatonEditDetailView = class extends i4 {
                       @click=${() => void this._runLivePayloadTest()}
                     >
                       <ha-icon icon="mdi:flash-outline"></ha-icon>
-                      <span>Test</span>
+                      <span>${TOOLS_CARD_STRINGS.backup.test}</span>
                     </button>
                   ` : A}
-              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>Save</button>
+              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -9907,14 +13571,13 @@ var SofabatonEditDetailView = class extends i4 {
     return b2`
       <div class="decoded-form">
         <div class="decoded-form-head">
-          <div class="decoded-form-title">Raw payload</div>
+          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
           <div class="decoded-form-sub">
-            No structured editor exists for this device class; the bytes below
-            are replayed to the hub verbatim on restore.
+            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
           </div>
         </div>
         <label class="decoded-field">
-          <span class="decoded-field-label">Payload (hex bytes)</span>
+          <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
           <textarea
             class="decoded-field-input decoded-field-input--multiline"
             rows="6"
@@ -9924,7 +13587,7 @@ var SofabatonEditDetailView = class extends i4 {
             @change=${this._handleRawPayloadInput}
           ></textarea>
           <span class="decoded-field-helper">
-            Byte pairs like "0a 4f 22" &mdash; whitespace and 0x prefixes are tolerated.
+            ${TOOLS_CARD_STRINGS.backup.payloadHexHelper}
           </span>
         </label>
       </div>
@@ -9975,19 +13638,20 @@ var SofabatonEditDetailView = class extends i4 {
   }
   _editRenameDialogLabel() {
     const target = this._editRenameDialogTarget;
-    if (!target) return "Rename";
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    if (!target) return S5.rename;
     if (target.kind === "detail") {
-      return target.entityKind === "activity" ? "Rename Activity" : "Rename Device";
+      return target.entityKind === "activity" ? S5.renameActivity : S5.renameDevice;
     }
-    if (target.kind === "macro") return "Rename Macro";
-    if (target.kind === "favorite") return "Rename Favorite";
-    if (target.kind === "device_ip") return "Edit IP address";
-    if (target.kind === "hub_name") return "Rename Hub";
-    return "Rename Command";
+    if (target.kind === "macro") return S5.renameMacro;
+    if (target.kind === "favorite") return S5.renameFavorite;
+    if (target.kind === "device_ip") return S5.editIpAria;
+    if (target.kind === "hub_name") return S5.renameDialogTitle;
+    return S5.renameCommand;
   }
   /** Per-target label & max length used by the dialog's primary text input. */
   _editRenameFieldLabel() {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
+    return this._editRenameDialogTarget?.kind === "device_ip" ? TOOLS_CARD_STRINGS.backup.ipAddress : TOOLS_CARD_STRINGS.backup.name;
   }
   _editRenameFieldMaxLength() {
     return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
@@ -10100,7 +13764,7 @@ var SofabatonEditDetailView = class extends i4 {
     try {
       const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
       if (!fetched || !String(fetched.dataHex || "").trim()) {
-        this._payloadFetchError = "The hub returned no payload for this command.";
+        this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noPayloadReturned;
         return;
       }
       this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
@@ -10157,7 +13821,7 @@ var SofabatonEditDetailView = class extends i4 {
     }
     const existing = deviceCommandItems(this.bundle, deviceId);
     if (!existing.length) {
-      this._payloadFetchError = "This device has no commands to use as a template \u2014 add its first command with the Sofabaton app.";
+      this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noTemplateCommand;
       return;
     }
     if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
@@ -10203,7 +13867,7 @@ var SofabatonEditDetailView = class extends i4 {
     if (!this.bundle) return;
     const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
     if (!name) {
-      this._payloadDialogError = "Enter a name for the new command.";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.newCommandNameRequired;
       return;
     }
     let restoreData;
@@ -10217,7 +13881,7 @@ var SofabatonEditDetailView = class extends i4 {
       if (snapshot.className === "ir") {
         const descriptor = String(fields["descriptor"] ?? "").trim();
         if (!descriptor.startsWith("P:")) {
-          this._payloadDialogError = "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).";
+          this._payloadDialogError = TOOLS_CARD_STRINGS.backup.descriptiveIrRequired;
           return;
         }
       }
@@ -10233,14 +13897,14 @@ var SofabatonEditDetailView = class extends i4 {
     } else {
       const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
       if (!normalized) {
-        this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
         return;
       }
       restoreData = { transport: "hub_code_record", data_hex: normalized };
     }
     const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
     if (newId == null) {
-      this._payloadDialogError = "This device has no free command slot left.";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.noFreeCommandSlot;
       return;
     }
     this._commitEditBundleEdit(
@@ -10291,7 +13955,7 @@ var SofabatonEditDetailView = class extends i4 {
     }
     const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
     if (!normalized) {
-      this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
       return;
     }
     if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
@@ -10308,7 +13972,7 @@ var SofabatonEditDetailView = class extends i4 {
     const value = this._payloadDialogDecodedSnapshot ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim() : String(this._payloadDialogRawDraft ?? "").trim();
     if (!value) {
       this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = "Nothing to test yet.";
+      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.nothingToTest;
       return;
     }
     this._payloadDialogTestStatus = "testing";
@@ -10382,7 +14046,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._confirmDeleteLabel = label;
   }
   _deleteConfirmTitle(target, label) {
-    const name = label || "this item";
+    const name = label || TOOLS_CARD_STRINGS.backup.thisItem;
     switch (target.kind) {
       case "activity":
         return TOOLS_CARD_STRINGS.backup.deleteActivityTitle(name);
@@ -11057,9 +14721,9 @@ var SofabatonEditDetailView = class extends i4 {
             <div class="quick-access-section">
               <div class="quick-access-head">
                 <div class="quick-access-head-main">
-                  <div class="quick-access-title">Steps</div>
+                  <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.steps}</div>
                   <div class="quick-access-sub">
-                    ${this._haSortableReady ? "Drag to reorder. Each step plays a command; set the wait that follows it on the right." : "Each step plays a command; set the wait that follows it on the right."}
+                    ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
                   </div>
                 </div>
                 <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
@@ -11524,11 +15188,14 @@ if (!customElements.get("sofabaton-edit-detail-view")) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
-var BACKUP_SECTION_ITEMS = [
-  { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
-  { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
-  { id: "restore", icon: "mdi:database-import-outline", label: "Restore" }
-];
+function backupSectionItems() {
+  const S5 = TOOLS_CARD_STRINGS.backup;
+  return [
+    { id: "make", icon: "mdi:content-save-move-outline", label: S5.sectionMake },
+    { id: "edit", icon: "mdi:pencil-box-outline", label: S5.sectionEdit },
+    { id: "restore", icon: "mdi:database-import-outline", label: S5.sectionRestore }
+  ];
+}
 var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
   constructor() {
     super(...arguments);
@@ -11655,7 +15322,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       if (!this._editBundle) return;
       const next = sanitizeBundleName(this._editBundle, this._hubRenameDraft);
       if (!next) {
-        this._hubRenameError = "Enter a name to continue.";
+        this._hubRenameError = TOOLS_CARD_STRINGS.backup.enterName;
         return;
       }
       this._commitEditBundleEdit(renameBundleHub(this._editBundle, next));
@@ -11684,7 +15351,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
         return;
       }
       if (!operationId) {
-        this._editError = "Failed to prepare edited backup for download.";
+        this._editError = TOOLS_CARD_STRINGS.backup.failedPrepareDownload;
         return;
       }
       const path = `/api/sofabaton_x1s/backup/download/${encodeURIComponent(operationId)}`;
@@ -11851,7 +15518,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
   }
   render() {
     if (this.loading) {
-      return b2`<div class="tab-panel"><div class="state">Loading backup tools…</div></div>`;
+      return b2`<div class="tab-panel"><div class="state">${TOOLS_CARD_STRINGS.backup.loading}</div></div>`;
     }
     if (this.error) {
       return b2`<div class="tab-panel"><div class="state error">${this.error}</div></div>`;
@@ -11888,7 +15555,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     return b2`
       <div class="tab-panel">
         ${renderSecondaryTabShell({
-      items: BACKUP_SECTION_ITEMS,
+      items: backupSectionItems(),
       selectedId: this.selectedSection,
       onSelect: (section) => this.setSelectedSection(section),
       connected: true,
@@ -12053,7 +15720,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
           ${TOOLS_CARD_STRINGS.backup.editLoadPrompt}
           ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.reorderHint : ""}
         </div>
-        <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
+        <div class="edit-hub-name-row" title=${TOOLS_CARD_STRINGS.backup.hubNameRestoreOnlyAria}>
           <span class="edit-hub-name-label">${TOOLS_CARD_STRINGS.backup.hubName}</span>
           <span class="edit-hub-name-value">${hubName || TOOLS_CARD_STRINGS.backup.hubNameNotSet}</span>
           <button
@@ -12159,7 +15826,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       <div class="modal-backdrop" @click=${this._closeHubRenameDialog}>
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Rename Hub</div>
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.backup.renameDialogTitle}</div>
             <button class="dialog-close" @click=${this._closeHubRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
@@ -12199,8 +15866,8 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._hubRenameError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeHubRenameDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyHubRename}>Save</button>
+              <button class="dialog-btn" @click=${this._closeHubRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyHubRename}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -12246,16 +15913,16 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       contentClassName: "restore-body",
       content: b2`
             <div class="backup-drawer-sub">
-              ${isRunning ? "The hub is restoring your backup." : isSuccess ? "Your restore has completed." : "Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on."}
+              ${isRunning ? TOOLS_CARD_STRINGS.backup.restoreRunningSubtitle : isSuccess ? TOOLS_CARD_STRINGS.backup.restoreFinishedSubtitle : TOOLS_CARD_STRINGS.backup.restoreChooseSubtitle}
             </div>
             ${this._restoreError ? this._renderStatus("error", "mdi:alert-circle-outline", this._restoreError) : A}
             ${isRunning && this._restoreProgress ? this._renderProgressCard(this._restoreProgress, "restore") : isSuccess ? b2`
                   <div class="backup-complete-card">
                     <div class="backup-complete-icon"><ha-icon icon="mdi:check-decagram-outline"></ha-icon></div>
-                    <div class="backup-complete-title">Restore completed</div>
-                    <div class="backup-complete-sub">The selected Activities and Devices were restored to the hub.</div>
+                    <div class="backup-complete-title">${TOOLS_CARD_STRINGS.backup.restoreCompletedTitle}</div>
+                    <div class="backup-complete-sub">${TOOLS_CARD_STRINGS.backup.restoreCompletedSubtitle}</div>
                     <div class="action-row">
-                      <button class="primary-btn" @click=${() => void this._completeRestoreResult()}>Complete</button>
+                      <button class="primary-btn" @click=${() => void this._completeRestoreResult()}>${TOOLS_CARD_STRINGS.backup.complete}</button>
                     </div>
                   </div>
                 ` : A}
@@ -12264,17 +15931,17 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
               <div class="restore-config-view">
                 <div class="backup-devices-head">
                   <div class="backup-devices-head-main">
-                    <div class="backup-section-title">Items to restore</div>
-                    <div class="backup-selected-count">${totalRestoreSelected} selected</div>
+                    <div class="backup-section-title">${TOOLS_CARD_STRINGS.backup.itemsToRestore}</div>
+                    <div class="backup-selected-count">${TOOLS_CARD_STRINGS.backup.selectedCount(totalRestoreSelected)}</div>
                   </div>
                   <button class="backup-link-btn" ?disabled=${this._restoreLocked()} @click=${allRestoreSelected ? this._clearRestoreSelection : this._selectAllRestoreItems}>
-                    ${allRestoreSelected ? "Deselect all" : "Select all"}
+                    ${allRestoreSelected ? TOOLS_CARD_STRINGS.backup.deselectAll : TOOLS_CARD_STRINGS.backup.selectAll}
                   </button>
                 </div>
                 <div class="selection-card">
                   <div class="selection-list">
                     ${activityOptions.length ? b2`
-                        <div class="selection-group-header">Activities</div>
+                        <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.activities}</div>
                         ${activityOptions.map((activity) => {
         const forcedActivity = restoreSelection.forcedActivityIds.includes(activity.id);
         return b2`
@@ -12293,13 +15960,13 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
                             <span class="selection-main">
                               <span class="selection-label">${activity.label}</span>
                             </span>
-                            ${activity.meta ? b2`<span class="selection-meta">${forcedActivity ? `${activity.meta} \xB7 linked` : activity.meta}</span>` : forcedActivity ? b2`<span class="selection-meta">linked</span>` : A}
+                            ${activity.meta ? b2`<span class="selection-meta">${forcedActivity ? `${activity.meta} \xB7 ${TOOLS_CARD_STRINGS.backup.linked}` : activity.meta}</span>` : forcedActivity ? b2`<span class="selection-meta">${TOOLS_CARD_STRINGS.backup.linked}</span>` : A}
                           </div>
                         `;
       })}
-                      ` : b2`<div class="selection-empty">This backup file has no activities.</div>`}
+                      ` : b2`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noActivitiesInFile}</div>`}
                     ${deviceOptions.length ? b2`
-                        <div class="selection-group-header">Devices</div>
+                        <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.devices}</div>
                         ${deviceOptions.map((device) => {
         const forced = restoreSelection.forcedDeviceIds.includes(device.id);
         return b2`
@@ -12318,11 +15985,11 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
                               <span class="selection-main">
                                 <span class="selection-label">${device.label}</span>
                               </span>
-                              ${device.meta ? b2`<span class="selection-meta">${forced ? `${device.meta} \xB7 linked` : device.meta}</span>` : A}
+                              ${device.meta ? b2`<span class="selection-meta">${forced ? `${device.meta} \xB7 ${TOOLS_CARD_STRINGS.backup.linked}` : device.meta}</span>` : A}
                             </div>
                           `;
       })}
-                      ` : b2`<div class="selection-empty">This backup file has no devices.</div>`}
+                      ` : b2`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesInFile}</div>`}
                   </div>
                 </div>
                 <div class="backup-scope-group">
@@ -12341,18 +16008,18 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
         }
       })}
                     <span class="selection-main">
-                      <span class="selection-label">Erase existing Devices and Activities</span>
+                      <span class="selection-label">${TOOLS_CARD_STRINGS.backup.eraseExisting}</span>
                     </span>
                   </div>
                 </div>
                 <div class="restore-action-row">
-                  <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
-                  <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                  <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>${TOOLS_CARD_STRINGS.backup.startRestore}</button>
+                  <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
                 </div>
               </div>
             ` : !isRunning && !isSuccess ? b2`
               <div class="restore-action-row">
-                <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
               </div>
             ` : A}
         `
@@ -12479,7 +16146,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     return selectedDeviceIds.length === 0 && this._restoreActivityIds.length === 0;
   }
   api() {
-    if (!this.hass) throw new Error("Home Assistant is not available");
+    if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
   async _runBackup() {
@@ -12489,7 +16156,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._discardEditSession();
     const deviceIds = this._backupScope === "whole_hub" ? null : this._backupDeviceIds;
     const entryId = this.hub.entry_id;
-    this.setHubCommandBusy?.(true, "Starting backup\u2026", entryId);
+    this.setHubCommandBusy?.(true, TOOLS_CARD_STRINGS.backup.startingBackup, entryId);
     try {
       const start = await this.api().startBackupExport(entryId, deviceIds);
       await this.refreshControlPanelState?.();
@@ -12517,7 +16184,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._restoreProgress = null;
     this._discardEditSession();
     const entryId = this.hub.entry_id;
-    this.setHubCommandBusy?.(true, "Starting restore\u2026", entryId);
+    this.setHubCommandBusy?.(true, TOOLS_CARD_STRINGS.backup.startingRestore, entryId);
     try {
       const start = await this.api().startBackupRestore(entryId, filtered, this._restoreMode);
       await this.refreshControlPanelState?.();
@@ -12537,9 +16204,9 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
         if (opId) this._acknowledgedOpIds.add(opId);
         if (!staleHub) {
           if (kind === "backup") {
-            this._backupError = String(payload.error || payload.message || "Backup failed.");
+            this._backupError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.backupFailed);
           } else {
-            this._restoreError = String(payload.error || payload.message || "Restore failed.");
+            this._restoreError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.restoreFailed);
           }
         }
         this.setHubCommandBusy?.(false, null, entryId);
@@ -12555,7 +16222,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
           } catch {
           }
         } else if (payload.status === "failed") {
-          if (!staleHub) this._backupError = String(payload.error || payload.message || "Backup failed.");
+          if (!staleHub) this._backupError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.backupFailed);
           this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
@@ -12565,14 +16232,14 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       } else {
         if (!staleHub) this._restoreProgress = payload;
         if (payload.status === "success") {
-          if (!staleHub) this._restoreSuccess = "Restore completed.";
+          if (!staleHub) this._restoreSuccess = TOOLS_CARD_STRINGS.backup.restoreCompletedStatus;
           this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
           }
         } else if (payload.status === "failed") {
-          if (!staleHub) this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          if (!staleHub) this._restoreError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.restoreFailed);
           this.setHubCommandBusy?.(false, null, entryId);
         }
       }
@@ -12651,7 +16318,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
   _backupResultSummary(bundle) {
     const activityCount = Array.isArray(bundle?.activities) ? bundle.activities.length : 0;
     const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : 0;
-    return `${activityCount} Activities and ${deviceCount} Devices backed up`;
+    return TOOLS_CARD_STRINGS.backup.backupResultSummary(activityCount, deviceCount);
   }
   async _completeBackupResult() {
     const operationId = String(this._backupProgress?.operation_id || "").trim();
@@ -12732,15 +16399,15 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       const restoreSnapshot = restoreId && this._acknowledgedOpIds.has(restoreId) ? null : rawRestore;
       this._backupProgress = backupSnapshot;
       this._restoreProgress = restoreSnapshot;
-      this._backupError = String(this._backupProgress?.status || "") === "failed" ? String(this._backupProgress?.error || this._backupProgress?.message || "Backup failed.") : null;
-      this._restoreError = String(this._restoreProgress?.status || "") === "failed" ? String(this._restoreProgress?.error || this._restoreProgress?.message || "Restore failed.") : null;
-      this._restoreSuccess = String(this._restoreProgress?.status || "") === "success" ? "Restore completed." : null;
+      this._backupError = String(this._backupProgress?.status || "") === "failed" ? String(this._backupProgress?.error || this._backupProgress?.message || TOOLS_CARD_STRINGS.backup.backupFailed) : null;
+      this._restoreError = String(this._restoreProgress?.status || "") === "failed" ? String(this._restoreProgress?.error || this._restoreProgress?.message || TOOLS_CARD_STRINGS.backup.restoreFailed) : null;
+      this._restoreSuccess = String(this._restoreProgress?.status || "") === "success" ? TOOLS_CARD_STRINGS.backup.restoreCompletedStatus : null;
       const active = state?.active_operation || null;
       if (active && String(active.kind || "") === "backup_export" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress\u2026"), entryId);
+        this.setHubCommandBusy?.(true, String(active.message || TOOLS_CARD_STRINGS.backup.backupInProgress), entryId);
         await this._subscribeToOperation(active.operation_id, "backup", entryId);
       } else if (active && String(active.kind || "") === "backup_restore" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress\u2026"), entryId);
+        this.setHubCommandBusy?.(true, String(active.message || TOOLS_CARD_STRINGS.backup.restoreInProgress), entryId);
         await this._subscribeToOperation(active.operation_id, "restore", entryId);
       } else {
         this.setHubCommandBusy?.(false, null, entryId);
@@ -12923,20 +16590,27 @@ var HARD_BUTTON_ID_MAP = {
 };
 var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 var DEFAULT_ACTION = { action: "perform-action" };
-var WIFI_SECTION_ROW = [
-  { id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.wifiCommandsTabLabel, icon: "mdi:wifi" },
-  { id: "hub_events", label: TOOLS_CARD_STRINGS.wifiCommands.eventsTabLabel, icon: "mdi:lightning-bolt-outline" }
-];
-var HUB_EVENT_ROWS = [
-  { key: "power_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff, icon: "mdi:power" },
-  { key: "redundant_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff, icon: "mdi:power-off" }
-];
-var HUB_EVENT_MODAL_TITLES = {
-  power_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff,
-  redundant_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff,
-  activity_start: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStart,
-  activity_stop: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStopModalTitle
-};
+function wifiSectionRows() {
+  return [
+    { id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.wifiCommandsTabLabel, icon: "mdi:wifi" },
+    { id: "hub_events", label: TOOLS_CARD_STRINGS.wifiCommands.eventsTabLabel, icon: "mdi:lightning-bolt-outline" }
+  ];
+}
+function hubEventRows() {
+  return [
+    { key: "power_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff, icon: "mdi:power" },
+    { key: "redundant_off", label: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff, icon: "mdi:power-off" }
+  ];
+}
+function hubEventModalTitle(key) {
+  const titles = {
+    power_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventPowerOff,
+    redundant_off: TOOLS_CARD_STRINGS.wifiCommands.hubEventRedundantOff,
+    activity_start: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStart,
+    activity_stop: TOOLS_CARD_STRINGS.wifiCommands.hubEventActivityStopModalTitle
+  };
+  return titles[key];
+}
 var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   constructor() {
     super(...arguments);
@@ -13009,7 +16683,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         const saved = await this._writeHubEventAction(target, this._normalizeCommandAction(this._hubEventDraft));
         if (saved) this._closeHubEventEditor();
       } catch (error) {
-        this._hubEventSaveError = String(error?.message || "Unable to save Action");
+        this._hubEventSaveError = String(
+          error?.message || TOOLS_CARD_STRINGS.wifiCommands.unableSaveAction
+        );
       }
     };
     this._selectSection = (id) => {
@@ -13202,9 +16878,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
   }
   render() {
-    if (this.loading) return b2`<div class="state">Loading...</div>`;
+    if (this.loading) return b2`<div class="state">${TOOLS_CARD_STRINGS.common.loading}</div>`;
     if (this.error) return b2`<div class="state error">${this.error}</div>`;
-    if (!this.hub) return b2`<div class="state">No hubs found.</div>`;
+    if (!this.hub) return b2`<div class="state">${TOOLS_CARD_STRINGS.common.noHubsFound}</div>`;
     if (this.blockedTitle && this.blockedMessage) {
       return b2`
         <div class="tab-panel">
@@ -13220,7 +16896,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         <div class="tab-panel">
           ${renderSecondaryTabShell({
         connected: true,
-        items: [...WIFI_SECTION_ROW],
+        items: wifiSectionRows(),
         selectedId: "hub_events",
         onSelect: this._selectSection,
         shellClassName: "secondary-view-shell--edge",
@@ -13242,7 +16918,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         <div class="tab-panel">
           ${renderSecondaryTabShell({
         connected: true,
-        items: [...WIFI_SECTION_ROW],
+        items: wifiSectionRows(),
         selectedId: "wifi",
         onSelect: this._selectSection,
         shellClassName: "secondary-view-shell--edge",
@@ -13352,7 +17028,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
                   <div class="device-card-copy">
                     <div class="device-card-name">${device.device_name}</div>
-                    <div class="device-card-count">${Number(device.configured_slot_count || 0)} slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</div>
+                    <div class="device-card-count">${TOOLS_CARD_STRINGS.wifiCommands.configuredSlots(Number(device.configured_slot_count || 0))}</div>
                   </div>
                   <div class="device-card-meta">
                     <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
@@ -13362,7 +17038,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   </div>
                 </div>
                 <div class="device-card-actions">
-                  <button class="device-delete-btn" title="Delete Wifi Device" ?disabled=${this._hubCommandLocked() || device.device_key === this._deletingDeviceKey} @click=${(event) => this._promptDeleteDevice(device.device_key, event)}>
+                  <button class="device-delete-btn" title=${TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceAria} ?disabled=${this._hubCommandLocked() || device.device_key === this._deletingDeviceKey} @click=${(event) => this._promptDeleteDevice(device.device_key, event)}>
                     <ha-icon icon="mdi:trash-can-outline"></ha-icon>
                   </button>
                 </div>
@@ -13370,9 +17046,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
               </div>
             `)}
           </div>
-        ` : b2`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
+        ` : b2`<div class="empty-state-card">${TOOLS_CARD_STRINGS.wifiCommands.emptyDevices}</div>`}
         <div class="sticky-footer">
-          ${!canAdd ? b2`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : A}
+          ${!canAdd ? b2`<div class="wifi-max-devices-note">${TOOLS_CARD_STRINGS.wifiCommands.maximumDevices}</div>` : A}
         </div>
       </div>
     `;
@@ -13380,7 +17056,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _configuredCommandOptions() {
     return this._commandsList().map((command, idx) => ({ command, idx })).filter(({ command, idx }) => this._isCommandConfigured(command, idx)).map(({ command, idx }) => ({
       value: String(idx + 1),
-      label: String(command.name || "").trim() || `Command ${idx + 1}`
+      label: String(command.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1)
     }));
   }
   _devicePowerSelectorValue(kind) {
@@ -13403,7 +17079,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const value = this._devicePowerSelectorValue(kind);
     if (value === "__none__") return "";
     const option = this._configuredCommandOptions().find((item) => item.value === value);
-    return option?.label || `Command ${value}`;
+    return option?.label || TOOLS_CARD_STRINGS.common.commandFallback(value);
   }
   _devicePowerRowDefs() {
     return [
@@ -13653,7 +17329,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           </div>
           <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.hubEventsSubtitle}</div>
           <ul class="hub-event-lines">
-            ${HUB_EVENT_ROWS.map((row) => b2`
+            ${hubEventRows().map((row) => b2`
               <li class="hub-event-line">
                 <span class="hub-event-icon"><ha-icon icon=${row.icon}></ha-icon></span>
                 <span class="hub-event-text">
@@ -13717,7 +17393,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _hubEventEditorTitle(target) {
     if (target.kind === "hub") {
-      return HUB_EVENT_MODAL_TITLES[target.key] || "";
+      return hubEventModalTitle(target.key);
     }
     const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));
     const name = activity?.name || TOOLS_CARD_STRINGS.wifiCommands.activityEventFallbackName(String(target.id));
@@ -13780,7 +17456,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             ${this._useLegacyTextField() ? b2`
                   <ha-textfield
                     id="sb-new-device-name"
-                    .label=${"Device name"}
+                    .label=${TOOLS_CARD_STRINGS.wifiCommands.deviceName}
                     .maxLength=${20}
                     .value=${this._newDeviceName}
                     .disabled=${this._creatingDevice}
@@ -13809,7 +17485,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   <ha-input
                     id="sb-new-device-name"
                     type="text"
-                    .label=${"Device name"}
+                    .label=${TOOLS_CARD_STRINGS.wifiCommands.deviceName}
                     .maxlength=${20}
                     .value=${this._newDeviceName}
                     .disabled=${this._creatingDevice}
@@ -13907,7 +17583,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     return b2`
       <div class="slot-btn">
         <div class="slot-actions">
-          ${this._supportsPowerInputConfig() && command.is_power_on && command.is_power_off ? b2`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_on ? b2`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_off ? b2`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : A}
+          ${this._supportsPowerInputConfig() && command.is_power_on && command.is_power_off ? b2`<span class="slot-flag power-both" title=${TOOLS_CARD_STRINGS.wifiCommands.powerBothCommand}><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_on ? b2`<span class="slot-flag power-on" title=${TOOLS_CARD_STRINGS.wifiCommands.powerOnCommand}><ha-icon icon="mdi:power"></ha-icon></span>` : this._supportsPowerInputConfig() && command.is_power_off ? b2`<span class="slot-flag power-off" title=${TOOLS_CARD_STRINGS.wifiCommands.powerOffCommand}><ha-icon icon="mdi:power"></ha-icon></span>` : A}
           ${this._supportsPowerInputConfig() && this._hasInputActivity(command) ? b2`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>` : A}
           <button class="slot-clear" @click=${(event) => {
       event.stopPropagation();
@@ -13916,7 +17592,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         </div>
         <button class="slot-main" @click=${() => this._openCommandEditor(idx)}>
           <span class="slot-text-wrap">
-            <span class="slot-name">${String(command.name || "").trim() || `Command ${idx + 1}`}</span>
+            <span class="slot-name">${String(command.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1)}</span>
             <span class="slot-meta">
               ${command.add_as_favorite ? b2`<span class="slot-favorite"><ha-icon icon="mdi:heart"></ha-icon></span>` : A}
               ${command.hard_button ? b2`<span class="slot-meta-icon"><ha-icon icon=${this._commandSlotIcon(command.hard_button)} style=${this._commandSlotIconColor(command.hard_button) ? `color:${this._commandSlotIconColor(command.hard_button)}` : ""}></ha-icon></span>` : A}
@@ -13957,7 +17633,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           </div>
           <div class="dialog-body">
             <div class="dialog-note">
-              Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.
+            ${TOOLS_CARD_STRINGS.wifiCommands.commandSlotDescription}
             </div>
             <div class="config-block">
               <div class="config-group">
@@ -14063,7 +17739,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                 </button>
                 <ha-selector
                   .hass=${this.hass}
-                  .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "None" }, ...this._editorAvailableHardButtonOptions().map((option) => ({ value: option.value, label: option.label }))] } }}
+                  .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.wifiCommands.none }, ...this._editorAvailableHardButtonOptions().map((option) => ({ value: option.value, label: option.label }))] } }}
                   .label=${TOOLS_CARD_STRINGS.wifiCommands.physicalButtonAssignment}
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event) => this._handleHardButtonChanged(event)}
@@ -14333,7 +18009,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const deviceName = String(runningDevice.device_name || "").trim();
       return deviceName ? TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceNamed(deviceName) : TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback;
     }
-    return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress...";
+    return String(this.hubCommandBusyLabel || "").trim() || TOOLS_CARD_STRINGS.wifiCommands.hubCommandInProgress;
   }
   _runningWifiDevice() {
     const selectedDevice = this._selectedWifiDevice();
@@ -14356,7 +18032,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       status: "idle",
       current_step: 0,
       total_steps: 0,
-      message: "Idle",
+      message: TOOLS_CARD_STRINGS.wifiCommands.idle,
       commands_hash: "",
       managed_command_hashes: [],
       sync_needed: false
@@ -14380,7 +18056,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _commandSlotDefault(idx) {
     return {
-      name: `Command ${idx + 1}`,
+      name: TOOLS_CARD_STRINGS.common.commandFallback(idx + 1),
       add_as_favorite: true,
       hard_button: "",
       long_press_enabled: false,
@@ -14430,7 +18106,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const activities = validActivityIds ? rawActivities.filter((id) => validActivityIds.has(id)) : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
-        name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
+        name: this._sanitizeCommandName(
+          record.name ?? TOOLS_CARD_STRINGS.common.commandFallback(idx + 1)
+        ),
         add_as_favorite: addAsFavorite,
         hard_button: hardButton,
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
@@ -14508,7 +18186,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         status: String(result?.status || "idle"),
         current_step: Number(result?.current_step || 0),
         total_steps: Number(result?.total_steps || 0),
-        message: String(result?.message || "Idle"),
+        message: String(result?.message || TOOLS_CARD_STRINGS.wifiCommands.idle),
         commands_hash: String(result?.commands_hash || ""),
         managed_command_hashes: Array.isArray(result?.managed_command_hashes) ? result.managed_command_hashes.map((item) => String(item || "")).filter(Boolean) : [],
         sync_needed: Boolean(result?.sync_needed)
@@ -14524,7 +18202,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     } catch (_error) {
       this._syncState = {
         ...this._defaultSyncState(),
-        message: "Unable to load sync status"
+        message: TOOLS_CARD_STRINGS.wifiCommands.unableLoadSyncStatus
       };
     } finally {
       this._commandSyncLoading = false;
@@ -14631,13 +18309,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const entitySuffix = ids.length ? suffix(ids[0]) : "";
     return {
       service,
-      entities: ids.length ? ids.join(", ") : "No target entity",
+      entities: ids.length ? ids.join(", ") : TOOLS_CARD_STRINGS.wifiCommands.noTargetEntity,
       commandSummary: explicitService && actionSuffix && entitySuffix ? `${actionSuffix} ${entitySuffix}` : explicitService && actionSuffix ? actionSuffix : TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured
     };
   }
   _commandHasCustomAction(action) {
     const details = this._commandActionDetails(action);
-    return details.service !== "perform-action" || details.entities !== "No target entity";
+    return details.service !== "perform-action" || details.entities !== TOOLS_CARD_STRINGS.wifiCommands.noTargetEntity;
   }
   _commandSlotSummaryDetails(command) {
     const shortDetails = this._commandActionDetails(command.action);
@@ -14650,7 +18328,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const draft = slot || this._activeCommandDraft();
     if (!draft) return "";
     if (!String(draft.name ?? "").length || String(draft.name).startsWith(" ")) {
-      return "Command name must start with a non-space character.";
+      return TOOLS_CARD_STRINGS.wifiCommands.commandNameLeadingSpace;
     }
     return "";
   }
@@ -14688,11 +18366,11 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       label: `${title} - ${DEFAULT_KEY_LABELS[key]}`
     }));
     return [
-      ...group(["up", "down", "left", "right", "ok", "back", "home", "menu"], "Navigation"),
-      ...group(["volup", "voldn", "mute", "chup", "chdn"], "Transport"),
-      ...group(["play", "pause", "rew", "fwd", "guide", "dvr", "exit"], "Media"),
-      ...group(["a", "b", "c"], "ABC"),
-      ...group(["red", "green", "yellow", "blue"], "Color")
+      ...group(["up", "down", "left", "right", "ok", "back", "home", "menu"], TOOLS_CARD_STRINGS.wifiCommands.navigationGroup),
+      ...group(["volup", "voldn", "mute", "chup", "chdn"], TOOLS_CARD_STRINGS.wifiCommands.transportGroup),
+      ...group(["play", "pause", "rew", "fwd", "guide", "dvr", "exit"], TOOLS_CARD_STRINGS.wifiCommands.mediaGroup),
+      ...group(["a", "b", "c"], TOOLS_CARD_STRINGS.wifiCommands.abcGroup),
+      ...group(["red", "green", "yellow", "blue"], TOOLS_CARD_STRINGS.wifiCommands.colorGroup)
     ];
   }
   _editorAvailableHardButtonOptions() {
@@ -14729,25 +18407,35 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _activityName(activityId) {
     const match = this._editorActivities().find((activity) => String(activity.id) === String(activityId));
-    return match?.name || `Activity ${activityId}`;
+    return match?.name || TOOLS_CARD_STRINGS.common.activityFallback(activityId);
   }
   _inputFlagTitle(command) {
     const activityId = String(command.input_activity_id || "").trim();
-    return activityId ? `Input for ${this._activityName(activityId)}` : "Input command";
+    return activityId ? TOOLS_CARD_STRINGS.wifiCommands.inputFor(this._activityName(activityId)) : TOOLS_CARD_STRINGS.wifiCommands.inputCommand;
   }
   _isUnconfiguredCommand(command) {
     return !this._activitySelectionEnabled(command) && !command.is_power_on && !command.is_power_off && !this._hasInputActivity(command);
   }
   _commandSlotMetaLabel(command) {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
-    const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
+    const activitiesLabel = activityCount === 1 ? TOOLS_CARD_STRINGS.wifiCommands.activitySingular : TOOLS_CARD_STRINGS.wifiCommands.activityPlural;
     const assignmentEnabled = this._activitySelectionEnabled(command);
     const powerInput = this._supportsPowerInputConfig();
-    if (this._isUnconfiguredCommand(command)) return "Unconfigured command";
-    if (powerInput && !assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
-    if (powerInput && !assignmentEnabled && command.is_power_on) return "Power ON command";
-    if (powerInput && !assignmentEnabled && command.is_power_off) return "Power OFF command";
-    if (powerInput && !assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
+    if (this._isUnconfiguredCommand(command)) return TOOLS_CARD_STRINGS.wifiCommands.unconfiguredCommand;
+    if (powerInput && !assignmentEnabled && command.is_power_on && command.is_power_off) {
+      return TOOLS_CARD_STRINGS.wifiCommands.powerBothCommand;
+    }
+    if (powerInput && !assignmentEnabled && command.is_power_on) {
+      return TOOLS_CARD_STRINGS.wifiCommands.powerOnCommand;
+    }
+    if (powerInput && !assignmentEnabled && command.is_power_off) {
+      return TOOLS_CARD_STRINGS.wifiCommands.powerOffCommand;
+    }
+    if (powerInput && !assignmentEnabled && this._hasInputActivity(command)) {
+      return TOOLS_CARD_STRINGS.wifiCommands.inputFor(
+        this._activityName(command.input_activity_id)
+      );
+    }
     return `in ${activityCount} ${activitiesLabel}`;
   }
   _toggleFavoriteRow() {
@@ -14779,7 +18467,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     if (!activityId) return TOOLS_CARD_STRINGS.wifiCommands.activityInputHint;
     const replacement = this._inputActivityReplacementSlot(activityId);
     if (!replacement) return TOOLS_CARD_STRINGS.wifiCommands.activityInputHint;
-    const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
+    const name = String(replacement.slot.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(replacement.index + 1);
     return TOOLS_CARD_STRINGS.wifiCommands.activityInputReplaces(name, this._activityName(activityId));
   }
   _hardButtonConflictInfo(buttonId) {
@@ -14790,15 +18478,20 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     for (let idx = 0; idx < commands.length; idx += 1) {
       if (idx === activeIdx) continue;
       if (String(commands[idx].hard_button || "").trim() === buttonId) {
-        const name = String(commands[idx].name || "").trim() || `Command ${idx + 1}`;
-        return { deviceName: this._selectedWifiDevice()?.device_name || "this device", slotName: name, isSameDevice: true, deviceKey: currentDeviceKey };
+        const name = String(commands[idx].name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
+        return {
+          deviceName: this._selectedWifiDevice()?.device_name || TOOLS_CARD_STRINGS.wifiCommands.thisDevice,
+          slotName: name,
+          isSameDevice: true,
+          deviceKey: currentDeviceKey
+        };
       }
     }
     for (const device of this._wifiDevices) {
       if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
       for (let idx = 0; idx < device.commands.length; idx += 1) {
         if (String(device.commands[idx]?.hard_button || "").trim() === buttonId) {
-          const name = String(device.commands[idx]?.name || "").trim() || `Command ${idx + 1}`;
+          const name = String(device.commands[idx]?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
           return { deviceName: device.device_name, slotName: name, isSameDevice: false, deviceKey: device.device_key };
         }
       }
@@ -14811,8 +18504,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     if (!buttonId) return "";
     const conflict = this._hardButtonConflictInfo(buttonId);
     if (!conflict) return "";
-    if (conflict.isSameDevice) return `Replaces "${conflict.slotName}" on this button`;
-    return `Replaces "${conflict.slotName}" from ${conflict.deviceName}`;
+    if (conflict.isSameDevice) {
+      return TOOLS_CARD_STRINGS.wifiCommands.replacesOnButton(conflict.slotName);
+    }
+    return TOOLS_CARD_STRINGS.wifiCommands.replacesFromDevice(
+      conflict.slotName,
+      conflict.deviceName
+    );
   }
   _toggleLongPressRow() {
     const draft = this._activeCommandDraft();
@@ -14832,7 +18530,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _handleHardButtonChanged(event) {
     const rawValue = event.detail?.value ?? event.currentTarget?.value ?? "";
     const mapped = String(rawValue ?? "");
-    const hasButton = mapped !== "__none__" && mapped !== "None";
+    const hasButton = mapped !== "__none__" && mapped !== TOOLS_CARD_STRINGS.wifiCommands.none;
     const nextMapped = hasButton ? mapped : "";
     this._updateActiveCommandDraft({
       hard_button: nextMapped,
@@ -15855,7 +19553,7 @@ var SofabatonRefreshCacheButton = class extends i4 {
     }
   }
   _api() {
-    if (!this.hass) throw new Error("Home Assistant is not available");
+    if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
   async _subscribe(operationId) {
@@ -15871,7 +19569,7 @@ var SofabatonRefreshCacheButton = class extends i4 {
       }
       if (payload.status === "failed") {
         this._running = false;
-        this._error = String(payload.error || payload.message || "Cache refresh failed.");
+        this._error = String(payload.error || payload.message || TOOLS_CARD_STRINGS.errors.cacheRefreshFailed);
         this._message = "";
         this._teardown();
         return;
@@ -15994,7 +19692,7 @@ var SofabatonActivitiesTab = class extends i4 {
       return { dataHex, decoded: command.decoded ?? null };
     };
     this._testCommandPayload = async (hex) => {
-      if (!this.hub) throw new Error("No hub is selected.");
+      if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
       await this.api().playIrBlob(this.hub.entry_id, hex);
     };
     // ── Capture flow (§4.2) — sourced from the blob-free structural cache ──
@@ -16175,7 +19873,7 @@ var SofabatonActivitiesTab = class extends i4 {
     }
   }
   api() {
-    if (!this.hass) throw new Error("Home Assistant is not available");
+    if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
   _teardownProgressSubscription() {
@@ -16204,7 +19902,7 @@ var SofabatonActivitiesTab = class extends i4 {
       }
       if (payload.status === "failed") {
         this._teardownProgressSubscription();
-        this._syncError = String(payload.error || payload.message || "Sync failed.");
+        this._syncError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.errors.syncFailed);
         this._syncFailedAt = String(payload.failed_at || "");
         this._syncProgress = null;
         this._exitAfterSync = false;
@@ -16648,16 +20346,18 @@ function resolveLoadedToolsFrontendVersion() {
 }
 var LOADED_TOOLS_FRONTEND_VERSION = resolveLoadedToolsFrontendVersion();
 var TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
-var DOC_LINKS = {
-  wifi_commands: {
-    href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
-    label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands
-  },
-  backup: {
-    href: TOOLS_CARD_STRINGS.docs.backupUrl,
-    label: TOOLS_CARD_STRINGS.tabDocs.backup
-  }
-};
+function docLinks() {
+  return {
+    wifi_commands: {
+      href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
+      label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands
+    },
+    backup: {
+      href: TOOLS_CARD_STRINGS.docs.backupUrl,
+      label: TOOLS_CARD_STRINGS.tabDocs.backup
+    }
+  };
+}
 function logOnce() {
   const windowWithFlag = window;
   if (windowWithFlag[LOG_ONCE_KEY]) return;
@@ -16790,7 +20490,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._store.setPreferredHub(hub || null);
   }
   set hass(value) {
+    const languageChanged = setToolsCardLanguage(
+      value?.locale?.language ?? value?.language
+    );
     this._store.setHass(value);
+    if (languageChanged) this.requestUpdate();
   }
   // HA's hui-card sets `element.preview = true` when rendering inside the card
   // picker / editor preview. Render a compact branded summary instead of the
@@ -17056,20 +20760,20 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     const connected = hubConnected(this._snapshot.hass, hub);
     const proxyOn = proxyClientConnected(this._snapshot.hass, hub);
     return b2`
-      <div class="dock-pill-pair" role="group" aria-label="Connectivity">
-        <span class="dock-pill-half ${connected ? "dock-pill-half--hub-on" : "dock-pill-half--hub-off"}">HUB</span>
-        <span class="dock-pill-half ${proxyOn ? "dock-pill-half--app-on" : "dock-pill-half--app-off"}">APP</span>
+      <div class="dock-pill-pair" role="group" aria-label=${TOOLS_CARD_STRINGS.card.connectivityAria}>
+        <span class="dock-pill-half ${connected ? "dock-pill-half--hub-on" : "dock-pill-half--hub-off"}">${TOOLS_CARD_STRINGS.card.hubShort}</span>
+        <span class="dock-pill-half ${proxyOn ? "dock-pill-half--app-on" : "dock-pill-half--app-off"}">${TOOLS_CARD_STRINGS.card.appShort}</span>
       </div>
     `;
   }
   renderBrandLabel() {
-    const version = String(this._snapshot.toolsFrontendVersionExpected ?? this._snapshot.toolsFrontendVersionLoaded ?? "").trim() || "unknown";
-    return b2`<div class="card-brand">SOFABATON CONTROL PANEL - v${version}</div>`;
+    const version = String(this._snapshot.toolsFrontendVersionExpected ?? this._snapshot.toolsFrontendVersionLoaded ?? "").trim() || TOOLS_CARD_STRINGS.backend.unknownVersion;
+    return b2`<div class="card-brand">${TOOLS_CARD_STRINGS.card.brand(version)}</div>`;
   }
   renderBottomDock(hub) {
     const runtimeState = resolveRuntimeState(this._snapshot);
     const editorSyncPending = this._editorSyncPending && !runtimeState;
-    const docLink = runtimeState || editorSyncPending ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
+    const docLink = runtimeState || editorSyncPending ? null : docLinks()[this._snapshot.selectedTab] ?? null;
     const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
     const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
     const dockClass = runtimeState?.kind === "completion" ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}` : editorSyncPending ? "card-bottom-dock card-bottom-dock--dirty" : "card-bottom-dock";
@@ -17135,9 +20839,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     return latest;
   }
   _irFlashTitle(press) {
-    const device = press.deviceName?.trim() || "Wifi device";
-    const command = press.commandLabel?.trim() || "Wifi command";
-    return press.pressType === "long" ? `${device} \u2022 ${command} (long press)` : `${device} \u2022 ${command}`;
+    const device = press.deviceName?.trim() || TOOLS_CARD_STRINGS.card.wifiDeviceFallback;
+    const command = press.commandLabel?.trim() || TOOLS_CARD_STRINGS.card.wifiCommandFallback;
+    return press.pressType === "long" ? TOOLS_CARD_STRINGS.card.irLongPress(device, command) : TOOLS_CARD_STRINGS.card.irPress(device, command);
   }
   renderBackendUnavailable(height) {
     return b2`
@@ -17146,9 +20850,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
-              <div class="backend-unavailable-title">Backend not available</div>
+              <div class="backend-unavailable-title">${TOOLS_CARD_STRINGS.backend.unavailableTitle}</div>
               <div class="backend-unavailable-copy">
-                Waiting for the Sofabaton X integration to finish starting…
+                ${TOOLS_CARD_STRINGS.backend.unavailableCopy}
               </div>
             </div>
           </div>
@@ -17164,19 +20868,18 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
             <div class="version-mismatch-state">
               <div class="version-mismatch-header">
                 <div class="version-mismatch-icon"><ha-icon icon="mdi:alert-circle"></ha-icon></div>
-                <div class="version-mismatch-title">Refresh required to update the Sofabaton Control Panel card</div>
+                <div class="version-mismatch-title">${TOOLS_CARD_STRINGS.backend.versionMismatchTitle}</div>
               </div>
               <div class="version-mismatch-copy">
-                This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant.
-                Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.
+                ${TOOLS_CARD_STRINGS.backend.versionMismatchCopy}
               </div>
               <div class="version-mismatch-versions">
                 <div class="version-mismatch-row">
-                  <div class="version-mismatch-label">Backend expects</div>
-                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionExpected || "unknown"}</div>
+                  <div class="version-mismatch-label">${TOOLS_CARD_STRINGS.backend.backendExpects}</div>
+                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionExpected || TOOLS_CARD_STRINGS.backend.unknownVersion}</div>
                 </div>
                 <div class="version-mismatch-row">
-                  <div class="version-mismatch-label">Card loaded</div>
+                  <div class="version-mismatch-label">${TOOLS_CARD_STRINGS.backend.cardLoaded}</div>
                   <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionLoaded}</div>
                 </div>
               </div>
@@ -17191,9 +20894,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       <div class="card-body">
         <div class="card-blocked-state">
           <div class="card-blocked-icon"><ha-icon icon="mdi:lan-disconnect"></ha-icon></div>
-          <div class="card-blocked-title">Hub unavailable</div>
+          <div class="card-blocked-title">${TOOLS_CARD_STRINGS.hubUnavailable.title}</div>
           <div class="card-blocked-copy">
-            This hub is not connected, so the control panel is unavailable until the hub reconnects.
+            ${TOOLS_CARD_STRINGS.hubUnavailable.copy}
           </div>
         </div>
       </div>
@@ -17213,7 +20916,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           <div class="sb-preview-header">
             <div class="sb-preview-logo">${hubIcon("hero", "sb-preview-hub")}</div>
             <div class="sb-preview-sub">
-              Tools, cache, backups, logs &amp; automations for your hub
+              ${TOOLS_CARD_STRINGS.card.previewDescription}
             </div>
           </div>
           <div class="sb-preview-grid">
@@ -17254,7 +20957,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     const sharedHubCommandBusy = Boolean(
       runtimeOperationBusy || hubRefreshing || hubExternalLabel !== null || this._snapshot.pendingActionKey
     );
-    const sharedHubCommandLabel = (runtimeOperationBusy ? runtimeState.detail || runtimeState.label : null) || hubExternalLabel || (hubRefreshing ? "Refreshing cache\u2026" : null) || (this._snapshot.pendingActionKey ? "Hub command in progress\u2026" : null);
+    const sharedHubCommandLabel = (runtimeOperationBusy ? runtimeState.detail || runtimeState.label : null) || hubExternalLabel || (hubRefreshing ? TOOLS_CARD_STRINGS.backend.refreshingCache : null) || (this._snapshot.pendingActionKey ? TOOLS_CARD_STRINGS.backend.hubCommandInProgress : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -17400,7 +21103,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       interactive: true,
       open: this._hubPickerOpen,
       selectedLabel: hub?.name || hub?.entry_id || "",
-      prefixLabel: "HUB",
+      prefixLabel: TOOLS_CARD_STRINGS.card.hubShort,
       hubs,
       selectedEntryId: this._snapshot.selectedHubEntryId,
       onToggle: () => this.toggleHubPicker(),
@@ -17441,6 +21144,11 @@ var SofabatonControlPanelEditor = class extends HTMLElement {
     super(...arguments);
     this._config = {};
   }
+  set hass(value) {
+    if (setToolsCardLanguage(value?.locale?.language ?? value?.language)) {
+      this.render();
+    }
+  }
   setConfig(config) {
     this._config = config || {};
     this.render();
@@ -17458,10 +21166,10 @@ var SofabatonControlPanelEditor = class extends HTMLElement {
         .editor-hint { font-size: 12px; color: var(--secondary-text-color); padding-bottom: 4px; }
       </style>
       <div class="editor-row">
-        <label for="tools-card-height">Card height</label>
+        <label for="tools-card-height">${TOOLS_CARD_STRINGS.card.editorHeight}</label>
         <input id="tools-card-height" type="number" min="240" step="10" value="${height}" />
       </div>
-      <div class="editor-hint">Controls how much of the activity/device lists is visible. Default: 600 px.</div>
+      <div class="editor-hint">${TOOLS_CARD_STRINGS.card.editorHeightHint}</div>
     `;
     this.querySelector("#tools-card-height")?.addEventListener("change", (event) => {
       const value = Number(event.currentTarget.value || 600);
@@ -17490,8 +21198,8 @@ window.customCards = window.customCards || [];
 if (!window.customCards.some((c4) => c4.type === TOOLS_TYPE)) {
   window.customCards.push({
     type: TOOLS_TYPE,
-    name: "Sofabaton Control Panel",
-    description: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands.",
+    name: TOOLS_CARD_STRINGS.card.pickerName,
+    description: TOOLS_CARD_STRINGS.card.pickerDescription,
     // No `preview: true`: the "By card" grid renders the *real* card (squished),
     // not renderPreview() — it only honours `preview` in the by-entity flow.
     // Card picker (HA 2026.6+): recommend this card for the hub-control

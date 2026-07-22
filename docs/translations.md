@@ -1,4 +1,55 @@
-# Translating the Sofabaton Virtual Remote card
+# Translating the Sofabaton cards
+
+Both frontend cards follow the same localization rules: Home Assistant's UI
+language selects a deep-partial translation overlay, regional codes fall back
+to their base language, and missing entries safely fall back to English.
+
+## Control Panel card
+
+The Control Panel English reference and registry live in
+[`strings.ts`](../custom_components/sofabaton_x1s/www/src/strings.ts). All
+rendered copy, attributes, validation text, status fallbacks, and editor form
+descriptions must pass through `TOOLS_CARD_STRINGS`.
+
+Bundled Control Panel locales are `en-GB`, `nl`, `de`, `fr`, and `es`. The
+four non-English catalogues use `CompleteToolsCardTranslation`, so TypeScript
+reports every missing key when the English reference grows. The translation
+and back-translation review is recorded in
+[`control-panel-translation-back-review.md`](control-panel-translation-back-review.md).
+
+To add a language:
+
+1. Create
+   `custom_components/sofabaton_x1s/www/src/control-panel-translations/<lang>.ts`.
+2. Register any translated subset with `registerToolsCardTranslation`. For a
+   catalogue intended to be complete, also declare it with
+   `satisfies CompleteToolsCardTranslation`:
+
+   ```ts
+   import { registerToolsCardTranslation } from "../strings";
+
+   registerToolsCardTranslation("nl", {
+     tabs: {
+       cache: "Hub",
+       backup: "Back-up",
+     },
+     common: {
+       cancel: "Annuleren",
+       save: "Opslaan",
+     },
+   });
+   ```
+
+3. Import the module from
+   [`control-panel-translations/index.ts`](../custom_components/sofabaton_x1s/www/src/control-panel-translations/index.ts).
+4. Run `npm run typecheck`, `npm run build:tools-card`, and
+   `npm run test:frontend`.
+
+Parameterized entries remain functions so each language controls word order
+and pluralization. The frontend test suite also rejects newly introduced
+literal UI text outside the English table.
+
+## Virtual Remote card
 
 The Virtual Remote card renders every user-facing string through a central
 string table, keyed by Home Assistant's UI language (`hass.locale.language`).

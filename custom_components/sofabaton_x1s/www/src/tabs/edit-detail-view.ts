@@ -494,7 +494,7 @@ export class SofabatonEditDetailView extends LitElement {
     // Live mode has no dirty chip — the Sync button's state carries that
     // signal (matching the Wifi command editor). Backup mode keeps "Unsaved".
     if (this.mode === "live" || !this.dirty) return nothing;
-    return html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
+    return html`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.backup.unsavedTooltip}>${TOOLS_CARD_STRINGS.backup.unsaved}</span>`;
   }
 
   private _renderLiveSyncButton() {
@@ -516,7 +516,7 @@ export class SofabatonEditDetailView extends LitElement {
     // the Wifi Commands tab, which also clears its stored configuration.
     const managed = this._isManagedWifiLiveDevice();
     return html`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${kind}`}>
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
       ${managed
@@ -540,16 +540,14 @@ export class SofabatonEditDetailView extends LitElement {
       <div class="managed-wifi-lock">
         <div class="managed-wifi-lock-chip">
           <ha-icon icon="mdi:wifi-cog"></ha-icon>
-          <span>Managed by Wifi Commands</span>
+          <span>${TOOLS_CARD_STRINGS.backup.managedWifiTitle}</span>
         </div>
         <p class="managed-wifi-lock-copy">
-          This device was deployed from the <strong>Wifi Commands</strong> tab.
-          Its commands, power, input, and button assignments are configured
-          there — editing them here would be overwritten on the next sync.
+          ${TOOLS_CARD_STRINGS.backup.managedWifiIntro}
+          ${TOOLS_CARD_STRINGS.backup.managedWifiBody}
         </p>
         <p class="managed-wifi-lock-copy">
-          You can still rename it here; the new name stays in sync with your
-          Wifi Commands configuration.
+          ${TOOLS_CARD_STRINGS.backup.managedWifiRename}
         </p>
       </div>
     `;
@@ -664,10 +662,10 @@ export class SofabatonEditDetailView extends LitElement {
       ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "")
       : false;
     return [
-      { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
-      ...(hasNetworkSection ? [{ id: "network" as const, icon: "mdi:lan-connect", label: "Network" }] : []),
-      { id: "commands", icon: "mdi:format-list-bulleted", label: "Commands" },
-      { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" },
+      { id: "power", icon: "mdi:power-plug-outline", label: TOOLS_CARD_STRINGS.backup.detailPower },
+      ...(hasNetworkSection ? [{ id: "network" as const, icon: "mdi:lan-connect", label: TOOLS_CARD_STRINGS.backup.detailNetwork }] : []),
+      { id: "commands", icon: "mdi:format-list-bulleted", label: TOOLS_CARD_STRINGS.backup.detailCommands },
+      { id: "bindings", icon: "mdi:gesture-tap-button", label: TOOLS_CARD_STRINGS.backup.detailButtons },
     ];
   }
 
@@ -680,7 +678,7 @@ export class SofabatonEditDetailView extends LitElement {
       : items[0].id;
 
     return html`
-      <div class="detail-section-nav" role="tablist" aria-label="Detail sections">
+      <div class="detail-section-nav" role="tablist" aria-label=${TOOLS_CARD_STRINGS.backup.detailSectionsAria}>
         ${items.map((item) => html`
           <button
             class=${`detail-section-nav-btn${item.id === activeId ? " active" : ""}`}
@@ -953,7 +951,7 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.buttonName}</div>
-              <div class="quick-access-chip">button</div>
+              <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.buttonChip}</div>
             </div>
             <div class="quick-access-meta">${item.shortPressLabel}</div>
             ${item.longPress
@@ -964,7 +962,7 @@ export class SofabatonEditDetailView extends LitElement {
             <button
               class="icon-btn"
               @click=${() => this._openEditBindingDialog(kind, item.buttonId)}
-              aria-label="Edit binding"
+              aria-label=${TOOLS_CARD_STRINGS.backup.editBindingAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -998,9 +996,9 @@ export class SofabatonEditDetailView extends LitElement {
     return html`
       <div class="quick-access-section" data-edit-section="network">
         <div class="quick-access-head">
-          <div class="quick-access-title">Network</div>
+          <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailNetwork}</div>
           <div class="quick-access-sub">
-            The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).
+            ${TOOLS_CARD_STRINGS.backup.networkDescription}
           </div>
         </div>
         <div class="quick-access-list">
@@ -1009,16 +1007,16 @@ export class SofabatonEditDetailView extends LitElement {
               <div class="quick-access-row quick-access-row--no-drag">
                 <div class="quick-access-main">
                   <div class="quick-access-label-row">
-                    <div class="quick-access-label">${ip ?? "(not set)"}</div>
-                    <div class="quick-access-chip">ip</div>
+                    <div class="quick-access-label">${ip ?? TOOLS_CARD_STRINGS.backup.hubNameNotSet}</div>
+                    <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.ipChip}</div>
                   </div>
-                  <div class="quick-access-meta">IPv4 dotted-decimal address</div>
+                  <div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.ipv4Description}</div>
                 </div>
                 <div class="quick-access-actions">
                   <button
                     class="icon-btn"
                     @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label="Edit IP address"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editIpAria}
                   >
                     <ha-icon icon="mdi:pencil"></ha-icon>
                   </button>
@@ -1037,11 +1035,11 @@ export class SofabatonEditDetailView extends LitElement {
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">Commands</div>
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailCommands}</div>
             <div class="quick-access-sub">
               ${this.mode === "live"
-                ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup → Edit."
-                : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+                ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp
+                : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
             </div>
           </div>
           ${this.mode === "live"
@@ -1056,7 +1054,7 @@ export class SofabatonEditDetailView extends LitElement {
                       icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
                       class=${this._addCommandPreparing ? "sb-spin" : ""}
                     ></ha-icon>
-                    <span>Add command</span>
+                    <span>${TOOLS_CARD_STRINGS.backup.addCommand}</span>
                   </button>
                 </div>
               `
@@ -1078,7 +1076,7 @@ export class SofabatonEditDetailView extends LitElement {
                 </div>
               </div>
             `
-          : html`<div class="quick-access-empty">This Device does not currently have any commands.</div>`}
+          : html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noDeviceCommands}</div>`}
       </div>
     `;
   }
@@ -1091,17 +1089,19 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${pendingAdd ? "new command" : "command"}</div>
+              <div class="quick-access-chip">${pendingAdd
+                ? TOOLS_CARD_STRINGS.backup.newCommandChip
+                : TOOLS_CARD_STRINGS.backup.commandChip}</div>
             </div>
             <div class="quick-access-meta">
-              Command ID ${item.commandId}
+              ${TOOLS_CARD_STRINGS.backup.commandId} ${item.commandId}
             </div>
           </div>
           <div class="quick-access-actions">
             <button
               class="icon-btn"
               @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-              aria-label="Rename command"
+              aria-label=${TOOLS_CARD_STRINGS.backup.renameCommandAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -1110,8 +1110,8 @@ export class SofabatonEditDetailView extends LitElement {
                   <button
                     class="icon-btn"
                     @click=${() => this._openCommandPayloadDialog(item.commandId)}
-                    aria-label="Edit payload"
-                    title="Edit payload"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                   >
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
@@ -1123,8 +1123,8 @@ export class SofabatonEditDetailView extends LitElement {
                     class="icon-btn"
                     @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
                     ?disabled=${this._payloadFetchingCommandId != null}
-                    aria-label="Edit payload"
-                    title="Fetch and edit this command's payload"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.fetchEditCommandAria}
                   >
                     <ha-icon
                       icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
@@ -1208,7 +1208,8 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const device = (this.bundle?.devices ?? [])
       .find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
-    return String(device?.device?.name || "").trim() || `Device ${item.deviceId ?? "?"}`;
+    return String(device?.device?.name || "").trim()
+      || TOOLS_CARD_STRINGS.common.deviceFallback(item.deviceId ?? "?");
   }
 
   private _renderActivityQuickAccessRow(item: ReturnType<typeof activityQuickAccessItems>[number]) {
@@ -1234,14 +1235,14 @@ export class SofabatonEditDetailView extends LitElement {
               <button
                 class="icon-btn"
                 @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, -1)}
-                aria-label="Move up"
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveUpAria}
               >
                 <ha-icon icon="mdi:chevron-up"></ha-icon>
               </button>
               <button
                 class="icon-btn"
                 @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, 1)}
-                aria-label="Move down"
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveDownAria}
               >
                 <ha-icon icon="mdi:chevron-down"></ha-icon>
               </button>
@@ -1321,8 +1322,8 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>Save</button>
+              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -1347,9 +1348,11 @@ export class SofabatonEditDetailView extends LitElement {
         <div class="dialog medium" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">${this._payloadDialogAddMode ? "Add Command" : "Edit Payload"}</div>
+              <div class="dialog-title">${this._payloadDialogAddMode
+                ? TOOLS_CARD_STRINGS.backup.addCommandTitle
+                : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
               ${deviceClass
-                ? html`<span class="payload-class-badge" title="Device class">${deviceClass}</span>`
+                ? html`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>`
                 : nothing}
             </div>
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
@@ -1358,7 +1361,7 @@ export class SofabatonEditDetailView extends LitElement {
             ${this._payloadDialogAddMode
               ? html`
                   <label class="decoded-field">
-                    <span class="decoded-field-label">Name</span>
+                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
                     <input
                       class="decoded-field-input"
                       type="text"
@@ -1368,7 +1371,7 @@ export class SofabatonEditDetailView extends LitElement {
                       @input=${this._handleAddCommandNameInput}
                       @change=${this._handleAddCommandNameInput}
                     />
-                    <span class="decoded-field-helper">Shown on the remote and in every command picker.</span>
+                    <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
                   </label>
                 `
               : nothing}
@@ -1381,8 +1384,8 @@ export class SofabatonEditDetailView extends LitElement {
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
                       ${this.mode === "live"
-                        ? html`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.`
-                        : html`Verify a changed payload before trusting it: <strong>Test</strong> plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                        ? TOOLS_CARD_STRINGS.backup.verifyPayloadLive
+                        : TOOLS_CARD_STRINGS.backup.verifyPayloadBackup}
                     </span>
                   </div>
                 `
@@ -1397,10 +1400,10 @@ export class SofabatonEditDetailView extends LitElement {
                         : "mdi:progress-clock"}></ha-icon>
                     <span>
                       ${this._payloadDialogTestStatus === "testing"
-                        ? "Sending to the hub…"
+                        ? TOOLS_CARD_STRINGS.backup.sendingToHub
                         : this._payloadDialogTestStatus === "success"
-                          ? "Sent to the hub for one-shot playback."
-                          : this._payloadDialogTestError || "Test failed."}
+                          ? TOOLS_CARD_STRINGS.backup.sentToHub
+                          : this._payloadDialogTestError || TOOLS_CARD_STRINGS.backup.testFailed}
                     </span>
                   </div>
                 `
@@ -1417,12 +1420,12 @@ export class SofabatonEditDetailView extends LitElement {
                       @click=${() => void this._runLivePayloadTest()}
                     >
                       <ha-icon icon="mdi:flash-outline"></ha-icon>
-                      <span>Test</span>
+                      <span>${TOOLS_CARD_STRINGS.backup.test}</span>
                     </button>
                   `
                 : nothing}
-              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>Save</button>
+              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -1434,14 +1437,13 @@ export class SofabatonEditDetailView extends LitElement {
     return html`
       <div class="decoded-form">
         <div class="decoded-form-head">
-          <div class="decoded-form-title">Raw payload</div>
+          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
           <div class="decoded-form-sub">
-            No structured editor exists for this device class; the bytes below
-            are replayed to the hub verbatim on restore.
+            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
           </div>
         </div>
         <label class="decoded-field">
-          <span class="decoded-field-label">Payload (hex bytes)</span>
+          <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
           <textarea
             class="decoded-field-input decoded-field-input--multiline"
             rows="6"
@@ -1451,7 +1453,7 @@ export class SofabatonEditDetailView extends LitElement {
             @change=${this._handleRawPayloadInput}
           ></textarea>
           <span class="decoded-field-helper">
-            Byte pairs like "0a 4f 22" &mdash; whitespace and 0x prefixes are tolerated.
+            ${TOOLS_CARD_STRINGS.backup.payloadHexHelper}
           </span>
         </label>
       </div>
@@ -1523,20 +1525,23 @@ export class SofabatonEditDetailView extends LitElement {
 
   private _editRenameDialogLabel() {
     const target = this._editRenameDialogTarget;
-    if (!target) return "Rename";
+    const S = TOOLS_CARD_STRINGS.backup;
+    if (!target) return S.rename;
     if (target.kind === "detail") {
-      return target.entityKind === "activity" ? "Rename Activity" : "Rename Device";
+      return target.entityKind === "activity" ? S.renameActivity : S.renameDevice;
     }
-    if (target.kind === "macro") return "Rename Macro";
-    if (target.kind === "favorite") return "Rename Favorite";
-    if (target.kind === "device_ip") return "Edit IP address";
-    if (target.kind === "hub_name") return "Rename Hub";
-    return "Rename Command";
+    if (target.kind === "macro") return S.renameMacro;
+    if (target.kind === "favorite") return S.renameFavorite;
+    if (target.kind === "device_ip") return S.editIpAria;
+    if (target.kind === "hub_name") return S.renameDialogTitle;
+    return S.renameCommand;
   }
 
   /** Per-target label & max length used by the dialog's primary text input. */
   private _editRenameFieldLabel(): string {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
+    return this._editRenameDialogTarget?.kind === "device_ip"
+      ? TOOLS_CARD_STRINGS.backup.ipAddress
+      : TOOLS_CARD_STRINGS.backup.name;
   }
 
   private _editRenameFieldMaxLength(): number {
@@ -1719,7 +1724,7 @@ export class SofabatonEditDetailView extends LitElement {
     try {
       const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
       if (!fetched || !String(fetched.dataHex || "").trim()) {
-        this._payloadFetchError = "The hub returned no payload for this command.";
+        this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noPayloadReturned;
         return;
       }
       this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
@@ -1780,8 +1785,7 @@ export class SofabatonEditDetailView extends LitElement {
 
     const existing = deviceCommandItems(this.bundle, deviceId);
     if (!existing.length) {
-      this._payloadFetchError =
-        "This device has no commands to use as a template — add its first command with the Sofabaton app.";
+      this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noTemplateCommand;
       return;
     }
 
@@ -1833,7 +1837,7 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this.bundle) return;
     const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
     if (!name) {
-      this._payloadDialogError = "Enter a name for the new command.";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.newCommandNameRequired;
       return;
     }
     let restoreData: Record<string, unknown>;
@@ -1847,7 +1851,7 @@ export class SofabatonEditDetailView extends LitElement {
       if (snapshot.className === "ir") {
         const descriptor = String(fields["descriptor"] ?? "").trim();
         if (!descriptor.startsWith("P:")) {
-          this._payloadDialogError = "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).";
+          this._payloadDialogError = TOOLS_CARD_STRINGS.backup.descriptiveIrRequired;
           return;
         }
       }
@@ -1863,14 +1867,14 @@ export class SofabatonEditDetailView extends LitElement {
     } else {
       const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
       if (!normalized) {
-        this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
         return;
       }
       restoreData = { transport: "hub_code_record", data_hex: normalized };
     }
     const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
     if (newId == null) {
-      this._payloadDialogError = "This device has no free command slot left.";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.noFreeCommandSlot;
       return;
     }
     this._commitEditBundleEdit(
@@ -1923,7 +1927,7 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
     if (!normalized) {
-      this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
       return;
     }
     if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
@@ -1943,7 +1947,7 @@ export class SofabatonEditDetailView extends LitElement {
       : String(this._payloadDialogRawDraft ?? "").trim();
     if (!value) {
       this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = "Nothing to test yet.";
+      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.nothingToTest;
       return;
     }
     this._payloadDialogTestStatus = "testing";
@@ -2025,7 +2029,7 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
     if (!normalized) {
-      this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
       return;
     }
     if (normalized !== normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
@@ -2144,7 +2148,7 @@ export class SofabatonEditDetailView extends LitElement {
   };
 
   private _deleteConfirmTitle(target: BackupDeleteTarget, label: string): string {
-    const name = label || "this item";
+    const name = label || TOOLS_CARD_STRINGS.backup.thisItem;
     switch (target.kind) {
       case "activity":
         return TOOLS_CARD_STRINGS.backup.deleteActivityTitle(name);
@@ -2503,7 +2507,7 @@ export class SofabatonEditDetailView extends LitElement {
     if (target.kind === "device_ip") {
       const draft = this._editRenameDialogDraft.trim();
       if (draft && !IPV4_PATTERN.test(draft)) {
-        this._editRenameDialogError = "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.";
+        this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.ipv4Required;
         return;
       }
       this._commitEditBundleEdit(updateBundleDeviceIp(this.bundle, target.deviceId, draft));
@@ -2512,7 +2516,7 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const next = sanitizeBundleName(this.bundle, this._editRenameDialogDraft);
     if (!next) {
-      this._editRenameDialogError = "Enter a name to continue.";
+      this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.enterName;
       return;
     }
     if (target.kind === "detail") {
@@ -3510,11 +3514,11 @@ export class SofabatonEditDetailView extends LitElement {
             <div class="quick-access-section">
               <div class="quick-access-head">
                 <div class="quick-access-head-main">
-                  <div class="quick-access-title">Steps</div>
+                  <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.steps}</div>
                   <div class="quick-access-sub">
                     ${this._haSortableReady
-                      ? "Drag to reorder. Each step plays a command; set the wait that follows it on the right."
-                      : "Each step plays a command; set the wait that follows it on the right."}
+                      ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp
+                      : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
                   </div>
                 </div>
                 <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>

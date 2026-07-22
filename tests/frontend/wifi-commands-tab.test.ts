@@ -1,6 +1,12 @@
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import "../../custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-tab";
+import {
+  hubEventModalTitle,
+  hubEventRows,
+  wifiSectionRows,
+} from "../../custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-tab";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
+import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 
 const WifiCommandsTabElement = customElements.get("sofabaton-wifi-commands-tab") as {
   new (): HTMLElement;
@@ -64,8 +70,23 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setToolsCardLanguage("en");
   restoreGlobal("window", originalWindowDescriptor);
   restoreGlobal("localStorage", originalLocalStorageDescriptor);
+});
+
+test("wifi Events labels are resolved after the active locale is selected", () => {
+  setToolsCardLanguage("de-DE");
+
+  assert.equal(wifiSectionRows()[1].label, "Ereignisse");
+  assert.deepEqual(
+    hubEventRows().map((row) => row.label),
+    [
+      "Wenn der Hub AUSGESCHALTET wird",
+      "Wenn AUS gedrückt wird, während der Hub bereits AUS ist",
+    ],
+  );
+  assert.equal(hubEventModalTitle("power_off"), "Wenn der Hub AUSGESCHALTET wird");
 });
 
 test("wifi commands persists the selected device detail view per hub", () => {

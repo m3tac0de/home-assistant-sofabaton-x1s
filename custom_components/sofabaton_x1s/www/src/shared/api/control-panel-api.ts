@@ -15,6 +15,7 @@ import type {
   RefreshKind,
   SettingKey,
 } from "../ha-context";
+import { TOOLS_CARD_STRINGS } from "../../strings";
 
 export class ControlPanelApi {
   constructor(private readonly hass: HassLike) {}
@@ -226,7 +227,7 @@ export class ControlPanelApi {
 
   subscribeBackupProgress(operationId: string, onMessage: (payload: BackupProgressEvent) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Backup progress is unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.backupProgressNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -300,7 +301,7 @@ export class ControlPanelApi {
 
   subscribeLogs(entryId: string, onMessage: (payload: unknown) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Live logs are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.logsNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -310,7 +311,7 @@ export class ControlPanelApi {
 
   subscribeWifiPresses(entryId: string, onMessage: (payload: unknown) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Wifi press events are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.wifiPressNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -320,7 +321,7 @@ export class ControlPanelApi {
 
   subscribeHubEvents(entryId: string, onMessage: (payload: unknown) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.hubEventsNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,

@@ -35,11 +35,14 @@ import {
 
 type BackupScope = "whole_hub" | "individual_devices";
 
-const BACKUP_SECTION_ITEMS: SecondaryTabItem<BackupSectionId>[] = [
-  { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
-  { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
-  { id: "restore", icon: "mdi:database-import-outline", label: "Restore" },
-];
+function backupSectionItems(): SecondaryTabItem<BackupSectionId>[] {
+  const S = TOOLS_CARD_STRINGS.backup;
+  return [
+    { id: "make", icon: "mdi:content-save-move-outline", label: S.sectionMake },
+    { id: "edit", icon: "mdi:pencil-box-outline", label: S.sectionEdit },
+    { id: "restore", icon: "mdi:database-import-outline", label: S.sectionRestore },
+  ];
+}
 
 class SofabatonBackupTab extends LitElement {
   static properties = {
@@ -317,7 +320,7 @@ class SofabatonBackupTab extends LitElement {
 
   protected render() {
     if (this.loading) {
-      return html`<div class="tab-panel"><div class="state">Loading backup tools…</div></div>`;
+      return html`<div class="tab-panel"><div class="state">${TOOLS_CARD_STRINGS.backup.loading}</div></div>`;
     }
     if (this.error) {
       return html`<div class="tab-panel"><div class="state error">${this.error}</div></div>`;
@@ -361,7 +364,7 @@ class SofabatonBackupTab extends LitElement {
     return html`
       <div class="tab-panel">
         ${renderSecondaryTabShell({
-          items: BACKUP_SECTION_ITEMS,
+          items: backupSectionItems(),
           selectedId: this.selectedSection,
           onSelect: (section) => this.setSelectedSection(section),
           connected: true,
@@ -560,7 +563,7 @@ class SofabatonBackupTab extends LitElement {
             ? TOOLS_CARD_STRINGS.backup.reorderHint
             : ""}
         </div>
-        <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
+        <div class="edit-hub-name-row" title=${TOOLS_CARD_STRINGS.backup.hubNameRestoreOnlyAria}>
           <span class="edit-hub-name-label">${TOOLS_CARD_STRINGS.backup.hubName}</span>
           <span class="edit-hub-name-value">${hubName || TOOLS_CARD_STRINGS.backup.hubNameNotSet}</span>
           <button
@@ -754,7 +757,7 @@ class SofabatonBackupTab extends LitElement {
     if (!this._editBundle) return;
     const next = sanitizeBundleName(this._editBundle, this._hubRenameDraft);
     if (!next) {
-      this._hubRenameError = "Enter a name to continue.";
+      this._hubRenameError = TOOLS_CARD_STRINGS.backup.enterName;
       return;
     }
     this._commitEditBundleEdit(renameBundleHub(this._editBundle, next));
@@ -767,7 +770,7 @@ class SofabatonBackupTab extends LitElement {
       <div class="modal-backdrop" @click=${this._closeHubRenameDialog}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Rename Hub</div>
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.backup.renameDialogTitle}</div>
             <button class="dialog-close" @click=${this._closeHubRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
@@ -799,8 +802,8 @@ class SofabatonBackupTab extends LitElement {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._hubRenameError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeHubRenameDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyHubRename}>Save</button>
+              <button class="dialog-btn" @click=${this._closeHubRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyHubRename}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -869,7 +872,7 @@ class SofabatonBackupTab extends LitElement {
       return;
     }
     if (!operationId) {
-      this._editError = "Failed to prepare edited backup for download.";
+      this._editError = TOOLS_CARD_STRINGS.backup.failedPrepareDownload;
       return;
     }
     const path = `/api/sofabaton_x1s/backup/download/${encodeURIComponent(operationId)}`;
@@ -927,10 +930,10 @@ class SofabatonBackupTab extends LitElement {
         content: html`
             <div class="backup-drawer-sub">
               ${isRunning
-                ? "The hub is restoring your backup."
+                ? TOOLS_CARD_STRINGS.backup.restoreRunningSubtitle
                 : isSuccess
-                  ? "Your restore has completed."
-                  : "Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on."}
+                  ? TOOLS_CARD_STRINGS.backup.restoreFinishedSubtitle
+                  : TOOLS_CARD_STRINGS.backup.restoreChooseSubtitle}
             </div>
             ${this._restoreError ? this._renderStatus("error", "mdi:alert-circle-outline", this._restoreError) : nothing}
             ${isRunning && this._restoreProgress
@@ -939,10 +942,10 @@ class SofabatonBackupTab extends LitElement {
                 ? html`
                   <div class="backup-complete-card">
                     <div class="backup-complete-icon"><ha-icon icon="mdi:check-decagram-outline"></ha-icon></div>
-                    <div class="backup-complete-title">Restore completed</div>
-                    <div class="backup-complete-sub">The selected Activities and Devices were restored to the hub.</div>
+                    <div class="backup-complete-title">${TOOLS_CARD_STRINGS.backup.restoreCompletedTitle}</div>
+                    <div class="backup-complete-sub">${TOOLS_CARD_STRINGS.backup.restoreCompletedSubtitle}</div>
                     <div class="action-row">
-                      <button class="primary-btn" @click=${() => void this._completeRestoreResult()}>Complete</button>
+                      <button class="primary-btn" @click=${() => void this._completeRestoreResult()}>${TOOLS_CARD_STRINGS.backup.complete}</button>
                     </div>
                   </div>
                 `
@@ -952,18 +955,18 @@ class SofabatonBackupTab extends LitElement {
               <div class="restore-config-view">
                 <div class="backup-devices-head">
                   <div class="backup-devices-head-main">
-                    <div class="backup-section-title">Items to restore</div>
-                    <div class="backup-selected-count">${totalRestoreSelected} selected</div>
+                    <div class="backup-section-title">${TOOLS_CARD_STRINGS.backup.itemsToRestore}</div>
+                    <div class="backup-selected-count">${TOOLS_CARD_STRINGS.backup.selectedCount(totalRestoreSelected)}</div>
                   </div>
                   <button class="backup-link-btn" ?disabled=${this._restoreLocked()} @click=${allRestoreSelected ? this._clearRestoreSelection : this._selectAllRestoreItems}>
-                    ${allRestoreSelected ? "Deselect all" : "Select all"}
+                    ${allRestoreSelected ? TOOLS_CARD_STRINGS.backup.deselectAll : TOOLS_CARD_STRINGS.backup.selectAll}
                   </button>
                 </div>
                 <div class="selection-card">
                   <div class="selection-list">
                     ${activityOptions.length
                       ? html`
-                        <div class="selection-group-header">Activities</div>
+                        <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.activities}</div>
                         ${activityOptions.map((activity) => {
                           // Forced in by another activity's chain reference
                           // (e.g. its power-off starts this one) — locked,
@@ -986,18 +989,18 @@ class SofabatonBackupTab extends LitElement {
                               <span class="selection-label">${activity.label}</span>
                             </span>
                             ${activity.meta
-                              ? html`<span class="selection-meta">${forcedActivity ? `${activity.meta} · linked` : activity.meta}</span>`
+                              ? html`<span class="selection-meta">${forcedActivity ? `${activity.meta} · ${TOOLS_CARD_STRINGS.backup.linked}` : activity.meta}</span>`
                               : forcedActivity
-                                ? html`<span class="selection-meta">linked</span>`
+                                ? html`<span class="selection-meta">${TOOLS_CARD_STRINGS.backup.linked}</span>`
                                 : nothing}
                           </div>
                         `;
                         })}
                       `
-                      : html`<div class="selection-empty">This backup file has no activities.</div>`}
+                      : html`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noActivitiesInFile}</div>`}
                     ${deviceOptions.length
                       ? html`
-                        <div class="selection-group-header">Devices</div>
+                        <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.devices}</div>
                         ${deviceOptions.map((device) => {
                           const forced = restoreSelection.forcedDeviceIds.includes(device.id);
                           return html`
@@ -1016,12 +1019,12 @@ class SofabatonBackupTab extends LitElement {
                               <span class="selection-main">
                                 <span class="selection-label">${device.label}</span>
                               </span>
-                              ${device.meta ? html`<span class="selection-meta">${forced ? `${device.meta} · linked` : device.meta}</span>` : nothing}
+                              ${device.meta ? html`<span class="selection-meta">${forced ? `${device.meta} · ${TOOLS_CARD_STRINGS.backup.linked}` : device.meta}</span>` : nothing}
                             </div>
                           `;
                         })}
                       `
-                      : html`<div class="selection-empty">This backup file has no devices.</div>`}
+                      : html`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesInFile}</div>`}
                   </div>
                 </div>
                 <div class="backup-scope-group">
@@ -1040,18 +1043,18 @@ class SofabatonBackupTab extends LitElement {
                       },
                     })}
                     <span class="selection-main">
-                      <span class="selection-label">Erase existing Devices and Activities</span>
+                      <span class="selection-label">${TOOLS_CARD_STRINGS.backup.eraseExisting}</span>
                     </span>
                   </div>
                 </div>
                 <div class="restore-action-row">
-                  <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
-                  <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                  <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>${TOOLS_CARD_STRINGS.backup.startRestore}</button>
+                  <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
                 </div>
               </div>
             ` : !isRunning && !isSuccess ? html`
               <div class="restore-action-row">
-                <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
               </div>
             ` : nothing}
         `,
@@ -1219,7 +1222,7 @@ class SofabatonBackupTab extends LitElement {
   }
 
   private api() {
-    if (!this.hass) throw new Error("Home Assistant is not available");
+    if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
 
@@ -1230,7 +1233,7 @@ class SofabatonBackupTab extends LitElement {
     this._discardEditSession();
     const deviceIds = this._backupScope === "whole_hub" ? null : this._backupDeviceIds;
     const entryId = this.hub.entry_id;
-    this.setHubCommandBusy?.(true, "Starting backup…", entryId);
+    this.setHubCommandBusy?.(true, TOOLS_CARD_STRINGS.backup.startingBackup, entryId);
     try {
       const start = await this.api().startBackupExport(entryId, deviceIds);
       await this.refreshControlPanelState?.();
@@ -1259,7 +1262,7 @@ class SofabatonBackupTab extends LitElement {
     this._restoreProgress = null;
     this._discardEditSession();
     const entryId = this.hub.entry_id;
-    this.setHubCommandBusy?.(true, "Starting restore…", entryId);
+    this.setHubCommandBusy?.(true, TOOLS_CARD_STRINGS.backup.startingRestore, entryId);
     try {
       const start = await this.api().startBackupRestore(entryId, filtered, this._restoreMode);
       await this.refreshControlPanelState?.();
@@ -1290,9 +1293,9 @@ class SofabatonBackupTab extends LitElement {
         if (opId) this._acknowledgedOpIds.add(opId);
         if (!staleHub) {
           if (kind === "backup") {
-            this._backupError = String(payload.error || payload.message || "Backup failed.");
+            this._backupError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.backupFailed);
           } else {
-            this._restoreError = String(payload.error || payload.message || "Restore failed.");
+            this._restoreError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.restoreFailed);
           }
         }
         this.setHubCommandBusy?.(false, null, entryId);
@@ -1309,7 +1312,7 @@ class SofabatonBackupTab extends LitElement {
             // Ignore refresh failures here; the success state is already known.
           }
         } else if (payload.status === "failed") {
-          if (!staleHub) this._backupError = String(payload.error || payload.message || "Backup failed.");
+          if (!staleHub) this._backupError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.backupFailed);
           this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
@@ -1320,7 +1323,7 @@ class SofabatonBackupTab extends LitElement {
       } else {
         if (!staleHub) this._restoreProgress = payload;
         if (payload.status === "success") {
-          if (!staleHub) this._restoreSuccess = "Restore completed.";
+          if (!staleHub) this._restoreSuccess = TOOLS_CARD_STRINGS.backup.restoreCompletedStatus;
           this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
@@ -1328,7 +1331,7 @@ class SofabatonBackupTab extends LitElement {
             // Ignore refresh failures here; the success state is already known.
           }
         } else if (payload.status === "failed") {
-          if (!staleHub) this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          if (!staleHub) this._restoreError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.backup.restoreFailed);
           this.setHubCommandBusy?.(false, null, entryId);
         }
       }
@@ -1420,7 +1423,7 @@ class SofabatonBackupTab extends LitElement {
   private _backupResultSummary(bundle: BackupBundlePayload | null | undefined) {
     const activityCount = Array.isArray(bundle?.activities) ? bundle.activities.length : 0;
     const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : 0;
-    return `${activityCount} Activities and ${deviceCount} Devices backed up`;
+    return TOOLS_CARD_STRINGS.backup.backupResultSummary(activityCount, deviceCount);
   }
 
   private _resetBackupComposer = () => {
@@ -1547,20 +1550,22 @@ class SofabatonBackupTab extends LitElement {
       this._restoreProgress = restoreSnapshot;
       this._backupError =
         String(this._backupProgress?.status || "") === "failed"
-          ? String(this._backupProgress?.error || this._backupProgress?.message || "Backup failed.")
+          ? String(this._backupProgress?.error || this._backupProgress?.message || TOOLS_CARD_STRINGS.backup.backupFailed)
           : null;
       this._restoreError =
         String(this._restoreProgress?.status || "") === "failed"
-          ? String(this._restoreProgress?.error || this._restoreProgress?.message || "Restore failed.")
+          ? String(this._restoreProgress?.error || this._restoreProgress?.message || TOOLS_CARD_STRINGS.backup.restoreFailed)
           : null;
       this._restoreSuccess =
-        String(this._restoreProgress?.status || "") === "success" ? "Restore completed." : null;
+        String(this._restoreProgress?.status || "") === "success"
+          ? TOOLS_CARD_STRINGS.backup.restoreCompletedStatus
+          : null;
       const active = state?.active_operation || null;
       if (active && String(active.kind || "") === "backup_export" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress…"), entryId);
+        this.setHubCommandBusy?.(true, String(active.message || TOOLS_CARD_STRINGS.backup.backupInProgress), entryId);
         await this._subscribeToOperation(active.operation_id, "backup", entryId);
       } else if (active && String(active.kind || "") === "backup_restore" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress…"), entryId);
+        this.setHubCommandBusy?.(true, String(active.message || TOOLS_CARD_STRINGS.backup.restoreInProgress), entryId);
         await this._subscribeToOperation(active.operation_id, "restore", entryId);
       } else {
         this.setHubCommandBusy?.(false, null, entryId);
@@ -1577,4 +1582,3 @@ class SofabatonBackupTab extends LitElement {
 if (!customElements.get("sofabaton-backup-tab")) {
   customElements.define("sofabaton-backup-tab", SofabatonBackupTab);
 }
-

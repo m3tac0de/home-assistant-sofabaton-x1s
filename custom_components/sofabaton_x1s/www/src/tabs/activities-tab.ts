@@ -307,7 +307,7 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   private api() {
-    if (!this.hass) throw new Error("Home Assistant is not available");
+    if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
 
@@ -327,7 +327,7 @@ class SofabatonActivitiesTab extends LitElement {
   };
 
   private _testCommandPayload = async (hex: string) => {
-    if (!this.hub) throw new Error("No hub is selected.");
+    if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
     await this.api().playIrBlob(this.hub.entry_id, hex);
   };
 
@@ -430,7 +430,7 @@ class SofabatonActivitiesTab extends LitElement {
       }
       if (payload.status === "failed") {
         this._teardownProgressSubscription();
-        this._syncError = String(payload.error || payload.message || "Sync failed.");
+        this._syncError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.errors.syncFailed);
         this._syncFailedAt = String(payload.failed_at || "");
         this._syncProgress = null;
         this._exitAfterSync = false;

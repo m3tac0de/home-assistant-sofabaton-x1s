@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import "../../custom_components/sofabaton_x1s/www/src/tabs/backup-tab";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
+import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import type { BackupOperationStateResponse, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import {
   activityQuickAccessItems,
@@ -65,6 +67,26 @@ function createHass(state: BackupOperationStateResponse, onBackupState?: () => v
     connection: null,
   };
 }
+
+test("backup Restore empty state resolves all copy from the active locale", () => {
+  const cases = [
+    ["nl-NL", "Laad een back-upbestand", "Back-upbestand kiezen"],
+    ["de-DE", "Lade eine Backup-Datei", "Backup-Datei auswählen"],
+    ["fr-FR", "Chargez un fichier de sauvegarde", "Choisir un fichier de sauvegarde"],
+    ["es-ES", "Carga un archivo de copia de seguridad", "Elegir archivo de copia de seguridad"],
+  ] as const;
+
+  for (const [locale, subtitle, chooseFile] of cases) {
+    setToolsCardLanguage(locale);
+    const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+    const rendered = templateText((element as any)._renderRestoreSectionContent());
+    assert.match(rendered, new RegExp(subtitle));
+    assert.match(rendered, new RegExp(chooseFile));
+    assert.doesNotMatch(rendered, /Load a backup file|Choose backup file/);
+  }
+
+  setToolsCardLanguage("en");
+});
 
 test("backup tab rehydrates a stale running restore when the hub no longer reports an active operation", async () => {
   let unsubscribed = false;

@@ -14,6 +14,7 @@ import type {
 } from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
 import { hubActivities, hubDevices } from "../shared/utils/control-panel-selectors";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 export interface BackupSelectionOption {
   id: number;
@@ -98,72 +99,95 @@ export interface DecodedFormSpec {
  *   (b) registering its form here,
  *   (c) implementing the decoder/encoder on the Python side.
  */
-export const DECODED_CLASS_FORM_SPECS: Record<DecodableCommandClass, DecodedFormSpec> = {
+function decodedClassFormSpecs(): Record<DecodableCommandClass, DecodedFormSpec> {
+  const S = TOOLS_CARD_STRINGS.decodedPayload;
+  return {
   wifi_ip: {
-    title: "HTTP request",
-    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    title: S.httpTitle,
+    subtitle: S.httpSubtitle,
     fields: [
-      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
-      { key: "port", label: "Port", numeric: true },
-      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
-      { key: "path", label: "Path" },
+      { key: "host", label: S.hostIpv4, helper: S.hostExample },
+      { key: "port", label: S.port, numeric: true },
+      { key: "method", label: S.httpMethod, helper: S.httpMethodExample },
+      { key: "path", label: S.path },
       {
         key: "header",
-        label: "Extra headers",
+        label: S.extraHeaders,
         multiline: true,
         crlfOnWire: true,
-        helper: "One header per line. Host and Content-Length are added automatically.",
+        helper: S.extraHeadersHelper,
       },
-      { key: "content_type", label: "Content type" },
-      { key: "body", label: "Body", multiline: true },
+      { key: "content_type", label: S.contentType },
+      { key: "body", label: S.body, multiline: true },
     ],
   },
   wifi_roku: {
-    title: "Roku ECP request",
+    title: S.rokuTitle,
     fields: [
-      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" },
+      { key: "path", label: S.ecpPath, helper: S.ecpPathExample },
     ],
   },
   wifi_hue: {
-    title: "Hue REST request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    title: S.hueTitle,
+    subtitle: S.bodyBlockSubtitle,
     fields: [
-      { key: "path", label: "URL path" },
+      { key: "path", label: S.urlPath },
       {
         key: "body_block",
-        label: "Body block (raw wire string)",
+        label: S.bodyBlock,
         multiline: true,
         escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value — it must match the body byte count.",
+        helper: S.bodyBlockHelper,
       },
     ],
   },
   wifi_sonos: {
-    title: "Sonos UPnP request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    title: S.sonosTitle,
+    subtitle: S.bodyBlockSubtitle,
     fields: [
-      { key: "path", label: "URL path" },
+      { key: "path", label: S.urlPath },
       {
         key: "body_block",
-        label: "Body block (raw wire string)",
+        label: S.bodyBlock,
         multiline: true,
         escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value — it must match the body byte count.",
+        helper: S.bodyBlockHelper,
       },
     ],
   },
   ir: {
-    title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR payloads are not editable here.",
+    title: S.irTitle,
+    subtitle: S.irSubtitle,
     fields: [
       {
         key: "descriptor",
-        label: "Descriptor",
-        helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2",
+        label: S.descriptor,
+        helper: S.descriptorExample,
       },
     ],
   },
-};
+  };
+}
+
+// Keep the public record API while resolving localized labels on each access.
+export const DECODED_CLASS_FORM_SPECS = new Proxy(
+  {} as Record<DecodableCommandClass, DecodedFormSpec>,
+  {
+    get(_target, property) {
+      return decodedClassFormSpecs()[property as DecodableCommandClass];
+    },
+    has(_target, property) {
+      return property in decodedClassFormSpecs();
+    },
+    ownKeys() {
+      return Reflect.ownKeys(decodedClassFormSpecs());
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      if (!(property in decodedClassFormSpecs())) return undefined;
+      return { configurable: true, enumerable: true };
+    },
+  },
+);
 
 /**
  * Shape of the `decoded` block as it lives inside `restore_data` in the
@@ -394,15 +418,18 @@ const INTERNAL_POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
 export function backupActivityOptions(hub: CacheHubState | null): BackupSelectionOption[] {
   return hubActivities(hub).map((activity) => ({
     id: Number(activity.id),
-    label: String(activity.name || `Activity ${activity.id}`),
-    meta: `${Number(activity.favorite_count || 0)} favs · ${Number(activity.macro_count || 0)} macros`,
+    label: String(activity.name || TOOLS_CARD_STRINGS.common.activityFallback(activity.id)),
+    meta: TOOLS_CARD_STRINGS.backup.activityMeta(
+      Number(activity.favorite_count || 0),
+      Number(activity.macro_count || 0),
+    ),
   }));
 }
 
 export function backupDeviceOptions(hub: CacheHubState | null): BackupSelectionOption[] {
   return hubDevices(hub).map((device) => ({
     id: Number(device.id),
-    label: String(device.name || `Device ${device.id}`),
+    label: String(device.name || TOOLS_CARD_STRINGS.common.deviceFallback(device.id)),
     meta: String(device.device_class || "").trim() || undefined,
   }));
 }
@@ -438,8 +465,10 @@ export function bundleActivityOptions(bundle: BackupBundlePayload | null): Backu
       return {
         id,
         sortKey: readSortKey(block),
-        label: String(block?.name || `Activity ${id}`),
-        meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`,
+        label: String(block?.name || TOOLS_CARD_STRINGS.common.activityFallback(id)),
+        meta: TOOLS_CARD_STRINGS.backup.linkedDevices(
+          (activity?.referenced_source_device_ids ?? []).length,
+        ),
       };
     })
     .filter((option) => option.id > 0)
@@ -455,7 +484,7 @@ export function bundleDeviceOptions(bundle: BackupBundlePayload | null): BackupS
       return {
         id,
         sortKey: readSortKey(block),
-        label: String(block?.name || `Device ${id}`),
+        label: String(block?.name || TOOLS_CARD_STRINGS.common.deviceFallback(id)),
         meta: String(block?.device_class || "").trim() || undefined,
       };
     })
@@ -594,15 +623,18 @@ export function pruneBackupBundle(params: {
 
 export function validateBackupBundle(raw: unknown): BackupBundlePayload {
   if (!raw || typeof raw !== "object") {
-    throw new Error("Backup file must contain a JSON object.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.invalidObject);
   }
   const bundle = raw as BackupBundlePayload;
   if (String(bundle.kind || "") !== "hub_bundle") {
-    throw new Error("Backup file is not a Sofabaton hub bundle.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.invalidBundle);
   }
   if (Number(bundle.schema_version || 0) !== BACKUP_BUNDLE_SCHEMA_VERSION) {
     throw new Error(
-      `Backup file schema_version must be ${BACKUP_BUNDLE_SCHEMA_VERSION} (got ${String(bundle.schema_version || "") || "unknown"}).`,
+      TOOLS_CARD_STRINGS.decodedPayload.invalidSchema(
+        BACKUP_BUNDLE_SCHEMA_VERSION,
+        String(bundle.schema_version || "") || TOOLS_CARD_STRINGS.backend.unknownVersion,
+      ),
     );
   }
   // A missing payload_profile means a legacy full backup; an explicitly
@@ -610,11 +642,11 @@ export function validateBackupBundle(raw: unknown): BackupBundlePayload {
   const profile = String(bundle.payload_profile || "full_backup");
   if (profile !== "full_backup") {
     throw new Error(
-      "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
+      TOOLS_CARD_STRINGS.decodedPayload.structuralBundle,
     );
   }
   if (!Array.isArray(bundle.devices) || !Array.isArray(bundle.activities)) {
-    throw new Error("Backup file is missing devices or activities arrays.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.missingArrays);
   }
   return bundle;
 }
@@ -646,7 +678,10 @@ function renameInList<T extends { device?: BackupBundleDeviceBlock | null }>(
   return (list ?? []).map((entry) => {
     const block = entry?.device;
     if (!block || Number(block.device_id || 0) !== id) return entry;
-    return { ...entry, device: { ...block, name: trimmed || block.name || `Device ${id}` } };
+    return {
+      ...entry,
+      device: { ...block, name: trimmed || block.name || TOOLS_CARD_STRINGS.common.deviceFallback(id) },
+    };
   });
 }
 
@@ -723,7 +758,7 @@ function favoriteLabel(bundle: BackupBundlePayload, row: BackupBundleFavoriteSlo
   if (derived) return derived;
   const explicit = String(row?.name || "").trim();
   if (explicit) return explicit;
-  return `Favorite ${Number(row?.button_id || 0) || "?"}`;
+  return TOOLS_CARD_STRINGS.common.favoriteFallback(Number(row?.button_id || 0) || "?");
 }
 
 function sortByButtonId<T extends { button_id?: number | null }>(rows: T[] | null | undefined): T[] {
@@ -753,7 +788,7 @@ export function activityQuickAccessItems(
       kind: "macro",
       activityId: Number(activityId),
       buttonId,
-      label: String(row?.name || `Macro ${buttonId}`),
+      label: String(row?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId)),
     });
   }
   for (const row of sortByButtonId<BackupBundleFavoriteSlot>(activity.favorite_slots)) {
@@ -849,7 +884,7 @@ export function deviceCommandItems(
   for (const row of device.commands ?? []) {
     const commandId = Number(row?.command_id || 0);
     if (commandId <= 0) continue;
-    const label = String(row?.name || "").trim() || `Command ${commandId}`;
+    const label = String(row?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(commandId);
     items.push({ deviceId: normalizedDeviceId, commandId, label });
   }
   return items.sort((left, right) => left.commandId - right.commandId);
@@ -1078,7 +1113,7 @@ export function addBundleDeviceCommand(
           ...commands,
           {
             command_id: normalizedCommandId,
-            name: trimmed || `Command ${normalizedCommandId}`,
+            name: trimmed || TOOLS_CARD_STRINGS.common.commandFallback(normalizedCommandId),
             restore_data: { ...restoreData, new: true },
           },
         ],
@@ -2071,7 +2106,7 @@ export function activityMemberViews(
       powersOn,
       inputOrdinal,
       inputCommandId: input?.commandId ?? null,
-      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null),
+      inputCommandName: input?.name || (inputOrdinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(inputOrdinal) : null),
       powersOff,
     };
   });
@@ -2227,7 +2262,7 @@ function ensureDeviceInput(
     command_id: cId,
     fid: synthesizeCommandCode(cId),
     input_index: nextOrdinal,
-    name: commandLabelFor(bundle, dId, cId) || `Input ${cId}`,
+    name: commandLabelFor(bundle, dId, cId) || TOOLS_CARD_STRINGS.common.inputFallback(cId),
   };
   const nextBundle: BackupBundlePayload = {
     ...bundle,
@@ -2290,7 +2325,7 @@ export function activityPowerDevices(
       deviceName: deviceNameFor(bundle, deviceId),
       inputOrdinal,
       inputCommandId: input?.commandId ?? null,
-      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null),
+      inputCommandName: input?.name || (inputOrdinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(inputOrdinal) : null),
     };
   });
 }
@@ -2410,7 +2445,7 @@ export interface BackupDeviceMacroSummary {
 function defaultMacroName(buttonId: number): string {
   if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
   if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
-  return `Macro ${buttonId}`;
+  return TOOLS_CARD_STRINGS.common.macroFallback(buttonId);
 }
 
 function deviceMacroDelayStep(delay: number): BackupBundleMacroStep {
@@ -2680,7 +2715,7 @@ export function activityUserMacroSummaries(
     .filter(({ buttonId }) => buttonId > 0 && buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID)
     .map(({ buttonId, macro }) => ({
       buttonId,
-      name: String(macro?.name || `Macro ${buttonId}`),
+      name: String(macro?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId)),
       commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length,
     }))
     .sort((left, right) => left.buttonId - right.buttonId);
@@ -2703,16 +2738,37 @@ export function activityMacroStepItems(
     const deviceName = deviceNameFor(bundle, deviceId);
     // Mandatory power-macro references (only present in the 198/199 macros).
     if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
-      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
-      return { index, kind: "power", commandId, deviceId, label: `${verb} · ${deviceName}`, hold: 0, wait, protected: true };
+      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND
+        ? TOOLS_CARD_STRINGS.backup.powerOn
+        : TOOLS_CARD_STRINGS.backup.powerOff;
+      return {
+        index,
+        kind: "power",
+        commandId,
+        deviceId,
+        label: TOOLS_CARD_STRINGS.backup.powerStepLabel(verb, deviceName),
+        hold: 0,
+        wait,
+        protected: true,
+      };
     }
     if (commandId === DEVICE_INPUT_REF_COMMAND) {
       const ordinal = Number(head?.duration || 0);
       const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
-      const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
+      const inputLabel = input?.name
+        || (ordinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(ordinal) : TOOLS_CARD_STRINGS.common.noInput);
       // commandId carries the resolved input command (or null) so the editor
       // can pre-select it; the step itself is identified as an input ref.
-      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input · ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
+      return {
+        index,
+        kind: "input",
+        commandId: input?.commandId ?? null,
+        deviceId,
+        label: TOOLS_CARD_STRINGS.backup.inputStepLabel(deviceName, inputLabel),
+        hold: 0,
+        wait,
+        protected: true,
+      };
     }
     return {
       index,
@@ -2740,7 +2796,7 @@ function updateActivityMacro(
     const nextMacro: BackupBundleMacroRow = {
       ...(existing ?? {}),
       button_id: bId,
-      name: existing?.name ?? `Macro ${bId}`,
+      name: existing?.name ?? TOOLS_CARD_STRINGS.common.macroFallback(bId),
       steps: transform(existing?.steps ?? []),
     };
     if (index >= 0) macros[index] = nextMacro;
@@ -2761,7 +2817,7 @@ export function addActivityUserMacro(
     ...activity,
     macros: [...(activity.macros ?? []), {
       button_id: nextQuickAccessButtonId(activity),
-      name: String(name ?? "").trim() || "Macro",
+      name: String(name ?? "").trim() || TOOLS_CARD_STRINGS.backup.newMacroName,
       steps: [],
     }],
   }));
@@ -2864,43 +2920,45 @@ export interface ButtonCatalogEntry {
 // Physical-button universe, mirroring `ButtonName` in protocol_const.py.
 // POWER_ON / POWER_OFF (0xC6 / 0xC7) are the activity power macros, not
 // bindable buttons, so they're intentionally absent.
-const SHARED_BUTTON_CATALOG: ButtonCatalogEntry[] = [
-  { code: 0xAE, name: "Up", group: "Navigation" },
-  { code: 0xB2, name: "Down", group: "Navigation" },
-  { code: 0xAF, name: "Left", group: "Navigation" },
-  { code: 0xB1, name: "Right", group: "Navigation" },
-  { code: 0xB0, name: "OK", group: "Navigation" },
-  { code: 0xB4, name: "Home", group: "Navigation" },
-  { code: 0xB3, name: "Back", group: "Navigation" },
-  { code: 0xB5, name: "Menu", group: "Navigation" },
-  { code: 0xB6, name: "Volume Up", group: "Volume & Channel" },
-  { code: 0xB9, name: "Volume Down", group: "Volume & Channel" },
-  { code: 0xB8, name: "Mute", group: "Volume & Channel" },
-  { code: 0xB7, name: "Channel Up", group: "Volume & Channel" },
-  { code: 0xBA, name: "Channel Down", group: "Volume & Channel" },
-  { code: 0xBB, name: "Rewind", group: "Transport" },
-  { code: 0xBC, name: "Pause", group: "Transport" },
-  { code: 0xBD, name: "Forward", group: "Transport" },
-  { code: 0xBE, name: "Red", group: "Colour" },
-  { code: 0xBF, name: "Green", group: "Colour" },
-  { code: 0xC0, name: "Yellow", group: "Colour" },
-  { code: 0xC1, name: "Blue", group: "Colour" },
-];
+function sharedButtonCatalog(): ButtonCatalogEntry[] {
+  const S = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 0xAE, name: S.up, group: S.navigation },
+    { code: 0xB2, name: S.down, group: S.navigation },
+    { code: 0xAF, name: S.left, group: S.navigation },
+    { code: 0xB1, name: S.right, group: S.navigation },
+    { code: 0xB0, name: S.ok, group: S.navigation },
+    { code: 0xB4, name: S.home, group: S.navigation },
+    { code: 0xB3, name: S.back, group: S.navigation },
+    { code: 0xB5, name: S.menu, group: S.navigation },
+    { code: 0xB6, name: S.volumeUp, group: S.volumeChannel },
+    { code: 0xB9, name: S.volumeDown, group: S.volumeChannel },
+    { code: 0xB8, name: S.mute, group: S.volumeChannel },
+    { code: 0xB7, name: S.channelUp, group: S.volumeChannel },
+    { code: 0xBA, name: S.channelDown, group: S.volumeChannel },
+    { code: 0xBB, name: S.rewind, group: S.transport },
+    { code: 0xBC, name: S.pause, group: S.transport },
+    { code: 0xBD, name: S.forward, group: S.transport },
+    { code: 0xBE, name: S.red, group: S.colour },
+    { code: 0xBF, name: S.green, group: S.colour },
+    { code: 0xC0, name: S.yellow, group: S.colour },
+    { code: 0xC1, name: S.blue, group: S.colour },
+  ];
+}
 
 // X2-only extended keys (codes below 0xAE).
-const X2_EXTRA_BUTTON_CATALOG: ButtonCatalogEntry[] = [
-  { code: 0x99, name: "A", group: "Extra" },
-  { code: 0x98, name: "B", group: "Extra" },
-  { code: 0x97, name: "C", group: "Extra" },
-  { code: 0x9A, name: "Exit", group: "Extra" },
-  { code: 0x9B, name: "DVR", group: "Extra" },
-  { code: 0x9C, name: "Play", group: "Extra" },
-  { code: 0x9D, name: "Guide", group: "Extra" },
-];
-
-const BUTTON_NAME_BY_CODE = new Map<number, string>(
-  [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG].map((entry) => [entry.code, entry.name]),
-);
+function x2ExtraButtonCatalog(): ButtonCatalogEntry[] {
+  const S = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 0x99, name: "A", group: S.extra },
+    { code: 0x98, name: "B", group: S.extra },
+    { code: 0x97, name: "C", group: S.extra },
+    { code: 0x9A, name: S.exit, group: S.extra },
+    { code: 0x9B, name: S.dvr, group: S.extra },
+    { code: 0x9C, name: S.play, group: S.extra },
+    { code: 0x9D, name: S.guide, group: S.extra },
+  ];
+}
 
 /**
  * Bindable physical buttons for the bundle's hub model. X2 adds seven
@@ -2909,14 +2967,17 @@ const BUTTON_NAME_BY_CODE = new Map<number, string>(
  */
 export function bundleButtonCatalog(bundle: BackupBundlePayload | null): ButtonCatalogEntry[] {
   if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
-    return [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG];
+    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()];
   }
-  return [...SHARED_BUTTON_CATALOG];
+  return sharedButtonCatalog();
 }
 
 /** Resolve a button code to its display name, falling back to a hex label. */
 export function buttonName(code: number): string {
-  return BUTTON_NAME_BY_CODE.get(Number(code)) ?? `Button 0x${Number(code).toString(16).toUpperCase()}`;
+  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()]
+    .find((entry) => entry.code === Number(code));
+  return known?.name
+    ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
 }
 
 export interface BackupButtonBindingItem {
@@ -2939,18 +3000,21 @@ export interface BackupButtonBindingItem {
 
 function deviceNameFor(bundle: BackupBundlePayload | null, deviceId: number): string {
   const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
-  return String(device?.device?.name || "").trim() || `Device ${Number(deviceId)}`;
+  return String(device?.device?.name || "").trim()
+    || TOOLS_CARD_STRINGS.common.deviceFallback(Number(deviceId));
 }
 
 function commandNameOrFallback(bundle: BackupBundlePayload, deviceId: number, commandId: number): string {
-  return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
+  return commandLabelFor(bundle, deviceId, commandId)
+    || TOOLS_CARD_STRINGS.common.commandFallback(Number(commandId));
 }
 
 /** Display name of one of an activity's own macros (for macro-bound buttons). */
 function activityMacroName(bundle: BackupBundlePayload | null, activityId: number, buttonId: number): string {
   const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
   const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
+  return String(macro?.name || "").trim()
+    || TOOLS_CARD_STRINGS.common.macroFallback(Number(buttonId));
 }
 
 /**
@@ -2966,7 +3030,9 @@ function activityBindingTargetLabel(
   targetCommandId: number,
 ): string {
   if (targetDeviceId === Number(activityId)) {
-    return `Macro · ${activityMacroName(bundle, activityId, targetCommandId)}`;
+    return TOOLS_CARD_STRINGS.backup.macroTargetLabelText(
+      activityMacroName(bundle, activityId, targetCommandId),
+    );
   }
   return `${deviceNameFor(bundle, targetDeviceId)} · ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
 }
@@ -3372,15 +3438,15 @@ export function bundleEditableDeviceOptions(bundle: BackupBundlePayload | null):
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
   if (!sourceVersion) {
-    throw new Error("Backup file is missing its source hub model, so compatibility cannot be verified.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.missingSourceModel);
   }
   const destinationVersion = normalizeHubVersion(destinationHubVersion);
   if (!destinationVersion) {
-    throw new Error("The destination hub model is unknown, so restore compatibility cannot be verified.");
+    throw new Error(TOOLS_CARD_STRINGS.decodedPayload.unknownDestinationModel);
   }
   if (HUB_VERSION_RANK[destinationVersion] < HUB_VERSION_RANK[sourceVersion]) {
     throw new Error(
-      `This backup was created on a Sofabaton ${sourceVersion} hub and cannot be restored onto a Sofabaton ${destinationVersion} hub.`,
+      TOOLS_CARD_STRINGS.decodedPayload.incompatibleModels(sourceVersion, destinationVersion),
     );
   }
 }

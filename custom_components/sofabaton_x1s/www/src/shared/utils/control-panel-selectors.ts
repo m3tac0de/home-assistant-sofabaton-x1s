@@ -8,38 +8,7 @@ import type {
   HubClickAction,
   TabId,
 } from "../ha-context";
-
-const BUTTON_NAMES: Record<number, string> = {
-  0x97: "C",
-  0x98: "B",
-  0x99: "A",
-  0x9a: "Exit",
-  0x9b: "Dvr",
-  0x9c: "Play",
-  0x9d: "Guide",
-  0xae: "Up",
-  0xaf: "Left",
-  0xb0: "Ok",
-  0xb1: "Right",
-  0xb2: "Down",
-  0xb3: "Back",
-  0xb4: "Home",
-  0xb5: "Menu",
-  0xb6: "Vol Up",
-  0xb7: "Ch Up",
-  0xb8: "Mute",
-  0xb9: "Vol Down",
-  0xba: "Ch Down",
-  0xbb: "Rew",
-  0xbc: "Pause",
-  0xbd: "Fwd",
-  0xbe: "Red",
-  0xbf: "Green",
-  0xc0: "Yellow",
-  0xc1: "Blue",
-  0xc6: "Power On",
-  0xc7: "Power Off",
-};
+import { TOOLS_CARD_STRINGS } from "../../strings";
 
 export function selectedHub(snapshot: ControlPanelSnapshot): ControlPanelHubState | null {
   const hubs = snapshot.state?.hubs ?? [];
@@ -120,12 +89,12 @@ export function activityButtons(hub: CacheHubState | null, activityId: number) {
 export function deviceCommands(hub: CacheHubState | null, deviceId: number) {
   const commands = hub?.commands?.[String(deviceId)] ?? {};
   return Object.entries(commands)
-    .map(([id, label]) => ({ id: Number(id), label: String(label || `Command ${id}`) }))
+    .map(([id, label]) => ({ id: Number(id), label: String(label || TOOLS_CARD_STRINGS.common.commandFallback(id)) }))
     .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 export function buttonName(buttonId: number) {
-  return BUTTON_NAMES[buttonId] ?? `Button ${buttonId}`;
+  return TOOLS_CARD_STRINGS.buttonNames[buttonId] ?? TOOLS_CARD_STRINGS.common.buttonFallback(buttonId);
 }
 
 export function isBackendUnavailableError(error: unknown, hass: HassLike | null): boolean {
@@ -149,7 +118,7 @@ export function isBackendUnavailableError(error: unknown, hass: HassLike | null)
 }
 
 export function formatError(error: unknown): string {
-  if (!error) return "Unknown error";
+  if (!error) return TOOLS_CARD_STRINGS.common.unknownError;
   if (typeof error === "string") return error;
   if (error instanceof Error && error.message.trim()) return error.message;
   const candidateError = error as Record<string, unknown>;
@@ -165,7 +134,7 @@ export function formatError(error: unknown): string {
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate;
   }
-  return "Unknown error (check Home Assistant logs)";
+  return TOOLS_CARD_STRINGS.common.unknownErrorWithLogs;
 }
 
 export function formatLogEntry(entry: ControlPanelLogLine) {
@@ -334,8 +303,8 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
             : hubRuntime.operation === "entity_sync"
               ? "entity_sync"
               : "wifi_deploy",
-      label: String(hubRuntime.label || "Operation running"),
-      detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
+      label: String(hubRuntime.label || TOOLS_CARD_STRINGS.availability.operationRunning),
+      detail: String(hubRuntime.detail || hubRuntime.label || TOOLS_CARD_STRINGS.availability.working),
       progress: {
         current: Number.isFinite(current) ? current : null,
         total: Number.isFinite(total) && total > 0 ? total : null,
@@ -347,7 +316,7 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
   if (hubRuntime?.kind === "app_connected") {
     return {
       kind: "app_connected",
-      label: String(hubRuntime.label || "Only Logs is available while the Sofabaton app is connected."),
+      label: String(hubRuntime.label || TOOLS_CARD_STRINGS.availability.appConnectedOnlyLogs),
       detail: String(hubRuntime.detail || ""),
     };
   }
@@ -355,7 +324,7 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
     return {
       kind: "app_connected",
-      label: "Only Logs is available while the Sofabaton app is connected.",
+      label: TOOLS_CARD_STRINGS.availability.appConnectedOnlyLogs,
       detail: null,
     };
   }
@@ -364,7 +333,7 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
   if (externalLabel !== null) {
     return {
       kind: "notice",
-      label: externalLabel || "Hub command in progress...",
+      label: externalLabel || TOOLS_CARD_STRINGS.availability.hubCommandInProgress,
       detail: null,
     };
   }
@@ -372,7 +341,7 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
   if (hubRefreshBusy(snapshot, entryId)) {
     return {
       kind: "notice",
-      label: "Refreshing cache...",
+      label: TOOLS_CARD_STRINGS.availability.refreshingCache,
       detail: null,
     };
   }
@@ -385,13 +354,15 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
   if (gateState.kind !== "pass") {
     return {
       kind: "blocked",
-      title: gateState.kind === "hub_unavailable" ? "Hub unavailable" : "Unavailable",
+      title: gateState.kind === "hub_unavailable"
+        ? TOOLS_CARD_STRINGS.hubUnavailable.title
+        : TOOLS_CARD_STRINGS.availability.unavailable,
       message:
         gateState.kind === "version_mismatch"
-          ? "Refresh the dashboard to load the updated Sofabaton Control Panel card."
+          ? TOOLS_CARD_STRINGS.availability.refreshDashboard
           : gateState.kind === "backend_unavailable"
-            ? "Waiting for the Sofabaton X integration to finish starting."
-            : "This hub is not connected, so the control panel is unavailable until the hub reconnects.",
+            ? TOOLS_CARD_STRINGS.backend.unavailableCopy
+            : TOOLS_CARD_STRINGS.hubUnavailable.copy,
     };
   }
 
@@ -401,10 +372,12 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
 
   const hub = selectedHub(snapshot);
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
-    const title = tabId === "wifi_commands" ? "Automation unavailable" : "Backup unavailable";
+    const title = tabId === "wifi_commands"
+      ? TOOLS_CARD_STRINGS.availability.automationUnavailable
+      : TOOLS_CARD_STRINGS.availability.backupUnavailable;
     const message = tabId === "wifi_commands"
-      ? "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy."
-      : "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.";
+      ? TOOLS_CARD_STRINGS.availability.automationBlockedByProxy
+      : TOOLS_CARD_STRINGS.availability.backupBlockedByProxy;
     return { kind: "blocked", title, message };
   }
 

@@ -1,4 +1,5 @@
 import { html } from "lit";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 export function renderAccordionSection(params: {
   sectionId: string;
@@ -26,7 +27,7 @@ export function renderAccordionSection(params: {
           aria-disabled=${String(params.disabled)}
           @click=${params.disabled ? null : (event: Event) => { event.stopPropagation(); params.onRefresh(); }}
           @keydown=${params.disabled ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); params.onRefresh(); } }}
-        >Refresh list</span>
+        >${TOOLS_CARD_STRINGS.cache.refreshList}</span>
         <button class="icon-btn${params.spinning ? " spinning" : ""}" ?disabled=${params.disabled} @click=${(event: Event) => { event.stopPropagation(); params.onRefresh(); }}>
           <ha-icon icon="mdi:refresh"></ha-icon>
         </button>

@@ -12,6 +12,7 @@ await build({
   entryPoints,
   outdir: "tests/frontend-dist",
   bundle: true,
+  external: ["typescript"],
   format: "esm",
   platform: "node",
   target: "node20",

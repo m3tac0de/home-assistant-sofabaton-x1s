@@ -1,4 +1,5 @@
 import { html } from "lit";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 export function renderHubPicker(params: {
   interactive: boolean;
@@ -10,7 +11,7 @@ export function renderHubPicker(params: {
   onToggle: () => void;
   onSelect: (entryId: string) => void;
 }) {
-  const prefix = params.prefixLabel ?? "HUB";
+  const prefix = params.prefixLabel ?? TOOLS_CARD_STRINGS.card.hubShort;
   if (!params.interactive) {
     return html`
       <div class="hub-picker hub-picker--static" id="hub-picker-root">
