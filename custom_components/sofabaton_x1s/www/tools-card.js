@@ -12539,7 +12539,18 @@ var SofabatonEditDetailView = class extends i4 {
         }));
         return;
       }
-      this._commitEditBundleEdit(applyBundleDelete(this.bundle, target));
+      let next = applyBundleDelete(this.bundle, target);
+      if (target.kind === "command" && this._isWifiEventsLiveDevice()) {
+        const slotCount = this._wifiEventsSlotCount();
+        if (slotCount > 0 && Number(target.commandId) <= slotCount) {
+          next = applyBundleDelete(next, {
+            kind: "command",
+            deviceId: target.deviceId,
+            commandId: Number(target.commandId) + slotCount
+          });
+        }
+      }
+      this._commitEditBundleEdit(next);
       if (target.kind === "activity" || target.kind === "device") {
         this._requestClose();
       }
@@ -13339,6 +13350,30 @@ var SofabatonEditDetailView = class extends i4 {
       (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id))
     );
   }
+  /** True when the live editor is showing the reserved Wifi Events device.
+   *  It is fully editable (unlike other managed wifi devices) and, per W7,
+   *  supports command deletion — the only device where a live-editor
+   *  command delete stages a `command_delete` in the sync. */
+  _isWifiEventsLiveDevice() {
+    return this.mode === "live" && this.kind === "device" && this.entityId != null && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)));
+  }
+  /** The Wifi Events device's per-slot short count (half its command
+   *  count, the slot_count that defines the long-record offset). */
+  _wifiEventsSlotCount() {
+    if (this.entityId == null || !this.bundle) return 0;
+    const device = (this.bundle.devices ?? []).find(
+      (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId)
+    );
+    return Math.floor((device?.commands?.length ?? 0) / 2);
+  }
+  /** True when a command id is a long-press record (id > slot_count) on
+   *  the events device — long rows carry no independent delete; deleting
+   *  the short row removes the pair. */
+  _commandIsLongRecord(commandId) {
+    if (!this._isWifiEventsLiveDevice()) return false;
+    const slotCount = this._wifiEventsSlotCount();
+    return slotCount > 0 && Number(commandId) > slotCount;
+  }
   _editDetailSectionItems(kind) {
     if (kind === "activity") {
       return [];
@@ -13709,7 +13744,7 @@ var SofabatonEditDetailView = class extends i4 {
                     ></ha-icon>
                   </button>
                 ` : A}
-            ${this.mode === "live" ? A : b2`
+            ${(this.mode !== "live" || this._isWifiEventsLiveDevice()) && !this._commandIsLongRecord(item.commandId) ? b2`
                   <button
                     class="icon-btn icon-btn--danger"
                     @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
@@ -13717,7 +13752,7 @@ var SofabatonEditDetailView = class extends i4 {
                   >
                     <ha-icon icon="mdi:trash-can-outline"></ha-icon>
                   </button>
-                `}
+                ` : A}
           </div>
         </div>
       </div>

@@ -1704,6 +1704,7 @@ class SofabatonHub:
         edited: dict[str, Any],
         device_id: int,
         progress_callback: Any = None,
+        allow_command_removal: bool = False,
     ) -> dict[str, Any]:
         """Sync one device's edits to the live hub (device-scoped counterpart
         of :meth:`async_sync_activity`; engine :meth:`X1Proxy.sync_device`)."""
@@ -1715,6 +1716,7 @@ class SofabatonHub:
                 edited=edited,
                 device_id=int(device_id),
                 progress_callback=progress_callback,
+                allow_command_removal=allow_command_removal,
             )
         )
 

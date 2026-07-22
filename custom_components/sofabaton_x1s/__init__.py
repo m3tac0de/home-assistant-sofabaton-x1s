@@ -2368,6 +2368,27 @@ def _bundle_device_is_wifi_events(bundle: dict[str, Any], entity_id: int) -> boo
     return device_key == WIFI_EVENTS_DEVICE_KEY
 
 
+def _collect_command_removals(
+    baseline: dict[str, Any],
+    edited: dict[str, Any],
+    entity_id: int,
+) -> list[int]:
+    """Command ids present on the device in the baseline but absent from
+    the edited bundle — the W7 event-delete staging shape."""
+
+    def _ids(bundle: dict[str, Any]) -> set[int]:
+        for device in bundle.get("devices") or []:
+            if int((device.get("device") or {}).get("device_id") or 0) == int(entity_id):
+                return {
+                    int(cmd.get("command_id"))
+                    for cmd in device.get("commands") or []
+                    if cmd.get("command_id") is not None
+                }
+        return set()
+
+    return sorted(_ids(baseline) - _ids(edited))
+
+
 def _collect_short_command_renames(
     baseline: dict[str, Any],
     edited: dict[str, Any],
@@ -2421,6 +2442,7 @@ async def _run_entity_sync_operation(
 
     pending_wifi_rename: dict[str, Any] | None = None
     events_command_renames: dict[int, str] | None = None
+    events_command_removals: list[int] | None = None
     if entity_kind == "device":
         try:
             pending_wifi_rename = await _async_prepare_managed_wifi_rename(
@@ -2438,9 +2460,16 @@ async def _run_entity_sync_operation(
             # hub-side editing UI, but command ADD is blocked — a hub-only
             # record would have no slot, no callback payload discipline,
             # and no deployable snapshot entry. Events are added through
-            # the activity editor's Add dialogs.
+            # the activity editor's Add dialogs. Command REMOVAL is the
+            # supported delete path (W7 stage 2): the plan's
+            # command_delete steps make the hub cascade referencing
+            # favorites/bindings/macro-steps, and the reconcile below
+            # resets the freed store slots.
+            is_events_device = True
             try:
-                planned = build_device_sync_plan(baseline, edited, entity_id)
+                planned = build_device_sync_plan(
+                    baseline, edited, entity_id, allow_command_removal=True
+                )
             except ValueError:
                 planned = []
             if any(step.kind == "command_add" for step in planned):
@@ -2461,6 +2490,13 @@ async def _run_entity_sync_operation(
             events_command_renames = _collect_short_command_renames(
                 baseline, edited, entity_id
             )
+            events_command_removals = _collect_command_removals(
+                baseline, edited, entity_id
+            )
+        else:
+            is_events_device = False
+    else:
+        is_events_device = False
 
     def _progress(**payload: Any) -> None:
         registry.update_from_thread(operation_id, **payload)
@@ -2472,6 +2508,7 @@ async def _run_entity_sync_operation(
                 edited=edited,
                 device_id=entity_id,
                 progress_callback=_progress,
+                allow_command_removal=is_events_device,
             )
         else:
             result = await hub.async_sync_activity(
@@ -2565,6 +2602,22 @@ async def _run_entity_sync_operation(
             async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
         except Exception:  # pragma: no cover - propagation must never fail the sync
             _LOGGER.exception("[device_sync] wifi events command-rename reconcile failed")
+
+    if events_command_removals:
+        # W7 stage 2: the plan's command_delete steps removed the records
+        # (hub cascaded the refs); reset the freed store slots in place so
+        # the record follows — short id -> default slot, long id -> flag
+        # off — and the deployed snapshot/hash stay coherent.
+        try:
+            store = await _async_get_command_config_store(hass)
+            await store.async_reconcile_wifi_events_command_removals(
+                hub.entry_id,
+                events_command_removals,
+                roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id),
+            )
+            async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
+        except Exception:  # pragma: no cover - propagation must never fail the sync
+            _LOGGER.exception("[device_sync] wifi events command-removal reconcile failed")
 
     completed_steps = int((result or {}).get("total_steps") or 0)
     registry.update(
@@ -2801,6 +2854,21 @@ async def _handle_entity_delete_ws(
             f"The hub did not confirm deletion of {entity_kind} {entity_id}",
         )
         return
+    # W7 decision 4: deleting the Wifi Events device wholesale from the Hub
+    # tab drops its orphaned store record and, if nothing else needs it,
+    # disables the HTTP listener (the store record is what keeps the guard
+    # alive). The hub-side delete already cascaded its refs.
+    if entity_kind == "device":
+        try:
+            store = await _async_get_command_config_store(hass)
+            events_state = store.wifi_events_record_state(hub.entry_id)
+            if events_state.get("device_id") == entity_id:
+                await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
+                if hub.roku_server_enabled and not await _async_wifi_listener_needed(hass, hub.entry_id):
+                    await hub.async_set_roku_server_enabled(False)
+                async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
+        except Exception:  # pragma: no cover - cleanup must never fail the delete
+            _LOGGER.exception("[device_delete] wifi events store cleanup failed")
     connection.send_result(msg["id"], result)
 
 
@@ -2970,7 +3038,14 @@ async def _handle_entity_sync_plan_ws(
             hub_version=getattr(hub, "version", None),
         )
         if entity_kind == "device":
-            plan = build_device_sync_plan(baseline, edited, entity_id)
+            plan = build_device_sync_plan(
+                baseline,
+                edited,
+                entity_id,
+                # W7: command removal is in scope for the events device only
+                # (the review preview must mirror the executor's rules).
+                allow_command_removal=_bundle_device_is_wifi_events(baseline, entity_id),
+            )
         else:
             plan = build_activity_sync_plan(baseline, edited, entity_id)
     except ValueError as err:

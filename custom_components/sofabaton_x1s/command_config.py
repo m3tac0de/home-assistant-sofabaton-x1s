@@ -1240,6 +1240,70 @@ class CommandConfigStore:
         await self._store.async_save(self._data)
         return True
 
+    async def async_reconcile_wifi_events_command_removals(
+        self,
+        entry_id: str,
+        removed_ids: list[int],
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> bool:
+        """Store-follows-hub reconcile after a device/sync DELETED command
+        records on the Wifi Events device (W7 stage 2, plan §9b.3).
+
+        A removed SHORT id resets its slot to the default in place (slot
+        indices stay stable; the event's actions are cleared with it); a
+        removed LONG id alone just flips the slot's ``long_press_enabled``
+        off. The deployed snapshot follows (freed entries return to their
+        placeholder names) and the deployed hash is recomputed so the
+        record reads in sync — the next event create's phase-1 sync
+        re-adds placeholder records for the freed ids.
+        """
+
+        record = self._wifi_events_record(entry_id)
+        if record is None or not removed_ids:
+            return False
+        commands, slot_count = self._wifi_events_slots(record)
+        deployed = record.get("deployed_commands")
+        deployed_list = deployed if isinstance(deployed, list) else []
+        changed = False
+        for raw_id in removed_ids:
+            try:
+                command_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= command_id <= slot_count:
+                idx = command_id - 1
+                if commands[idx] != _default_slot(idx):
+                    commands[idx] = _default_slot(idx)
+                    changed = True
+            elif slot_count < command_id <= 2 * slot_count:
+                idx = command_id - slot_count - 1
+                if commands[idx].get("long_press_enabled"):
+                    commands[idx]["long_press_enabled"] = False
+                    commands[idx]["long_press_action"] = deepcopy(DEFAULT_COMMAND_ACTION)
+                    changed = True
+            else:
+                continue
+            if idx < len(deployed_list) and isinstance(deployed_list[idx], dict):
+                default_name = f"Command {idx + 1}"
+                if 1 <= command_id <= slot_count and deployed_list[idx].get("name") != default_name:
+                    deployed_list[idx]["name"] = default_name
+                    changed = True
+        if not changed:
+            return False
+        record["commands"] = commands
+        if str(record.get("deployed_commands_hash") or "").strip():
+            record["deployed_commands_hash"] = compute_commands_hash(
+                commands,
+                device_name=str(record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
+                roku_listen_port=roku_listen_port,
+                power_on_command_id=normalize_power_command_id(record.get("power_on_command_id")),
+                power_off_command_id=normalize_power_command_id(record.get("power_off_command_id")),
+                slot_count=slot_count,
+            )
+        await self._store.async_save(self._data)
+        return True
+
     async def async_set_wifi_event_longpress(
         self,
         entry_id: str,

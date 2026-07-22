@@ -705,6 +705,38 @@ export class SofabatonEditDetailView extends LitElement {
     );
   }
 
+  /** True when the live editor is showing the reserved Wifi Events device.
+   *  It is fully editable (unlike other managed wifi devices) and, per W7,
+   *  supports command deletion — the only device where a live-editor
+   *  command delete stages a `command_delete` in the sync. */
+  private _isWifiEventsLiveDevice(): boolean {
+    return (
+      this.mode === "live" &&
+      this.kind === "device" &&
+      this.entityId != null &&
+      isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)))
+    );
+  }
+
+  /** The Wifi Events device's per-slot short count (half its command
+   *  count, the slot_count that defines the long-record offset). */
+  private _wifiEventsSlotCount(): number {
+    if (this.entityId == null || !this.bundle) return 0;
+    const device = (this.bundle.devices ?? []).find(
+      (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId),
+    );
+    return Math.floor((device?.commands?.length ?? 0) / 2);
+  }
+
+  /** True when a command id is a long-press record (id > slot_count) on
+   *  the events device — long rows carry no independent delete; deleting
+   *  the short row removes the pair. */
+  private _commandIsLongRecord(commandId: number): boolean {
+    if (!this._isWifiEventsLiveDevice()) return false;
+    const slotCount = this._wifiEventsSlotCount();
+    return slotCount > 0 && Number(commandId) > slotCount;
+  }
+
   private _editDetailSectionItems(kind: BackupEditTargetKind): Array<{
     id: BackupEditDetailSectionId;
     icon: string;
@@ -1193,9 +1225,8 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            ${this.mode === "live"
-              ? nothing
-              : html`
+            ${(this.mode !== "live" || this._isWifiEventsLiveDevice()) && !this._commandIsLongRecord(item.commandId)
+              ? html`
                   <button
                     class="icon-btn icon-btn--danger"
                     @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
@@ -1203,7 +1234,8 @@ export class SofabatonEditDetailView extends LitElement {
                   >
                     <ha-icon icon="mdi:trash-can-outline"></ha-icon>
                   </button>
-                `}
+                `
+              : nothing}
           </div>
         </div>
       </div>
@@ -2197,7 +2229,21 @@ export class SofabatonEditDetailView extends LitElement {
       }));
       return;
     }
-    this._commitEditBundleEdit(applyBundleDelete(this.bundle, target));
+    let next = applyBundleDelete(this.bundle, target);
+    // W7: deleting a Wifi Event's short record from the events device
+    // editor also removes its long record (they are one event) — the
+    // backend plan then emits both command_delete steps.
+    if (target.kind === "command" && this._isWifiEventsLiveDevice()) {
+      const slotCount = this._wifiEventsSlotCount();
+      if (slotCount > 0 && Number(target.commandId) <= slotCount) {
+        next = applyBundleDelete(next, {
+          kind: "command",
+          deviceId: target.deviceId,
+          commandId: Number(target.commandId) + slotCount,
+        });
+      }
+    }
+    this._commitEditBundleEdit(next);
     // Deleting the entity we're inside removes its detail page — fall back
     // to the overview. Row-level deletes (command / favorite / macro) keep
     // the detail open so the user can continue trimming the list.

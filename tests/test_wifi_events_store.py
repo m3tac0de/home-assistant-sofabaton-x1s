@@ -251,3 +251,50 @@ def test_slot_count_fallback_for_legacy_events_record() -> None:
     assert payloads[WIFI_EVENTS_DEVICE_KEY]["slot_count"] == WIFI_EVENTS_SLOT_COUNT
     assert len(payloads[WIFI_EVENTS_DEVICE_KEY]["commands"]) == WIFI_EVENTS_SLOT_COUNT
     assert payloads["default"]["slot_count"] == COMMAND_SLOT_COUNT
+
+
+def test_reconcile_command_removals_resets_short_slot(_store=None):
+    # W7 stage 2: a removed SHORT id resets its slot to default in place
+    # (actions cleared) and updates the deployed snapshot + hash.
+    store = _store or CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    _run(store.async_allocate_wifi_event("hub-1", "One"))
+    _run(store.async_allocate_wifi_event("hub-1", "Two"))
+    _run(store.async_set_wifi_event_action(
+        "hub-1", 0, "short", {"action": "perform-action", "perform_action": "script.x"}))
+    # simulate a deployed record so the hash path runs
+    commands = normalize_commands(
+        _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands"],
+        slot_count=WIFI_EVENTS_SLOT_COUNT, standalone_long_press=True)
+    _run(store.async_save_deployed_wifi_commands(
+        "hub-1", WIFI_EVENTS_DEVICE_KEY, commands, deployed_device_id=10,
+        commands_hash=_run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands_hash"]))
+
+    changed = _run(store.async_reconcile_wifi_events_command_removals("hub-1", [1]))
+    assert changed is True
+    events = store.list_wifi_events("hub-1")
+    assert [e["name"] for e in events] == ["Two"]  # slot 0 freed, slot 1 stays
+    assert events[0]["slot_index"] == 1
+    payload = _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    assert payload["deployed_commands_hash"] == payload["commands_hash"]
+
+
+def test_reconcile_command_removals_long_id_flips_flag_only():
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    _run(store.async_allocate_wifi_event("hub-1", "One"))
+    _run(store.async_set_wifi_event_longpress("hub-1", 0, True))
+    # removing only the LONG id (1 + slot_count) keeps the event, flag off
+    changed = _run(store.async_reconcile_wifi_events_command_removals(
+        "hub-1", [1 + WIFI_EVENTS_SLOT_COUNT]))
+    assert changed is True
+    events = store.list_wifi_events("hub-1")
+    assert [e["name"] for e in events] == ["One"]
+    assert events[0]["long_press_enabled"] is False
+
+
+def test_reconcile_command_removals_noop_for_unconfigured():
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    _run(store.async_allocate_wifi_event("hub-1", "One"))
+    assert _run(store.async_reconcile_wifi_events_command_removals("hub-1", [40])) is False

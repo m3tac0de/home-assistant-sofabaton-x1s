@@ -599,7 +599,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     class _SyncingHub(_Hub):
         synced_edited = None
 
-        async def async_sync_device(self, *, baseline, edited, device_id, progress_callback=None):
+        async def async_sync_device(self, *, baseline, edited, device_id, progress_callback=None, allow_command_removal=False):
             self.synced_edited = edited
             return {"status": "success", "completed_steps": 1, "total_steps": 1}
 

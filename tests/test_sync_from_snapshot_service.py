@@ -52,7 +52,7 @@ class _FakeHub:
         )
         return self.sync_result
 
-    async def async_sync_device(self, *, baseline, edited, device_id, progress_callback=None):
+    async def async_sync_device(self, *, baseline, edited, device_id, progress_callback=None, allow_command_removal=False):
         self.calls.append(
             ("sync_device", {"baseline": baseline, "edited": edited, "device_id": device_id})
         )
