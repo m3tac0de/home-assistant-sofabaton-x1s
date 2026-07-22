@@ -14679,8 +14679,9 @@ var SofabatonEditDetailView = class extends i4 {
     if (!this._wifiEventsAvailable()) return;
     void this.wifiEvents.list().then((events) => {
       this._wifiEventsList = events;
-      this._wifiEventPrimary = this._defaultWifiEventSel();
-      this._wifiEventLp = this._defaultWifiEventSel();
+      const pristine = (sel) => sel.mode === "new" && sel.slot == null && sel.name === "";
+      if (pristine(this._wifiEventPrimary)) this._wifiEventPrimary = this._defaultWifiEventSel();
+      if (pristine(this._wifiEventLp)) this._wifiEventLp = this._defaultWifiEventSel();
     }).catch(() => {
       this._wifiEventsList = [];
     });

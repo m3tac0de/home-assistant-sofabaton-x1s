@@ -2761,8 +2761,13 @@ export class SofabatonEditDetailView extends LitElement {
     void this.wifiEvents!.list()
       .then((events) => {
         this._wifiEventsList = events;
-        this._wifiEventPrimary = this._defaultWifiEventSel();
-        this._wifiEventLp = this._defaultWifiEventSel();
+        // Re-seat only untouched selections: the response can land after
+        // the user already picked an event or typed a new-event name, and
+        // clobbering that mid-flight would lose their input.
+        const pristine = (sel: WifiEventTargetSel) =>
+          sel.mode === "new" && sel.slot == null && sel.name === "";
+        if (pristine(this._wifiEventPrimary)) this._wifiEventPrimary = this._defaultWifiEventSel();
+        if (pristine(this._wifiEventLp)) this._wifiEventLp = this._defaultWifiEventSel();
       })
       .catch(() => {
         this._wifiEventsList = [];
