@@ -8,7 +8,7 @@
 // this with the tools-card import.meta.url versioning.
 
 export const CARD_NAME = "Sofabaton Virtual Remote";
-export const CARD_VERSION = "0.1.8";
+export const CARD_VERSION = "0.1.9";
 export const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 export const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;

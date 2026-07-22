@@ -1922,7 +1922,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.1.8";
+var CARD_VERSION = "0.1.9";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
