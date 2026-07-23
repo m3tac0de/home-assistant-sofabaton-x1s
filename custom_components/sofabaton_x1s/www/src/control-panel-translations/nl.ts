@@ -248,6 +248,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     wifiEventNeedsSync: (name: string) => `${name} (sync nodig)`,
     wifiEventCreateFailed: "Het Wifi-event kon niet worden aangemaakt — het blijft klaarstaan en wordt bij de volgende poging opnieuw geprobeerd.",
     wifiEventNameRequired: "Voer een naam in voor het nieuwe Wifi-event.",
+    wifiEventBindingLongPressNote: "Lang indrukken vuurt de langdruk-actie van dit event af. Stel die in onder Automatisering → Events.",
     macroTargetNoExisting: "Nog geen macro's. Maak er hieronder een.", addShortcutActionName: "Naam", addShortcutActionHelper: "Hierna kies je de stappen.", addShortcutCommandHelper: "De snelkoppeling wordt onder de naam van het commando weergegeven.",
     unsaved: "Niet opgeslagen", unsavedTooltip: "Je hebt niet-opgeslagen wijzigingen. Download de back-up om ze op te slaan.", renameKind: (kind: "activity" | "device") => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} hernoemen`,
     managedWifiTitle: "Beheerd door Wifi Commands", managedWifiIntro: "Dit apparaat is vanuit het tabblad Wifi Commands geïmplementeerd.",

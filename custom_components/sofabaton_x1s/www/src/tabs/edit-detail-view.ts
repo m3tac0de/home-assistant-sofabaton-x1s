@@ -26,7 +26,6 @@ import {
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import type { BackupBundlePayload, BlobFetchDecodedBlock, WifiEvent } from "../shared/ha-context";
-import { WIFI_EVENTS_PLACEHOLDER_DEVICE_ID } from "../shared/ha-context";
 import {
   activityButtonBindingItems,
   activityMacroStepItems,
@@ -202,7 +201,6 @@ export class SofabatonEditDetailView extends LitElement {
     _wifiEventsList: { state: true },
     _wifiEventBusy: { state: true },
     _wifiEventPrimary: { state: true },
-    _wifiEventLp: { state: true },
     _editDetailActiveSection: { state: true },
     _editDetailNameDraft: { state: true },
     _editRenameDialogOpen: { state: true },
@@ -386,14 +384,14 @@ export class SofabatonEditDetailView extends LitElement {
   private _addShortcutMacroMode: MacroTargetMode = "new";
   private _addShortcutMacroId: number | null = null;
   // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
-  // `_wifiEventPrimary` serves whichever single-target dialog is open
-  // (shortcut, step, binding short leg); `_wifiEventLp` is the binding
-  // dialog's long-press leg (both legs can target events independently).
+  // `_wifiEventPrimary` serves whichever Add dialog is open (shortcut,
+  // step, or binding). A Wifi Event is atomic — a binding's long-press
+  // leg is the SAME event's long record, never an independent target — so
+  // one selection covers both legs.
   wifiEvents: WifiEventsHost | null = null;
   private _wifiEventsList: WifiEvent[] | null = null;
   private _wifiEventBusy = false;
   private _wifiEventPrimary: WifiEventTargetSel = { mode: "new", slot: null, name: "" };
-  private _wifiEventLp: WifiEventTargetSel = { mode: "new", slot: null, name: "" };
   private _editDetailNameDraft = "";
   private _editRenameDialogOpen = false;
   private _editRenameDialogDraft = "";
@@ -2426,7 +2424,7 @@ export class SofabatonEditDetailView extends LitElement {
         ref.bundle,
         activityId,
         ref.deviceId,
-        ref.commandId,
+        ref.shortCommandId,
         sanitizeBundleName(ref.bundle, ref.name),
       ));
       this._closeAddFavoriteDialog();
@@ -2773,6 +2771,9 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this.bundle || this.entityId == null) return "command";
     const dId = Number(deviceId || 0);
     if (dId === Number(this.entityId)) return "action";
+    if (this._wifiEventsAvailable() && isWifiEventsBrand(bundleDeviceBrand(this.bundle, dId))) {
+      return "wifi_event";
+    }
     return "command";
   }
 
@@ -2814,7 +2815,6 @@ export class SofabatonEditDetailView extends LitElement {
         const pristine = (sel: WifiEventTargetSel) =>
           sel.mode === "new" && sel.slot == null && sel.name === "";
         if (pristine(this._wifiEventPrimary)) this._wifiEventPrimary = this._defaultWifiEventSel();
-        if (pristine(this._wifiEventLp)) this._wifiEventLp = this._defaultWifiEventSel();
       })
       .catch(() => {
         this._wifiEventsList = [];
@@ -2886,31 +2886,43 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   /**
-   * Resolve a Wifi Event target selection to a `{deviceId, commandId}`
-   * ref (plus the possibly-grafted working bundle to insert it into).
-   * `long` selects the long record (`short + slot_count`) and
-   * auto-enables the slot's standalone long-press flag (a pure store
-   * edit — the long record is always deployed). Throws an Error whose
-   * message is user-facing; callers surface it in their dialog.
+   * Resolve a Wifi Event target selection to its atomic ref: a single
+   * event carries BOTH a short and a long record (short = slot+1, long =
+   * short + slot_count). A reference always addresses the event as one
+   * unit — the short record — and the long record is derived from the
+   * same event when a binding's long-press leg needs it (there is no
+   * separate long-press *target*; short vs long is an action-config
+   * distinction made in the Events tab, per the Wifi Events model).
+   *
+   * Returns the (possibly grafted) working bundle to insert into. Creating
+   * a new event is an instant store allocation (W7) — no hub deploy here.
+   * `deviceId` is the placeholder id 0 before the first-ever deploy; the
+   * Sync flow rewrites it. Throws a user-facing Error on failure.
    */
   private async _resolveWifiEventRef(
     sel: WifiEventTargetSel,
-    options: { long?: boolean } = {},
-  ): Promise<{ deviceId: number; commandId: number; name: string; bundle: BackupBundlePayload }> {
+  ): Promise<{
+    deviceId: number;
+    shortCommandId: number;
+    longCommandId: number;
+    slotIndex: number;
+    name: string;
+    bundle: BackupBundlePayload;
+  }> {
     const S = TOOLS_CARD_STRINGS.backup;
     if (!this.wifiEvents || !this.bundle) throw new Error(S.bindingIncomplete);
     if (sel.mode === "existing") {
       const event = this._deployedWifiEvents().find((item) => item.slot_index === sel.slot);
-      if (!event) throw new Error(S.bindingIncomplete);
+      // The host fills device_id (real deployed id, or a computed free
+      // placeholder the Sync flow rewrites) — a null id would be an
+      // internal error, not a user one.
+      if (!event || event.device_id == null) throw new Error(S.bindingIncomplete);
       const grafted = await this.wifiEvents.ensureGrafted();
-      if (options.long && !event.long_press_enabled) {
-        await this.wifiEvents.enableLongPress(event.slot_index);
-      }
       return {
-        // W7: refs to a not-yet-deployed device use the placeholder id;
-        // the Sync flow rewrites them after phase 1 assigns the real id.
-        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
-        commandId: options.long ? event.long_press_command_id : event.command_id,
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
         name: event.name,
         bundle: grafted ?? this.bundle,
       };
@@ -2919,14 +2931,15 @@ export class SofabatonEditDetailView extends LitElement {
     if (!name) throw new Error(S.wifiEventNameRequired);
     this._wifiEventBusy = true;
     try {
-      // Instant store allocation (W7) — no hub deploy happens here.
       const created = await this.wifiEvents.create(name);
       const event = created.event;
       this._wifiEventsList = null;
-      if (options.long) await this.wifiEvents.enableLongPress(event.slot_index);
+      if (event.device_id == null) throw new Error(S.wifiEventCreateFailed);
       return {
-        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
-        commandId: options.long ? event.long_press_command_id : event.command_id,
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
         name: event.name,
         bundle: created.bundle ?? this.bundle,
       };
@@ -3036,6 +3049,21 @@ export class SofabatonEditDetailView extends LitElement {
     this._bindingTargetKind = kind === "activity"
       ? this._bindingTargetKindFor(item.deviceId)
       : "command";
+    if (this._bindingTargetKind === "wifi_event") {
+      // A wifi-event binding is atomic: the primary short record maps to
+      // its event slot (short command id = slot + 1); long press (if
+      // present) is the same event's long record, gated by the toggle.
+      this._wifiEventPrimary = {
+        mode: "existing",
+        slot: Number(item.commandId) - 1,
+        name: "",
+      };
+      this._bindingLongPressEnabled = Boolean(item.longPress);
+      this._bindingError = "";
+      this._loadWifiEvents();
+      this._bindingDialogOpen = true;
+      return;
+    }
     this._bindingActionName = this._bindingTargetKind === "action"
       ? this._macroName(item.commandId)
       : "";
@@ -3145,11 +3173,8 @@ export class SofabatonEditDetailView extends LitElement {
       this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
       return;
     }
-    if (kind === "wifi_event") {
-      this._wifiEventLp = this._defaultWifiEventSel();
-      return;
-    }
-    // "action"
+    // "action" (the long-press leg never targets a wifi event — that is
+    // only reachable atomically when the PRIMARY is a wifi event).
     this._resetMacroTarget("bindingLp");
     this._bindingLpActionName ||= this._macroName(this._bindingLpCommandId);
   };
@@ -3270,10 +3295,13 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   /**
-   * Async binding apply for legs targeting Wifi Events. Wifi refs are
-   * resolved FIRST (each resolve may return a freshly-grafted working
-   * bundle from the host, which would clobber later transforms) — the
-   * macro transforms then run on top of the final grafted bundle.
+   * Async binding apply when the button targets a Wifi Event. The event
+   * is atomic: the short press fires its short record, and — when the
+   * long-press toggle is on — the *same* event's long record is wired to
+   * the button's long press (and the event's long-press action is enabled
+   * for configuration in the Events tab). There is no independent
+   * long-press target here; that would collide with the Wifi Events model
+   * where short/long are two actions of one event.
    */
   private _applyActivityBindingWithWifiEvents = async () => {
     const S = TOOLS_CARD_STRINGS.backup;
@@ -3285,79 +3313,23 @@ export class SofabatonEditDetailView extends LitElement {
       return;
     }
     try {
-      let bundle = this.bundle;
-      let primaryWifi: { deviceId: number; commandId: number } | null = null;
-      let lpWifi: { deviceId: number; commandId: number } | null = null;
-      if (this._bindingTargetKind === "wifi_event") {
-        const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-        bundle = ref.bundle;
-        primaryWifi = { deviceId: ref.deviceId, commandId: ref.commandId };
-      }
-      if (this._bindingLongPressEnabled && this._bindingLpTargetKind === "wifi_event") {
-        // The long leg references the LONG record (short + slot_count)
-        // and auto-enables the slot's standalone long-press flag.
-        const ref = await this._resolveWifiEventRef(this._wifiEventLp, { long: true });
-        bundle = ref.bundle;
-        lpWifi = { deviceId: ref.deviceId, commandId: ref.commandId };
-      }
-
-      let macroToOpen: { buttonId: number; name: string } | null = null;
-      let primary: { deviceId: number; commandId: number };
-      if (primaryWifi) {
-        primary = primaryWifi;
-      } else if (this._bindingTargetKind === "command") {
-        if (!this._bindingDeviceId || !this._bindingCommandId) {
-          this._bindingError = S.bindingIncomplete;
-          return;
-        }
-        primary = { deviceId: Number(this._bindingDeviceId), commandId: Number(this._bindingCommandId) };
-      } else {
-        const resolved = this._resolveMacroTarget(
-          bundle, activityId, this._bindingMacroMode, this._bindingMacroId, this._bindingActionName,
-        );
-        if (!resolved) {
-          this._bindingError = S.bindingIncomplete;
-          return;
-        }
-        bundle = resolved.bundle;
-        primary = { deviceId: activityId, commandId: resolved.macroId };
-        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-      }
-
+      const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
       let longPress: { deviceId: number; commandId: number } | null = null;
       if (this._bindingLongPressEnabled) {
-        if (lpWifi) {
-          longPress = lpWifi;
-        } else if (this._bindingLpTargetKind === "command") {
-          if (!this._bindingLpDeviceId || !this._bindingLpCommandId) {
-            this._bindingError = S.bindingIncomplete;
-            return;
-          }
-          longPress = { deviceId: Number(this._bindingLpDeviceId), commandId: Number(this._bindingLpCommandId) };
-        } else {
-          const resolved = this._resolveMacroTarget(
-            bundle, activityId, this._bindingLpMacroMode, this._bindingLpMacroId, this._bindingLpActionName,
-          );
-          if (!resolved) {
-            this._bindingError = S.bindingIncomplete;
-            return;
-          }
-          bundle = resolved.bundle;
-          longPress = { deviceId: activityId, commandId: resolved.macroId };
-          if (resolved.created && !macroToOpen) {
-            macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-          }
-        }
+        // Wire the SAME event's long record and turn on its long-press
+        // action (a pure store-flag edit — the long record is always
+        // deployed; the Events tab exposes the action).
+        await this.wifiEvents!.enableLongPress(ref.slotIndex);
+        this._wifiEventsList = null;
+        longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
       }
-
-      this._commitEditBundleEdit(upsertActivityButtonBinding(bundle, activityId, {
+      this._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
         buttonId,
-        deviceId: primary.deviceId,
-        commandId: primary.commandId,
+        deviceId: ref.deviceId,
+        commandId: ref.shortCommandId,
         longPress,
       }));
       this._closeBindingDialog();
-      if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
     } catch (err) {
       this._bindingError = err instanceof Error ? err.message : String(err);
     }
@@ -3371,11 +3343,9 @@ export class SofabatonEditDetailView extends LitElement {
       this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
       return;
     }
-    if (
-      this._bindingScope === "activity"
-      && (this._bindingTargetKind === "wifi_event"
-        || (this._bindingLongPressEnabled && this._bindingLpTargetKind === "wifi_event"))
-    ) {
+    // A Wifi Event binding is atomic (short + long from one event); its
+    // long-press leg is never an independent target.
+    if (this._bindingScope === "activity" && this._bindingTargetKind === "wifi_event") {
       void this._applyActivityBindingWithWifiEvents();
       return;
     }
@@ -3534,6 +3504,9 @@ export class SofabatonEditDetailView extends LitElement {
     const wifiSelReady = (sel: WifiEventTargetSel) => !this._wifiEventBusy && (
       sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0
     );
+    // A wifi-event binding is atomic: the long-press leg is the same
+    // event's long record, so it never gates saving independently.
+    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
     const canSave = this._bindingButtonId != null && (
       scope === "device"
         ? this._bindingCommandId != null
@@ -3542,11 +3515,6 @@ export class SofabatonEditDetailView extends LitElement {
           : targetKind === "wifi_event"
             ? wifiSelReady(this._wifiEventPrimary)
             : true
-    ) && (
-      scope === "device"
-      || !this._bindingLongPressEnabled
-      || lpTargetKind !== "wifi_event"
-      || wifiSelReady(this._wifiEventLp)
     );
     const title = isEdit
       ? S.bindingDialogEditTitle(buttonName(Number(this._bindingButtonId)))
@@ -3668,38 +3636,28 @@ export class SofabatonEditDetailView extends LitElement {
               ></ha-switch>
             </div>
             ${this._bindingLongPressEnabled
-              ? html`
-                  ${isActivity
-                    ? html`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-binding-lp-kind"
-                            class="decoded-field-input"
-                            @change=${this._handleBindingLpTargetKindChange}
-                          >
-                            <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
-                            <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
-                            ${this._wifiEventsAvailable()
-                              ? html`<option value="wifi_event" ?selected=${lpTargetKind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
-                              : nothing}
-                          </select>
-                        </div>
-                      `
-                    : nothing}
-                  ${lpTargetKind === "command"
-                    ? lpCommandFields
-                    : lpTargetKind === "wifi_event"
-                      ? this._renderWifiEventTargetFields({
-                          idPrefix: "sb-binding-lp",
-                          sel: this._wifiEventLp,
-                          onSelChange: (sel) => {
-                            this._wifiEventLp = sel;
-                            this._bindingError = "";
-                          },
-                        })
-                      : lpActionFields}
-                `
+              ? primaryIsWifiEvent
+                ? html`
+                    <div class="decoded-field-helper">${S.wifiEventBindingLongPressNote}</div>
+                  `
+                : html`
+                    ${isActivity
+                      ? html`
+                          <div class="decoded-field">
+                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
+                            <select
+                              id="sb-binding-lp-kind"
+                              class="decoded-field-input"
+                              @change=${this._handleBindingLpTargetKindChange}
+                            >
+                              <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
+                              <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
+                            </select>
+                          </div>
+                        `
+                      : nothing}
+                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
+                  `
               : nothing}
           </div>
           <div class="dialog-footer">
@@ -3881,10 +3839,10 @@ export class SofabatonEditDetailView extends LitElement {
     try {
       const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
       const next = editIndex === null
-        ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.commandId, timeByte)
+        ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte)
         : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
             deviceId: ref.deviceId,
-            commandId: ref.commandId,
+            commandId: ref.shortCommandId,
             hold: timeByte,
           });
       this._commitEditBundleEdit(next);

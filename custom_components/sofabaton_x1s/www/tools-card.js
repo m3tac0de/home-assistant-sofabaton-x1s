@@ -2067,6 +2067,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventNeedsSync: (name) => `${name} (needs sync)`,
     wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
     wifiEventNameRequired: "Enter a name for the new Wifi Event.",
+    wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation \u2192 Events.",
     addShortcutActionName: "Name",
     addShortcutActionHelper: "You'll pick the steps next.",
     addShortcutCommandHelper: "The shortcut shows up under the command's name.",
@@ -5517,6 +5518,7 @@ var TOOLS_CARD_STRINGS_DE = {
     wifiEventNeedsSync: (name) => `${name} (Sync erforderlich)`,
     wifiEventCreateFailed: "Das Wifi-Event konnte nicht erstellt werden \u2014 es bleibt vorgemerkt und wird beim n\xE4chsten Erstellen erneut versucht.",
     wifiEventNameRequired: "Gib einen Namen f\xFCr das neue Wifi-Event ein.",
+    wifiEventBindingLongPressNote: "Langes Dr\xFCcken l\xF6st die Langdruck-Aktion dieses Events aus. Konfiguriere sie unter Automatisierung \u2192 Events.",
     macroTargetCreateNew: "Neues Makro erstellen",
     macroTargetNoExisting: "Noch keine Makros. Erstelle unten eines.",
     addShortcutActionName: "Name",
@@ -6347,6 +6349,7 @@ var TOOLS_CARD_STRINGS_ES = {
     wifiEventNeedsSync: (name) => `${name} (necesita sincronizar)`,
     wifiEventCreateFailed: "No se pudo crear el evento Wifi \u2014 queda pendiente y se reintentar\xE1 en la pr\xF3xima creaci\xF3n.",
     wifiEventNameRequired: "Escribe un nombre para el nuevo evento Wifi.",
+    wifiEventBindingLongPressNote: "La pulsaci\xF3n larga dispara la acci\xF3n de pulsaci\xF3n larga de este evento. Config\xFArala en Automatizaci\xF3n \u2192 Eventos.",
     macroTargetCreateNew: "Crear macro nueva",
     macroTargetNoExisting: "Todav\xEDa no hay macros. Crea una abajo.",
     addShortcutActionName: "Nombre",
@@ -7178,6 +7181,7 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiEventNeedsSync: (name) => `${name} (synchronisation requise)`,
     wifiEventCreateFailed: "La cr\xE9ation de l'\xE9v\xE9nement Wifi a \xE9chou\xE9 \u2014 il reste en attente et sera retent\xE9 \xE0 la prochaine cr\xE9ation.",
     wifiEventNameRequired: "Saisissez un nom pour le nouvel \xE9v\xE9nement Wifi.",
+    wifiEventBindingLongPressNote: "L'appui long d\xE9clenche l'action d'appui long de cet \xE9v\xE9nement. Configurez-la dans Automatisation \u2192 \xC9v\xE9nements.",
     macroTargetCreateNew: "Cr\xE9er une nouvelle macro",
     macroTargetNoExisting: "Aucune macro pour le moment. Cr\xE9ez-en une ci-dessous.",
     addShortcutActionName: "Nom",
@@ -8011,6 +8015,7 @@ var TOOLS_CARD_STRINGS_NL = {
     wifiEventNeedsSync: (name) => `${name} (sync nodig)`,
     wifiEventCreateFailed: "Het Wifi-event kon niet worden aangemaakt \u2014 het blijft klaarstaan en wordt bij de volgende poging opnieuw geprobeerd.",
     wifiEventNameRequired: "Voer een naam in voor het nieuwe Wifi-event.",
+    wifiEventBindingLongPressNote: "Lang indrukken vuurt de langdruk-actie van dit event af. Stel die in onder Automatisering \u2192 Events.",
     macroTargetNoExisting: "Nog geen macro's. Maak er hieronder een.",
     addShortcutActionName: "Naam",
     addShortcutActionHelper: "Hierna kies je de stappen.",
@@ -10209,7 +10214,6 @@ var activityEditorStyles = i`
 `;
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
-var WIFI_EVENTS_PLACEHOLDER_DEVICE_ID = 0;
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
@@ -12264,14 +12268,14 @@ var SofabatonEditDetailView = class extends i4 {
     this._addShortcutMacroMode = "new";
     this._addShortcutMacroId = null;
     // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
-    // `_wifiEventPrimary` serves whichever single-target dialog is open
-    // (shortcut, step, binding short leg); `_wifiEventLp` is the binding
-    // dialog's long-press leg (both legs can target events independently).
+    // `_wifiEventPrimary` serves whichever Add dialog is open (shortcut,
+    // step, or binding). A Wifi Event is atomic — a binding's long-press
+    // leg is the SAME event's long record, never an independent target — so
+    // one selection covers both legs.
     this.wifiEvents = null;
     this._wifiEventsList = null;
     this._wifiEventBusy = false;
     this._wifiEventPrimary = { mode: "new", slot: null, name: "" };
-    this._wifiEventLp = { mode: "new", slot: null, name: "" };
     this._editDetailNameDraft = "";
     this._editRenameDialogOpen = false;
     this._editRenameDialogDraft = "";
@@ -12622,7 +12626,7 @@ var SofabatonEditDetailView = class extends i4 {
           ref.bundle,
           activityId,
           ref.deviceId,
-          ref.commandId,
+          ref.shortCommandId,
           sanitizeBundleName(ref.bundle, ref.name)
         ));
         this._closeAddFavoriteDialog();
@@ -12809,10 +12813,6 @@ var SofabatonEditDetailView = class extends i4 {
         this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
         return;
       }
-      if (kind === "wifi_event") {
-        this._wifiEventLp = this._defaultWifiEventSel();
-        return;
-      }
       this._resetMacroTarget("bindingLp");
       this._bindingLpActionName || (this._bindingLpActionName = this._macroName(this._bindingLpCommandId));
     };
@@ -12859,10 +12859,13 @@ var SofabatonEditDetailView = class extends i4 {
       this._bindingLpCommandId = Number.isFinite(value) ? value : null;
     };
     /**
-     * Async binding apply for legs targeting Wifi Events. Wifi refs are
-     * resolved FIRST (each resolve may return a freshly-grafted working
-     * bundle from the host, which would clobber later transforms) — the
-     * macro transforms then run on top of the final grafted bundle.
+     * Async binding apply when the button targets a Wifi Event. The event
+     * is atomic: the short press fires its short record, and — when the
+     * long-press toggle is on — the *same* event's long record is wired to
+     * the button's long press (and the event's long-press action is enabled
+     * for configuration in the Events tab). There is no independent
+     * long-press target here; that would collide with the Wifi Events model
+     * where short/long are two actions of one event.
      */
     this._applyActivityBindingWithWifiEvents = async () => {
       const S5 = TOOLS_CARD_STRINGS.backup;
@@ -12874,82 +12877,20 @@ var SofabatonEditDetailView = class extends i4 {
         return;
       }
       try {
-        let bundle = this.bundle;
-        let primaryWifi = null;
-        let lpWifi = null;
-        if (this._bindingTargetKind === "wifi_event") {
-          const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-          bundle = ref.bundle;
-          primaryWifi = { deviceId: ref.deviceId, commandId: ref.commandId };
-        }
-        if (this._bindingLongPressEnabled && this._bindingLpTargetKind === "wifi_event") {
-          const ref = await this._resolveWifiEventRef(this._wifiEventLp, { long: true });
-          bundle = ref.bundle;
-          lpWifi = { deviceId: ref.deviceId, commandId: ref.commandId };
-        }
-        let macroToOpen = null;
-        let primary;
-        if (primaryWifi) {
-          primary = primaryWifi;
-        } else if (this._bindingTargetKind === "command") {
-          if (!this._bindingDeviceId || !this._bindingCommandId) {
-            this._bindingError = S5.bindingIncomplete;
-            return;
-          }
-          primary = { deviceId: Number(this._bindingDeviceId), commandId: Number(this._bindingCommandId) };
-        } else {
-          const resolved = this._resolveMacroTarget(
-            bundle,
-            activityId,
-            this._bindingMacroMode,
-            this._bindingMacroId,
-            this._bindingActionName
-          );
-          if (!resolved) {
-            this._bindingError = S5.bindingIncomplete;
-            return;
-          }
-          bundle = resolved.bundle;
-          primary = { deviceId: activityId, commandId: resolved.macroId };
-          if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-        }
+        const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
         let longPress = null;
         if (this._bindingLongPressEnabled) {
-          if (lpWifi) {
-            longPress = lpWifi;
-          } else if (this._bindingLpTargetKind === "command") {
-            if (!this._bindingLpDeviceId || !this._bindingLpCommandId) {
-              this._bindingError = S5.bindingIncomplete;
-              return;
-            }
-            longPress = { deviceId: Number(this._bindingLpDeviceId), commandId: Number(this._bindingLpCommandId) };
-          } else {
-            const resolved = this._resolveMacroTarget(
-              bundle,
-              activityId,
-              this._bindingLpMacroMode,
-              this._bindingLpMacroId,
-              this._bindingLpActionName
-            );
-            if (!resolved) {
-              this._bindingError = S5.bindingIncomplete;
-              return;
-            }
-            bundle = resolved.bundle;
-            longPress = { deviceId: activityId, commandId: resolved.macroId };
-            if (resolved.created && !macroToOpen) {
-              macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-            }
-          }
+          await this.wifiEvents.enableLongPress(ref.slotIndex);
+          this._wifiEventsList = null;
+          longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
         }
-        this._commitEditBundleEdit(upsertActivityButtonBinding(bundle, activityId, {
+        this._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
           buttonId,
-          deviceId: primary.deviceId,
-          commandId: primary.commandId,
+          deviceId: ref.deviceId,
+          commandId: ref.shortCommandId,
           longPress
         }));
         this._closeBindingDialog();
-        if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
       } catch (err) {
         this._bindingError = err instanceof Error ? err.message : String(err);
       }
@@ -12962,7 +12903,7 @@ var SofabatonEditDetailView = class extends i4 {
         this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
         return;
       }
-      if (this._bindingScope === "activity" && (this._bindingTargetKind === "wifi_event" || this._bindingLongPressEnabled && this._bindingLpTargetKind === "wifi_event")) {
+      if (this._bindingScope === "activity" && this._bindingTargetKind === "wifi_event") {
         void this._applyActivityBindingWithWifiEvents();
         return;
       }
@@ -13102,9 +13043,9 @@ var SofabatonEditDetailView = class extends i4 {
       const editIndex = this._stepDialogEditIndex;
       try {
         const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-        const next = editIndex === null ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.commandId, timeByte) : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
+        const next = editIndex === null ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte) : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
           deviceId: ref.deviceId,
-          commandId: ref.commandId,
+          commandId: ref.shortCommandId,
           hold: timeByte
         });
         this._commitEditBundleEdit(next);
@@ -14734,6 +14675,9 @@ var SofabatonEditDetailView = class extends i4 {
     if (!this.bundle || this.entityId == null) return "command";
     const dId = Number(deviceId || 0);
     if (dId === Number(this.entityId)) return "action";
+    if (this._wifiEventsAvailable() && isWifiEventsBrand(bundleDeviceBrand(this.bundle, dId))) {
+      return "wifi_event";
+    }
     return "command";
   }
   _macroName(buttonId) {
@@ -14760,7 +14704,6 @@ var SofabatonEditDetailView = class extends i4 {
       this._wifiEventsList = events;
       const pristine = (sel) => sel.mode === "new" && sel.slot == null && sel.name === "";
       if (pristine(this._wifiEventPrimary)) this._wifiEventPrimary = this._defaultWifiEventSel();
-      if (pristine(this._wifiEventLp)) this._wifiEventLp = this._defaultWifiEventSel();
     }).catch(() => {
       this._wifiEventsList = [];
     });
@@ -14814,28 +14757,31 @@ var SofabatonEditDetailView = class extends i4 {
     `;
   }
   /**
-   * Resolve a Wifi Event target selection to a `{deviceId, commandId}`
-   * ref (plus the possibly-grafted working bundle to insert it into).
-   * `long` selects the long record (`short + slot_count`) and
-   * auto-enables the slot's standalone long-press flag (a pure store
-   * edit — the long record is always deployed). Throws an Error whose
-   * message is user-facing; callers surface it in their dialog.
+   * Resolve a Wifi Event target selection to its atomic ref: a single
+   * event carries BOTH a short and a long record (short = slot+1, long =
+   * short + slot_count). A reference always addresses the event as one
+   * unit — the short record — and the long record is derived from the
+   * same event when a binding's long-press leg needs it (there is no
+   * separate long-press *target*; short vs long is an action-config
+   * distinction made in the Events tab, per the Wifi Events model).
+   *
+   * Returns the (possibly grafted) working bundle to insert into. Creating
+   * a new event is an instant store allocation (W7) — no hub deploy here.
+   * `deviceId` is the placeholder id 0 before the first-ever deploy; the
+   * Sync flow rewrites it. Throws a user-facing Error on failure.
    */
-  async _resolveWifiEventRef(sel, options = {}) {
+  async _resolveWifiEventRef(sel) {
     const S5 = TOOLS_CARD_STRINGS.backup;
     if (!this.wifiEvents || !this.bundle) throw new Error(S5.bindingIncomplete);
     if (sel.mode === "existing") {
       const event = this._deployedWifiEvents().find((item) => item.slot_index === sel.slot);
-      if (!event) throw new Error(S5.bindingIncomplete);
+      if (!event || event.device_id == null) throw new Error(S5.bindingIncomplete);
       const grafted = await this.wifiEvents.ensureGrafted();
-      if (options.long && !event.long_press_enabled) {
-        await this.wifiEvents.enableLongPress(event.slot_index);
-      }
       return {
-        // W7: refs to a not-yet-deployed device use the placeholder id;
-        // the Sync flow rewrites them after phase 1 assigns the real id.
-        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
-        commandId: options.long ? event.long_press_command_id : event.command_id,
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
         name: event.name,
         bundle: grafted ?? this.bundle
       };
@@ -14847,10 +14793,12 @@ var SofabatonEditDetailView = class extends i4 {
       const created = await this.wifiEvents.create(name);
       const event = created.event;
       this._wifiEventsList = null;
-      if (options.long) await this.wifiEvents.enableLongPress(event.slot_index);
+      if (event.device_id == null) throw new Error(S5.wifiEventCreateFailed);
       return {
-        deviceId: event.device_id ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
-        commandId: options.long ? event.long_press_command_id : event.command_id,
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
         name: event.name,
         bundle: created.bundle ?? this.bundle
       };
@@ -14946,6 +14894,18 @@ var SofabatonEditDetailView = class extends i4 {
     this._bindingDeviceId = kind === "activity" ? item.deviceId ?? null : entityId;
     this._bindingCommandId = item.commandId;
     this._bindingTargetKind = kind === "activity" ? this._bindingTargetKindFor(item.deviceId) : "command";
+    if (this._bindingTargetKind === "wifi_event") {
+      this._wifiEventPrimary = {
+        mode: "existing",
+        slot: Number(item.commandId) - 1,
+        name: ""
+      };
+      this._bindingLongPressEnabled = Boolean(item.longPress);
+      this._bindingError = "";
+      this._loadWifiEvents();
+      this._bindingDialogOpen = true;
+      return;
+    }
     this._bindingActionName = this._bindingTargetKind === "action" ? this._macroName(item.commandId) : "";
     this._bindingMacroMode = this._bindingTargetKind === "action" ? "existing" : "new";
     this._bindingMacroId = this._bindingTargetKind === "action" ? item.commandId : null;
@@ -15070,7 +15030,8 @@ var SofabatonEditDetailView = class extends i4 {
     const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this._bindingLpDeviceId : entityId;
     const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
     const wifiSelReady = (sel) => !this._wifiEventBusy && (sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0);
-    const canSave = this._bindingButtonId != null && (scope === "device" ? this._bindingCommandId != null : targetKind === "command" ? this._bindingDeviceId != null && this._bindingCommandId != null : targetKind === "wifi_event" ? wifiSelReady(this._wifiEventPrimary) : true) && (scope === "device" || !this._bindingLongPressEnabled || lpTargetKind !== "wifi_event" || wifiSelReady(this._wifiEventLp));
+    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
+    const canSave = this._bindingButtonId != null && (scope === "device" ? this._bindingCommandId != null : targetKind === "command" ? this._bindingDeviceId != null && this._bindingCommandId != null : targetKind === "wifi_event" ? wifiSelReady(this._wifiEventPrimary) : true);
     const title = isEdit ? S5.bindingDialogEditTitle(buttonName2(Number(this._bindingButtonId))) : S5.bindingDialogAddTitle;
     const commandFields = b2`
       ${scope === "activity" ? this._renderBindingSelect({
@@ -15174,30 +15135,24 @@ var SofabatonEditDetailView = class extends i4 {
                 @change=${this._handleBindingLongPressToggle}
               ></ha-switch>
             </div>
-            ${this._bindingLongPressEnabled ? b2`
-                  ${isActivity ? b2`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-binding-lp-kind">${S5.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-binding-lp-kind"
-                            class="decoded-field-input"
-                            @change=${this._handleBindingLpTargetKindChange}
-                          >
-                            <option value="command" ?selected=${lpTargetKind === "command"}>${S5.shortcutKindCommand}</option>
-                            <option value="action" ?selected=${lpTargetKind === "action"}>${S5.shortcutKindAction}</option>
-                            ${this._wifiEventsAvailable() ? b2`<option value="wifi_event" ?selected=${lpTargetKind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
-                          </select>
-                        </div>
-                      ` : A}
-                  ${lpTargetKind === "command" ? lpCommandFields : lpTargetKind === "wifi_event" ? this._renderWifiEventTargetFields({
-      idPrefix: "sb-binding-lp",
-      sel: this._wifiEventLp,
-      onSelChange: (sel) => {
-        this._wifiEventLp = sel;
-        this._bindingError = "";
-      }
-    }) : lpActionFields}
-                ` : A}
+            ${this._bindingLongPressEnabled ? primaryIsWifiEvent ? b2`
+                    <div class="decoded-field-helper">${S5.wifiEventBindingLongPressNote}</div>
+                  ` : b2`
+                    ${isActivity ? b2`
+                          <div class="decoded-field">
+                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S5.addShortcutKindLabel}</label>
+                            <select
+                              id="sb-binding-lp-kind"
+                              class="decoded-field-input"
+                              @change=${this._handleBindingLpTargetKindChange}
+                            >
+                              <option value="command" ?selected=${lpTargetKind === "command"}>${S5.shortcutKindCommand}</option>
+                              <option value="action" ?selected=${lpTargetKind === "action"}>${S5.shortcutKindAction}</option>
+                            </select>
+                          </div>
+                        ` : A}
+                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
+                  ` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._bindingError}</div>
@@ -15648,7 +15603,6 @@ SofabatonEditDetailView.properties = {
   _wifiEventsList: { state: true },
   _wifiEventBusy: { state: true },
   _wifiEventPrimary: { state: true },
-  _wifiEventLp: { state: true },
   _editDetailActiveSection: { state: true },
   _editDetailNameDraft: { state: true },
   _editRenameDialogOpen: { state: true },
@@ -20441,20 +20395,26 @@ var SofabatonActivitiesTab = class extends i4 {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
       await this.api().playIrBlob(this.hub.entry_id, hex);
     };
+    /** A stable positive device id for the not-yet-deployed events device
+     *  (W7). It must be POSITIVE — the bundle-edit helpers reject id 0 /
+     *  negatives as "no device", which would silently drop a first-ever
+     *  event's ref — and must not collide with a real device, so it is the
+     *  lowest free id in the source-device range (1..0x63). Cached for the
+     *  session; the Sync flow rewrites it to the hub-assigned id in phase 1. */
+    this._wifiEventsPlaceholderId = null;
     this._wifiEventsFacade = {
       list: async () => {
         const entityId = this._wifiEventsEntityId();
         if (!entityId) return [];
-        return (await this.api().listWifiEvents(entityId)).events ?? [];
+        const res = await this.api().listWifiEvents(entityId);
+        return this._withEventDeviceIds(res.events ?? [], res.device_id ?? null);
       },
       create: async (name) => {
         const entityId = this._wifiEventsEntityId();
         if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
         const res = await this.api().createWifiEvent(entityId, name);
-        const created = res?.event;
-        const full = (res?.events ?? []).find(
-          (item) => item.slot_index === created?.slot_index
-        ) ?? created;
+        const filled = this._withEventDeviceIds(res?.events ?? [], res?.device_id ?? null);
+        const full = filled.find((item) => item.slot_index === res?.event?.slot_index) ?? this._withEventDeviceIds([res?.event], res?.device_id ?? null)[0];
         const bundle = await this._graftWifiEventsDevice({ forceRefresh: true });
         return { event: full, bundle };
       },
@@ -20468,6 +20428,7 @@ var SofabatonActivitiesTab = class extends i4 {
     this._startCapture = async (entityId) => {
       if (!this.hub || !this.hass) return;
       this._entityId = entityId;
+      this._wifiEventsPlaceholderId = null;
       this._captureError = null;
       this._captureProgress = null;
       this._stage = "capturing";
@@ -20658,14 +20619,33 @@ var SofabatonActivitiesTab = class extends i4 {
   _wifiEventsEntityId() {
     return String(entityForHub(this.hass, this.hub) || "").trim();
   }
-  /** Synthetic device block for a not-yet-deployed events record: the
-   *  staged events under the placeholder id, so refs resolve for display
-   *  and the scope guard stays balanced (grafted into BOTH bundles). The
-   *  Sync flow retires it for the real block after phase 1. */
+  _placeholderDeviceId() {
+    if (this._wifiEventsPlaceholderId != null) return this._wifiEventsPlaceholderId;
+    const used = /* @__PURE__ */ new Set();
+    for (const bundle of [this._baseline, this._working]) {
+      for (const entry of bundle?.devices ?? []) used.add(Number(entry?.device?.device_id ?? -1));
+    }
+    let id = 1;
+    while (id < 100 && used.has(id)) id += 1;
+    this._wifiEventsPlaceholderId = id;
+    return id;
+  }
+  /** Fill each event's `device_id` with the real deployed id, or the
+   *  session placeholder when the device isn't deployed yet — so every
+   *  ref the Add dialogs insert addresses a positive device id. */
+  _withEventDeviceIds(events, deviceId) {
+    const id = deviceId ?? this._placeholderDeviceId();
+    return events.map((event) => ({ ...event, device_id: event.device_id ?? id }));
+  }
+  /** Synthetic device block for the events device (real id when deployed,
+   *  else the placeholder) carrying every STAGED event's short + long
+   *  records, so refs resolve for display and the scope guard stays
+   *  balanced (grafted into BOTH bundles). The Sync flow retires it for
+   *  the real deployed block after phase 1. */
   _syntheticEventsBlock(events, deviceId) {
     return {
       device: {
-        device_id: deviceId ?? WIFI_EVENTS_PLACEHOLDER_DEVICE_ID,
+        device_id: deviceId,
         name: "Wifi Events",
         brand: "m3-haevents-staged0000000",
         device_class: "wifi_ip"
@@ -20676,25 +20656,25 @@ var SofabatonActivitiesTab = class extends i4 {
       ])
     };
   }
-  /** Graft the events device into BOTH bundles (W7): the real deployed
-   *  block when the device exists, else a synthetic placeholder block. */
+  /** Graft the events device into BOTH bundles from the STAGED event list
+   *  (W7). The list is the source of truth: with full deferral, a
+   *  just-created event is not on the hub yet, so the deployed structural
+   *  block would lack its command records — building the block from the
+   *  events list instead keeps new events' favorites/bindings/steps
+   *  resolvable in the UI immediately, before any sync. The synthetic
+   *  block carries every configured event's short + long records; the
+   *  real deployed block replaces it on the post-sync rebase (and, for the
+   *  first-ever event, in the Sync flow's placeholder swap). */
   async _graftWifiEventsDevice(options = {}) {
     if (!this.hub) return this._working;
     const present = (this._working?.devices ?? []).some(
-      (entry2) => isWifiEventsBrand(String(entry2?.device?.brand ?? "")) || Number(entry2?.device?.device_id ?? -1) === WIFI_EVENTS_PLACEHOLDER_DEVICE_ID
+      (entry2) => isWifiEventsBrand(String(entry2?.device?.brand ?? "")) || Number(entry2?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId
     );
     if (present && !options.forceRefresh) return this._working;
     const entityId = this._wifiEventsEntityId();
     const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
-    const deviceId = state.device_id ?? null;
-    let entry = null;
-    if (deviceId != null) {
-      const res = await this.api().getStructuralBundle(this.hub.entry_id);
-      entry = (res?.bundle?.devices ?? []).find(
-        (candidate) => Number(candidate?.device?.device_id ?? -1) === deviceId
-      ) ?? null;
-    }
-    if (!entry) entry = this._syntheticEventsBlock(state.events ?? [], deviceId);
+    const blockId = state.device_id ?? this._placeholderDeviceId();
+    const entry = this._syntheticEventsBlock(state.events ?? [], blockId);
     this._baseline = graftDeviceIntoBundle(this._baseline, entry);
     this._working = graftDeviceIntoBundle(this._working, entry);
     return this._working;
@@ -20706,8 +20686,10 @@ var SofabatonActivitiesTab = class extends i4 {
   async _syncWifiEventsPhase() {
     const entityId = this._wifiEventsEntityId();
     if (!entityId || this._entityId == null || !this.hub) return true;
+    const placeholderId = this._wifiEventsPlaceholderId;
     const referencesEvents = (bundle) => {
-      const eventDeviceIds = /* @__PURE__ */ new Set([WIFI_EVENTS_PLACEHOLDER_DEVICE_ID]);
+      const eventDeviceIds = /* @__PURE__ */ new Set();
+      if (placeholderId != null) eventDeviceIds.add(placeholderId);
       for (const entry of bundle?.devices ?? []) {
         if (isWifiEventsBrand(String(entry?.device?.brand ?? ""))) {
           eventDeviceIds.add(Number(entry?.device?.device_id ?? -1));
@@ -20729,8 +20711,8 @@ var SofabatonActivitiesTab = class extends i4 {
     };
     if (!referencesEvents(this._working)) return true;
     let state = await this.api().listWifiEvents(entityId);
-    const hasPlaceholder = (this._working?.devices ?? []).some(
-      (entry) => Number(entry?.device?.device_id ?? -1) === WIFI_EVENTS_PLACEHOLDER_DEVICE_ID
+    const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
+      (entry) => Number(entry?.device?.device_id ?? -1) === placeholderId
     );
     if (state.record_needs_sync || hasPlaceholder && state.device_id == null) {
       this._syncProgress = { message: S4.wifiEventsPhaseMessage };
@@ -20745,7 +20727,7 @@ var SofabatonActivitiesTab = class extends i4 {
       }
     }
     const realId = state.device_id;
-    if (hasPlaceholder && realId != null) {
+    if (hasPlaceholder && placeholderId != null && realId != null) {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
       const entry = (res?.bundle?.devices ?? []).find(
         (candidate) => Number(candidate?.device?.device_id ?? -1) === realId
@@ -20753,14 +20735,15 @@ var SofabatonActivitiesTab = class extends i4 {
       const activityId = Number(this._entityId);
       for (const key of ["_baseline", "_working"]) {
         let bundle = this[key];
-        bundle = removeBundleDevice(bundle, WIFI_EVENTS_PLACEHOLDER_DEVICE_ID);
+        bundle = removeBundleDevice(bundle, placeholderId);
         if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
         if (key === "_working") {
-          bundle = rewriteWifiEventPlaceholderRefs(bundle, activityId, realId);
+          bundle = rewriteWifiEventPlaceholderRefs(bundle, activityId, realId, placeholderId);
           bundle = bundle ? reconcileActivityPowerMacros(bundle, activityId) : bundle;
         }
         this[key] = bundle;
       }
+      this._wifiEventsPlaceholderId = null;
     }
     return true;
   }

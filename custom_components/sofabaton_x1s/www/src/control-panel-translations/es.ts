@@ -190,6 +190,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     wifiEventNeedsSync: (name: string) => `${name} (necesita sincronizar)`,
     wifiEventCreateFailed: "No se pudo crear el evento Wifi — queda pendiente y se reintentará en la próxima creación.",
     wifiEventNameRequired: "Escribe un nombre para el nuevo evento Wifi.",
+    wifiEventBindingLongPressNote: "La pulsación larga dispara la acción de pulsación larga de este evento. Configúrala en Automatización → Eventos.",
     macroTargetCreateNew: "Crear macro nueva", macroTargetNoExisting: "Todavía no hay macros. Crea una abajo.", addShortcutActionName: "Nombre", addShortcutActionHelper: "A continuación elegirás los pasos.",
     addShortcutCommandHelper: "El acceso directo aparece con el nombre del comando.", unsaved: "Sin guardar", unsavedTooltip: "Tienes cambios sin guardar. Descarga la copia de seguridad para conservarlos.",
     renameKind: (kind: "activity" | "device") => `Cambiar nombre ${kind === "activity" ? "de la actividad" : "del dispositivo"}`, managedWifiTitle: "Gestionado por Wifi Commands", managedWifiIntro: "Este dispositivo se desplegó desde la pestaña Wifi Commands.",

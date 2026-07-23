@@ -601,6 +601,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiEventNeedsSync: (name: string) => `${name} (needs sync)`,
     wifiEventCreateFailed: "Creating the Wifi Event failed — it stays staged and will retry on the next create.",
     wifiEventNameRequired: "Enter a name for the new Wifi Event.",
+    wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation → Events.",
     addShortcutActionName: "Name",
     addShortcutActionHelper: "You'll pick the steps next.",
     addShortcutCommandHelper: "The shortcut shows up under the command's name.",

@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  addBundleActivityFavorite,
   bundleDeviceBrand,
   bundleEditableDeviceOptions,
   graftDeviceIntoBundle,
@@ -92,6 +93,46 @@ test("removeBundleDevice retires the placeholder block", () => {
   assert.equal(cleaned.devices?.length, 3);
   // no-op when absent (same object back)
   assert.equal(removeBundleDevice(cleaned, 0), cleaned);
+});
+
+test("W7 invariant: the events placeholder id must be POSITIVE (id 0 drops the ref)", () => {
+  // addBundleActivityFavorite no-ops on device_id <= 0 (0 = "no device"
+  // across the codebase). This is exactly why the host uses a computed
+  // free positive placeholder rather than 0 for a not-yet-deployed events
+  // device — a first-ever event's favorite would otherwise vanish.
+  const bundle = {
+    kind: "hub_bundle", schema_version: 5, hub: { version: "X1S" },
+    devices: [{ device: { device_id: 5, name: "E", brand: EVENTS_BRAND } }],
+    activities: [{ device: { device_id: 101, name: "A", entity_type: "activity" } }],
+  } as unknown as BackupBundlePayload;
+  const dropped = addBundleActivityFavorite(bundle, 101, 0, 1, "Ev");
+  assert.equal((dropped.activities?.[0]?.favorite_slots ?? []).length, 0);
+  const kept = addBundleActivityFavorite(bundle, 101, 5, 1, "Ev");
+  assert.equal((kept.activities?.[0]?.favorite_slots ?? []).length, 1);
+});
+
+test("rewriteWifiEventPlaceholderRefs swaps a non-zero placeholder in all ref kinds", () => {
+  // The real host placeholder is a computed free positive id (e.g. 7).
+  const bundle = {
+    kind: "hub_bundle", schema_version: 5, hub: { version: "X1S" },
+    devices: [],
+    activities: [{
+      device: { device_id: 101, name: "A", entity_type: "activity" },
+      favorite_slots: [{ button_id: 5, device_id: 7, command_id: 1, name: "Ev" }],
+      button_bindings: [{ button_id: 190, device_id: 7, command_id: 1, long_press_device_id: 7, long_press_command_id: 51 }],
+      macros: [{ button_id: 20, name: "M", steps: [{ device_id: 7, command_id: 2, button_code: 20002, duration: 0, delay: 255 }] }],
+    }],
+  } as unknown as BackupBundlePayload;
+  const out = rewriteWifiEventPlaceholderRefs(bundle, 101, 12, 7)!;
+  const act = out.activities?.[0] as never as {
+    favorite_slots: Array<{ device_id: number }>;
+    button_bindings: Array<{ device_id: number; long_press_device_id: number }>;
+    macros: Array<{ steps: Array<{ device_id: number }> }>;
+  };
+  assert.equal(act.favorite_slots[0].device_id, 12);
+  assert.equal(act.button_bindings[0].device_id, 12);
+  assert.equal(act.button_bindings[0].long_press_device_id, 12);
+  assert.equal(act.macros[0].steps[0].device_id, 12);
 });
 
 test("rewriteWifiEventPlaceholderRefs swaps id 0 for the real id in all ref kinds", () => {

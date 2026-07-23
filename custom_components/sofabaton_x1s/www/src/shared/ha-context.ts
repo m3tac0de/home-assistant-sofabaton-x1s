@@ -163,13 +163,6 @@ export interface WifiEventsListResponse {
   device_id?: number | null;
 }
 
-/** Sentinel device id for refs to a not-yet-deployed Wifi Events device.
- *  Inserted by the Add dialogs (W7 full deferral) and rewritten to the
- *  real hub-assigned id during the Sync flow's phase 1. The value 0 is
- *  outside the hub's device-id range and is filtered by membership /
- *  power-macro reconciliation until rewritten. */
-export const WIFI_EVENTS_PLACEHOLDER_DEVICE_ID = 0;
-
 export interface WifiEventCreateResponse extends WifiEventsListResponse {
   event: {
     slot_index: number;
