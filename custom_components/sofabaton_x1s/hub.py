@@ -92,7 +92,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
 # Default (user-device) slot count. Per-record slot counts ride the store
-# payload's `slot_count` (the Wifi Events record uses 50); the long-record
+# payload's `slot_count` (the Wifi Events record uses 25); the long-record
 # id offset always equals the record's slot count (long = short + N,
 # live-validated at N=6/10/50 — docs/internal/wifi-events-plan.md §11).
 _WIFI_COMMAND_SLOT_COUNT = 10
@@ -2312,7 +2312,17 @@ class SofabatonHub:
                 continue
             device_id = int(slot.get("device_id", 0)) & 0xFF
             command_id = int(slot.get("command_id", 0)) & 0xFF
-            label = self._proxy.state.get_favorite_label(act_lo, device_id, command_id)
+            # The device command catalog is refreshed whenever records change;
+            # the activity-scoped label map is only a resolved copy and can lag
+            # briefly after an editor sync.  Prefer the catalog and keep a
+            # useful fallback so a transient label miss never hides the slot.
+            label = (
+                self._proxy.state.commands.get(device_id, {}).get(command_id)
+                or self._proxy.state.get_favorite_label(
+                    act_lo, device_id, command_id
+                )
+                or f"Command {command_id}"
+            )
             favorite_by_id[entry_id] = {
                 "fav_id": entry_id,
                 "button_id": entry_id,
@@ -2786,7 +2796,13 @@ class SofabatonHub:
         return result
 
     def get_all_cached_macros(self) -> dict[int, list[dict[str, int | str]]]:
-        """Return cached macros for activities that are fully ready."""
+        """Return cached macros in the physical remote's display order.
+
+        Activity macros and favorites share the family-0x61 quick-access
+        namespace.  Their numeric ids are stable identities, not necessarily
+        their current screen positions, so filtering the combined ordered view
+        is the only reliable way to order either drawer after a reorder.
+        """
 
         result: dict[int, list[dict[str, int | str]]] = {}
         for ent_id in self.activities:
@@ -2794,19 +2810,50 @@ class SofabatonHub:
                 ent_id, fetch_if_missing=False
             )
             if ready and macros:
-                result[ent_id] = macros
+                order = self._proxy.state.activity_favorites_order.get(
+                    ent_id & 0xFF, []
+                )
+                result[ent_id] = [
+                    {
+                        "command_id": int(row.get("command_id", 0)) & 0xFF,
+                        "label": str(row.get("name") or ""),
+                    }
+                    for row in self.describe_favorites_order(ent_id, order)
+                    if row.get("type") == "macro"
+                    and int(row.get("command_id", 0)) & 0xFF
+                ]
 
         return result
 
     def get_activity_favorites(self) -> dict[int, list[dict[str, int | str]]]:
-        """Return favorite commands with labels for activities."""
+        """Return favorites in the physical remote's display order.
+
+        Build from favorite slots rather than the label-only projection.  A
+        structural refresh can briefly have live slots before all targeted
+        command-label reads complete; retaining those rows (with the same
+        fallback label used by the cache export) prevents the Virtual Remote
+        from incorrectly presenting an empty Favorites drawer.
+        """
 
         favorites: dict[int, list[dict[str, int | str]]] = {}
 
         for act_id in self.activities:
-            labels = self._proxy.state.get_activity_favorite_labels(act_id & 0xFF)
-            if labels:
-                favorites[act_id] = labels
+            order = self._proxy.state.activity_favorites_order.get(
+                act_id & 0xFF, []
+            )
+            rows = [
+                {
+                    "button_id": int(row.get("button_id", 0)) & 0xFF,
+                    "name": str(row.get("name") or ""),
+                    "device_id": int(row.get("device_id", 0)) & 0xFF,
+                    "command_id": int(row.get("command_id", 0)) & 0xFF,
+                }
+                for row in self.describe_favorites_order(act_id, order)
+                if row.get("type") == "favorite"
+                and int(row.get("command_id", 0)) & 0xFF
+            ]
+            if rows:
+                favorites[act_id] = rows
 
         return favorites
 
@@ -3633,7 +3680,7 @@ class SofabatonHub:
             commands = list(command_payload.get("commands") or [])
             normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
             # Per-record slot count (store payloads carry it; default 10).
-            # The Wifi Events record deploys 50 slots — 100 records — and
+            # The Wifi Events record deploys 25 slots — 50 records — and
             # honors long_press_enabled standalone (plan §2-capacity).
             try:
                 slot_count = int(command_payload.get("slot_count"))

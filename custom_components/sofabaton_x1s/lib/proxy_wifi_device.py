@@ -98,9 +98,10 @@ def _wifi_command_label(command_spec: Any, idx: int) -> str:
 # Historically a literal 20-entry table (the vendor scheme's 10 short +
 # 10 long ceiling); the contiguous extension to 100 records (keys
 # 0x18..0x7B, codes 0x4E21..0x4E84) was live-validated on X1 AND X1S
-# 2026-07-22 for the 50-slot Wifi Events device (bench_140: all ACKs,
-# exact 1..100 re-exposure, callbacks for high ids incl. long records —
-# docs/internal/wifi-events-plan.md §11 W0.4).
+# 2026-07-22 (bench_140: all ACKs, exact 1..100 re-exposure, callbacks for
+# high ids incl. long records — docs/internal/wifi-events-plan.md §11 W0.4).
+# The Wifi Events record only uses the first 50 (25 short + 25 long); the
+# full table is kept so the validated headroom stays available.
 MAX_WIFI_DEVICE_RECORDS = 100
 _ROKU_APP_SLOTS: list[tuple[int, int]] = [
     (0x18 + idx, 0x4E21 + idx) for idx in range(MAX_WIFI_DEVICE_RECORDS)

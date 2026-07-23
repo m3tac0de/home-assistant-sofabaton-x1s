@@ -1230,12 +1230,24 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
 # events read `deployed: false` and carry their law-derived ids.
 
 
-def _wifi_events_state_payload(store: CommandConfigStore, entry_id: str) -> dict[str, Any]:
+def _wifi_events_state_payload(
+    hass: HomeAssistant, store: CommandConfigStore, entry_id: str
+) -> dict[str, Any]:
     """Events plus record-level sync state (W7: the frontend defers all
     deploys to the Sync press and needs to know whether phase 1 — the
-    events-record deploy — is required)."""
+    events-record deploy — is required).
 
-    record_state = store.wifi_events_record_state(entry_id)
+    ``record_needs_sync`` compares the record's live hash against its
+    deployed hash; because the listen port is hashed
+    (``compute_commands_hash``), it MUST be computed against the entry's
+    resolved port — the default would flag every non-default-port hub as
+    permanently needing a sync and trip a spurious phase-1 deploy on every
+    activity Sync.
+    """
+
+    record_state = store.wifi_events_record_state(
+        entry_id, roku_listen_port=_resolve_roku_listen_port(hass, entry_id)
+    )
     return {
         "events": store.list_wifi_events(entry_id),
         "record_needs_sync": bool(record_state.get("record_needs_sync")),
@@ -1256,7 +1268,7 @@ async def _ws_list_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
     store = await _async_get_command_config_store(hass)
-    connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
 @websocket_api.websocket_command(
@@ -1284,6 +1296,10 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
         code = str(err)
         messages = {
             "wifi_events_full": "All Wifi Event slots are in use",
+            "wifi_events_pending_delete": (
+                "A deleted Wifi Event is still being removed from the hub; "
+                "sync the hub, then try again"
+            ),
             "duplicate_name": "A Wifi Event with this name already exists",
             "empty_name": "name is required",
         }
@@ -1296,7 +1312,7 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     # the activity writes. command_id is already law-derived (slot + 1);
     # device_id is the deployed id when the device exists, else None (the
     # frontend inserts a placeholder ref and rewrites it after phase 1).
-    state = _wifi_events_state_payload(store, hub.entry_id)
+    state = _wifi_events_state_payload(hass, store, hub.entry_id)
     connection.send_result(
         msg["id"],
         {
@@ -1377,7 +1393,7 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
             )
         except Exception:  # pragma: no cover - cascade is best-effort
             _LOGGER.exception("[wifi_events] freed-slot record delete failed")
-    connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
 @websocket_api.websocket_command(
@@ -1418,7 +1434,7 @@ async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
         code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
         connection.send_error(msg["id"], code, message)
         return
-    connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
 @websocket_api.websocket_command(
@@ -1444,7 +1460,7 @@ async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[s
     if not updated:
         connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
         return
-    connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
 @websocket_api.websocket_command(
@@ -1470,7 +1486,7 @@ async def _ws_set_wifi_event_longpress(hass: HomeAssistant, connection, msg: dic
     if not updated:
         connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
         return
-    connection.send_result(msg["id"], _wifi_events_state_payload(store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
 @websocket_api.websocket_command(

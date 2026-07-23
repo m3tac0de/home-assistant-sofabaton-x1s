@@ -107,7 +107,7 @@ Wifi Events are created from the **live activity editor** (Hub tab → Activitie
 - Creating a new event deploys it to the hub right away (the very first one creates the events device and can take a minute; later ones are quick).
 - The reference is then inserted like any device command, and lands on the hub when you **Sync** the activity.
 
-Up to **50 events** can exist per hub, each with an optional long-press variant.
+Up to **25 events** can exist per hub, each with an optional long-press variant.
 
 ### Managing Wifi Events
 

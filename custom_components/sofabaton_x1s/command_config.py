@@ -33,11 +33,13 @@ DEFAULT_WIFI_DEVICE_NAME = "Home Assistant"
 # listener guard, deploy reconciliation, and diagnostics iterate that).
 WIFI_EVENTS_DEVICE_KEY = "haevents"
 WIFI_EVENTS_DEVICE_NAME = "Wifi Events"
-# 50 events -> 100 hub records (50 short + 50 long; deploys always write
-# every slot). Hub ceiling live-validated on X1 + X1S 2026-07-22
-# (bench_140, plan §11 W0.4). Frozen at record creation: the long-record
-# id law (long = short + slot_count) bakes this into deployed ids.
-WIFI_EVENTS_SLOT_COUNT = 50
+# 25 events -> 50 hub records (25 short + 25 long; deploys always write
+# every slot). The 100-record hub ceiling was live-validated on X1 + X1S
+# 2026-07-22 (bench_140, plan §11 W0.4); 50 sits well inside it. Frozen at
+# record creation: the long-record id law (long = short + slot_count) bakes
+# this into deployed ids, so records created before this change keep their
+# original count until recreated.
+WIFI_EVENTS_SLOT_COUNT = 25
 # Defensive clamp for persisted per-record slot counts.
 _MAX_RECORD_SLOT_COUNT = 100
 
@@ -350,7 +352,7 @@ def is_wifi_events_device_key(value: Any) -> bool:
 
 def _record_slot_count(device_key: Any, raw: Any = None) -> int:
     """Resolve a record's slot count: the persisted value, else the
-    per-key default (events record 50, user devices 10)."""
+    per-key default (events record 25, user devices 10)."""
 
     fallback = (
         WIFI_EVENTS_SLOT_COUNT
@@ -1053,10 +1055,12 @@ class CommandConfigStore:
         button, no activities).
 
         Raises ``ValueError('wifi_events_full')`` when every slot is
-        configured and ``ValueError('duplicate_name')`` when *name*
-        collides with an existing event (``normalize_command_name``
-        equivalence). Charset/hub validation of the name is the caller's
-        job (``_validate_wifi_name_for_hub``).
+        configured, ``ValueError('duplicate_name')`` when *name* collides
+        with an existing event (``normalize_command_name`` equivalence),
+        and ``ValueError('wifi_events_pending_delete')`` when the only free
+        slots are awaiting a hub-side record delete (see the §9b.6 guard
+        below). Charset/hub validation of the name is the caller's job
+        (``_validate_wifi_name_for_hub``).
         """
 
         normalized_name = str(name or "").strip()
@@ -1072,17 +1076,40 @@ class CommandConfigStore:
             self._hub_device_records(entry_id).append(record)
 
         commands, slot_count = self._wifi_events_slots(record)
+        deployed = record.get("deployed_commands")
+        deployed_list = deployed if isinstance(deployed, list) else []
         wanted = normalize_command_name(normalized_name)
         free_index: int | None = None
+        blocked_pending_delete = False
         for idx, slot in enumerate(commands):
             if slot == _default_slot(idx):
                 if free_index is None:
+                    # §9b.6 slot-allocator guard: a store slot is free but
+                    # the LAST DEPLOYED record for it is still a real
+                    # (non-placeholder) event — its hub-side record delete
+                    # has not synced. Reallocating this index would make
+                    # the new event inherit the freed event's hub refs
+                    # (favorites/bindings/macro-steps still pointing at
+                    # command_id idx+1). Skip it until the delete syncs,
+                    # which resets the deployed name to its "Command N"
+                    # placeholder. A never-deployed hole (empty deployed
+                    # snapshot) is unaffected.
+                    if (
+                        idx < len(deployed_list)
+                        and isinstance(deployed_list[idx], dict)
+                        and str(deployed_list[idx].get("name") or "").strip()
+                        not in ("", f"Command {idx + 1}")
+                    ):
+                        blocked_pending_delete = True
+                        continue
                     free_index = idx
                 continue
             if normalize_command_name(slot.get("name")) == wanted:
                 raise ValueError("duplicate_name")
         if free_index is None:
-            raise ValueError("wifi_events_full")
+            raise ValueError(
+                "wifi_events_pending_delete" if blocked_pending_delete else "wifi_events_full"
+            )
 
         commands[free_index] = {
             "name": normalized_name,

@@ -153,6 +153,67 @@ def test_delete_leaves_hole_and_reallocation_fills_it() -> None:
     assert _run(store.async_reset_wifi_event_slot("hub-1", 40)) is False
 
 
+def test_allocate_skips_slot_pending_hub_delete() -> None:
+    # §9b.6 slot-allocator guard: a slot freed in the store but whose hub
+    # record delete has not synced (its deployed snapshot still names a real
+    # event) must NOT be reallocated — the new event would inherit the old
+    # event's hub refs. It is skipped, and the next clean hole is used.
+    store = _store()
+    _run(store.async_allocate_wifi_event("hub-1", "One"))
+    _run(store.async_allocate_wifi_event("hub-1", "Two"))
+    # Deploy the record so the deployed snapshot carries the real names.
+    commands = normalize_commands(
+        _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands"],
+        slot_count=WIFI_EVENTS_SLOT_COUNT,
+        standalone_long_press=True,
+    )
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1", WIFI_EVENTS_DEVICE_KEY, commands, deployed_device_id=10,
+        )
+    )
+    # Free slot 0 in the store WITHOUT syncing the hub-side delete.
+    assert _run(store.async_reset_wifi_event_slot("hub-1", 0)) is True
+
+    # slot 0 is store-free but its deployed record still names "One" -> the
+    # allocator skips it and fills slot 2 instead of recycling slot 0.
+    allocated = _run(store.async_allocate_wifi_event("hub-1", "Three"))
+    assert allocated["slot_index"] == 2
+
+    # Once the deployed snapshot resets slot 0 to its placeholder (delete
+    # synced), the slot is reallocatable again.
+    _run(
+        store.async_reconcile_wifi_events_command_removals("hub-1", [1, 1 + WIFI_EVENTS_SLOT_COUNT])
+    )
+    refill = _run(store.async_allocate_wifi_event("hub-1", "Reused"))
+    assert refill["slot_index"] == 0
+
+
+def test_allocate_pending_delete_when_only_freed_slot_is_undeleted() -> None:
+    # When every free slot is a not-yet-deleted hole, allocation is refused
+    # with the distinct pending-delete code (not wifi_events_full).
+    store = _store()
+    for idx in range(WIFI_EVENTS_SLOT_COUNT):
+        _run(store.async_allocate_wifi_event("hub-1", f"Event {idx + 1}"))
+    commands = normalize_commands(
+        _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands"],
+        slot_count=WIFI_EVENTS_SLOT_COUNT,
+        standalone_long_press=True,
+    )
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1", WIFI_EVENTS_DEVICE_KEY, commands, deployed_device_id=10,
+        )
+    )
+    # Free one slot in the store but leave the hub record un-deleted.
+    assert _run(store.async_reset_wifi_event_slot("hub-1", 3)) is True
+    try:
+        _run(store.async_allocate_wifi_event("hub-1", "Overflow"))
+        raise AssertionError("expected wifi_events_pending_delete")
+    except ValueError as err:
+        assert str(err) == "wifi_events_pending_delete"
+
+
 def test_standalone_long_press_only_for_events_record() -> None:
     store = _store()
     _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
@@ -211,7 +272,7 @@ def test_hash_stable_at_default_slot_count() -> None:
     assert compute_commands_hash(commands) == compute_commands_hash(
         commands, slot_count=COMMAND_SLOT_COUNT
     )
-    # …while a 50-slot record hashes differently (more default rows).
+    # …while a wider events record hashes differently (more default rows).
     assert compute_commands_hash(commands) != compute_commands_hash(
         normalize_commands(commands, slot_count=WIFI_EVENTS_SLOT_COUNT),
         slot_count=WIFI_EVENTS_SLOT_COUNT,
