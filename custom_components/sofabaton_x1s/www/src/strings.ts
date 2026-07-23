@@ -340,7 +340,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     // Review-list section titles + entry templates for the live *device*
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
-      sectionPower: "Power",
+      sectionPower: "On/Off",
       sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
@@ -489,10 +489,15 @@ export const TOOLS_CARD_STRINGS_EN = {
       `${count} button binding${count === 1 ? "" : "s"} will be cleared`,
     macrosTitle: "Macros",
     macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
-    macroPowerChip: "power",
-    powerSetupTitle: "Power",
+    macroPowerChip: "on/off",
+    // These headings name the hub's switching *behaviour*, not the electrical
+    // supply. Translating the bare noun "Power" led every catalogue to the
+    // wattage word (Voeding / Stromversorgung / Alimentación / Alimentation),
+    // which reads as a PSU spec — or, in nl/es/fr, as nutrition. Keep the
+    // English explicit so the behaviour is what gets translated.
+    powerSetupTitle: "Power control",
     powerSetupDeviceSub:
-      "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
+      "How the hub switches this device on and off during Activities, and the commands it sends to do it.",
     powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
     powerOnLabel: "Power-on sequence",
     powerOffLabel: "Power-off sequence",
@@ -541,7 +546,7 @@ export const TOOLS_CARD_STRINGS_EN = {
       kind === "macro" ? "Rename macro" : "Rename shortcut",
     shortcutDeleteAria: (kind: "macro" | "favorite") =>
       kind === "macro" ? "Delete macro" : "Delete shortcut",
-    powerSectionTitle: "Power",
+    powerSectionTitle: "Power control",
     powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
     powerInputLabel: "Input",
     powerInputNone: "— none —",
@@ -614,7 +619,7 @@ export const TOOLS_CARD_STRINGS_EN = {
       "Its commands, power, input, and button assignments are configured there â€” editing them here would be overwritten on the next sync.",
     managedWifiRename:
       "You can still rename it here; the new name stays in sync with your Wifi Commands configuration.",
-    detailPower: "Power",
+    detailPower: "On/Off",
     detailNetwork: "Network",
     detailCommands: "Commands",
     detailButtons: "Buttons",
