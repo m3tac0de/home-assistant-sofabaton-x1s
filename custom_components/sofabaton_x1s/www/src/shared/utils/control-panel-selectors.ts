@@ -9,6 +9,7 @@ import type {
   TabId,
 } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
+import { localizeRuntimeOperation } from "./backend-state-localization";
 
 export function selectedHub(snapshot: ControlPanelSnapshot): ControlPanelHubState | null {
   const hubs = snapshot.state?.hubs ?? [];
@@ -287,6 +288,7 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
 
   const hubRuntime = hub?.runtime_state;
   if (hubRuntime?.kind === "operation_running") {
+    const localized = localizeRuntimeOperation(hubRuntime);
     const total = Number(hubRuntime.total_steps || 0);
     const current = Number(hubRuntime.current_step || 0);
     const percent = total > 0
@@ -303,8 +305,8 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
             : hubRuntime.operation === "entity_sync"
               ? "entity_sync"
               : "wifi_deploy",
-      label: String(hubRuntime.label || TOOLS_CARD_STRINGS.availability.operationRunning),
-      detail: String(hubRuntime.detail || hubRuntime.label || TOOLS_CARD_STRINGS.availability.working),
+      label: localized.label,
+      detail: localized.detail,
       progress: {
         current: Number.isFinite(current) ? current : null,
         total: Number.isFinite(total) && total > 0 ? total : null,
@@ -316,8 +318,8 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
   if (hubRuntime?.kind === "app_connected") {
     return {
       kind: "app_connected",
-      label: String(hubRuntime.label || TOOLS_CARD_STRINGS.availability.appConnectedOnlyLogs),
-      detail: String(hubRuntime.detail || ""),
+      label: TOOLS_CARD_STRINGS.availability.appConnectedOnlyLogs,
+      detail: null,
     };
   }
 

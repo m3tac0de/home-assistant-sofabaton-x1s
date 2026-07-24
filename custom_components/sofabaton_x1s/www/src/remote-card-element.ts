@@ -16,7 +16,12 @@ import {
   mfRowVisibleRows,
 } from "./remote-card-layout";
 import { ensureHaElements } from "./remote-card-compat";
-import { setRemoteCardLanguage, str } from "./remote-card-strings";
+import {
+  remoteCardDirection,
+  remoteCardLanguage,
+  setRemoteCardLanguage,
+  str,
+} from "./remote-card-strings";
 import { REMOTE_CARD_CSS } from "./remote-card-styles";
 import { rgbToCss, automationAssistLabelForKey } from "./remote-card-ui-helpers";
 import { runtimeButtonVisibility } from "./remote-card-runtime-display";
@@ -160,11 +165,14 @@ export class SofabatonRemoteCard extends LitElement {
   }
 
   set hass(hass: HassLike) {
-    setRemoteCardLanguage(
+    const language =
       (hass as { locale?: { language?: string }; language?: string })?.locale
-        ?.language ?? (hass as { language?: string })?.language,
-    );
+        ?.language ?? (hass as { language?: string })?.language;
+    const languageChanged = setRemoteCardLanguage(language);
+    this.lang = remoteCardLanguage();
+    this.dir = remoteCardDirection();
     this._store.setHass(hass);
+    if (languageChanged) this.requestUpdate();
   }
 
   get hass(): HassLike | null {

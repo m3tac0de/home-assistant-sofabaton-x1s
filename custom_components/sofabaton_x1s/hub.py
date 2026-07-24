@@ -82,6 +82,7 @@ from .command_config import (
     async_get_command_config_store,
     DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
+    is_wifi_events_device_key,
     normalize_command_name,
     normalize_power_command_id,
     wifi_device_requires_listener,
@@ -90,8 +91,11 @@ from .command_config import (
 _LOGGER = logging.getLogger(__name__)
 
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
+# Default (user-device) slot count. Per-record slot counts ride the store
+# payload's `slot_count` (the Wifi Events record uses 25); the long-record
+# id offset always equals the record's slot count (long = short + N,
+# live-validated at N=6/10/50 — docs/internal/wifi-events-plan.md §11).
 _WIFI_COMMAND_SLOT_COUNT = 10
-_WIFI_COMMAND_LONG_PRESS_OFFSET = 10
 
 
 def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
@@ -1700,6 +1704,7 @@ class SofabatonHub:
         edited: dict[str, Any],
         device_id: int,
         progress_callback: Any = None,
+        allow_command_removal: bool = False,
     ) -> dict[str, Any]:
         """Sync one device's edits to the live hub (device-scoped counterpart
         of :meth:`async_sync_activity`; engine :meth:`X1Proxy.sync_device`)."""
@@ -1711,6 +1716,7 @@ class SofabatonHub:
                 edited=edited,
                 device_id=int(device_id),
                 progress_callback=progress_callback,
+                allow_command_removal=allow_command_removal,
             )
         )
 
@@ -2306,7 +2312,17 @@ class SofabatonHub:
                 continue
             device_id = int(slot.get("device_id", 0)) & 0xFF
             command_id = int(slot.get("command_id", 0)) & 0xFF
-            label = self._proxy.state.get_favorite_label(act_lo, device_id, command_id)
+            # The device command catalog is refreshed whenever records change;
+            # the activity-scoped label map is only a resolved copy and can lag
+            # briefly after an editor sync.  Prefer the catalog and keep a
+            # useful fallback so a transient label miss never hides the slot.
+            label = (
+                self._proxy.state.commands.get(device_id, {}).get(command_id)
+                or self._proxy.state.get_favorite_label(
+                    act_lo, device_id, command_id
+                )
+                or f"Command {command_id}"
+            )
             favorite_by_id[entry_id] = {
                 "fav_id": entry_id,
                 "button_id": entry_id,
@@ -2780,7 +2796,13 @@ class SofabatonHub:
         return result
 
     def get_all_cached_macros(self) -> dict[int, list[dict[str, int | str]]]:
-        """Return cached macros for activities that are fully ready."""
+        """Return cached macros in the physical remote's display order.
+
+        Activity macros and favorites share the family-0x61 quick-access
+        namespace.  Their numeric ids are stable identities, not necessarily
+        their current screen positions, so filtering the combined ordered view
+        is the only reliable way to order either drawer after a reorder.
+        """
 
         result: dict[int, list[dict[str, int | str]]] = {}
         for ent_id in self.activities:
@@ -2788,19 +2810,50 @@ class SofabatonHub:
                 ent_id, fetch_if_missing=False
             )
             if ready and macros:
-                result[ent_id] = macros
+                order = self._proxy.state.activity_favorites_order.get(
+                    ent_id & 0xFF, []
+                )
+                result[ent_id] = [
+                    {
+                        "command_id": int(row.get("command_id", 0)) & 0xFF,
+                        "label": str(row.get("name") or ""),
+                    }
+                    for row in self.describe_favorites_order(ent_id, order)
+                    if row.get("type") == "macro"
+                    and int(row.get("command_id", 0)) & 0xFF
+                ]
 
         return result
 
     def get_activity_favorites(self) -> dict[int, list[dict[str, int | str]]]:
-        """Return favorite commands with labels for activities."""
+        """Return favorites in the physical remote's display order.
+
+        Build from favorite slots rather than the label-only projection.  A
+        structural refresh can briefly have live slots before all targeted
+        command-label reads complete; retaining those rows (with the same
+        fallback label used by the cache export) prevents the Virtual Remote
+        from incorrectly presenting an empty Favorites drawer.
+        """
 
         favorites: dict[int, list[dict[str, int | str]]] = {}
 
         for act_id in self.activities:
-            labels = self._proxy.state.get_activity_favorite_labels(act_id & 0xFF)
-            if labels:
-                favorites[act_id] = labels
+            order = self._proxy.state.activity_favorites_order.get(
+                act_id & 0xFF, []
+            )
+            rows = [
+                {
+                    "button_id": int(row.get("button_id", 0)) & 0xFF,
+                    "name": str(row.get("name") or ""),
+                    "device_id": int(row.get("device_id", 0)) & 0xFF,
+                    "command_id": int(row.get("command_id", 0)) & 0xFF,
+                }
+                for row in self.describe_favorites_order(act_id, order)
+                if row.get("type") == "favorite"
+                and int(row.get("command_id", 0)) & 0xFF
+            ]
+            if rows:
+                favorites[act_id] = rows
 
         return favorites
 
@@ -3310,6 +3363,49 @@ class SofabatonHub:
         devices = await store.async_list_hub_devices(self.entry_id)
         return any(wifi_device_requires_listener(device) for device in devices)
 
+    async def async_delete_wifi_event_records(
+        self,
+        *,
+        device_id: int,
+        command_ids: list[int],
+    ) -> bool:
+        """Family-0x10 record deletes for a freed Wifi Event slot (short +
+        long record). The hub cascades referencing favorites/bindings and
+        removes the step from macros in place — a macro left with no steps
+        is removed (live-validated both hubs, wifi-events-plan §11 W0.2).
+
+        Runs AFTER the freed slot's placeholder sync; the records
+        resurrect as (ref-less) placeholders on the next full sync, which
+        is harmless — the point of the delete is the reference cascade.
+        """
+
+        async with self._command_sync_lock:
+            ok = True
+            for command_id in command_ids:
+                result = await self.hass.async_add_executor_job(
+                    partial(
+                        self._proxy._sync_step_command_delete,
+                        {"device_id": int(device_id), "command_id": int(command_id)},
+                    )
+                )
+                ok = ok and bool(result)
+            # Cascade epilogue: the deletes rewrote referencing activities'
+            # key rows hub-side; re-warm them + the device catalog so the
+            # cached views (favorite/binding labels, macro steps) follow.
+            await self.async_fetch_device_commands(int(device_id))
+            for act_id in sorted(self._proxy.activities_referencing_device(int(device_id))):
+                await self._async_fetch_activity_commands(act_id)
+            await self._async_refresh_devices_snapshot()
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+            try:
+                await self._async_persist_cache_if_enabled()
+            except Exception:  # noqa: BLE001 - persist is best-effort
+                self._log.debug(
+                    "[%s] post-event-delete cache persist failed", self.entry_id, exc_info=True
+                )
+            return ok
+
     async def _async_try_inplace_command_sync(
         self,
         *,
@@ -3322,6 +3418,7 @@ class SofabatonHub:
         commands_hash: str,
         request_port: int,
         store: Any,
+        slot_count: int = _WIFI_COMMAND_SLOT_COUNT,
     ) -> dict[str, Any] | None:
         """Attempt an in-place re-sync of the matched managed Wifi Device.
 
@@ -3388,16 +3485,18 @@ class SofabatonHub:
         # edited the managed device in the Sofabaton app invalidates the
         # in-place base; replace re-establishes it.
         expected_labels: dict[int, str] = {}
-        for idx, slot in enumerate(deployed_slots[:_WIFI_COMMAND_SLOT_COUNT]):
+        for idx, slot in enumerate(deployed_slots[:slot_count]):
             name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
             expected_labels[idx + 1] = name
-            expected_labels[idx + 1 + _WIFI_COMMAND_LONG_PRESS_OFFSET] = f"{name} Long Press"
+            expected_labels[idx + 1 + slot_count] = f"{name} Long Press"
         desired = desired_snapshot_from_config(
             command_payload,
             device_id=dev_id,
             device_name=device_name,
             brand=brand_name,
             hard_button_codes=_HARD_BUTTON_TO_CODE,
+            slot_count=slot_count,
+            long_press_offset=slot_count,
         )
 
         # Classify every live record that disagrees with the deployed
@@ -3444,6 +3543,8 @@ class SofabatonHub:
             device_name="",
             brand="",
             hard_button_codes=_HARD_BUTTON_TO_CODE,
+            slot_count=slot_count,
+            long_press_offset=slot_count,
         )
         plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed_snapshot)
         if plan.is_fallback:
@@ -3534,7 +3635,7 @@ class SofabatonHub:
             await store.async_save_deployed_wifi_commands(
                 self.entry_id,
                 normalized_device_key,
-                list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
+                list(commands[:slot_count]),
                 deployed_device_id=dev_id,
                 commands_hash=commands_hash,
                 request_port=request_port,
@@ -3577,11 +3678,24 @@ class SofabatonHub:
 
         async with self._command_sync_lock:
             commands = list(command_payload.get("commands") or [])
-            configured_slots = count_configured_command_slots(commands)
+            normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
+            # Per-record slot count (store payloads carry it; default 10).
+            # The Wifi Events record deploys 25 slots — 50 records — and
+            # honors long_press_enabled standalone (plan §2-capacity).
+            try:
+                slot_count = int(command_payload.get("slot_count"))
+            except (TypeError, ValueError):
+                slot_count = _WIFI_COMMAND_SLOT_COUNT
+            if not (1 <= slot_count <= 100):
+                slot_count = _WIFI_COMMAND_SLOT_COUNT
+            configured_slots = count_configured_command_slots(
+                commands,
+                slot_count=slot_count,
+                standalone_long_press=is_wifi_events_device_key(normalized_device_key),
+            )
             commands_hash = str(command_payload.get("commands_hash") or "")
             deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
             deployed_device_id = command_payload.get("deployed_device_id")
-            normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
             brand_name = f"{COMMAND_BRAND_PREFIX}-{normalized_device_key}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
             store = await async_get_command_config_store(self.hass)
@@ -3612,7 +3726,7 @@ class SofabatonHub:
                         )
 
                 referenced_activity_ids: set[int] = set()
-                for slot in commands[:_WIFI_COMMAND_SLOT_COUNT]:
+                for slot in commands[:slot_count]:
                     if not isinstance(slot, dict):
                         continue
                     # A slot's activities list only means something for
@@ -3776,6 +3890,7 @@ class SofabatonHub:
                         commands_hash=commands_hash,
                         request_port=request_port,
                         store=store,
+                        slot_count=slot_count,
                     )
                     if inplace_result is not None:
                         return inplace_result
@@ -3802,7 +3917,7 @@ class SofabatonHub:
                     raise HomeAssistantError(
                         f"power_off_command_id must be between 1 and {max_power_command_id}"
                     )
-                for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                for idx, slot in enumerate(commands[:slot_count]):
                     raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
                     if not raw_input_activity_id:
                         continue
@@ -3813,7 +3928,7 @@ class SofabatonHub:
                     command_id = idx + 1
                     input_command_ids.append(command_id)
                     activity_input_command_ids.setdefault(input_activity_id, command_id)
-                for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                for idx, slot in enumerate(commands[:slot_count]):
                     name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                     command_defs.append(
                         {
@@ -3823,7 +3938,7 @@ class SofabatonHub:
                             "command_index": idx,
                         }
                     )
-                for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                for idx, slot in enumerate(commands[:slot_count]):
                     name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                     command_defs.append(
                         {
@@ -3957,7 +4072,7 @@ class SofabatonHub:
                 activities_new_fav_ids: dict[int, list[int]] = {}
 
                 activities_with_favorites: set[int] = set()
-                for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                for slot_idx, slot in enumerate(commands[:slot_count]):
                     if not slot.get("add_as_favorite"):
                         continue
                     command_id = slot_idx + 1
@@ -4018,7 +4133,7 @@ class SofabatonHub:
                     current_step=6,
                     message="Applying activity button mappings",
                 )
-                for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                for slot_idx, slot in enumerate(commands[:slot_count]):
                     hard_button = str(slot.get("hard_button") or "").strip().lower()
                     if not hard_button:
                         continue
@@ -4028,7 +4143,8 @@ class SofabatonHub:
                     command_id = slot_idx + 1
                     long_press_enabled = bool(slot.get("long_press_enabled"))
                     long_press_command_id = (
-                        slot_idx + 1 + _WIFI_COMMAND_LONG_PRESS_OFFSET
+                        # long-record id law: long = short + slot_count
+                        slot_idx + 1 + slot_count
                         if long_press_enabled
                         else None
                     )
@@ -4056,9 +4172,10 @@ class SofabatonHub:
                 # KeyToKey table is uniform, so the same binding write applies
                 # with the device's own id as the keymap entity.
                 for dev_button_id, dev_command_id, dev_long_id in derive_device_level_bindings(
-                    commands[:_WIFI_COMMAND_SLOT_COUNT],
+                    commands[:slot_count],
                     hard_button_codes=_HARD_BUTTON_TO_CODE,
-                    long_press_offset=_WIFI_COMMAND_LONG_PRESS_OFFSET,
+                    slot_count=slot_count,
+                    long_press_offset=slot_count,
                 ):
                     await self.async_command_to_button(
                         wifi_device_id,
@@ -4129,7 +4246,7 @@ class SofabatonHub:
                     await store.async_save_deployed_wifi_commands(
                         self.entry_id,
                         normalized_device_key,
-                        list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
+                        list(commands[:slot_count]),
                         deployed_device_id=wifi_device_id,
                         commands_hash=commands_hash,
                         request_port=request_port,

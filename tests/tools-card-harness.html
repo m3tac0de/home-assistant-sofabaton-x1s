@@ -34,6 +34,19 @@
       min-height: 100vh;
     }
 
+    body[data-theme="dark"] {
+      --primary-text-color: #f1f3f4;
+      --secondary-text-color: #aeb6bf;
+      --disabled-text-color: #707780;
+      --divider-color: #3b424a;
+      --card-background-color: #1f242a;
+      --ha-card-background: #1f242a;
+      --secondary-background-color: #2a3037;
+      --primary-background-color: #171b20;
+      color: #f1f3f4;
+      background: #11151a;
+    }
+
     h1 {
       margin: 0 0 16px;
       font-size: 17px;
@@ -44,7 +57,7 @@
 
     .harness-layout {
       display: grid;
-      grid-template-columns: 240px 1fr;
+      grid-template-columns: 240px minmax(0, 1fr);
       gap: 20px;
       align-items: start;
     }
@@ -61,10 +74,46 @@
     }
 
     .scenario-group {
-      background: white;
+      background: var(--ha-card-background, white);
       border-radius: 10px;
       padding: 10px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .harness-tools {
+      display: grid;
+      gap: 9px;
+    }
+
+    .harness-field {
+      display: grid;
+      gap: 4px;
+    }
+
+    .harness-field label {
+      color: var(--secondary-text-color, #727272);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .harness-field select,
+    .harness-action {
+      width: 100%;
+      min-height: 32px;
+      padding: 5px 8px;
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 7px;
+      background: var(--ha-card-background, white);
+      color: var(--primary-text-color, #212121);
+      font: inherit;
+      font-size: 12px;
+    }
+
+    .harness-action {
+      cursor: pointer;
+      font-weight: 600;
     }
 
     .group-label {
@@ -87,24 +136,33 @@
       background: transparent;
       font-size: 12px;
       cursor: pointer;
-      color: #424242;
+      color: var(--primary-text-color, #424242);
       transition: background 100ms, border-color 100ms;
       line-height: 1.4;
     }
 
     .scenario-btn:last-child { margin-bottom: 0; }
-    .scenario-btn:hover { background: #f5f5f5; border-color: #e0e0e0; }
+    .scenario-btn:hover {
+      background: var(--secondary-background-color, #f5f5f5);
+      border-color: var(--divider-color, #e0e0e0);
+    }
     .scenario-btn.active { background: #e3f2fd; border-color: #90caf9; color: #1565c0; font-weight: 600; }
+    body[data-theme="dark"] .scenario-btn.active {
+      background: #163247;
+      border-color: #2d6b93;
+      color: #8bd1ff;
+    }
 
     /* ── Right: status + card ─────────────────────────────────────── */
     .card-area {
       display: flex;
       flex-direction: column;
       gap: 14px;
+      min-width: 0;
     }
 
     .status-bar {
-      background: white;
+      background: var(--ha-card-background, white);
       border-radius: 10px;
       padding: 12px 14px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -122,8 +180,29 @@
     .active-scenario-name {
       font-size: 13px;
       font-weight: 600;
-      color: #212121;
+      color: var(--primary-text-color, #212121);
       margin-bottom: 10px;
+    }
+
+    .harness-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .harness-chip {
+      padding: 3px 7px;
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 999px;
+      color: var(--secondary-text-color, #727272);
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .harness-chip--error {
+      border-color: color-mix(in srgb, var(--error-color, #db4437) 45%, transparent);
+      color: var(--error-color, #db4437);
     }
 
     .ws-log {
@@ -140,9 +219,27 @@
     .ws-line--res { color: #2e7d32; }
     .ws-line--err { color: #c62828; }
 
+    #card-host {
+      max-width: 100%;
+      margin: 0 auto;
+      transition: width 160ms ease;
+    }
+
     sofabaton-control-panel {
       display: block;
       width: 100%;
+    }
+
+    @media (max-width: 760px) {
+      body { padding: 0 0 20px; }
+      .harness-layout { grid-template-columns: 1fr; }
+      .controls {
+        position: static;
+        max-height: none;
+        padding: 10px;
+      }
+      body[data-width="responsive"] .card-area { min-width: auto; }
+      .status-bar { margin: 0 10px; }
     }
   </style>
 </head>
@@ -150,12 +247,50 @@
   <h1>Sofabaton Control Panel — Test Harness</h1>
 
   <div class="harness-layout">
-    <div class="controls" id="controls"></div>
+    <div class="controls" id="controls">
+      <div class="scenario-group harness-tools">
+        <div class="group-label">Harness</div>
+        <div class="harness-field">
+          <label for="harness-language">Language</label>
+          <select id="harness-language">
+            <option value="en">English</option>
+            <option value="en-gb">English (United Kingdom)</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="nl">Nederlands</option>
+            <option value="zh-hans">简体中文</option>
+          </select>
+        </div>
+        <div class="harness-field">
+          <label for="harness-theme">Theme</label>
+          <select id="harness-theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div class="harness-field">
+          <label for="harness-width">Card width</label>
+          <select id="harness-width">
+            <option value="responsive">Responsive</option>
+            <option value="360">Phone · 360px</option>
+            <option value="520">Tablet · 520px</option>
+            <option value="900">Desktop · 900px</option>
+          </select>
+        </div>
+        <button type="button" class="harness-action" id="copy-harness-link">Copy share link</button>
+      </div>
+    </div>
 
     <div class="card-area">
       <div class="status-bar">
         <div class="status-label">Active Scenario</div>
         <div class="active-scenario-name" id="active-scenario-name">—</div>
+        <div class="harness-status-row">
+          <span class="harness-chip" id="active-language">English</span>
+          <span class="harness-chip" id="active-theme">Light</span>
+          <span class="harness-chip" id="unhandled-api-count">API contract clean</span>
+        </div>
         <div class="status-label">WS Log</div>
         <div class="ws-log" id="ws-log"></div>
       </div>
@@ -725,7 +860,8 @@
 
   <!-- Card bundle — runs after stubs module above.
        The ?v= bust forces browsers to skip cache when the file is updated. -->
-  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=81"></script>
+  <script id="tools-card-bundle" type="module"
+          src="../custom_components/sofabaton_x1s/www/tools-card.js?v=harness"></script>
 
   <!-- Harness logic — runs after both modules above -->
   <script type="module">
@@ -816,10 +952,13 @@
       },
     };
 
-    // tools_frontend_version must match the ?v= cache-bust on the script tag.
-    // The store compares this against LOADED_TOOLS_FRONTEND_VERSION (read from the
-    // script URL's ?v= param) and sets toolsFrontendVersionMismatch if they differ.
-    const TOOLS_FRONTEND_VERSION = "81";
+    // Keep the mocked backend version aligned with the bundle URL automatically.
+    // Pages can replace this query value with a commit SHA without changing the
+    // harness or creating a false frontend-version mismatch.
+    const TOOLS_FRONTEND_VERSION = new URL(
+      document.getElementById("tools-card-bundle").src,
+      window.location.href,
+    ).searchParams.get("v") || "harness";
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
@@ -1164,6 +1303,76 @@
       },
     ];
 
+    const DEFAULT_ACTION = { action: "perform-action" };
+    const HUB_EVENT_ACTIONS = {
+      power_off: {
+        action: "perform-action",
+        perform_action: "light.turn_off",
+        target: { entity_id: ["light.living_room"] },
+      },
+      redundant_off: { ...DEFAULT_ACTION },
+      activity_start: {
+        action: "perform-action",
+        perform_action: "scene.turn_on",
+        target: { entity_id: ["scene.movie_time"] },
+      },
+      activity_stop: { ...DEFAULT_ACTION },
+    };
+    const ACTIVITY_EVENT_ACTIONS = {
+      "101": {
+        start: {
+          action: "perform-action",
+          perform_action: "media_player.turn_on",
+          target: { entity_id: ["media_player.living_room_tv"] },
+        },
+        stop: { ...DEFAULT_ACTION },
+      },
+      "102": {
+        start: {
+          action: "perform-action",
+          perform_action: "media_player.media_play",
+          target: { entity_id: ["media_player.living_room_speaker"] },
+        },
+        stop: {
+          action: "perform-action",
+          perform_action: "media_player.media_stop",
+          target: { entity_id: ["media_player.living_room_speaker"] },
+        },
+      },
+    };
+    const WIFI_EVENTS = [
+      {
+        slot_index: 0,
+        name: "Movie Night",
+        long_press_enabled: true,
+        action: {
+          action: "perform-action",
+          perform_action: "scene.turn_on",
+          target: { entity_id: ["scene.movie_time"] },
+        },
+        long_press_action: {
+          action: "perform-action",
+          perform_action: "light.turn_off",
+          target: { entity_id: ["light.downstairs"] },
+        },
+        command_id: 1,
+        long_press_command_id: 51,
+        device_id: 10,
+        deployed: true,
+      },
+      {
+        slot_index: 1,
+        name: "Guests",
+        long_press_enabled: false,
+        action: { ...DEFAULT_ACTION },
+        long_press_action: { ...DEFAULT_ACTION },
+        command_id: 2,
+        long_press_command_id: 52,
+        device_id: 10,
+        deployed: false,
+      },
+    ];
+
     // ── Sample logs ──────────────────────────────────────────────────────────────
 
     const SAMPLE_LOGS = [
@@ -1180,8 +1389,28 @@
     // ── WS log ───────────────────────────────────────────────────────────────────
 
     const wsLogEl  = document.getElementById("ws-log");
+    const unhandledApiEl = document.getElementById("unhandled-api-count");
     let   wsBuffer = [];
     let   structuredCalls = [];
+    let   unhandledCalls = [];
+    let   currentLanguage = "en";
+    let   currentTheme = "light";
+    let   currentWidth = "responsive";
+    let   activeScenario = null;
+    let   scenarioLoadGeneration = 0;
+
+    function updateUnhandledStatus() {
+      const count = unhandledCalls.length;
+      unhandledApiEl.textContent = count
+        ? `${count} unhandled API call${count === 1 ? "" : "s"}`
+        : "API contract clean";
+      unhandledApiEl.classList.toggle("harness-chip--error", count > 0);
+    }
+
+    function recordUnhandled(channel, message) {
+      unhandledCalls.push({ channel, message: clone(message) });
+      updateUnhandledStatus();
+    }
 
     function wsLog(type, dir) {
       const prefix = dir === "req" ? "→" : dir === "err" ? "✕" : "←";
@@ -1200,11 +1429,67 @@
 
     function buildMockHass(scenario) {
       const handlers = scenario.handlers ?? {};
+      const mock = {
+        state: clone(scenario.state ?? BASE_STATE),
+        contents: clone(scenario.contents ?? BASE_CONTENTS),
+        structuralBundle: clone(scenario.structuralBundle ?? EDIT_BACKUP_BUNDLE),
+        wifiDevices: clone(scenario.wifiDevices ?? WIFI_DEVICES_HEALTHY),
+        wifiCommandsByKey: clone(scenario.wifiCommandsByKey ?? {}),
+        wifiSyncByKey: clone(scenario.wifiSyncByKey ?? {}),
+        hubEventActions: clone(scenario.hubEventActions ?? HUB_EVENT_ACTIONS),
+        activityEventActions: clone(scenario.activityEventActions ?? ACTIVITY_EVENT_ACTIONS),
+        wifiEvents: clone(scenario.wifiEvents ?? WIFI_EVENTS),
+        operationSequence: 1,
+        wifiDeviceSequence: 1,
+        activitySequence: 105,
+      };
+      const respond = (type, value) => {
+        wsLog(type, "res");
+        return Promise.resolve(clone(value));
+      };
+      const operationId = (kind) => `${kind}-${mock.operationSequence++}`;
+      const wifiEventsResponse = () => ({
+        events: clone(mock.wifiEvents),
+        record_needs_sync: mock.wifiEvents.some((event) => !event.deployed),
+        device_id: mock.wifiEvents.find((event) => event.device_id != null)?.device_id ?? null,
+      });
       return {
         states:     scenario.states ?? {},
-        connection: scenario.subscribe
-          ? { subscribeMessage: scenario.subscribe }
-          : null,
+        locale: { language: currentLanguage },
+        language: currentLanguage,
+        themes: { darkMode: currentTheme === "dark" },
+        connection: {
+          subscribeMessage(callback, message) {
+            const type = String(message?.type ?? "");
+            structuredCalls.push({ channel: "subscription", message: clone(message) });
+            wsLog(type, "req");
+            if (scenario.subscribe) {
+              try {
+                return Promise.resolve(scenario.subscribe(callback, message))
+                  .then((unsubscribe) => {
+                    wsLog(type, "res");
+                    return typeof unsubscribe === "function" ? unsubscribe : () => {};
+                  });
+              } catch (error) {
+                wsLog(type, "err");
+                return Promise.reject(error);
+              }
+            }
+            const known = [
+              "sofabaton_x1s/backup/progress_subscribe",
+              "sofabaton_x1s/logs/subscribe",
+              "sofabaton_x1s/wifi_presses/subscribe",
+              "sofabaton_x1s/hub_events/subscribe",
+            ];
+            if (!known.includes(type)) {
+              recordUnhandled("subscription", message);
+              wsLog(type, "err");
+              return Promise.reject(new Error(`Unhandled harness subscription: ${type}`));
+            }
+            wsLog(type, "res");
+            return Promise.resolve(() => {});
+          },
+        },
 
         callWS(message) {
           const type = String(message.type ?? "");
@@ -1228,54 +1513,220 @@
             return Promise.resolve(p);
           }
 
-          // ── Global defaults ───────────────────────────────────────────────────
-          if (type === "sofabaton_x1s/control_panel/state") {
-            return Promise.resolve(scenario.state ?? BASE_STATE)
-              .then(v => { wsLog(type, "res"); return v; });
+          // Current control-panel contract. Every known operation has an
+          // explicit response; unknown calls fail visibly instead of silently
+          // returning a shape that may hide harness drift.
+          switch (type) {
+            case "sofabaton_x1s/control_panel/state":
+              return respond(type, mock.state);
+            case "sofabaton_x1s/persistent_cache/contents":
+              return respond(type, mock.contents);
+            case "sofabaton_x1s/control_panel/set_setting": {
+              if (message.setting === "persistent_cache") {
+                mock.state.persistent_cache_enabled = Boolean(message.enabled);
+                mock.contents.enabled = Boolean(message.enabled);
+              } else if (message.setting === "hub_click_action") {
+                mock.state.hub_click_action = String(message.value ?? "none");
+              } else {
+                const hub = mock.state.hubs.find((item) => item.entry_id === message.entry_id);
+                if (hub?.settings) hub.settings[message.setting] = Boolean(message.enabled);
+              }
+              return respond(type, { ok: true });
+            }
+            case "sofabaton_x1s/control_panel/run_action":
+              return respond(type, { ok: true });
+            case "sofabaton_x1s/logs/get":
+              return respond(type, { lines: scenario.logLines ?? [] });
+            case "sofabaton_x1s/persistent_cache/refresh":
+            case "sofabaton_x1s/cache/refresh_all":
+              return respond(type, { operation_id: operationId("cache-refresh") });
+            case "sofabaton_x1s/catalog/refresh":
+              return respond(type, { ok: true });
+            case "sofabaton_x1s/cache/structural_bundle":
+              return respond(type, {
+                bundle: mock.structuralBundle,
+                generation: mock.structuralBundle ? 1 : null,
+              });
+            case "sofabaton_x1s/activity/create": {
+              const activityId = mock.activitySequence++;
+              const name = String(message.name || `Activity ${activityId}`);
+              mock.state.hubs[0]?.activities?.push({
+                id: activityId,
+                name,
+                favorite_count: 0,
+                macro_count: 0,
+              });
+              return respond(type, { status: "success", activity_id: activityId });
+            }
+            case "sofabaton_x1s/activity/delete":
+              for (const hub of mock.state.hubs) {
+                hub.activities = (hub.activities ?? []).filter(
+                  (activity) => Number(activity.id) !== Number(message.activity_id),
+                );
+              }
+              return respond(type, { status: "success" });
+            case "sofabaton_x1s/device/delete":
+              return respond(type, { status: "success" });
+            case "sofabaton_x1s/activity/reorder":
+            case "sofabaton_x1s/device/reorder":
+              return respond(type, {
+                status: "success",
+                ordered_ids: message.ordered_ids ?? [],
+              });
+            case "sofabaton_x1s/activity/sync":
+              return respond(type, { operation_id: operationId("activity-sync") });
+            case "sofabaton_x1s/device/sync":
+              return respond(type, { operation_id: operationId("device-sync") });
+            case "sofabaton_x1s/activity/sync_plan":
+            case "sofabaton_x1s/device/sync_plan":
+              return respond(type, {
+                step_count: 1,
+                steps: [{ kind: "write", label: "Writing changes…" }],
+              });
+            case "sofabaton_x1s/blobs/fetch":
+              return respond(type, {
+                device_id: Number(message.device_id),
+                requested_command_id: message.command_id ?? null,
+                total_commands: 1,
+                received_command_count: 1,
+                complete: true,
+                commands: [{
+                  command_label: "Power",
+                  device_id: Number(message.device_id),
+                  command_id: Number(message.command_id ?? 1),
+                  device_class: "ir",
+                  blob_kind: "ir",
+                  command_blob: "0000 006D 0000 0002 0155 00AA 0015 0016",
+                  parsed_blob: "Mock NEC command",
+                }],
+              });
+            case "sofabaton_x1s/blobs/play":
+              return respond(type, { ok: true });
+            case "sofabaton_x1s/backup/export":
+              return respond(type, { operation_id: operationId("backup-export") });
+            case "sofabaton_x1s/backup/restore":
+              return respond(type, { operation_id: operationId("backup-restore") });
+            case "sofabaton_x1s/backup/stash_edited":
+              return respond(type, { operation_id: operationId("backup-download") });
+            case "sofabaton_x1s/backup/state":
+              return respond(type, scenario.backupState ?? {
+                backup_export: null,
+                backup_restore: null,
+                activity_sync: null,
+                device_sync: null,
+                active_operation: null,
+              });
+            case "sofabaton_x1s/backup/clear_result":
+              return respond(type, { ok: true });
+            case "auth/sign_path":
+              return respond(type, { path: String(message.path ?? "") });
+            case "sofabaton_x1s/command_devices/list":
+              return respond(type, {
+                devices: mock.wifiDevices,
+                max_devices: scenario.maxWifiDevices ?? 5,
+              });
+            case "sofabaton_x1s/command_config/get": {
+              const key = String(message.device_key ?? "");
+              return respond(type, {
+                commands: mock.wifiCommandsByKey[key] ?? scenario.wifiCommands ?? [],
+              });
+            }
+            case "sofabaton_x1s/command_config/set": {
+              const key = String(message.device_key ?? "");
+              mock.wifiCommandsByKey[key] = clone(message.commands ?? []);
+              return respond(type, { ok: true });
+            }
+            case "sofabaton_x1s/command_sync/progress": {
+              const key = String(message.device_key ?? "");
+              return respond(
+                type,
+                mock.wifiSyncByKey[key] ?? scenario.wifiSyncState ?? WIFI_SYNC_IDLE,
+              );
+            }
+            case "sofabaton_x1s/command_device/create": {
+              const key = `dev-new-${mock.wifiDeviceSequence++}`;
+              mock.wifiDevices.push({
+                device_key: key,
+                device_name: String(message.device_name || "New Wifi Device"),
+                configured_slot_count: 0,
+                deployed_device_id: null,
+                ...WIFI_SYNC_IDLE,
+              });
+              mock.wifiCommandsByKey[key] = [];
+              return respond(type, { device_key: key });
+            }
+            case "sofabaton_x1s/command_device/delete": {
+              const key = String(message.device_key ?? "");
+              mock.wifiDevices = mock.wifiDevices.filter((device) => device.device_key !== key);
+              delete mock.wifiCommandsByKey[key];
+              return respond(type, { ok: true });
+            }
+            case "sofabaton_x1s/hub_event_actions/get":
+              return respond(type, {
+                actions: mock.hubEventActions,
+                activity_actions: mock.activityEventActions,
+              });
+            case "sofabaton_x1s/hub_event_actions/set":
+              mock.hubEventActions = clone(message.actions ?? {});
+              mock.activityEventActions = clone(message.activity_actions ?? {});
+              return respond(type, {
+                actions: mock.hubEventActions,
+                activity_actions: mock.activityEventActions,
+              });
+            case "sofabaton_x1s/wifi_event/list":
+              return respond(type, wifiEventsResponse());
+            case "sofabaton_x1s/wifi_event/create": {
+              const slotIndex = mock.wifiEvents.length;
+              const event = {
+                slot_index: slotIndex,
+                name: String(message.name || `Event ${slotIndex + 1}`),
+                long_press_enabled: false,
+                action: { ...DEFAULT_ACTION },
+                long_press_action: { ...DEFAULT_ACTION },
+                command_id: slotIndex + 1,
+                long_press_command_id: slotIndex + 51,
+                device_id: null,
+                deployed: false,
+              };
+              mock.wifiEvents.push(event);
+              return respond(type, { ...wifiEventsResponse(), event });
+            }
+            case "sofabaton_x1s/wifi_event/delete":
+              mock.wifiEvents = mock.wifiEvents.filter(
+                (event) => event.slot_index !== Number(message.slot_index),
+              );
+              return respond(type, wifiEventsResponse());
+            case "sofabaton_x1s/wifi_event/sync":
+              mock.wifiEvents = mock.wifiEvents.map((event) => ({
+                ...event,
+                device_id: event.device_id ?? 10,
+                deployed: true,
+              }));
+              return respond(type, wifiEventsResponse());
+            case "sofabaton_x1s/wifi_event/set_action": {
+              const event = mock.wifiEvents.find(
+                (item) => item.slot_index === Number(message.slot_index),
+              );
+              if (event) {
+                const key = message.press_type === "long" ? "long_press_action" : "action";
+                event[key] = clone(message.action ?? DEFAULT_ACTION);
+              }
+              return respond(type, wifiEventsResponse());
+            }
+            case "sofabaton_x1s/wifi_event/set_longpress": {
+              const event = mock.wifiEvents.find(
+                (item) => item.slot_index === Number(message.slot_index),
+              );
+              if (event) event.long_press_enabled = Boolean(message.enabled);
+              return respond(type, wifiEventsResponse());
+            }
+            default: {
+              const error = new Error(`Unhandled harness API call: ${type}`);
+              recordUnhandled("ws", message);
+              wsLog(type, "err");
+              return Promise.reject(error);
+            }
           }
-          if (type === "sofabaton_x1s/persistent_cache/contents") {
-            return Promise.resolve(scenario.contents ?? BASE_CONTENTS)
-              .then(v => { wsLog(type, "res"); return v; });
-          }
-          if (type === "sofabaton_x1s/logs/get") {
-            return Promise.resolve({ lines: scenario.logLines ?? [] })
-              .then(v => { wsLog(type, "res"); return v; });
-          }
-
-          // WiFi Commands defaults — device list + per-device commands
-          if (type === "sofabaton_x1s/command_devices/list") {
-            return Promise.resolve({
-              devices:     scenario.wifiDevices ?? WIFI_DEVICES_HEALTHY,
-              max_devices: scenario.maxWifiDevices ?? 5,
-            }).then(v => { wsLog(type, "res"); return v; });
-          }
-          if (type === "sofabaton_x1s/command_config/get") {
-            // Return commands keyed by device_key if provided; else fall back
-            const key = String(message.device_key ?? "");
-            const map = scenario.wifiCommandsByKey ?? {};
-            const cmds = map[key] ?? scenario.wifiCommands ?? [];
-            return Promise.resolve({ commands: cmds })
-              .then(v => { wsLog(type, "res"); return v; });
-          }
-          if (type === "sofabaton_x1s/command_sync/progress") {
-            const key = String(message.device_key ?? "");
-            const map = scenario.wifiSyncByKey ?? {};
-            const state = map[key] ?? scenario.wifiSyncState ?? WIFI_SYNC_IDLE;
-            return Promise.resolve(state)
-              .then(v => { wsLog(type, "res"); return v; });
-          }
-          if (type === "sofabaton_x1s/command_device/create") {
-            const newKey = `dev-new-${Date.now()}`;
-            return Promise.resolve({ device_key: newKey })
-              .then(v => { wsLog(type, "res"); return v; });
-          }
-          if (type === "sofabaton_x1s/command_device/delete") {
-            return Promise.resolve({ ok: true })
-              .then(v => { wsLog(type, "res"); return v; });
-          }
-
-          wsLog(type, "res");
-          return Promise.resolve({ ok: true });
         },
 
         // callService needed by wifi-commands-tab → sync_command_config
@@ -1288,42 +1739,67 @@
           wsLog(key, "res");
           return Promise.resolve({ ok: true });
         },
+        __mockBackend: mock,
       };
     }
 
     // ── loadScenario ──────────────────────────────────────────────────────────────
 
     async function loadScenario(scenario) {
+      const loadGeneration = ++scenarioLoadGeneration;
+      activeScenario = scenario;
       wsBuffer = [];
       structuredCalls = [];
+      unhandledCalls = [];
       wsLogEl.innerHTML = "";
+      updateUnhandledStatus();
+      document.getElementById("active-scenario-name").textContent = scenario.label;
+      document.querySelectorAll(".scenario-btn").forEach(btn =>
+        btn.classList.toggle("active", btn.dataset.id === String(scenario.id))
+      );
+      updateUrlState();
 
       // Clear persisted view state so each scenario starts fresh.
-      // The store reads from localStorage on init; without this, tab selection
-      // from a previous scenario would bleed into the next one.
-      try { localStorage.removeItem("sofabaton_x1s:tools_card:view_state:v1"); } catch (_) {}
+      // Both the store and nested tabs persist navigation. Remove every
+      // control-panel navigation/session key so one scenario cannot bleed
+      // into the next.
+      try {
+        const prefixes = [
+          "sofabaton_x1s:tools_card:view_state:",
+          "sofabaton_x1s:wifi_commands:selected_device:",
+          "sofabaton_x1s:sync_warning_optout:",
+          "sofabaton.backup-edit-session.",
+        ];
+        for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+          const key = localStorage.key(index);
+          if (key && prefixes.some((prefix) => key.startsWith(prefix))) {
+            localStorage.removeItem(key);
+          }
+        }
+      } catch (_) {}
 
       const host = document.getElementById("card-host");
       host.innerHTML = "";
 
       await customElements.whenDefined("sofabaton-control-panel");
+      if (loadGeneration !== scenarioLoadGeneration) return;
       const card = document.createElement("sofabaton-control-panel");
       card.setConfig({});
       window._harnessCard = card;
 
       // Set hass BEFORE appending: connectedCallback fires with hass present,
       // so store.connected() sees hass && !state → loadState() fires automatically.
-      card.hass = buildMockHass(scenario);
+      const hass = buildMockHass(scenario);
+      window._harnessHass = hass;
+      card.hass = hass;
       host.appendChild(card);
 
       await new Promise(r => setTimeout(r, 100));
+      if (loadGeneration !== scenarioLoadGeneration) return;
 
       if (scenario.postLoad) await scenario.postLoad(card);
-
-      document.getElementById("active-scenario-name").textContent = scenario.label;
-      document.querySelectorAll(".scenario-btn").forEach(btn =>
-        btn.classList.toggle("active", btn.dataset.id === String(scenario.id))
-      );
+      if (loadGeneration !== scenarioLoadGeneration) return;
+      updateUrlState();
     }
 
     // ── postLoad helpers ──────────────────────────────────────────────────────────
@@ -1332,6 +1808,19 @@
     // the main tab bar only carries Cache / Wifi Commands / Backup now.
     // To click one of the menu items, we have to open the dropdown first.
     async function clickTab(card, label) {
+      const tabId = {
+        Hub: "cache",
+        Automation: "wifi_commands",
+        Backup: "backup",
+        Settings: "settings",
+        Logs: "logs",
+      }[label];
+      if (tabId && card._store?.selectTab) {
+        card._store.selectTab(tabId);
+        card.requestUpdate();
+        await card.updateComplete;
+        return;
+      }
       const top = [...card.shadowRoot.querySelectorAll(".tab-btn")]
         .find(b => {
           const span = b.querySelector(".tab-btn-label");
@@ -1355,25 +1844,38 @@
           return;
         }
       }
-      console.warn(`clickTab: tab "${label}" not found`);
+      throw new Error(`clickTab: tab "${label}" not found`);
     }
 
-    async function clickAccordion(card, sectionId) {
-      const header = card.shadowRoot.querySelector(`#acc-${sectionId} .acc-header`);
-      header?.click();
+    async function selectCacheSection(card, sectionId) {
+      if (!card._store?.selectCacheSection) {
+        throw new Error("selectCacheSection: control-panel store is unavailable");
+      }
+      card._store.selectCacheSection(sectionId);
+      card.requestUpdate();
       await card.updateComplete;
+      if (card._snapshot?.selectedCacheSection !== sectionId) {
+        throw new Error(`selectCacheSection: "${sectionId}" did not become active`);
+      }
     }
 
     async function clickEntity(card, key) {
       const summary = card.shadowRoot.querySelector(`#entity-${key} .entity-summary`);
-      summary?.click();
+      if (!summary) throw new Error(`clickEntity: entity "${key}" not found`);
+      summary.click();
       await card.updateComplete;
+      if (card._snapshot?.openEntity !== key) {
+        throw new Error(`clickEntity: entity "${key}" did not open`);
+      }
     }
 
     async function clickEntityRefresh(card, key) {
       const block = card.shadowRoot.querySelector(`#entity-${key}`);
-      const btn   = block?.querySelector(".icon-btn");
-      btn?.click();
+      const btn = block
+        ?.querySelector('ha-icon[icon="mdi:refresh"]')
+        ?.closest("button");
+      if (!btn) throw new Error(`clickEntityRefresh: refresh button for "${key}" not found`);
+      btn.click();
       await card.updateComplete;
     }
 
@@ -1381,18 +1883,25 @@
     // find the entity row by name, and click its wrench button.
     async function openLiveEditor(card, sectionLabel, entityName) {
       await clickTab(card, "Hub");
-      await card.updateComplete;
-      const subTab = [...card.shadowRoot.querySelectorAll(".secondary-tab-btn")]
-        .find(b => b.textContent.includes(sectionLabel));
-      subTab?.click();
-      await card.updateComplete;
+      const sectionId = sectionLabel === "Devices" ? "devices" : "activities";
+      await selectCacheSection(card, sectionId);
       const block = [...card.shadowRoot.querySelectorAll(".entity-block")]
         .find(b => b.textContent.includes(entityName));
       const wrench = block?.querySelector('ha-icon[icon="mdi:wrench"]')?.closest("button");
-      wrench?.click();
-      await card.updateComplete;
-      const editor = card.shadowRoot.querySelector("sofabaton-activities-tab");
-      if (editor) await editor.updateComplete;
+      if (!wrench) {
+        throw new Error(`openLiveEditor: wrench for "${entityName}" not found`);
+      }
+      wrench.click();
+      let editor = null;
+      for (let attempt = 0; attempt < 20 && !editor; attempt += 1) {
+        await new Promise(r => setTimeout(r, 25));
+        await card.updateComplete;
+        editor = card.shadowRoot.querySelector("sofabaton-activities-tab");
+      }
+      if (!editor) {
+        throw new Error(`openLiveEditor: editor for "${entityName}" did not open`);
+      }
+      await editor.updateComplete;
       return editor;
     }
 
@@ -1412,11 +1921,12 @@
         tile = allText?.closest("[class]") ?? null;
       }
       const sw = tile?.querySelector("ha-switch") ?? null;
-      if (sw?.shadowRoot) {
-        // Our stub uses a .track div — clicking it triggers the stub's own change event
-        const track = sw.shadowRoot.querySelector(".track");
-        track?.click();
+      if (!sw?.shadowRoot) {
+        throw new Error(`clickSettingsSwitch: switch "${labelText}" not found`);
       }
+      const track = sw.shadowRoot.querySelector(".track");
+      if (!track) throw new Error(`clickSettingsSwitch: track for "${labelText}" not found`);
+      track.click();
       await new Promise(r => setTimeout(r, 20));
       await card.updateComplete;
     }
@@ -1426,53 +1936,82 @@
       return card.shadowRoot.querySelector("sofabaton-wifi-commands-tab");
     }
 
+    async function openAutomationEvents(card) {
+      await clickTab(card, "Automation");
+      card._store?.setSelectedWifiSection?.("hub_events");
+      card.requestUpdate();
+      await card.updateComplete;
+      const tab = wifiTab(card);
+      if (!tab) throw new Error("openAutomationEvents: Automation tab not found");
+      await tab.updateComplete;
+      if (tab.selectedSection !== "hub_events") {
+        throw new Error("openAutomationEvents: Events section did not become active");
+      }
+      return tab;
+    }
+
     // Navigate into a specific device in the device-list view by matching device name.
     // The tab shows .device-card buttons; we find the one whose text contains deviceName.
     async function clickWifiDevice(card, deviceName) {
       const wt = wifiTab(card);
-      if (!wt) { console.warn("clickWifiDevice: wifi tab not found"); return; }
+      if (!wt) throw new Error("clickWifiDevice: Automation tab not found");
       await wt.updateComplete;
       await new Promise(r => setTimeout(r, 60));
       const cards = [...wt.shadowRoot.querySelectorAll(".device-card")];
       const target = cards.find(c => c.textContent.includes(deviceName));
-      if (!target) { console.warn(`clickWifiDevice: device "${deviceName}" not found`); return; }
+      if (!target) throw new Error(`clickWifiDevice: device "${deviceName}" not found`);
       target.click();
       await wt.updateComplete;
       await new Promise(r => setTimeout(r, 80));
       await wt.updateComplete;
+      if (!wt._selectedDeviceKey) {
+        throw new Error(`clickWifiDevice: device "${deviceName}" did not open`);
+      }
     }
 
-    // Click the bottom-dock "Add device" trigger in the device list view.
+    // Click the add-device trigger in the device list view.
     async function clickWifiAddDevice(card) {
       const wt = wifiTab(card);
-      if (!wt) return;
+      if (!wt) throw new Error("clickWifiAddDevice: Automation tab not found");
       await wt.updateComplete;
-      const trigger = wt.shadowRoot.querySelector(".bottom-dock-trigger");
-      trigger?.click();
+      const trigger = wt.shadowRoot.querySelector(".list-header-action .detail-sync-btn");
+      if (!trigger) throw new Error("clickWifiAddDevice: add-device button not found");
+      trigger.click();
       await wt.updateComplete;
+      if (!wt._createDeviceModalOpen) {
+        throw new Error("clickWifiAddDevice: create modal did not open");
+      }
     }
 
     // Click the delete button on a device card by device name.
     async function clickWifiDeleteDevice(card, deviceName) {
       const wt = wifiTab(card);
-      if (!wt) return;
+      if (!wt) throw new Error("clickWifiDeleteDevice: Automation tab not found");
       await wt.updateComplete;
       const cards = [...wt.shadowRoot.querySelectorAll(".device-card")];
       const target = cards.find(c => c.textContent.includes(deviceName));
       const delBtn = target?.querySelector(".device-delete-btn");
-      delBtn?.click();
+      if (!delBtn) throw new Error(`clickWifiDeleteDevice: delete button for "${deviceName}" not found`);
+      delBtn.click();
       await wt.updateComplete;
+      if (!wt._deleteDeviceKey) {
+        throw new Error(`clickWifiDeleteDevice: confirmation for "${deviceName}" did not open`);
+      }
     }
 
     // Click the first configured slot in the command grid view to open the details modal.
     async function clickFirstConfiguredSlot(card) {
       const wt = wifiTab(card);
-      if (!wt) return;
+      if (!wt) throw new Error("clickFirstConfiguredSlot: Automation tab not found");
       await wt.updateComplete;
       const slot = wt.shadowRoot.querySelector(".slot-btn:not(.slot-empty) .slot-main")
                 ?? wt.shadowRoot.querySelector(".slot-main");
-      slot?.click();
+      if (!slot) throw new Error("clickFirstConfiguredSlot: configured slot not found");
+      slot.click();
       await wt.updateComplete;
+      if (wt._activeCommandModal !== "details") {
+        throw new Error("clickFirstConfiguredSlot: details modal did not open");
+      }
     }
 
     // ── Scenarios ─────────────────────────────────────────────────────────────────
@@ -1490,7 +2029,7 @@
       await clickTab(card, "Backup");
       await new Promise(r => setTimeout(r, 80));
       const tab = backupTab(card);
-      if (!tab) { console.warn("openBackupTab: backup tab not found"); return null; }
+      if (!tab) throw new Error("openBackupTab: Backup tab not found");
       // backup-tab now reads `selectedSection` (was `openSection` in earlier
       // revisions). The card owns the value via the store and pushes it down
       // as a property, so we drive it through the store and let the card
@@ -1498,6 +2037,9 @@
       card._store.setSelectedBackupSection(section);
       await card.updateComplete;
       await tab.updateComplete;
+      if (tab.selectedSection !== section) {
+        throw new Error(`openBackupTab: section "${section}" did not become active`);
+      }
       return tab;
     }
 
@@ -1569,10 +2111,10 @@
           // Our ha-switch stub uses a .track div (not <input>), so click the track.
           const switches = [...card.shadowRoot.querySelectorAll("ha-switch")];
           const wifiSw = switches.at(-1);  // wifi_device_enabled is the last switch
-          if (wifiSw?.shadowRoot) {
-            const track = wifiSw.shadowRoot.querySelector(".track");
-            track?.click();
-          }
+          if (!wifiSw?.shadowRoot) throw new Error("Settings WiFi Device switch not found");
+          const track = wifiSw.shadowRoot.querySelector(".track");
+          if (!track) throw new Error("Settings WiFi Device switch track not found");
+          track.click();
           await new Promise(r => setTimeout(r, 20));
           await card.updateComplete;
         },
@@ -1592,7 +2134,7 @@
         states: STATES_CONNECTED,
         async postLoad(card) {
           await clickTab(card, "Hub");
-          await clickAccordion(card, "devices");
+          await selectCacheSection(card, "devices");
         },
       },
       {
@@ -1601,7 +2143,7 @@
         states: STATES_CONNECTED,
         async postLoad(card) {
           await clickTab(card, "Hub");
-          await clickAccordion(card, "devices");
+          await selectCacheSection(card, "devices");
           await clickEntity(card, "dev-7");
         },
       },
@@ -1613,16 +2155,15 @@
           await clickTab(card, "Hub");
           card._store._refreshGraceUntil = 0;
           card.hass = {
+            ...card.hass,
             states: {
+              ...(card.hass?.states ?? {}),
               "remote.living_room": {
                 state: "on",
                 attributes: { entry_id: "hub-1", cache_generation: 2,
                               proxy_client_connected: false, activities: ACTIVITIES },
               },
             },
-            connection: null,
-            callWS() { return Promise.resolve({ ok: true }); },
-            callService() { return Promise.resolve({ ok: true }); },
           };
           await card.updateComplete;
         },
@@ -1636,7 +2177,7 @@
         },
         async postLoad(card) {
           await clickTab(card, "Hub");
-          await clickAccordion(card, "devices");
+          await selectCacheSection(card, "devices");
           await clickEntityRefresh(card, "dev-7");
         },
       },
@@ -1907,6 +2448,72 @@
         },
       },
       {
+        id: "automation-events", group: "Automation Events",
+        label: "Events — configured actions",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        wifiDevices: WIFI_DEVICES_HEALTHY,
+        hubEventActions: HUB_EVENT_ACTIONS,
+        activityEventActions: ACTIVITY_EVENT_ACTIONS,
+        wifiEvents: WIFI_EVENTS,
+        postLoad: card => openAutomationEvents(card),
+      },
+      {
+        id: "automation-events-live", group: "Automation Events",
+        label: "Events — live press highlights",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        wifiDevices: WIFI_DEVICES_HEALTHY,
+        wifiEvents: WIFI_EVENTS,
+        subscribe(callback, message) {
+          if (message?.type === "sofabaton_x1s/hub_events/subscribe") {
+            setTimeout(() => callback({
+              entryId: "hub-1",
+              type: "activity_change",
+              fromActivityId: null,
+              toActivityId: 101,
+              timestamp: Date.now(),
+              receivedAt: Date.now(),
+            }), 150);
+          }
+          if (message?.type === "sofabaton_x1s/wifi_presses/subscribe") {
+            setTimeout(() => callback({
+              entryId: "hub-1",
+              deviceId: 10,
+              deviceName: "Wifi Events",
+              commandIndex: 0,
+              commandLabel: "Movie Night",
+              pressType: "short",
+              timestamp: Date.now(),
+              receivedAt: Date.now(),
+            }), 250);
+          }
+          return Promise.resolve(() => {});
+        },
+        async postLoad(card) {
+          await openAutomationEvents(card);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        },
+      },
+      {
+        id: "automation-events-empty", group: "Automation Events",
+        label: "Events — no Wifi Events configured",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        wifiDevices: WIFI_DEVICES_HEALTHY,
+        wifiEvents: [],
+        postLoad: card => openAutomationEvents(card),
+      },
+      {
         id: 18, group: "WiFi Commands",
         label: "18. Device list — 2 devices",
         states: STATES_CONNECTED,
@@ -2065,6 +2672,74 @@
 
     // ── Build sidebar ─────────────────────────────────────────────────────────────
 
+    const languageSelect = document.getElementById("harness-language");
+    const themeSelect = document.getElementById("harness-theme");
+    const widthSelect = document.getElementById("harness-width");
+    const activeLanguageEl = document.getElementById("active-language");
+    const activeThemeEl = document.getElementById("active-theme");
+
+    function updateUrlState() {
+      if (!activeScenario) return;
+      const url = new URL(window.location.href);
+      url.searchParams.set("scenario", String(activeScenario.id));
+      url.searchParams.set("lang", currentLanguage);
+      url.searchParams.set("theme", currentTheme);
+      url.searchParams.set("width", currentWidth);
+      history.replaceState(null, "", url);
+    }
+
+    async function setHarnessLanguage(language) {
+      const option = [...languageSelect.options].find((item) => item.value === language);
+      currentLanguage = option ? language : "en";
+      languageSelect.value = currentLanguage;
+      document.documentElement.lang = currentLanguage;
+      activeLanguageEl.textContent = languageSelect.selectedOptions[0]?.textContent ?? currentLanguage;
+      const card = window._harnessCard;
+      if (card && window._harnessHass) {
+        window._harnessHass = {
+          ...window._harnessHass,
+          locale: { ...(window._harnessHass.locale ?? {}), language: currentLanguage },
+          language: currentLanguage,
+        };
+        card.hass = window._harnessHass;
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        await card.updateComplete;
+      }
+      updateUrlState();
+    }
+
+    async function setHarnessTheme(theme) {
+      currentTheme = theme === "dark" ? "dark" : "light";
+      themeSelect.value = currentTheme;
+      document.body.dataset.theme = currentTheme;
+      activeThemeEl.textContent = currentTheme === "dark" ? "Dark" : "Light";
+      const card = window._harnessCard;
+      if (card && window._harnessHass) {
+        window._harnessHass = {
+          ...window._harnessHass,
+          themes: { ...(window._harnessHass.themes ?? {}), darkMode: currentTheme === "dark" },
+        };
+        card.hass = window._harnessHass;
+        await card.updateComplete;
+      }
+      updateUrlState();
+    }
+
+    function setHarnessWidth(width) {
+      const valid = ["responsive", "360", "520", "900"];
+      currentWidth = valid.includes(String(width)) ? String(width) : "responsive";
+      widthSelect.value = currentWidth;
+      document.body.dataset.width = currentWidth;
+      document.documentElement.style.setProperty(
+        "--harness-card-width",
+        currentWidth === "responsive" ? "100%" : `${currentWidth}px`,
+      );
+      document.getElementById("card-host").style.width = currentWidth === "responsive"
+        ? ""
+        : `${currentWidth}px`;
+      updateUrlState();
+    }
+
     // Stable automation surface for browser tests. The harness remains useful
     // manually, while a runner can select a scenario and inspect complete
     // request payloads without reaching into the visual log or a real hub.
@@ -2080,6 +2755,16 @@
       clearCalls() {
         structuredCalls = [];
       },
+      getUnhandledCalls() {
+        return clone(unhandledCalls);
+      },
+      clearUnhandledCalls() {
+        unhandledCalls = [];
+        updateUnhandledStatus();
+      },
+      setLanguage: setHarnessLanguage,
+      setTheme: setHarnessTheme,
+      setWidth: setHarnessWidth,
       getCard() {
         return window._harnessCard ?? null;
       },
@@ -2088,6 +2773,7 @@
         const editor = card?.shadowRoot?.querySelector("sofabaton-activities-tab");
         return clone(editor?._working ?? null);
       },
+      supportedLanguages: [...languageSelect.options].map((option) => option.value),
       scenarioIds: SCENARIOS.map((scenario) => String(scenario.id)),
     };
 
@@ -2107,12 +2793,66 @@
         textContent: s.label,
       });
       btn.dataset.id = String(s.id);
-      btn.addEventListener("click", () => loadScenario(s));
+      btn.addEventListener("click", () => {
+        void loadScenario(s).catch((error) => {
+          if (activeScenario !== s) return;
+          document.getElementById("active-scenario-name").textContent =
+            `${s.label} — setup failed: ${error?.message ?? error}`;
+          unhandledApiEl.textContent = "Scenario setup failed";
+          unhandledApiEl.classList.add("harness-chip--error");
+        });
+      });
       groupEls[s.group].appendChild(btn);
     }
 
-    // Auto-load scenario 1 on page open
-    loadScenario(SCENARIOS[0]);
+    languageSelect.addEventListener("change", () => {
+      void setHarnessLanguage(languageSelect.value);
+    });
+    themeSelect.addEventListener("change", () => {
+      void setHarnessTheme(themeSelect.value);
+    });
+    widthSelect.addEventListener("change", () => {
+      setHarnessWidth(widthSelect.value);
+    });
+    document.getElementById("copy-harness-link").addEventListener("click", async (event) => {
+      updateUrlState();
+      await navigator.clipboard.writeText(window.location.href);
+      const button = event.currentTarget;
+      const original = button.textContent;
+      button.textContent = "Copied";
+      setTimeout(() => { button.textContent = original; }, 1200);
+    });
+
+    const initialParams = new URL(window.location.href).searchParams;
+    const initialLanguage = initialParams.get("lang") || "en";
+    const initialTheme = initialParams.get("theme") || "light";
+    const requestedInitialWidth = initialParams.get("width") || "responsive";
+    const initialWidth = requestedInitialWidth === "320" ? "360" : requestedInitialWidth;
+    const initialScenarioId = initialParams.get("scenario");
+    currentLanguage = [...languageSelect.options].some((option) => option.value === initialLanguage)
+      ? initialLanguage
+      : "en";
+    currentTheme = initialTheme === "dark" ? "dark" : "light";
+    currentWidth = ["responsive", "360", "520", "900"].includes(initialWidth)
+      ? initialWidth
+      : "responsive";
+    languageSelect.value = currentLanguage;
+    themeSelect.value = currentTheme;
+    document.body.dataset.theme = currentTheme;
+    activeLanguageEl.textContent = languageSelect.selectedOptions[0]?.textContent ?? currentLanguage;
+    activeThemeEl.textContent = currentTheme === "dark" ? "Dark" : "Light";
+    setHarnessWidth(currentWidth);
+
+    const initialScenario = SCENARIOS.find(
+      (scenario) => String(scenario.id) === String(initialScenarioId),
+    ) ?? SCENARIOS[0];
+    void loadScenario(initialScenario).catch((error) => {
+      if (activeScenario !== initialScenario) return;
+      document.getElementById("active-scenario-name").textContent =
+        `${initialScenario.label} — setup failed: ${error?.message ?? error}`;
+      unhandledApiEl.textContent = "Scenario setup failed";
+      unhandledApiEl.classList.add("harness-chip--error");
+    });
 
   </script>
 </body>

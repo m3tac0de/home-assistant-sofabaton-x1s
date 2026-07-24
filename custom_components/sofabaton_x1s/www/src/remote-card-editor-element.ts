@@ -35,7 +35,12 @@ import {
   volumeTogglePatch,
 } from "./remote-card-editor-layout";
 import { hubVersionFor, isX2Hub } from "./remote-card-compat";
-import { setRemoteCardLanguage, str } from "./remote-card-strings";
+import {
+  remoteCardDirection,
+  remoteCardLanguage,
+  setRemoteCardLanguage,
+  str,
+} from "./remote-card-strings";
 import { REMOTE_CARD_EDITOR_CSS } from "./remote-card-styles";
 import {
   readPreviewActivity,
@@ -125,11 +130,13 @@ export class SofabatonRemoteCardEditor extends LitElement {
 
   set hass(hass: HassLike) {
     this._hass = hass;
-    setRemoteCardLanguage(
+    const language =
       (hass as { locale?: { language?: string }; language?: string })?.locale
         ?.language ??
-        (hass as { language?: string })?.language,
-    );
+      (hass as { language?: string })?.language;
+    setRemoteCardLanguage(language);
+    this.lang = remoteCardLanguage();
+    this.dir = remoteCardDirection();
 
     const entityId = String(this._config?.entity || "").trim();
     if (entityId) {

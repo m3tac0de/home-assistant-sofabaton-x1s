@@ -40,11 +40,11 @@ export const REMOTE_CARD_STRINGS_EN = {
     triggersReady: "Triggers ready for use",
     createTriggers: "Create MQTT Discovery triggers",
     startCapturing: "Start capturing commands",
-    deviceDetectedTitle: "Home Assistant device detected.",
+    deviceDetectedTitle: "Sofabaton MQTT device detected.",
     close: "Close",
     alsoActivityTriggers: "Also create triggers for Activity changes.",
     seeDocs: "See documentation for this feature.",
-    dontShowAgain: "Not show this again for this device (in this session).",
+    dontShowAgain: "Don't show this again for this device during this session.",
     detectedDevice: (name: string) => `Detected MQTT device: ${name}.`,
     lastCommand: (name: string) => `Last command: ${name}.`,
     existingTriggers: "Existing MQTT automation triggers were found.",
@@ -115,8 +115,8 @@ export const REMOTE_CARD_STRINGS_EN = {
     channel: "Channel",
     mediaControls: "Media Controls",
     dvr: "DVR",
-    resetCardDefault: "Reset to card default",
-    resetDefaultLayout: "Reset to default layout",
+    resetCardDefault: "Reset card layout",
+    resetDefaultLayout: "Reset layout",
     noteDefaultLayout: "Used for Activities without their own layout",
     noteCustomLayout: "Using custom layout",
     noteUsingDefault: "Using default layout",
@@ -238,12 +238,24 @@ let currentStrings: RemoteCardStrings = REMOTE_CARD_STRINGS_EN;
  */
 export function setRemoteCardLanguage(language: unknown) {
   const lang = String(language || "en").toLowerCase();
-  if (lang === currentLanguage) return;
+  if (lang === currentLanguage) return false;
   currentLanguage = lang;
   const translation = resolveTranslation(lang);
   currentStrings = translation
     ? deepMerge(REMOTE_CARD_STRINGS_EN, translation)
     : REMOTE_CARD_STRINGS_EN;
+  return true;
+}
+
+/** Normalized Home Assistant language currently used by the card. */
+export function remoteCardLanguage(): string {
+  return currentLanguage;
+}
+
+/** Writing direction for the active language, including future RTL overlays. */
+export function remoteCardDirection(): "ltr" | "rtl" {
+  const base = currentLanguage.split(/[-_]/)[0];
+  return ["ar", "fa", "he", "ps", "ur"].includes(base) ? "rtl" : "ltr";
 }
 
 /** The active string table (English merged with the active translation). */

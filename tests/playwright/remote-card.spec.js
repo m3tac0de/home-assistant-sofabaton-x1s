@@ -20,6 +20,28 @@ function cardLocator(page) {
 }
 
 test.describe("remote card playwright harness", () => {
+  test("uses RTL Arabic UI without swapping the physical left and right keys", async ({ page }) => {
+    await mountCard(page, "active", { show_automation_assist: true });
+    await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      card.hass = {
+        ...card.hass,
+        locale: { language: "ar-SA" },
+      };
+    });
+
+    const card = page.locator("sofabaton-virtual-remote");
+    await expect(card).toHaveAttribute("lang", "ar-sa");
+    await expect(card).toHaveAttribute("dir", "rtl");
+    await expect(page.locator(".automationAssist__label")).toHaveText("التقاط الأزرار");
+
+    const left = await page.locator(".dpad .area-left").boundingBox();
+    const right = await page.locator(".dpad .area-right").boundingBox();
+    expect(left).not.toBeNull();
+    expect(right).not.toBeNull();
+    expect(left.x).toBeLessThan(right.x);
+  });
+
   test("emits Home Assistant haptic events for core remote interactions", async ({ page }) => {
     await mountCard(page, "active");
 

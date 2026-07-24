@@ -407,6 +407,38 @@ class BackupExportMixin:
         except Exception:  # noqa: BLE001 - ordering is advisory, never fatal
             self._log.debug("[FAV_ORDER] backup_activity order read failed act=0x%02X", act_lo)
 
+        # ``clear_entity_cache(..., clear_favorites=True)`` above also removes
+        # the resolved favorite-label map.  REQ_BUTTONS restores the favorite
+        # slots, but it does not restore their command names by itself.  The
+        # remote entity intentionally publishes only resolved favorites, so
+        # returning before these targeted command reads finish makes every
+        # favorite disappear after an Activity-editor sync (and a browser
+        # refresh cannot repair that backend cache).
+        #
+        # Queue all missing command-label reads, then wait until each favorite
+        # can be resolved.  Existing device command catalogs satisfy this
+        # immediately; otherwise the normal targeted REQ_COMMANDS queue does
+        # the work without colliding with the preceding structural bursts.
+        _commands, favorites_ready = self.ensure_commands_for_activity(
+            act_lo,
+            fetch_if_missing=True,
+        )
+        if not favorites_ready:
+            deadline = time.monotonic() + wait_timeout
+            while time.monotonic() < deadline:
+                _commands, favorites_ready = self.ensure_commands_for_activity(
+                    act_lo,
+                    fetch_if_missing=False,
+                )
+                if favorites_ready:
+                    break
+                time.sleep(0.05)
+            if not favorites_ready:
+                self._log.debug(
+                    "[BACKUP] timed out resolving favorite labels act=0x%02X",
+                    act_lo,
+                )
+
         self.state.detail_fetched_at["activity"][act_lo] = _bx.now_iso()
 
         return self.assemble_activity_backup_from_state(act_lo)

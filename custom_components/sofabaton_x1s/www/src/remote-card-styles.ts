@@ -389,7 +389,7 @@ export const REMOTE_CARD_CSS = `
 
       .drawer-btn--custom .name {
         margin: 0 !important;
-        text-align: left !important;
+        text-align: start !important;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -420,6 +420,18 @@ export const REMOTE_CARD_CSS = `
       .dpad .area-ok { grid-area: ok; }
       .dpad .area-right { grid-area: right; }
       .dpad .area-down { grid-area: down; }
+
+      /* The UI follows the locale direction, but these are spatial controls:
+         changing language must never swap the physical Left/Right keys or the
+         fixed rows of buttons on the remote. */
+      :host([dir="rtl"]) .dpad,
+      :host([dir="rtl"]) .row3,
+      :host([dir="rtl"]) .mid,
+      :host([dir="rtl"]) .media,
+      :host([dir="rtl"]) .colors,
+      :host([dir="rtl"]) .abc {
+        direction: ltr;
+      }
 
       /* Back / Home / Menu row */
       .row3 {
@@ -563,8 +575,8 @@ export const REMOTE_CARD_CSS = `
         z-index: 10;
         font-size: 12px;
         opacity: .9;
-        border-left: 3px solid var(--warning-color, orange);
-        padding-left: 10px;
+        border-inline-start: 3px solid var(--warning-color, orange);
+        padding-inline-start: 10px;
       }
 
       .sb-modal {
@@ -665,7 +677,7 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
           .sb-layout-actions-full { flex: 1; }
           .sb-layout-actions-full ha-select { width: 100%; }
-          .sb-layout-note { font-size: 12px; opacity: 0.7; text-align: right; padding: 2px 0 6px; }
+          .sb-layout-note { font-size: 12px; opacity: 0.7; text-align: end; padding: 2px 0 6px; }
           .sb-icon-btn { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--divider-color); background: var(--ha-card-background, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
           .sb-icon-btn[disabled] { opacity: 0.4; cursor: default; }
           .sb-layout-footer { margin-top: 10px; display:flex; justify-content:flex-end; }
@@ -721,7 +733,7 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
           .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
           .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
+          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: start; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-btn:hover { border-color: var(--primary-color); }
           .sb-command-slot-main { position: relative; display:flex; align-items:flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; }
                     .sb-command-slot-icon-wrap { width: 20px; min-width: 20px; min-height: 20px; display:flex; align-items:center; justify-content:center; }
@@ -733,10 +745,10 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-command-slot-meta-icon { color: var(--state-icon-color); display:inline-flex; }
           .sb-command-slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
           .sb-command-slot-text-wrap { min-width: 0; padding-top: 1px; flex: 1; }
-          .sb-command-slot-clear { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
+          .sb-command-slot-clear { position: absolute; top: 8px; inset-inline-end: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
           .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
           .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: start; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
           .sb-command-slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-action-btn:active { transform: translateY(1px); }
           .sb-command-slot-action-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary-color); }
@@ -757,8 +769,8 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-command-dialog-close { border: 0; background: transparent; cursor: pointer; color: inherit; display:flex; align-items:center; justify-content:center; }
           .sb-command-dialog-body { padding: 16px; display:flex; flex-direction:column; gap: 12px; overflow:auto; }
           .sb-command-dialog-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--divider-color); }
-          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: left; }
-          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-left: auto; }
+          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: start; }
+          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-inline-start: auto; }
           .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
           .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
           .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }

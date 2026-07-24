@@ -39,6 +39,38 @@ function parameters; it cannot judge natural language.
 - Spanish: corrected gender in dynamic “load it” text, the activity/device
   rename article, and selected-count agreement.
 
+## What back-translation cannot catch
+
+A back-translation round-trip is blind to a calqued term, because the calque
+round-trips perfectly. The Dutch "Power" section was translated as `Voeding`,
+which back-translates to "Power" and passes the reverse pass — but `Voeding`
+means the electrical supply (and, in ordinary use, nutrition), while the
+section is about *when the hub switches devices on and off*. German, Spanish,
+and French had made the same substitution independently (`Stromversorgung`,
+`Alimentación`, `Alimentation`).
+
+Catching this needs a **forward-only pass**: read the target string with the
+screen in view and no English visible, then ask whether the word names what
+the panel actually does. If the answer needs the English original to make
+sense, the term is wrong.
+
+Run that pass over any English source term that is short, polysemous, or a
+noun standing in for a behaviour. In this catalogue those are:
+
+| English | Trap | What the term must name |
+| --- | --- | --- |
+| Power | electricity vs. on/off behaviour | the switching behaviour |
+| Sequence | ordering vs. list of steps | the list of actions to run |
+| Input | keyboard input vs. HDMI source | the source the device switches to |
+| Key | cryptographic key vs. remote button | the physical button |
+| Wait | waiting state vs. inserted pause | the pause step in a sequence |
+
+Resolved 2026-07-24: the power family now names the behaviour in every
+catalogue — `Aan/uit-beheer` (nl), `Ein/Aus-Steuerung` (de), `Encendido y
+apagado` (es), `Marche/Arrêt` (fr). Dutch and German also dropped the
+`-volgorde` / `-sequenz` calques in favour of "actions when switching on/off";
+Spanish `secuencia` and French `séquence` are natural and were kept.
+
 ## Acceptance criteria
 
 - All source keys and parameter signatures are present in every complete
@@ -48,3 +80,7 @@ function parameters; it cannot judge natural language.
 - Safety-critical text preserves whether an action is immediate, deferred to
   the next sync, or conditional on a Replace restore.
 - Unknown or new partial-locale entries still fall back safely to English.
+- Terms from the trap table above have had a forward-only pass, not just a
+  back-translation.
+- Copy that names another part of the UI ("Automation → Events") uses that
+  part's *translated* label, not the English one.

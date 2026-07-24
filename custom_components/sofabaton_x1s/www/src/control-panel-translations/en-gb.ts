@@ -3,9 +3,9 @@
 // Deliberately partial: only copy whose spelling differs from the American
 // English reference table is overridden. All other keys fall back to English.
 
-import { registerToolsCardTranslation } from "../strings";
+import type { ToolsCardTranslation } from "../strings";
 
-registerToolsCardTranslation("en-gb", {
+export const TOOLS_CARD_STRINGS_EN_GB = {
   common: {
     favoriteFallback: (id: number | string) => `Favourite ${id}`,
   },
@@ -15,6 +15,8 @@ registerToolsCardTranslation("en-gb", {
   },
   cache: {
     favoriteFallback: (commandId: number) => `Favourite ${commandId}`,
+    activityCounts: (favourites: number, macros: number, buttons: number) =>
+      `${favourites} ${favourites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
     favorites: "Favourites",
   },
   hubClick: {
@@ -30,6 +32,8 @@ registerToolsCardTranslation("en-gb", {
   },
   backup: {
     powerNoDevices: "No devices yet. Add a favourite, binding, or macro that uses one.",
+    activityMeta: (favourites: number, macros: number) =>
+      `${favourites} ${favourites === 1 ? "favourite" : "favourites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name: string) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",
@@ -39,4 +43,6 @@ registerToolsCardTranslation("en-gb", {
     colorGroup: "Colour",
     favorite: "Set as Favourite",
   },
-});
+} satisfies ToolsCardTranslation;
+
+export default TOOLS_CARD_STRINGS_EN_GB;

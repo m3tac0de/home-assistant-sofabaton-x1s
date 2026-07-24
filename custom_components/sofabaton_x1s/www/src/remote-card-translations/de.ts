@@ -35,13 +35,13 @@ registerRemoteCardTranslation("de", {
     triggersReady: "Auslöser einsatzbereit",
     createTriggers: "MQTT-Discovery-Auslöser erstellen",
     startCapturing: "Befehlserfassung starten",
-    deviceDetectedTitle: "Home Assistant-Gerät erkannt.",
+    deviceDetectedTitle: "Sofabaton-MQTT-Gerät erkannt.",
     close: "Schließen",
     alsoActivityTriggers:
       "Zusätzlich Auslöser für Aktivitätswechsel erstellen.",
     seeDocs: "Dokumentation zu dieser Funktion anzeigen.",
     dontShowAgain:
-      "Für dieses Gerät nicht erneut anzeigen (in dieser Sitzung).",
+      "Für dieses Gerät während dieser Sitzung nicht erneut anzeigen.",
     detectedDevice: (name: string) => `MQTT-Gerät erkannt: ${name}.`,
     lastCommand: (name: string) => `Letzter Befehl: ${name}.`,
     existingTriggers:
@@ -114,8 +114,8 @@ registerRemoteCardTranslation("de", {
     channel: "Kanal",
     mediaControls: "Mediensteuerung",
     dvr: "DVR",
-    resetCardDefault: "Auf Kartenvorgabe zurücksetzen",
-    resetDefaultLayout: "Standardlayout zurücksetzen",
+    resetCardDefault: "Kartenlayout zurücksetzen",
+    resetDefaultLayout: "Layout zurücksetzen",
     noteDefaultLayout: "Für Aktivitäten ohne eigenes Layout",
     noteCustomLayout: "Benutzerdefiniertes Layout aktiv",
     noteUsingDefault: "Standardlayout aktiv",

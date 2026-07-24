@@ -35,7 +35,7 @@ import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
 import { setToolsCardLanguage, TOOLS_CARD_STRINGS } from "./strings";
-import "./control-panel-translations";
+import { toolsCardLocaleLoader } from "./control-panel-language-loader";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
@@ -158,6 +158,22 @@ const previewStyles = css`
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .locale-loading {
+    display: grid;
+    place-items: center;
+    min-height: 240px;
+  }
+  .locale-loading-indicator {
+    width: 22px;
+    height: 22px;
+    border: 2px solid color-mix(in srgb, var(--primary-color) 22%, transparent);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: locale-loading-spin 700ms linear infinite;
+  }
+  @keyframes locale-loading-spin {
+    to { transform: rotate(360deg); }
+  }
 `;
 
 class SofabatonControlPanelCard extends LitElement {
@@ -195,6 +211,8 @@ class SofabatonControlPanelCard extends LitElement {
   private _addActivityOpen = false;
   private _addActivityBusy = false;
   private _addActivityError: string | null = null;
+  private _localeLoading = false;
+  private _localeRequestId = 0;
   private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
@@ -226,11 +244,29 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   set hass(value: HassLike) {
-    const languageChanged = setToolsCardLanguage(
+    const languageChanged = this.selectLanguage(
       value?.locale?.language ?? value?.language,
     );
     this._store.setHass(value);
     if (languageChanged) this.requestUpdate();
+  }
+
+  private selectLanguage(language: unknown): boolean {
+    const languageChanged = setToolsCardLanguage(language);
+    const requestId = ++this._localeRequestId;
+    const shouldLoad = toolsCardLocaleLoader.needsLoad(language);
+    const loadingChanged = shouldLoad !== this._localeLoading;
+    this._localeLoading = shouldLoad;
+
+    if (shouldLoad) {
+      void toolsCardLocaleLoader.ensure(language).then(() => {
+        if (requestId !== this._localeRequestId) return;
+        this._localeLoading = false;
+        this.requestUpdate();
+      });
+    }
+
+    return languageChanged || loadingChanged;
   }
 
   // HA's hui-card sets `element.preview = true` when rendering inside the card
@@ -765,12 +801,26 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   protected render() {
+    const height = Number(this._config.card_height ?? 600);
+    if (this._localeLoading) {
+      return html`
+        <ha-card>
+          <div
+            class="locale-loading"
+            style=${`height:${height}px`}
+            role="status"
+            aria-busy="true"
+          >
+            <span class="locale-loading-indicator" aria-hidden="true"></span>
+          </div>
+        </ha-card>
+      `;
+    }
     if (this._preview) return this.renderPreview();
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
-    const height = Number(this._config.card_height ?? 600);
     const cardGateState = resolveCardGateState(this._snapshot);
     if (cardGateState.kind === "version_mismatch") {
       return this.renderVersionMismatch(height);
@@ -987,9 +1037,26 @@ class SofabatonControlPanelCard extends LitElement {
 
 class SofabatonControlPanelEditor extends HTMLElement {
   private _config: Record<string, unknown> = {};
+  private _localeLoading = false;
+  private _localeRequestId = 0;
 
   set hass(value: HassLike) {
-    if (setToolsCardLanguage(value?.locale?.language ?? value?.language)) {
+    const language = value?.locale?.language ?? value?.language;
+    const languageChanged = setToolsCardLanguage(language);
+    const requestId = ++this._localeRequestId;
+    const shouldLoad = toolsCardLocaleLoader.needsLoad(language);
+    const loadingChanged = shouldLoad !== this._localeLoading;
+    this._localeLoading = shouldLoad;
+
+    if (shouldLoad) {
+      void toolsCardLocaleLoader.ensure(language).then(() => {
+        if (requestId !== this._localeRequestId) return;
+        this._localeLoading = false;
+        this.render();
+      });
+    }
+
+    if (languageChanged || loadingChanged) {
       this.render();
     }
   }
@@ -1004,6 +1071,10 @@ class SofabatonControlPanelEditor extends HTMLElement {
   }
 
   private render() {
+    if (this._localeLoading) {
+      this.innerHTML = `<div aria-busy="true" style="min-height:48px"></div>`;
+      return;
+    }
     const height = Number(this._config.card_height ?? 600);
     this.innerHTML = `
       <style>

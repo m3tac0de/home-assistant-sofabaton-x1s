@@ -5,6 +5,8 @@ import { renderCommandsEditorSection } from "../../custom_components/sofabaton_x
 import { renderStylingOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/styling-options";
 import { renderGroupOrderSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/group-order";
 import { DEFAULT_GROUP_ORDER } from "../../custom_components/sofabaton_x1s/www/src/remote-card-layout";
+import { REMOTE_CARD_CSS } from "../../custom_components/sofabaton_x1s/www/src/remote-card-styles";
+import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/remote-card-types";
 import type { RemoteCardConfig } from "../../custom_components/sofabaton_x1s/www/src/remote-card-types";
 
 // The editor dispatches window events for the preview-activity handshake;
@@ -63,6 +65,28 @@ function createEditor(config: RemoteCardConfig): {
 }
 
 // ---------- shell: config plumbing ----------
+
+test("editor exposes the active locale direction on its host", () => {
+  const { editor } = createEditor({ entity: "" });
+  editor.hass = {
+    states: {},
+    locale: { language: "ar-SA" },
+  } as HassLike;
+  assert.equal((editor as unknown as HTMLElement).lang, "ar-sa");
+  assert.equal((editor as unknown as HTMLElement).dir, "rtl");
+
+  editor.hass = {
+    states: {},
+    locale: { language: "en-GB" },
+  } as HassLike;
+  assert.equal((editor as unknown as HTMLElement).dir, "ltr");
+});
+
+test("RTL card styling preserves the physical remote-control grid", () => {
+  assert.match(REMOTE_CARD_CSS, /:host\(\[dir="rtl"\]\) \.dpad/);
+  assert.match(REMOTE_CARD_CSS, /border-inline-start/);
+  assert.doesNotMatch(REMOTE_CARD_CSS, /text-align: left !important/);
+});
 
 test("editor strips transient keys from incoming config and from fired configs", () => {
   const { editor, changes } = createEditor({

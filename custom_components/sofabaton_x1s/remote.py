@@ -105,6 +105,7 @@ class SofabatonRemote(RemoteEntity):
                     "id": fav.get("command_id"),
                     "name": fav.get("name"),
                     "device_id": fav.get("device_id"),
+                    "button_id": fav.get("button_id"),
                 }
                 for fav in favorites
                 if fav.get("command_id") is not None

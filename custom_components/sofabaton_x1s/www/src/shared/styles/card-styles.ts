@@ -232,6 +232,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .tabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
   .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; }
   .tab-btn { position: relative; border: none; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .tab-btn-label { white-space: nowrap; }
   .tab-btn--push-right { margin-left: auto; }
   .tab-btn--menu { display: inline-flex; align-items: center; gap: 4px; padding-right: 12px; }
   .tab-btn--menu.is-open { color: var(--primary-color); }
@@ -579,8 +580,11 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
   @media (max-width: 640px) {
+    .tabs { padding-inline: 8px; }
     .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
     .tabs-scroll::-webkit-scrollbar { display: none; }
+    .tab-btn { padding-inline: 10px; }
+    .tab-btn--menu { gap: 2px; padding-inline: 8px; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
     .hub-connection-node { width: 42px; height: 42px; border-radius: 14px; }
     .hub-hero-icon { width: 25px; height: 25px; }

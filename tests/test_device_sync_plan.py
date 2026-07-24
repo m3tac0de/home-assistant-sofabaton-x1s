@@ -438,3 +438,46 @@ def test_removing_a_command_is_still_out_of_scope() -> None:
     _device(edited)["commands"].pop()
     with pytest.raises(ValueError, match="live-editable"):
         build_device_sync_plan(base, edited, DEVICE_ID)
+
+
+# ── W7 stage 2: command removal (Wifi Events device only) ──────────────
+
+
+def test_command_removal_rejected_without_the_flag() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
+    with pytest.raises(ValueError, match="outside the live-editable fields"):
+        build_device_sync_plan(base, edited, DEVICE_ID)
+
+
+def test_command_removal_plans_command_delete_with_flag() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    # remove command 11 (also drop its device binding/macro refs so the rest
+    # of the bundle stays in scope, like the real editor cascade would).
+    dev = _device(edited)
+    dev["commands"] = [c for c in dev["commands"] if c["command_id"] != 11]
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
+    assert _kinds(plan) == ["command_delete"]
+    assert plan[0].target_device_id == DEVICE_ID
+    assert plan[0].payload == {"device_id": DEVICE_ID, "command_id": 11}
+
+
+def test_command_delete_ordered_last_after_other_writes() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    dev = _device(edited)
+    dev["commands"][0]["name"] = "Power Toggle"        # rename cmd 10
+    dev["commands"] = [c for c in dev["commands"] if c["command_id"] != 11]  # delete cmd 11
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
+    assert _kinds(plan) == ["command_rename", "command_delete"]
+
+
+def test_command_add_still_rejected_even_with_removal_flag() -> None:
+    # The flag opens deletion, NOT addition — an unflagged new id still trips.
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"].append({"command_id": 12, "name": "New"})
+    with pytest.raises(ValueError, match="outside the live-editable fields"):
+        build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)

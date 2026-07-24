@@ -5667,6 +5667,84 @@ def test_cache_activity_favorites_prefers_fresh_device_catalog(monkeypatch):
         loop.close()
 
 
+def test_remote_quick_access_uses_shared_physical_display_order():
+    """Macro/favorite drawers preserve their relative positions from the
+    hub's one interleaved family-0x61 quick-access order."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        act_lo = 0x65
+        hub.activities[act_lo] = {"name": "Watch TV"}
+        hub._proxy.state.replace_activity_macros(
+            act_lo,
+            [
+                {"command_id": 2, "label": "Second macro"},
+                {"command_id": 4, "label": "First macro"},
+            ],
+        )
+        hub._proxy._macros_complete.add(act_lo)
+        hub._proxy.state.activity_favorite_slots[act_lo] = [
+            {"device_id": 0x0B, "command_id": 1, "button_id": 1, "source": "keymap"},
+            {"device_id": 0x0B, "command_id": 3, "button_id": 3, "source": "keymap"},
+        ]
+        hub._proxy.state.commands[0x0B] = {1: "Second favorite", 3: "First favorite"}
+        # Physical screen: favorite 3, macro 4, favorite 1, macro 2.
+        hub._proxy.state.activity_favorites_order[act_lo] = [
+            (3, 1),
+            (4, 2),
+            (1, 3),
+            (2, 4),
+        ]
+
+        macros = hub.get_all_cached_macros()[act_lo]
+        favorites = hub.get_activity_favorites()[act_lo]
+
+        assert [row["command_id"] for row in macros] == [4, 2]
+        assert [row["button_id"] for row in favorites] == [3, 1]
+        assert [row["name"] for row in favorites] == [
+            "First favorite",
+            "Second favorite",
+        ]
+    finally:
+        loop.close()
+
+
+def test_remote_favorite_slot_survives_temporarily_missing_label():
+    """A live favorite slot must not become an empty drawer merely because
+    its targeted command-label refresh has not completed yet."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        act_lo = 0x65
+        hub.activities[act_lo] = {"name": "Watch TV"}
+        hub._proxy.state.activity_favorite_slots[act_lo] = [
+            {"device_id": 0x0B, "command_id": 9, "button_id": 7, "source": "keymap"}
+        ]
+
+        favorites = hub.get_activity_favorites()[act_lo]
+
+        assert favorites == [
+            {
+                "button_id": 7,
+                "name": "Command 9",
+                "device_id": 0x0B,
+                "command_id": 9,
+            }
+        ]
+    finally:
+        loop.close()
+
+
 def test_delete_device_skips_rewarm_when_disabled(monkeypatch):
     dev_lo = 0x14
     hub, loop, persisted, warmed = _make_delete_device_hub(
@@ -5689,5 +5767,60 @@ def test_delete_device_skips_rewarm_when_disabled(monkeypatch):
         # Generation bump + persist still run: the deploy pipeline that opts
         # out does its own re-warm before relying on the persisted cache.
         assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_wifi_events_device_rebinds_by_brand_after_restore():
+    """Plan §6.5: a restored Wifi Events device comes back with a fresh hub
+    device id but the same ``m3-haevents-<hash>`` brand. The managed-brand
+    reconcile must re-attach store ownership by that brand — parsing the
+    reserved ``haevents`` key + deployed hash out of the brand and matching
+    the store record whose stale ``deployed_device_id`` no longer resolves.
+    """
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        events_hash = "abc123def4567"
+        new_device_id = 0x2A  # the hub minted a new id on restore
+        # A restored events device on the live hub carries the reserved brand.
+        hub.devices[new_device_id] = {
+            "name": "Wifi Events",
+            "brand": f"m3-haevents-{events_hash}",
+        }
+        # Plus an unrelated managed user device, to prove key/hash scoping.
+        hub.devices[0x0B] = {"name": "Wifi Lights", "brand": "m3-abcd1234-otherhash0000"}
+
+        managed = hub._managed_wifi_devices()
+        events_rows = [row for row in managed if row[1] == "haevents"]
+        # The brand parsed into (id, reserved key, hash, brand).
+        assert events_rows == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
+
+        # The store record lost its deployed_device_id (a restore drops it)
+        # but still knows the deployed hash — the reconcile matches by it.
+        matches, ambiguous = hub._match_managed_wifi_devices(
+            managed_devices=managed,
+            device_key="haevents",
+            deployed_device_id=None,
+            deployed_commands_hash=events_hash,
+        )
+        assert ambiguous is False
+        assert matches == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
+
+        # Even with the hash unknown (e.g. a hash-version bump), the reserved
+        # key alone still re-binds it — the key carries identity.
+        by_key, ambiguous_by_key = hub._match_managed_wifi_devices(
+            managed_devices=managed,
+            device_key="haevents",
+            deployed_device_id=None,
+            deployed_commands_hash="",
+        )
+        assert ambiguous_by_key is False
+        assert by_key == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
     finally:
         loop.close()

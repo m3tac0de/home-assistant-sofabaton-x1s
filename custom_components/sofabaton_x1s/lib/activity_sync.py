@@ -361,6 +361,8 @@ def build_device_sync_plan(
     baseline: Mapping[str, Any],
     edited: Mapping[str, Any],
     device_id: int,
+    *,
+    allow_command_removal: bool = False,
 ) -> list[SyncStep]:
     """Device-scoped counterpart of :func:`build_activity_sync_plan`.
 
@@ -371,6 +373,13 @@ def build_device_sync_plan(
     its name and brand, and its head ``ip_address``. Everything else (other head
     config, other devices, every activity) must be byte-identical
     between the two bundles.
+
+    ``allow_command_removal`` (W7, Wifi Events device only — the HA layer
+    gates it by brand) additionally accepts command rows PRESENT in the
+    baseline but absent from the edited bundle, planning a
+    ``command_delete`` per removed id (ordered last; the hub cascades
+    referencing favorites/bindings and removes macro steps in place).
+    Regular devices keep rejecting any id-set change.
 
     Key-row steps reuse the activity planners verbatim: the ``activity_id``
     payload field is the *keymap entity id* the 0x3E / 0x0210 / macro-save
@@ -384,19 +393,24 @@ def build_device_sync_plan(
     if base_dev is None or edit_dev is None:
         raise ValueError("the edited device is missing from one of the bundles")
 
-    _assert_device_sync_in_scope(baseline, edited, device_id)
+    _assert_device_sync_in_scope(
+        baseline, edited, device_id, allow_command_removal=allow_command_removal
+    )
 
     prereq: list[SyncStep] = []
     macros: list[SyncStep] = []
     bindings: list[SyncStep] = []
     idle: list[SyncStep] = []
     rename: list[SyncStep] = []
+    deletes: list[SyncStep] = []
 
     # Command-record writes first — adds, payloads, and renames precede the
     # key rows (bindings / macros) that reference them.
     _plan_device_command_adds(base_dev, edit_dev, device_id, prereq)
     _plan_device_payloads(base_dev, edit_dev, device_id, prereq)
     _plan_device_command_renames(base_dev, edit_dev, device_id, prereq)
+    if allow_command_removal:
+        _plan_device_command_deletes(base_dev, edit_dev, device_id, deletes)
 
     base_inputs = _input_entries(base_dev)
     edit_inputs = _input_entries(edit_dev)
@@ -463,7 +477,10 @@ def build_device_sync_plan(
             )
         )
 
-    return [*prereq, *macros, *bindings, *idle, *rename]
+    # Deletes go LAST: every other write lands on records that still exist,
+    # and the hub's delete-time cascade sweeps refs after the final state of
+    # the surviving rows is already written.
+    return [*prereq, *macros, *bindings, *idle, *rename, *deletes]
 
 
 # ── Scope guard ────────────────────────────────────────────────────────
@@ -501,7 +518,11 @@ _DEVICE_SYNC_MUTABLE_KEYS = frozenset({"macros", "button_bindings", "input_recor
 _DEVICE_SYNC_VOLATILE_KEYS = frozenset({"captured_at", "fetched_at", "complete", "payload_profile", "key_sort"})
 
 
-def _device_immutable_signature(device: Mapping[str, Any]) -> str:
+def _device_immutable_signature(
+    device: Mapping[str, Any],
+    *,
+    command_id_filter: frozenset[int] | None = None,
+) -> str:
     trimmed = {
         key: value
         for key, value in device.items()
@@ -526,18 +547,53 @@ def _device_immutable_signature(device: Mapping[str, Any]) -> str:
     # Rows flagged ``restore_data.new`` are live-editor additions handled by
     # the ``command_add`` planner, so they are excluded here: an add stays in
     # scope while an unflagged id-set change (or any delete) still trips.
+    # ``command_id_filter`` (W7 removal mode) narrows both signatures to the
+    # edited bundle's id set, making removals invisible to the comparison
+    # while an unflagged ADD (edited-only id) still trips.
     commands = trimmed.get("commands")
     if commands is not None:
-        trimmed["commands"] = sorted(
+        ids = [
             _int(cmd.get("command_id")) for cmd in commands if not _command_is_new(cmd)
-        )
+        ]
+        if command_id_filter is not None:
+            ids = [cid for cid in ids if cid in command_id_filter]
+        trimmed["commands"] = sorted(ids)
     return _canonical(trimmed)
+
+
+def _plan_device_command_deletes(
+    base_dev: Mapping[str, Any],
+    edit_dev: Mapping[str, Any],
+    device_id: int,
+    out: list[SyncStep],
+) -> None:
+    """Emit a ``command_delete`` for each command the editor removed (W7,
+    events device only). The executor's ``_sync_step_command_delete`` is
+    the bench-validated FAMILY_FAV_DELETE primitive — the hub cascades
+    referencing favorites/bindings and removes macro steps in place (an
+    emptied macro is removed)."""
+
+    edit_ids = {_int(cmd.get("command_id")) for cmd in edit_dev.get("commands") or []}
+    for command in base_dev.get("commands") or []:
+        command_id = _int(command.get("command_id"))
+        if command_id in edit_ids:
+            continue
+        out.append(
+            SyncStep(
+                kind="command_delete",
+                label=f"Removing a command on device {device_id}…",
+                target_device_id=device_id,
+                payload={"device_id": device_id, "command_id": command_id},
+            )
+        )
 
 
 def _assert_device_sync_in_scope(
     baseline: Mapping[str, Any],
     edited: Mapping[str, Any],
     device_id: int,
+    *,
+    allow_command_removal: bool = False,
 ) -> None:
     base_acts = _activities_by_id(baseline)
     edit_acts = _activities_by_id(edited)
@@ -556,7 +612,17 @@ def _assert_device_sync_in_scope(
             continue
         if _canonical(edited_dev) != _canonical(base_devs.get(dev_id)):
             raise ValueError(f"edited bundle changed a different device 0x{dev_id:02X} (out-of-scope changes)")
-    if _device_immutable_signature(base_devs[device_id]) != _device_immutable_signature(edit_devs[device_id]):
+    command_id_filter: frozenset[int] | None = None
+    if allow_command_removal:
+        command_id_filter = frozenset(
+            _int(cmd.get("command_id"))
+            for cmd in edit_devs[device_id].get("commands") or []
+        )
+    if _device_immutable_signature(
+        base_devs[device_id], command_id_filter=command_id_filter
+    ) != _device_immutable_signature(
+        edit_devs[device_id], command_id_filter=command_id_filter
+    ):
         raise ValueError(
             f"edited bundle changed device 0x{device_id:02X} outside the live-editable fields (out-of-scope changes)"
         )

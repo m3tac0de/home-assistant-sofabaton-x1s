@@ -936,6 +936,18 @@ export function isManagedWifiBrand(brand: string): boolean {
 }
 
 /**
+ * True when a brand string identifies the reserved, system-owned
+ * "Wifi Events" device (`m3-haevents-<hash>`). Unlike other managed
+ * wifi devices it is fully editable in the live device editor (no
+ * name-only lock) and is hidden from the live Add-dialog device pickers
+ * — its commands are offered through the dedicated "Wifi Event" kind.
+ */
+export function isWifiEventsBrand(brand: string): boolean {
+  const text = String(brand ?? "").trim();
+  return text.startsWith("m3-haevents-") && Boolean(text.slice("m3-haevents-".length).trim());
+}
+
+/**
  * Read a device's `ip_address` from the bundle's device head. Returns
  * `null` for missing devices and empty / unset values (so the UI can
  * treat "no IP" uniformly regardless of whether the field was absent
@@ -3433,6 +3445,92 @@ export function setActivityRoleDevice(
 /** Device options for the edit overview. */
 export function bundleEditableDeviceOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
   return bundleDeviceOptions(bundle);
+}
+
+/**
+ * Rewrite placeholder Wifi Events refs (device id 0, W7 full deferral)
+ * to the real hub-assigned device id inside one activity's favorites,
+ * bindings (both legs), and macro steps. Called by the Sync flow after
+ * phase 1 (the events-record deploy) resolves the id; the synthetic
+ * staged device block is replaced separately via the graft helper.
+ */
+export function rewriteWifiEventPlaceholderRefs(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  realDeviceId: number,
+  placeholderId = 0,
+): BackupBundlePayload | null {
+  if (!bundle || !(Number(realDeviceId) > 0)) return bundle;
+  return updateActivity(bundle, activityId, (activity) => {
+    const swap = (value: number | null | undefined) =>
+      Number(value ?? -1) === Number(placeholderId) ? Number(realDeviceId) : value;
+    return {
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).map((slot) => ({
+        ...slot,
+        device_id: swap(slot?.device_id),
+      })),
+      button_bindings: (activity.button_bindings ?? []).map((binding) => ({
+        ...binding,
+        device_id: swap(binding?.device_id),
+        ...(binding?.long_press_device_id != null
+          ? { long_press_device_id: swap(binding.long_press_device_id) }
+          : {}),
+      })),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: (macro?.steps ?? []).map((step) => ({
+          ...step,
+          ...(Number(step?.device_id ?? -1) === Number(placeholderId)
+            ? { device_id: Number(realDeviceId) }
+            : {}),
+        })),
+      })),
+    };
+  });
+}
+
+/**
+ * Insert (or replace) one device entry in a bundle — used to graft the
+ * Wifi Events device block (head + commands) into the live editor's
+ * captured `_baseline` AND working bundles after `wifi_event/create`
+ * deploys a device the captures predate. Both bundles must gain it:
+ * the review diff would otherwise show phantom changes, and sync
+ * validation grandfathers missing command refs FROM THE BASELINE
+ * (`collect_missing_command_refs`) — a ref to a device absent from the
+ * baseline would be flagged as a new dangling ref and rejected.
+ */
+/** Drop one device entry (by id) from a bundle — the Sync flow uses this
+ *  to retire the synthetic placeholder Wifi Events block (id 0) before
+ *  grafting the real deployed block. */
+export function removeBundleDevice(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): BackupBundlePayload | null {
+  if (!bundle) return bundle;
+  const devices = (bundle.devices ?? []).filter(
+    (entry) => Number(entry?.device?.device_id ?? -1) !== Number(deviceId),
+  );
+  if (devices.length === (bundle.devices ?? []).length) return bundle;
+  return { ...bundle, devices };
+}
+
+export function graftDeviceIntoBundle(
+  bundle: BackupBundlePayload | null,
+  deviceEntry: BackupBundleDevicePayload | null | undefined,
+): BackupBundlePayload | null {
+  if (!bundle || !deviceEntry) return bundle;
+  const deviceId = Number(deviceEntry?.device?.device_id ?? -1);
+  // id 0 is legal here: the W7 synthetic placeholder block for a
+  // not-yet-deployed Wifi Events device grafts under the sentinel id.
+  if (!Number.isFinite(deviceId) || deviceId < 0) return bundle;
+  const devices = [...(bundle.devices ?? [])];
+  const index = devices.findIndex(
+    (entry) => Number(entry?.device?.device_id ?? -1) === deviceId,
+  );
+  if (index >= 0) devices[index] = deviceEntry;
+  else devices.push(deviceEntry);
+  return { ...bundle, devices };
 }
 
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {

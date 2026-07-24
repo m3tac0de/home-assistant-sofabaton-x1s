@@ -177,8 +177,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     favoriteFallback: (commandId: number) => `Favorite ${commandId}`,
     macroFallback: (commandId: number) => `Macro ${commandId}`,
     activityCounts: (favorites: number, macros: number, buttons: number) =>
-      `${favorites} favs / ${macros} macros / ${buttons} btns`,
-    deviceCommandCount: (count: number) => `${count} cmds`,
+      `${favorites} ${favorites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
+    deviceCommandCount: (count: number) =>
+      `${count} ${count === 1 ? "cmd" : "cmds"}`,
     favorites: "Favorites",
     macros: "Macros",
     buttons: "Buttons",
@@ -248,6 +249,34 @@ export const TOOLS_CARD_STRINGS_EN = {
     backupTitle: "Creating backup",
     restoreTitle: "Restoring backup",
   },
+  backendState: {
+    operationBackup: "Creating backup",
+    operationRestore: "Restoring backup",
+    operationCacheRefresh: "Refreshing hub cache",
+    operationEntitySync: "Syncing with hub",
+    operationWifiDeploy: "Syncing Wifi Commands",
+    working: "Working…",
+    step: (current: number, total: number) => `Step ${current} of ${total}`,
+    backupPreparing: "Preparing backup…",
+    backupDevice: (id: number) => `Backing up device ${id}…`,
+    backupActivity: (id: number) => `Backing up activity ${id}…`,
+    backupFinalizing: "Finalizing backup…",
+    restoreValidating: "Validating backup…",
+    restoreErasing: "Erasing the destination hub…",
+    restoreDevice: (id: number) => `Restoring device ${id}…`,
+    restoreActivity: (id: number) => `Restoring activity ${id}…`,
+    restoreHub: "Restoring hub settings…",
+    restoreCache: "Refreshing the restored hub cache…",
+    cachePreparing: "Preparing hub cache refresh…",
+    cacheDevice: (id: number) => `Refreshing device ${id}…`,
+    cacheActivity: (id: number) => `Refreshing activity ${id}…`,
+    cacheFinalizing: "Finalizing hub cache…",
+    entityChecking: "Checking for changes on the hub…",
+    entityWriting: "Applying changes to the hub…",
+    entityRefreshing: "Refreshing the cached hub state…",
+    entityComplete: "Synced to hub.",
+    wifiSyncing: "Syncing Wifi Commands…",
+  },
   activities: {
     loading: "Loading activities...",
     selectHub: "Select a hub to edit its activities.",
@@ -282,6 +311,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     // Sync flow (§4.5).
     syncingTitle: "Syncing to your hub",
     syncingMessage: "Writing your changes to the hub…",
+    wifiEventsPhaseMessage: "Deploying Wifi Events to the hub first… this can take a minute the first time.",
     syncSuccess: "Synced to hub.",
     syncPlanSummary: (count: number) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
@@ -339,7 +369,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     // Review-list section titles + entry templates for the live *device*
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
-      sectionPower: "Power",
+      sectionPower: "On/Off",
       sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
@@ -403,8 +433,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     backupResultSummary: (activities: number, devices: number) =>
       `${activities} ${activities === 1 ? "Activity" : "Activities"} and ${devices} ${devices === 1 ? "Device" : "Devices"} backed up`,
     activityMeta: (favorites: number, macros: number) =>
-      `${favorites} favs · ${macros} macros`,
-    linkedDevices: (count: number) => `${count} linked devices`,
+      `${favorites} ${favorites === 1 ? "favorite" : "favorites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
+    linkedDevices: (count: number) =>
+      `${count} linked ${count === 1 ? "device" : "devices"}`,
     deselectAll: "Deselect all",
     selectAll: "Select all",
     noDevicesAvailable: "No devices available.",
@@ -443,7 +474,8 @@ export const TOOLS_CARD_STRINGS_EN = {
       `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteImpactPowerSteps: (count: number) =>
       `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-    deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    deleteReplaceNote:
+      'Deletions are applied to the hub only when "Erase existing Devices and Activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
     deleteSimpleBodyLive: "This removes it.",
@@ -488,10 +520,15 @@ export const TOOLS_CARD_STRINGS_EN = {
       `${count} button binding${count === 1 ? "" : "s"} will be cleared`,
     macrosTitle: "Macros",
     macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
-    macroPowerChip: "power",
-    powerSetupTitle: "Power",
+    macroPowerChip: "on/off",
+    // These headings name the hub's switching *behaviour*, not the electrical
+    // supply. Translating the bare noun "Power" led every catalogue to the
+    // wattage word (Voeding / Stromversorgung / Alimentación / Alimentation),
+    // which reads as a PSU spec — or, in nl/es/fr, as nutrition. Keep the
+    // English explicit so the behaviour is what gets translated.
+    powerSetupTitle: "Power control",
     powerSetupDeviceSub:
-      "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
+      "How the hub switches this device on and off during Activities, and the commands it sends to do it.",
     powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
     powerOnLabel: "Power-on sequence",
     powerOffLabel: "Power-off sequence",
@@ -540,7 +577,7 @@ export const TOOLS_CARD_STRINGS_EN = {
       kind === "macro" ? "Rename macro" : "Rename shortcut",
     shortcutDeleteAria: (kind: "macro" | "favorite") =>
       kind === "macro" ? "Delete macro" : "Delete shortcut",
-    powerSectionTitle: "Power",
+    powerSectionTitle: "Power control",
     powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
     powerInputLabel: "Input",
     powerInputNone: "— none —",
@@ -569,7 +606,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     roleNotUsed: "Not used",
     roleCustom: "Custom",
     roleCustomized: (name: string) => `${name} (customized)`,
-    roleMappedNote: (bound: number, total: number) => `${bound} of ${total} buttons mapped`,
+    roleMappedNote: (bound: number, total: number) =>
+      `${bound} of ${total} ${total === 1 ? "button" : "buttons"} mapped`,
     roleOptionNoMapping: (name: string) => `${name} — no button mapping`,
     roleMenuAria: (roleLabel: string) => `Choose a device for: ${roleLabel}`,
     roleConfirmTitle: "Replace custom button setup?",
@@ -587,9 +625,20 @@ export const TOOLS_CARD_STRINGS_EN = {
     addShortcutKindLabel: "Type",
     shortcutKindCommand: "Device command",
     shortcutKindAction: "Macro",
+    shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
     macroTargetNoExisting: "No macros yet. Create one below.",
+    wifiEventTargetLabel: "Wifi Event",
+    wifiEventTargetCreateNew: "Create new Wifi Event…",
+    wifiEventNameLabel: "Event name",
+    wifiEventNameHelper: "The event is staged now and deployed to the hub when you press Sync; attach an action to it in Automation → Events.",
+    wifiEventDeploying: "Staging the Wifi Event…",
+    wifiEventNoneYet: "No Wifi Events yet. Create one below.",
+    wifiEventNeedsSync: (name: string) => `${name} (needs sync)`,
+    wifiEventCreateFailed: "Creating the Wifi Event failed — it stays staged and will retry on the next create.",
+    wifiEventNameRequired: "Enter a name for the new Wifi Event.",
+    wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation → Events.",
     addShortcutActionName: "Name",
     addShortcutActionHelper: "You'll pick the steps next.",
     addShortcutCommandHelper: "The shortcut shows up under the command's name.",
@@ -602,7 +651,7 @@ export const TOOLS_CARD_STRINGS_EN = {
       "Its commands, power, input, and button assignments are configured there â€” editing them here would be overwritten on the next sync.",
     managedWifiRename:
       "You can still rename it here; the new name stays in sync with your Wifi Commands configuration.",
-    detailPower: "Power",
+    detailPower: "On/Off",
     detailNetwork: "Network",
     detailCommands: "Commands",
     detailButtons: "Buttons",
@@ -770,6 +819,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     deployingTitle: "Deploying Wifi Commands",
     sectionSubtitle:
       "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
+    addDeviceButton: "Add",
     addDevice: "Add Wifi Device",
     deleteDeviceAria: "Delete Wifi Device",
     emptyDevices: "No Wifi Devices configured yet. Add one to start assigning command slots.",
@@ -782,8 +832,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     noTargetEntity: "No target entity",
     commandNameLeadingSpace: "Command name must start with a non-space character.",
     navigationGroup: "Navigation",
-    transportGroup: "Transport",
-    mediaGroup: "Media",
+    transportGroup: "Volume & Channel",
+    mediaGroup: "Playback",
     abcGroup: "ABC",
     colorGroup: "Color",
     inputCommand: "Input command",
@@ -869,6 +919,25 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
     wifiCommandsTabLabel: "Wifi Commands",
     eventsTabLabel: "Events",
+    wifiEventsTitle: "Wifi Events",
+    wifiEventsSubtitle:
+      "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
+    wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
+    wifiEventRowPress: (name: string) => `When ${name} is pressed`,
+    wifiEventRowLongPress: "and when it's long-pressed",
+    wifiEventModalTitle: (name: string) => `When ${name} is pressed`,
+    wifiEventLongModalTitle: (name: string) => `When ${name} is long-pressed`,
+    wifiEventLongPressToggleTitle: "Enable long press",
+    wifiEventNeedsSyncBadge: "needs sync",
+    wifiEventRetrySync: "Retry sync",
+    wifiEventDeleteTitle: "Delete Wifi Event",
+    wifiEventDeleteConfirmTitle: (name: string) => `Delete "${name}"?`,
+    wifiEventDeleteScanning: "Checking what references this event…",
+    wifiEventDeleteNoRefs: "Nothing on the hub references this event.",
+    wifiEventDeleteRefs: (favorites: number, bindings: number, steps: number) =>
+      `The hub will also remove ${favorites} shortcut${favorites === 1 ? "" : "s"} and ${bindings} button assignment${bindings === 1 ? "" : "s"} that reference it, and the step is removed from ${steps} macro${steps === 1 ? "" : "s"} (a macro left with no steps is removed).`,
+    wifiEventDeleteConfirm: "Delete",
+    wifiEventDeleteFailed: "Deleting the Wifi Event failed.",
     activityEventsTitle: "Activity Events",
     activityEventsSubtitle:
       "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
@@ -966,6 +1035,10 @@ const TRANSLATIONS: Record<string, ToolsCardTranslation> = {};
 let currentLanguage = "en";
 let currentStrings: ToolsCardStrings = TOOLS_CARD_STRINGS_EN;
 
+function normalizeToolsCardLanguage(language: unknown): string {
+  return String(language || "en").trim().toLowerCase().replaceAll("_", "-");
+}
+
 function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -997,7 +1070,7 @@ export function registerToolsCardTranslation(
   language: string,
   translation: ToolsCardTranslation,
 ) {
-  const lang = String(language || "").toLowerCase();
+  const lang = String(language || "").trim().toLowerCase().replaceAll("_", "-");
   if (!lang) return;
   TRANSLATIONS[lang] = translation;
   if (currentLanguage === lang || currentLanguage.split(/[-_]/)[0] === lang) {
@@ -1013,7 +1086,7 @@ export function registerToolsCardTranslation(
  * changed so the host card can request a render.
  */
 export function setToolsCardLanguage(language: unknown): boolean {
-  const lang = String(language || "en").toLowerCase();
+  const lang = normalizeToolsCardLanguage(language);
   if (lang === currentLanguage) return false;
   currentLanguage = lang;
   const translation = resolveTranslation(lang);
@@ -1026,6 +1099,11 @@ export function setToolsCardLanguage(language: unknown): boolean {
 /** The currently selected locale code, normalized to lowercase. */
 export function toolsCardLanguage(): string {
   return currentLanguage;
+}
+
+/** True when a translation overlay is registered for this exact or base locale. */
+export function hasToolsCardTranslation(language: unknown): boolean {
+  return Boolean(resolveTranslation(normalizeToolsCardLanguage(language)));
 }
 
 function valueAtPath(path: PropertyKey[]): any {

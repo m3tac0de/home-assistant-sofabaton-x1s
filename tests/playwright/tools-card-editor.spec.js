@@ -269,7 +269,7 @@ test.describe("tools-card Hub list layout", () => {
     expect(metrics.rowScrollWidth).toBeLessThanOrEqual(metrics.rowWidth);
     expect(metrics.labelScrollWidth).toBeGreaterThan(metrics.labelWidth);
     expect(metrics.textOverflow).toBe("ellipsis");
-    expect(metrics.countText).toMatch(/favs/);
+    expect(metrics.countText).toMatch(/cmds/);
     expect(metrics.countDisplay).toBe("block");
     expect(metrics.countBelowLabel).toBe(true);
     expect(metrics.iconCenterDelta).toBeLessThanOrEqual(0.5);
@@ -387,6 +387,67 @@ test.describe("tools-card Hub list layout", () => {
     });
     expect(tabLabels).toContain("Automation");
     expect(tabLabels).not.toContain("Auto");
+
+    const localeRequests = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.includes("/tools-card-locales/")) {
+        localeRequests.push(`${url.pathname}${url.search}`);
+      }
+    });
+
+    const translatedTabs = [
+      ["nl-NL", ["Hub", "Automatisering", "Back-up"]],
+      ["de-DE", ["Hub", "Automatisierung", "Backup"]],
+      ["fr-FR", ["Hub", "Automatisation", "Sauvegarde"]],
+      ["es-ES", ["Hub", "Automatización", "Backup"]],
+      ["zh-Hans", ["Hub", "自动化", "备份"]],
+    ];
+    for (const [locale, expectedLabels] of translatedTabs) {
+      await page.evaluate(({ language }) => {
+        const card = window._harnessCard;
+        card.hass = {
+          ...(card._snapshot?.hass ?? {}),
+          locale: { language },
+        };
+      }, { language: locale });
+      await page.waitForFunction((expected) => {
+        const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+        const labels = [...(root?.querySelectorAll(".tabs .tab-btn-label") ?? [])]
+          .map((label) => label.textContent?.trim());
+        return JSON.stringify(labels) === JSON.stringify(expected);
+      }, expectedLabels);
+      const metrics = await page.evaluate(async () => {
+        const card = window._harnessCard;
+        await card.updateComplete;
+        const root = card.shadowRoot;
+        const scroll = root?.querySelector(".tabs-scroll");
+        return {
+          labels: [...(root?.querySelectorAll(".tabs .tab-btn-label") ?? [])]
+            .map((label) => label.textContent?.trim()),
+          clientWidth: scroll?.clientWidth ?? 0,
+          scrollWidth: scroll?.scrollWidth ?? 0,
+        };
+      });
+      expect(metrics.labels).toEqual(expectedLabels);
+      expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    }
+    expect(localeRequests).toEqual([
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/nl.js?v=harness",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/de.js?v=harness",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/fr.js?v=harness",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/es.js?v=harness",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/zh-hans.js?v=harness",
+    ]);
+
+    await page.evaluate(async () => {
+      const card = window._harnessCard;
+      card.hass = {
+        ...(card._snapshot?.hass ?? {}),
+        locale: { language: "en" },
+      };
+      await card.updateComplete;
+    });
 
     await page.evaluate(() => {
       const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
