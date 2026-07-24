@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.command_config import (
     WIFI_EVENTS_DEVICE_KEY,
+    WIFI_EVENTS_SLOT_COUNT,
     CommandConfigStore,
 )
 
@@ -125,7 +126,7 @@ def test_ws_wifi_event_create_is_pure_store_allocation(monkeypatch):
     assert payload["event"]["device_id"] is None  # first-ever: placeholder ref
     assert payload["record_needs_sync"] is True
     assert payload["events"][0]["deployed"] is False
-    assert payload["events"][0]["long_press_command_id"] == 51
+    assert payload["events"][0]["long_press_command_id"] == 1 + WIFI_EVENTS_SLOT_COUNT
 
     # the reserved record now exists in the store list (listener guard path)
     keys = [d["device_key"] for d in _run(store.async_list_hub_devices("entry-1"))]
@@ -194,8 +195,8 @@ def test_ws_wifi_event_delete_resets_in_place(monkeypatch):
     assert hub.sync_calls and hub.sync_calls[0]["configured"] == 2
     # the freed slot's short + long records were REALLY deleted so the hub
     # cascades referencing favorites/bindings/macro-steps (slot 1 -> short
-    # id 2, long id 2 + 50)
-    assert hub.record_delete_calls == [(10, [2, 52])]
+    # id 2, long id 2 + WIFI_EVENTS_SLOT_COUNT)
+    assert hub.record_delete_calls == [(10, [2, 2 + WIFI_EVENTS_SLOT_COUNT])]
     # the record survives (events remain)
     keys = [d["device_key"] for d in _run(store.async_list_hub_devices("entry-1"))]
     assert WIFI_EVENTS_DEVICE_KEY in keys
