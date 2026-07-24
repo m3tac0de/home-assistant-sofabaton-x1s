@@ -16,6 +16,7 @@ import { LitElement, css, html, nothing } from "lit";
 import type { BackupProgressEvent, HassLike } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { formatError } from "../shared/utils/control-panel-selectors";
+import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 class SofabatonRefreshCacheButton extends LitElement {
@@ -140,7 +141,7 @@ class SofabatonRefreshCacheButton extends LitElement {
         this._teardown();
         return;
       }
-      this._message = String(payload.message || TOOLS_CARD_STRINGS.cacheRefresh.working);
+      this._message = localizeBackendProgress(payload, "cache_refresh");
     });
     this._unsub = unsub;
   }

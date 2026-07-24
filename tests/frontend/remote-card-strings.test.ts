@@ -96,6 +96,32 @@ test("Arabic and regional Arabic locales select right-to-left direction", () => 
   setRemoteCardLanguage("en");
 });
 
+test("layout reset buttons use compact, locally clear labels", () => {
+  const cases = [
+    ["en", "Reset card layout", "Reset layout"],
+    ["nl", "Kaartindeling resetten", "Indeling resetten"],
+    ["de", "Kartenlayout zurücksetzen", "Layout zurücksetzen"],
+    ["fr", "Réinitialiser la carte", "Réinitialiser"],
+    ["es", "Restablecer tarjeta", "Restablecer diseño"],
+    ["ar", "إعادة ضبط البطاقة", "إعادة ضبط التخطيط"],
+    ["zh-Hans", "重置卡片布局", "重置布局"],
+  ] as const;
+
+  for (const [locale, cardDefault, defaultLayout] of cases) {
+    setRemoteCardLanguage(locale);
+    assert.equal(str().editor.resetCardDefault, cardDefault, locale);
+    assert.equal(str().editor.resetDefaultLayout, defaultLayout, locale);
+  }
+
+  setRemoteCardLanguage("en");
+});
+
+test("Simplified Chinese uses Home Assistant dashboard terminology", () => {
+  setRemoteCardLanguage("zh-Hans");
+  assert.equal(str().assist.notification.lovelaceCopy, "*将其复制到仪表板 YAML 中：*");
+  setRemoteCardLanguage("en");
+});
+
 test("bundled German translation supports regional locales and inflection", () => {
   setRemoteCardLanguage("de-DE");
 
@@ -196,7 +222,11 @@ test("bundled Simplified Chinese translation supports the zh-Hans locale", () =>
     str().assist.createdTriggers(2, "客厅电视"),
     "已为“客厅电视”创建 2 个 MQTT Discovery 触发器",
   );
-  assert.equal(str().editor.resetCardDefault, "重置卡片默认布局");
+  assert.equal(
+    str().assist.createdActivityTriggers(2),
+    "已为 X2 → 活动创建 2 个活动触发器",
+  );
+  assert.equal(str().editor.resetCardDefault, "重置卡片布局");
   assert.equal(isPoweredOffLabel("已关机"), true);
 
   setRemoteCardLanguage("en");

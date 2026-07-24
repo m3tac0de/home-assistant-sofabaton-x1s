@@ -50,7 +50,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     createdTriggers: (count: number, deviceLabel: string) =>
       `已为“${deviceLabel}”创建 ${count} 个 MQTT Discovery 触发器`,
     createdActivityTriggers: (count: number) =>
-      `已为 X2 → Activities 创建 ${count} 个活动触发器`,
+      `已为 X2 → 活动创建 ${count} 个活动触发器`,
     plusActivityTriggers: (count: number) =>
       `，另创建 ${count} 个活动触发器`,
     allTriggersExist: (deviceLabel: string) =>
@@ -67,7 +67,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
       header: (activityName: string, eventLabel: string) =>
         `**活动：${activityName} | ${eventLabel}**`,
       lovelaceHeading: "📋 **Lovelace 按钮代码**",
-      lovelaceCopy: "*将其复制到仪表盘 YAML 中：*",
+      lovelaceCopy: "*将其复制到仪表板 YAML 中：*",
       serviceHeading: "⚙️ **服务调用（自动化）**",
       serviceCopy: "*在脚本或自动化中使用此内容：*",
     },
@@ -93,7 +93,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     automationAssistTitle: "自动化助手",
     keyCapture: "按键捕获",
     keyCaptureDescription:
-      "将按键操作发送到 Hub，以生成可直接用于仪表盘按钮和自动化的 YAML。",
+      "将按键操作发送到 Hub，以生成可直接用于仪表板按钮和自动化的 YAML。",
     keyCaptureLearnMore: "详细了解按键捕获",
     keyCaptureDocsAria: "按键捕获文档",
     stylingOptions: "样式选项",
@@ -110,8 +110,8 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     channel: "频道",
     mediaControls: "媒体控件",
     dvr: "DVR",
-    resetCardDefault: "重置卡片默认布局",
-    resetDefaultLayout: "恢复默认布局",
+    resetCardDefault: "重置卡片布局",
+    resetDefaultLayout: "重置布局",
     noteDefaultLayout: "用于没有单独布局的活动",
     noteCustomLayout: "正在使用自定义布局",
     noteUsingDefault: "正在使用默认布局",

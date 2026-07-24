@@ -10,6 +10,7 @@ import type {
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { formatError } from "../shared/utils/control-panel-selectors";
+import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import { backupTabStyles } from "./backup-tab-styles";
@@ -1145,7 +1146,7 @@ class SofabatonBackupTab extends LitElement {
     return renderOperationProgress({
       mode,
       title: mode === "backup" ? TOOLS_CARD_STRINGS.progress.backupTitle : TOOLS_CARD_STRINGS.progress.restoreTitle,
-      message: String(progress.message || "Working…"),
+      message: localizeBackendProgress(progress, mode === "backup" ? "backup_export" : "backup_restore"),
     });
   }
 
@@ -1562,10 +1563,10 @@ class SofabatonBackupTab extends LitElement {
           : null;
       const active = state?.active_operation || null;
       if (active && String(active.kind || "") === "backup_export" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || TOOLS_CARD_STRINGS.backup.backupInProgress), entryId);
+        this.setHubCommandBusy?.(true, localizeBackendProgress(active, "backup_export"), entryId);
         await this._subscribeToOperation(active.operation_id, "backup", entryId);
       } else if (active && String(active.kind || "") === "backup_restore" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || TOOLS_CARD_STRINGS.backup.restoreInProgress), entryId);
+        this.setHubCommandBusy?.(true, localizeBackendProgress(active, "backup_restore"), entryId);
         await this._subscribeToOperation(active.operation_id, "restore", entryId);
       } else {
         this.setHubCommandBusy?.(false, null, entryId);

@@ -16,7 +16,7 @@ registerToolsCardTranslation("en-gb", {
   cache: {
     favoriteFallback: (commandId: number) => `Favourite ${commandId}`,
     activityCounts: (favourites: number, macros: number, buttons: number) =>
-      `${favourites} ${favourites === 1 ? "favourite" : "favourites"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
+      `${favourites} ${favourites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
     favorites: "Favourites",
   },
   hubClick: {

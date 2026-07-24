@@ -22,6 +22,7 @@ import type {
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { entityForHub, formatError } from "../shared/utils/control-panel-selectors";
+import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import {
   graftDeviceIntoBundle,
@@ -900,7 +901,7 @@ class SofabatonActivitiesTab extends LitElement {
   private _renderSyncing() {
     const S = TOOLS_CARD_STRINGS.activities;
     const progress = this._syncProgress;
-    const message = String(progress?.message || S.syncingMessage);
+    const message = localizeBackendProgress(progress, "entity_sync");
     return html`
       <div class="tab-panel">
         ${renderOperationProgress({ mode: "restore", title: S.syncingTitle, message })}

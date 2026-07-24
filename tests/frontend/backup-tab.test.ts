@@ -71,10 +71,10 @@ function createHass(state: BackupOperationStateResponse, onBackupState?: () => v
 
 test("backup Restore empty state resolves all copy from the active locale", () => {
   const cases = [
-    ["nl-NL", "Laad een back-upbestand", "Back-upbestand kiezen"],
-    ["de-DE", "Lade eine Backup-Datei", "Backup-Datei auswählen"],
-    ["fr-FR", "Chargez un fichier de sauvegarde", "Choisir un fichier de sauvegarde"],
-    ["es-ES", "Carga un archivo de copia de seguridad", "Elegir archivo de copia de seguridad"],
+    ["nl-NL", "Laad een back-upbestand", "Bestand kiezen"],
+    ["de-DE", "Lade eine Backup-Datei", "Datei auswählen"],
+    ["fr-FR", "Chargez un fichier de sauvegarde", "Choisir un fichier"],
+    ["es-ES", "Carga un archivo de copia de seguridad", "Elegir archivo"],
   ] as const;
 
   for (const [locale, subtitle, chooseFile] of cases) {

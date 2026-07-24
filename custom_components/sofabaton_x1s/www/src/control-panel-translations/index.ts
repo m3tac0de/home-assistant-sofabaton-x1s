@@ -7,3 +7,4 @@ import "./de";
 import "./es";
 import "./fr";
 import "./nl";
+import "./zh-hans";

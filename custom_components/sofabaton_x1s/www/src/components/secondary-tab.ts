@@ -113,6 +113,8 @@ export const secondaryTabStyles = css`
     letter-spacing: 0.05em;
     text-transform: uppercase;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .secondary-tab-btn-count {
     flex: 0 0 auto;
@@ -210,8 +212,8 @@ export const secondaryTabStyles = css`
     }
     .secondary-tab-btn {
       min-height: 34px;
-      gap: 5px;
-      padding: 0 12px;
+      gap: 4px;
+      padding: 0 8px;
     }
     .secondary-tab-btn-label {
       font-size: 12px;

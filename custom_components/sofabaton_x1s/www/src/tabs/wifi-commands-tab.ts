@@ -4,6 +4,7 @@ import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } 
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import type { ControlPanelHubState, HassLike, HubEventFireEvent, WifiEvent, WifiPressEvent, WifiSectionId } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
+import { localizeBackendOperationDetail } from "../shared/utils/backend-state-localization";
 import {
   findRunningWifiDevice,
   selectedDeviceOwnsPendingSync,
@@ -998,7 +999,11 @@ class SofabatonWifiCommandsTab extends LitElement {
                 ? renderOperationProgress({
                     mode: "wifi-deploy",
                     title: TOOLS_CARD_STRINGS.wifiCommands.deployingTitle,
-                    message: String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncInProgress),
+                    message: localizeBackendOperationDetail(
+                      "wifi_deploy",
+                      this._syncState.current_step,
+                      this._syncState.total_steps,
+                    ),
                   })
                 : html`
                     ${this._renderDevicePowerRows()}
@@ -1032,7 +1037,7 @@ class SofabatonWifiCommandsTab extends LitElement {
           </div>
           <div class="list-header-action">
             <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
-              ${TOOLS_CARD_STRINGS.wifiCommands.addDevice}
+              ${TOOLS_CARD_STRINGS.wifiCommands.addDeviceButton}
             </button>
           </div>
         </div>
@@ -3096,7 +3101,13 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _syncMessage(remoteUnavailable: boolean) {
     if (remoteUnavailable) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageRemoteUnavailable;
-    if (this._syncState.status === "running") return String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncInProgress);
+    if (this._syncState.status === "running") {
+      return localizeBackendOperationDetail(
+        "wifi_deploy",
+        this._syncState.current_step,
+        this._syncState.total_steps,
+      );
+    }
     if (this._syncState.status === "failed") return String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncMessageFailed);
     if (this._syncState.sync_needed) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageNeeded;
     if (this._syncState.status === "success") return TOOLS_CARD_STRINGS.wifiCommands.syncMessageUpToDate;
@@ -3497,5 +3508,3 @@ class SofabatonWifiCommandsTab extends LitElement {
 if (!customElements.get("sofabaton-wifi-commands-tab")) {
   customElements.define("sofabaton-wifi-commands-tab", SofabatonWifiCommandsTab);
 }
-
-

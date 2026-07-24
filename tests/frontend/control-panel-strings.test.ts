@@ -116,14 +116,130 @@ test("Spanish power section labels describe both on and off behavior", () => {
   setToolsCardLanguage("en");
 });
 
+test("bundled Simplified Chinese control-panel translation supports zh-Hans", () => {
+  setToolsCardLanguage("zh-Hans");
+
+  assert.deepEqual(
+    [
+      TOOLS_CARD_STRINGS.tabs.cache,
+      TOOLS_CARD_STRINGS.tabs.wifiCommands,
+      TOOLS_CARD_STRINGS.tabs.backup,
+      TOOLS_CARD_STRINGS.tabs.settings,
+      TOOLS_CARD_STRINGS.tabs.logs,
+    ],
+    ["Hub", "自动化", "备份", "设置", "日志"],
+  );
+  assert.equal(TOOLS_CARD_STRINGS.common.activityFallback(7), "活动 7");
+  assert.equal(TOOLS_CARD_STRINGS.cache.activityCounts(2, 1, 4), "2 收藏 / 1 宏 / 4 按键");
+  assert.equal(TOOLS_CARD_STRINGS.backup.backupResultSummary(2, 3), "备份包含 2 个活动和 3 个设备");
+  assert.equal(TOOLS_CARD_STRINGS.backup.deleteImmediateNote, "此操作会立即应用到 Hub。");
+  assert.equal(TOOLS_CARD_STRINGS.wifiCommands.action, "动作");
+  assert.equal(TOOLS_CARD_STRINGS.hubClick.lovelaceHint, "复制到仪表板 YAML：");
+  assert.equal(TOOLS_CARD_STRINGS.backendState.restoreDevice(8), "正在恢复设备 8…");
+  assert.equal(
+    TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(1, 2, 3),
+    "Hub 还会移除引用此事件的 1 个快捷项和 2 个按键分配，并从 3 个宏中移除此步骤（没有步骤的宏会被删除）。",
+  );
+
+  setToolsCardLanguage("en");
+});
+
+test("compact navigation and button copy stays clear in translated UI", () => {
+  const cases = [
+    {
+      locale: "nl",
+      tabs: ["Hub", "Automatisering", "Back-up"],
+      cache: ["Inschakelen", "Lijst", "Alles", "Ordenen", "Toevoegen", "Synchroniseren"],
+      backupSections: ["Maken", "Bewerken", "Herstellen"],
+      backupButtons: ["Downloaden", "Geen", "Alles", "Starten", "Bestand kiezen"],
+      wifiButtons: ["Toevoegen", "Synchroniseren"],
+    },
+    {
+      locale: "de",
+      tabs: ["Hub", "Automatisierung", "Backup"],
+      cache: ["Aktivieren", "Liste", "Alle", "Sortieren", "Hinzufügen", "Synchronisieren"],
+      backupSections: ["Sichern", "Ändern", "Einspielen"],
+      backupButtons: ["Herunterladen", "Keine", "Alle", "Starten", "Datei auswählen"],
+      wifiButtons: ["Hinzufügen", "Synchronisieren"],
+    },
+    {
+      locale: "fr",
+      tabs: ["Hub", "Automatisation", "Sauvegarde"],
+      cache: ["Activer", "Liste", "Tout", "Réordonner", "Ajouter", "Synchroniser"],
+      backupSections: ["Créer", "Modifier", "Restaurer"],
+      backupButtons: ["Télécharger", "Aucun", "Tout", "Démarrer", "Choisir un fichier"],
+      wifiButtons: ["Ajouter", "Synchroniser"],
+    },
+    {
+      locale: "es",
+      tabs: ["Hub", "Automatización", "Backup"],
+      cache: ["Activar", "Lista", "Todo", "Ordenar", "Añadir", "Sincronizar"],
+      backupSections: ["Crear", "Editar", "Restaurar"],
+      backupButtons: ["Descargar", "Ninguno", "Todos", "Iniciar", "Elegir archivo"],
+      wifiButtons: ["Añadir", "Sincronizar"],
+    },
+  ] as const;
+
+  for (const item of cases) {
+    setToolsCardLanguage(item.locale);
+    assert.deepEqual(
+      [TOOLS_CARD_STRINGS.tabs.cache, TOOLS_CARD_STRINGS.tabs.wifiCommands, TOOLS_CARD_STRINGS.tabs.backup],
+      item.tabs,
+      `${item.locale} primary tabs`,
+    );
+    assert.deepEqual(
+      [
+        TOOLS_CARD_STRINGS.cache.enablePersistentCache,
+        TOOLS_CARD_STRINGS.cache.refreshList,
+        TOOLS_CARD_STRINGS.cache.refreshAll,
+        TOOLS_CARD_STRINGS.cache.changeOrder,
+        TOOLS_CARD_STRINGS.cache.addActivity,
+        TOOLS_CARD_STRINGS.cache.reorderSync,
+      ],
+      item.cache,
+      `${item.locale} Hub actions`,
+    );
+    assert.deepEqual(
+      [
+        TOOLS_CARD_STRINGS.backup.sectionMake,
+        TOOLS_CARD_STRINGS.backup.sectionEdit,
+        TOOLS_CARD_STRINGS.backup.sectionRestore,
+      ],
+      item.backupSections,
+      `${item.locale} Backup sections`,
+    );
+    assert.deepEqual(
+      [
+        TOOLS_CARD_STRINGS.backup.downloadBackup,
+        TOOLS_CARD_STRINGS.backup.deselectAll,
+        TOOLS_CARD_STRINGS.backup.selectAll,
+        TOOLS_CARD_STRINGS.backup.startBackup,
+        TOOLS_CARD_STRINGS.backup.chooseBackupFile,
+      ],
+      item.backupButtons,
+      `${item.locale} Backup actions`,
+    );
+    assert.deepEqual(
+      [
+        TOOLS_CARD_STRINGS.wifiCommands.addDeviceButton,
+        TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
+      ],
+      item.wifiButtons,
+      `${item.locale} Automation actions`,
+    );
+  }
+
+  setToolsCardLanguage("en");
+});
+
 test("control-panel count copy uses real singular and plural forms", () => {
   const cases = [
     {
       locale: "en",
       expected: [
-        "0 favorites / 1 macro / 2 buttons",
-        "1 command",
-        "2 commands",
+        "0 favs / 1 macro / 2 buttons",
+        "1 cmd",
+        "2 cmds",
         "1 favorite · 2 macros",
         "1 linked device",
         "1 of 1 button mapped",
@@ -137,9 +253,9 @@ test("control-panel count copy uses real singular and plural forms", () => {
     {
       locale: "en-GB",
       expected: [
-        "0 favourites / 1 macro / 2 buttons",
-        "1 command",
-        "2 commands",
+        "0 favs / 1 macro / 2 buttons",
+        "1 cmd",
+        "2 cmds",
         "1 favourite · 2 macros",
         "1 linked device",
         "1 of 1 button mapped",
@@ -153,9 +269,9 @@ test("control-panel count copy uses real singular and plural forms", () => {
     {
       locale: "nl",
       expected: [
-        "0 favorieten / 1 macro / 2 knoppen",
-        "1 commando",
-        "2 commando's",
+        "0 fav. / 1 macro / 2 knoppen",
+        "1 cmd",
+        "2 cmd",
         "1 favoriet · 2 macro's",
         "1 gekoppeld apparaat",
         "1 van 1 knop gekoppeld",
@@ -169,9 +285,9 @@ test("control-panel count copy uses real singular and plural forms", () => {
     {
       locale: "de",
       expected: [
-        "0 Favoriten / 1 Makro / 2 Tasten",
-        "1 Befehl",
-        "2 Befehle",
+        "0 Fav. / 1 Makro / 2 Tasten",
+        "1 Bef.",
+        "2 Bef.",
         "1 Favorit · 2 Makros",
         "1 verknüpftes Gerät",
         "1 von 1 Taste belegt",
@@ -185,9 +301,9 @@ test("control-panel count copy uses real singular and plural forms", () => {
     {
       locale: "fr",
       expected: [
-        "0 favoris / 1 macro / 2 touches",
-        "1 commande",
-        "2 commandes",
+        "0 fav. / 1 macro / 2 touches",
+        "1 cmd",
+        "2 cmd",
         "1 favori · 2 macros",
         "1 appareil lié",
         "1 touche attribuée sur 1",
@@ -201,9 +317,9 @@ test("control-panel count copy uses real singular and plural forms", () => {
     {
       locale: "es",
       expected: [
-        "0 favoritos / 1 macro / 2 botones",
-        "1 comando",
-        "2 comandos",
+        "0 fav. / 1 macro / 2 botones",
+        "1 cmd",
+        "2 cmd",
         "1 favorito · 2 macros",
         "1 dispositivo vinculado",
         "1 de 1 botón asignado",
