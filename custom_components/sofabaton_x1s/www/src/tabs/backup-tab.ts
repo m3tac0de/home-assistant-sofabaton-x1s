@@ -145,8 +145,12 @@ class SofabatonBackupTab extends LitElement {
   // decoded payload, IP, etc.) and on session restore (those ARE
   // unsaved edits). Flipped off by `_downloadEditedBundle` and by
   // any path that loads a fresh bundle from file. Drives the
-  // "Unsaved" indicators in the Edit overview and detail header.
+  // "Unsaved" indicators in the Edit overview and detail header, and the
+  // host card's bottom-dock dirty banner.
   private _editBundleDirty = false;
+  // Last dirty value announced to the host via `editor-dirty-changed`, so
+  // the event only fires on transitions.
+  private _dirtyDockNotified = false;
   // Hub rename dialog (edit overview) — the entity-level rename
   // machinery moved into the detail element with everything else.
   private _hubRenameOpen = false;
@@ -219,6 +223,32 @@ class SofabatonBackupTab extends LitElement {
     ) {
       this._persistEditSession();
     }
+    this._notifyDirtyDock();
+  }
+
+  // Tell the host card whether the loaded edit draft holds changes that only
+  // a download will persist, so its bottom dock can show the dirty banner —
+  // the same signal the live activity/device editor and the Wifi Commands
+  // device editor raise for their pending syncs. Mirrors the render() gating:
+  // guard states and the Make / Restore sections never count as "in the
+  // editor" (the draft survives a section switch, so nagging there would
+  // point at a screen with no Download button).
+  private _notifyDirtyDock() {
+    const inEditor = this.selectedSection === "edit"
+      && !this.loading
+      && !this.error
+      && !!this.hub
+      && !!this.hass
+      && !(this.blockedTitle && this.blockedMessage)
+      && !!this._editBundle;
+    const dirty = inEditor && this._editBundleDirty;
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty, kind: "download" },
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   private _editSessionStorageKey(): string | null {
@@ -619,14 +649,6 @@ class SofabatonBackupTab extends LitElement {
               : html`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesInFile}</div>`}
           </div>
         </div>
-        ${this._editBundleDirty
-          ? html`
-              <div class="edit-unsaved-banner" role="status">
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${TOOLS_CARD_STRINGS.backup.unsavedChanges}<strong>${TOOLS_CARD_STRINGS.backup.downloadEditedBackupStrong}</strong>${TOOLS_CARD_STRINGS.backup.unsavedChangesSuffix}</span>
-              </div>
-            `
-          : nothing}
         <div class="restore-action-row">
           <button
             class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"

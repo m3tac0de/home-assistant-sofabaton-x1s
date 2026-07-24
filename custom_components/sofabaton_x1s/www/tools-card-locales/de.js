@@ -41,7 +41,10 @@ var TOOLS_CARD_STRINGS_DE = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatisierung", backup: "Backup", settings: "Einstellungen", logs: "Protokolle" },
   tabDocs: { wifi_commands: "Dokumentation zur Automatisierung", backup: "Backup-Dokumentation" },
-  dock: { unsyncedChanges: "Nicht synchronisierte \xC4nderungen \u2014 mit dem Hub synchronisieren, um sie anzuwenden" },
+  dock: {
+    unsyncedChanges: "Nicht synchronisierte \xC4nderungen \u2014 mit dem Hub synchronisieren, um sie anzuwenden",
+    unsavedBackupChanges: "Nicht gespeicherte \xC4nderungen \u2014 bearbeitetes Backup herunterladen"
+  },
   backend: {
     unavailableTitle: "Backend nicht verf\xFCgbar",
     unavailableCopy: "Warten auf den Start der Sofabaton-X-Integration...",
@@ -368,9 +371,6 @@ var TOOLS_CARD_STRINGS_DE = {
     noActivitiesInFile: "Diese Backup-Datei enth\xE4lt keine Aktivit\xE4ten.",
     devices: "Ger\xE4te",
     noDevicesInFile: "Diese Backup-Datei enth\xE4lt keine Ger\xE4te.",
-    unsavedChanges: "Nicht gespeicherte \xC4nderungen. Klicke auf ",
-    downloadEditedBackupStrong: "Bearbeitetes Backup herunterladen",
-    unsavedChangesSuffix: ", um sie in einer Datei zu speichern.",
     downloadEditedBackup: "Herunterladen",
     deleteActivityTitle: (name) => `Aktivit\xE4t "${name}" l\xF6schen?`,
     deleteDeviceTitle: (name) => `Ger\xE4t "${name}" l\xF6schen?`,

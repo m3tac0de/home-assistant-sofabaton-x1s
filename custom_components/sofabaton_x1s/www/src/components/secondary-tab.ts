@@ -198,7 +198,7 @@ export const secondaryTabStyles = css`
   .secondary-tab-panel--connected .secondary-panel-body {
     padding-top: 16px;
   }
-  @media (max-width: 640px) {
+  @container sofabaton-card (max-width: 480px) {
     .secondary-tab-row {
       min-height: 34px;
       margin-top: 7px;
@@ -214,6 +214,12 @@ export const secondaryTabStyles = css`
       min-height: 34px;
       gap: 4px;
       padding: 0 8px;
+    }
+    /* Narrow cards give the label every pixel — the icons are decorative
+       here, and dropping them keeps longer translated labels off the
+       ellipsis. */
+    .secondary-tab-btn-icon {
+      display: none;
     }
     .secondary-tab-btn-label {
       font-size: 12px;

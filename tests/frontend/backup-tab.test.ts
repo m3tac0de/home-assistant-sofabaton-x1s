@@ -875,3 +875,68 @@ test("activity role labels resolve from the active locale at render time", () =>
     setToolsCardLanguage("en");
   }
 });
+
+test("backup edit announces its dirty state to the host dock", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
+  const events: Array<{ dirty: boolean; kind?: string }> = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    const detail = (event as CustomEvent<{ dirty: boolean; kind?: string }>).detail;
+    events.push({ dirty: Boolean(detail.dirty), kind: detail.kind });
+  });
+  element.hub = { entry_id: "hub-1" };
+  element.hass = createHass({ operations: [] } as unknown as BackupOperationStateResponse);
+  element.selectedSection = "edit";
+  element._editBundle = { hub: { name: "Living room" }, activities: [], devices: [] };
+
+  // A file loaded but not edited is clean.
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+
+  // First edit → dirty, tagged as a download (not a hub sync).
+  element._editBundleDirty = true;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [{ dirty: true, kind: "download" }]);
+
+  // No re-dispatch without a transition.
+  element._notifyDirtyDock();
+  assert.equal(events.length, 1);
+
+  // The draft survives a section switch, but the dock only nags on Edit.
+  element.selectedSection = "make";
+  element._notifyDirtyDock();
+  assert.deepEqual(events[1], { dirty: false, kind: "download" });
+
+  element.selectedSection = "edit";
+  element._notifyDirtyDock();
+  assert.deepEqual(events[2], { dirty: true, kind: "download" });
+
+  // Downloading the edited bundle clears it.
+  element._editBundleDirty = false;
+  element._notifyDirtyDock();
+  assert.deepEqual(events[3], { dirty: false, kind: "download" });
+  assert.equal(events.length, 4);
+});
+
+test("backup edit does not announce dirty from guard states", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
+  const events: boolean[] = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean((event as CustomEvent<{ dirty: boolean }>).detail.dirty));
+  });
+  element.hub = { entry_id: "hub-1" };
+  element.hass = createHass({ operations: [] } as unknown as BackupOperationStateResponse);
+  element.selectedSection = "edit";
+  element._editBundle = { hub: { name: "Living room" }, activities: [], devices: [] };
+  element._editBundleDirty = true;
+
+  element.blockedTitle = "Hub busy";
+  element.blockedMessage = "Try again later";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+
+  element.blockedTitle = null;
+  element.blockedMessage = null;
+  element.loading = true;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+});

@@ -122,7 +122,7 @@ export const backupTabStyles = css`
     ha-radio-group.scope-form--md ha-radio-option {
       min-width: 0;
     }
-    @media (max-width: 380px) {
+    @container sofabaton-card (max-width: 360px) {
       ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
     }
     .compat-radio-group {
@@ -162,7 +162,7 @@ export const backupTabStyles = css`
       font-weight: 600;
       line-height: 1.4;
     }
-    @media (max-width: 380px) {
+    @container sofabaton-card (max-width: 360px) {
       .compat-radio-group { grid-template-columns: 1fr; }
     }
     .compat-choice {
@@ -589,7 +589,7 @@ export const backupTabStyles = css`
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
-    @media (max-width: 640px) {
+    @container sofabaton-card (max-width: 480px) {
       .detail-section-nav-btn { gap: 0; }
       .detail-section-nav-btn ha-icon { display: none; }
     }
@@ -709,27 +709,8 @@ export const backupTabStyles = css`
       flex-direction: column;
       gap: 4px;
     }
-    .quick-access-add-btn {
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 12px;
-      border-radius: var(--backup-radius-md);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-      color: var(--primary-color);
-      font: inherit;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: border-color 120ms ease, background 120ms ease;
-    }
-    .quick-access-add-btn:hover {
-      border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 16%, transparent);
-    }
-    .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
+    /* .quick-access-add-btn lives in shared/styles/add-button-styles.ts —
+       the Wifi Commands device list uses the identical button. */
     .quick-access-head-actions {
       display: inline-flex;
       gap: 8px;
@@ -1373,10 +1354,10 @@ export const backupTabStyles = css`
 
     /* Unsaved-changes indicators.
        .edit-unsaved-chip is the compact pill used in the detail
-       sticky-header next to the title. .edit-unsaved-banner is the
-       wider notice on the overview page above the action row.
-       .primary-btn--unsaved decorates the Download button with a
-       dot when there are pending edits. */
+       sticky-header next to the title. .primary-btn--unsaved decorates
+       the Download button with a dot when there are pending edits. The
+       wider "don't forget to download" notice lives in the card's bottom
+       dock (see .card-bottom-dock--dirty), fed by editor-dirty-changed. */
     .edit-unsaved-chip {
       display: inline-flex;
       align-items: center;
@@ -1399,23 +1380,6 @@ export const backupTabStyles = css`
       border-radius: 50%;
       background: var(--warning-color, #f59e0b);
     }
-    .edit-unsaved-banner {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: var(--backup-radius-sm);
-      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
-      background: color-mix(in srgb, var(--warning-color, #f59e0b) 10%, transparent);
-      color: var(--primary-text-color);
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .edit-unsaved-banner ha-icon {
-      --mdc-icon-size: 18px;
-      color: var(--warning-color, #f59e0b);
-      flex: 0 0 auto;
-    }
     .primary-btn--unsaved::after {
       content: "";
       display: inline-block;
@@ -1427,7 +1391,7 @@ export const backupTabStyles = css`
       vertical-align: middle;
     }
 
-    @media (max-width: 380px) {
+    @container sofabaton-card (max-width: 360px) {
       .backup-scope-options { grid-template-columns: 1fr; }
       .backup-scope-option + .backup-scope-option {
         border-left: none;
@@ -1439,8 +1403,13 @@ export const backupTabStyles = css`
       .quick-access-actions {
         justify-content: flex-end;
       }
-      .edit-field-row,
-      .restore-action-row {
+      /* .restore-action-row deliberately does NOT stack here: the action
+         button and the file picker stay side by side at every width. The
+         picker keeps its base flex: 1 1 0 and swallows the squeeze — its
+         label ellipsizes down to almost nothing, which is the intended
+         trade. Stacking instead cost a whole row and collapsed the picker's
+         height (basis 0 in the block axis + its own overflow clipping). */
+      .edit-field-row {
         align-items: stretch;
         flex-direction: column;
       }
@@ -1459,10 +1428,6 @@ export const backupTabStyles = css`
         flex-basis: auto;
         min-width: max-content;
         padding-inline: 12px;
-      }
-      .restore-action-row > .primary-btn,
-      .restore-action-row > .secondary-btn {
-        width: 100%;
       }
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog.small {

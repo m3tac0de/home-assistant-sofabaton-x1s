@@ -61,6 +61,7 @@ export const TOOLS_CARD_STRINGS_EN = {
   } satisfies Partial<Record<TabId, string>>,
   dock: {
     unsyncedChanges: "Unsynced changes — sync to the hub to apply them",
+    unsavedBackupChanges: "Unsaved changes — download the edited backup",
   },
   backend: {
     unavailableTitle: "Backend not available",
@@ -455,9 +456,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     noActivitiesInFile: "This backup file has no activities.",
     devices: "Devices",
     noDevicesInFile: "This backup file has no devices.",
-    unsavedChanges: "Unsaved changes. Click ",
-    downloadEditedBackupStrong: "Download edited backup",
-    unsavedChangesSuffix: " to save them to a file.",
     downloadEditedBackup: "Download edited backup",
     deleteActivityTitle: (name: string) => `Delete activity "${name}"?`,
     deleteDeviceTitle: (name: string) => `Delete device "${name}"?`,

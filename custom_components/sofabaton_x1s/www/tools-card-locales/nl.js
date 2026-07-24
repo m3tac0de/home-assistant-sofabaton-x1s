@@ -44,7 +44,10 @@ var TOOLS_CARD_STRINGS_NL = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatisering", backup: "Back-up", settings: "Instellingen", logs: "Logboeken" },
   tabDocs: { wifi_commands: "Documentatie over automatisering", backup: "Documentatie over back-ups" },
-  dock: { unsyncedChanges: "Niet-gesynchroniseerde wijzigingen \u2014 synchroniseer met de hub om ze toe te passen" },
+  dock: {
+    unsyncedChanges: "Niet-gesynchroniseerde wijzigingen \u2014 synchroniseer met de hub om ze toe te passen",
+    unsavedBackupChanges: "Niet-opgeslagen wijzigingen \u2014 download de bewerkte back-up"
+  },
   backend: {
     unavailableTitle: "Backend niet beschikbaar",
     unavailableCopy: "Wachten tot de Sofabaton X-integratie is opgestart...",
@@ -371,9 +374,6 @@ var TOOLS_CARD_STRINGS_NL = {
     noActivitiesInFile: "Dit back-upbestand bevat geen activiteiten.",
     devices: "Apparaten",
     noDevicesInFile: "Dit back-upbestand bevat geen apparaten.",
-    unsavedChanges: "Niet-opgeslagen wijzigingen. Klik op ",
-    downloadEditedBackupStrong: "Bewerkte back-up downloaden",
-    unsavedChangesSuffix: " om ze in een bestand op te slaan.",
     downloadEditedBackup: "Downloaden",
     deleteActivityTitle: (name) => `Activiteit "${name}" verwijderen?`,
     deleteDeviceTitle: (name) => `Apparaat "${name}" verwijderen?`,

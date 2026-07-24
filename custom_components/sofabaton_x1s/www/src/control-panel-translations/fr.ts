@@ -28,7 +28,10 @@ export const TOOLS_CARD_STRINGS_FR = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatisation", backup: "Sauvegarde", settings: "Paramètres", logs: "Journaux" },
   tabDocs: { wifi_commands: "Documentation de l’automatisation", backup: "Documentation des sauvegardes" },
-  dock: { unsyncedChanges: "Modifications non synchronisées — synchronisez-les avec le hub pour les appliquer" },
+  dock: {
+    unsyncedChanges: "Modifications non synchronisées — synchronisez-les avec le hub pour les appliquer",
+    unsavedBackupChanges: "Modifications non enregistrées — téléchargez la sauvegarde modifiée",
+  },
   backend: {
     unavailableTitle: "Backend indisponible", unavailableCopy: "En attente du démarrage de l’intégration Sofabaton X...",
     versionMismatchTitle: "Actualisation requise pour mettre à jour le panneau de contrôle Sofabaton",
@@ -158,8 +161,8 @@ export const TOOLS_CARD_STRINGS_FR = {
     editLoadPrompt: "Chargez un fichier de sauvegarde, puis choisissez une activité ou un appareil à modifier.", chooseBackupFile: "Choisir un fichier", reorderHint: " Faites glisser la poignée d’une ligne pour réorganiser les activités et les appareils.",
     macroStepsSortableHelp: "Faites glisser pour réorganiser. Chaque étape lit une commande ; réglez à droite l’attente qui la suit.", macroStepsHelp: "Chaque étape lit une commande ; réglez à droite l’attente qui la suit.",
     hubName: "Nom du hub", hubNameNotSet: "(non défini)", renameHub: "Renommer le hub", activities: "Activités", noActivitiesInFile: "Ce fichier de sauvegarde ne contient aucune activité.",
-    devices: "Appareils", noDevicesInFile: "Ce fichier de sauvegarde ne contient aucun appareil.", unsavedChanges: "Modifications non enregistrées. Cliquez sur ", downloadEditedBackupStrong: "Télécharger la sauvegarde modifiée",
-    unsavedChangesSuffix: " pour les enregistrer dans un fichier.", downloadEditedBackup: "Télécharger", deleteActivityTitle: (name: string) => `Supprimer l’activité « ${name} » ?`,
+    devices: "Appareils", noDevicesInFile: "Ce fichier de sauvegarde ne contient aucun appareil.",
+    downloadEditedBackup: "Télécharger", deleteActivityTitle: (name: string) => `Supprimer l’activité « ${name} » ?`,
     deleteDeviceTitle: (name: string) => `Supprimer l’appareil « ${name} » ?`, deleteCommandTitle: (name: string) => `Supprimer la commande « ${name} » ?`, deleteFavoriteTitle: (name: string) => `Supprimer le raccourci « ${name} » ?`,
     deleteMacroTitle: (name: string) => `Supprimer la macro « ${name} » ?`, deleteCascadeIntro: "Cette suppression efface également les références présentes ailleurs dans la sauvegarde :", deleteSimpleBody: "Cet élément sera supprimé de la sauvegarde chargée.",
     deleteImpactActivities: (count: number) => `${count} ${count === 1 ? "activité y fait" : "activités y font"} référence`, deleteImpactFavorites: (count: number) => `${count} ${count === 1 ? "raccourci sera supprimé" : "raccourcis seront supprimés"}`,

@@ -40,7 +40,10 @@ var TOOLS_CARD_STRINGS_ES = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatizaci\xF3n", backup: "Backup", settings: "Ajustes", logs: "Registros" },
   tabDocs: { wifi_commands: "Documentaci\xF3n de automatizaci\xF3n", backup: "Documentaci\xF3n de copias de seguridad" },
-  dock: { unsyncedChanges: "Cambios sin sincronizar \u2014 sincron\xEDzalos con el hub para aplicarlos" },
+  dock: {
+    unsyncedChanges: "Cambios sin sincronizar \u2014 sincron\xEDzalos con el hub para aplicarlos",
+    unsavedBackupChanges: "Cambios sin guardar \u2014 descarga la copia de seguridad editada"
+  },
   backend: {
     unavailableTitle: "Backend no disponible",
     unavailableCopy: "Esperando a que termine de iniciarse la integraci\xF3n Sofabaton X...",
@@ -367,9 +370,6 @@ var TOOLS_CARD_STRINGS_ES = {
     noActivitiesInFile: "Este archivo de copia de seguridad no contiene actividades.",
     devices: "Dispositivos",
     noDevicesInFile: "Este archivo de copia de seguridad no contiene dispositivos.",
-    unsavedChanges: "Cambios sin guardar. Haz clic en ",
-    downloadEditedBackupStrong: "Descargar copia de seguridad editada",
-    unsavedChangesSuffix: " para guardarlos en un archivo.",
     downloadEditedBackup: "Descargar",
     deleteActivityTitle: (name) => `\xBFEliminar la actividad \xAB${name}\xBB?`,
     deleteDeviceTitle: (name) => `\xBFEliminar el dispositivo \xAB${name}\xBB?`,

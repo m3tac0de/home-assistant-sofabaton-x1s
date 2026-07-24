@@ -25,7 +25,10 @@ export const TOOLS_CARD_STRINGS_ES = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatización", backup: "Backup", settings: "Ajustes", logs: "Registros" },
   tabDocs: { wifi_commands: "Documentación de automatización", backup: "Documentación de copias de seguridad" },
-  dock: { unsyncedChanges: "Cambios sin sincronizar — sincronízalos con el hub para aplicarlos" },
+  dock: {
+    unsyncedChanges: "Cambios sin sincronizar — sincronízalos con el hub para aplicarlos",
+    unsavedBackupChanges: "Cambios sin guardar — descarga la copia de seguridad editada",
+  },
   backend: {
     unavailableTitle: "Backend no disponible", unavailableCopy: "Esperando a que termine de iniciarse la integración Sofabaton X...",
     versionMismatchTitle: "Es necesario actualizar el panel de control Sofabaton",
@@ -152,8 +155,8 @@ export const TOOLS_CARD_STRINGS_ES = {
     editLoadPrompt: "Carga un archivo de copia de seguridad y elige una actividad o un dispositivo para editarlo.", chooseBackupFile: "Elegir archivo", reorderHint: " Arrastra el controlador de una fila para reordenar actividades y dispositivos.",
     macroStepsSortableHelp: "Arrastra para reordenar. Cada paso reproduce un comando; configura a la derecha la espera que le sigue.", macroStepsHelp: "Cada paso reproduce un comando; configura a la derecha la espera que le sigue.",
     hubName: "Nombre del hub", hubNameNotSet: "(sin definir)", renameHub: "Cambiar nombre del hub", activities: "Actividades", noActivitiesInFile: "Este archivo de copia de seguridad no contiene actividades.",
-    devices: "Dispositivos", noDevicesInFile: "Este archivo de copia de seguridad no contiene dispositivos.", unsavedChanges: "Cambios sin guardar. Haz clic en ", downloadEditedBackupStrong: "Descargar copia de seguridad editada",
-    unsavedChangesSuffix: " para guardarlos en un archivo.", downloadEditedBackup: "Descargar", deleteActivityTitle: (name: string) => `¿Eliminar la actividad «${name}»?`, deleteDeviceTitle: (name: string) => `¿Eliminar el dispositivo «${name}»?`,
+    devices: "Dispositivos", noDevicesInFile: "Este archivo de copia de seguridad no contiene dispositivos.",
+    downloadEditedBackup: "Descargar", deleteActivityTitle: (name: string) => `¿Eliminar la actividad «${name}»?`, deleteDeviceTitle: (name: string) => `¿Eliminar el dispositivo «${name}»?`,
     deleteCommandTitle: (name: string) => `¿Eliminar el comando «${name}»?`, deleteFavoriteTitle: (name: string) => `¿Eliminar el acceso directo «${name}»?`, deleteMacroTitle: (name: string) => `¿Eliminar la macro «${name}»?`,
     deleteCascadeIntro: "Al eliminarlo también se borran sus referencias en otras partes de la copia de seguridad:", deleteSimpleBody: "Esto lo elimina de la copia de seguridad cargada.",
     deleteImpactActivities: (count: number) => `${count} ${count === 1 ? "actividad hace" : "actividades hacen"} referencia a él`, deleteImpactFavorites: (count: number) => `Se ${count === 1 ? "eliminará" : "eliminarán"} ${count} ${count === 1 ? "acceso directo" : "accesos directos"}`,

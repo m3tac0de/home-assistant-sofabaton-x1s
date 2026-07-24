@@ -2,7 +2,21 @@ import { css } from "lit";
 import { secondaryTabStyles } from "../../components/secondary-tab";
 
 export const cardStyles = [secondaryTabStyles, css`
-  :host { display: block; }
+  /* The card is a query container, so every responsive rule below (and in
+     the tab elements' own stylesheets, which reach this container across
+     their shadow boundaries) reacts to how wide the CARD is rather than how
+     wide the window is. In a HA dashboard the two rarely agree: a sections
+     column or a narrow masonry column can be 320px on a 2560px screen.
+     inline-size containment leaves block size content-driven and — unlike
+     contain: layout — does not make the host a containing block, so the
+     position: fixed dialogs still cover the viewport.
+     Named on purpose: if some future host renders these elements outside the
+     card, the queries simply never match and the roomy layout is used. */
+  :host {
+    display: block;
+    container-name: sofabaton-card;
+    container-type: inline-size;
+  }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
   .card-topbar {
@@ -69,9 +83,10 @@ export const cardStyles = [secondaryTabStyles, css`
         color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)))
       );
   }
-  /* Editor dirty state — an open editor (live activity/device editor or a
-     Wifi Commands device editor) holds changes that only a sync will
-     persist to the hub. Deliberately louder than the success/error tones:
+  /* Editor dirty state — an open editor (live activity/device editor, a
+     Wifi Commands device editor, or a backup edit draft) holds changes that
+     only a sync (or, for a backup draft, a download) will persist.
+     Deliberately louder than the success/error tones:
      a warning-tinted band that flares bright once as it appears (same
      720ms motion language as the dock wipe), then settles and holds
      steady — no continuous flashing. */
@@ -579,12 +594,19 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-stat-value { font-size: 17px; font-weight: 800; color: var(--primary-text-color); line-height: 1; }
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
-  @media (max-width: 640px) {
-    .tabs { padding-inline: 8px; }
-    .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
+  @container sofabaton-card (max-width: 480px) {
+    /* Pull the primary tabs together: the longer translated labels
+       (Automatisierung, Automatisering, Sauvegarde) need the room more
+       than the gutters do. */
+    .tabs { padding-inline: 4px; gap: 0; }
+    .tabs-scroll { gap: 0; overflow-x: auto; scrollbar-width: none; }
     .tabs-scroll::-webkit-scrollbar { display: none; }
-    .tab-btn { padding-inline: 10px; }
-    .tab-btn--menu { gap: 2px; padding-inline: 8px; }
+    .tab-btn { padding-inline: 6px; }
+    .tab-btn--menu { gap: 2px; padding-inline: 6px; }
+    /* The Activities / Devices rows are tight enough on a phone that the
+       "DevID:" prefix costs more than it explains — keep the number. */
+    .entity-meta .id-badge { min-width: 0; justify-content: center; }
+    .entity-meta .id-badge span:first-child { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
     .hub-connection-node { width: 42px; height: 42px; border-radius: 14px; }
     .hub-hero-icon { width: 25px; height: 25px; }

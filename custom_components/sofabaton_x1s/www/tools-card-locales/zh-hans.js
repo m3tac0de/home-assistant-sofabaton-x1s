@@ -41,7 +41,10 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
   },
   tabs: { cache: "Hub", wifiCommands: "\u81EA\u52A8\u5316", backup: "\u5907\u4EFD", settings: "\u8BBE\u7F6E", logs: "\u65E5\u5FD7" },
   tabDocs: { wifi_commands: "\u81EA\u52A8\u5316\u6587\u6863", backup: "\u5907\u4EFD\u6587\u6863" },
-  dock: { unsyncedChanges: "\u66F4\u6539\u5C1A\u672A\u540C\u6B65 \u2014 \u8BF7\u540C\u6B65\u5230 Hub \u4EE5\u5E94\u7528" },
+  dock: {
+    unsyncedChanges: "\u66F4\u6539\u5C1A\u672A\u540C\u6B65 \u2014 \u8BF7\u540C\u6B65\u5230 Hub \u4EE5\u5E94\u7528",
+    unsavedBackupChanges: "\u66F4\u6539\u5C1A\u672A\u4FDD\u5B58 \u2014 \u8BF7\u4E0B\u8F7D\u5DF2\u7F16\u8F91\u7684\u5907\u4EFD"
+  },
   backend: {
     unavailableTitle: "\u540E\u7AEF\u4E0D\u53EF\u7528",
     unavailableCopy: "\u6B63\u5728\u7B49\u5F85 Sofabaton X \u96C6\u6210\u542F\u52A8\u2026",
@@ -368,9 +371,6 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     noActivitiesInFile: "\u6B64\u5907\u4EFD\u6587\u4EF6\u4E0D\u5305\u542B\u6D3B\u52A8\u3002",
     devices: "\u8BBE\u5907",
     noDevicesInFile: "\u6B64\u5907\u4EFD\u6587\u4EF6\u4E0D\u5305\u542B\u8BBE\u5907\u3002",
-    unsavedChanges: "\u6709\u672A\u4FDD\u5B58\u7684\u66F4\u6539\u3002\u70B9\u51FB",
-    downloadEditedBackupStrong: "\u4E0B\u8F7D\u5DF2\u7F16\u8F91\u7684\u5907\u4EFD",
-    unsavedChangesSuffix: "\u5C06\u5176\u4FDD\u5B58\u5230\u6587\u4EF6\u3002",
     downloadEditedBackup: "\u4E0B\u8F7D",
     deleteActivityTitle: (name) => `\u5220\u9664\u6D3B\u52A8\u201C${name}\u201D\uFF1F`,
     deleteDeviceTitle: (name) => `\u5220\u9664\u8BBE\u5907\u201C${name}\u201D\uFF1F`,

@@ -775,7 +775,7 @@ var secondaryTabStyles = i`
   .secondary-tab-panel--connected .secondary-panel-body {
     padding-top: 16px;
   }
-  @media (max-width: 640px) {
+  @container sofabaton-card (max-width: 480px) {
     .secondary-tab-row {
       min-height: 34px;
       margin-top: 7px;
@@ -791,6 +791,12 @@ var secondaryTabStyles = i`
       min-height: 34px;
       gap: 4px;
       padding: 0 8px;
+    }
+    /* Narrow cards give the label every pixel — the icons are decorative
+       here, and dropping them keeps longer translated labels off the
+       ellipsis. */
+    .secondary-tab-btn-icon {
+      display: none;
     }
     .secondary-tab-btn-label {
       font-size: 12px;
@@ -905,7 +911,21 @@ function renderSecondaryViewBody(params) {
 
 // custom_components/sofabaton_x1s/www/src/shared/styles/card-styles.ts
 var cardStyles = [secondaryTabStyles, i`
-  :host { display: block; }
+  /* The card is a query container, so every responsive rule below (and in
+     the tab elements' own stylesheets, which reach this container across
+     their shadow boundaries) reacts to how wide the CARD is rather than how
+     wide the window is. In a HA dashboard the two rarely agree: a sections
+     column or a narrow masonry column can be 320px on a 2560px screen.
+     inline-size containment leaves block size content-driven and — unlike
+     contain: layout — does not make the host a containing block, so the
+     position: fixed dialogs still cover the viewport.
+     Named on purpose: if some future host renders these elements outside the
+     card, the queries simply never match and the roomy layout is used. */
+  :host {
+    display: block;
+    container-name: sofabaton-card;
+    container-type: inline-size;
+  }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
   .card-topbar {
@@ -972,9 +992,10 @@ var cardStyles = [secondaryTabStyles, i`
         color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)))
       );
   }
-  /* Editor dirty state — an open editor (live activity/device editor or a
-     Wifi Commands device editor) holds changes that only a sync will
-     persist to the hub. Deliberately louder than the success/error tones:
+  /* Editor dirty state — an open editor (live activity/device editor, a
+     Wifi Commands device editor, or a backup edit draft) holds changes that
+     only a sync (or, for a backup draft, a download) will persist.
+     Deliberately louder than the success/error tones:
      a warning-tinted band that flares bright once as it appears (same
      720ms motion language as the dock wipe), then settles and holds
      steady — no continuous flashing. */
@@ -1482,12 +1503,19 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-compact-stat-value { font-size: 17px; font-weight: 800; color: var(--primary-text-color); line-height: 1; }
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
-  @media (max-width: 640px) {
-    .tabs { padding-inline: 8px; }
-    .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
+  @container sofabaton-card (max-width: 480px) {
+    /* Pull the primary tabs together: the longer translated labels
+       (Automatisierung, Automatisering, Sauvegarde) need the room more
+       than the gutters do. */
+    .tabs { padding-inline: 4px; gap: 0; }
+    .tabs-scroll { gap: 0; overflow-x: auto; scrollbar-width: none; }
     .tabs-scroll::-webkit-scrollbar { display: none; }
-    .tab-btn { padding-inline: 10px; }
-    .tab-btn--menu { gap: 2px; padding-inline: 8px; }
+    .tab-btn { padding-inline: 6px; }
+    .tab-btn--menu { gap: 2px; padding-inline: 6px; }
+    /* The Activities / Devices rows are tight enough on a phone that the
+       "DevID:" prefix costs more than it explains — keep the number. */
+    .entity-meta .id-badge { min-width: 0; justify-content: center; }
+    .entity-meta .id-badge span:first-child { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
     .hub-connection-node { width: 42px; height: 42px; border-radius: 14px; }
     .hub-hero-icon { width: 25px; height: 25px; }
@@ -1559,7 +1587,8 @@ var TOOLS_CARD_STRINGS_EN = {
     backup: "Backup documentation"
   },
   dock: {
-    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them"
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them",
+    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup"
   },
   backend: {
     unavailableTitle: "Backend not available",
@@ -1936,9 +1965,6 @@ var TOOLS_CARD_STRINGS_EN = {
     noActivitiesInFile: "This backup file has no activities.",
     devices: "Devices",
     noDevicesInFile: "This backup file has no devices.",
-    unsavedChanges: "Unsaved changes. Click ",
-    downloadEditedBackupStrong: "Download edited backup",
-    unsavedChangesSuffix: " to save them to a file.",
     downloadEditedBackup: "Download edited backup",
     deleteActivityTitle: (name) => `Delete activity "${name}"?`,
     deleteDeviceTitle: (name) => `Delete device "${name}"?`,
@@ -5308,7 +5334,7 @@ var operationProgressStyles = i`
     100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
   }
 
-  @media (max-width: 760px) {
+  @container sofabaton-card (max-width: 700px) {
     .progress-disc { width: 64px; height: 64px; }
     .progress-disc ha-icon { --mdc-icon-size: 42px; }
     .progress-disc .progress-hub-svg { width: 50px; height: 50px; }
@@ -5459,7 +5485,7 @@ var backupTabStyles = i`
     ha-radio-group.scope-form--md ha-radio-option {
       min-width: 0;
     }
-    @media (max-width: 380px) {
+    @container sofabaton-card (max-width: 360px) {
       ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
     }
     .compat-radio-group {
@@ -5499,7 +5525,7 @@ var backupTabStyles = i`
       font-weight: 600;
       line-height: 1.4;
     }
-    @media (max-width: 380px) {
+    @container sofabaton-card (max-width: 360px) {
       .compat-radio-group { grid-template-columns: 1fr; }
     }
     .compat-choice {
@@ -5926,7 +5952,7 @@ var backupTabStyles = i`
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
-    @media (max-width: 640px) {
+    @container sofabaton-card (max-width: 480px) {
       .detail-section-nav-btn { gap: 0; }
       .detail-section-nav-btn ha-icon { display: none; }
     }
@@ -6046,27 +6072,8 @@ var backupTabStyles = i`
       flex-direction: column;
       gap: 4px;
     }
-    .quick-access-add-btn {
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 12px;
-      border-radius: var(--backup-radius-md);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-      color: var(--primary-color);
-      font: inherit;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: border-color 120ms ease, background 120ms ease;
-    }
-    .quick-access-add-btn:hover {
-      border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 16%, transparent);
-    }
-    .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
+    /* .quick-access-add-btn lives in shared/styles/add-button-styles.ts —
+       the Wifi Commands device list uses the identical button. */
     .quick-access-head-actions {
       display: inline-flex;
       gap: 8px;
@@ -6710,10 +6717,10 @@ var backupTabStyles = i`
 
     /* Unsaved-changes indicators.
        .edit-unsaved-chip is the compact pill used in the detail
-       sticky-header next to the title. .edit-unsaved-banner is the
-       wider notice on the overview page above the action row.
-       .primary-btn--unsaved decorates the Download button with a
-       dot when there are pending edits. */
+       sticky-header next to the title. .primary-btn--unsaved decorates
+       the Download button with a dot when there are pending edits. The
+       wider "don't forget to download" notice lives in the card's bottom
+       dock (see .card-bottom-dock--dirty), fed by editor-dirty-changed. */
     .edit-unsaved-chip {
       display: inline-flex;
       align-items: center;
@@ -6736,23 +6743,6 @@ var backupTabStyles = i`
       border-radius: 50%;
       background: var(--warning-color, #f59e0b);
     }
-    .edit-unsaved-banner {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: var(--backup-radius-sm);
-      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
-      background: color-mix(in srgb, var(--warning-color, #f59e0b) 10%, transparent);
-      color: var(--primary-text-color);
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .edit-unsaved-banner ha-icon {
-      --mdc-icon-size: 18px;
-      color: var(--warning-color, #f59e0b);
-      flex: 0 0 auto;
-    }
     .primary-btn--unsaved::after {
       content: "";
       display: inline-block;
@@ -6764,7 +6754,7 @@ var backupTabStyles = i`
       vertical-align: middle;
     }
 
-    @media (max-width: 380px) {
+    @container sofabaton-card (max-width: 360px) {
       .backup-scope-options { grid-template-columns: 1fr; }
       .backup-scope-option + .backup-scope-option {
         border-left: none;
@@ -6776,8 +6766,13 @@ var backupTabStyles = i`
       .quick-access-actions {
         justify-content: flex-end;
       }
-      .edit-field-row,
-      .restore-action-row {
+      /* .restore-action-row deliberately does NOT stack here: the action
+         button and the file picker stay side by side at every width. The
+         picker keeps its base flex: 1 1 0 and swallows the squeeze — its
+         label ellipsizes down to almost nothing, which is the intended
+         trade. Stacking instead cost a whole row and collapsed the picker's
+         height (basis 0 in the block axis + its own overflow clipping). */
+      .edit-field-row {
         align-items: stretch;
         flex-direction: column;
       }
@@ -6796,10 +6791,6 @@ var backupTabStyles = i`
         flex-basis: auto;
         min-width: max-content;
         padding-inline: 12px;
-      }
-      .restore-action-row > .primary-btn,
-      .restore-action-row > .secondary-btn {
-        width: 100%;
       }
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog.small {
@@ -7085,6 +7076,32 @@ var activityEditorStyles = i`
     cursor: default;
     opacity: 0.7;
   }
+`;
+
+// custom_components/sofabaton_x1s/www/src/shared/styles/add-button-styles.ts
+var addButtonStyles = i`
+  .quick-access-add-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: var(--ha-card-border-radius, 12px);
+    border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+    background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    color: var(--primary-color);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .quick-access-add-btn:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+  }
+  .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
+  .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
 `;
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
@@ -12543,7 +12560,7 @@ SofabatonEditDetailView.properties = {
 // The whole backup-tab stylesheet ships to both shadow roots (see
 // backup-tab-styles.ts); the :host rule it carries gives this element
 // the same flex-fill layout the tab-panel had inside backup-tab.
-SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, i`
+SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButtonStyles, i`
     :host {
       flex-direction: column;
     }
@@ -12701,8 +12718,12 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     // decoded payload, IP, etc.) and on session restore (those ARE
     // unsaved edits). Flipped off by `_downloadEditedBundle` and by
     // any path that loads a fresh bundle from file. Drives the
-    // "Unsaved" indicators in the Edit overview and detail header.
+    // "Unsaved" indicators in the Edit overview and detail header, and the
+    // host card's bottom-dock dirty banner.
     this._editBundleDirty = false;
+    // Last dirty value announced to the host via `editor-dirty-changed`, so
+    // the event only fires on transitions.
+    this._dirtyDockNotified = false;
     // Hub rename dialog (edit overview) — the entity-level rename
     // machinery moved into the detail element with everything else.
     this._hubRenameOpen = false;
@@ -12890,6 +12911,25 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     if (changed.has("_editBundle") || changed.has("_editFilename") || changed.has("_editDetailKind") || changed.has("_editDetailId") || changed.has("_editBundleDirty")) {
       this._persistEditSession();
     }
+    this._notifyDirtyDock();
+  }
+  // Tell the host card whether the loaded edit draft holds changes that only
+  // a download will persist, so its bottom dock can show the dirty banner —
+  // the same signal the live activity/device editor and the Wifi Commands
+  // device editor raise for their pending syncs. Mirrors the render() gating:
+  // guard states and the Make / Restore sections never count as "in the
+  // editor" (the draft survives a section switch, so nagging there would
+  // point at a screen with no Download button).
+  _notifyDirtyDock() {
+    const inEditor = this.selectedSection === "edit" && !this.loading && !this.error && !!this.hub && !!this.hass && !(this.blockedTitle && this.blockedMessage) && !!this._editBundle;
+    const dirty = inEditor && this._editBundleDirty;
+    if (dirty === this._dirtyDockNotified) return;
+    this._dirtyDockNotified = dirty;
+    this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
+      detail: { dirty, kind: "download" },
+      bubbles: true,
+      composed: true
+    }));
   }
   _editSessionStorageKey() {
     const entryId = this.hub?.entry_id;
@@ -13219,12 +13259,6 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
                 ` : b2`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesInFile}</div>`}
           </div>
         </div>
-        ${this._editBundleDirty ? b2`
-              <div class="edit-unsaved-banner" role="status">
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${TOOLS_CARD_STRINGS.backup.unsavedChanges}<strong>${TOOLS_CARD_STRINGS.backup.downloadEditedBackupStrong}</strong>${TOOLS_CARD_STRINGS.backup.unsavedChangesSuffix}</span>
-              </div>
-            ` : A}
         <div class="restore-action-row">
           <button
             class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"
@@ -14463,8 +14497,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.sectionSubtitle}</div>
           </div>
           <div class="list-header-action">
-            <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
-              ${TOOLS_CARD_STRINGS.wifiCommands.addDeviceButton}
+            <button class="quick-access-add-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
+              <ha-icon icon="mdi:plus"></ha-icon>
+              <span>${TOOLS_CARD_STRINGS.wifiCommands.addDeviceButton}</span>
             </button>
           </div>
         </div>
@@ -16567,7 +16602,7 @@ _SofabatonWifiCommandsTab.properties = {
   _hubEventSaveError: { state: true },
   lastHubEvent: { attribute: false }
 };
-_SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, i`
+_SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -16595,10 +16630,16 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
-    .list-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 16px; row-gap: 8px; }
-    .list-header-copy { min-width: 0; }
+    /* Wrapping flex rather than a two-column grid: a grid column would hold
+       its place at any width and squeeze the subtitle into a ragged sliver
+       (worst in German). The 240px basis drops the button onto its own row
+       once the copy would fall below that — driven by the card's own width,
+       so it also works in a narrow card inside a wide window, where the
+       viewport media queries below never fire. */
+    .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; }
+    .list-header-copy { flex: 1 1 240px; min-width: 0; }
     .list-header-copy .section-subtitle { margin-top: 0; }
-    .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .list-header-action { flex: 0 0 auto; margin-left: auto; align-self: flex-start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 6px; }
     .device-card { position: relative; width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
@@ -16768,7 +16809,7 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     }
     .hub-event-clear:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
     .hub-event-clear ha-icon { --mdc-icon-size: 12px; }
-    @media (max-width: 640px) {
+    @container sofabaton-card (max-width: 480px) {
       .hub-event-lines { gap: 10px; }
       /* Multi-line sentences: pin the icon to the first text line so the
          wrapped text hangs cleanly next to it, and give the inline action
@@ -17050,15 +17091,19 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       --ha-input-padding-top: 0;
       --ha-input-padding-bottom: 0;
     }
+    /* The dialogs are position: fixed over the whole window, so they stay on
+       a viewport media query — a wide screen should get the centered
+       floating dialog even when the card itself is narrow. */
     @media (max-width: 640px) {
-      .command-grid { grid-template-columns: 1fr; }
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 var(--tools-radius-lg) var(--tools-radius-lg); }
       .dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
-      .list-header { grid-template-columns: 1fr; }
-      .list-header-action { grid-column: 1; grid-row: auto; width: 100%; }
-      .list-header-action > .detail-sync-btn,
-      .list-header-action > .list-action-btn { width: 100%; justify-content: center; }
+    }
+    @container sofabaton-card (max-width: 480px) {
+      .command-grid { grid-template-columns: 1fr; }
+      /* .list-header wraps on its own (see above) — no narrow-card override,
+         and no full-width stretch: the Add button stays the same pill it is
+         in the entity editor. */
       .detail-title-row { gap: 8px; }
       .detail-title-main { min-width: 0; flex: 1; }
       .detail-title-actions { gap: 6px; min-width: max-content; }
@@ -18083,6 +18128,9 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
     .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
     .review-empty { font-size: 14px; color: var(--secondary-text-color); }
+    /* Viewport, not container: these dialogs are position: fixed over the
+       whole window, so a narrow card on a wide screen should still get the
+       centered floating dialog rather than the full-bleed phone sheet. */
     @media (max-width: 640px) {
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog--small { width: 100%; max-height: 100%; border-radius: 0; }
@@ -18218,13 +18266,16 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     // Entity currently open in the live editor (wrench buttons in the Hub
     // tab); while set, the Hub tab renders the editor instead of the cache.
     this._editingEntity = null;
-    // True while an open editor (live activity/device editor or a Wifi
-    // Commands device editor) holds changes that only a sync will persist to
-    // the hub. Driven by `editor-dirty-changed` events from the tab elements;
-    // cleared here on the paths where the emitting element unmounts without
-    // getting a chance to send its own dirty=false (tab switch, editor exit,
-    // hub switch while the live editor is open).
+    // True while an open editor (live activity/device editor, a Wifi Commands
+    // device editor, or a loaded backup edit draft) holds changes that are not
+    // persisted yet. Driven by `editor-dirty-changed` events from the tab
+    // elements; cleared here on the paths where the emitting element unmounts
+    // without getting a chance to send its own dirty=false (tab switch, editor
+    // exit, hub switch while the live editor is open). `_editorSyncPendingKind`
+    // picks the dock copy: hub editors need a sync, the backup editor needs a
+    // download.
     this._editorSyncPending = false;
+    this._editorSyncPendingKind = "sync";
     // Re-order mode ("Change order" under the Activities / Devices list).
     this._reorderMode = false;
     this._reorderKind = "activity";
@@ -18245,8 +18296,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     };
     this._handleEditorDirtyChanged = (event) => {
       const dirty = Boolean(event.detail?.dirty);
-      if (dirty === this._editorSyncPending) return;
+      const kind = event.detail?.kind === "download" ? "download" : "sync";
+      if (dirty === this._editorSyncPending && kind === this._editorSyncPendingKind) return;
       this._editorSyncPending = dirty;
+      this._editorSyncPendingKind = kind;
       this.requestUpdate();
     };
     this._store = new ControlPanelStore(
@@ -18587,7 +18640,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
               `
     ) : A}
         <div class="card-bottom-dock-center">
-          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : editorSyncPending ? b2`<span class="card-bottom-dock-status">${TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
+          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : editorSyncPending ? b2`<span class="card-bottom-dock-status">${this._editorSyncPendingKind === "download" ? TOOLS_CARD_STRINGS.dock.unsavedBackupChanges : TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
         </div>
         <div class="card-bottom-dock-right">
           ${this.renderConnectivityPill(hub)}
@@ -18821,6 +18874,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .setSelectedSection=${(section) => this._store.setSelectedBackupSection(section)}
           .setHubCommandBusy=${(busy, label, entryId) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          @editor-dirty-changed=${this._handleEditorDirtyChanged}
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {

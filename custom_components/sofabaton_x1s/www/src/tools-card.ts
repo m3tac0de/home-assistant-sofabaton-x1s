@@ -194,13 +194,16 @@ class SofabatonControlPanelCard extends LitElement {
   // Entity currently open in the live editor (wrench buttons in the Hub
   // tab); while set, the Hub tab renders the editor instead of the cache.
   private _editingEntity: { kind: "activity" | "device"; id: number } | null = null;
-  // True while an open editor (live activity/device editor or a Wifi
-  // Commands device editor) holds changes that only a sync will persist to
-  // the hub. Driven by `editor-dirty-changed` events from the tab elements;
-  // cleared here on the paths where the emitting element unmounts without
-  // getting a chance to send its own dirty=false (tab switch, editor exit,
-  // hub switch while the live editor is open).
+  // True while an open editor (live activity/device editor, a Wifi Commands
+  // device editor, or a loaded backup edit draft) holds changes that are not
+  // persisted yet. Driven by `editor-dirty-changed` events from the tab
+  // elements; cleared here on the paths where the emitting element unmounts
+  // without getting a chance to send its own dirty=false (tab switch, editor
+  // exit, hub switch while the live editor is open). `_editorSyncPendingKind`
+  // picks the dock copy: hub editors need a sync, the backup editor needs a
+  // download.
   private _editorSyncPending = false;
+  private _editorSyncPendingKind: "sync" | "download" = "sync";
   // Re-order mode ("Change order" under the Activities / Devices list).
   private _reorderMode = false;
   private _reorderKind: "activity" | "device" = "activity";
@@ -402,10 +405,14 @@ class SofabatonControlPanelCard extends LitElement {
     this._store.selectTab(tabId);
   }
 
-  private _handleEditorDirtyChanged = (event: CustomEvent<{ dirty: boolean }>) => {
+  private _handleEditorDirtyChanged = (
+    event: CustomEvent<{ dirty: boolean; kind?: "sync" | "download" }>,
+  ) => {
     const dirty = Boolean(event.detail?.dirty);
-    if (dirty === this._editorSyncPending) return;
+    const kind = event.detail?.kind === "download" ? "download" : "sync";
+    if (dirty === this._editorSyncPending && kind === this._editorSyncPendingKind) return;
     this._editorSyncPending = dirty;
+    this._editorSyncPendingKind = kind;
     this.requestUpdate();
   };
 
@@ -653,7 +660,9 @@ class SofabatonControlPanelCard extends LitElement {
           ${runtimeState
             ? html`<span class="card-bottom-dock-status">${statusText}</span>`
             : editorSyncPending
-              ? html`<span class="card-bottom-dock-status">${TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>`
+              ? html`<span class="card-bottom-dock-status">${this._editorSyncPendingKind === "download"
+                  ? TOOLS_CARD_STRINGS.dock.unsavedBackupChanges
+                  : TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>`
               : docLink
                 ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
                 : nothing}
@@ -906,6 +915,7 @@ class SofabatonControlPanelCard extends LitElement {
           .setSelectedSection=${(section: BackupSectionId) => this._store.setSelectedBackupSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          @editor-dirty-changed=${this._handleEditorDirtyChanged}
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {

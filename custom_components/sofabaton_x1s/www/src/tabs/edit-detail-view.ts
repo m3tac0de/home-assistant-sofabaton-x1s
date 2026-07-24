@@ -25,6 +25,7 @@ import {
   renderActivityRolesBlock,
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
+import { addButtonStyles } from "../shared/styles/add-button-styles";
 import type { BackupBundlePayload, BlobFetchDecodedBlock, WifiEvent } from "../shared/ha-context";
 import {
   activityButtonBindingItems,
@@ -268,7 +269,7 @@ export class SofabatonEditDetailView extends LitElement {
   // The whole backup-tab stylesheet ships to both shadow roots (see
   // backup-tab-styles.ts); the :host rule it carries gives this element
   // the same flex-fill layout the tab-panel had inside backup-tab.
-  static styles = [activityEditorStyles, backupTabStyles, css`
+  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, css`
     :host {
       flex-direction: column;
     }

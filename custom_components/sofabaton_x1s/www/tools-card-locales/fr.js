@@ -41,7 +41,10 @@ var TOOLS_CARD_STRINGS_FR = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatisation", backup: "Sauvegarde", settings: "Param\xE8tres", logs: "Journaux" },
   tabDocs: { wifi_commands: "Documentation de l\u2019automatisation", backup: "Documentation des sauvegardes" },
-  dock: { unsyncedChanges: "Modifications non synchronis\xE9es \u2014 synchronisez-les avec le hub pour les appliquer" },
+  dock: {
+    unsyncedChanges: "Modifications non synchronis\xE9es \u2014 synchronisez-les avec le hub pour les appliquer",
+    unsavedBackupChanges: "Modifications non enregistr\xE9es \u2014 t\xE9l\xE9chargez la sauvegarde modifi\xE9e"
+  },
   backend: {
     unavailableTitle: "Backend indisponible",
     unavailableCopy: "En attente du d\xE9marrage de l\u2019int\xE9gration Sofabaton X...",
@@ -368,9 +371,6 @@ var TOOLS_CARD_STRINGS_FR = {
     noActivitiesInFile: "Ce fichier de sauvegarde ne contient aucune activit\xE9.",
     devices: "Appareils",
     noDevicesInFile: "Ce fichier de sauvegarde ne contient aucun appareil.",
-    unsavedChanges: "Modifications non enregistr\xE9es. Cliquez sur ",
-    downloadEditedBackupStrong: "T\xE9l\xE9charger la sauvegarde modifi\xE9e",
-    unsavedChangesSuffix: " pour les enregistrer dans un fichier.",
     downloadEditedBackup: "T\xE9l\xE9charger",
     deleteActivityTitle: (name) => `Supprimer l\u2019activit\xE9 \xAB ${name} \xBB ?`,
     deleteDeviceTitle: (name) => `Supprimer l\u2019appareil \xAB ${name} \xBB ?`,

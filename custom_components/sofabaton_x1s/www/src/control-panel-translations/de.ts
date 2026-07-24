@@ -29,7 +29,10 @@ export const TOOLS_CARD_STRINGS_DE = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatisierung", backup: "Backup", settings: "Einstellungen", logs: "Protokolle" },
   tabDocs: { wifi_commands: "Dokumentation zur Automatisierung", backup: "Backup-Dokumentation" },
-  dock: { unsyncedChanges: "Nicht synchronisierte Änderungen — mit dem Hub synchronisieren, um sie anzuwenden" },
+  dock: {
+    unsyncedChanges: "Nicht synchronisierte Änderungen — mit dem Hub synchronisieren, um sie anzuwenden",
+    unsavedBackupChanges: "Nicht gespeicherte Änderungen — bearbeitetes Backup herunterladen",
+  },
   backend: {
     unavailableTitle: "Backend nicht verfügbar", unavailableCopy: "Warten auf den Start der Sofabaton-X-Integration...",
     versionMismatchTitle: "Aktualisierung zum Laden der neuen Sofabaton-Steuerzentrale erforderlich",
@@ -166,7 +169,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     macroStepsHelp: "Jeder Schritt spielt einen Befehl ab; stelle rechts die anschließende Wartezeit ein.",
     hubName: "Hub-Name", hubNameNotSet: "(nicht festgelegt)", renameHub: "Hub umbenennen",
     activities: "Aktivitäten", noActivitiesInFile: "Diese Backup-Datei enthält keine Aktivitäten.", devices: "Geräte", noDevicesInFile: "Diese Backup-Datei enthält keine Geräte.",
-    unsavedChanges: "Nicht gespeicherte Änderungen. Klicke auf ", downloadEditedBackupStrong: "Bearbeitetes Backup herunterladen", unsavedChangesSuffix: ", um sie in einer Datei zu speichern.", downloadEditedBackup: "Herunterladen",
+    downloadEditedBackup: "Herunterladen",
     deleteActivityTitle: (name: string) => `Aktivität "${name}" löschen?`, deleteDeviceTitle: (name: string) => `Gerät "${name}" löschen?`, deleteCommandTitle: (name: string) => `Befehl "${name}" löschen?`,
     deleteFavoriteTitle: (name: string) => `Verknüpfung "${name}" löschen?`, deleteMacroTitle: (name: string) => `Makro "${name}" löschen?`, deleteCascadeIntro: "Dadurch werden auch Verweise an anderen Stellen im Backup entfernt:",
     deleteSimpleBody: "Dadurch wird das Element aus dem geladenen Backup entfernt.", deleteImpactActivities: (count: number) => `${count} ${count === 1 ? "Aktivität verweist" : "Aktivitäten verweisen"} darauf`,

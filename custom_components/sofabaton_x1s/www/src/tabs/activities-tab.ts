@@ -184,6 +184,9 @@ class SofabatonActivitiesTab extends LitElement {
     .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
     .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
     .review-empty { font-size: 14px; color: var(--secondary-text-color); }
+    /* Viewport, not container: these dialogs are position: fixed over the
+       whole window, so a narrow card on a wide screen should still get the
+       centered floating dialog rather than the full-bleed phone sheet. */
     @media (max-width: 640px) {
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog--small { width: 100%; max-height: 100%; border-radius: 0; }

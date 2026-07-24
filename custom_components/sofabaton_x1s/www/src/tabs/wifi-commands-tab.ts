@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } from "../components/secondary-tab";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
+import { addButtonStyles } from "../shared/styles/add-button-styles";
 import type { ControlPanelHubState, HassLike, HubEventFireEvent, WifiEvent, WifiPressEvent, WifiSectionId } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import { localizeBackendOperationDetail } from "../shared/utils/backend-state-localization";
@@ -266,7 +267,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     lastHubEvent: { attribute: false },
   };
 
-  static styles = [secondaryTabStyles, operationProgressStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -294,10 +295,16 @@ class SofabatonWifiCommandsTab extends LitElement {
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
-    .list-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 16px; row-gap: 8px; }
-    .list-header-copy { min-width: 0; }
+    /* Wrapping flex rather than a two-column grid: a grid column would hold
+       its place at any width and squeeze the subtitle into a ragged sliver
+       (worst in German). The 240px basis drops the button onto its own row
+       once the copy would fall below that — driven by the card's own width,
+       so it also works in a narrow card inside a wide window, where the
+       viewport media queries below never fire. */
+    .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; }
+    .list-header-copy { flex: 1 1 240px; min-width: 0; }
     .list-header-copy .section-subtitle { margin-top: 0; }
-    .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .list-header-action { flex: 0 0 auto; margin-left: auto; align-self: flex-start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 6px; }
     .device-card { position: relative; width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
@@ -467,7 +474,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     .hub-event-clear:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
     .hub-event-clear ha-icon { --mdc-icon-size: 12px; }
-    @media (max-width: 640px) {
+    @container sofabaton-card (max-width: 480px) {
       .hub-event-lines { gap: 10px; }
       /* Multi-line sentences: pin the icon to the first text line so the
          wrapped text hangs cleanly next to it, and give the inline action
@@ -749,15 +756,19 @@ class SofabatonWifiCommandsTab extends LitElement {
       --ha-input-padding-top: 0;
       --ha-input-padding-bottom: 0;
     }
+    /* The dialogs are position: fixed over the whole window, so they stay on
+       a viewport media query — a wide screen should get the centered
+       floating dialog even when the card itself is narrow. */
     @media (max-width: 640px) {
-      .command-grid { grid-template-columns: 1fr; }
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 var(--tools-radius-lg) var(--tools-radius-lg); }
       .dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
-      .list-header { grid-template-columns: 1fr; }
-      .list-header-action { grid-column: 1; grid-row: auto; width: 100%; }
-      .list-header-action > .detail-sync-btn,
-      .list-header-action > .list-action-btn { width: 100%; justify-content: center; }
+    }
+    @container sofabaton-card (max-width: 480px) {
+      .command-grid { grid-template-columns: 1fr; }
+      /* .list-header wraps on its own (see above) — no narrow-card override,
+         and no full-width stretch: the Add button stays the same pill it is
+         in the entity editor. */
       .detail-title-row { gap: 8px; }
       .detail-title-main { min-width: 0; flex: 1; }
       .detail-title-actions { gap: 6px; min-width: max-content; }
@@ -1036,8 +1047,9 @@ class SofabatonWifiCommandsTab extends LitElement {
             <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.sectionSubtitle}</div>
           </div>
           <div class="list-header-action">
-            <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
-              ${TOOLS_CARD_STRINGS.wifiCommands.addDeviceButton}
+            <button class="quick-access-add-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
+              <ha-icon icon="mdi:plus"></ha-icon>
+              <span>${TOOLS_CARD_STRINGS.wifiCommands.addDeviceButton}</span>
             </button>
           </div>
         </div>

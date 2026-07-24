@@ -47,7 +47,10 @@ export const TOOLS_CARD_STRINGS_NL = {
   },
   tabs: { cache: "Hub", wifiCommands: "Automatisering", backup: "Back-up", settings: "Instellingen", logs: "Logboeken" },
   tabDocs: { wifi_commands: "Documentatie over automatisering", backup: "Documentatie over back-ups" },
-  dock: { unsyncedChanges: "Niet-gesynchroniseerde wijzigingen — synchroniseer met de hub om ze toe te passen" },
+  dock: {
+    unsyncedChanges: "Niet-gesynchroniseerde wijzigingen — synchroniseer met de hub om ze toe te passen",
+    unsavedBackupChanges: "Niet-opgeslagen wijzigingen — download de bewerkte back-up",
+  },
   backend: {
     unavailableTitle: "Backend niet beschikbaar",
     unavailableCopy: "Wachten tot de Sofabaton X-integratie is opgestart...",
@@ -204,7 +207,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     macroStepsHelp: "Elke stap speelt een commando af; stel rechts de wachttijd in die erop volgt.",
     hubName: "Hubnaam", hubNameNotSet: "(niet ingesteld)", renameHub: "Hub hernoemen",
     activities: "Activiteiten", noActivitiesInFile: "Dit back-upbestand bevat geen activiteiten.", devices: "Apparaten", noDevicesInFile: "Dit back-upbestand bevat geen apparaten.",
-    unsavedChanges: "Niet-opgeslagen wijzigingen. Klik op ", downloadEditedBackupStrong: "Bewerkte back-up downloaden", unsavedChangesSuffix: " om ze in een bestand op te slaan.", downloadEditedBackup: "Downloaden",
+    downloadEditedBackup: "Downloaden",
     deleteActivityTitle: (name: string) => `Activiteit "${name}" verwijderen?`, deleteDeviceTitle: (name: string) => `Apparaat "${name}" verwijderen?`,
     deleteCommandTitle: (name: string) => `Commando "${name}" verwijderen?`, deleteFavoriteTitle: (name: string) => `Snelkoppeling "${name}" verwijderen?`, deleteMacroTitle: (name: string) => `Macro "${name}" verwijderen?`,
     deleteCascadeIntro: "Hierdoor worden ook verwijzingen ernaar elders in de back-up gewist:", deleteSimpleBody: "Hiermee wordt het uit de geladen back-up verwijderd.",

@@ -45,7 +45,10 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
   },
   tabs: { cache: "Hub", wifiCommands: "自动化", backup: "备份", settings: "设置", logs: "日志" },
   tabDocs: { wifi_commands: "自动化文档", backup: "备份文档" },
-  dock: { unsyncedChanges: "更改尚未同步 — 请同步到 Hub 以应用" },
+  dock: {
+    unsyncedChanges: "更改尚未同步 — 请同步到 Hub 以应用",
+    unsavedBackupChanges: "更改尚未保存 — 请下载已编辑的备份",
+  },
   backend: {
     unavailableTitle: "后端不可用",
     unavailableCopy: "正在等待 Sofabaton X 集成启动…",
@@ -202,7 +205,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     macroStepsHelp: "每个步骤会执行一条命令；请在右侧设置随后等待的时间。",
     hubName: "Hub 名称", hubNameNotSet: "（未设置）", renameHub: "重命名 Hub",
     activities: "活动", noActivitiesInFile: "此备份文件不包含活动。", devices: "设备", noDevicesInFile: "此备份文件不包含设备。",
-    unsavedChanges: "有未保存的更改。点击", downloadEditedBackupStrong: "下载已编辑的备份", unsavedChangesSuffix: "将其保存到文件。", downloadEditedBackup: "下载",
+    downloadEditedBackup: "下载",
     deleteActivityTitle: (name: string) => `删除活动“${name}”？`, deleteDeviceTitle: (name: string) => `删除设备“${name}”？`,
     deleteCommandTitle: (name: string) => `删除命令“${name}”？`, deleteFavoriteTitle: (name: string) => `删除快捷项“${name}”？`, deleteMacroTitle: (name: string) => `删除宏“${name}”？`,
     deleteCascadeIntro: "这还会清除备份中其他位置对它的引用：", deleteSimpleBody: "这会将其从已加载的备份中移除。",

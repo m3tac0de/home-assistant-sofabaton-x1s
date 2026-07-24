@@ -219,9 +219,17 @@
     .ws-line--res { color: #2e7d32; }
     .ws-line--err { color: #c62828; }
 
+    /* Emulate a dashboard column: the card must get a DEFINITE width from
+       its parent, the way a masonry column or a sections grid cell gives it
+       one. `margin: 0 auto` in this column flex container would suppress the
+       stretch and leave the host shrink-to-fit — and the card is an
+       inline-size query container, so a content-sized parent collapses it to
+       zero. `align-self: center` centers the fixed widths instead, and the
+       inline width the width picker sets still wins over `width: 100%`. */
     #card-host {
+      width: 100%;
       max-width: 100%;
-      margin: 0 auto;
+      align-self: center;
       transition: width 160ms ease;
     }
 
@@ -1974,7 +1982,7 @@
       const wt = wifiTab(card);
       if (!wt) throw new Error("clickWifiAddDevice: Automation tab not found");
       await wt.updateComplete;
-      const trigger = wt.shadowRoot.querySelector(".list-header-action .detail-sync-btn");
+      const trigger = wt.shadowRoot.querySelector(".list-header-action .quick-access-add-btn");
       if (!trigger) throw new Error("clickWifiAddDevice: add-device button not found");
       trigger.click();
       await wt.updateComplete;
