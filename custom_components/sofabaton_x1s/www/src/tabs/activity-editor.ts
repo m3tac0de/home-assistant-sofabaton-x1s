@@ -76,19 +76,25 @@ export function renderDrillInRow(params: {
 
 // ── Role-based button assignment block ──────────────────────────────
 
-const ROLE_LABELS: Record<ActivityRoleGroupId, string> = {
-  volume: S.roleVolume,
-  navigation: S.roleNavigation,
-  playback: S.rolePlayback,
-  channels: S.roleChannels,
-};
-
 const ROLE_ICONS: Record<ActivityRoleGroupId, string> = {
   volume: "mdi:volume-high",
   navigation: "mdi:gamepad-round-outline",
   playback: "mdi:play-pause",
   channels: "mdi:pound",
 };
+
+function roleLabel(group: ActivityRoleGroupId): string {
+  switch (group) {
+    case "volume":
+      return S.roleVolume;
+    case "navigation":
+      return S.roleNavigation;
+    case "playback":
+      return S.rolePlayback;
+    case "channels":
+      return S.roleChannels;
+  }
+}
 
 export interface ActivityRoleOption {
   deviceId: number;
@@ -139,6 +145,7 @@ export function renderActivityRolesBlock(params: ActivityRolesBlockParams): Temp
 
 function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockParams): TemplateResult {
   const open = params.openGroup === role.group;
+  const label = roleLabel(role.group);
   const partialNote = (role.state === "device" || role.state === "customized")
     && role.boundCount < role.totalCount
     ? S.roleMappedNote(role.boundCount, role.totalCount)
@@ -148,7 +155,7 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
       <div class="role-row">
         <ha-icon class="role-icon" icon=${ROLE_ICONS[role.group]}></ha-icon>
       <div class="role-main">
-        <div class="role-label">${ROLE_LABELS[role.group]}</div>
+        <div class="role-label">${label}</div>
         ${partialNote ? html`<div class="role-note">${partialNote}</div>` : nothing}
       </div>
       <span class="member-add role-menu-anchor" data-open=${open ? "true" : "false"}>
@@ -158,7 +165,7 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
           data-state=${role.state}
           aria-haspopup="listbox"
           aria-expanded=${open ? "true" : "false"}
-          aria-label=${S.roleMenuAria(ROLE_LABELS[role.group])}
+          aria-label=${S.roleMenuAria(label)}
           @click=${(event: Event) =>
             params.onToggleMenu(open ? null : role.group, menuAnchorRect(event))}
         >
@@ -177,7 +184,7 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
               <div
                 class="member-add-menu role-menu"
                 role="listbox"
-                aria-label=${ROLE_LABELS[role.group]}
+                aria-label=${label}
                 style=${overlayMenuPosition(params.menuAnchor, "right")}
               >
                 <button

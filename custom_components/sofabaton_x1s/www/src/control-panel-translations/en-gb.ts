@@ -15,6 +15,8 @@ registerToolsCardTranslation("en-gb", {
   },
   cache: {
     favoriteFallback: (commandId: number) => `Favourite ${commandId}`,
+    activityCounts: (favourites: number, macros: number, buttons: number) =>
+      `${favourites} ${favourites === 1 ? "favourite" : "favourites"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
     favorites: "Favourites",
   },
   hubClick: {
@@ -30,6 +32,8 @@ registerToolsCardTranslation("en-gb", {
   },
   backup: {
     powerNoDevices: "No devices yet. Add a favourite, binding, or macro that uses one.",
+    activityMeta: (favourites: number, macros: number) =>
+      `${favourites} ${favourites === 1 ? "favourite" : "favourites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name: string) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",

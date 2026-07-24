@@ -177,8 +177,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     favoriteFallback: (commandId: number) => `Favorite ${commandId}`,
     macroFallback: (commandId: number) => `Macro ${commandId}`,
     activityCounts: (favorites: number, macros: number, buttons: number) =>
-      `${favorites} favs / ${macros} macros / ${buttons} btns`,
-    deviceCommandCount: (count: number) => `${count} cmds`,
+      `${favorites} ${favorites === 1 ? "favorite" : "favorites"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
+    deviceCommandCount: (count: number) =>
+      `${count} ${count === 1 ? "command" : "commands"}`,
     favorites: "Favorites",
     macros: "Macros",
     buttons: "Buttons",
@@ -404,8 +405,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     backupResultSummary: (activities: number, devices: number) =>
       `${activities} ${activities === 1 ? "Activity" : "Activities"} and ${devices} ${devices === 1 ? "Device" : "Devices"} backed up`,
     activityMeta: (favorites: number, macros: number) =>
-      `${favorites} favs · ${macros} macros`,
-    linkedDevices: (count: number) => `${count} linked devices`,
+      `${favorites} ${favorites === 1 ? "favorite" : "favorites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
+    linkedDevices: (count: number) =>
+      `${count} linked ${count === 1 ? "device" : "devices"}`,
     deselectAll: "Deselect all",
     selectAll: "Select all",
     noDevicesAvailable: "No devices available.",
@@ -444,7 +446,8 @@ export const TOOLS_CARD_STRINGS_EN = {
       `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteImpactPowerSteps: (count: number) =>
       `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-    deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    deleteReplaceNote:
+      'Deletions are applied to the hub only when "Erase existing Devices and Activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
     deleteSimpleBodyLive: "This removes it.",
@@ -575,7 +578,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     roleNotUsed: "Not used",
     roleCustom: "Custom",
     roleCustomized: (name: string) => `${name} (customized)`,
-    roleMappedNote: (bound: number, total: number) => `${bound} of ${total} buttons mapped`,
+    roleMappedNote: (bound: number, total: number) =>
+      `${bound} of ${total} ${total === 1 ? "button" : "buttons"} mapped`,
     roleOptionNoMapping: (name: string) => `${name} — no button mapping`,
     roleMenuAria: (roleLabel: string) => `Choose a device for: ${roleLabel}`,
     roleConfirmTitle: "Replace custom button setup?",
@@ -799,8 +803,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     noTargetEntity: "No target entity",
     commandNameLeadingSpace: "Command name must start with a non-space character.",
     navigationGroup: "Navigation",
-    transportGroup: "Transport",
-    mediaGroup: "Media",
+    transportGroup: "Volume & Channel",
+    mediaGroup: "Playback",
     abcGroup: "ABC",
     colorGroup: "Color",
     inputCommand: "Input command",

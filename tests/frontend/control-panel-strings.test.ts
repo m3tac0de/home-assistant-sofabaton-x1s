@@ -63,28 +63,36 @@ test("bundled complete control-panel translations select regional locales and pr
       favorites: "Favorieten",
       activity: "Activiteit 7",
       immediate: "Dit wordt onmiddellijk op de hub toegepast.",
-      replace: "Verwijderingen bereiken de hub alleen bij een herstelbewerking met Vervangen.",
+      replace: "Verwijderingen worden alleen op de hub toegepast als ‘Bestaande apparaten en activiteiten wissen’ tijdens het herstellen is ingeschakeld.",
+      volumeChannel: "Volume en kanaal",
+      playback: "Afspelen",
     },
     {
       locale: "de-DE",
       favorites: "Favoriten",
       activity: "Aktivität 7",
       immediate: "Dies wird sofort auf dem Hub angewendet.",
-      replace: "Löschungen gelangen nur bei einer Wiederherstellung mit Ersetzen auf den Hub.",
+      replace: "Löschungen werden nur auf den Hub angewendet, wenn „Vorhandene Geräte und Aktivitäten löschen“ bei der Wiederherstellung aktiviert ist.",
+      volumeChannel: "Lautstärke & Kanal",
+      playback: "Medienwiedergabe",
     },
     {
       locale: "fr-FR",
       favorites: "Favoris",
       activity: "Activité 7",
       immediate: "Cette modification est appliquée immédiatement au hub.",
-      replace: "Les suppressions n’atteignent le hub que lors d’une restauration avec remplacement.",
+      replace: "Les suppressions ne sont appliquées au hub que si l’option « Effacer les appareils et activités existants » est activée pendant la restauration.",
+      volumeChannel: "Volume et chaînes",
+      playback: "Lecture",
     },
     {
       locale: "es-ES",
       favorites: "Favoritos",
       activity: "Actividad 7",
       immediate: "Esto se aplica al hub inmediatamente.",
-      replace: "Las eliminaciones solo llegan al hub durante una restauración con Reemplazar.",
+      replace: "Las eliminaciones solo se aplican al hub si se activa «Borrar los dispositivos y actividades existentes» durante la restauración.",
+      volumeChannel: "Volumen y canal",
+      playback: "Reproducción",
     },
   ];
 
@@ -94,6 +102,136 @@ test("bundled complete control-panel translations select regional locales and pr
     assert.equal(TOOLS_CARD_STRINGS.common.activityFallback(7), item.activity);
     assert.equal(TOOLS_CARD_STRINGS.backup.deleteImmediateNote, item.immediate);
     assert.equal(TOOLS_CARD_STRINGS.backup.deleteReplaceNote, item.replace);
+    assert.equal(TOOLS_CARD_STRINGS.wifiCommands.transportGroup, item.volumeChannel);
+    assert.equal(TOOLS_CARD_STRINGS.wifiCommands.mediaGroup, item.playback);
+  }
+
+  setToolsCardLanguage("en");
+});
+
+test("Spanish power section labels describe both on and off behavior", () => {
+  setToolsCardLanguage("es-ES");
+  assert.equal(TOOLS_CARD_STRINGS.activities.deviceReview.sectionPower, "Encendido y apagado");
+  assert.equal(TOOLS_CARD_STRINGS.backup.detailPower, "Encendido y apagado");
+  setToolsCardLanguage("en");
+});
+
+test("control-panel count copy uses real singular and plural forms", () => {
+  const cases = [
+    {
+      locale: "en",
+      expected: [
+        "0 favorites / 1 macro / 2 buttons",
+        "1 command",
+        "2 commands",
+        "1 favorite · 2 macros",
+        "1 linked device",
+        "1 of 1 button mapped",
+        "1 of 2 buttons mapped",
+        "1 configured",
+        "2 configured",
+        "The hub will also remove 1 shortcut and 0 button assignments that reference it, and the step is removed from 1 macro (a macro left with no steps is removed).",
+        "The hub will also remove 2 shortcuts and 2 button assignments that reference it, and the step is removed from 2 macros (a macro left with no steps is removed).",
+      ],
+    },
+    {
+      locale: "en-GB",
+      expected: [
+        "0 favourites / 1 macro / 2 buttons",
+        "1 command",
+        "2 commands",
+        "1 favourite · 2 macros",
+        "1 linked device",
+        "1 of 1 button mapped",
+        "1 of 2 buttons mapped",
+        "1 configured",
+        "2 configured",
+        "The hub will also remove 1 shortcut and 0 button assignments that reference it, and the step is removed from 1 macro (a macro left with no steps is removed).",
+        "The hub will also remove 2 shortcuts and 2 button assignments that reference it, and the step is removed from 2 macros (a macro left with no steps is removed).",
+      ],
+    },
+    {
+      locale: "nl",
+      expected: [
+        "0 favorieten / 1 macro / 2 knoppen",
+        "1 commando",
+        "2 commando's",
+        "1 favoriet · 2 macro's",
+        "1 gekoppeld apparaat",
+        "1 van 1 knop gekoppeld",
+        "1 van 2 knoppen gekoppeld",
+        "1 geconfigureerd",
+        "2 geconfigureerd",
+        "De hub verwijdert ook 1 snelkoppeling en 0 knoptoewijzingen die ernaar verwijzen; de stap wordt uit 1 macro verwijderd (een macro zonder stappen wordt verwijderd).",
+        "De hub verwijdert ook 2 snelkoppelingen en 2 knoptoewijzingen die ernaar verwijzen; de stap wordt uit 2 macro's verwijderd (een macro zonder stappen wordt verwijderd).",
+      ],
+    },
+    {
+      locale: "de",
+      expected: [
+        "0 Favoriten / 1 Makro / 2 Tasten",
+        "1 Befehl",
+        "2 Befehle",
+        "1 Favorit · 2 Makros",
+        "1 verknüpftes Gerät",
+        "1 von 1 Taste belegt",
+        "1 von 2 Tasten belegt",
+        "1 konfiguriert",
+        "2 konfiguriert",
+        "Der Hub entfernt außerdem 1 Verknüpfung und 0 Tastenzuweisungen, die darauf verweisen; der Schritt wird aus 1 Makro entfernt (ein Makro ohne Schritte wird gelöscht).",
+        "Der Hub entfernt außerdem 2 Verknüpfungen und 2 Tastenzuweisungen, die darauf verweisen; der Schritt wird aus 2 Makros entfernt (ein Makro ohne Schritte wird gelöscht).",
+      ],
+    },
+    {
+      locale: "fr",
+      expected: [
+        "0 favoris / 1 macro / 2 touches",
+        "1 commande",
+        "2 commandes",
+        "1 favori · 2 macros",
+        "1 appareil lié",
+        "1 touche attribuée sur 1",
+        "1 touche attribuée sur 2",
+        "1 configurée",
+        "2 configurées",
+        "Le hub supprimera aussi 1 raccourci et 0 affectations de touches qui y font référence ; l’étape est retirée de 1 macro (une macro sans étapes est supprimée).",
+        "Le hub supprimera aussi 2 raccourcis et 2 affectations de touches qui y font référence ; l’étape est retirée de 2 macros (une macro sans étapes est supprimée).",
+      ],
+    },
+    {
+      locale: "es",
+      expected: [
+        "0 favoritos / 1 macro / 2 botones",
+        "1 comando",
+        "2 comandos",
+        "1 favorito · 2 macros",
+        "1 dispositivo vinculado",
+        "1 de 1 botón asignado",
+        "1 de 2 botones asignados",
+        "1 configurado",
+        "2 configurados",
+        "El hub también eliminará 1 acceso directo y 0 asignaciones de botones que hacen referencia al evento; el paso se elimina de 1 macro (una macro sin pasos se elimina).",
+        "El hub también eliminará 2 accesos directos y 2 asignaciones de botones que hacen referencia al evento; el paso se elimina de 2 macros (una macro sin pasos se elimina).",
+      ],
+    },
+  ];
+
+  for (const item of cases) {
+    setToolsCardLanguage(item.locale);
+    const actual = [
+      TOOLS_CARD_STRINGS.cache.activityCounts(0, 1, 2),
+      TOOLS_CARD_STRINGS.cache.deviceCommandCount(1),
+      TOOLS_CARD_STRINGS.cache.deviceCommandCount(2),
+      TOOLS_CARD_STRINGS.backup.activityMeta(1, 2),
+      TOOLS_CARD_STRINGS.backup.linkedDevices(1),
+      TOOLS_CARD_STRINGS.backup.roleMappedNote(1, 1),
+      TOOLS_CARD_STRINGS.backup.roleMappedNote(1, 2),
+      TOOLS_CARD_STRINGS.backup.bindingsConfiguredCount(1),
+      TOOLS_CARD_STRINGS.backup.bindingsConfiguredCount(2),
+      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(1, 0, 1),
+      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(2, 2, 2),
+    ];
+    assert.deepEqual(actual, item.expected, item.locale);
   }
 
   setToolsCardLanguage("en");

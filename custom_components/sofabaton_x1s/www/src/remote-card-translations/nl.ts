@@ -34,11 +34,11 @@ registerRemoteCardTranslation("nl", {
     triggersReady: "Triggers klaar voor gebruik",
     createTriggers: "MQTT Discovery-triggers aanmaken",
     startCapturing: "Begin met commando's vastleggen",
-    deviceDetectedTitle: "Home Assistant-apparaat gedetecteerd.",
+    deviceDetectedTitle: "Sofabaton-MQTT-apparaat gedetecteerd.",
     close: "Sluiten",
     alsoActivityTriggers: "Maak ook triggers aan voor activiteitswisselingen.",
     seeDocs: "Bekijk de documentatie voor deze functie.",
-    dontShowAgain: "Dit niet meer tonen voor dit apparaat (in deze sessie).",
+    dontShowAgain: "Dit tijdens deze sessie niet opnieuw tonen voor dit apparaat.",
     detectedDevice: (name: string) => `MQTT-apparaat gedetecteerd: ${name}.`,
     lastCommand: (name: string) => `Laatste commando: ${name}.`,
     existingTriggers:

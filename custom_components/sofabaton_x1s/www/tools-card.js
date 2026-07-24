@@ -1664,8 +1664,8 @@ var TOOLS_CARD_STRINGS_EN = {
     deviceFallback: (id) => `Device ${id}`,
     favoriteFallback: (commandId) => `Favorite ${commandId}`,
     macroFallback: (commandId) => `Macro ${commandId}`,
-    activityCounts: (favorites, macros, buttons) => `${favorites} favs / ${macros} macros / ${buttons} btns`,
-    deviceCommandCount: (count) => `${count} cmds`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "favorite" : "favorites"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
+    deviceCommandCount: (count) => `${count} ${count === 1 ? "command" : "commands"}`,
     favorites: "Favorites",
     macros: "Macros",
     buttons: "Buttons",
@@ -1883,8 +1883,8 @@ var TOOLS_CARD_STRINGS_EN = {
     devicesToInclude: "Devices to include",
     selectedCount: (count) => `${count} selected`,
     backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "Activity" : "Activities"} and ${devices} ${devices === 1 ? "Device" : "Devices"} backed up`,
-    activityMeta: (favorites, macros) => `${favorites} favs \xB7 ${macros} macros`,
-    linkedDevices: (count) => `${count} linked devices`,
+    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favorite" : "favorites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
+    linkedDevices: (count) => `${count} linked ${count === 1 ? "device" : "devices"}`,
     deselectAll: "Deselect all",
     selectAll: "Select all",
     noDevicesAvailable: "No devices available.",
@@ -1917,7 +1917,7 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-    deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing Devices and Activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
     deleteSimpleBodyLive: "This removes it.",
@@ -2042,9 +2042,9 @@ var TOOLS_CARD_STRINGS_EN = {
     roleNotUsed: "Not used",
     roleCustom: "Custom",
     roleCustomized: (name) => `${name} (customized)`,
-    roleMappedNote: (bound, total) => `${bound} of ${total} buttons mapped`,
+    roleMappedNote: (bound, total) => `${bound} of ${total} ${total === 1 ? "button" : "buttons"} mapped`,
     roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
-    roleMenuAria: (roleLabel) => `Choose a device for: ${roleLabel}`,
+    roleMenuAria: (roleLabel2) => `Choose a device for: ${roleLabel2}`,
     roleConfirmTitle: "Replace custom button setup?",
     roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
     roleConfirmReplace: "Replace",
@@ -2244,8 +2244,8 @@ var TOOLS_CARD_STRINGS_EN = {
     noTargetEntity: "No target entity",
     commandNameLeadingSpace: "Command name must start with a non-space character.",
     navigationGroup: "Navigation",
-    transportGroup: "Transport",
-    mediaGroup: "Media",
+    transportGroup: "Volume & Channel",
+    mediaGroup: "Playback",
     abcGroup: "ABC",
     colorGroup: "Color",
     inputCommand: "Input command",
@@ -4998,6 +4998,7 @@ registerToolsCardTranslation("en-gb", {
   },
   cache: {
     favoriteFallback: (commandId) => `Favourite ${commandId}`,
+    activityCounts: (favourites, macros, buttons) => `${favourites} ${favourites === 1 ? "favourite" : "favourites"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
     favorites: "Favourites"
   },
   hubClick: {
@@ -5013,6 +5014,7 @@ registerToolsCardTranslation("en-gb", {
   },
   backup: {
     powerNoDevices: "No devices yet. Add a favourite, binding, or macro that uses one.",
+    activityMeta: (favourites, macros) => `${favourites} ${favourites === 1 ? "favourite" : "favourites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",
@@ -5173,8 +5175,8 @@ var TOOLS_CARD_STRINGS_DE = {
     deviceFallback: (id) => `Ger\xE4t ${id}`,
     favoriteFallback: (commandId) => `Favorit ${commandId}`,
     macroFallback: (commandId) => `Makro ${commandId}`,
-    activityCounts: (favorites, macros, buttons) => `${favorites} Fav. / ${macros} Makros / ${buttons} Tasten`,
-    deviceCommandCount: (count) => `${count} Befehle`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "Favorit" : "Favoriten"} / ${macros} ${macros === 1 ? "Makro" : "Makros"} / ${buttons} ${buttons === 1 ? "Taste" : "Tasten"}`,
+    deviceCommandCount: (count) => `${count} ${count === 1 ? "Befehl" : "Befehle"}`,
     favorites: "Favoriten",
     macros: "Makros",
     buttons: "Tasten",
@@ -5347,7 +5349,7 @@ var TOOLS_CARD_STRINGS_DE = {
     devicesToInclude: "Einzuschlie\xDFende Ger\xE4te",
     selectedCount: (count) => `${count} ausgew\xE4hlt`,
     backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "Aktivit\xE4t" : "Aktivit\xE4ten"} und ${devices} ${devices === 1 ? "Ger\xE4t" : "Ger\xE4te"} gesichert`,
-    activityMeta: (favorites, macros) => `${favorites} Favoriten \xB7 ${macros} Makros`,
+    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "Favorit" : "Favoriten"} \xB7 ${macros} ${macros === 1 ? "Makro" : "Makros"}`,
     linkedDevices: (count) => `${count} ${count === 1 ? "verkn\xFCpftes Ger\xE4t" : "verkn\xFCpfte Ger\xE4te"}`,
     deselectAll: "Auswahl aufheben",
     selectAll: "Alle ausw\xE4hlen",
@@ -5381,7 +5383,7 @@ var TOOLS_CARD_STRINGS_DE = {
     deleteImpactFavorites: (count) => `${count} ${count === 1 ? "Verkn\xFCpfung wird" : "Verkn\xFCpfungen werden"} entfernt`,
     deleteImpactMacroSteps: (count) => `${count} ${count === 1 ? "Sequenzschritt wird" : "Sequenzschritte werden"} entfernt`,
     deleteImpactPowerSteps: (count) => `${count} ${count === 1 ? "Ein/Aus-Schritt wird" : "Ein/Aus-Schritte werden"} gel\xF6scht`,
-    deleteReplaceNote: "L\xF6schungen gelangen nur bei einer Wiederherstellung mit Ersetzen auf den Hub.",
+    deleteReplaceNote: "L\xF6schungen werden nur auf den Hub angewendet, wenn \u201EVorhandene Ger\xE4te und Aktivit\xE4ten l\xF6schen\u201C bei der Wiederherstellung aktiviert ist.",
     deleteCascadeIntroLive: "Beim L\xF6schen werden auch die Verweise auf dem Hub entfernt:",
     deleteSimpleBodyLive: "Dadurch wird das Element entfernt.",
     deleteImmediateNote: "Dies wird sofort auf dem Hub angewendet.",
@@ -5496,9 +5498,9 @@ var TOOLS_CARD_STRINGS_DE = {
     roleNotUsed: "Nicht verwendet",
     roleCustom: "Benutzerdefiniert",
     roleCustomized: (name) => `${name} (angepasst)`,
-    roleMappedNote: (bound, total) => `${bound} von ${total} Tasten belegt`,
+    roleMappedNote: (bound, total) => `${bound} von ${total} ${total === 1 ? "Taste" : "Tasten"} belegt`,
     roleOptionNoMapping: (name) => `${name} \u2014 keine Tastenbelegung`,
-    roleMenuAria: (roleLabel) => `Ger\xE4t ausw\xE4hlen f\xFCr: ${roleLabel}`,
+    roleMenuAria: (roleLabel2) => `Ger\xE4t ausw\xE4hlen f\xFCr: ${roleLabel2}`,
     roleConfirmTitle: "Benutzerdefinierte Tastenbelegung ersetzen?",
     roleConfirmBody: "Diese Gruppe enth\xE4lt Tastenbelegungen, die nicht aus der Standardbelegung eines einzelnen Ger\xE4ts stammen. Eine Zuweisung hier ersetzt sie.",
     roleConfirmReplace: "Ersetzen",
@@ -5698,7 +5700,7 @@ var TOOLS_CARD_STRINGS_DE = {
     commandNameLeadingSpace: "Der Befehlsname muss mit einem Zeichen beginnen, das kein Leerzeichen ist.",
     navigationGroup: "Navigation",
     transportGroup: "Lautst\xE4rke & Kanal",
-    mediaGroup: "Medien",
+    mediaGroup: "Medienwiedergabe",
     abcGroup: "ABC",
     colorGroup: "Farbe",
     inputCommand: "Eingangsbefehl",
@@ -5797,7 +5799,7 @@ var TOOLS_CARD_STRINGS_DE = {
     wifiEventDeleteConfirmTitle: (name) => `"${name}" l\xF6schen?`,
     wifiEventDeleteScanning: "Verweise auf dieses Event werden gepr\xFCft\u2026",
     wifiEventDeleteNoRefs: "Nichts auf dem Hub verweist auf dieses Event.",
-    wifiEventDeleteRefs: (favorites, bindings, steps) => `Der Hub entfernt au\xDFerdem ${favorites} Shortcut(s) und ${bindings} Tastenzuweisung(en), die darauf verweisen; der Schritt wird aus ${steps} Makro(s) entfernt (ein Makro ohne Schritte wird gel\xF6scht).`,
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `Der Hub entfernt au\xDFerdem ${favorites} ${favorites === 1 ? "Verkn\xFCpfung" : "Verkn\xFCpfungen"} und ${bindings} ${bindings === 1 ? "Tastenzuweisung" : "Tastenzuweisungen"}, die darauf verweisen; der Schritt wird aus ${steps} ${steps === 1 ? "Makro" : "Makros"} entfernt (ein Makro ohne Schritte wird gel\xF6scht).`,
     wifiEventDeleteConfirm: "L\xF6schen",
     wifiEventDeleteFailed: "Das Wifi-Event konnte nicht gel\xF6scht werden.",
     activityEventsSubtitle: "Eine Home-Assistant-Aktion ausf\xFChren, wenn eine bestimmte Aktivit\xE4t startet oder endet. Beim Wechsel zwischen Aktivit\xE4ten endet die alte und die neue startet.",
@@ -6004,8 +6006,8 @@ var TOOLS_CARD_STRINGS_ES = {
     deviceFallback: (id) => `Dispositivo ${id}`,
     favoriteFallback: (commandId) => `Favorito ${commandId}`,
     macroFallback: (commandId) => `Macro ${commandId}`,
-    activityCounts: (favorites, macros, buttons) => `${favorites} fav. / ${macros} macros / ${buttons} botones`,
-    deviceCommandCount: (count) => `${count} comandos`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "favorito" : "favoritos"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "bot\xF3n" : "botones"}`,
+    deviceCommandCount: (count) => `${count} ${count === 1 ? "comando" : "comandos"}`,
     favorites: "Favoritos",
     macros: "Macros",
     buttons: "Botones",
@@ -6117,7 +6119,7 @@ var TOOLS_CARD_STRINGS_ES = {
       idleShort: { 0: "sin definir", 1: "se apaga cuando est\xE1 inactivo", 2: "nunca se apaga", 3: "permanece encendido", 4: "no gestionado por el hub" }
     },
     deviceReview: {
-      sectionPower: "Encendido",
+      sectionPower: "Encendido y apagado",
       sectionNetwork: "Red",
       sectionButtons: "Botones",
       sectionMacros: "Macros",
@@ -6178,7 +6180,7 @@ var TOOLS_CARD_STRINGS_ES = {
     devicesToInclude: "Dispositivos que se incluir\xE1n",
     selectedCount: (count) => `${count} ${count === 1 ? "seleccionado" : "seleccionados"}`,
     backupResultSummary: (activities, devices) => `Copia de seguridad de ${activities} ${activities === 1 ? "actividad" : "actividades"} y ${devices} ${devices === 1 ? "dispositivo" : "dispositivos"}`,
-    activityMeta: (favorites, macros) => `${favorites} favoritos \xB7 ${macros} macros`,
+    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favorito" : "favoritos"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     linkedDevices: (count) => `${count} ${count === 1 ? "dispositivo vinculado" : "dispositivos vinculados"}`,
     deselectAll: "Deseleccionar todo",
     selectAll: "Seleccionar todo",
@@ -6212,7 +6214,7 @@ var TOOLS_CARD_STRINGS_ES = {
     deleteImpactFavorites: (count) => `Se ${count === 1 ? "eliminar\xE1" : "eliminar\xE1n"} ${count} ${count === 1 ? "acceso directo" : "accesos directos"}`,
     deleteImpactMacroSteps: (count) => `Se ${count === 1 ? "eliminar\xE1" : "eliminar\xE1n"} ${count} ${count === 1 ? "paso de secuencia" : "pasos de secuencia"}`,
     deleteImpactPowerSteps: (count) => `Se ${count === 1 ? "borrar\xE1" : "borrar\xE1n"} ${count} ${count === 1 ? "paso de encendido/apagado" : "pasos de encendido/apagado"}`,
-    deleteReplaceNote: "Las eliminaciones solo llegan al hub durante una restauraci\xF3n con Reemplazar.",
+    deleteReplaceNote: "Las eliminaciones solo se aplican al hub si se activa \xABBorrar los dispositivos y actividades existentes\xBB durante la restauraci\xF3n.",
     deleteCascadeIntroLive: "Al eliminarlo tambi\xE9n se borran sus referencias en el hub:",
     deleteSimpleBodyLive: "Esto lo elimina.",
     deleteImmediateNote: "Esto se aplica al hub inmediatamente.",
@@ -6327,16 +6329,16 @@ var TOOLS_CARD_STRINGS_ES = {
     roleNotUsed: "No utilizado",
     roleCustom: "Personalizado",
     roleCustomized: (name) => `${name} (personalizado)`,
-    roleMappedNote: (bound, total) => `${bound} de ${total} botones asignados`,
+    roleMappedNote: (bound, total) => `${bound} de ${total} ${total === 1 ? "bot\xF3n asignado" : "botones asignados"}`,
     roleOptionNoMapping: (name) => `${name} \u2014 sin asignaci\xF3n de botones`,
-    roleMenuAria: (roleLabel) => `Elige un dispositivo para: ${roleLabel}`,
+    roleMenuAria: (roleLabel2) => `Elige un dispositivo para: ${roleLabel2}`,
     roleConfirmTitle: "\xBFReemplazar la configuraci\xF3n personalizada de botones?",
     roleConfirmBody: "Este grupo tiene asignaciones de botones que no proceden de la asignaci\xF3n est\xE1ndar de un \xFAnico dispositivo. Al asignarlo aqu\xED se reemplazar\xE1n.",
     roleConfirmReplace: "Reemplazar",
     roleConfirmCancel: "Cancelar",
     customizeButtonsToggle: "Personalizar botones individuales",
     bindingsViewTitle: "Botones individuales",
-    bindingsConfiguredCount: (count) => `${count} configurados`,
+    bindingsConfiguredCount: (count) => `${count} ${count === 1 ? "configurado" : "configurados"}`,
     bindingsNoneConfigured: "Ning\xFAn bot\xF3n personalizado",
     addShortcutButton: "A\xF1adir",
     addShortcutTitle: "A\xF1adir a accesos directos",
@@ -6367,7 +6369,7 @@ var TOOLS_CARD_STRINGS_ES = {
     managedWifiIntro: "Este dispositivo se despleg\xF3 desde la pesta\xF1a Wifi Commands.",
     managedWifiBody: "Sus comandos, encendido y apagado, entrada y asignaciones de botones se configuran all\xED \u2014 si los editas aqu\xED, se sobrescribir\xE1n en la pr\xF3xima sincronizaci\xF3n.",
     managedWifiRename: "Aun as\xED puedes cambiarle el nombre aqu\xED; el nombre nuevo se mantiene sincronizado con la configuraci\xF3n de Wifi Commands.",
-    detailPower: "Encendido",
+    detailPower: "Encendido y apagado",
     detailNetwork: "Red",
     detailCommands: "Comandos",
     detailButtons: "Botones",
@@ -6528,8 +6530,8 @@ var TOOLS_CARD_STRINGS_ES = {
     noTargetEntity: "Sin entidad de destino",
     commandNameLeadingSpace: "El nombre del comando debe comenzar con un car\xE1cter que no sea un espacio.",
     navigationGroup: "Navegaci\xF3n",
-    transportGroup: "Reproducci\xF3n",
-    mediaGroup: "Multimedia",
+    transportGroup: "Volumen y canal",
+    mediaGroup: "Reproducci\xF3n",
     abcGroup: "ABC",
     colorGroup: "Color",
     inputCommand: "Comando de entrada",
@@ -6628,7 +6630,7 @@ var TOOLS_CARD_STRINGS_ES = {
     wifiEventDeleteConfirmTitle: (name) => `\xBFEliminar \xAB${name}\xBB?`,
     wifiEventDeleteScanning: "Comprobando qu\xE9 hace referencia a este evento\u2026",
     wifiEventDeleteNoRefs: "Nada en el hub hace referencia a este evento.",
-    wifiEventDeleteRefs: (favorites, bindings, steps) => `El hub tambi\xE9n eliminar\xE1 ${favorites} atajo(s) y ${bindings} asignaci\xF3n(es) de bot\xF3n que lo referencian; el paso se elimina de ${steps} macro(s) (una macro sin pasos se elimina).`,
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `El hub tambi\xE9n eliminar\xE1 ${favorites} ${favorites === 1 ? "acceso directo" : "accesos directos"} y ${bindings} ${bindings === 1 ? "asignaci\xF3n de bot\xF3n" : "asignaciones de botones"} que hacen referencia al evento; el paso se elimina de ${steps} ${steps === 1 ? "macro" : "macros"} (una macro sin pasos se elimina).`,
     wifiEventDeleteConfirm: "Eliminar",
     wifiEventDeleteFailed: "No se pudo eliminar el evento Wifi.",
     activityEventsSubtitle: "Ejecuta una acci\xF3n de Home Assistant cuando una actividad espec\xEDfica se inicie o se detenga. Al cambiar de actividad, la anterior se detiene y se inicia la nueva.",
@@ -6836,8 +6838,8 @@ var TOOLS_CARD_STRINGS_FR = {
     deviceFallback: (id) => `Appareil ${id}`,
     favoriteFallback: (commandId) => `Favori ${commandId}`,
     macroFallback: (commandId) => `Macro ${commandId}`,
-    activityCounts: (favorites, macros, buttons) => `${favorites} fav. / ${macros} macros / ${buttons} touches`,
-    deviceCommandCount: (count) => `${count} commandes`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "favori" : "favoris"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "touche" : "touches"}`,
+    deviceCommandCount: (count) => `${count} ${count === 1 ? "commande" : "commandes"}`,
     favorites: "Favoris",
     macros: "Macros",
     buttons: "Touches",
@@ -7010,7 +7012,7 @@ var TOOLS_CARD_STRINGS_FR = {
     devicesToInclude: "Appareils \xE0 inclure",
     selectedCount: (count) => `${count} ${count === 1 ? "s\xE9lectionn\xE9" : "s\xE9lectionn\xE9s"}`,
     backupResultSummary: (activities, devices) => `Sauvegarde de ${activities} ${activities === 1 ? "activit\xE9" : "activit\xE9s"} et ${devices} ${devices === 1 ? "appareil" : "appareils"}`,
-    activityMeta: (favorites, macros) => `${favorites} favoris \xB7 ${macros} macros`,
+    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favori" : "favoris"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     linkedDevices: (count) => `${count} ${count === 1 ? "appareil li\xE9" : "appareils li\xE9s"}`,
     deselectAll: "Tout d\xE9s\xE9lectionner",
     selectAll: "Tout s\xE9lectionner",
@@ -7044,7 +7046,7 @@ var TOOLS_CARD_STRINGS_FR = {
     deleteImpactFavorites: (count) => `${count} ${count === 1 ? "raccourci sera supprim\xE9" : "raccourcis seront supprim\xE9s"}`,
     deleteImpactMacroSteps: (count) => `${count} ${count === 1 ? "\xE9tape de s\xE9quence sera supprim\xE9e" : "\xE9tapes de s\xE9quence seront supprim\xE9es"}`,
     deleteImpactPowerSteps: (count) => `${count} ${count === 1 ? "\xE9tape de marche/arr\xEAt sera effac\xE9e" : "\xE9tapes de marche/arr\xEAt seront effac\xE9es"}`,
-    deleteReplaceNote: "Les suppressions n\u2019atteignent le hub que lors d\u2019une restauration avec remplacement.",
+    deleteReplaceNote: "Les suppressions ne sont appliqu\xE9es au hub que si l\u2019option \xAB Effacer les appareils et activit\xE9s existants \xBB est activ\xE9e pendant la restauration.",
     deleteCascadeIntroLive: "Cette suppression efface \xE9galement ses r\xE9f\xE9rences sur le hub :",
     deleteSimpleBodyLive: "Cet \xE9l\xE9ment sera supprim\xE9.",
     deleteImmediateNote: "Cette modification est appliqu\xE9e imm\xE9diatement au hub.",
@@ -7159,16 +7161,16 @@ var TOOLS_CARD_STRINGS_FR = {
     roleNotUsed: "Non utilis\xE9",
     roleCustom: "Personnalis\xE9",
     roleCustomized: (name) => `${name} (personnalis\xE9)`,
-    roleMappedNote: (bound, total) => `${bound} touches sur ${total} attribu\xE9es`,
+    roleMappedNote: (bound, total) => `${bound} ${bound === 1 ? "touche attribu\xE9e" : "touches attribu\xE9es"} sur ${total}`,
     roleOptionNoMapping: (name) => `${name} \u2014 aucune correspondance de touches`,
-    roleMenuAria: (roleLabel) => `Choisir un appareil pour : ${roleLabel}`,
+    roleMenuAria: (roleLabel2) => `Choisir un appareil pour : ${roleLabel2}`,
     roleConfirmTitle: "Remplacer la configuration personnalis\xE9e des touches ?",
     roleConfirmBody: "Ce groupe contient des attributions de touches qui ne proviennent pas de la correspondance standard d\u2019un seul appareil. Une attribution ici les remplacera.",
     roleConfirmReplace: "Remplacer",
     roleConfirmCancel: "Annuler",
     customizeButtonsToggle: "Personnaliser les touches individuellement",
     bindingsViewTitle: "Touches individuelles",
-    bindingsConfiguredCount: (count) => `${count} configur\xE9es`,
+    bindingsConfiguredCount: (count) => `${count} ${count === 1 ? "configur\xE9e" : "configur\xE9es"}`,
     bindingsNoneConfigured: "Aucune touche personnalis\xE9e",
     addShortcutButton: "Ajouter",
     addShortcutTitle: "Ajouter aux raccourcis",
@@ -7360,8 +7362,8 @@ var TOOLS_CARD_STRINGS_FR = {
     noTargetEntity: "Aucune entit\xE9 cible",
     commandNameLeadingSpace: "Le nom de la commande doit commencer par un caract\xE8re autre qu\u2019une espace.",
     navigationGroup: "Navigation",
-    transportGroup: "Lecture",
-    mediaGroup: "M\xE9dia",
+    transportGroup: "Volume et cha\xEEnes",
+    mediaGroup: "Lecture",
     abcGroup: "ABC",
     colorGroup: "Couleur",
     inputCommand: "Commande d\u2019entr\xE9e",
@@ -7460,7 +7462,7 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiEventDeleteConfirmTitle: (name) => `Supprimer \xAB ${name} \xBB ?`,
     wifiEventDeleteScanning: "V\xE9rification des r\xE9f\xE9rences \xE0 cet \xE9v\xE9nement\u2026",
     wifiEventDeleteNoRefs: "Rien sur le hub ne r\xE9f\xE9rence cet \xE9v\xE9nement.",
-    wifiEventDeleteRefs: (favorites, bindings, steps) => `Le hub supprimera aussi ${favorites} raccourci(s) et ${bindings} affectation(s) de bouton qui le r\xE9f\xE9rencent ; l\u2019\xE9tape est retir\xE9e de ${steps} macro(s) (une macro sans \xE9tapes est supprim\xE9e).`,
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `Le hub supprimera aussi ${favorites} ${favorites === 1 ? "raccourci" : "raccourcis"} et ${bindings} ${bindings === 1 ? "affectation de touche" : "affectations de touches"} qui y font r\xE9f\xE9rence ; l\u2019\xE9tape est retir\xE9e de ${steps} ${steps === 1 ? "macro" : "macros"} (une macro sans \xE9tapes est supprim\xE9e).`,
     wifiEventDeleteConfirm: "Supprimer",
     wifiEventDeleteFailed: "La suppression de l\u2019\xE9v\xE9nement Wifi a \xE9chou\xE9.",
     activityEventsSubtitle: "Ex\xE9cutez une action Home Assistant lorsqu\u2019une activit\xE9 donn\xE9e d\xE9marre ou s\u2019arr\xEAte. Lors d\u2019un changement d\u2019activit\xE9, l\u2019ancienne s\u2019arr\xEAte et la nouvelle d\xE9marre.",
@@ -7671,8 +7673,8 @@ var TOOLS_CARD_STRINGS_NL = {
     deviceFallback: (id) => `Apparaat ${id}`,
     favoriteFallback: (commandId) => `Favoriet ${commandId}`,
     macroFallback: (commandId) => `Macro ${commandId}`,
-    activityCounts: (favorites, macros, buttons) => `${favorites} fav. / ${macros} macro's / ${buttons} knoppen`,
-    deviceCommandCount: (count) => `${count} commando's`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "favoriet" : "favorieten"} / ${macros} ${macros === 1 ? "macro" : "macro's"} / ${buttons} ${buttons === 1 ? "knop" : "knoppen"}`,
+    deviceCommandCount: (count) => `${count} ${count === 1 ? "commando" : "commando's"}`,
     favorites: "Favorieten",
     macros: "Macro's",
     buttons: "Knoppen",
@@ -7845,7 +7847,7 @@ var TOOLS_CARD_STRINGS_NL = {
     devicesToInclude: "Op te nemen apparaten",
     selectedCount: (count) => `${count} geselecteerd`,
     backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activiteit" : "activiteiten"} en ${devices} ${devices === 1 ? "apparaat" : "apparaten"} opgenomen in de back-up`,
-    activityMeta: (favorites, macros) => `${favorites} favorieten \xB7 ${macros} macro's`,
+    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favoriet" : "favorieten"} \xB7 ${macros} ${macros === 1 ? "macro" : "macro's"}`,
     linkedDevices: (count) => `${count} ${count === 1 ? "gekoppeld apparaat" : "gekoppelde apparaten"}`,
     deselectAll: "Alles deselecteren",
     selectAll: "Alles selecteren",
@@ -7879,7 +7881,7 @@ var TOOLS_CARD_STRINGS_NL = {
     deleteImpactFavorites: (count) => `${count} ${count === 1 ? "snelkoppeling wordt" : "snelkoppelingen worden"} verwijderd`,
     deleteImpactMacroSteps: (count) => `${count} ${count === 1 ? "macrostap wordt" : "macrostappen worden"} verwijderd`,
     deleteImpactPowerSteps: (count) => `${count} ${count === 1 ? "aan/uit-stap wordt" : "aan/uit-stappen worden"} gewist`,
-    deleteReplaceNote: "Verwijderingen bereiken de hub alleen bij een herstelbewerking met Vervangen.",
+    deleteReplaceNote: "Verwijderingen worden alleen op de hub toegepast als \u2018Bestaande apparaten en activiteiten wissen\u2019 tijdens het herstellen is ingeschakeld.",
     deleteCascadeIntroLive: "Hierdoor worden ook verwijzingen ernaar op de hub verwijderd:",
     deleteSimpleBodyLive: "Hiermee wordt het verwijderd.",
     deleteImmediateNote: "Dit wordt onmiddellijk op de hub toegepast.",
@@ -7994,9 +7996,9 @@ var TOOLS_CARD_STRINGS_NL = {
     roleNotUsed: "Niet gebruikt",
     roleCustom: "Aangepast",
     roleCustomized: (name) => `${name} (aangepast)`,
-    roleMappedNote: (bound, total) => `${bound} van ${total} knoppen gekoppeld`,
+    roleMappedNote: (bound, total) => `${bound} van ${total} ${total === 1 ? "knop" : "knoppen"} gekoppeld`,
     roleOptionNoMapping: (name) => `${name} \u2014 geen knoptoewijzing`,
-    roleMenuAria: (roleLabel) => `Kies een apparaat voor: ${roleLabel}`,
+    roleMenuAria: (roleLabel2) => `Kies een apparaat voor: ${roleLabel2}`,
     roleConfirmTitle: "Aangepaste knopinstelling vervangen?",
     roleConfirmBody: "Deze groep bevat knoptoewijzingen die niet uit de standaardtoewijzing van \xE9\xE9n apparaat komen. Als je hier een apparaat toewijst, worden ze vervangen.",
     roleConfirmReplace: "Vervangen",
@@ -8195,8 +8197,8 @@ var TOOLS_CARD_STRINGS_NL = {
     noTargetEntity: "Geen doelentiteit",
     commandNameLeadingSpace: "De commandonaam moet beginnen met een teken dat geen spatie is.",
     navigationGroup: "Navigatie",
-    transportGroup: "Afspelen",
-    mediaGroup: "Media",
+    transportGroup: "Volume en kanaal",
+    mediaGroup: "Afspelen",
     abcGroup: "ABC",
     colorGroup: "Kleur",
     inputCommand: "Ingangscommando",
@@ -8294,7 +8296,7 @@ var TOOLS_CARD_STRINGS_NL = {
     wifiEventDeleteConfirmTitle: (name) => `"${name}" verwijderen?`,
     wifiEventDeleteScanning: "Controleren wat naar dit event verwijst\u2026",
     wifiEventDeleteNoRefs: "Niets op de hub verwijst naar dit event.",
-    wifiEventDeleteRefs: (favorites, bindings, steps) => `De hub verwijdert ook ${favorites} snelkoppeling(en) en ${bindings} knoptoewijzing(en) die ernaar verwijzen; de stap wordt uit ${steps} macro('s) verwijderd (een macro zonder stappen wordt verwijderd).`,
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `De hub verwijdert ook ${favorites} ${favorites === 1 ? "snelkoppeling" : "snelkoppelingen"} en ${bindings} ${bindings === 1 ? "knoptoewijzing" : "knoptoewijzingen"} die ernaar verwijzen; de stap wordt uit ${steps} ${steps === 1 ? "macro" : "macro's"} verwijderd (een macro zonder stappen wordt verwijderd).`,
     wifiEventDeleteConfirm: "Verwijderen",
     wifiEventDeleteFailed: "Het Wifi-event kon niet worden verwijderd.",
     activityEventsTitle: "Activiteitsgebeurtenissen",
@@ -9993,18 +9995,24 @@ function renderDrillInRow(params) {
     </div>
   `;
 }
-var ROLE_LABELS = {
-  volume: S3.roleVolume,
-  navigation: S3.roleNavigation,
-  playback: S3.rolePlayback,
-  channels: S3.roleChannels
-};
 var ROLE_ICONS = {
   volume: "mdi:volume-high",
   navigation: "mdi:gamepad-round-outline",
   playback: "mdi:play-pause",
   channels: "mdi:pound"
 };
+function roleLabel(group) {
+  switch (group) {
+    case "volume":
+      return S3.roleVolume;
+    case "navigation":
+      return S3.roleNavigation;
+    case "playback":
+      return S3.rolePlayback;
+    case "channels":
+      return S3.roleChannels;
+  }
+}
 function roleTriggerLabel(role) {
   switch (role.state) {
     case "device":
@@ -10029,13 +10037,14 @@ function renderActivityRolesBlock(params) {
 }
 function renderRoleRow(role, params) {
   const open = params.openGroup === role.group;
+  const label = roleLabel(role.group);
   const partialNote = (role.state === "device" || role.state === "customized") && role.boundCount < role.totalCount ? S3.roleMappedNote(role.boundCount, role.totalCount) : null;
   return b2`
     <div class="quick-access-sortable-item">
       <div class="role-row">
         <ha-icon class="role-icon" icon=${ROLE_ICONS[role.group]}></ha-icon>
       <div class="role-main">
-        <div class="role-label">${ROLE_LABELS[role.group]}</div>
+        <div class="role-label">${label}</div>
         ${partialNote ? b2`<div class="role-note">${partialNote}</div>` : A}
       </div>
       <span class="member-add role-menu-anchor" data-open=${open ? "true" : "false"}>
@@ -10045,7 +10054,7 @@ function renderRoleRow(role, params) {
           data-state=${role.state}
           aria-haspopup="listbox"
           aria-expanded=${open ? "true" : "false"}
-          aria-label=${S3.roleMenuAria(ROLE_LABELS[role.group])}
+          aria-label=${S3.roleMenuAria(label)}
           @click=${(event) => params.onToggleMenu(open ? null : role.group, menuAnchorRect(event))}
         >
           <span>${roleTriggerLabel(role)}</span>
@@ -10062,7 +10071,7 @@ function renderRoleRow(role, params) {
               <div
                 class="member-add-menu role-menu"
                 role="listbox"
-                aria-label=${ROLE_LABELS[role.group]}
+                aria-label=${label}
                 style=${overlayMenuPosition(params.menuAnchor, "right")}
               >
                 <button

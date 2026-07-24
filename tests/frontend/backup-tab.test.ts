@@ -8,6 +8,7 @@ import {
   activityQuickAccessItems,
   reorderBundleActivityQuickAccess,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
+import { renderActivityRolesBlock } from "../../custom_components/sofabaton_x1s/www/src/tabs/activity-editor";
 
 const BackupTabElement = customElements.get("sofabaton-backup-tab") as {
   new (): HTMLElement;
@@ -837,4 +838,40 @@ test("activity role picker offers editable devices that are not linked yet", () 
   const result = element._renderActivityRolesBlock();
 
   assert.equal(templateHasValue(result, "Soundbar"), true);
+});
+
+test("activity role labels resolve from the active locale at render time", () => {
+  setToolsCardLanguage("es-ES");
+  try {
+    const result = renderActivityRolesBlock({
+      roles: [
+        { group: "volume", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 4 },
+        { group: "navigation", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 5 },
+        { group: "playback", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 4 },
+        { group: "channels", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 2 },
+      ],
+      optionsFor: () => [],
+      openGroup: null,
+      menuAnchor: null,
+      onToggleMenu: () => undefined,
+      onAssign: () => undefined,
+      customize: {
+        label: "Personalizar botones individuales",
+        meta: null,
+        onOpen: () => undefined,
+      },
+    });
+
+    for (const label of [
+      "Control de botones de volumen",
+      "Control de botones de navegación y OK",
+      "Control de botones de reproducción",
+      "Control de botones de canal",
+    ]) {
+      assert.equal(templateHasValue(result, label), true);
+    }
+    assert.equal(templateHasValue(result, "Volume buttons control"), false);
+  } finally {
+    setToolsCardLanguage("en");
+  }
 });

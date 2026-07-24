@@ -39,13 +39,13 @@ export const REMOTE_CARD_STRINGS_FR = {
     triggersReady: "Déclencheurs prêts à l’emploi",
     createTriggers: "Créer les déclencheurs MQTT Discovery",
     startCapturing: "Commencer la capture des commandes",
-    deviceDetectedTitle: "Appareil Home Assistant détecté.",
+    deviceDetectedTitle: "Appareil MQTT Sofabaton détecté.",
     close: "Fermer",
     alsoActivityTriggers:
       "Créer également des déclencheurs pour les changements d’activité.",
     seeDocs: "Consultez la documentation de cette fonctionnalité.",
     dontShowAgain:
-      "Ne plus afficher ceci pour cet appareil (pendant cette session).",
+      "Ne plus afficher ce message pour cet appareil pendant cette session.",
     detectedDevice: (name: string) => `Appareil MQTT détecté : ${name}.`,
     lastCommand: (name: string) => `Dernière commande : ${name}.`,
     existingTriggers:

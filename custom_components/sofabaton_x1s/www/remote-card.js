@@ -778,11 +778,11 @@ var REMOTE_CARD_STRINGS_EN = {
     triggersReady: "Triggers ready for use",
     createTriggers: "Create MQTT Discovery triggers",
     startCapturing: "Start capturing commands",
-    deviceDetectedTitle: "Home Assistant device detected.",
+    deviceDetectedTitle: "Sofabaton MQTT device detected.",
     close: "Close",
     alsoActivityTriggers: "Also create triggers for Activity changes.",
     seeDocs: "See documentation for this feature.",
-    dontShowAgain: "Not show this again for this device (in this session).",
+    dontShowAgain: "Don't show this again for this device during this session.",
     detectedDevice: (name) => `Detected MQTT device: ${name}.`,
     lastCommand: (name) => `Last command: ${name}.`,
     existingTriggers: "Existing MQTT automation triggers were found.",
@@ -933,10 +933,18 @@ var currentLanguage = "en";
 var currentStrings = REMOTE_CARD_STRINGS_EN;
 function setRemoteCardLanguage(language) {
   const lang = String(language || "en").toLowerCase();
-  if (lang === currentLanguage) return;
+  if (lang === currentLanguage) return false;
   currentLanguage = lang;
   const translation = resolveTranslation(lang);
   currentStrings = translation ? deepMerge(REMOTE_CARD_STRINGS_EN, translation) : REMOTE_CARD_STRINGS_EN;
+  return true;
+}
+function remoteCardLanguage() {
+  return currentLanguage;
+}
+function remoteCardDirection() {
+  const base = currentLanguage.split(/[-_]/)[0];
+  return ["ar", "fa", "he", "ps", "ur"].includes(base) ? "rtl" : "ltr";
 }
 function str() {
   return currentStrings;
@@ -1512,7 +1520,7 @@ var REMOTE_CARD_CSS = `
 
       .drawer-btn--custom .name {
         margin: 0 !important;
-        text-align: left !important;
+        text-align: start !important;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1543,6 +1551,18 @@ var REMOTE_CARD_CSS = `
       .dpad .area-ok { grid-area: ok; }
       .dpad .area-right { grid-area: right; }
       .dpad .area-down { grid-area: down; }
+
+      /* The UI follows the locale direction, but these are spatial controls:
+         changing language must never swap the physical Left/Right keys or the
+         fixed rows of buttons on the remote. */
+      :host([dir="rtl"]) .dpad,
+      :host([dir="rtl"]) .row3,
+      :host([dir="rtl"]) .mid,
+      :host([dir="rtl"]) .media,
+      :host([dir="rtl"]) .colors,
+      :host([dir="rtl"]) .abc {
+        direction: ltr;
+      }
 
       /* Back / Home / Menu row */
       .row3 {
@@ -1686,8 +1706,8 @@ var REMOTE_CARD_CSS = `
         z-index: 10;
         font-size: 12px;
         opacity: .9;
-        border-left: 3px solid var(--warning-color, orange);
-        padding-left: 10px;
+        border-inline-start: 3px solid var(--warning-color, orange);
+        padding-inline-start: 10px;
       }
 
       .sb-modal {
@@ -1787,7 +1807,7 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
           .sb-layout-actions-full { flex: 1; }
           .sb-layout-actions-full ha-select { width: 100%; }
-          .sb-layout-note { font-size: 12px; opacity: 0.7; text-align: right; padding: 2px 0 6px; }
+          .sb-layout-note { font-size: 12px; opacity: 0.7; text-align: end; padding: 2px 0 6px; }
           .sb-icon-btn { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--divider-color); background: var(--ha-card-background, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
           .sb-icon-btn[disabled] { opacity: 0.4; cursor: default; }
           .sb-layout-footer { margin-top: 10px; display:flex; justify-content:flex-end; }
@@ -1843,7 +1863,7 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
           .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
           .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
+          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: start; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-btn:hover { border-color: var(--primary-color); }
           .sb-command-slot-main { position: relative; display:flex; align-items:flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; }
                     .sb-command-slot-icon-wrap { width: 20px; min-width: 20px; min-height: 20px; display:flex; align-items:center; justify-content:center; }
@@ -1855,10 +1875,10 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-command-slot-meta-icon { color: var(--state-icon-color); display:inline-flex; }
           .sb-command-slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
           .sb-command-slot-text-wrap { min-width: 0; padding-top: 1px; flex: 1; }
-          .sb-command-slot-clear { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
+          .sb-command-slot-clear { position: absolute; top: 8px; inset-inline-end: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
           .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
           .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: start; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
           .sb-command-slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-action-btn:active { transform: translateY(1px); }
           .sb-command-slot-action-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary-color); }
@@ -1879,8 +1899,8 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-command-dialog-close { border: 0; background: transparent; cursor: pointer; color: inherit; display:flex; align-items:center; justify-content:center; }
           .sb-command-dialog-body { padding: 16px; display:flex; flex-direction:column; gap: 12px; overflow:auto; }
           .sb-command-dialog-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--divider-color); }
-          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: left; }
-          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-left: auto; }
+          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: start; }
+          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-inline-start: auto; }
           .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
           .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
           .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
@@ -2591,9 +2611,10 @@ var SofabatonRemoteCardEditor = class extends i4 {
   // ---------- HA wiring ----------
   set hass(hass) {
     this._hass = hass;
-    setRemoteCardLanguage(
-      hass?.locale?.language ?? hass?.language
-    );
+    const language = hass?.locale?.language ?? hass?.language;
+    setRemoteCardLanguage(language);
+    this.lang = remoteCardLanguage();
+    this.dir = remoteCardDirection();
     const entityId = String(this._config?.entity || "").trim();
     if (entityId) {
       if (this._editorIntegrationEntityId !== entityId && this._editorIntegrationDetectingFor !== entityId) {
@@ -5868,10 +5889,12 @@ var SofabatonRemoteCard = class extends i4 {
     this._drawerMeasurePending = false;
   }
   set hass(hass) {
-    setRemoteCardLanguage(
-      hass?.locale?.language ?? hass?.language
-    );
+    const language = hass?.locale?.language ?? hass?.language;
+    const languageChanged = setRemoteCardLanguage(language);
+    this.lang = remoteCardLanguage();
+    this.dir = remoteCardDirection();
     this._store.setHass(hass);
+    if (languageChanged) this.requestUpdate();
   }
   get hass() {
     return this._store.hass;
@@ -6473,117 +6496,125 @@ SofabatonRemoteCard.styles = [
 
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/ar.ts
 var isolate = (value) => `\u2068${value}\u2069`;
+var SOFABATON = isolate("Sofabaton");
+var MQTT = isolate("MQTT");
+var MQTT_DISCOVERY = isolate("MQTT Discovery");
+var AUTOMATION_ASSIST = isolate("Automation Assist");
+var YAML = isolate("YAML");
+var LOVELACE = isolate("Lovelace");
+var DVR = isolate("DVR");
+var ABC = isolate("A/B/C");
 var REMOTE_CARD_STRINGS_AR = {
   card: {
-    selectEntityError: "\u0627\u062E\u062A\u0631 \u0643\u064A\u0627\u0646 \u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0645\u0646 Sofabaton",
-    remoteUnavailable: "\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u063A\u064A\u0631 \u0645\u062A\u0627\u062D (\u0631\u0628\u0645\u0627 \u0644\u0623\u0646 \u062A\u0637\u0628\u064A\u0642 Sofabaton \u0645\u062A\u0635\u0644).",
+    selectEntityError: `\u0627\u062E\u062A\u0631 \u0643\u064A\u0627\u0646\u064B\u0627 \u0644\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 ${SOFABATON} \u0639\u0646 \u0628\u064F\u0639\u062F`,
+    remoteUnavailable: `\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u063A\u064A\u0631 \u0645\u062A\u0627\u062D (\u0642\u062F \u064A\u0643\u0648\u0646 \u062A\u0637\u0628\u064A\u0642 ${SOFABATON} \u0645\u062A\u0635\u0644\u064B\u0627).`,
     noActivitiesWarning: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0623\u064A \u0623\u0646\u0634\u0637\u0629 \u0641\u064A \u0633\u0645\u0627\u062A \u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F.",
-    noMacros: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0648\u062D\u062F\u0627\u062A \u0645\u0627\u0643\u0631\u0648 \u0645\u062A\u0627\u062D\u0629",
-    noFavorites: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0645\u0641\u0636\u0644\u0627\u062A \u0645\u062A\u0627\u062D\u0629",
-    macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 >",
-    favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A >",
+    noMacros: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0648\u062D\u062F\u0627\u062A \u0645\u0627\u0643\u0631\u0648",
+    noFavorites: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0645\u0641\u0636\u0644\u0627\u062A",
+    macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u2039",
+    favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u2039",
     activitySelectLabel: "\u0627\u0644\u0646\u0634\u0627\u0637",
-    poweredOff: "\u0645\u062A\u0648\u0642\u0641 \u0639\u0646 \u0627\u0644\u062A\u0634\u063A\u064A\u0644",
+    poweredOff: "\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u062A\u0634\u063A\u064A\u0644",
     defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A",
     activityFallback: (id) => `\u0627\u0644\u0646\u0634\u0627\u0637 ${isolate(id)}`
   },
   assist: {
-    label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
+    label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     start: "\u0628\u062F\u0621",
-    waiting: "\u0641\u064A \u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
-    exitEditMode: "\u0627\u062E\u0631\u062C \u0645\u0646 \u0648\u0636\u0639 \u0627\u0644\u062A\u062D\u0631\u064A\u0631 \u0644\u0644\u0628\u062F\u0621",
-    captured: (label) => `\u062A\u0645 \u0627\u0644\u0627\u0644\u062A\u0642\u0627\u0637: ${isolate(label)}`,
-    notCaptured: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0627\u0644\u062A\u0642\u0627\u0637.",
-    working: "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u0646\u0641\u064A\u0630\u2026",
+    waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
+    exitEditMode: "\u063A\u0627\u062F\u0631 \u0648\u0636\u0639 \u0627\u0644\u062A\u062D\u0631\u064A\u0631 \u0644\u0644\u0628\u062F\u0621",
+    captured: (label) => `\u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0645\u0631: ${isolate(label)}`,
+    notCaptured: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0623\u064A \u0623\u0645\u0631.",
+    working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644\u2026",
     triggersReady: "\u0627\u0644\u0645\u0634\u063A\u0651\u0644\u0627\u062A \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
-    createTriggers: "\u0625\u0646\u0634\u0627\u0621 \u0645\u0634\u063A\u0651\u0644\u0627\u062A MQTT Discovery",
+    createTriggers: `\u0625\u0646\u0634\u0627\u0621 \u0645\u0634\u063A\u0651\u0644\u0627\u062A ${MQTT_DISCOVERY}`,
     startCapturing: "\u0628\u062F\u0621 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
-    deviceDetectedTitle: "\u062A\u0645 \u0627\u0643\u062A\u0634\u0627\u0641 \u062C\u0647\u0627\u0632 \u0641\u064A Home Assistant.",
+    deviceDetectedTitle: `\u062A\u0645 \u0627\u0643\u062A\u0634\u0627\u0641 \u062C\u0647\u0627\u0632 ${MQTT} \u0645\u0646 ${SOFABATON}.`,
     close: "\u0625\u063A\u0644\u0627\u0642",
-    alsoActivityTriggers: "\u0625\u0646\u0634\u0627\u0621 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0623\u064A\u0636\u064B\u0627 \u0639\u0646\u062F \u062A\u063A\u064A\u0651\u0631 \u0627\u0644\u0646\u0634\u0627\u0637.",
-    seeDocs: "\u0631\u0627\u062C\u0639 \u0648\u062B\u0627\u0626\u0642 \u0647\u0630\u0647 \u0627\u0644\u0645\u064A\u0632\u0629.",
-    dontShowAgain: "\u0639\u062F\u0645 \u0625\u0638\u0647\u0627\u0631 \u0647\u0630\u0627 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649 \u0644\u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 (\u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629).",
-    detectedDevice: (name) => `\u062A\u0645 \u0627\u0643\u062A\u0634\u0627\u0641 \u062C\u0647\u0627\u0632 MQTT: ${isolate(name)}.`,
+    alsoActivityTriggers: "\u0625\u0646\u0634\u0627\u0621 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0623\u064A\u0636\u064B\u0627 \u0639\u0646\u062F \u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u0646\u0634\u0627\u0637.",
+    seeDocs: "\u0639\u0631\u0636 \u0648\u062B\u0627\u0626\u0642 \u0647\u0630\u0647 \u0627\u0644\u0645\u064A\u0632\u0629.",
+    dontShowAgain: "\u0639\u062F\u0645 \u0625\u0638\u0647\u0627\u0631 \u0647\u0630\u0647 \u0627\u0644\u0631\u0633\u0627\u0644\u0629 \u0645\u062C\u062F\u062F\u064B\u0627 \u0644\u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u062E\u0644\u0627\u0644 \u0647\u0630\u0647 \u0627\u0644\u062C\u0644\u0633\u0629.",
+    detectedDevice: (name) => `\u062C\u0647\u0627\u0632 ${MQTT} \u0627\u0644\u0645\u0643\u062A\u0634\u0641: ${isolate(name)}.`,
     lastCommand: (name) => `\u0622\u062E\u0631 \u0623\u0645\u0631: ${isolate(name)}.`,
-    existingTriggers: "\u0639\u064F\u062B\u0631 \u0639\u0644\u0649 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0623\u062A\u0645\u062A\u0629 MQTT \u0645\u0648\u062C\u0648\u062F\u0629 \u0645\u0633\u0628\u0642\u064B\u0627.",
-    noMqttCommands: "\u0644\u0645 \u062A\u064F\u0643\u062A\u0634\u0641 \u0623\u064A \u0623\u0648\u0627\u0645\u0631 MQTT \u062D\u062A\u0649 \u0627\u0644\u0622\u0646",
+    existingTriggers: `\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0623\u062A\u0645\u062A\u0629 ${MQTT} \u0645\u0648\u062C\u0648\u062F\u0629 \u0645\u0633\u0628\u0642\u064B\u0627.`,
+    noMqttCommands: `\u0644\u0645 \u064A\u062A\u0645 \u0627\u0643\u062A\u0634\u0627\u0641 \u0623\u064A \u0623\u0648\u0627\u0645\u0631 ${MQTT} \u062D\u062A\u0649 \u0627\u0644\u0622\u0646`,
     deviceFallback: (id) => `\u0627\u0644\u062C\u0647\u0627\u0632 ${isolate(id)}`,
     unknownDevice: "\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
     commandFallback: (id) => `\u0627\u0644\u0623\u0645\u0631 ${isolate(id)}`,
-    createdTriggers: (count, deviceLabel) => `\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 ${isolate(count)} \u0645\u0646 \u0645\u0634\u063A\u0651\u0644\u0627\u062A MQTT Discovery \u0644\u0640 ${isolate(deviceLabel)}`,
-    createdActivityTriggers: (count) => `\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 ${isolate(count)} \u0645\u0646 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0627\u0644\u0646\u0634\u0627\u0637 \u0644\u0640 ${isolate("X2 \u2192 Activities")}`,
-    plusActivityTriggers: (count) => `\u060C \u0628\u0627\u0644\u0625\u0636\u0627\u0641\u0629 \u0625\u0644\u0649 ${isolate(count)} \u0645\u0646 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0627\u0644\u0646\u0634\u0627\u0637`,
-    allTriggersExist: (deviceLabel) => `\u062C\u0645\u064A\u0639 \u0645\u0634\u063A\u0651\u0644\u0627\u062A MQTT Discovery \u0627\u0644\u062E\u0627\u0635\u0629 \u0628\u0640 ${isolate(deviceLabel)} \u0645\u0648\u062C\u0648\u062F\u0629 \u0628\u0627\u0644\u0641\u0639\u0644`,
+    createdTriggers: (count, deviceLabel) => `\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u0645\u0634\u063A\u0651\u0644\u0627\u062A ${MQTT_DISCOVERY} \u0644\u0640 ${isolate(deviceLabel)}\u060C \u0648\u0639\u062F\u062F\u0647\u0627 ${isolate(count)}`,
+    createdActivityTriggers: (count) => `\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0646\u0634\u0627\u0637 \u0644\u0640 ${isolate("X2 \u2192 Activities")}\u060C \u0648\u0639\u062F\u062F\u0647\u0627 ${isolate(count)}`,
+    plusActivityTriggers: (count) => `\u060C \u0628\u0627\u0644\u0625\u0636\u0627\u0641\u0629 \u0625\u0644\u0649 \u0645\u0634\u063A\u0651\u0644\u0627\u062A \u0627\u0644\u0646\u0634\u0627\u0637\u060C \u0648\u0639\u062F\u062F\u0647\u0627 ${isolate(count)}`,
+    allTriggersExist: (deviceLabel) => `\u062C\u0645\u064A\u0639 \u0645\u0634\u063A\u0651\u0644\u0627\u062A ${MQTT_DISCOVERY} \u0627\u0644\u062E\u0627\u0635\u0629 \u0628\u0640 ${isolate(deviceLabel)} \u0645\u0648\u062C\u0648\u062F\u0629 \u0628\u0627\u0644\u0641\u0639\u0644`,
     buttonFallback: "\u0632\u0631",
-    activityFallbackLabel: "\u0646\u0634\u0627\u0637",
+    activityFallbackLabel: "\u0627\u0644\u0646\u0634\u0627\u0637",
     unknown: "\u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
-    automationAssistName: "Automation Assist",
+    automationAssistName: AUTOMATION_ASSIST,
     notification: {
-      title: "\u{1F6E0}\uFE0F Automation Assist",
+      title: `\u{1F6E0}\uFE0F ${AUTOMATION_ASSIST}`,
       eventButton: (label) => `\u0627\u0644\u0632\u0631: ${isolate(label)}`,
       eventActivity: (label) => `\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u0646\u0634\u0627\u0637: ${isolate(label)}`,
       eventOther: (label) => `\u0627\u0644\u062D\u062F\u062B: ${isolate(label)}`,
-      header: (activityName, eventLabel) => `**\u0627\u0644\u0646\u0634\u0627\u0637: ${isolate(activityName)} | ${isolate(eventLabel)}**`,
-      lovelaceHeading: "\u{1F4CB} **\u0631\u0645\u0632 \u0632\u0631 Lovelace**",
-      lovelaceCopy: "*\u0627\u0646\u0633\u062E \u0647\u0630\u0627 \u0625\u0644\u0649 YAML \u0627\u0644\u062E\u0627\u0635 \u0628\u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A:*",
-      serviceHeading: "\u2699\uFE0F **\u0627\u0633\u062A\u062F\u0639\u0627\u0621 \u0627\u0644\u062E\u062F\u0645\u0629 (\u0627\u0644\u0623\u062A\u0645\u062A\u0629)**",
+      header: (activityName, eventLabel) => `**\u0627\u0644\u0646\u0634\u0627\u0637: ${isolate(activityName)} \u2022 ${isolate(eventLabel)}**`,
+      lovelaceHeading: `\u{1F4CB} **\u0631\u0645\u0632 \u0632\u0631 ${LOVELACE}**`,
+      lovelaceCopy: `*\u0627\u0646\u0633\u062E \u0647\u0630\u0627 \u0625\u0644\u0649 ${YAML} \u0627\u0644\u062E\u0627\u0635 \u0628\u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A:*`,
+      serviceHeading: "\u2699\uFE0F **\u0627\u0633\u062A\u062F\u0639\u0627\u0621 \u062E\u062F\u0645\u0629 (\u0623\u062A\u0645\u062A\u0629)**",
       serviceCopy: "*\u0627\u0633\u062A\u062E\u062F\u0645 \u0647\u0630\u0627 \u0641\u064A \u0627\u0644\u0628\u0631\u0627\u0645\u062C \u0627\u0644\u0646\u0635\u064A\u0629 \u0623\u0648 \u0639\u0645\u0644\u064A\u0627\u062A \u0627\u0644\u0623\u062A\u0645\u062A\u0629:*"
     }
   },
   editor: {
     fieldLabels: {
-      entity: "\u0627\u062E\u062A\u0631 \u0643\u064A\u0627\u0646 \u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0645\u0646 Sofabaton",
+      entity: `\u0627\u062E\u062A\u0631 \u0643\u064A\u0627\u0646\u064B\u0627 \u0644\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 ${SOFABATON} \u0639\u0646 \u0628\u064F\u0639\u062F`,
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0645\u062D\u062F\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637",
+      show_activity: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0646\u0634\u0627\u0637",
       show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
       show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
-      show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0627\u0629",
-      show_media: "\u0639\u0646\u0627\u0635\u0631 \u0627\u0644\u062A\u062D\u0643\u0645 \u0641\u064A \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
-      show_colors: "\u0623\u062D\u0645\u0631/\u0623\u062E\u0636\u0631/\u0623\u0635\u0641\u0631/\u0623\u0632\u0631\u0642",
-      show_abc: "\u0623\u0632\u0631\u0627\u0631 A/B/C",
+      show_mid: "\u0645\u0641\u0627\u062A\u064A\u062D \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
+      show_media: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
+      show_colors: "\u0623\u062D\u0645\u0631\u060C \u0623\u062E\u0636\u0631\u060C \u0623\u0635\u0641\u0631\u060C \u0623\u0632\u0631\u0642",
+      show_abc: `\u0623\u0632\u0631\u0627\u0631 ${ABC}`,
       show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
       show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
-      max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0627\u0644\u0628\u0643\u0633\u0644)",
+      max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
       group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
     },
     automationAssistTitle: "\u0645\u0633\u0627\u0639\u062F \u0627\u0644\u0623\u062A\u0645\u062A\u0629",
-    keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-    keyCaptureDescription: "\u0623\u0631\u0633\u0644 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0625\u0644\u0649 \u0627\u0644\u0645\u062D\u0648\u0631 \u0644\u0625\u0646\u0634\u0627\u0621 YAML \u062C\u0627\u0647\u0632 \u0644\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0644\u0623\u0632\u0631\u0627\u0631 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A \u0648\u0639\u0645\u0644\u064A\u0627\u062A \u0627\u0644\u0623\u062A\u0645\u062A\u0629.",
-    keyCaptureLearnMore: "\u062A\u0639\u0631\u0651\u0641 \u0639\u0644\u0649 \u0627\u0644\u0645\u0632\u064A\u062F \u062D\u0648\u0644 \u0627\u0644\u062A\u0642\u0627\u0637 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-    keyCaptureDocsAria: "\u0648\u062B\u0627\u0626\u0642 \u0627\u0644\u062A\u0642\u0627\u0637 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
+    keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
+    keyCaptureDescription: `\u0623\u0631\u0633\u0644 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0625\u0644\u0649 \u0648\u062D\u062F\u0629 \u0627\u0644\u062A\u062D\u0643\u0645 \u0644\u0625\u0646\u0634\u0627\u0621 ${YAML} \u062C\u0627\u0647\u0632 \u0644\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0641\u064A \u0623\u0632\u0631\u0627\u0631 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A \u0648\u0639\u0645\u0644\u064A\u0627\u062A \u0627\u0644\u0623\u062A\u0645\u062A\u0629.`,
+    keyCaptureLearnMore: "\u062A\u0639\u0631\u0651\u0641 \u0639\u0644\u0649 \u0627\u0644\u0645\u0632\u064A\u062F \u062D\u0648\u0644 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
+    keyCaptureDocsAria: "\u0648\u062B\u0627\u0626\u0642 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     stylingOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0645\u0638\u0647\u0631",
     layoutOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     layoutSelectLabel: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A",
-    macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648/\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0643\u0635\u0641\u0648\u0641",
+    macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
-    moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0623\u0639\u0644\u0649`,
-    moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0623\u0633\u0641\u0644`,
+    moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
+    moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
     channel: "\u0627\u0644\u0642\u0646\u0627\u0629",
-    mediaControls: "\u0639\u0646\u0627\u0635\u0631 \u0627\u0644\u062A\u062D\u0643\u0645 \u0641\u064A \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
-    dvr: "DVR",
-    resetCardDefault: "\u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0625\u0644\u0649 \u0627\u0644\u0625\u0639\u062F\u0627\u062F \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0628\u0637\u0627\u0642\u0629",
-    resetDefaultLayout: "\u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0625\u0644\u0649 \u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A",
+    mediaControls: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
+    dvr: DVR,
+    resetCardDefault: "\u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u0627\u0644\u0625\u0639\u062F\u0627\u062F \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0628\u0637\u0627\u0642\u0629",
+    resetDefaultLayout: "\u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A",
     noteDefaultLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0644\u0644\u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u062A\u064A \u0644\u064A\u0633 \u0644\u0647\u0627 \u062A\u062E\u0637\u064A\u0637 \u062E\u0627\u0635",
-    noteCustomLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u062A\u062E\u0637\u064A\u0637 \u0645\u062E\u0635\u0651\u0635",
-    noteUsingDefault: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A"
+    noteCustomLayout: "\u062A\u062E\u0637\u064A\u0637 \u0645\u062E\u0635\u0651\u0635 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
+    noteUsingDefault: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645"
   },
   groups: {
-    activity: "\u0645\u062D\u062F\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637",
-    macro_favorites: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648/\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
+    activity: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0646\u0634\u0627\u0637",
+    macro_favorites: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     macros_row: "\u0635\u0641 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites_row: "\u0635\u0641 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
     nav: "\u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
     mid: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A/\u0627\u0644\u0642\u0646\u0627\u0629",
-    media: "\u0639\u0646\u0627\u0635\u0631 \u0627\u0644\u062A\u062D\u0643\u0645 \u0641\u064A \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
+    media: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
     colors: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0623\u0644\u0648\u0627\u0646",
-    abc: "A/B/C"
+    abc: ABC
   },
   keys: {
     up: "\u0623\u0639\u0644\u0649",
@@ -6597,10 +6628,10 @@ var REMOTE_CARD_STRINGS_AR = {
     volup: "\u0631\u0641\u0639 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
     voldn: "\u062E\u0641\u0636 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
     mute: "\u0643\u062A\u0645 \u0627\u0644\u0635\u0648\u062A",
-    chup: "\u0627\u0644\u0642\u0646\u0627\u0629 +",
-    chdn: "\u0627\u0644\u0642\u0646\u0627\u0629 -",
+    chup: `\u0627\u0644\u0642\u0646\u0627\u0629 ${isolate("+")}`,
+    chdn: `\u0627\u0644\u0642\u0646\u0627\u0629 ${isolate("-")}`,
     guide: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0628\u0631\u0627\u0645\u062C",
-    dvr: "DVR",
+    dvr: DVR,
     play: "\u062A\u0634\u063A\u064A\u0644",
     exit: "\u062E\u0631\u0648\u062C",
     rew: "\u062A\u0631\u062C\u064A\u0639",
@@ -6665,11 +6696,11 @@ registerRemoteCardTranslation("de", {
     triggersReady: "Ausl\xF6ser einsatzbereit",
     createTriggers: "MQTT-Discovery-Ausl\xF6ser erstellen",
     startCapturing: "Befehlserfassung starten",
-    deviceDetectedTitle: "Home Assistant-Ger\xE4t erkannt.",
+    deviceDetectedTitle: "Sofabaton-MQTT-Ger\xE4t erkannt.",
     close: "Schlie\xDFen",
     alsoActivityTriggers: "Zus\xE4tzlich Ausl\xF6ser f\xFCr Aktivit\xE4tswechsel erstellen.",
     seeDocs: "Dokumentation zu dieser Funktion anzeigen.",
-    dontShowAgain: "F\xFCr dieses Ger\xE4t nicht erneut anzeigen (in dieser Sitzung).",
+    dontShowAgain: "F\xFCr dieses Ger\xE4t w\xE4hrend dieser Sitzung nicht erneut anzeigen.",
     detectedDevice: (name) => `MQTT-Ger\xE4t erkannt: ${name}.`,
     lastCommand: (name) => `Letzter Befehl: ${name}.`,
     existingTriggers: "Vorhandene MQTT-Automatisierungsausl\xF6ser wurden gefunden.",
@@ -6810,11 +6841,11 @@ var REMOTE_CARD_STRINGS_ES = {
     triggersReady: "Desencadenantes listos para usar",
     createTriggers: "Crear desencadenantes de MQTT Discovery",
     startCapturing: "Iniciar la captura de comandos",
-    deviceDetectedTitle: "Dispositivo de Home Assistant detectado.",
+    deviceDetectedTitle: "Se ha detectado un dispositivo MQTT de Sofabaton.",
     close: "Cerrar",
     alsoActivityTriggers: "Crear tambi\xE9n desencadenantes para los cambios de actividad.",
     seeDocs: "Consulta la documentaci\xF3n de esta funci\xF3n.",
-    dontShowAgain: "No volver a mostrar esto para este dispositivo (durante esta sesi\xF3n).",
+    dontShowAgain: "No volver a mostrar este mensaje para este dispositivo durante esta sesi\xF3n.",
     detectedDevice: (name) => `Dispositivo MQTT detectado: ${name}.`,
     lastCommand: (name) => `\xDAltimo comando: ${name}.`,
     existingTriggers: "Se encontraron desencadenantes existentes de automatizaci\xF3n MQTT.",
@@ -6956,11 +6987,11 @@ var REMOTE_CARD_STRINGS_FR = {
     triggersReady: "D\xE9clencheurs pr\xEAts \xE0 l\u2019emploi",
     createTriggers: "Cr\xE9er les d\xE9clencheurs MQTT Discovery",
     startCapturing: "Commencer la capture des commandes",
-    deviceDetectedTitle: "Appareil Home Assistant d\xE9tect\xE9.",
+    deviceDetectedTitle: "Appareil MQTT Sofabaton d\xE9tect\xE9.",
     close: "Fermer",
     alsoActivityTriggers: "Cr\xE9er \xE9galement des d\xE9clencheurs pour les changements d\u2019activit\xE9.",
     seeDocs: "Consultez la documentation de cette fonctionnalit\xE9.",
-    dontShowAgain: "Ne plus afficher ceci pour cet appareil (pendant cette session).",
+    dontShowAgain: "Ne plus afficher ce message pour cet appareil pendant cette session.",
     detectedDevice: (name) => `Appareil MQTT d\xE9tect\xE9 : ${name}.`,
     lastCommand: (name) => `Derni\xE8re commande : ${name}.`,
     existingTriggers: "Des d\xE9clencheurs d\u2019automatisation MQTT existants ont \xE9t\xE9 trouv\xE9s.",
@@ -7101,11 +7132,11 @@ registerRemoteCardTranslation("nl", {
     triggersReady: "Triggers klaar voor gebruik",
     createTriggers: "MQTT Discovery-triggers aanmaken",
     startCapturing: "Begin met commando's vastleggen",
-    deviceDetectedTitle: "Home Assistant-apparaat gedetecteerd.",
+    deviceDetectedTitle: "Sofabaton-MQTT-apparaat gedetecteerd.",
     close: "Sluiten",
     alsoActivityTriggers: "Maak ook triggers aan voor activiteitswisselingen.",
     seeDocs: "Bekijk de documentatie voor deze functie.",
-    dontShowAgain: "Dit niet meer tonen voor dit apparaat (in deze sessie).",
+    dontShowAgain: "Dit tijdens deze sessie niet opnieuw tonen voor dit apparaat.",
     detectedDevice: (name) => `MQTT-apparaat gedetecteerd: ${name}.`,
     lastCommand: (name) => `Laatste commando: ${name}.`,
     existingTriggers: "Er zijn bestaande MQTT-automatiseringstriggers gevonden.",
@@ -7245,7 +7276,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     triggersReady: "\u89E6\u53D1\u5668\u5DF2\u5C31\u7EEA",
     createTriggers: "\u521B\u5EFA MQTT Discovery \u89E6\u53D1\u5668",
     startCapturing: "\u5F00\u59CB\u6355\u83B7\u547D\u4EE4",
-    deviceDetectedTitle: "\u5DF2\u68C0\u6D4B\u5230 Home Assistant \u8BBE\u5907\u3002",
+    deviceDetectedTitle: "\u5DF2\u68C0\u6D4B\u5230 Sofabaton MQTT \u8BBE\u5907\u3002",
     close: "\u5173\u95ED",
     alsoActivityTriggers: "\u540C\u65F6\u4E3A\u6D3B\u52A8\u53D8\u66F4\u521B\u5EFA\u89E6\u53D1\u5668\u3002",
     seeDocs: "\u67E5\u770B\u6B64\u529F\u80FD\u7684\u6587\u6863\u3002",

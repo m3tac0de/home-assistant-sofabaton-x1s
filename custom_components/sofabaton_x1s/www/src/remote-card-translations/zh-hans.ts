@@ -35,7 +35,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     triggersReady: "触发器已就绪",
     createTriggers: "创建 MQTT Discovery 触发器",
     startCapturing: "开始捕获命令",
-    deviceDetectedTitle: "已检测到 Home Assistant 设备。",
+    deviceDetectedTitle: "已检测到 Sofabaton MQTT 设备。",
     close: "关闭",
     alsoActivityTriggers: "同时为活动变更创建触发器。",
     seeDocs: "查看此功能的文档。",
