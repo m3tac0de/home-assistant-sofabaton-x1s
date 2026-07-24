@@ -4,7 +4,6 @@
 // such as Home Assistant, MQTT, YAML, Roku, Hue, Sonos, and Hub remain unchanged.
 
 import {
-  registerToolsCardTranslation,
   type CompleteToolsCardTranslation,
 } from "../strings";
 
@@ -383,4 +382,4 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
   },
 } satisfies CompleteToolsCardTranslation;
 
-registerToolsCardTranslation("zh-hans", TOOLS_CARD_STRINGS_ZH_HANS);
+export default TOOLS_CARD_STRINGS_ZH_HANS;

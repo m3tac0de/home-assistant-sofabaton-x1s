@@ -388,6 +388,14 @@ test.describe("tools-card Hub list layout", () => {
     expect(tabLabels).toContain("Automation");
     expect(tabLabels).not.toContain("Auto");
 
+    const localeRequests = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.includes("/tools-card-locales/")) {
+        localeRequests.push(`${url.pathname}${url.search}`);
+      }
+    });
+
     const translatedTabs = [
       ["nl-NL", ["Hub", "Automatisering", "Back-up"]],
       ["de-DE", ["Hub", "Automatisierung", "Backup"]],
@@ -396,12 +404,21 @@ test.describe("tools-card Hub list layout", () => {
       ["zh-Hans", ["Hub", "自动化", "备份"]],
     ];
     for (const [locale, expectedLabels] of translatedTabs) {
-      const metrics = await page.evaluate(async ({ language }) => {
+      await page.evaluate(({ language }) => {
         const card = window._harnessCard;
         card.hass = {
           ...(card._snapshot?.hass ?? {}),
           locale: { language },
         };
+      }, { language: locale });
+      await page.waitForFunction((expected) => {
+        const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+        const labels = [...(root?.querySelectorAll(".tabs .tab-btn-label") ?? [])]
+          .map((label) => label.textContent?.trim());
+        return JSON.stringify(labels) === JSON.stringify(expected);
+      }, expectedLabels);
+      const metrics = await page.evaluate(async () => {
+        const card = window._harnessCard;
         await card.updateComplete;
         const root = card.shadowRoot;
         const scroll = root?.querySelector(".tabs-scroll");
@@ -411,10 +428,17 @@ test.describe("tools-card Hub list layout", () => {
           clientWidth: scroll?.clientWidth ?? 0,
           scrollWidth: scroll?.scrollWidth ?? 0,
         };
-      }, { language: locale });
+      });
       expect(metrics.labels).toEqual(expectedLabels);
       expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
     }
+    expect(localeRequests).toEqual([
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/nl.js?v=81",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/de.js?v=81",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/fr.js?v=81",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/es.js?v=81",
+      "/custom_components/sofabaton_x1s/www/tools-card-locales/zh-hans.js?v=81",
+    ]);
 
     await page.evaluate(async () => {
       const card = window._harnessCard;

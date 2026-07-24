@@ -11,7 +11,7 @@ The Control Panel English reference and registry live in
 rendered copy, attributes, validation text, status fallbacks, and editor form
 descriptions must pass through `TOOLS_CARD_STRINGS`.
 
-Bundled Control Panel locales are `en-GB`, `nl`, `de`, `fr`, `es`, and
+Supported Control Panel locales are `en-GB`, `nl`, `de`, `fr`, `es`, and
 Simplified Chinese (`zh-Hans`). The five complete non-English catalogues use
 `CompleteToolsCardTranslation`, so TypeScript
 reports every missing key when the English reference grows. The translation
@@ -21,18 +21,24 @@ The Simplified Chinese terminology and native-review brief are recorded in
 [`translations/zh-hans-glossary.md`](translations/zh-hans-glossary.md) and
 [`translations/zh-hans-control-panel-review.md`](translations/zh-hans-control-panel-review.md).
 
+Only the English reference is bundled into `tools-card.js`. The selected
+non-default catalogue is loaded once from
+`www/tools-card-locales/<lang>.js`, using the same frontend version query as
+the main card. Requests and failures are cached for the browser session;
+unsupported or unavailable catalogues safely fall back to English.
+
 To add a language:
 
 1. Create
    `custom_components/sofabaton_x1s/www/src/control-panel-translations/<lang>.ts`.
-2. Register any translated subset with `registerToolsCardTranslation`. For a
-   catalogue intended to be complete, also declare it with
+2. Export the translated subset as the module's default export. For a
+   catalogue intended to be complete, declare it with
    `satisfies CompleteToolsCardTranslation`:
 
    ```ts
-   import { registerToolsCardTranslation } from "../strings";
+   import type { CompleteToolsCardTranslation } from "../strings";
 
-   registerToolsCardTranslation("nl", {
+   const translation = {
      tabs: {
        cache: "Hub",
        backup: "Back-up",
@@ -41,11 +47,16 @@ To add a language:
        cancel: "Annuleren",
        save: "Opslaan",
      },
-   });
+   } satisfies CompleteToolsCardTranslation;
+
+   export default translation;
    ```
 
-3. Import the module from
+3. Add the locale code to `TOOLS_CARD_LOCALES` in
+   [`control-panel-language-loader.ts`](../custom_components/sofabaton_x1s/www/src/control-panel-language-loader.ts)
+   and register its default export in the eager test helper
    [`control-panel-translations/index.ts`](../custom_components/sofabaton_x1s/www/src/control-panel-translations/index.ts).
+   The build discovers catalogue source files automatically.
 4. Run `npm run typecheck`, `npm run build:tools-card`, and
    `npm run test:frontend`.
 

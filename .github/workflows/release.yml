@@ -11,10 +11,41 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build:frontend
+
+      - name: Verify Control Panel locale modules
+        shell: bash
+        run: |
+          for locale in en-gb de es fr nl zh-hans; do
+            test -s "custom_components/sofabaton_x1s/www/tools-card-locales/${locale}.js"
+          done
+
       - name: Zip integration directory
-        # This zips the custom_components folder specifically
+        # Generated locale modules are under www/tools-card-locales and are
+        # included; TypeScript sources remain excluded.
         working-directory: custom_components/sofabaton_x1s
         run: zip -r ../../sofabaton_x1s.zip . -x "www/src/*"
+
+      - name: Verify release archive
+        shell: bash
+        run: |
+          for locale in en-gb de es fr nl zh-hans; do
+            unzip -Z1 sofabaton_x1s.zip | grep -qx "www/tools-card-locales/${locale}.js"
+          done
+          if unzip -Z1 sofabaton_x1s.zip | grep -q '^www/src/'; then
+            echo "Frontend TypeScript sources must not be included in the release archive."
+            exit 1
+          fi
 
       - name: Upload zip to release
         uses: softprops/action-gh-release@v3

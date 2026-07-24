@@ -1,7 +1,7 @@
 // German (Deutsch) translation for the Sofabaton Control Panel card.
 // Complete mirror of the English catalogue; product and protocol names remain unchanged.
 
-import { registerToolsCardTranslation, type CompleteToolsCardTranslation } from "../strings";
+import type { CompleteToolsCardTranslation } from "../strings";
 
 const art = (kind: "activity" | "device") => kind === "activity" ? "Aktivität" : "Gerät";
 
@@ -328,4 +328,4 @@ export const TOOLS_CARD_STRINGS_DE = {
   },
 } satisfies CompleteToolsCardTranslation;
 
-registerToolsCardTranslation("de", TOOLS_CARD_STRINGS_DE);
+export default TOOLS_CARD_STRINGS_DE;

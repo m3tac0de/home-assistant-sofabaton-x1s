@@ -1,7 +1,7 @@
 // Spanish (Español) translation for the Sofabaton Control Panel card.
 // Complete mirror of the English catalogue in neutral international Spanish.
 
-import { registerToolsCardTranslation, type CompleteToolsCardTranslation } from "../strings";
+import type { CompleteToolsCardTranslation } from "../strings";
 
 export const TOOLS_CARD_STRINGS_ES = {
   common: {
@@ -313,4 +313,4 @@ export const TOOLS_CARD_STRINGS_ES = {
   },
 } satisfies CompleteToolsCardTranslation;
 
-registerToolsCardTranslation("es", TOOLS_CARD_STRINGS_ES);
+export default TOOLS_CARD_STRINGS_ES;

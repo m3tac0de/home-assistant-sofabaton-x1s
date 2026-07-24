@@ -1035,6 +1035,10 @@ const TRANSLATIONS: Record<string, ToolsCardTranslation> = {};
 let currentLanguage = "en";
 let currentStrings: ToolsCardStrings = TOOLS_CARD_STRINGS_EN;
 
+function normalizeToolsCardLanguage(language: unknown): string {
+  return String(language || "en").trim().toLowerCase().replaceAll("_", "-");
+}
+
 function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1066,7 +1070,7 @@ export function registerToolsCardTranslation(
   language: string,
   translation: ToolsCardTranslation,
 ) {
-  const lang = String(language || "").toLowerCase();
+  const lang = String(language || "").trim().toLowerCase().replaceAll("_", "-");
   if (!lang) return;
   TRANSLATIONS[lang] = translation;
   if (currentLanguage === lang || currentLanguage.split(/[-_]/)[0] === lang) {
@@ -1082,7 +1086,7 @@ export function registerToolsCardTranslation(
  * changed so the host card can request a render.
  */
 export function setToolsCardLanguage(language: unknown): boolean {
-  const lang = String(language || "en").toLowerCase();
+  const lang = normalizeToolsCardLanguage(language);
   if (lang === currentLanguage) return false;
   currentLanguage = lang;
   const translation = resolveTranslation(lang);
@@ -1095,6 +1099,11 @@ export function setToolsCardLanguage(language: unknown): boolean {
 /** The currently selected locale code, normalized to lowercase. */
 export function toolsCardLanguage(): string {
   return currentLanguage;
+}
+
+/** True when a translation overlay is registered for this exact or base locale. */
+export function hasToolsCardTranslation(language: unknown): boolean {
+  return Boolean(resolveTranslation(normalizeToolsCardLanguage(language)));
 }
 
 function valueAtPath(path: PropertyKey[]): any {

@@ -6,11 +6,13 @@ import ts from "typescript";
 import {
   TOOLS_CARD_STRINGS,
   TOOLS_CARD_STRINGS_EN,
+  hasToolsCardTranslation,
   registerToolsCardTranslation,
   setToolsCardLanguage,
   toolsCardLanguage,
   toolsStr,
 } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import { TOOLS_CARD_LOCALES } from "../../custom_components/sofabaton_x1s/www/src/control-panel-language-loader";
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
 test("control-panel strings default to the complete English table", () => {
@@ -18,6 +20,12 @@ test("control-panel strings default to the complete English table", () => {
   assert.equal(toolsCardLanguage(), "en");
   assert.equal(toolsStr().tabs.cache, TOOLS_CARD_STRINGS_EN.tabs.cache);
   assert.equal(TOOLS_CARD_STRINGS.common.activityFallback(7), "Activity 7");
+});
+
+test("every emitted Control Panel locale is registered by the eager test helper", () => {
+  for (const locale of TOOLS_CARD_LOCALES) {
+    assert.equal(hasToolsCardTranslation(locale), true, locale);
+  }
 });
 
 test("partial translations overlay English and regional locales use their base language", () => {

@@ -1,5 +1,6 @@
 # CI for the frontend cards (custom_components/sofabaton_x1s/www). Typechecks,
-# rebuilds both card bundles and fails on drift against the committed JS
+# rebuilds both card bundles and fails on drift against committed frontend
+# artifacts (including standalone locale modules)
 # (CONTRIBUTING: source and regenerated bundles are committed together), then
 # runs the node:test frontend suite. Playwright runs on Windows because the
 # committed screenshot baselines are *-win32.png.
@@ -45,8 +46,14 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build:frontend
-      - name: Committed bundles match source
-        run: git diff --exit-code custom_components/sofabaton_x1s/www/*.js
+      - name: Committed frontend artifacts match source
+        shell: bash
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- custom_components/sofabaton_x1s/www)"
+          if [[ -n "$changes" ]]; then
+            printf '%s\n' "$changes"
+            exit 1
+          fi
       - run: npm run test:frontend
 
   playwright:

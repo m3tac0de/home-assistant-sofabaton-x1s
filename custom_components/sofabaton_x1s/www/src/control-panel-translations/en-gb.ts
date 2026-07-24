@@ -3,9 +3,9 @@
 // Deliberately partial: only copy whose spelling differs from the American
 // English reference table is overridden. All other keys fall back to English.
 
-import { registerToolsCardTranslation } from "../strings";
+import type { ToolsCardTranslation } from "../strings";
 
-registerToolsCardTranslation("en-gb", {
+export const TOOLS_CARD_STRINGS_EN_GB = {
   common: {
     favoriteFallback: (id: number | string) => `Favourite ${id}`,
   },
@@ -43,4 +43,6 @@ registerToolsCardTranslation("en-gb", {
     colorGroup: "Colour",
     favorite: "Set as Favourite",
   },
-});
+} satisfies ToolsCardTranslation;
+
+export default TOOLS_CARD_STRINGS_EN_GB;

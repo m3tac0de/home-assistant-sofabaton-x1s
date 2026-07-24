@@ -2,7 +2,6 @@
 // Complete mirror of the English catalogue; product and protocol names remain unchanged.
 
 import {
-  registerToolsCardTranslation,
   type CompleteToolsCardTranslation,
 } from "../strings";
 
@@ -385,4 +384,4 @@ export const TOOLS_CARD_STRINGS_NL = {
   },
 } satisfies CompleteToolsCardTranslation;
 
-registerToolsCardTranslation("nl", TOOLS_CARD_STRINGS_NL);
+export default TOOLS_CARD_STRINGS_NL;
