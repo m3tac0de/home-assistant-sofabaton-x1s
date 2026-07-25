@@ -1796,7 +1796,24 @@ var TOOLS_CARD_STRINGS_EN = {
     entityWriting: "Applying changes to the hub\u2026",
     entityRefreshing: "Refreshing the cached hub state\u2026",
     entityComplete: "Synced to hub.",
-    wifiSyncing: "Syncing Wifi Commands\u2026"
+    wifiSyncing: "Syncing Wifi Commands\u2026",
+    // Deploy pipeline stages, keyed by the `phase` the hub reports.
+    wifiStarting: "Starting the sync\u2026",
+    wifiReadingDevice: "Reading the deployed Wifi Device\u2026",
+    wifiEnablingDevice: "Enabling the Wifi Device\u2026",
+    wifiDisablingDevice: "Disabling the Wifi Device\u2026",
+    wifiValidatingActivities: "Checking Activities against the hub\u2026",
+    wifiCreatingDevice: "Creating the Wifi Device on the hub\u2026",
+    wifiDeletingDevice: "Removing the previous Wifi Device\u2026",
+    wifiAddingToActivities: "Adding the Wifi Device to Activities\u2026",
+    wifiApplyingFavorites: "Applying Activity shortcuts\u2026",
+    wifiApplyingBindings: "Applying Activity button assignments\u2026",
+    wifiRefreshingMaps: "Refreshing Activity buttons and shortcuts\u2026",
+    wifiResyncingRemote: "Resyncing the physical remote\u2026",
+    wifiUpdatedInPlace: "Wifi Device updated.",
+    wifiAlreadyCurrent: "Wifi Device already up to date.",
+    wifiDeviceRemoved: "Wifi Device removed \u2014 no commands configured.",
+    wifiComplete: "Wifi Commands synced."
   },
   activities: {
     loading: "Loading activities...",
@@ -2860,6 +2877,24 @@ function progressStep(progress) {
   const current = Math.min(total, Math.max(1, Number.isFinite(rawCurrent) ? Math.trunc(rawCurrent) : 1));
   return TOOLS_CARD_STRINGS.backendState.step(current, total);
 }
+var WIFI_DEPLOY_PHASES = {
+  starting: "wifiStarting",
+  reading_device: "wifiReadingDevice",
+  enabling_device: "wifiEnablingDevice",
+  disabling_device: "wifiDisablingDevice",
+  validating_activities: "wifiValidatingActivities",
+  creating_device: "wifiCreatingDevice",
+  deleting_device: "wifiDeletingDevice",
+  adding_to_activities: "wifiAddingToActivities",
+  applying_favorites: "wifiApplyingFavorites",
+  applying_bindings: "wifiApplyingBindings",
+  refreshing_maps: "wifiRefreshingMaps",
+  resyncing_remote: "wifiResyncingRemote",
+  updated_in_place: "wifiUpdatedInPlace",
+  already_current: "wifiAlreadyCurrent",
+  device_removed: "wifiDeviceRemoved",
+  complete: "wifiComplete"
+};
 function normalizeOperation(value) {
   const operation = String(value || "").trim().toLowerCase();
   if (operation === "backup_export") return "backup_export";
@@ -2887,12 +2922,6 @@ function localizeBackendOperationLabel(operationValue) {
     default:
       return TOOLS_CARD_STRINGS.availability.operationRunning;
   }
-}
-function localizeBackendOperationDetail(operationValue, currentStep, totalSteps) {
-  const operation = normalizeOperation(operationValue);
-  const step = progressStep({ current_step: currentStep, total_steps: totalSteps });
-  if (step) return step;
-  return operation === "wifi_deploy" ? TOOLS_CARD_STRINGS.backendState.wifiSyncing : TOOLS_CARD_STRINGS.backendState.working;
 }
 function localizeBackendProgress(progress, operationOverride) {
   const S5 = TOOLS_CARD_STRINGS.backendState;
@@ -2928,22 +2957,17 @@ function localizeBackendProgress(progress, operationOverride) {
       if (phase === "cache_refresh") return S5.entityRefreshing;
       if (phase === "completed" || phase === "complete") return S5.entityComplete;
       break;
-    case "wifi_deploy":
+    case "wifi_deploy": {
+      const stage = WIFI_DEPLOY_PHASES[phase];
+      if (stage) return S5[stage];
+      const message = String(progress.message || "").trim();
+      if (message) return message;
       return progressStep(progress) || S5.wifiSyncing;
+    }
     default:
       break;
   }
   return progressStep(progress) || S5.working;
-}
-function localizeRuntimeOperation(runtime) {
-  return {
-    label: localizeBackendOperationLabel(runtime.operation),
-    detail: localizeBackendOperationDetail(
-      runtime.operation,
-      runtime.current_step,
-      runtime.total_steps
-    )
-  };
 }
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors.ts
@@ -3130,15 +3154,25 @@ function resolveRuntimeState(snapshot) {
   }
   const hubRuntime = hub?.runtime_state;
   if (hubRuntime?.kind === "operation_running") {
-    const localized = localizeRuntimeOperation(hubRuntime);
+    const operation = hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy";
     const total = Number(hubRuntime.total_steps || 0);
     const current = Number(hubRuntime.current_step || 0);
     const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
     return {
       kind: "operation_running",
-      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy",
-      label: localized.label,
-      detail: localized.detail,
+      operation,
+      label: localizeBackendOperationLabel(hubRuntime.operation),
+      // Same localizer the in-panel progress views use, so the dock narrates
+      // the phase ("Restoring device 8...") instead of only counting steps.
+      // It falls back to the step counter, then to "Working...", whenever the
+      // backend has no phase to report. `runtime_state` calls the free-text
+      // line `detail` while progress events call it `message`; map it across
+      // so the Wifi in-place stages (labelled after the user's own commands,
+      // hence phase-less) reach that fallback here too.
+      detail: localizeBackendProgress(
+        { ...hubRuntime, message: hubRuntime.detail },
+        operation
+      ),
       progress: {
         current: Number.isFinite(current) ? current : null,
         total: Number.isFinite(total) && total > 0 ? total : null,
@@ -14462,11 +14496,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             ${remoteUnavailable ? A : syncRunning ? renderOperationProgress({
       mode: "wifi-deploy",
       title: TOOLS_CARD_STRINGS.wifiCommands.deployingTitle,
-      message: localizeBackendOperationDetail(
-        "wifi_deploy",
-        this._syncState.current_step,
-        this._syncState.total_steps
-      )
+      message: localizeBackendProgress(this._syncState, "wifi_deploy")
     }) : b2`
                     ${this._renderDevicePowerRows()}
                     <div class="command-grid">
@@ -16275,11 +16305,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _syncMessage(remoteUnavailable) {
     if (remoteUnavailable) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageRemoteUnavailable;
     if (this._syncState.status === "running") {
-      return localizeBackendOperationDetail(
-        "wifi_deploy",
-        this._syncState.current_step,
-        this._syncState.total_steps
-      );
+      return localizeBackendProgress(this._syncState, "wifi_deploy");
     }
     if (this._syncState.status === "failed") return String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncMessageFailed);
     if (this._syncState.sync_needed) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageNeeded;

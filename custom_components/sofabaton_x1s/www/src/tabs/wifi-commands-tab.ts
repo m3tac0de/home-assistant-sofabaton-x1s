@@ -5,7 +5,7 @@ import { operationProgressStyles, renderOperationProgress } from "../components/
 import { addButtonStyles } from "../shared/styles/add-button-styles";
 import type { ControlPanelHubState, HassLike, HubEventFireEvent, WifiEvent, WifiPressEvent, WifiSectionId } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
-import { localizeBackendOperationDetail } from "../shared/utils/backend-state-localization";
+import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import {
   findRunningWifiDevice,
   selectedDeviceOwnsPendingSync,
@@ -191,6 +191,10 @@ interface SyncState {
   status: string;
   current_step: number;
   total_steps: number;
+  /** Stable stage name the deploy pipeline reports; localized for display.
+   *  Absent for the in-place planner's per-step writes, which fall back to
+   *  `message`. */
+  phase?: string | null;
   message: string;
   commands_hash: string;
   managed_command_hashes: string[];
@@ -1010,11 +1014,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                 ? renderOperationProgress({
                     mode: "wifi-deploy",
                     title: TOOLS_CARD_STRINGS.wifiCommands.deployingTitle,
-                    message: localizeBackendOperationDetail(
-                      "wifi_deploy",
-                      this._syncState.current_step,
-                      this._syncState.total_steps,
-                    ),
+                    message: localizeBackendProgress(this._syncState, "wifi_deploy"),
                   })
                 : html`
                     ${this._renderDevicePowerRows()}
@@ -3114,11 +3114,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _syncMessage(remoteUnavailable: boolean) {
     if (remoteUnavailable) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageRemoteUnavailable;
     if (this._syncState.status === "running") {
-      return localizeBackendOperationDetail(
-        "wifi_deploy",
-        this._syncState.current_step,
-        this._syncState.total_steps,
-      );
+      return localizeBackendProgress(this._syncState, "wifi_deploy");
     }
     if (this._syncState.status === "failed") return String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncMessageFailed);
     if (this._syncState.sync_needed) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageNeeded;

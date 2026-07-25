@@ -84,7 +84,15 @@ export interface ControlPanelRuntimeState {
   kind: "idle" | "app_connected" | "operation_running";
   operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | null;
   label?: string | null;
+  /** Backend-authored English prose. Kept as a last-resort fallback only —
+   *  the fields below are what gets localized. */
   detail?: string | null;
+  /** Structured progress, mirroring BackupProgressEvent, so the dock can say
+   *  what the hub is actually doing in the user's language instead of only
+   *  counting steps. */
+  phase?: string | null;
+  current_device_id?: number | null;
+  current_activity_id?: number | null;
   current_step?: number | null;
   total_steps?: number | null;
   device_key?: string | null;

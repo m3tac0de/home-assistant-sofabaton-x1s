@@ -9,7 +9,7 @@ import type {
   TabId,
 } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
-import { localizeRuntimeOperation } from "./backend-state-localization";
+import { localizeBackendOperationLabel, localizeBackendProgress } from "./backend-state-localization";
 
 export function selectedHub(snapshot: ControlPanelSnapshot): ControlPanelHubState | null {
   const hubs = snapshot.state?.hubs ?? [];
@@ -288,7 +288,15 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
 
   const hubRuntime = hub?.runtime_state;
   if (hubRuntime?.kind === "operation_running") {
-    const localized = localizeRuntimeOperation(hubRuntime);
+    const operation = hubRuntime.operation === "backup_restore"
+      ? "backup_restore"
+      : hubRuntime.operation === "backup_export"
+        ? "backup_export"
+        : hubRuntime.operation === "cache_refresh"
+          ? "cache_refresh"
+          : hubRuntime.operation === "entity_sync"
+            ? "entity_sync"
+            : "wifi_deploy";
     const total = Number(hubRuntime.total_steps || 0);
     const current = Number(hubRuntime.current_step || 0);
     const percent = total > 0
@@ -296,17 +304,19 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
       : null;
     return {
       kind: "operation_running",
-      operation: hubRuntime.operation === "backup_restore"
-        ? "backup_restore"
-        : hubRuntime.operation === "backup_export"
-          ? "backup_export"
-          : hubRuntime.operation === "cache_refresh"
-            ? "cache_refresh"
-            : hubRuntime.operation === "entity_sync"
-              ? "entity_sync"
-              : "wifi_deploy",
-      label: localized.label,
-      detail: localized.detail,
+      operation,
+      label: localizeBackendOperationLabel(hubRuntime.operation),
+      // Same localizer the in-panel progress views use, so the dock narrates
+      // the phase ("Restoring device 8...") instead of only counting steps.
+      // It falls back to the step counter, then to "Working...", whenever the
+      // backend has no phase to report. `runtime_state` calls the free-text
+      // line `detail` while progress events call it `message`; map it across
+      // so the Wifi in-place stages (labelled after the user's own commands,
+      // hence phase-less) reach that fallback here too.
+      detail: localizeBackendProgress(
+        { ...hubRuntime, message: hubRuntime.detail },
+        operation,
+      ),
       progress: {
         current: Number.isFinite(current) ? current : null,
         total: Number.isFinite(total) && total > 0 ? total : null,

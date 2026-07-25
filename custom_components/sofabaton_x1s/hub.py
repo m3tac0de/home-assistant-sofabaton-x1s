@@ -3467,8 +3467,13 @@ class SofabatonHub:
                     activity_entries.append(payload)
             return device_entry, activity_entries
 
+        # `phase` is the stable, translatable name of this stage; `message` is
+        # the English rendering kept for logs and for any consumer that has no
+        # localization table. The control panel localizes `phase` and only
+        # falls back to `message` for stages it does not know.
         self._set_command_sync_progress(
             device_key=normalized_device_key,
+            phase="reading_device",
             message="Reading the deployed Wifi Device",
         )
         device_entry, activity_entries = await self.hass.async_add_executor_job(_read_baseline)
@@ -3627,6 +3632,7 @@ class SofabatonHub:
                 device_key=normalized_device_key,
                 current_step=total_steps - 1,
                 total_steps=total_steps,
+                phase="resyncing_remote",
                 message="Resyncing physical remote",
             )
             await self.async_resync_remote()
@@ -3646,6 +3652,7 @@ class SofabatonHub:
             status="success",
             current_step=total_steps,
             total_steps=total_steps,
+            phase="updated_in_place" if plan.steps else "already_current",
             message="Wifi Device updated in place"
             if plan.steps
             else "Wifi Device already up to date",
@@ -3704,6 +3711,7 @@ class SofabatonHub:
                 status="running",
                 current_step=0,
                 total_steps=total_steps,
+                phase="starting",
                 message="Starting sync",
             )
 
@@ -3711,6 +3719,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=1,
+                    phase="enabling_device",
                     message="Ensuring Wifi Device is enabled",
                 )
                 if configured_slots > 0 and not self.roku_server_enabled:
@@ -3770,6 +3779,7 @@ class SofabatonHub:
                 ):
                     self._set_command_sync_progress(
                         device_key=normalized_device_key,
+                        phase="validating_activities",
                         message="Validating Activities against the hub",
                     )
                     previous_activities_generation = self._activities_generation
@@ -3829,6 +3839,7 @@ class SofabatonHub:
                     self._set_command_sync_progress(
                         device_key=normalized_device_key,
                         current_step=2,
+                        phase="deleting_device",
                         message="Deleting existing managed Wifi Device",
                     )
                     for dev_id, _managed_key, _managed_hash, _brand in managed:
@@ -3851,6 +3862,7 @@ class SofabatonHub:
                         self._set_command_sync_progress(
                             device_key=normalized_device_key,
                             current_step=3,
+                            phase="disabling_device",
                             message="Disabling Wifi Device",
                         )
                         await self.async_set_roku_server_enabled(False)
@@ -3860,6 +3872,7 @@ class SofabatonHub:
                         status="success",
                         current_step=7,
                         total_steps=total_steps,
+                        phase="device_removed",
                         message="No configured slots; managed Wifi Device removed",
                         wifi_device_id=None,
                         commands_hash=commands_hash,
@@ -3952,6 +3965,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=2,
+                    phase="creating_device",
                     message="Creating Wifi Device on Hub",
                 )
                 created = await self.async_create_wifi_device(
@@ -4002,6 +4016,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=3,
+                    phase="adding_to_activities",
                     message="Adding Wifi Device to Activities",
                 )
                 for act_id in sorted(activity_ids):
@@ -4024,6 +4039,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=4,
+                    phase="deleting_device",
                     message="Deleting existing managed Wifi Device",
                 )
                 # Activities the hub rewrote while deleting the old managed
@@ -4061,6 +4077,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=5,
+                    phase="applying_favorites",
                     message="Applying activity favorites",
                 )
 
@@ -4131,6 +4148,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=6,
+                    phase="applying_bindings",
                     message="Applying activity button mappings",
                 )
                 for slot_idx, slot in enumerate(commands[:slot_count]):
@@ -4190,6 +4208,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=7,
+                    phase="refreshing_maps",
                     message="Refreshing activity maps and buttons",
                 )
                 # Re-warm every touched activity with the same clear-then-fetch
@@ -4235,6 +4254,7 @@ class SofabatonHub:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=8,
+                    phase="resyncing_remote",
                     message="Resyncing physical remote",
                 )
                 await self.async_resync_remote()
@@ -4257,6 +4277,7 @@ class SofabatonHub:
                     status="success",
                     current_step=8,
                     total_steps=total_steps,
+                    phase="complete",
                     message="Sync complete",
                     wifi_device_id=wifi_device_id,
                     commands_hash=commands_hash,

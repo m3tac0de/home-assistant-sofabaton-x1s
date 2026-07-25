@@ -126,6 +126,41 @@ def test_runtime_payload_labels_cache_refresh():
     assert payload["detail"] == "Refreshing device 11…"
 
 
+def test_runtime_payload_forwards_structured_progress_for_localization():
+    """`detail` is English prose the frontend cannot translate, so the payload
+    also carries the structured phase/target the control panel localizes into
+    "Refreshing device 11…" in the user's own language."""
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    operation_id = registry.create(
+        kind="cache_refresh",
+        entry_id="entry-1",
+        initial_state={"status": "running"},
+    )
+    registry.update(
+        operation_id,
+        phase="device",
+        current_device_id=11,
+        message="Refreshing device 11…",
+        completed_steps=3,
+        total_steps=9,
+    )
+    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hub = SimpleNamespace(entry_id="entry-1", client_connected=False)
+
+    payload = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
+    assert payload["phase"] == "device"
+    assert payload["current_device_id"] == 11
+    assert payload["current_activity_id"] is None
+    assert payload["current_step"] == 3
+    assert payload["total_steps"] == 9
+
+    # Activity phases travel the same way.
+    registry.update(operation_id, phase="activity", current_device_id=None, current_activity_id=101)
+    payload = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
+    assert payload["phase"] == "activity"
+    assert payload["current_activity_id"] == 101
+
+
 def test_ws_structural_bundle_present(monkeypatch):
     conn = _Conn()
     bundle = {"kind": "hub_bundle", "schema_version": 5, "devices": [], "activities": []}

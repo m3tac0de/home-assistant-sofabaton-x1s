@@ -738,11 +738,19 @@ async def _async_build_control_panel_runtime_payload(
             "kind": "operation_running",
             "operation": operation,
             "label": label,
+            # `detail` is this module's own English prose and cannot be
+            # translated in the frontend, so it is only a fallback now. The
+            # structured trio below is what the control panel localizes into
+            # "Restoring device 8..." and friends; the progress callback already
+            # merges these keys into the registry record.
             "detail": str(
                 active_backup_operation.get("message")
                 or active_backup_operation.get("phase")
                 or "Working..."
             ),
+            "phase": active_backup_operation.get("phase"),
+            "current_device_id": active_backup_operation.get("current_device_id"),
+            "current_activity_id": active_backup_operation.get("current_activity_id"),
             "current_step": active_backup_operation.get("completed_steps"),
             "total_steps": active_backup_operation.get("total_steps"),
             "device_key": None,
@@ -773,7 +781,12 @@ async def _async_build_control_panel_runtime_payload(
             "kind": "operation_running",
             "operation": "wifi_deploy",
             "label": "Deploying Wifi commands",
+            # See the backup branch above: `phase` is what gets localized,
+            # `detail` is the English fallback for stages without a mapping
+            # (the in-place planner's per-step labels name user data, so they
+            # have no fixed phase).
             "detail": str(sync_payload.get("message") or "Sync in progress"),
+            "phase": sync_payload.get("phase"),
             "current_step": sync_payload.get("current_step"),
             "total_steps": sync_payload.get("total_steps"),
             "device_key": device_key or None,
