@@ -89,7 +89,7 @@ test("bundled complete control-panel translations select regional locales and pr
       favorites: "Favoris",
       activity: "Activité 7",
       immediate: "Cette modification est appliquée immédiatement au hub.",
-      replace: "Les suppressions ne sont appliquées au hub que si l’option « Effacer les appareils et activités existants » est activée pendant la restauration.",
+      replace: "Les suppressions ne sont appliquées au hub que si l’option « Effacer les appareils et activités existants » est activée pendant la restauration.",
       volumeChannel: "Volume et chaînes",
       playback: "Lecture",
     },
@@ -138,7 +138,7 @@ test("bundled Simplified Chinese control-panel translation supports zh-Hans", ()
     ["Hub", "自动化", "备份", "设置", "日志"],
   );
   assert.equal(TOOLS_CARD_STRINGS.common.activityFallback(7), "活动 7");
-  assert.equal(TOOLS_CARD_STRINGS.cache.activityCounts(2, 1, 4), "2 收藏 / 1 宏 / 4 按键");
+  assert.equal(TOOLS_CARD_STRINGS.cache.activityCounts(2, 1, 4), "2 个收藏 / 1 个宏 / 4 个按键");
   assert.equal(TOOLS_CARD_STRINGS.backup.backupResultSummary(2, 3), "备份包含 2 个活动和 3 个设备");
   assert.equal(TOOLS_CARD_STRINGS.backup.deleteImmediateNote, "此操作会立即应用到 Hub。");
   assert.equal(TOOLS_CARD_STRINGS.wifiCommands.action, "动作");
@@ -166,7 +166,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       locale: "de",
       tabs: ["Hub", "Automatisierung", "Backup"],
       cache: ["Aktivieren", "Liste", "Alle", "Sortieren", "Hinzufügen", "Synchronisieren"],
-      backupSections: ["Sichern", "Ändern", "Einspielen"],
+      backupSections: ["Sichern", "Ändern", "Wiederherstellen"],
       backupButtons: ["Herunterladen", "Keine", "Alle", "Starten", "Datei auswählen"],
       wifiButtons: ["Hinzufügen", "Synchronisieren"],
     },
@@ -318,8 +318,8 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 touche attribuée sur 2",
         "1 configurée",
         "2 configurées",
-        "Le hub supprimera aussi 1 raccourci et 0 affectations de touches qui y font référence ; l’étape est retirée de 1 macro (une macro sans étapes est supprimée).",
-        "Le hub supprimera aussi 2 raccourcis et 2 affectations de touches qui y font référence ; l’étape est retirée de 2 macros (une macro sans étapes est supprimée).",
+        "Le hub supprimera aussi 1 raccourci et 0 attributions de touches qui y font référence ; l’étape est retirée de 1 macro (une macro sans étapes est supprimée).",
+        "Le hub supprimera aussi 2 raccourcis et 2 attributions de touches qui y font référence ; l’étape est retirée de 2 macros (une macro sans étapes est supprimée).",
       ],
     },
     {

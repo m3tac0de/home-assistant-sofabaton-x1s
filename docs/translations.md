@@ -11,15 +11,7 @@ The Control Panel English reference and registry live in
 rendered copy, attributes, validation text, status fallbacks, and editor form
 descriptions must pass through `TOOLS_CARD_STRINGS`.
 
-Supported Control Panel locales are `en-GB`, `nl`, `de`, `fr`, `es`, and
-Simplified Chinese (`zh-Hans`). The five complete non-English catalogues use
-`CompleteToolsCardTranslation`, so TypeScript
-reports every missing key when the English reference grows. The translation
-and back-translation review is recorded in
-[`control-panel-translation-back-review.md`](control-panel-translation-back-review.md).
-The Simplified Chinese terminology and native-review brief are recorded in
-[`translations/zh-hans-glossary.md`](translations/zh-hans-glossary.md) and
-[`translations/zh-hans-control-panel-review.md`](translations/zh-hans-control-panel-review.md).
+Supported Control Panel locales are `en-GB`, `nl`, `de`, `fr`, `es`, and Simplified Chinese (`zh-Hans`). The five complete non-English catalogues use `CompleteToolsCardTranslation`, so TypeScript reports every missing key when the English reference grows. The Simplified Chinese terminology and native-review brief are recorded in [`translations/zh-hans-glossary.md`](translations/zh-hans-glossary.md) and [`translations/zh-hans-control-panel-review.md`](translations/zh-hans-control-panel-review.md).
 
 Only the English reference is bundled into `tools-card.js`. The selected
 non-default catalogue is loaded once from

@@ -1021,7 +1021,7 @@ def test_catalog_device_handler_decodes_shared_device_class_code() -> None:
         FrameContext(
             proxy=proxy,
             opcode=OP_CATALOG_ROW_DEVICE,
-            direction="Hâ†’A",
+            direction="H→A",
             payload=bytes(payload),
             raw=bytes(raw),
             name="CATALOG_ROW_DEVICE",

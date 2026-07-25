@@ -2,7 +2,7 @@
 //
 // Complete mirror of REMOTE_CARD_STRINGS_EN in remote-card-strings.ts —
 // if a key is ever missing here, the card silently falls back to English
-// for that key. Product and feature names (Automation Assist, MQTT Discovery,
+// for that key. Product and feature names (Wifi Commands, MQTT Discovery,
 // Lovelace, Sofabaton) and the "X2 → Activities" MQTT device name are kept
 // as-is on purpose.
 
@@ -23,6 +23,9 @@ registerRemoteCardTranslation("de", {
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standardlayout",
     activityFallback: (id: number | string) => `Aktivität ${id}`,
+    pickerName: "Virtuelle Sofabaton-Fernbedienung",
+    pickerDescription:
+      "Eine konfigurierbare Fernbedienung für die Sofabaton-X1-, X1S- und X2-Integration.",
   },
   assist: {
     label: "Tastendrücke erfassen",
@@ -31,7 +34,7 @@ registerRemoteCardTranslation("de", {
     exitEditMode: "Bearbeitungsmodus verlassen, um zu beginnen",
     captured: (label: string) => `Erfasst: ${label}`,
     notCaptured: "Nicht erfasst.",
-    working: "Wird ausgeführt …",
+    working: "Wird ausgeführt…",
     triggersReady: "Auslöser einsatzbereit",
     createTriggers: "MQTT-Discovery-Auslöser erstellen",
     startCapturing: "Befehlserfassung starten",
@@ -55,15 +58,15 @@ registerRemoteCardTranslation("de", {
     createdActivityTriggers: (count: number) =>
       `${count} Aktivitätsauslöser für X2 → Activities ${count === 1 ? "wurde" : "wurden"} erstellt`,
     plusActivityTriggers: (count: number) =>
-      `; zusätzlich ${count} Aktivitätsauslöser ${count === 1 ? "wurde" : "wurden"} erstellt`,
+      `; zusätzlich ${count === 1 ? "wurde" : "wurden"} ${count} Aktivitätsauslöser erstellt`,
     allTriggersExist: (deviceLabel: string) =>
       `Alle MQTT-Discovery-Auslöser für ${deviceLabel} sind bereits vorhanden`,
     buttonFallback: "Taste",
     activityFallbackLabel: "Aktivität",
     unknown: "Unbekannt",
-    automationAssistName: "Automation Assist",
+    automationAssistName: "Automatisierungsassistent",
     notification: {
-      title: "🛠️ Automation Assist",
+      title: "🛠️ Automatisierungsassistent",
       eventButton: (label: string) => `Taste: ${label}`,
       eventActivity: (label: string) => `Aktivitätswechsel: ${label}`,
       eventOther: (label: string) => `Ereignis: ${label}`,
@@ -146,7 +149,7 @@ registerRemoteCardTranslation("de", {
     mute: "Stumm",
     chup: "Kanal +",
     chdn: "Kanal -",
-    guide: "Programmübersicht",
+    guide: "Guide",
     dvr: "DVR",
     play: "Wiedergabe",
     exit: "Beenden",

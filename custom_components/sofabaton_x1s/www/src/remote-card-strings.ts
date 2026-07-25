@@ -28,6 +28,9 @@ export const REMOTE_CARD_STRINGS_EN = {
     poweredOff: "Powered Off",
     defaultLayout: "Default Layout",
     activityFallback: (id: number | string) => `Activity ${id}`,
+    pickerName: "Sofabaton Virtual Remote",
+    pickerDescription:
+      "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
   },
   assist: {
     label: "Key capture",
@@ -36,7 +39,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     exitEditMode: "Exit Edit mode to begin",
     captured: (label: string) => `Captured: ${label}`,
     notCaptured: "Not captured.",
-    working: "Working...",
+    working: "Working…",
     triggersReady: "Triggers ready for use",
     createTriggers: "Create MQTT Discovery triggers",
     startCapturing: "Start capturing commands",
@@ -53,13 +56,13 @@ export const REMOTE_CARD_STRINGS_EN = {
     unknownDevice: "Unknown device",
     commandFallback: (id: number | string) => `Command ${id}`,
     createdTriggers: (count: number, deviceLabel: string) =>
-      `Created ${count} MQTT discovery triggers for ${deviceLabel}`,
+      `Created ${count} MQTT Discovery triggers for ${deviceLabel}`,
     createdActivityTriggers: (count: number) =>
       `Created ${count} activity triggers for X2 → Activities`,
     plusActivityTriggers: (count: number) =>
       ` plus ${count} activity triggers`,
     allTriggersExist: (deviceLabel: string) =>
-      `All MQTT discovery triggers already exist for ${deviceLabel}`,
+      `All MQTT Discovery triggers already exist for ${deviceLabel}`,
     buttonFallback: "Button",
     activityFallbackLabel: "Activity",
     unknown: "Unknown",
@@ -98,7 +101,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     automationAssistTitle: "Automation Assist",
     keyCapture: "Key capture",
     keyCaptureDescription:
-      "Send button presses to the hub: Capture button presses to generate ready-to-use YAML for dashboard buttons and automations.",
+      "Send button presses to the hub: capture them to generate ready-to-use YAML for dashboard buttons and automations.",
     keyCaptureLearnMore: "Learn more about Key capture",
     keyCaptureDocsAria: "Key capture documentation",
     stylingOptions: "Styling Options",

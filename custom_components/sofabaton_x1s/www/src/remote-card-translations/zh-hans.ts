@@ -1,7 +1,7 @@
 // Simplified Chinese (简体中文) translation for the Sofabaton Virtual Remote card.
 //
 // Complete mirror of REMOTE_CARD_STRINGS_EN. Product and feature names such
-// as Home Assistant, Automation Assist, MQTT Discovery, Lovelace, and
+// as Home Assistant, Wifi Commands, MQTT Discovery, Lovelace, and
 // Sofabaton are intentionally preserved.
 
 import {
@@ -16,13 +16,15 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
       "遥控器不可用（可能是因为 Sofabaton 应用已连接）。",
     noActivitiesWarning: "在遥控器属性中未找到活动。",
     noMacros: "没有可用的宏",
-    noFavorites: "没有可用的收藏项",
+    noFavorites: "没有可用的收藏",
     macrosTab: "宏 >",
     favoritesTab: "收藏 >",
     activitySelectLabel: "活动",
     poweredOff: "已关机",
     defaultLayout: "默认布局",
     activityFallback: (id: number | string) => `活动 ${id}`,
+    pickerName: "Sofabaton 虚拟遥控器",
+    pickerDescription: "适用于 Sofabaton X1、X1S 和 X2 集成的可配置遥控器。",
   },
   assist: {
     label: "按键捕获",
@@ -31,7 +33,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     exitEditMode: "退出编辑模式后即可开始",
     captured: (label: string) => `已捕获：${label}`,
     notCaptured: "尚未捕获。",
-    working: "处理中…",
+    working: "正在处理…",
     triggersReady: "触发器已就绪",
     createTriggers: "创建 MQTT Discovery 触发器",
     startCapturing: "开始捕获命令",
@@ -58,9 +60,9 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     buttonFallback: "按键",
     activityFallbackLabel: "活动",
     unknown: "未知",
-    automationAssistName: "Automation Assist",
+    automationAssistName: "自动化助手",
     notification: {
-      title: "🛠️ Automation Assist",
+      title: "🛠️ 自动化助手",
       eventButton: (label: string) => `按键：${label}`,
       eventActivity: (label: string) => `活动变更：${label}`,
       eventOther: (label: string) => `事件：${label}`,

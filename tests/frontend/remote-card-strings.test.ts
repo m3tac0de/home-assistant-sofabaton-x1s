@@ -140,7 +140,7 @@ test("bundled German translation supports regional locales and inflection", () =
   );
   assert.equal(
     str().assist.plusActivityTriggers(1),
-    "; zusätzlich 1 Aktivitätsauslöser wurde erstellt",
+    "; zusätzlich wurde 1 Aktivitätsauslöser erstellt",
   );
   assert.equal(isPoweredOffLabel("ausgeschaltet"), true);
 
@@ -163,7 +163,7 @@ test("bundled Arabic translation supports regional locales and bidi isolation", 
     str().assist.createdTriggers(2, "Living Room TV"),
     "تم إنشاء مشغّلات \u2068MQTT Discovery\u2069 لـ \u2068Living Room TV\u2069، وعددها \u20682\u2069",
   );
-  assert.equal(isPoweredOffLabel("تم إيقاف التشغيل"), true);
+  assert.equal(isPoweredOffLabel("مُطفأ"), true);
 
   setRemoteCardLanguage("en");
 });

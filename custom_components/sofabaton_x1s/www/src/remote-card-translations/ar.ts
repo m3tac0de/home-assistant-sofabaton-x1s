@@ -13,7 +13,6 @@ const isolate = (value: number | string) => `\u2068${value}\u2069`;
 const SOFABATON = isolate("Sofabaton");
 const MQTT = isolate("MQTT");
 const MQTT_DISCOVERY = isolate("MQTT Discovery");
-const AUTOMATION_ASSIST = isolate("Automation Assist");
 const YAML = isolate("YAML");
 const LOVELACE = isolate("Lovelace");
 const DVR = isolate("DVR");
@@ -21,7 +20,7 @@ const ABC = isolate("A/B/C");
 
 export const REMOTE_CARD_STRINGS_AR = {
   card: {
-    selectEntityError: `اختر كيانًا لجهاز تحكم ${SOFABATON} عن بُعد`,
+    selectEntityError: `اختر كيان جهاز تحكم عن بُعد من ${SOFABATON}`,
     remoteUnavailable:
       `جهاز التحكم عن بُعد غير متاح (قد يكون تطبيق ${SOFABATON} متصلًا).`,
     noActivitiesWarning:
@@ -31,9 +30,11 @@ export const REMOTE_CARD_STRINGS_AR = {
     macrosTab: "وحدات الماكرو ‹",
     favoritesTab: "المفضلات ‹",
     activitySelectLabel: "النشاط",
-    poweredOff: "تم إيقاف التشغيل",
+    poweredOff: "مُطفأ",
     defaultLayout: "التخطيط الافتراضي",
     activityFallback: (id: number | string) => `النشاط ${isolate(id)}`,
+    pickerName: `جهاز التحكم الافتراضي من ${SOFABATON}`,
+    pickerDescription: `جهاز تحكم عن بُعد قابل للتخصيص لتكامل ${isolate("Sofabaton X1 / X1S / X2")}.`,
   },
   assist: {
     label: "التقاط الأزرار",
@@ -72,16 +73,16 @@ export const REMOTE_CARD_STRINGS_AR = {
     buttonFallback: "زر",
     activityFallbackLabel: "النشاط",
     unknown: "غير معروف",
-    automationAssistName: AUTOMATION_ASSIST,
+    automationAssistName: "مساعد الأتمتة",
     notification: {
-      title: `🛠️ ${AUTOMATION_ASSIST}`,
+      title: "🛠️ مساعد الأتمتة",
       eventButton: (label: string) => `الزر: ${isolate(label)}`,
       eventActivity: (label: string) =>
         `تغيير النشاط: ${isolate(label)}`,
       eventOther: (label: string) => `الحدث: ${isolate(label)}`,
       header: (activityName: string, eventLabel: string) =>
         `**النشاط: ${isolate(activityName)} • ${isolate(eventLabel)}**`,
-      lovelaceHeading: `📋 **رمز زر ${LOVELACE}**`,
+      lovelaceHeading: `📋 **كود زر ${LOVELACE}**`,
       lovelaceCopy: `*انسخ هذا إلى ${YAML} الخاص بلوحة المعلومات:*`,
       serviceHeading: "⚙️ **استدعاء خدمة (أتمتة)**",
       serviceCopy: "*استخدم هذا في البرامج النصية أو عمليات الأتمتة:*",
@@ -89,14 +90,14 @@ export const REMOTE_CARD_STRINGS_AR = {
   },
   editor: {
     fieldLabels: {
-      entity: `اختر كيانًا لجهاز تحكم ${SOFABATON} عن بُعد`,
+      entity: `اختر كيان جهاز تحكم عن بُعد من ${SOFABATON}`,
       theme: "تطبيق سمة على البطاقة",
       use_background_override: "تخصيص لون الخلفية",
       background_override: "اختيار لون الخلفية",
       show_activity: "اختيار النشاط",
       show_dpad: "لوحة الاتجاهات",
       show_nav: "أزرار الرجوع/الرئيسية/القائمة",
-      show_mid: "مفاتيح مستوى الصوت والقنوات",
+      show_mid: "أزرار مستوى الصوت والقنوات",
       show_media: "أزرار تشغيل الوسائط",
       show_colors: "أحمر، أخضر، أصفر، أزرق",
       show_abc: `أزرار ${ABC}`,
@@ -108,7 +109,7 @@ export const REMOTE_CARD_STRINGS_AR = {
     automationAssistTitle: "مساعد الأتمتة",
     keyCapture: "التقاط الأزرار",
     keyCaptureDescription:
-      `أرسل ضغطات الأزرار إلى وحدة التحكم لإنشاء ${YAML} جاهز للاستخدام في أزرار لوحة المعلومات وعمليات الأتمتة.`,
+      `أرسل ضغطات الأزرار إلى جهاز ${isolate("Hub")} لإنشاء ${YAML} جاهز للاستخدام في أزرار لوحة المعلومات وعمليات الأتمتة.`,
     keyCaptureLearnMore: "تعرّف على المزيد حول التقاط الأزرار",
     keyCaptureDocsAria: "وثائق التقاط الأزرار",
     stylingOptions: "خيارات المظهر",
@@ -154,8 +155,8 @@ export const REMOTE_CARD_STRINGS_AR = {
     back: "رجوع",
     home: "الرئيسية",
     menu: "القائمة",
-    volup: "رفع مستوى الصوت",
-    voldn: "خفض مستوى الصوت",
+    volup: `الصوت ${isolate("+")}`,
+    voldn: `الصوت ${isolate("-")}`,
     mute: "كتم الصوت",
     chup: `القناة ${isolate("+")}`,
     chdn: `القناة ${isolate("-")}`,

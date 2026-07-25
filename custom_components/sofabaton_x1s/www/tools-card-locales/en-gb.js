@@ -8,8 +8,11 @@ var TOOLS_CARD_STRINGS_EN_GB = {
   },
   cache: {
     favoriteFallback: (commandId) => `Favourite ${commandId}`,
-    activityCounts: (favourites, macros, buttons) => `${favourites} ${favourites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
     favorites: "Favourites"
+  },
+  backendState: {
+    backupFinalizing: "Finalising backup\u2026",
+    cacheFinalizing: "Finalising hub cache\u2026"
   },
   hubClick: {
     kindLabels: {
@@ -28,7 +31,10 @@ var TOOLS_CARD_STRINGS_EN_GB = {
     roleCustomized: (name) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",
-    renameFavorite: "Rename Favourite"
+    renameFavorite: "Rename Favourite",
+    buttonCatalog: {
+      colour: "Colour"
+    }
   },
   wifiCommands: {
     colorGroup: "Colour",

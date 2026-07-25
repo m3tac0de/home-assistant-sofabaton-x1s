@@ -1,3 +1,5 @@
+import { str } from "./remote-card-strings";
+
 export function drawerCommandType(type: string) {
   if (type === "macros") return "macro";
   if (type === "favorites") return "favorite";
@@ -10,7 +12,7 @@ export function drawerButtonModel(
   fallbackDeviceId: unknown,
 ) {
   return {
-    label: item?.name || "Unknown",
+    label: item?.name || str().assist.unknown,
     commandId: Number(item?.command_id ?? item?.id),
     deviceId: Number(item?.device_id ?? item?.device ?? fallbackDeviceId),
     icon: item?.icon ? String(item.icon) : null,

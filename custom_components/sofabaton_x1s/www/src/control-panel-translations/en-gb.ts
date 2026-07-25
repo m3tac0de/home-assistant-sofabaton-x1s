@@ -15,9 +15,11 @@ export const TOOLS_CARD_STRINGS_EN_GB = {
   },
   cache: {
     favoriteFallback: (commandId: number) => `Favourite ${commandId}`,
-    activityCounts: (favourites: number, macros: number, buttons: number) =>
-      `${favourites} ${favourites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
     favorites: "Favourites",
+  },
+  backendState: {
+    backupFinalizing: "Finalising backup…",
+    cacheFinalizing: "Finalising hub cache…",
   },
   hubClick: {
     kindLabels: {
@@ -38,6 +40,9 @@ export const TOOLS_CARD_STRINGS_EN_GB = {
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",
     renameFavorite: "Rename Favourite",
+    buttonCatalog: {
+      colour: "Colour",
+    },
   },
   wifiCommands: {
     colorGroup: "Colour",

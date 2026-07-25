@@ -6,6 +6,7 @@
     "build:tools-card": "node ./scripts/build-tools-card.mjs",
     "build:remote-card": "node ./scripts/build-remote-card.mjs",
     "build:frontend": "npm run build:tools-card && npm run build:remote-card",
+    "build:tools-card-harness-site": "node ./scripts/build-tools-card-harness-site.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "build:frontend-tests": "node ./scripts/build-frontend-tests.mjs",
     "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist",

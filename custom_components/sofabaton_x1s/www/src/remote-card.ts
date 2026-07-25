@@ -9,6 +9,7 @@
 import { SofabatonRemoteCardEditor } from "./remote-card-editor-element";
 import { SofabatonRemoteCard } from "./remote-card-element";
 import { EDITOR, TYPE, logPillsOnce } from "./remote-card-shared";
+import { str } from "./remote-card-strings";
 import "./remote-card-translations";
 
 interface CustomCardEntry {
@@ -33,9 +34,8 @@ win.customCards = win.customCards || [];
 if (!win.customCards.some((c) => c.type === TYPE)) {
   win.customCards.push({
     type: TYPE,
-    name: "Sofabaton Virtual Remote",
-    description:
-      "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
+    name: str().card.pickerName,
+    description: str().card.pickerDescription,
     // Card picker (HA 2026.6+): recommend this card for Sofabaton remote
     // entities, which is exactly what it binds to.
     getEntitySuggestion: (hass, entityId) => {

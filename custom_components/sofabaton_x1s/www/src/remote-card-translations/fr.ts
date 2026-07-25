@@ -1,7 +1,7 @@
 // French (Français) translation for the Sofabaton Virtual Remote card.
 //
 // Complete mirror of REMOTE_CARD_STRINGS_EN. Product and feature names such
-// as Home Assistant, Automation Assist, MQTT Discovery, Lovelace, and
+// as Home Assistant, Wifi Commands, MQTT Discovery, Lovelace, and
 // Sofabaton are intentionally preserved.
 
 import {
@@ -10,7 +10,7 @@ import {
 } from "../remote-card-strings";
 
 const plural = (count: number, singular: string, pluralForm = `${singular}s`) =>
-  count === 1 ? singular : pluralForm;
+  count === 1 ? singular : pluralForm;
 
 export const REMOTE_CARD_STRINGS_FR = {
   card: {
@@ -27,13 +27,16 @@ export const REMOTE_CARD_STRINGS_FR = {
     poweredOff: "Éteinte",
     defaultLayout: "Disposition par défaut",
     activityFallback: (id: number | string) => `Activité ${id}`,
+    pickerName: "Télécommande virtuelle Sofabaton",
+    pickerDescription:
+      "Une télécommande configurable pour l’intégration Sofabaton X1, X1S et X2.",
   },
   assist: {
     label: "Capture de touches",
     start: "Démarrer",
     waiting: "En attente d’une pression sur une touche",
     exitEditMode: "Quittez le mode d’édition pour commencer",
-    captured: (label: string) => `Capture : ${label}`,
+    captured: (label: string) => `Capture : ${label}`,
     notCaptured: "Aucune capture.",
     working: "Traitement en cours…",
     triggersReady: "Déclencheurs prêts à l’emploi",
@@ -46,8 +49,8 @@ export const REMOTE_CARD_STRINGS_FR = {
     seeDocs: "Consultez la documentation de cette fonctionnalité.",
     dontShowAgain:
       "Ne plus afficher ce message pour cet appareil pendant cette session.",
-    detectedDevice: (name: string) => `Appareil MQTT détecté : ${name}.`,
-    lastCommand: (name: string) => `Dernière commande : ${name}.`,
+    detectedDevice: (name: string) => `Appareil MQTT détecté : ${name}.`,
+    lastCommand: (name: string) => `Dernière commande : ${name}.`,
     existingTriggers:
       "Des déclencheurs d’automatisation MQTT existants ont été trouvés.",
     noMqttCommands: "Aucune commande MQTT découverte pour le moment",
@@ -59,20 +62,20 @@ export const REMOTE_CARD_STRINGS_FR = {
     createdActivityTriggers: (count: number) =>
       `${count} ${plural(count, "déclencheur")} d’activité ${plural(count, "créé")} pour X2 → Activities`,
     plusActivityTriggers: (count: number) =>
-      ` ; ${count} ${plural(count, "déclencheur")} d’activité également ${plural(count, "créé")}`,
+      ` ; ${count} ${plural(count, "déclencheur")} d’activité également ${plural(count, "créé")}`,
     allTriggersExist: (deviceLabel: string) =>
       `Tous les déclencheurs MQTT Discovery existent déjà pour ${deviceLabel}`,
     buttonFallback: "Touche",
     activityFallbackLabel: "Activité",
     unknown: "Inconnu",
-    automationAssistName: "Automation Assist",
+    automationAssistName: "Assistant d’automatisation",
     notification: {
-      title: "🛠️ Automation Assist",
-      eventButton: (label: string) => `Touche : ${label}`,
-      eventActivity: (label: string) => `Changement d’activité : ${label}`,
-      eventOther: (label: string) => `Événement : ${label}`,
+      title: "🛠️ Assistant d’automatisation",
+      eventButton: (label: string) => `Touche : ${label}`,
+      eventActivity: (label: string) => `Changement d’activité : ${label}`,
+      eventOther: (label: string) => `Événement : ${label}`,
       header: (activityName: string, eventLabel: string) =>
-        `**Activité : ${activityName} | ${eventLabel}**`,
+        `**Activité : ${activityName} | ${eventLabel}**`,
       lovelaceHeading: "📋 **Code de bouton Lovelace**",
       lovelaceCopy: "*Copiez ceci dans le YAML de votre tableau de bord :*",
       serviceHeading: "⚙️ **Appel de service (automatisation)**",
@@ -148,10 +151,10 @@ export const REMOTE_CARD_STRINGS_FR = {
     menu: "Menu",
     volup: "Volume +",
     voldn: "Volume -",
-    mute: "Couper le son",
+    mute: "Muet",
     chup: "Chaîne +",
     chdn: "Chaîne -",
-    guide: "Guide des programmes",
+    guide: "Guide",
     dvr: "DVR",
     play: "Lecture",
     exit: "Quitter",

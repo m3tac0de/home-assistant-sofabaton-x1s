@@ -39,4 +39,25 @@ not been modeled appears as an **unhandled API call** instead of receiving a
 generic success response. Keep the harness scenarios and mock contract current
 when adding or changing Control Panel websocket operations.
 
+To build the minimal static site deployed by GitHub Pages:
+
+```powershell
+npm run build:tools-card
+npm run build:tools-card-harness-site
+```
+
+The output is written to `dist/tools-card-harness-site`. Serve that directory
+to exercise the same URL structure that GitHub Pages uses:
+
+```powershell
+python -m http.server 8000 --bind 127.0.0.1 --directory dist/tools-card-harness-site
+```
+
+The `tools-card harness Pages` workflow publishes this artifact after relevant
+changes reach `main`. For the first deployment, set **Settings → Pages →
+Build and deployment → Source** to **GitHub Actions**. The public harness will
+then be available at:
+
+`https://m3tac0de.github.io/home-assistant-sofabaton-x1s/`
+
 ---

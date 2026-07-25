@@ -2,9 +2,8 @@
 //
 // Complete mirror of REMOTE_CARD_STRINGS_EN in remote-card-strings.ts —
 // if a key is ever missing here, the card silently falls back to English
-// for that key. Feature names (Automation Assist, Wifi Commands, Sofabaton
-// Control Panel) and the "X2 → Activities" MQTT device name are kept as-is
-// on purpose.
+// for that key. Feature names (Wifi Commands, Sofabaton Control Panel) and
+// the "X2 → Activities" MQTT device name are kept as-is on purpose.
 
 import { registerRemoteCardTranslation } from "../remote-card-strings";
 
@@ -22,11 +21,14 @@ registerRemoteCardTranslation("nl", {
     poweredOff: "Uitgeschakeld",
     defaultLayout: "Standaardindeling",
     activityFallback: (id: number | string) => `Activiteit ${id}`,
+    pickerName: "Sofabaton virtuele afstandsbediening",
+    pickerDescription:
+      "Een configureerbare afstandsbediening voor de Sofabaton X1-, X1S- en X2-integratie.",
   },
   assist: {
     label: "Knopdrukken registreren",
     start: "Starten",
-    waiting: "Wachten op een toetsdruk",
+    waiting: "Wachten op een knopdruk",
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label: string) => `Vastgelegd: ${label}`,
     notCaptured: "Niet vastgelegd.",
@@ -58,9 +60,9 @@ registerRemoteCardTranslation("nl", {
     buttonFallback: "Knop",
     activityFallbackLabel: "Activiteit",
     unknown: "Onbekend",
-    automationAssistName: "Automation Assist",
+    automationAssistName: "Automatiseringshulp",
     notification: {
-      title: "🛠️ Automation Assist",
+      title: "🛠️ Automatiseringshulp",
       eventButton: (label: string) => `Knop: ${label}`,
       eventActivity: (label: string) => `Activiteitswissel: ${label}`,
       eventOther: (label: string) => `Gebeurtenis: ${label}`,
@@ -79,22 +81,22 @@ registerRemoteCardTranslation("nl", {
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
       show_activity: "Activiteitenkiezer",
-      show_dpad: "Richtingstoetsen",
-      show_nav: "Terug/Home/Menu-toetsen",
-      show_mid: "Volume-/kanaaltoetsen",
+      show_dpad: "Richtingsknoppen",
+      show_nav: "Terug/Home/Menu-knoppen",
+      show_mid: "Volume-/kanaalknoppen",
       show_media: "Mediabediening",
       show_colors: "Rood/groen/geel/blauw",
       show_abc: "A/B/C-knoppen",
-      show_macros_button: "Macro's-knop",
-      show_favorites_button: "Favorieten-knop",
+      show_macros_button: "Macroknop",
+      show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
       group_order: "Groepsvolgorde",
     },
     automationAssistTitle: "Automatiseringshulp",
     keyCapture: "Knopdrukken registreren",
     keyCaptureDescription:
-      "Druk knoppen in op de Virtual Remote om direct bruikbare YAML te genereren voor dashboardknoppen en automatiseringen.",
-    keyCaptureLearnMore: "Meer informatie over Toetsen vastleggen",
+      "Stuur knopdrukken naar de hub: leg knopdrukken vast om direct bruikbare YAML te genereren voor dashboardknoppen en automatiseringen.",
+    keyCaptureLearnMore: "Meer informatie over Knopdrukken registreren",
     keyCaptureDocsAria: "Documentatie over Knopdrukken registreren",
     stylingOptions: "Stijlopties",
     layoutOptions: "Indelingsopties",
@@ -119,9 +121,9 @@ registerRemoteCardTranslation("nl", {
   groups: {
     activity: "Activiteitenkiezer",
     macro_favorites: "Macro's/favorieten",
-    macros_row: "Macro's-rij",
+    macros_row: "Macrorij",
     favorites_row: "Favorietenrij",
-    dpad: "Richtingstoetsen",
+    dpad: "Richtingsknoppen",
     nav: "Terug/Home/Menu",
     mid: "Volume/kanaal",
     media: "Mediabediening",
@@ -140,8 +142,8 @@ registerRemoteCardTranslation("nl", {
     volup: "Vol +",
     voldn: "Vol -",
     mute: "Dempen",
-    chup: "Kan +",
-    chdn: "Kan -",
+    chup: "CH +",
+    chdn: "CH -",
     guide: "Gids",
     dvr: "DVR",
     play: "Afspelen",

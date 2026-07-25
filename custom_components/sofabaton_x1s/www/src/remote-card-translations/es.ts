@@ -1,7 +1,7 @@
 // Spanish (Español) translation for the Sofabaton Virtual Remote card.
 //
 // Complete mirror of REMOTE_CARD_STRINGS_EN, written in neutral international
-// Spanish. Product and feature names such as Home Assistant, Automation Assist,
+// Spanish. Product and feature names such as Home Assistant, Wifi Commands,
 // MQTT Discovery, Lovelace, and Sofabaton are intentionally preserved.
 
 import {
@@ -27,11 +27,14 @@ export const REMOTE_CARD_STRINGS_ES = {
     poweredOff: "Apagado",
     defaultLayout: "Diseño predeterminado",
     activityFallback: (id: number | string) => `Actividad ${id}`,
+    pickerName: "Control remoto virtual Sofabaton",
+    pickerDescription:
+      "Un control remoto configurable para la integración Sofabaton X1, X1S y X2.",
   },
   assist: {
     label: "Captura de botones",
     start: "Iniciar",
-    waiting: "Esperando que se pulse un botón",
+    waiting: "Esperando a que se pulse un botón",
     exitEditMode: "Sal del modo de edición para comenzar",
     captured: (label: string) => `Capturado: ${label}`,
     notCaptured: "Sin capturar.",
@@ -65,15 +68,15 @@ export const REMOTE_CARD_STRINGS_ES = {
     buttonFallback: "Botón",
     activityFallbackLabel: "Actividad",
     unknown: "Desconocido",
-    automationAssistName: "Automation Assist",
+    automationAssistName: "Asistente de automatización",
     notification: {
-      title: "🛠️ Automation Assist",
+      title: "🛠️ Asistente de automatización",
       eventButton: (label: string) => `Botón: ${label}`,
       eventActivity: (label: string) => `Cambio de actividad: ${label}`,
       eventOther: (label: string) => `Evento: ${label}`,
       header: (activityName: string, eventLabel: string) =>
         `**Actividad: ${activityName} | ${eventLabel}**`,
-      lovelaceHeading: "📋 **Código del botón de Lovelace**",
+      lovelaceHeading: "📋 **Código de botón Lovelace**",
       lovelaceCopy: "*Copia esto en el YAML de tu panel:*",
       serviceHeading: "⚙️ **Llamada de servicio (automatización)**",
       serviceCopy: "*Usa esto en tus scripts o automatizaciones:*",

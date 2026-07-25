@@ -62,8 +62,14 @@ wording.
 Keep product names, protocol identifiers, code identifiers, and stored values
 unchanged. This includes:
 
-- `Sofabaton`, `Home Assistant`, `Hub`, `Automation Assist`, `Lovelace`
-- `MQTT`, `MQTT Discovery`, `Wi-Fi`, `HTTP`, `WebSocket`
+- `Sofabaton`, `Home Assistant`, `Hub`, `Wifi Commands`, `Lovelace`
+- `MQTT`, `MQTT Discovery`, `HTTP`, `WebSocket`
+
+The word "wifi" is always spelled exactly `Wifi` in every language, including
+inside translated phrases (`Wifi 设备`, `Wifi 事件`). The feature name
+`Wifi Commands` is a product name and is never translated or respelled.
+`Automation Assist` is translated as `自动化助手` (it is no longer kept in
+English).
 - `JSON`, `YAML`, `IP`, `IPv4`, `URL`, `ECP`, `REST`, `UPnP`
 - `Roku`, `Hue`, `Sonos`
 - Entity IDs, service/action IDs, URLs, schema keys, hexadecimal values, and

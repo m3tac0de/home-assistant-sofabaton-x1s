@@ -116,9 +116,9 @@ test("Wifi Commands deploy stages are localized from their phase, not counted", 
   for (const [locale, expected] of [
     ["nl", "Wifi-apparaat op de hub aanmaken…"],
     ["de", "WLAN-Gerät wird auf dem Hub erstellt…"],
-    ["fr", "Création de l’appareil Wi-Fi sur le hub…"],
-    ["es", "Creando el dispositivo wifi en el hub…"],
-    ["zh-Hans", "正在 Hub 上创建 Wi-Fi 设备…"],
+    ["fr", "Création de l’appareil Wifi sur le hub…"],
+    ["es", "Creando el dispositivo Wifi en el hub…"],
+    ["zh-Hans", "正在 Hub 上创建 Wifi 设备…"],
   ] as const) {
     setToolsCardLanguage(locale);
     assert.equal(stage("creating_device"), expected, locale);
