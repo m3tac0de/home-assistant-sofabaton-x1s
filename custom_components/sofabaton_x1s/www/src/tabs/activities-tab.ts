@@ -18,10 +18,20 @@ import type {
   BackupProgressEvent,
   ControlPanelHubState,
   HassLike,
+  WifiEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { formatError } from "../shared/utils/control-panel-selectors";
+import { entityForHub, formatError } from "../shared/utils/control-panel-selectors";
+import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
+import {
+  graftDeviceIntoBundle,
+  isWifiEventsBrand,
+  reconcileActivityPowerMacros,
+  removeBundleDevice,
+  rewriteWifiEventPlaceholderRefs,
+} from "./backup-state";
+import type { WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 
@@ -174,6 +184,9 @@ class SofabatonActivitiesTab extends LitElement {
     .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
     .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
     .review-empty { font-size: 14px; color: var(--secondary-text-color); }
+    /* Viewport, not container: these dialogs are position: fixed over the
+       whole window, so a narrow card on a wide screen should still get the
+       centered floating dialog rather than the full-bleed phone sheet. */
     @media (max-width: 640px) {
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog--small { width: 100%; max-height: 100%; border-radius: 0; }
@@ -307,7 +320,7 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   private api() {
-    if (!this.hass) throw new Error("Home Assistant is not available");
+    if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
 
@@ -327,7 +340,7 @@ class SofabatonActivitiesTab extends LitElement {
   };
 
   private _testCommandPayload = async (hex: string) => {
-    if (!this.hub) throw new Error("No hub is selected.");
+    if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
     await this.api().playIrBlob(this.hub.entry_id, hex);
   };
 
@@ -341,9 +354,191 @@ class SofabatonActivitiesTab extends LitElement {
   // happens once, authoritatively, at sync time (the backend stale
   // pre-flight).
 
+  // ── Wifi Events facade for the Add dialogs (plan §4) ────────────────
+  // The detail view is hass-free; this host owns the WS calls AND the
+  // bundle grafting (both `_baseline` and `_working` must gain the
+  // deployed events-device block — review diff + the sync validator's
+  // baseline grandfathering depend on it).
+
+  private _wifiEventsEntityId(): string {
+    return String(entityForHub(this.hass, this.hub) || "").trim();
+  }
+
+  /** A stable positive device id for the not-yet-deployed events device
+   *  (W7). It must be POSITIVE — the bundle-edit helpers reject id 0 /
+   *  negatives as "no device", which would silently drop a first-ever
+   *  event's ref — and must not collide with a real device, so it is the
+   *  lowest free id in the source-device range (1..0x63). Cached for the
+   *  session; the Sync flow rewrites it to the hub-assigned id in phase 1. */
+  private _wifiEventsPlaceholderId: number | null = null;
+  private _placeholderDeviceId(): number {
+    if (this._wifiEventsPlaceholderId != null) return this._wifiEventsPlaceholderId;
+    const used = new Set<number>();
+    for (const bundle of [this._baseline, this._working]) {
+      for (const entry of bundle?.devices ?? []) used.add(Number(entry?.device?.device_id ?? -1));
+    }
+    let id = 1;
+    while (id < 0x64 && used.has(id)) id += 1;
+    this._wifiEventsPlaceholderId = id;
+    return id;
+  }
+
+  /** Fill each event's `device_id` with the real deployed id, or the
+   *  session placeholder when the device isn't deployed yet — so every
+   *  ref the Add dialogs insert addresses a positive device id. */
+  private _withEventDeviceIds(events: WifiEvent[], deviceId: number | null): WifiEvent[] {
+    const id = deviceId ?? this._placeholderDeviceId();
+    return events.map((event) => ({ ...event, device_id: event.device_id ?? id }));
+  }
+
+  /** Synthetic device block for the events device (real id when deployed,
+   *  else the placeholder) carrying every STAGED event's short + long
+   *  records, so refs resolve for display and the scope guard stays
+   *  balanced (grafted into BOTH bundles). The Sync flow retires it for
+   *  the real deployed block after phase 1. */
+  private _syntheticEventsBlock(events: WifiEvent[], deviceId: number) {
+    return {
+      device: {
+        device_id: deviceId,
+        name: "Wifi Events",
+        brand: "m3-haevents-staged0000000",
+        device_class: "wifi_ip",
+      },
+      commands: events.flatMap((event) => [
+        { command_id: event.command_id, name: event.name },
+        { command_id: event.long_press_command_id, name: `${event.name} Long Press` },
+      ]),
+    } as never;
+  }
+
+  /** Graft the events device into BOTH bundles from the STAGED event list
+   *  (W7). The list is the source of truth: with full deferral, a
+   *  just-created event is not on the hub yet, so the deployed structural
+   *  block would lack its command records — building the block from the
+   *  events list instead keeps new events' favorites/bindings/steps
+   *  resolvable in the UI immediately, before any sync. The synthetic
+   *  block carries every configured event's short + long records; the
+   *  real deployed block replaces it on the post-sync rebase (and, for the
+   *  first-ever event, in the Sync flow's placeholder swap). */
+  private async _graftWifiEventsDevice(options: { forceRefresh?: boolean } = {}): Promise<BackupBundlePayload | null> {
+    if (!this.hub) return this._working;
+    const present = (this._working?.devices ?? []).some(
+      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? ""))
+        || Number(entry?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId,
+    );
+    if (present && !options.forceRefresh) return this._working;
+    const entityId = this._wifiEventsEntityId();
+    const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
+    const blockId = state.device_id ?? this._placeholderDeviceId();
+    const entry = this._syntheticEventsBlock(state.events ?? [], blockId);
+    this._baseline = graftDeviceIntoBundle(this._baseline, entry as never);
+    this._working = graftDeviceIntoBundle(this._working, entry as never);
+    return this._working;
+  }
+
+  private _wifiEventsFacade: WifiEventsHost = {
+    list: async (): Promise<WifiEvent[]> => {
+      const entityId = this._wifiEventsEntityId();
+      if (!entityId) return [];
+      const res = await this.api().listWifiEvents(entityId);
+      return this._withEventDeviceIds(res.events ?? [], res.device_id ?? null);
+    },
+    create: async (name: string) => {
+      // W7 full deferral: a pure store allocation — instant, no deploy.
+      // The Sync press runs the events-record deploy as phase 1.
+      const entityId = this._wifiEventsEntityId();
+      if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
+      const res = await this.api().createWifiEvent(entityId, name);
+      const filled = this._withEventDeviceIds(res?.events ?? [], res?.device_id ?? null);
+      const full = filled.find((item) => item.slot_index === res?.event?.slot_index)
+        ?? this._withEventDeviceIds([res?.event as unknown as WifiEvent], res?.device_id ?? null)[0];
+      const bundle = await this._graftWifiEventsDevice({ forceRefresh: true });
+      return { event: full, bundle };
+    },
+    ensureGrafted: async () => this._graftWifiEventsDevice(),
+    enableLongPress: async (slotIndex: number) => {
+      const entityId = this._wifiEventsEntityId();
+      if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
+      await this.api().setWifiEventLongpress(entityId, slotIndex, true);
+    },
+  };
+
+  /** W7 phase 1 of the Sync press: deploy the events record when it is
+   *  out-of-step, then resolve placeholder refs to the real device id and
+   *  swap the synthetic block for the deployed one in both bundles.
+   *  Returns false (with `_syncProgress` set) when phase 1 fails. */
+  private async _syncWifiEventsPhase(): Promise<boolean> {
+    const entityId = this._wifiEventsEntityId();
+    if (!entityId || this._entityId == null || !this.hub) return true;
+    const placeholderId = this._wifiEventsPlaceholderId;
+    const referencesEvents = (bundle: BackupBundlePayload | null): boolean => {
+      const eventDeviceIds = new Set<number>();
+      if (placeholderId != null) eventDeviceIds.add(placeholderId);
+      for (const entry of bundle?.devices ?? []) {
+        if (isWifiEventsBrand(String(entry?.device?.brand ?? ""))) {
+          eventDeviceIds.add(Number(entry?.device?.device_id ?? -1));
+        }
+      }
+      const activity = (bundle?.activities ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === Number(this._entityId),
+      );
+      if (!activity) return false;
+      const refs = [
+        ...(activity.favorite_slots ?? []).map((slot) => slot?.device_id),
+        ...(activity.button_bindings ?? []).flatMap((binding) => [
+          binding?.device_id, binding?.long_press_device_id,
+        ]),
+        ...(activity.macros ?? []).flatMap((macro) =>
+          (macro?.steps ?? []).map((step) => step?.device_id)),
+      ];
+      return refs.some((value) => value != null && eventDeviceIds.has(Number(value)));
+    };
+    if (!referencesEvents(this._working)) return true;
+
+    let state = await this.api().listWifiEvents(entityId);
+    const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
+      (entry) => Number(entry?.device?.device_id ?? -1) === placeholderId,
+    );
+    if (state.record_needs_sync || (hasPlaceholder && state.device_id == null)) {
+      this._syncProgress = { message: S.wifiEventsPhaseMessage } as BackupProgressEvent;
+      try {
+        state = await this.api().syncWifiEvents(entityId);
+      } catch (error) {
+        this._syncError = formatError(error);
+        this._syncFailedAt = null;
+        this._syncProgress = null;
+        this._stage = "sync_failed";
+        return false;
+      }
+    }
+    const realId = state.device_id;
+    if (hasPlaceholder && placeholderId != null && realId != null) {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const entry = (res?.bundle?.devices ?? []).find(
+        (candidate) => Number(candidate?.device?.device_id ?? -1) === realId,
+      );
+      const activityId = Number(this._entityId);
+      for (const key of ["_baseline", "_working"] as const) {
+        let bundle = this[key];
+        bundle = removeBundleDevice(bundle, placeholderId);
+        if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
+        if (key === "_working") {
+          bundle = rewriteWifiEventPlaceholderRefs(bundle, activityId, realId, placeholderId);
+          bundle = bundle ? reconcileActivityPowerMacros(bundle, activityId) : bundle;
+        }
+        this[key] = bundle;
+      }
+      // The placeholder is retired; a later event in the same session (now
+      // that the device is deployed) uses the real id.
+      this._wifiEventsPlaceholderId = null;
+    }
+    return true;
+  }
+
   private _startCapture = async (entityId: number) => {
     if (!this.hub || !this.hass) return;
     this._entityId = entityId;
+    this._wifiEventsPlaceholderId = null;
     this._captureError = null;
     this._captureProgress = null;
     this._stage = "capturing";
@@ -405,6 +600,13 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncFailedAt = null;
     this._syncProgress = null;
     this._stage = "syncing";
+    // W7 phase 1: deploy the Wifi Events record (and resolve placeholder
+    // refs) BEFORE the entity sync, so every referenced record exists on
+    // the hub when the activity writes land.
+    if (this.kind === "activity" && !(await this._syncWifiEventsPhase())) {
+      this._exitAfterSync = false;
+      return;
+    }
     try {
       const start = this.kind === "device"
         ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working)
@@ -430,7 +632,7 @@ class SofabatonActivitiesTab extends LitElement {
       }
       if (payload.status === "failed") {
         this._teardownProgressSubscription();
-        this._syncError = String(payload.error || payload.message || "Sync failed.");
+        this._syncError = String(payload.error || payload.message || TOOLS_CARD_STRINGS.errors.syncFailed);
         this._syncFailedAt = String(payload.failed_at || "");
         this._syncProgress = null;
         this._exitAfterSync = false;
@@ -688,6 +890,7 @@ class SofabatonActivitiesTab extends LitElement {
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
+          .wifiEvents=${this._wifiEventsFacade}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}
           @delete-request=${this._handleDeleteRequest}
@@ -701,7 +904,7 @@ class SofabatonActivitiesTab extends LitElement {
   private _renderSyncing() {
     const S = TOOLS_CARD_STRINGS.activities;
     const progress = this._syncProgress;
-    const message = String(progress?.message || S.syncingMessage);
+    const message = localizeBackendProgress(progress, "entity_sync");
     return html`
       <div class="tab-panel">
         ${renderOperationProgress({ mode: "restore", title: S.syncingTitle, message })}

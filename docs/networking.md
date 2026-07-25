@@ -22,7 +22,7 @@ sequenceDiagram
     end
 
     rect rgb(255, 245, 230)
-        Note over Hub, HA: HTTP Callback (Wifi Commands)
+        Note over Hub, HA: HTTP Callback (Wifi Commands / Wifi Events)
         Hub-->>HA: TCP 8060
     end
 
@@ -45,16 +45,16 @@ sequenceDiagram
 ```
 
 > Broadcast Discovery is optional for Android clients.  
-> HTTP callbacks / Wifi Commands are optional.
+> HTTP callbacks for Wifi Commands and Wifi Events are optional.
 
 ## Security / listener model
 
-The listener ports are intended for a trusted local network, not for exposure to the public internet. The Sofabaton hub protocol and the Wifi Commands callback format do not provide TLS or user authentication, so the network boundary is your router, VLAN, container publishing rules, and host firewall.
+The listener ports are intended for a trusted local network, not for exposure to the public internet. The Sofabaton hub protocol and the Wifi Commands/Wifi Events callback format do not provide TLS or user authentication, so the network boundary is your router, VLAN, container publishing rules, and host firewall.
 
 The integration still applies narrow application-level filtering:
 
 - The hub TCP connect-back listener binds to all interfaces on the configured port so real hubs can reach Home Assistant across normal LAN and VLAN layouts. Accepted sockets are dispatched by the connecting hub IP; connections from unknown IPs are dropped.
-- The Wifi Commands HTTP listener is only started while an enabled hub still has deployed callback commands. It accepts only small, Roku-style `POST /launch/...` requests, rejects oversized or malformed requests, matches the per-hub action id in the path, and rejects requests from IPs other than the configured hub IP when that IP is known.
+- The shared Wifi Commands/Wifi Events HTTP listener is only started while an enabled hub still has deployed callback commands. It accepts only small, Roku-style `POST /launch/...` requests, rejects oversized or malformed requests, matches the per-hub action id in the path, and rejects requests from IPs other than the configured hub IP when that IP is known.
 - The app-side proxy listener is for the official Sofabaton app discovery and connect-back flow. Keep it reachable only from networks where you want the app to discover or control the proxy.
 
 Recommended deployment: allow the exact hub/app networks listed below, avoid publishing these ports through reverse proxies or internet-facing NAT, and prefer VLAN/firewall rules over relying on the listeners as a security boundary.
@@ -75,9 +75,9 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
 2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port (8200 by default). All configured hubs share the same listener; the proxy dispatches each accepted connection to the right hub by peer IP.
 
-### Optional / Wifi Commands
+### Optional / Wifi Commands and Wifi Events
 
-When using this integration's "[Wifi Commands](wifi_commands.md)" feature, the hub will make HTTP requests into the integration. The default port used is **8060**. The port is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
+When using this integration's [Wifi Commands or Wifi Events](wifi_commands.md), the hub makes HTTP requests into the integration. Both features share the same listener. The default port is **8060**. It is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
 
 ### Firewall rules to allow
 
@@ -174,7 +174,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 | Hub network | HA host     | UDP      | 5353        | mDNS `_sofabaton_hub._udp.local.` hub advert. | Hub discovery by integration for X2    |
 | HA host     | Hub network | UDP      | 8102        | `CALL_ME` from proxy to hub                   | Hub connect flow                       |
 | Hub network | HA host     | TCP      | 8200 \*     | Hub connects back to proxy                    | Hub control and status                 |
-| Hub network | HA host     | TCP      | 8060 \*\*   | Hub makes HTTP requests back to integration   | Wifi Commands feature                  |
+| Hub network | HA host     | TCP      | 8060 \*\*   | Hub makes HTTP requests back to integration   | Wifi Commands and Wifi Events          |
 | HA host     | App network | UDP      | 5353        | mDNS `_x1hub._udp.local.` to app              | Sofabaton Android app                  |
 | App network | HA host     | UDP      | 8102        | iOS broadcast discovery to proxy              | Sofabaton iOS app                      |
 | HA host     | App network | UDP      | 8100        | iOS broadcast reply from proxy                | Sofabaton iOS app                      |

@@ -57,9 +57,11 @@ from .command_config import (
     COMMAND_BRAND_PREFIX,
     CommandConfigStore,
     MAX_WIFI_DEVICES,
+    WIFI_EVENTS_DEVICE_KEY,
     async_get_command_config_store,
     compute_commands_hash,
     count_configured_command_slots,
+    is_wifi_events_device_key,
     normalize_activity_event_actions,
     normalize_hub_event_actions,
     normalize_command_id_list,
@@ -69,7 +71,10 @@ from .command_config import (
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
-from .lib.bundle_validation import validate_hub_bundle_for_model
+from .lib.bundle_validation import (
+    collect_missing_command_refs,
+    validate_hub_bundle_for_model,
+)
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
@@ -733,11 +738,19 @@ async def _async_build_control_panel_runtime_payload(
             "kind": "operation_running",
             "operation": operation,
             "label": label,
+            # `detail` is this module's own English prose and cannot be
+            # translated in the frontend, so it is only a fallback now. The
+            # structured trio below is what the control panel localizes into
+            # "Restoring device 8..." and friends; the progress callback already
+            # merges these keys into the registry record.
             "detail": str(
                 active_backup_operation.get("message")
                 or active_backup_operation.get("phase")
                 or "Working..."
             ),
+            "phase": active_backup_operation.get("phase"),
+            "current_device_id": active_backup_operation.get("current_device_id"),
+            "current_activity_id": active_backup_operation.get("current_activity_id"),
             "current_step": active_backup_operation.get("completed_steps"),
             "total_steps": active_backup_operation.get("total_steps"),
             "device_key": None,
@@ -768,7 +781,12 @@ async def _async_build_control_panel_runtime_payload(
             "kind": "operation_running",
             "operation": "wifi_deploy",
             "label": "Deploying Wifi commands",
+            # See the backup branch above: `phase` is what gets localized,
+            # `detail` is the English fallback for stages without a mapping
+            # (the in-place planner's per-step labels name user data, so they
+            # have no fixed phase).
             "detail": str(sync_payload.get("message") or "Sync in progress"),
+            "phase": sync_payload.get("phase"),
             "current_step": sync_payload.get("current_step"),
             "total_steps": sync_payload.get("total_steps"),
             "device_key": device_key or None,
@@ -935,6 +953,12 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
+    if is_wifi_events_device_key(msg.get("device_key")):
+        # The Wifi Events record is mutated only through the narrow
+        # wifi_event/* endpoints — a wholesale slot-list write could
+        # corrupt slot order (callback URLs embed slot indices).
+        connection.send_error(msg["id"], "reserved_device", "Use the wifi_event endpoints for the Wifi Events device")
+        return
 
     store = await _async_get_command_config_store(hass)
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
@@ -1097,6 +1121,12 @@ async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[st
     payload = []
     for device in devices:
         device_key = str(device.get("device_key") or "")
+        # Presentation-layer filter ONLY (never in the store): the reserved
+        # Wifi Events record has its own UI (activity editor + Events tab)
+        # and must not appear in the Wifi Devices list. max_devices already
+        # matches — the store cap counts user devices only.
+        if is_wifi_events_device_key(device_key):
+            continue
         payload.append({
             **device,
             **_build_wifi_device_sync_payload(hub, device, device_key=device_key),
@@ -1149,6 +1179,11 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
+    if is_wifi_events_device_key(msg.get("device_key")):
+        # The Wifi Events device is removed automatically when its last
+        # event is deleted (zero-slot sync) — never through this endpoint.
+        connection.send_error(msg["id"], "reserved_device", "The Wifi Events device cannot be deleted here")
+        return
     store = await _async_get_command_config_store(hass)
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
     try:
@@ -1198,6 +1233,273 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
     ):
         await hub.async_set_roku_server_enabled(False)
     connection.send_result(msg["id"], {"deleted_config": deleted_config, "deleted_hub_device": deleted_hub_device})
+
+
+# ── Wifi Events WS endpoints (docs/internal/wifi-events-plan.md §4/§5) ──
+#
+# The narrow mutation surface for the reserved `haevents` record. W1
+# implements the store side; the deploy integration (running the sync on
+# create/delete, resolving deployed ids) lands in W2 — until then created
+# events read `deployed: false` and carry their law-derived ids.
+
+
+def _wifi_events_state_payload(
+    hass: HomeAssistant, store: CommandConfigStore, entry_id: str
+) -> dict[str, Any]:
+    """Events plus record-level sync state (W7: the frontend defers all
+    deploys to the Sync press and needs to know whether phase 1 — the
+    events-record deploy — is required).
+
+    ``record_needs_sync`` compares the record's live hash against its
+    deployed hash; because the listen port is hashed
+    (``compute_commands_hash``), it MUST be computed against the entry's
+    resolved port — the default would flag every non-default-port hub as
+    permanently needing a sync and trip a spurious phase-1 deploy on every
+    activity Sync.
+    """
+
+    record_state = store.wifi_events_record_state(
+        entry_id, roku_listen_port=_resolve_roku_listen_port(hass, entry_id)
+    )
+    return {
+        "events": store.list_wifi_events(entry_id),
+        "record_needs_sync": bool(record_state.get("record_needs_sync")),
+        "device_id": record_state.get("device_id"),
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/list",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_list_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/create",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    try:
+        name = _validate_wifi_name_for_hub(hub, msg.get("name"), field_name="name")
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    store = await _async_get_command_config_store(hass)
+    try:
+        allocated = await store.async_allocate_wifi_event(hub.entry_id, name)
+    except ValueError as err:
+        code = str(err)
+        messages = {
+            "wifi_events_full": "All Wifi Event slots are in use",
+            "wifi_events_pending_delete": (
+                "A deleted Wifi Event is still being removed from the hub; "
+                "sync the hub, then try again"
+            ),
+            "duplicate_name": "A Wifi Event with this name already exists",
+            "empty_name": "name is required",
+        }
+        connection.send_error(msg["id"], code, messages.get(code, code))
+        return
+
+    # W7 full deferral: creation is a pure store allocation — NOTHING is
+    # deployed here. The activity editor's Sync press runs the events-record
+    # deploy as phase 1 (frontend orchestrates via wifi_event/sync) before
+    # the activity writes. command_id is already law-derived (slot + 1);
+    # device_id is the deployed id when the device exists, else None (the
+    # frontend inserts a placeholder ref and rewrites it after phase 1).
+    state = _wifi_events_state_payload(hass, store, hub.entry_id)
+    connection.send_result(
+        msg["id"],
+        {
+            "event": {**allocated, "device_id": state.get("device_id")},
+            **state,
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/delete",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("slot_index"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    # Reset-in-place — never compacts (callback URLs embed slot indices).
+    deleted = await store.async_reset_wifi_event_slot(hub.entry_id, msg["slot_index"])
+    if not deleted:
+        connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
+        return
+
+    # Deploy the reset. Full-table writes mean a freed slot re-labels to
+    # its "Command N" placeholder in place (slot indices stable); the LAST
+    # event freed drops configured_slots to 0 and the existing zero-slot
+    # branch removes the hub device + disables the listener only when
+    # nothing else needs it. On failure the reset stays staged (sync
+    # re-offers).
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_get_hub_config(
+        hub.entry_id,
+        device_key=WIFI_EVENTS_DEVICE_KEY,
+        roku_listen_port=roku_listen_port,
+    )
+    try:
+        result = await hub.async_sync_command_config(
+            command_payload=payload,
+            request_port=roku_listen_port,
+            device_key=WIFI_EVENTS_DEVICE_KEY,
+            device_name=str(payload.get("device_name") or ""),
+        )
+    except HomeAssistantError as err:
+        message = str(err)
+        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
+        connection.send_error(msg["id"], code, message)
+        return
+
+    # Last event gone and the hub device removed -> drop the store record
+    # too (user decision 2, plan §10). The listener guard already ran
+    # inside the zero-slot branch (the device delete cascades all refs).
+    if (
+        int(payload.get("configured_slot_count") or 0) == 0
+        and isinstance(result, dict)
+        and result.get("wifi_device_id") is None
+    ):
+        await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
+    elif isinstance(result, dict) and isinstance(result.get("wifi_device_id"), int):
+        # The sync re-labeled the freed slot's records to placeholders
+        # (full-table invariant keeps slot ids stable) — but references on
+        # the hub only cascade on a REAL record delete. Delete the freed
+        # short + long records so favorites/bindings/macro-steps that
+        # pointed at the event are cleaned up (the confirm dialog promises
+        # exactly this). Best-effort: on failure the placeholders keep the
+        # stale refs firing no-op callbacks until the next full replace.
+        try:
+            slot_count = int(payload.get("slot_count") or 10)
+            short_id = int(msg["slot_index"]) + 1
+            await hub.async_delete_wifi_event_records(
+                device_id=int(result["wifi_device_id"]),
+                command_ids=[short_id, short_id + slot_count],
+            )
+        except Exception:  # pragma: no cover - cascade is best-effort
+            _LOGGER.exception("[wifi_events] freed-slot record delete failed")
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/sync",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Retry the Wifi Events deploy without changing the store — the
+    needs-sync affordance for a slot whose create/delete deploy failed."""
+
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id,
+            device_key=WIFI_EVENTS_DEVICE_KEY,
+            roku_listen_port=roku_listen_port,
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "No Wifi Events device")
+        return
+    try:
+        await hub.async_sync_command_config(
+            command_payload=payload,
+            request_port=roku_listen_port,
+            device_key=WIFI_EVENTS_DEVICE_KEY,
+            device_name=str(payload.get("device_name") or ""),
+        )
+    except HomeAssistantError as err:
+        message = str(err)
+        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
+        connection.send_error(msg["id"], code, message)
+        return
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/set_action",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("slot_index"): int,
+        vol.Required("press_type"): vol.In(["short", "long"]),
+        vol.Required("action"): dict,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    # No re-deploy: the callback runtime reads the staged slot.
+    updated = await store.async_set_wifi_event_action(
+        hub.entry_id, msg["slot_index"], msg["press_type"], msg["action"]
+    )
+    if not updated:
+        connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
+        return
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/set_longpress",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("slot_index"): int,
+        vol.Required("enabled"): bool,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_wifi_event_longpress(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    # Pure store-flag edit: the long record is always deployed (plan §11
+    # discovery 1) — zero hub writes, the flag gates HA-side execution.
+    updated = await store.async_set_wifi_event_longpress(
+        hub.entry_id, msg["slot_index"], msg["enabled"]
+    )
+    if not updated:
+        connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
+        return
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
 @websocket_api.websocket_command(
@@ -1894,6 +2196,26 @@ async def _ws_backup_clear_result(hass: HomeAssistant, connection, msg: dict[str
 _ACTIVITY_SYNC_PREWRITE_FAILURES = {"plan", "unavailable", "stale_check"}
 
 
+class _EntitySyncRejected(HomeAssistantError):
+    """Raised by :func:`_async_prepare_entity_sync` when a sync request is
+    rejected before any write reaches the hub — busy, locked, or failing
+    payload validation.
+
+    ``code`` mirrors the WS ``connection.send_error`` vocabulary (``busy``
+    / ``unavailable`` / ``invalid_payload``) so ``_handle_entity_sync_ws``
+    can reproduce its original error codes after the shared prep step; the
+    ``sync_from_snapshot`` service collapses it to a plain
+    ``HomeAssistantError`` (services don't have a separate error-code
+    channel). ``stale_baseline`` belongs to the service-only
+    ``expected_generation`` guard and never reaches the WS path, which
+    does not send an expected generation.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def _validate_entity_sync_inputs(
     msg: dict[str, Any],
     *,
@@ -1945,11 +2267,18 @@ def _validate_entity_sync_inputs(
             if baseline_entries.get(ent_id) != entry:
                 strict_entity_ids.add(ent_id)
 
+    # Dangling command references already present in the captured baseline
+    # are hub truth (cloud-provisioned device pages can reference commands
+    # the deploy never wrote to the hub) — grandfather them in both bundles
+    # so they cannot block a sync, while an edit that introduces a new
+    # dangling reference still fails validation.
+    tolerated_missing_commands = collect_missing_command_refs(baseline)
     baseline_model = validate_hub_bundle_for_model(
         baseline,
         hub_version=hub_version,
         payload_name="baseline",
         enforce_editor_invariants=False,
+        tolerated_missing_commands=tolerated_missing_commands,
     )
     edited_model = validate_hub_bundle_for_model(
         edited,
@@ -1957,6 +2286,7 @@ def _validate_entity_sync_inputs(
         payload_name="edited",
         enforce_editor_invariants=True,
         strict_entity_ids=strict_entity_ids,
+        tolerated_missing_commands=tolerated_missing_commands,
     )
     if baseline_model != edited_model:
         raise ValueError("baseline and edited bundles declare different hub models")
@@ -2032,12 +2362,17 @@ async def _async_prepare_managed_wifi_rename(
     in_sync = bool(deployed_hash) and commands_hash == deployed_hash
     new_hash: str | None = None
     if in_sync:
+        try:
+            record_slot_count = int(record.get("slot_count"))
+        except (TypeError, ValueError):
+            record_slot_count = 10
         new_hash = compute_commands_hash(
             list(record.get("commands") or []),
             device_name=new_name,
             roku_listen_port=roku_listen_port,
             power_on_command_id=record.get("power_on_command_id"),
             power_off_command_id=record.get("power_off_command_id"),
+            slot_count=record_slot_count,
         )
         # The reconcile pass mirrors the hub-side brand hash back into the
         # store on every device burst, so the brand must be rewritten along
@@ -2052,6 +2387,66 @@ async def _async_prepare_managed_wifi_rename(
     }
 
 
+def _bundle_device_is_wifi_events(bundle: dict[str, Any], entity_id: int) -> bool:
+    """True when the bundle's device block carries the Wifi Events brand."""
+
+    block = _find_bundle_device_block(bundle, entity_id)
+    if block is None:
+        return False
+    device_key, _brand_hash = _parse_managed_wifi_brand(str(block.get("brand") or ""))
+    return device_key == WIFI_EVENTS_DEVICE_KEY
+
+
+def _collect_command_removals(
+    baseline: dict[str, Any],
+    edited: dict[str, Any],
+    entity_id: int,
+) -> list[int]:
+    """Command ids present on the device in the baseline but absent from
+    the edited bundle — the W7 event-delete staging shape."""
+
+    def _ids(bundle: dict[str, Any]) -> set[int]:
+        for device in bundle.get("devices") or []:
+            if int((device.get("device") or {}).get("device_id") or 0) == int(entity_id):
+                return {
+                    int(cmd.get("command_id"))
+                    for cmd in device.get("commands") or []
+                    if cmd.get("command_id") is not None
+                }
+        return set()
+
+    return sorted(_ids(baseline) - _ids(edited))
+
+
+def _collect_short_command_renames(
+    baseline: dict[str, Any],
+    edited: dict[str, Any],
+    entity_id: int,
+) -> dict[int, str]:
+    """Map command id -> new label for every renamed command on the device.
+
+    Long-record ids are included as-is; the store reconcile ignores ids
+    beyond the record's slot_count (short names are authoritative).
+    """
+
+    def _names(bundle: dict[str, Any]) -> dict[int, str]:
+        for device in bundle.get("devices") or []:
+            if int((device.get("device") or {}).get("device_id") or 0) == int(entity_id):
+                return {
+                    int(cmd.get("command_id")): str(cmd.get("name") or "")
+                    for cmd in device.get("commands") or []
+                    if cmd.get("command_id") is not None
+                }
+        return {}
+
+    base_names = _names(baseline)
+    renames: dict[int, str] = {}
+    for command_id, name in _names(edited).items():
+        if command_id in base_names and base_names[command_id] != name:
+            renames[command_id] = name
+    return renames
+
+
 async def _run_entity_sync_operation(
     hass: HomeAssistant,
     operation_id: str,
@@ -2061,10 +2456,22 @@ async def _run_entity_sync_operation(
     edited: dict[str, Any],
     entity_kind: str,
     entity_id: int,
-) -> None:
+) -> dict[str, Any]:
+    """Run one activity/device sync to completion against the registry.
+
+    Shared engine entry point for both transports: the WS handler fires
+    this as a background task (progress flows through the operation
+    registry a subscriber polls); the ``sync_from_snapshot`` service
+    awaits it directly and uses the returned outcome dict as its response
+    or failure message, since a service call has no separate progress
+    channel to subscribe to.
+    """
+
     registry = _backup_operation_registry(hass)
 
     pending_wifi_rename: dict[str, Any] | None = None
+    events_command_renames: dict[int, str] | None = None
+    events_command_removals: list[int] | None = None
     if entity_kind == "device":
         try:
             pending_wifi_rename = await _async_prepare_managed_wifi_rename(
@@ -2077,6 +2484,49 @@ async def _run_entity_sync_operation(
         except Exception:  # pragma: no cover - propagation must never block a sync
             _LOGGER.exception("[device_sync] managed wifi rename detection failed")
 
+        if _bundle_device_is_wifi_events(baseline, entity_id):
+            # §6a: the Hub tab's device editor is the events device's only
+            # hub-side editing UI, but command ADD is blocked — a hub-only
+            # record would have no slot, no callback payload discipline,
+            # and no deployable snapshot entry. Events are added through
+            # the activity editor's Add dialogs. Command REMOVAL is the
+            # supported delete path (W7 stage 2): the plan's
+            # command_delete steps make the hub cascade referencing
+            # favorites/bindings/macro-steps, and the reconcile below
+            # resets the freed store slots.
+            is_events_device = True
+            try:
+                planned = build_device_sync_plan(
+                    baseline, edited, entity_id, allow_command_removal=True
+                )
+            except ValueError:
+                planned = []
+            if any(step.kind == "command_add" for step in planned):
+                message = (
+                    "Commands cannot be added to the Wifi Events device here — "
+                    "create Wifi Events from the activity editor instead."
+                )
+                registry.update(
+                    operation_id,
+                    status="failed",
+                    phase="plan",
+                    message=message,
+                    error=message,
+                    transient=True,
+                )
+                registry.dismiss_operation(operation_id)
+                return {"status": "failed", "failed_at": "plan", "message": message}
+            events_command_renames = _collect_short_command_renames(
+                baseline, edited, entity_id
+            )
+            events_command_removals = _collect_command_removals(
+                baseline, edited, entity_id
+            )
+        else:
+            is_events_device = False
+    else:
+        is_events_device = False
+
     def _progress(**payload: Any) -> None:
         registry.update_from_thread(operation_id, **payload)
 
@@ -2087,6 +2537,7 @@ async def _run_entity_sync_operation(
                 edited=edited,
                 device_id=entity_id,
                 progress_callback=_progress,
+                allow_command_removal=is_events_device,
             )
         else:
             result = await hub.async_sync_activity(
@@ -2096,16 +2547,17 @@ async def _run_entity_sync_operation(
                 progress_callback=_progress,
             )
     except Exception as err:  # pragma: no cover - defensive; executor traps its own
+        outcome = {"status": "failed", "message": str(err) or "Sync failed", "transient": True}
         registry.update(
             operation_id,
             status="failed",
             phase="failed",
-            message=str(err) or "Sync failed",
-            error=str(err) or "Sync failed",
+            message=outcome["message"],
+            error=outcome["message"],
             transient=True,
         )
         registry.dismiss_operation(operation_id)
-        return
+        return outcome
 
     if isinstance(result, dict) and str(result.get("status") or "") == "failed":
         failed_at = str(result.get("failed_at") or "")
@@ -2122,7 +2574,7 @@ async def _run_entity_sync_operation(
                 transient=True,
             )
             registry.dismiss_operation(operation_id)
-            return
+            return result
         registry.update(
             operation_id,
             status="failed",
@@ -2133,7 +2585,7 @@ async def _run_entity_sync_operation(
             completed_steps=int(result.get("completed_steps") or 0),
             result=result,
         )
-        return
+        return result
 
     # Success tail: refresh the persistent cache so cache_generation bumps and
     # the remote card / Hub tab pick up the new names, macros, and bindings
@@ -2164,6 +2616,38 @@ async def _run_entity_sync_operation(
         except Exception:  # pragma: no cover - propagation must never fail the sync
             _LOGGER.exception("[device_sync] managed wifi rename propagation failed")
 
+    if events_command_renames:
+        # §6a store-follows-hub: command renames on the Wifi Events device
+        # mirror into the matching slot + deployed snapshot + hash so the
+        # record never reads out-of-step from its own editor. Attached
+        # actions stay with the slot. Best-effort like the rename above.
+        try:
+            store = await _async_get_command_config_store(hass)
+            await store.async_reconcile_wifi_events_command_renames(
+                hub.entry_id,
+                events_command_renames,
+                roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id),
+            )
+            async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
+        except Exception:  # pragma: no cover - propagation must never fail the sync
+            _LOGGER.exception("[device_sync] wifi events command-rename reconcile failed")
+
+    if events_command_removals:
+        # W7 stage 2: the plan's command_delete steps removed the records
+        # (hub cascaded the refs); reset the freed store slots in place so
+        # the record follows — short id -> default slot, long id -> flag
+        # off — and the deployed snapshot/hash stay coherent.
+        try:
+            store = await _async_get_command_config_store(hass)
+            await store.async_reconcile_wifi_events_command_removals(
+                hub.entry_id,
+                events_command_removals,
+                roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id),
+            )
+            async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
+        except Exception:  # pragma: no cover - propagation must never fail the sync
+            _LOGGER.exception("[device_sync] wifi events command-removal reconcile failed")
+
     completed_steps = int((result or {}).get("total_steps") or 0)
     registry.update(
         operation_id,
@@ -2176,6 +2660,22 @@ async def _run_entity_sync_operation(
     try:
         await hub.async_request_catalog("activities" if entity_kind == "activity" else "devices")
         await hub.async_refresh_entity_structure(kind=entity_kind, ent_id=entity_id)
+        if entity_kind == "device":
+            # Command-record rewrites also change labels held by every
+            # referencing activity's cached favorite/keybinding maps;
+            # refreshing only the device would leave those stale until an
+            # unrelated activity re-read.
+            counters = (result or {}).get("counters") or {}
+            if any(
+                counters.get(kind)
+                for kind in (
+                    "command_add",
+                    "command_rename",
+                    "command_payload",
+                    "command_delete",
+                )
+            ):
+                await hub.async_refresh_activities_referencing_device(entity_id)
         store = await _async_get_persistent_cache_store(hass)
         if store.enabled:
             payload = await hub.async_export_cache_state()
@@ -2192,6 +2692,90 @@ async def _run_entity_sync_operation(
         total_steps=completed_steps,
         result=result or {"status": "success"},
     )
+    return result or {"status": "success"}
+
+
+async def _async_prepare_entity_sync(
+    hass: HomeAssistant,
+    *,
+    hub: SofabatonHub,
+    entity_kind: str,
+    sync_input: Mapping[str, Any],
+    operation_label: str,
+    expected_generation: int | None = None,
+) -> tuple[str, dict[str, Any], dict[str, Any], int]:
+    """Busy-guard, lock-guard, validate, and register one entity sync.
+
+    The half of ``_handle_entity_sync_ws`` that has nothing to do with the
+    websocket transport, split out so the ``sync_from_snapshot`` service
+    can run the identical pre-write gauntlet — same busy/lock checks,
+    same :func:`_validate_entity_sync_inputs` payload validation, same
+    operation-registry bookkeeping — before handing off to
+    :func:`_run_entity_sync_operation` (the engine entry point both
+    transports share).
+
+    ``expected_generation`` is the service path's baseline-freshness gate:
+    when supplied, the hub's ``cache_generation`` must still equal it or
+    the sync is refused. The WS editor never passes it — it re-exports its
+    baseline from the structural bundle after every sync and relies on the
+    engine's own stale-check preflight, which stays the wire-level
+    authority for both transports.
+
+    Returns ``(operation_id, baseline, edited, entity_id)``. Raises
+    :class:`_EntitySyncRejected` for every rejection reason (busy, stale
+    baseline, locked, invalid payload); callers translate ``.code`` /
+    ``str(err)`` into their own transport's error shape.
+    """
+
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        raise _EntitySyncRejected(
+            "busy",
+            "Another backup, restore, or sync operation is already running for this hub",
+        )
+
+    # The generation compare sits after the busy guard (no registry-tracked
+    # operation is mid-flight for this entry, so no sync tail is about to
+    # bump the generation) and before ``registry.create`` (a stale request
+    # must not consume an operation slot other callers would see as busy).
+    # Everything from here through ``create`` is await-free, so the value
+    # read cannot move before the operation is registered; the successful
+    # sync's own bump happens later, inside ``_run_entity_sync_operation``'s
+    # tail, and is never re-checked against this snapshot.
+    if expected_generation is not None:
+        current_generation = int(hub.cache_generation)
+        if current_generation != expected_generation:
+            raise _EntitySyncRejected(
+                "stale_baseline",
+                f"stale baseline: expected generation {expected_generation}, "
+                f"hub cache is at {current_generation} - re-export the snapshot",
+            )
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, operation_label)
+        baseline, edited, entity_id = _validate_entity_sync_inputs(
+            sync_input,
+            entity_kind=entity_kind,
+            hub_version=getattr(hub, "version", None),
+        )
+    except HomeAssistantError as err:
+        raise _EntitySyncRejected("unavailable", str(err)) from err
+    except ValueError as err:
+        raise _EntitySyncRejected("invalid_payload", str(err)) from err
+
+    operation_id = registry.create(
+        kind=f"{entity_kind}_sync",
+        entry_id=hub.entry_id,
+        initial_state={
+            "status": "pending",
+            "phase": "queued",
+            "message": "Starting sync…",
+            "completed_steps": 0,
+            "total_steps": 0,
+            f"current_{entity_kind}_id": entity_id,
+        },
+    )
+    return operation_id, baseline, edited, entity_id
 
 
 async def _handle_entity_sync_ws(
@@ -2206,37 +2790,18 @@ async def _handle_entity_sync_ws(
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    registry = _backup_operation_registry(hass)
-    if registry.has_running_for_entry(hub.entry_id):
-        connection.send_error(msg["id"], "busy", "Another backup, restore, or sync operation is already running for this hub")
-        return
-
     try:
-        _raise_if_hub_operation_locked(hass, hub, f"_ws_{entity_kind}_sync")
-        baseline, edited, entity_id = _validate_entity_sync_inputs(
-            msg,
+        operation_id, baseline, edited, entity_id = await _async_prepare_entity_sync(
+            hass,
+            hub=hub,
             entity_kind=entity_kind,
-            hub_version=getattr(hub, "version", None),
+            sync_input=msg,
+            operation_label=f"_ws_{entity_kind}_sync",
         )
-    except HomeAssistantError as err:
-        connection.send_error(msg["id"], "unavailable", str(err))
-        return
-    except ValueError as err:
-        connection.send_error(msg["id"], "invalid_payload", str(err))
+    except _EntitySyncRejected as err:
+        connection.send_error(msg["id"], err.code, str(err))
         return
 
-    operation_id = registry.create(
-        kind=f"{entity_kind}_sync",
-        entry_id=hub.entry_id,
-        initial_state={
-            "status": "pending",
-            "phase": "queued",
-            "message": "Starting sync…",
-            "completed_steps": 0,
-            "total_steps": 0,
-            f"current_{entity_kind}_id": entity_id,
-        },
-    )
     hass.async_create_task(
         _run_entity_sync_operation(
             hass,
@@ -2318,6 +2883,21 @@ async def _handle_entity_delete_ws(
             f"The hub did not confirm deletion of {entity_kind} {entity_id}",
         )
         return
+    # W7 decision 4: deleting the Wifi Events device wholesale from the Hub
+    # tab drops its orphaned store record and, if nothing else needs it,
+    # disables the HTTP listener (the store record is what keeps the guard
+    # alive). The hub-side delete already cascaded its refs.
+    if entity_kind == "device":
+        try:
+            store = await _async_get_command_config_store(hass)
+            events_state = store.wifi_events_record_state(hub.entry_id)
+            if events_state.get("device_id") == entity_id:
+                await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
+                if hub.roku_server_enabled and not await _async_wifi_listener_needed(hass, hub.entry_id):
+                    await hub.async_set_roku_server_enabled(False)
+                async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
+        except Exception:  # pragma: no cover - cleanup must never fail the delete
+            _LOGGER.exception("[device_delete] wifi events store cleanup failed")
     connection.send_result(msg["id"], result)
 
 
@@ -2487,7 +3067,14 @@ async def _handle_entity_sync_plan_ws(
             hub_version=getattr(hub, "version", None),
         )
         if entity_kind == "device":
-            plan = build_device_sync_plan(baseline, edited, entity_id)
+            plan = build_device_sync_plan(
+                baseline,
+                edited,
+                entity_id,
+                # W7: command removal is in scope for the events device only
+                # (the review preview must mirror the executor's rules).
+                allow_command_removal=_bundle_device_is_wifi_events(baseline, entity_id),
+            )
         else:
             plan = build_activity_sync_plan(baseline, edited, entity_id)
     except ValueError as err:
@@ -2992,6 +3579,12 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_list_command_devices)
     websocket_api.async_register_command(hass, _ws_create_command_device)
     websocket_api.async_register_command(hass, _ws_delete_command_device)
+    websocket_api.async_register_command(hass, _ws_list_wifi_events)
+    websocket_api.async_register_command(hass, _ws_create_wifi_event)
+    websocket_api.async_register_command(hass, _ws_delete_wifi_event)
+    websocket_api.async_register_command(hass, _ws_sync_wifi_events)
+    websocket_api.async_register_command(hass, _ws_set_wifi_event_action)
+    websocket_api.async_register_command(hass, _ws_set_wifi_event_longpress)
     websocket_api.async_register_command(hass, _ws_get_hub_event_actions)
     websocket_api.async_register_command(hass, _ws_set_hub_event_actions)
     websocket_api.async_register_command(hass, _ws_get_control_panel_state)
@@ -3329,6 +3922,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
     if not hass.services.has_service(DOMAIN, "sync_command_config"):
         hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
+    if not hass.services.has_service(DOMAIN, "export_snapshot"):
+        hass.services.async_register(
+            DOMAIN,
+            "export_snapshot",
+            _async_handle_export_snapshot,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+    if not hass.services.has_service(DOMAIN, "sync_from_snapshot"):
+        hass.services.async_register(
+            DOMAIN,
+            "sync_from_snapshot",
+            _async_handle_sync_from_snapshot,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
 
     hass.data[DOMAIN][entry.entry_id] = hub
 
@@ -3386,6 +3993,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "delete_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
             hass.services.async_remove(DOMAIN, "sync_command_config")
+            hass.services.async_remove(DOMAIN, "export_snapshot")
+            hass.services.async_remove(DOMAIN, "sync_from_snapshot")
             async_teardown_diagnostics(hass)
             if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
                 if hass.data[DOMAIN].get("storage_resources_registered"):
@@ -3913,6 +4522,131 @@ async def _async_handle_sync_command_config(call: ServiceCall):
         device_key=str(payload.get("device_key") or device_key or ""),
         device_name=device_name,
     )
+
+
+async def _async_handle_export_snapshot(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.export_snapshot``.
+
+    Wraps :meth:`SofabatonHub.async_get_structural_bundle` — the exact
+    projection the live Control Panel editor reads (WS command
+    ``sofabaton_x1s/cache/structural_bundle``, see
+    ``_ws_get_structural_bundle``). It is a pure read from the cached
+    proxy state: no hub I/O and no per-command IR blob dump, so it is
+    cheap enough to call before every ``sync_from_snapshot`` and safe to
+    call while the vendor app owns the hub.
+
+    Deliberately not ``backup_bundle``: that action always does a live
+    round trip to the hub (and, for a whole-hub backup, dumps every
+    command's IR blob) — see ``docs/protocol/write-flows.md``.
+    ``export_snapshot`` only returns what the integration already has
+    cached; open the Control Panel's Hub or Activities tab once (or run
+    a whole-hub cache refresh) to populate the cache on a fresh install.
+
+    Response is ``{bundle, generation}`` — the same shape the WS command
+    sends. ``generation`` is the cache generation the snapshot was
+    exported at; pass it back as ``sync_from_snapshot``'s
+    ``expected_generation`` to refuse a stale baseline loudly.
+    """
+
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        raise HomeAssistantError(
+            "export_snapshot requires the persistent cache to be enabled "
+            "(Sofabaton X1S integration options)."
+        )
+
+    bundle = await hub.async_get_structural_bundle()
+    if not bundle:
+        raise HomeAssistantError(
+            "No cached structural snapshot is available yet. Open the "
+            "Control Panel's Hub or Activities tab once (or run a "
+            "whole-hub cache refresh) to populate it, then retry."
+        )
+    return {"bundle": bundle, "generation": hub.cache_generation}
+
+
+async def _async_handle_sync_from_snapshot(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.sync_from_snapshot``.
+
+    Script-callable counterpart of the live Control Panel editor's save
+    action. Accepts the same ``baseline``/``edited`` hub_bundle pair the
+    WS ``activity/sync`` and ``device/sync`` commands accept (see
+    ``_validate_entity_sync_inputs``), routes through the identical
+    pre-write gauntlet (``_async_prepare_entity_sync``: busy guard, lock
+    guard, payload validation, operation-registry bookkeeping) and the
+    identical engine entry point (``_run_entity_sync_operation`` ->
+    ``hub.async_sync_activity``/``async_sync_device`` ->
+    ``ActivitySyncMixin.sync_activity``/``sync_device``) the WS handler
+    uses — so paging, label-slot reuse, and ack tolerance all apply
+    exactly as they do from the Control Panel.
+
+    Typical flow: call ``export_snapshot`` to get a bundle, keep the
+    ``generation`` it returns, edit the two POWER_ON/POWER_OFF steps for
+    one device in the returned JSON, then call this with the untouched
+    export as ``baseline``, the edited copy as ``edited``, and that
+    generation as ``expected_generation`` — the sync then refuses loudly
+    if the hub cache has moved since the export instead of failing later
+    (or writing against a rebased diff).
+    """
+
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    entity_kind = str(call.data.get("entity_kind") or "").strip().lower()
+    if entity_kind not in ("activity", "device"):
+        raise ValueError("entity_kind must be 'activity' or 'device'")
+
+    baseline = call.data.get("baseline")
+    edited = call.data.get("edited")
+    if not isinstance(baseline, dict) or not isinstance(edited, dict):
+        raise ValueError("baseline and edited must be hub_bundle objects")
+
+    raw_generation = call.data.get("expected_generation")
+    expected_generation: int | None = None
+    if raw_generation is not None:
+        try:
+            expected_generation = int(raw_generation)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("expected_generation must be an integer") from exc
+
+    sync_input = {
+        "baseline": baseline,
+        "edited": edited,
+        f"{entity_kind}_id": call.data.get("entity_id"),
+    }
+
+    try:
+        operation_id, baseline, edited, entity_id = await _async_prepare_entity_sync(
+            hass,
+            hub=hub,
+            entity_kind=entity_kind,
+            sync_input=sync_input,
+            operation_label=f"sync_from_snapshot[{entity_kind}]",
+            expected_generation=expected_generation,
+        )
+    except _EntitySyncRejected as err:
+        raise HomeAssistantError(str(err)) from err
+
+    result = await _run_entity_sync_operation(
+        hass,
+        operation_id,
+        hub=hub,
+        baseline=baseline,
+        edited=edited,
+        entity_kind=entity_kind,
+        entity_id=entity_id,
+    )
+    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
+        raise HomeAssistantError(str(result.get("message") or "Sync failed"))
+    return result
+
 
 async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
     return await _async_resolve_hub_from_data(hass, call.data)

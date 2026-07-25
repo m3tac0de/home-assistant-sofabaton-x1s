@@ -1390,3 +1390,57 @@ invisibly. The readiness-window staleness scenario from the risk
 assessment is precluded for backups by the gate; for non-gated
 overlaps the lib-level stress bench (54 cycles / 88 polls, zero
 timeouts) covers the shape.
+
+## Validated: Wifi Events (X1S via live HA, 2026-07-22)
+
+W6 program (wifi-events-plan §9-W6) driven entirely through the
+DEPLOYED Home Assistant instance's WS API — the shipped card backend
+path, no direct hub access (bench_142 / 142c / 142d; W0's protocol
+gates bench_140/141 ran earlier the same day on X1 + X1S raw):
+
+- **Create**: first `wifi_event/create` built the 100-record events
+  device via the replace path in **54 s** (listener auto-enabled);
+  the second create took the in-place path in **16 s**. Law ids
+  confirmed through the stack (short = slot+1, long = short+50,
+  device id from the sync result). Reserved device absent from
+  `command_devices/list` throughout.
+- **Actions**: short/long actions + the standalone long-press toggle
+  staged with ZERO deploys; runtime read the staged slot.
+- **References**: favorite, RED binding short leg, RED long leg
+  (long record id 51), and a macro step — all written by the real
+  `activity/sync` engine against a member-less device (plan shape
+  identical to the W0.2 gate).
+- **Presses on the physical remote**: RED short → callback routed to
+  slot 0 → **short action executed** (persistent notification;
+  observed 3× across runs). RED hold → **long record delivered,
+  long_press_enabled gated, long action executed**. The wifi sensor
+  is a 0.3 s pulse by design — poll-based probes cannot see it; the
+  notification is the delivery proof.
+- **§6a reconcile**: renaming command 2 in the live device editor
+  (device/sync) mirrored into the store slot + deployed snapshot;
+  the record stayed in sync (name followed, no redeploy prompt).
+- **Delete cascade**: deleting an event removed its macro step on the
+  hub (single-step macro pruned — matches W0.2), via the new real
+  record-delete pass; favorites/bindings on other commands untouched.
+- **Zero-slot teardown**: last delete removed the hub device, emptied
+  the list, dropped the store record; a leftover-sweep rerun earlier
+  exercised the same path twice.
+- **Restore**: ACT_A surgically restored (bench refs removed, RED
+  re-bound to its pre-bench target from the morning's recovery
+  bundle); hub left clean.
+
+Open findings (not Wifi-Events-specific machinery):
+
+1. **Empty quick-access row for an engine-created macro on the
+   remote's screen** — the macro's key row + steps + name round-trip
+   correctly in structural reads, but the remote renders a label-less
+   row (user-observed on X1S). Affects the generic live-editor
+   new-macro path (macro label-slot / label-page delivery), not the
+   wifi-event step content. Needs its own repro + fix program.
+2. **Favorite tap unconfirmed** — the favorite's press windows saw no
+   callback in two attempts; entangled with finding 1's rendering
+   question (whether the row appeared at all is pending user
+   confirmation). RED-button referencing of the same command worked
+   throughout, so the record itself is sound.
+
+Artifacts: scripts/hub-bench/out/evE2E-X1S*.json / evE2E-press-check.json.

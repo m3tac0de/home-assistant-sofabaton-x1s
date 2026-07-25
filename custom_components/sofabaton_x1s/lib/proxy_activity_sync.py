@@ -470,6 +470,7 @@ class ActivitySyncMixin:
         edited: Mapping[str, Any],
         device_id: int,
         progress_callback: Callable[..., None] | None = None,
+        allow_command_removal: bool = False,
     ) -> dict[str, Any]:
         """Device-scoped counterpart of :meth:`sync_activity`.
 
@@ -488,7 +489,10 @@ class ActivitySyncMixin:
                     "message": "The hub is not reachable (the Sofabaton app may be connected)."}
 
         try:
-            plan = build_device_sync_plan(baseline, edited, device_id)
+            plan = build_device_sync_plan(
+                baseline, edited, device_id,
+                allow_command_removal=allow_command_removal,
+            )
         except ValueError as err:
             return {"status": "failed", "failed_at": "plan", "message": str(err)}
 

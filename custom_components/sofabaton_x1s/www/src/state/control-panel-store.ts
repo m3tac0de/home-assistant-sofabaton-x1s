@@ -471,7 +471,7 @@ export class ControlPanelStore {
     const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
     if (!key) return;
     const byHub = { ...this._snapshot.externalHubCommandByHub };
-    if (busy) byHub[key] = String(label || "").trim() || "Hub command in progress…";
+    if (busy) byHub[key] = String(label || "").trim() || TOOLS_CARD_STRINGS.backend.hubCommandInProgress;
     else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
@@ -751,9 +751,9 @@ export class ControlPanelStore {
    * can react to the outcome.
    */
   async refreshAllForHub(): Promise<string | null> {
-    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
     const hub = selectedHub(this._snapshot);
-    if (!hub) return "No hub selected.";
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
     this._setRefreshBusy(hub.entry_id, REFRESH_ALL_KEY);
     let unsubscribe: (() => void) | null = null;
     try {
@@ -765,7 +765,7 @@ export class ControlPanelStore {
           .subscribeBackupProgress(start.operation_id, (payload: BackupProgressEvent) => {
             if (payload.status === "success") resolve(null);
             else if (payload.status === "failed") {
-              resolve(String(payload.error || payload.message || "Cache refresh failed."));
+          resolve(String(payload.error || payload.message || TOOLS_CARD_STRINGS.errors.cacheRefreshFailed));
             }
           })
           .then((unsub) => { unsubscribe = unsub; })
@@ -774,7 +774,7 @@ export class ControlPanelStore {
       this.showRuntimeCompletion(
         failure
           ? { tone: "error", label: failure }
-          : { tone: "success", label: "Hub cache refreshed." },
+          : { tone: "success", label: TOOLS_CARD_STRINGS.cacheRefresh.done },
         hub.entry_id,
       );
       await this.loadState({ silent: true });
@@ -797,10 +797,10 @@ export class ControlPanelStore {
    * Resolves with `null` on success or a failure message for the caller's UI.
    */
   async reorderActivities(orderedIds: number[]): Promise<string | null> {
-    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
     const hub = selectedHub(this._snapshot);
-    if (!hub) return "No hub selected.";
-    this.setExternalHubCommandBusy(true, "Reordering activities…", hub.entry_id);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.reorderingActivities, hub.entry_id);
     try {
       await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
@@ -818,10 +818,10 @@ export class ControlPanelStore {
    * Resolves with `null` on success or a failure message for the caller's UI.
    */
   async reorderDevices(orderedIds: number[]): Promise<string | null> {
-    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
     const hub = selectedHub(this._snapshot);
-    if (!hub) return "No hub selected.";
-    this.setExternalHubCommandBusy(true, "Reordering devices…", hub.entry_id);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.reorderingDevices, hub.entry_id);
     try {
       await this.api().reorderDevices(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
@@ -839,15 +839,15 @@ export class ControlPanelStore {
    * activity id or an error message.
    */
   async createActivity(name: string): Promise<{ activityId: number } | { error: string }> {
-    if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
+    if (this._isHubCommandBusy()) return { error: TOOLS_CARD_STRINGS.errors.anotherOperation };
     const hub = selectedHub(this._snapshot);
-    if (!hub) return { error: "No hub selected." };
-    this.setExternalHubCommandBusy(true, "Creating activity…", hub.entry_id);
+    if (!hub) return { error: TOOLS_CARD_STRINGS.errors.noHubSelected };
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingActivity, hub.entry_id);
     let activityId = 0;
     try {
       const result = await this.api().createActivity(hub.entry_id, name);
       activityId = Number(result?.activity_id || 0);
-      if (!activityId) return { error: "The hub did not return the new activity id." };
+      if (!activityId) return { error: TOOLS_CARD_STRINGS.errors.activityIdMissing };
     } catch (error) {
       return { error: formatError(error) };
     } finally {
@@ -1041,12 +1041,12 @@ export class ControlPanelStore {
     ) {
       const operation = previousRuntime.operation;
       const successLabel = operation === "backup_restore"
-        ? "Restore completed successfully."
+        ? TOOLS_CARD_STRINGS.backup.restoreCompletedSuccessfully
         : operation === "backup_export"
-          ? "Backup completed successfully."
+          ? TOOLS_CARD_STRINGS.backup.backupCompletedSuccessfully
           : operation === "entity_sync"
-            ? "Synced to hub."
-            : "Wifi Device deployed successfully.";
+            ? TOOLS_CARD_STRINGS.activities.syncSuccess
+            : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
       this.showRuntimeCompletion(
         {
           tone: "success",
@@ -1128,7 +1128,7 @@ export class ControlPanelStore {
   }
 
   private api() {
-    if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
+    if (!this._snapshot.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantContextUnavailable);
     return new ControlPanelApi(this._snapshot.hass);
   }
 

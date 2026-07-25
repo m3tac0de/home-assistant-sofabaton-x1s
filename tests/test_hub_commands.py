@@ -188,7 +188,7 @@ def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
                 "command_blob": blob_body.hex(" "),
                 "parsed_blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
                 # IR descriptive payloads now ride the same `decoded`
-                # block shape as the wifi virtual device classes â€” the
+                # block shape as the wifi virtual device classes — the
                 # decoder is content-sniffed via the magic prefix and
                 # returns None for non-descriptive IR blobs, so this
                 # field is populated here and empty for raw IR rows.
@@ -304,7 +304,7 @@ def test_async_fetch_blob_decoded_block_for_wifi_ip(monkeypatch):
 def test_build_hub_code_record_restore_data_attaches_decoded_for_wifi_ip():
     """`restore_data` for virtual classes carries the decoded block.
 
-    The block is purely additive â€” `data_hex` stays byte-identical to
+    The block is purely additive — `data_hex` stays byte-identical to
     what backups produce today, so older restore paths (which only
     read `data_hex`) keep working. This test pins the additive shape
     explicitly so a future refactor cannot quietly start mutating
@@ -359,8 +359,8 @@ def test_ir_decoder_attaches_block_for_descriptive_payload():
 
     The IR backup branch in :meth:`async_backup_device` attaches a
     ``decoded`` block on the row by calling
-    ``try_decode_command_blob("ir", blob_hex)``. That single call â€”
-    the actual integration point â€” is exercised here. End-to-end
+    ``try_decode_command_blob("ir", blob_hex)``. That single call —
+    the actual integration point — is exercised here. End-to-end
     backup-pipeline integration is covered by the bundle tests.
     """
 
@@ -466,9 +466,9 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
     assert result["complete"] is True
     # Device-255 macro entries are firmware "delay/wait" sentinel rows
     # (head byte 0xFF, delay byte carries the pause). Commit 0700430
-    # ("Evolved backup edit â€¦ Fixed issue in backup/restore where macro
+    # ("Evolved backup edit … Fixed issue in backup/restore where macro
     # delays weren't being backed up and restored") deliberately stopped
-    # filtering them â€” they're preserved verbatim through backupâ†’restore
+    # filtering them — they're preserved verbatim through backup→restore
     # so the firmware can replay inter-step pauses. They're still excluded
     # from referenced_source_device_ids because they don't point at a real
     # source device.
@@ -724,7 +724,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "tail_marker": 0,
         "extras": None,
     }
-    # restore_data now carries a `decoded` block alongside the raw bytes â€”
+    # restore_data now carries a `decoded` block alongside the raw bytes —
     # the same IR descriptor decoder that the fetch-blob path uses. This is
     # the canonical view for descriptive IR blobs and is what restore reads
     # when rewriting the body for the destination hub.
@@ -1320,7 +1320,7 @@ def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch
     assert full_refresh_calls == [(11, 10.0)]
     # Post-persist single-command refresh now runs as background housekeeping
     # with a capped budget (refresh_budget = min(2.0, wait_timeout)) and
-    # force_refresh=False â€” the persist itself has already settled on the
+    # force_refresh=False — the persist itself has already settled on the
     # hub, so this pass just re-pulls the metadata on a best-effort basis.
     assert single_refresh_calls == [(11, 112, 2.0, False)]
 
@@ -3823,7 +3823,7 @@ def test_sync_command_config_post_hoc_reorder_uses_tracked_fav_ids(monkeypatch):
     # new_fav_id_set  = {1, 2, 3, 4, 5}
     # pre_existing    = fav_ids from scrambled_order NOT in new_fav_id_set,
     #                   sorted by their slot: [(5,1),(1,2),(3,3),(2,4),(4,5),(6,6)]
-    #                   â†’ only fav_id 6 (slot 6) survives the filter
+    #                   → only fav_id 6 (slot 6) survives the filter
     # final_order     = [6] + [1, 2, 3, 4, 5]
     assert reorder_calls == [(101, [6, 1, 2, 3, 4, 5])]
 
@@ -5609,6 +5609,142 @@ def test_delete_device_rewarms_confirmed_activities(monkeypatch):
         loop.close()
 
 
+def test_delete_device_rewarms_impacted_activities_when_present(monkeypatch):
+    """When the proxy reports impacted_activities (confirm set + cache scan
+    of referencing power macros/favorites/bindings), the re-warm must cover
+    all of them — not just the hub-flagged confirm subset."""
+
+    dev_lo = 0x14
+    hub, loop, persisted, warmed = _make_delete_device_hub(
+        monkeypatch,
+        proxy_result={
+            "device_id": dev_lo,
+            "confirmed_activities": [0x66],
+            "impacted_activities": [0x65, 0x66],
+            "status": "success",
+        },
+    )
+    try:
+        hub.devices[dev_lo] = {"name": "Wifi Lights", "brand": "m3tac0de"}
+
+        result = loop.run_until_complete(hub.async_delete_device(dev_lo))
+
+        assert result and result.get("status") == "success"
+        assert warmed == [0x65, 0x66]
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_cache_activity_favorites_prefers_fresh_device_catalog(monkeypatch):
+    """The per-activity favorite label map is a resolved copy that lags
+    behind command renames until the activity is re-read; the device
+    command catalog must win whenever it has the command."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        act_lo = 0x65
+        dev_lo = 0x0B
+        hub._proxy.state.activity_favorite_slots[act_lo] = [
+            {"device_id": dev_lo, "command_id": 1, "button_id": 3, "source": "cache"}
+        ]
+        hub._proxy.state.activity_favorite_labels[act_lo][(dev_lo, 1)] = "Old Name"
+        hub._proxy.state.commands[dev_lo] = {1: "New Name"}
+
+        rows = hub._build_cache_activity_favorites()
+        assert rows[str(act_lo)][0]["label"] == "New Name"
+
+        # Catalog entry missing → fall back to the activity-scoped label.
+        hub._proxy.state.commands.pop(dev_lo)
+        rows = hub._build_cache_activity_favorites()
+        assert rows[str(act_lo)][0]["label"] == "Old Name"
+    finally:
+        loop.close()
+
+
+def test_remote_quick_access_uses_shared_physical_display_order():
+    """Macro/favorite drawers preserve their relative positions from the
+    hub's one interleaved family-0x61 quick-access order."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        act_lo = 0x65
+        hub.activities[act_lo] = {"name": "Watch TV"}
+        hub._proxy.state.replace_activity_macros(
+            act_lo,
+            [
+                {"command_id": 2, "label": "Second macro"},
+                {"command_id": 4, "label": "First macro"},
+            ],
+        )
+        hub._proxy._macros_complete.add(act_lo)
+        hub._proxy.state.activity_favorite_slots[act_lo] = [
+            {"device_id": 0x0B, "command_id": 1, "button_id": 1, "source": "keymap"},
+            {"device_id": 0x0B, "command_id": 3, "button_id": 3, "source": "keymap"},
+        ]
+        hub._proxy.state.commands[0x0B] = {1: "Second favorite", 3: "First favorite"}
+        # Physical screen: favorite 3, macro 4, favorite 1, macro 2.
+        hub._proxy.state.activity_favorites_order[act_lo] = [
+            (3, 1),
+            (4, 2),
+            (1, 3),
+            (2, 4),
+        ]
+
+        macros = hub.get_all_cached_macros()[act_lo]
+        favorites = hub.get_activity_favorites()[act_lo]
+
+        assert [row["command_id"] for row in macros] == [4, 2]
+        assert [row["button_id"] for row in favorites] == [3, 1]
+        assert [row["name"] for row in favorites] == [
+            "First favorite",
+            "Second favorite",
+        ]
+    finally:
+        loop.close()
+
+
+def test_remote_favorite_slot_survives_temporarily_missing_label():
+    """A live favorite slot must not become an empty drawer merely because
+    its targeted command-label refresh has not completed yet."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        act_lo = 0x65
+        hub.activities[act_lo] = {"name": "Watch TV"}
+        hub._proxy.state.activity_favorite_slots[act_lo] = [
+            {"device_id": 0x0B, "command_id": 9, "button_id": 7, "source": "keymap"}
+        ]
+
+        favorites = hub.get_activity_favorites()[act_lo]
+
+        assert favorites == [
+            {
+                "button_id": 7,
+                "name": "Command 9",
+                "device_id": 0x0B,
+                "command_id": 9,
+            }
+        ]
+    finally:
+        loop.close()
+
+
 def test_delete_device_skips_rewarm_when_disabled(monkeypatch):
     dev_lo = 0x14
     hub, loop, persisted, warmed = _make_delete_device_hub(
@@ -5631,5 +5767,60 @@ def test_delete_device_skips_rewarm_when_disabled(monkeypatch):
         # Generation bump + persist still run: the deploy pipeline that opts
         # out does its own re-warm before relying on the persisted cache.
         assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_wifi_events_device_rebinds_by_brand_after_restore():
+    """Plan §6.5: a restored Wifi Events device comes back with a fresh hub
+    device id but the same ``m3-haevents-<hash>`` brand. The managed-brand
+    reconcile must re-attach store ownership by that brand — parsing the
+    reserved ``haevents`` key + deployed hash out of the brand and matching
+    the store record whose stale ``deployed_device_id`` no longer resolves.
+    """
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+    )
+    try:
+        events_hash = "abc123def4567"
+        new_device_id = 0x2A  # the hub minted a new id on restore
+        # A restored events device on the live hub carries the reserved brand.
+        hub.devices[new_device_id] = {
+            "name": "Wifi Events",
+            "brand": f"m3-haevents-{events_hash}",
+        }
+        # Plus an unrelated managed user device, to prove key/hash scoping.
+        hub.devices[0x0B] = {"name": "Wifi Lights", "brand": "m3-abcd1234-otherhash0000"}
+
+        managed = hub._managed_wifi_devices()
+        events_rows = [row for row in managed if row[1] == "haevents"]
+        # The brand parsed into (id, reserved key, hash, brand).
+        assert events_rows == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
+
+        # The store record lost its deployed_device_id (a restore drops it)
+        # but still knows the deployed hash — the reconcile matches by it.
+        matches, ambiguous = hub._match_managed_wifi_devices(
+            managed_devices=managed,
+            device_key="haevents",
+            deployed_device_id=None,
+            deployed_commands_hash=events_hash,
+        )
+        assert ambiguous is False
+        assert matches == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
+
+        # Even with the hash unknown (e.g. a hash-version bump), the reserved
+        # key alone still re-binds it — the key carries identity.
+        by_key, ambiguous_by_key = hub._match_managed_wifi_devices(
+            managed_devices=managed,
+            device_key="haevents",
+            deployed_device_id=None,
+            deployed_commands_hash="",
+        )
+        assert ambiguous_by_key is False
+        assert by_key == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
     finally:
         loop.close()

@@ -74,7 +74,7 @@ If two commands claim the same button (for different Activities), no device-page
 
 ## Hub Events
 
-The **Events** sub-tab (next to **Wifi Commands**) contains separate **Hub Events** and **Activity Events** sections. Under **Hub Events**, you can attach a Home Assistant Action to hub state changes:
+The **Events** sub-tab (next to **Wifi Commands**) contains **Hub Events**, **Wifi Events**, and **Activity Events** sections. Under **Hub Events**, you can attach a Home Assistant Action to hub state changes:
 
 - **When the hub is switched OFF** — the hub left an Activity and is now powered off.
 - **When OFF is pressed while the hub is already OFF** — the OFF button was pressed with nothing left to turn off. Useful as a "force everything off" hook.
@@ -93,12 +93,54 @@ Unlike Wifi Commands, these hooks live entirely in Home Assistant: they are neve
 
 <img height="250" alt="Hub and Activity Events" src="images/automation-events.png" />
 
+## Wifi Events
+
+**Wifi Events** are remote-triggered Home Assistant hooks you place *inside* your Activities: a shortcut on the remote's touch screen, a physical button (short or long press), or a step in a macro. Pressing one fires its Home Assistant Action — no device control involved.
+
+They are the quickest way to say *"when I press this on the remote, do something in Home Assistant"* without configuring a full Wifi Device: creating one only asks for a name.
+
+### Creating and deploying Wifi Events
+
+Wifi Events are created from the **live activity editor** (Hub tab → Activities → Edit). Every **Add** dialog — shortcut, button assignment (either press), and macro step — offers a **Wifi Event** kind alongside device commands and macros:
+
+- Pick an existing event, or choose **Create new Wifi Event…** and give it a name.
+- Saving the Add dialog stores a new event in the integration and stages its Activity reference. **Nothing is written to the hub yet.**
+- Press **Sync** in the Activity editor. The integration first deploys or updates the shared Wifi Events device, resolves its real hub id when this is the first event, and then writes the Activity change that references it.
+- The first deployment creates the Wifi Events device and can take about a minute. Later event updates are normally much quicker.
+- If the events-device phase fails, the Activity write does not start. The staged event remains listed with a **needs sync** badge; return to the affected Activity and press **Sync** again.
+- If you leave the Activity editor without syncing, the new event remains staged but is not deployed. Select it again while editing an Activity, add the reference, and press **Sync**.
+
+Up to **25 events** can exist per hub, each with an optional long-press variant.
+
+### Managing Wifi Events
+
+As soon as an event is staged, it appears in **Automation → Events** under **WIFI EVENTS**. This section manages Home Assistant Actions; the live Hub editors manage the event's hub-side lifecycle.
+
+- Click the action link to attach or change the Home Assistant Action. Action changes apply immediately and need no hub sync. The small ✕ resets an Action to *do nothing*.
+- Assigning an event to both legs of a physical-button binding enables its separate long-press Action. Configure that Action from the event's second action link.
+- A **needs sync** badge means the event definition has not reached the hub yet. It is informational; complete the pending Activity sync, or add the staged event to an Activity and sync that Activity if the original edit was discarded.
+- When an event fires, its row briefly lights up — the same live indicator the Wifi Device cards show.
+
+Every Wifi Event press also updates `sensor.<hub>_wifi_commands`, so you can build automations that trigger from the sensor instead of (or in addition to) the attached Action.
+
+### The "Wifi Events" device
+
+Behind the scenes, all events live on a single hub device named **Wifi Events**. It never appears in the Wifi Devices list — the Events section above is its home — but since it is a genuine hub device you will see it on the remote's device list and in backups.
+
+Unlike user-managed Wifi Devices, this device is editable under **Hub → Devices → Wifi Events → Edit**:
+
+- Rename the device or an event there, then press **Sync**. The Wifi Events configuration follows the new hub-side name.
+- Delete an event from the Commands section, then press **Sync**. Its paired short- and long-press records are removed together. The hub also removes shortcuts and button assignments that reference it, removes its steps from macros, and removes any macro left with no steps.
+- Create new events only from an Activity editor's Add dialogs. Adding command records directly to the Wifi Events device is intentionally blocked.
+
+Wifi Events work on **all hub versions, including the X1** — the power/Activity-start restrictions below do not apply to them (they use neither power nor input slots).
+
 ## Configuration
 
-The **Wifi Commands** feature uses an HTTP listener that will by default attempt to bind to port `8060`.
+Wifi Commands and Wifi Events share an HTTP callback listener that attempts to bind to port `8060` by default.
 
 > **⚠️ Emulated Roku**  
-> If you are currently using Emulated Roku, these ports will conflict, causing either Emulated Roku or Wifi Commands to fail.
+> If you are currently using Emulated Roku, the ports conflict, causing either Emulated Roku or the Sofabaton callback listener to fail.
 
 The port the HTTP listener binds to can be changed in the integration's general config, but doing so will break X1 compatibility. Other hub versions can freely change ports.
 Detailed networking documentation is [here](networking.md).
@@ -107,8 +149,7 @@ Security note: this listener is meant for trusted LAN/VLAN traffic from the conf
 
 ## `sensor.<hub>_wifi_commands`
 
-Updates whenever a Wifi Command key is pressed. Use it to build automations that respond to
-any command without configuring individual Actions per command.
+Updates whenever a deployed Wifi Command or Wifi Event is triggered. Use it to build automations that respond to either callback type without configuring an individual Action.
 
 **State** resets to `Waiting for button press` after a short delay, so trigger on the
 state _changing away_ from that value rather than on a specific command name.
@@ -118,7 +159,7 @@ state _changing away_ from that value rather than on a specific command name.
 | Attribute          | Example value               | Description                 |
 | ------------------ | --------------------------- | --------------------------- |
 | `received_command` | `Scene Movie`               | Command name as configured  |
-| `from_device`      | `Home Assistant`            | Wifi Device name            |
+| `from_device`      | `Home Assistant`            | Wifi Device name (`Wifi Events` for an event) |
 | `press_type`       | `short` / `long`            | Short or long press         |
 | `timestamp`        | `2026-04-28T21:00:00+00:00` | ISO 8601 time of the press  |
 | `source_ip`        | `192.168.1.50`              | IP the hub called back from |
@@ -158,10 +199,10 @@ action:
 ## Relevant entities
 
 `sensor.<hub>_wifi_commands`  
-Updates status whenever a Wifi Command key is pressed on the physical remote, the app or the virtual remote. Used for Automation triggers.
+Updates whenever a deployed Wifi Command or Wifi Event is triggered from the physical remote, the Sofabaton app, or a virtual remote. Used for automation triggers.
 
 `switch.<hub>_wifi_device`  
-Enables/Disables the HTTP listener / Wifi Device. Switched off by default. Automatically switched on when deploying Wifi Commands to the hub. Automatically switched off when removing all Wifi Commands.
+Enables or disables the shared HTTP callback listener. It is off by default and is enabled automatically when a Wifi Commands device or the Wifi Events device is deployed. The integration turns it off automatically only after no deployed callback device still needs it. Turning it off manually prevents Wifi Command and Wifi Event Actions and sensor updates from being received.
 
 `button.<hub>_resync_remote`  
 Forces a resync of the physical remote. Automatically called at the end of a hub synchronization sequence.

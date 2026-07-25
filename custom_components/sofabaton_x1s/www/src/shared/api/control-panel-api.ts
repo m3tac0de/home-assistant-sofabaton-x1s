@@ -14,7 +14,10 @@ import type {
   LogsResponse,
   RefreshKind,
   SettingKey,
+  WifiEventCreateResponse,
+  WifiEventsListResponse,
 } from "../ha-context";
+import { TOOLS_CARD_STRINGS } from "../../strings";
 
 export class ControlPanelApi {
   constructor(private readonly hass: HassLike) {}
@@ -226,7 +229,7 @@ export class ControlPanelApi {
 
   subscribeBackupProgress(operationId: string, onMessage: (payload: BackupProgressEvent) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Backup progress is unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.backupProgressNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -245,6 +248,63 @@ export class ControlPanelApi {
     return this.hass.callWS<{ devices?: Array<Record<string, unknown>>; max_devices?: number }>({
       type: "sofabaton_x1s/command_devices/list",
       entity_id: entityId,
+    });
+  }
+
+  // ── Wifi Events (reserved haevents record) ────────────────────────────
+
+  listWifiEvents(entityId: string) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/list",
+      entity_id: entityId,
+    });
+  }
+
+  createWifiEvent(entityId: string, name: string) {
+    return this.hass.callWS<WifiEventCreateResponse>({
+      type: "sofabaton_x1s/wifi_event/create",
+      entity_id: entityId,
+      name,
+    });
+  }
+
+  /** W7 phase 1: deploy the events record without store changes. */
+  syncWifiEvents(entityId: string) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/sync",
+      entity_id: entityId,
+    });
+  }
+
+  deleteWifiEvent(entityId: string, slotIndex: number) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/delete",
+      entity_id: entityId,
+      slot_index: slotIndex,
+    });
+  }
+
+  setWifiEventAction(
+    entityId: string,
+    slotIndex: number,
+    pressType: "short" | "long",
+    action: Record<string, unknown>,
+  ) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/set_action",
+      entity_id: entityId,
+      slot_index: slotIndex,
+      press_type: pressType,
+      action,
+    });
+  }
+
+  setWifiEventLongpress(entityId: string, slotIndex: number, enabled: boolean) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/set_longpress",
+      entity_id: entityId,
+      slot_index: slotIndex,
+      enabled,
     });
   }
 
@@ -300,7 +360,7 @@ export class ControlPanelApi {
 
   subscribeLogs(entryId: string, onMessage: (payload: unknown) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Live logs are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.logsNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -310,7 +370,7 @@ export class ControlPanelApi {
 
   subscribeWifiPresses(entryId: string, onMessage: (payload: unknown) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Wifi press events are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.wifiPressNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
@@ -320,7 +380,7 @@ export class ControlPanelApi {
 
   subscribeHubEvents(entryId: string, onMessage: (payload: unknown) => void) {
     if (!this.hass.connection?.subscribeMessage) {
-      return Promise.reject(new Error("Hub events are unavailable without a websocket connection"));
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.hubEventsNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,

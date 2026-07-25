@@ -1,11 +1,12 @@
-import { DEFAULT_KEY_LABELS, HARD_BUTTON_ICONS } from "./remote-card-layout";
+import { HARD_BUTTON_ICONS } from "./remote-card-layout";
+import { str } from "./remote-card-strings";
 
 export function automationAssistLabelForKey(key: any, label: any) {
   const trimmed = String(label ?? "").trim();
   if (trimmed) return trimmed;
-  const fallback = DEFAULT_KEY_LABELS[String(key ?? "").toLowerCase()];
+  const fallback = str().keys[String(key ?? "").toLowerCase()];
   if (fallback) return fallback;
-  if (!key) return "Button";
+  if (!key) return str().assist.buttonFallback;
   return String(key)
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());

@@ -1,5 +1,4 @@
 import {
-  GROUP_LABELS,
   GROUP_VISIBILITY_KEYS,
   channelGroupEnabled,
   dvrGroupEnabled,
@@ -13,6 +12,7 @@ import {
   normalizedGroupOrder,
   volumeGroupEnabled,
 } from "./remote-card-layout";
+import { str } from "./remote-card-strings";
 
 export function layoutHasCustomOverride(
   config: Record<string, any> | null | undefined,
@@ -32,11 +32,11 @@ export function layoutSelectionNote(
   selection: unknown,
 ) {
   if (selection === "default") {
-    return "Used for Activities without their own layout";
+    return str().editor.noteDefaultLayout;
   }
   return layoutHasCustomOverride(config, selection)
-    ? "Using custom layout"
-    : "Using default layout";
+    ? str().editor.noteCustomLayout
+    : str().editor.noteUsingDefault;
 }
 
 export function editorActivitiesFromState(state: any) {
@@ -80,11 +80,12 @@ export function applyLayoutConfigPatch(
   }
 
   const layouts = { ...(next.layouts || {}) };
+  const selectionKey = String(selection);
   const existing =
-    layouts[selection] && typeof layouts[selection] === "object"
-      ? layouts[selection]
+    layouts[selectionKey] && typeof layouts[selectionKey] === "object"
+      ? layouts[selectionKey]
       : {};
-  layouts[selection] = { ...existing, ...patch };
+  layouts[selectionKey] = { ...existing, ...patch };
   next.layouts = layouts;
   return { nextConfig: next, syncFormPatch: null };
 }
@@ -98,7 +99,7 @@ export function groupOrderListForEditor(
 }
 
 export function groupLabel(key: string) {
-  return GROUP_LABELS[key] || key;
+  return str().groups[key] || key;
 }
 
 export function isGroupEnabled(
@@ -231,4 +232,35 @@ export function dvrTogglePatch(enabled: boolean) {
 export function groupEnabledPatch(key: string, enabled: boolean) {
   const prop = GROUP_VISIBILITY_KEYS[key];
   return prop ? { [prop]: !!enabled } : null;
+}
+
+// Drag-and-drop reorder: move a group from one *visible* index to another.
+// Hidden groups keep their slots in the full order; visible slots are
+// refilled in the new visible sequence. Returns null when out of bounds or
+// a no-op.
+export function moveVisibleGroup(
+  order: string[],
+  isVisible: (key: string) => boolean,
+  fromVisible: number,
+  toVisible: number,
+): string[] | null {
+  const visibleOrder = order.filter(isVisible);
+  if (
+    !Number.isInteger(fromVisible) ||
+    !Number.isInteger(toVisible) ||
+    fromVisible < 0 ||
+    fromVisible >= visibleOrder.length ||
+    toVisible < 0 ||
+    toVisible >= visibleOrder.length ||
+    fromVisible === toVisible
+  ) {
+    return null;
+  }
+
+  const nextVisible = visibleOrder.slice();
+  const [moved] = nextVisible.splice(fromVisible, 1);
+  nextVisible.splice(toVisible, 0, moved);
+
+  let vi = 0;
+  return order.map((key) => (isVisible(key) ? nextVisible[vi++] : key));
 }

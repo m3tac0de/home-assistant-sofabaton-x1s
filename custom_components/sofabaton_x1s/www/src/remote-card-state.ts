@@ -1,4 +1,5 @@
 import { POWERED_OFF_LABELS } from "./remote-card-layout";
+import { isLocalizedPoweredOffLabel, str } from "./remote-card-strings";
 
 function hasOwn(obj: any, key: any) {
   return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
@@ -65,14 +66,14 @@ export function previewSelection(editMode: boolean, previewActivity: any, activi
   if (selection == null || selection === "") {
     return {
       activityId: null,
-      label: "Default Layout",
+      label: str().card.defaultLayout,
       poweredOff: false,
     };
   }
   if (selection === "powered_off") {
     return {
       activityId: null,
-      label: "Powered Off",
+      label: str().card.poweredOff,
       poweredOff: true,
     };
   }
@@ -89,7 +90,9 @@ export function isPoweredOffLabel(state: any) {
   const s = String(state || "")
     .trim()
     .toLowerCase();
-  return POWERED_OFF_LABELS.has(s);
+  // POWERED_OFF_LABELS covers the protocol/state values coming from HA and
+  // the hub; the localized check covers the translated select option label.
+  return POWERED_OFF_LABELS.has(s) || isLocalizedPoweredOffLabel(s);
 }
 
 export function isActivityOn(

@@ -7,6 +7,7 @@ import copy
 import pytest
 
 from custom_components.sofabaton_x1s.lib.bundle_validation import (
+    collect_missing_command_refs,
     validate_hub_bundle_for_model,
 )
 
@@ -271,6 +272,72 @@ def test_baseline_mode_allows_power_repair_but_not_dangling_references():
             payload_name="baseline",
             enforce_editor_invariants=False,
         )
+
+
+def test_hub_dangling_command_refs_are_grandfathered_only_when_tolerated():
+    # Hub truth per issue #263: cloud-provisioned device pages can carry
+    # bindings referencing commands the deploy never wrote, so a captured
+    # device page can reference commands absent from its command list.
+    stale = valid_bundle()
+    stale["devices"][0]["button_bindings"] = [
+        {"button_id": 0xAE, "command_id": 99, "long_press_command_id": None},
+    ]
+
+    with pytest.raises(ValueError, match="missing command 99 on device 1"):
+        validate_hub_bundle_for_model(
+            stale,
+            hub_version="X1S",
+            payload_name="baseline",
+            enforce_editor_invariants=False,
+        )
+
+    tolerated = collect_missing_command_refs(stale)
+    assert tolerated == {1: {99}}
+
+    # The captured baseline passes with its own quirks grandfathered, and the
+    # edited bundle passes them through even on a strict entity.
+    validate_hub_bundle_for_model(
+        stale,
+        hub_version="X1S",
+        payload_name="baseline",
+        enforce_editor_invariants=False,
+        tolerated_missing_commands=tolerated,
+    )
+    validate_hub_bundle_for_model(
+        stale, hub_version="X1S", tolerated_missing_commands=tolerated
+    )
+
+    # A dangling reference outside the grandfathered set is still rejected.
+    worse = copy.deepcopy(stale)
+    worse["devices"][0]["button_bindings"].append({"button_id": 0xAF, "command_id": 98})
+    with pytest.raises(ValueError, match="missing command 98 on device 1"):
+        validate_hub_bundle_for_model(
+            worse, hub_version="X1S", tolerated_missing_commands=tolerated
+        )
+
+
+def test_collect_missing_command_refs_covers_all_reference_sites():
+    bundle = valid_bundle()
+    device = bundle["devices"][0]
+    activity = bundle["activities"][0]
+    device["button_bindings"] = [
+        {"button_id": 0xAE, "command_id": 91, "long_press_command_id": 92},
+    ]
+    device["input_record"]["entries"].append({"command_id": 93, "input_index": 2})
+    device["macros"] = [{"button_id": 3, "name": "Combo", "steps": [{"command_id": 94}]}]
+    activity["favorite_slots"].append(
+        {"button_id": 4, "device_id": 1, "command_id": 95, "name": "Gone"}
+    )
+    activity["button_bindings"].append(
+        {"button_id": 0xAF, "device_id": 1, "command_id": 96}
+    )
+    activity["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 97, "duration": 0, "delay": 0xFF}
+    )
+    assert collect_missing_command_refs(bundle) == {1: {91, 92, 93, 94, 95, 96, 97}}
+    # Power-ref sentinels, delay rows, valid references, and unknown devices
+    # are not reported.
+    assert collect_missing_command_refs(valid_bundle()) == {}
 
 
 def test_invalid_hex_and_byte_overflow_are_rejected():

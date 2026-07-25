@@ -34,7 +34,8 @@ import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
-import { TOOLS_CARD_STRINGS } from "./strings";
+import { setToolsCardLanguage, TOOLS_CARD_STRINGS } from "./strings";
+import { toolsCardLocaleLoader } from "./control-panel-language-loader";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
@@ -56,16 +57,18 @@ function resolveLoadedToolsFrontendVersion() {
 
 const LOADED_TOOLS_FRONTEND_VERSION = resolveLoadedToolsFrontendVersion();
 const TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
-const DOC_LINKS: Partial<Record<TabId, { href: string; label: string }>> = {
-  wifi_commands: {
-    href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
-    label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands,
-  },
-  backup: {
-    href: TOOLS_CARD_STRINGS.docs.backupUrl,
-    label: TOOLS_CARD_STRINGS.tabDocs.backup,
-  },
-};
+function docLinks(): Partial<Record<TabId, { href: string; label: string }>> {
+  return {
+    wifi_commands: {
+      href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
+      label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands,
+    },
+    backup: {
+      href: TOOLS_CARD_STRINGS.docs.backupUrl,
+      label: TOOLS_CARD_STRINGS.tabDocs.backup,
+    },
+  };
+}
 
 function logOnce() {
   const windowWithFlag = window as unknown as Record<string, unknown>;
@@ -155,6 +158,22 @@ const previewStyles = css`
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .locale-loading {
+    display: grid;
+    place-items: center;
+    min-height: 240px;
+  }
+  .locale-loading-indicator {
+    width: 22px;
+    height: 22px;
+    border: 2px solid color-mix(in srgb, var(--primary-color) 22%, transparent);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: locale-loading-spin 700ms linear infinite;
+  }
+  @keyframes locale-loading-spin {
+    to { transform: rotate(360deg); }
+  }
 `;
 
 class SofabatonControlPanelCard extends LitElement {
@@ -175,13 +194,16 @@ class SofabatonControlPanelCard extends LitElement {
   // Entity currently open in the live editor (wrench buttons in the Hub
   // tab); while set, the Hub tab renders the editor instead of the cache.
   private _editingEntity: { kind: "activity" | "device"; id: number } | null = null;
-  // True while an open editor (live activity/device editor or a Wifi
-  // Commands device editor) holds changes that only a sync will persist to
-  // the hub. Driven by `editor-dirty-changed` events from the tab elements;
-  // cleared here on the paths where the emitting element unmounts without
-  // getting a chance to send its own dirty=false (tab switch, editor exit,
-  // hub switch while the live editor is open).
+  // True while an open editor (live activity/device editor, a Wifi Commands
+  // device editor, or a loaded backup edit draft) holds changes that are not
+  // persisted yet. Driven by `editor-dirty-changed` events from the tab
+  // elements; cleared here on the paths where the emitting element unmounts
+  // without getting a chance to send its own dirty=false (tab switch, editor
+  // exit, hub switch while the live editor is open). `_editorSyncPendingKind`
+  // picks the dock copy: hub editors need a sync, the backup editor needs a
+  // download.
   private _editorSyncPending = false;
+  private _editorSyncPendingKind: "sync" | "download" = "sync";
   // Re-order mode ("Change order" under the Activities / Devices list).
   private _reorderMode = false;
   private _reorderKind: "activity" | "device" = "activity";
@@ -192,6 +214,8 @@ class SofabatonControlPanelCard extends LitElement {
   private _addActivityOpen = false;
   private _addActivityBusy = false;
   private _addActivityError: string | null = null;
+  private _localeLoading = false;
+  private _localeRequestId = 0;
   private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
@@ -223,7 +247,29 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   set hass(value: HassLike) {
+    const languageChanged = this.selectLanguage(
+      value?.locale?.language ?? value?.language,
+    );
     this._store.setHass(value);
+    if (languageChanged) this.requestUpdate();
+  }
+
+  private selectLanguage(language: unknown): boolean {
+    const languageChanged = setToolsCardLanguage(language);
+    const requestId = ++this._localeRequestId;
+    const shouldLoad = toolsCardLocaleLoader.needsLoad(language);
+    const loadingChanged = shouldLoad !== this._localeLoading;
+    this._localeLoading = shouldLoad;
+
+    if (shouldLoad) {
+      void toolsCardLocaleLoader.ensure(language).then(() => {
+        if (requestId !== this._localeRequestId) return;
+        this._localeLoading = false;
+        this.requestUpdate();
+      });
+    }
+
+    return languageChanged || loadingChanged;
   }
 
   // HA's hui-card sets `element.preview = true` when rendering inside the card
@@ -359,10 +405,14 @@ class SofabatonControlPanelCard extends LitElement {
     this._store.selectTab(tabId);
   }
 
-  private _handleEditorDirtyChanged = (event: CustomEvent<{ dirty: boolean }>) => {
+  private _handleEditorDirtyChanged = (
+    event: CustomEvent<{ dirty: boolean; kind?: "sync" | "download" }>,
+  ) => {
     const dirty = Boolean(event.detail?.dirty);
-    if (dirty === this._editorSyncPending) return;
+    const kind = event.detail?.kind === "download" ? "download" : "sync";
+    if (dirty === this._editorSyncPending && kind === this._editorSyncPendingKind) return;
     this._editorSyncPending = dirty;
+    this._editorSyncPendingKind = kind;
     this.requestUpdate();
   };
 
@@ -553,9 +603,9 @@ class SofabatonControlPanelCard extends LitElement {
     const connected = hubConnected(this._snapshot.hass, hub);
     const proxyOn = proxyClientConnected(this._snapshot.hass, hub);
     return html`
-      <div class="dock-pill-pair" role="group" aria-label="Connectivity">
-        <span class="dock-pill-half ${connected ? "dock-pill-half--hub-on" : "dock-pill-half--hub-off"}">HUB</span>
-        <span class="dock-pill-half ${proxyOn ? "dock-pill-half--app-on" : "dock-pill-half--app-off"}">APP</span>
+      <div class="dock-pill-pair" role="group" aria-label=${TOOLS_CARD_STRINGS.card.connectivityAria}>
+        <span class="dock-pill-half ${connected ? "dock-pill-half--hub-on" : "dock-pill-half--hub-off"}">${TOOLS_CARD_STRINGS.card.hubShort}</span>
+        <span class="dock-pill-half ${proxyOn ? "dock-pill-half--app-on" : "dock-pill-half--app-off"}">${TOOLS_CARD_STRINGS.card.appShort}</span>
       </div>
     `;
   }
@@ -563,8 +613,8 @@ class SofabatonControlPanelCard extends LitElement {
   private renderBrandLabel() {
     const version =
       String(this._snapshot.toolsFrontendVersionExpected ?? this._snapshot.toolsFrontendVersionLoaded ?? "").trim()
-      || "unknown";
-    return html`<div class="card-brand">SOFABATON CONTROL PANEL - v${version}</div>`;
+      || TOOLS_CARD_STRINGS.backend.unknownVersion;
+    return html`<div class="card-brand">${TOOLS_CARD_STRINGS.card.brand(version)}</div>`;
   }
 
   private renderBottomDock(hub: ReturnType<typeof selectedHub>) {
@@ -573,7 +623,7 @@ class SofabatonControlPanelCard extends LitElement {
     // over the editor dirty banner: while a sync is actually running the
     // dock should narrate that, not nag about the changes it is persisting.
     const editorSyncPending = this._editorSyncPending && !runtimeState;
-    const docLink = runtimeState || editorSyncPending ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
+    const docLink = runtimeState || editorSyncPending ? null : docLinks()[this._snapshot.selectedTab] ?? null;
     const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
     const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
     const dockClass = runtimeState?.kind === "completion"
@@ -610,7 +660,9 @@ class SofabatonControlPanelCard extends LitElement {
           ${runtimeState
             ? html`<span class="card-bottom-dock-status">${statusText}</span>`
             : editorSyncPending
-              ? html`<span class="card-bottom-dock-status">${TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>`
+              ? html`<span class="card-bottom-dock-status">${this._editorSyncPendingKind === "download"
+                  ? TOOLS_CARD_STRINGS.dock.unsavedBackupChanges
+                  : TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>`
               : docLink
                 ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
                 : nothing}
@@ -656,9 +708,11 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   private _irFlashTitle(press: WifiPressEvent) {
-    const device = press.deviceName?.trim() || "Wifi device";
-    const command = press.commandLabel?.trim() || "Wifi command";
-    return press.pressType === "long" ? `${device} • ${command} (long press)` : `${device} • ${command}`;
+    const device = press.deviceName?.trim() || TOOLS_CARD_STRINGS.card.wifiDeviceFallback;
+    const command = press.commandLabel?.trim() || TOOLS_CARD_STRINGS.card.wifiCommandFallback;
+    return press.pressType === "long"
+      ? TOOLS_CARD_STRINGS.card.irLongPress(device, command)
+      : TOOLS_CARD_STRINGS.card.irPress(device, command);
   }
 
   private renderBackendUnavailable(height: number) {
@@ -668,9 +722,9 @@ class SofabatonControlPanelCard extends LitElement {
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
-              <div class="backend-unavailable-title">Backend not available</div>
+              <div class="backend-unavailable-title">${TOOLS_CARD_STRINGS.backend.unavailableTitle}</div>
               <div class="backend-unavailable-copy">
-                Waiting for the Sofabaton X integration to finish starting…
+                ${TOOLS_CARD_STRINGS.backend.unavailableCopy}
               </div>
             </div>
           </div>
@@ -687,19 +741,18 @@ class SofabatonControlPanelCard extends LitElement {
             <div class="version-mismatch-state">
               <div class="version-mismatch-header">
                 <div class="version-mismatch-icon"><ha-icon icon="mdi:alert-circle"></ha-icon></div>
-                <div class="version-mismatch-title">Refresh required to update the Sofabaton Control Panel card</div>
+                <div class="version-mismatch-title">${TOOLS_CARD_STRINGS.backend.versionMismatchTitle}</div>
               </div>
               <div class="version-mismatch-copy">
-                This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant.
-                Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.
+                ${TOOLS_CARD_STRINGS.backend.versionMismatchCopy}
               </div>
               <div class="version-mismatch-versions">
                 <div class="version-mismatch-row">
-                  <div class="version-mismatch-label">Backend expects</div>
-                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionExpected || "unknown"}</div>
+                  <div class="version-mismatch-label">${TOOLS_CARD_STRINGS.backend.backendExpects}</div>
+                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionExpected || TOOLS_CARD_STRINGS.backend.unknownVersion}</div>
                 </div>
                 <div class="version-mismatch-row">
-                  <div class="version-mismatch-label">Card loaded</div>
+                  <div class="version-mismatch-label">${TOOLS_CARD_STRINGS.backend.cardLoaded}</div>
                   <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionLoaded}</div>
                 </div>
               </div>
@@ -715,9 +768,9 @@ class SofabatonControlPanelCard extends LitElement {
       <div class="card-body">
         <div class="card-blocked-state">
           <div class="card-blocked-icon"><ha-icon icon="mdi:lan-disconnect"></ha-icon></div>
-          <div class="card-blocked-title">Hub unavailable</div>
+          <div class="card-blocked-title">${TOOLS_CARD_STRINGS.hubUnavailable.title}</div>
           <div class="card-blocked-copy">
-            This hub is not connected, so the control panel is unavailable until the hub reconnects.
+            ${TOOLS_CARD_STRINGS.hubUnavailable.copy}
           </div>
         </div>
       </div>
@@ -738,7 +791,7 @@ class SofabatonControlPanelCard extends LitElement {
           <div class="sb-preview-header">
             <div class="sb-preview-logo">${hubIcon("hero", "sb-preview-hub")}</div>
             <div class="sb-preview-sub">
-              Tools, cache, backups, logs &amp; automations for your hub
+              ${TOOLS_CARD_STRINGS.card.previewDescription}
             </div>
           </div>
           <div class="sb-preview-grid">
@@ -757,12 +810,26 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   protected render() {
+    const height = Number(this._config.card_height ?? 600);
+    if (this._localeLoading) {
+      return html`
+        <ha-card>
+          <div
+            class="locale-loading"
+            style=${`height:${height}px`}
+            role="status"
+            aria-busy="true"
+          >
+            <span class="locale-loading-indicator" aria-hidden="true"></span>
+          </div>
+        </ha-card>
+      `;
+    }
     if (this._preview) return this.renderPreview();
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
-    const height = Number(this._config.card_height ?? 600);
     const cardGateState = resolveCardGateState(this._snapshot);
     if (cardGateState.kind === "version_mismatch") {
       return this.renderVersionMismatch(height);
@@ -785,8 +852,8 @@ class SofabatonControlPanelCard extends LitElement {
     );
     const sharedHubCommandLabel = (runtimeOperationBusy ? (runtimeState!.detail || runtimeState!.label) : null)
       || hubExternalLabel
-      || (hubRefreshing ? "Refreshing cache…" : null)
-      || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
+      || (hubRefreshing ? TOOLS_CARD_STRINGS.backend.refreshingCache : null)
+      || (this._snapshot.pendingActionKey ? TOOLS_CARD_STRINGS.backend.hubCommandInProgress : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -848,6 +915,7 @@ class SofabatonControlPanelCard extends LitElement {
           .setSelectedSection=${(section: BackupSectionId) => this._store.setSelectedBackupSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          @editor-dirty-changed=${this._handleEditorDirtyChanged}
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
@@ -938,7 +1006,7 @@ class SofabatonControlPanelCard extends LitElement {
                   interactive: true,
                   open: this._hubPickerOpen,
                   selectedLabel: hub?.name || hub?.entry_id || "",
-                  prefixLabel: "HUB",
+                  prefixLabel: TOOLS_CARD_STRINGS.card.hubShort,
                   hubs,
                   selectedEntryId: this._snapshot.selectedHubEntryId,
                   onToggle: () => this.toggleHubPicker(),
@@ -979,6 +1047,29 @@ class SofabatonControlPanelCard extends LitElement {
 
 class SofabatonControlPanelEditor extends HTMLElement {
   private _config: Record<string, unknown> = {};
+  private _localeLoading = false;
+  private _localeRequestId = 0;
+
+  set hass(value: HassLike) {
+    const language = value?.locale?.language ?? value?.language;
+    const languageChanged = setToolsCardLanguage(language);
+    const requestId = ++this._localeRequestId;
+    const shouldLoad = toolsCardLocaleLoader.needsLoad(language);
+    const loadingChanged = shouldLoad !== this._localeLoading;
+    this._localeLoading = shouldLoad;
+
+    if (shouldLoad) {
+      void toolsCardLocaleLoader.ensure(language).then(() => {
+        if (requestId !== this._localeRequestId) return;
+        this._localeLoading = false;
+        this.render();
+      });
+    }
+
+    if (languageChanged || loadingChanged) {
+      this.render();
+    }
+  }
 
   setConfig(config: Record<string, unknown>) {
     this._config = config || {};
@@ -990,6 +1081,10 @@ class SofabatonControlPanelEditor extends HTMLElement {
   }
 
   private render() {
+    if (this._localeLoading) {
+      this.innerHTML = `<div aria-busy="true" style="min-height:48px"></div>`;
+      return;
+    }
     const height = Number(this._config.card_height ?? 600);
     this.innerHTML = `
       <style>
@@ -999,10 +1094,10 @@ class SofabatonControlPanelEditor extends HTMLElement {
         .editor-hint { font-size: 12px; color: var(--secondary-text-color); padding-bottom: 4px; }
       </style>
       <div class="editor-row">
-        <label for="tools-card-height">Card height</label>
+        <label for="tools-card-height">${TOOLS_CARD_STRINGS.card.editorHeight}</label>
         <input id="tools-card-height" type="number" min="240" step="10" value="${height}" />
       </div>
-      <div class="editor-hint">Controls how much of the activity/device lists is visible. Default: 600 px.</div>
+      <div class="editor-hint">${TOOLS_CARD_STRINGS.card.editorHeightHint}</div>
     `;
     this.querySelector<HTMLInputElement>("#tools-card-height")?.addEventListener("change", (event) => {
       const value = Number((event.currentTarget as HTMLInputElement).value || 600);
@@ -1049,9 +1144,8 @@ window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === TOOLS_TYPE)) {
   window.customCards.push({
     type: TOOLS_TYPE,
-    name: "Sofabaton Control Panel",
-    description:
-      "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands.",
+    name: TOOLS_CARD_STRINGS.card.pickerName,
+    description: TOOLS_CARD_STRINGS.card.pickerDescription,
     // No `preview: true`: the "By card" grid renders the *real* card (squished),
     // not renderPreview() — it only honours `preview` in the by-entity flow.
     // Card picker (HA 2026.6+): recommend this card for the hub-control

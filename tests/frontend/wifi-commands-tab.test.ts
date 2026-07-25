@@ -1,6 +1,12 @@
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import "../../custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-tab";
+import {
+  hubEventModalTitle,
+  hubEventRows,
+  wifiSectionRows,
+} from "../../custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-tab";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
+import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 
 const WifiCommandsTabElement = customElements.get("sofabaton-wifi-commands-tab") as {
   new (): HTMLElement;
@@ -64,8 +70,23 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setToolsCardLanguage("en");
   restoreGlobal("window", originalWindowDescriptor);
   restoreGlobal("localStorage", originalLocalStorageDescriptor);
+});
+
+test("wifi Events labels are resolved after the active locale is selected", () => {
+  setToolsCardLanguage("de-DE");
+
+  assert.equal(wifiSectionRows()[1].label, "Ereignisse");
+  assert.deepEqual(
+    hubEventRows().map((row) => row.label),
+    [
+      "Wenn der Hub AUSGESCHALTET wird",
+      "Wenn AUS gedrückt wird, während der Hub bereits AUS ist",
+    ],
+  );
+  assert.equal(hubEventModalTitle("power_off"), "Wenn der Hub AUSGESCHALTET wird");
 });
 
 test("wifi commands persists the selected device detail view per hub", () => {
@@ -133,6 +154,35 @@ test("wifi commands drops a stale selected device session when that device no lo
 
   assert.equal(element._selectedDeviceKey, null);
   assert.equal(globalThis.localStorage?.getItem("sofabaton_x1s:wifi_commands:selected_device:hub-1"), null);
+});
+
+test("unconfigured slots stay empty tiles regardless of the active locale", () => {
+  // The backend always stores the English protocol default name
+  // (command_config.py _default_slot); the configured-slot detection must not
+  // compare it against a localized string (regression: 20bba0b).
+  setToolsCardLanguage("nl");
+
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+
+  const backendDefault = {
+    name: "Command 3",
+    add_as_favorite: true,
+    hard_button: "",
+    long_press_enabled: false,
+    input_activity_id: "",
+    activities: [],
+    action: { action: "perform-action" },
+    long_press_action: { action: "perform-action" },
+  };
+
+  assert.equal((element as any)._commandSlotDefault(2).name, "Command 3");
+  assert.equal((element as any)._isCommandConfigured(backendDefault, 2), false);
+  assert.equal((element as any)._isCommandConfigured({ ...backendDefault, name: "Volume up" }, 2), true);
+
+  // Clearing a slot persists the protocol default, not the localized label.
+  const normalized = (element as any)._normalizeCommandsForStorage([{}, {}, {}]);
+  assert.equal(normalized[2].name, "Command 3");
 });
 
 test("wifi commands save drops orphaned activities when favorite and button are off", () => {

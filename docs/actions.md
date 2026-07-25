@@ -28,6 +28,8 @@ filter by `sofabaton_x1s`.
 | `sofabaton_x1s.sync_command_config` | Deploy the saved Wifi Commands configuration to the hub | No |
 | `sofabaton_x1s.device_to_activity` | Add a device to an activity | No |
 | `sofabaton_x1s.delete_device` | Delete a device from the hub | No |
+| `sofabaton_x1s.export_snapshot` | Return the cached structural `hub_bundle` and its cache generation | Yes |
+| `sofabaton_x1s.sync_from_snapshot` | Apply a targeted Activity or Device edit from baseline and edited snapshots | Yes |
 | `sofabaton_x1s.backup_bundle` | Read a `hub_bundle` JSON payload covering devices and (optionally) all activities | Yes |
 | `sofabaton_x1s.restore_backup` | Restore a `hub_bundle` payload onto the live hub | Yes |
 
@@ -466,6 +468,67 @@ action: sofabaton_x1s.delete_device
 data:
   device: 89c3874a93f1e9ee0f49e24a2710535e
   device_id: 5
+```
+
+---
+
+## `sofabaton_x1s.export_snapshot`
+
+Returns the cached structural `hub_bundle` used by the Control Panel's live Activity and Device editors. This is a cache-only read: it does not contact the hub and does not download command payload blobs.
+
+Persistent cache must be enabled and populated. On a fresh installation, open the Control Panel's Hub or Activities tab once, or run a whole-hub cache refresh, before calling this action.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+
+**Response**
+
+| Field | Description |
+| ----- | ----------- |
+| `bundle` | Cached structural `hub_bundle` containing the current Activities and Devices. |
+| `generation` | Cache generation at the time of export. Pass this to `sync_from_snapshot` as `expected_generation` to reject a stale baseline before any write. |
+
+```yaml
+action: sofabaton_x1s.export_snapshot
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+response_variable: snapshot
+```
+
+---
+
+## `sofabaton_x1s.sync_from_snapshot`
+
+Applies one targeted Activity or Device edit using the same validation, locking, diff planning, paging, acknowledgement handling, and cache refresh path as the Control Panel's live editor.
+
+Pass the untouched exported bundle as `baseline` and a complete edited copy as `edited`. Both values must be valid `hub_bundle` objects; this action does not accept a partial Activity or Device object. Only the entity selected by `entity_kind` and `entity_id` may differ.
+
+This is an advanced hub-write action. Keep an untouched baseline and use `expected_generation` whenever possible. If the cache has changed since the export, the generation guard rejects the call before any hub write.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `entity_kind` | `activity` or `device` | Yes | Type of existing hub entity to edit. |
+| `entity_id` | int (1-255) | Yes | Hub id of the selected Activity or Device. |
+| `expected_generation` | int | No | Generation returned by `export_snapshot`. When supplied, a mismatch rejects the write as stale. |
+| `baseline` | object | Yes | Untouched structural `hub_bundle` used as the diff baseline. |
+| `edited` | object | Yes | Complete edited copy of the same `hub_bundle`. |
+
+The action returns the sync engine's result. A failed validation, stale generation, busy hub, or failed write raises an action error instead of returning a successful result.
+
+```yaml
+# `snapshot` is the response from export_snapshot.
+# Build `edited_bundle` as a complete modified copy of snapshot.bundle.
+action: sofabaton_x1s.sync_from_snapshot
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  entity_kind: device
+  entity_id: 5
+  expected_generation: "{{ snapshot.generation }}"
+  baseline: "{{ snapshot.bundle }}"
+  edited: "{{ edited_bundle }}"
+response_variable: sync_result
 ```
 
 ---

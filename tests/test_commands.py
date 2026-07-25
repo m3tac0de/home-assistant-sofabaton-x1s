@@ -781,7 +781,7 @@ def test_keymap_handler_reassembles_x1s_split_rows() -> None:
         frame = FrameContext(
             proxy=proxy,
             opcode=int.from_bytes(raw[2:4], "big"),
-            direction="Hâ†’A",
+            direction="H→A",
             payload=raw[4:-1],
             raw=raw,
             name="KEYMAP",
@@ -821,7 +821,7 @@ def test_keymap_handler_x1_overlay_rows_do_not_become_fake_buttons() -> None:
     frame = FrameContext(
         proxy=proxy,
         opcode=OP_KEYMAP_OVERLAY_X1,
-        direction="Hâ†’A",
+        direction="H→A",
         payload=raw[4:-1],
         raw=raw,
         name="KEYMAP_OVERLAY",
@@ -864,7 +864,7 @@ def test_keymap_handler_reassembles_x2_extended_button_rows() -> None:
         frame = FrameContext(
             proxy=proxy,
             opcode=int.from_bytes(raw[2:4], "big"),
-            direction="Hâ†’A",
+            direction="H→A",
             payload=raw[4:-1],
             raw=raw,
             name="KEYMAP_X2",

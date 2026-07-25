@@ -148,9 +148,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="manual",
             data_schema=schema,
-            description_placeholders={
-                "help": "Enter the IP address of your Sofabaton hub. The integration will learn the real name and model automatically after it connects."
-            },
         )
 
     # ------------------------------------------------------------------
@@ -246,18 +243,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="ports",
             data_schema=schema,
-            description_placeholders={
-                "explain": (
-                    "These are ports that this integration binds to. Most users can keep "
-                    "the defaults: UDP now defaults to 8102 so CALL_ME and NOTIFY_ME share a "
-                    "single listener compatible with Android and iOS. Change only if the port "
-                    "is already in use; a non-8102 UDP port may prevent iOS discovery. "
-                    "This setting currently applies to all configured hubs. The ports represent "
-                    "a base value, and the integration will try to find an open port within 32 "
-                    "ports of what you enter here. The UDP port is optional; if you disable the "
-                    "proxy capability of the integration, no UDP port is used."
-                )
-            },
         )
 
     # ------------------------------------------------------------------
@@ -421,7 +406,7 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 },
             )
 
-            return self.async_create_entry(title="Sofabaton options", data=new_options)
+            return self.async_create_entry(title="", data=new_options)
 
         schema = vol.Schema({
             vol.Required(
@@ -441,14 +426,4 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="ports",
             data_schema=schema,
-            description_placeholders={
-                "explain": (
-                    "These are ports that this integration binds to. "
-                    "Most users can keep the defaults. Change only if the ports are already in use. "
-                    "Note that this setting applies to all configured hubs. "
-                    "The ports represent a base value, and the integration will try to find an open port within 32 ports "
-                    "of what you enter here. The UDP port is optional; if you disable the proxy capability of the integration, "
-                    "no UDP port is used."
-                )
-            },
         )

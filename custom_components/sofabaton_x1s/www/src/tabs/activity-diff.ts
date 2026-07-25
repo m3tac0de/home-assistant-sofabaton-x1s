@@ -173,7 +173,7 @@ export function diffDeviceForReview(
   for (const [buttonId, macro] of editMacros) {
     if (isPower(buttonId)) continue;
     const before = baseMacros.get(buttonId);
-    const name = String(macro?.name || `Macro ${buttonId}`);
+    const name = String(macro?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId));
     if (!before) {
       buckets.macros.push({ text: D.macroAdded(name) });
       continue;
@@ -185,7 +185,11 @@ export function diffDeviceForReview(
   }
   for (const [buttonId, macro] of baseMacros) {
     if (isPower(buttonId) || editMacros.has(buttonId)) continue;
-    buckets.macros.push({ text: D.macroRemoved(String(macro?.name || `Macro ${buttonId}`)) });
+    buckets.macros.push({
+      text: D.macroRemoved(
+        String(macro?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId)),
+      ),
+    });
   }
 
   // Buttons: the device's own binding rows.

@@ -25,7 +25,8 @@ import {
   renderActivityRolesBlock,
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
-import type { BackupBundlePayload, BlobFetchDecodedBlock } from "../shared/ha-context";
+import { addButtonStyles } from "../shared/styles/add-button-styles";
+import type { BackupBundlePayload, BlobFetchDecodedBlock, WifiEvent } from "../shared/ha-context";
 import {
   activityButtonBindingItems,
   activityMacroStepItems,
@@ -55,6 +56,7 @@ import {
   bundleDeviceBrand,
   bundleDeviceClass,
   isManagedWifiBrand,
+  isWifiEventsBrand,
   bundleEditableDeviceOptions,
   bundleDeviceOptions,
   buttonName,
@@ -123,12 +125,33 @@ type BackupEditDetailSectionId =
   | "commands"
   | "bindings";
 type BackupQuickAccessKind = "macro" | "favorite";
-type ActivityBindingTargetKind = "command" | "action";
+type ActivityBindingTargetKind = "command" | "action" | "wifi_event";
+
+/** One Wifi Event target selection inside an Add dialog. */
+type WifiEventTargetSel = { mode: "existing" | "new"; slot: number | null; name: string };
+
+/**
+ * Facade the LIVE host (activities-tab) provides for the Wifi Event kind
+ * in the Add dialogs. `create` deploys the event on the hub AND grafts
+ * the refreshed Wifi Events device block into the host's captured
+ * baseline + working bundles (both — the review diff and the sync
+ * validator's baseline grandfathering depend on it), returning the
+ * grafted working bundle for the ref insert. `ensureGrafted` does the
+ * graft alone (selecting an existing event whose device predates the
+ * capture). `enableLongPress` flips the slot's standalone flag — a pure
+ * store edit, the long record is always deployed.
+ */
+export interface WifiEventsHost {
+  list(): Promise<WifiEvent[]>;
+  create(name: string): Promise<{ event: WifiEvent; bundle: BackupBundlePayload | null }>;
+  ensureGrafted(): Promise<BackupBundlePayload | null>;
+  enableLongPress(slotIndex: number): Promise<void>;
+}
 type MacroTargetMode = "existing" | "new";
 // Step-dialog modes. "input" edits an activity power-macro input ref;
 // "power" refs never open the dialog so aren't included here. Waits are no
 // longer a dialog mode — they're edited inline on each command row.
-type MacroStepKind = "command" | "input";
+type MacroStepKind = "command" | "input" | "wifi_event";
 type BackupRenameDialogTarget =
   | { kind: "detail"; entityKind: BackupEditTargetKind; entityId: number }
   | { kind: "macro"; activityId: number; buttonId: number }
@@ -175,6 +198,10 @@ export class SofabatonEditDetailView extends LitElement {
     entityId: { attribute: false },
     dirty: { type: Boolean },
     mode: { type: String },
+    wifiEvents: { attribute: false },
+    _wifiEventsList: { state: true },
+    _wifiEventBusy: { state: true },
+    _wifiEventPrimary: { state: true },
     _editDetailActiveSection: { state: true },
     _editDetailNameDraft: { state: true },
     _editRenameDialogOpen: { state: true },
@@ -201,7 +228,6 @@ export class SofabatonEditDetailView extends LitElement {
     _addFavoriteOpen: { state: true },
     _addFavoriteDeviceId: { state: true },
     _addFavoriteCommandId: { state: true },
-    _addFavoriteName: { state: true },
     _addFavoriteError: { state: true },
     _bindingDialogOpen: { state: true },
     _bindingScope: { state: true },
@@ -243,7 +269,7 @@ export class SofabatonEditDetailView extends LitElement {
   // The whole backup-tab stylesheet ships to both shadow roots (see
   // backup-tab-styles.ts); the :host rule it carries gives this element
   // the same flex-fill layout the tab-panel had inside backup-tab.
-  static styles = [activityEditorStyles, backupTabStyles, css`
+  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, css`
     :host {
       flex-direction: column;
     }
@@ -354,10 +380,19 @@ export class SofabatonEditDetailView extends LitElement {
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   // Full sub-view for individual button bindings (never an accordion).
   private _bindingsView = false;
-  private _addShortcutKind: "command" | "action" = "command";
+  private _addShortcutKind: ActivityBindingTargetKind = "command";
   private _addShortcutActionName = "";
   private _addShortcutMacroMode: MacroTargetMode = "new";
   private _addShortcutMacroId: number | null = null;
+  // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
+  // `_wifiEventPrimary` serves whichever Add dialog is open (shortcut,
+  // step, or binding). A Wifi Event is atomic — a binding's long-press
+  // leg is the SAME event's long record, never an independent target — so
+  // one selection covers both legs.
+  wifiEvents: WifiEventsHost | null = null;
+  private _wifiEventsList: WifiEvent[] | null = null;
+  private _wifiEventBusy = false;
+  private _wifiEventPrimary: WifiEventTargetSel = { mode: "new", slot: null, name: "" };
   private _editDetailNameDraft = "";
   private _editRenameDialogOpen = false;
   private _editRenameDialogDraft = "";
@@ -398,7 +433,6 @@ export class SofabatonEditDetailView extends LitElement {
   private _addFavoriteOpen = false;
   private _addFavoriteDeviceId: number | null = null;
   private _addFavoriteCommandId: number | null = null;
-  private _addFavoriteName = "";
   private _addFavoriteError = "";
   private _bindingDialogOpen = false;
   private _bindingScope: BackupEditTargetKind = "activity";
@@ -496,7 +530,7 @@ export class SofabatonEditDetailView extends LitElement {
     // Live mode has no dirty chip — the Sync button's state carries that
     // signal (matching the Wifi command editor). Backup mode keeps "Unsaved".
     if (this.mode === "live" || !this.dirty) return nothing;
-    return html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
+    return html`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.backup.unsavedTooltip}>${TOOLS_CARD_STRINGS.backup.unsaved}</span>`;
   }
 
   private _renderLiveSyncButton() {
@@ -518,7 +552,7 @@ export class SofabatonEditDetailView extends LitElement {
     // the Wifi Commands tab, which also clears its stored configuration.
     const managed = this._isManagedWifiLiveDevice();
     return html`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${kind}`}>
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
       ${managed
@@ -542,16 +576,14 @@ export class SofabatonEditDetailView extends LitElement {
       <div class="managed-wifi-lock">
         <div class="managed-wifi-lock-chip">
           <ha-icon icon="mdi:wifi-cog"></ha-icon>
-          <span>Managed by Wifi Commands</span>
+          <span>${TOOLS_CARD_STRINGS.backup.managedWifiTitle}</span>
         </div>
         <p class="managed-wifi-lock-copy">
-          This device was deployed from the <strong>Wifi Commands</strong> tab.
-          Its commands, power, input, and button assignments are configured
-          there — editing them here would be overwritten on the next sync.
+          ${TOOLS_CARD_STRINGS.backup.managedWifiIntro}
+          ${TOOLS_CARD_STRINGS.backup.managedWifiBody}
         </p>
         <p class="managed-wifi-lock-copy">
-          You can still rename it here; the new name stays in sync with your
-          Wifi Commands configuration.
+          ${TOOLS_CARD_STRINGS.backup.managedWifiRename}
         </p>
       </div>
     `;
@@ -641,12 +673,67 @@ export class SofabatonEditDetailView extends LitElement {
    * The offline Backup editor is unaffected (mode !== "live").
    */
   private _isManagedWifiLiveDevice(): boolean {
+    // The reserved Wifi Events device is carved out: this editor is its
+    // ONLY hub-side editing UI (it never appears in the Wifi Commands
+    // tab), so the name-only lock must not apply — the store follows the
+    // hub via the §6a reconcile pass instead. Command ADD for it is
+    // blocked backend-side in the device-sync plan.
+    const brand = this.entityId != null
+      ? bundleDeviceBrand(this.bundle, Number(this.entityId))
+      : "";
     return (
       this.mode === "live" &&
       this.kind === "device" &&
       this.entityId != null &&
-      isManagedWifiBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)))
+      isManagedWifiBrand(brand) &&
+      !isWifiEventsBrand(brand)
     );
+  }
+
+  /**
+   * Device options for pickers/dialogs. In LIVE mode the reserved Wifi
+   * Events device is filtered out — its commands are offered through the
+   * dedicated "Wifi Event" kind, so listing the device too would present
+   * every event twice. The offline Backup editor keeps showing everything.
+   */
+  private _editableDeviceOptions() {
+    const options = bundleEditableDeviceOptions(this.bundle);
+    if (this.mode !== "live") return options;
+    return options.filter(
+      (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id)),
+    );
+  }
+
+  /** True when the live editor is showing the reserved Wifi Events device.
+   *  It is fully editable (unlike other managed wifi devices) and, per W7,
+   *  supports command deletion — the only device where a live-editor
+   *  command delete stages a `command_delete` in the sync. */
+  private _isWifiEventsLiveDevice(): boolean {
+    return (
+      this.mode === "live" &&
+      this.kind === "device" &&
+      this.entityId != null &&
+      isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)))
+    );
+  }
+
+  /** The Wifi Events device's per-slot short count (half its command
+   *  count, the slot_count that defines the long-record offset). */
+  private _wifiEventsSlotCount(): number {
+    if (this.entityId == null || !this.bundle) return 0;
+    const device = (this.bundle.devices ?? []).find(
+      (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId),
+    );
+    return Math.floor((device?.commands?.length ?? 0) / 2);
+  }
+
+  /** True when a command id is a long-press record (id > slot_count) on
+   *  the events device — long rows carry no independent delete; deleting
+   *  the short row removes the pair. */
+  private _commandIsLongRecord(commandId: number): boolean {
+    if (!this._isWifiEventsLiveDevice()) return false;
+    const slotCount = this._wifiEventsSlotCount();
+    return slotCount > 0 && Number(commandId) > slotCount;
   }
 
   private _editDetailSectionItems(kind: BackupEditTargetKind): Array<{
@@ -666,10 +753,10 @@ export class SofabatonEditDetailView extends LitElement {
       ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "")
       : false;
     return [
-      { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
-      ...(hasNetworkSection ? [{ id: "network" as const, icon: "mdi:lan-connect", label: "Network" }] : []),
-      { id: "commands", icon: "mdi:format-list-bulleted", label: "Commands" },
-      { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" },
+      { id: "power", icon: "mdi:power-plug-outline", label: TOOLS_CARD_STRINGS.backup.detailPower },
+      ...(hasNetworkSection ? [{ id: "network" as const, icon: "mdi:lan-connect", label: TOOLS_CARD_STRINGS.backup.detailNetwork }] : []),
+      { id: "commands", icon: "mdi:format-list-bulleted", label: TOOLS_CARD_STRINGS.backup.detailCommands },
+      { id: "bindings", icon: "mdi:gesture-tap-button", label: TOOLS_CARD_STRINGS.backup.detailButtons },
     ];
   }
 
@@ -682,7 +769,7 @@ export class SofabatonEditDetailView extends LitElement {
       : items[0].id;
 
     return html`
-      <div class="detail-section-nav" role="tablist" aria-label="Detail sections">
+      <div class="detail-section-nav" role="tablist" aria-label=${TOOLS_CARD_STRINGS.backup.detailSectionsAria}>
         ${items.map((item) => html`
           <button
             class=${`detail-section-nav-btn${item.id === activeId ? " active" : ""}`}
@@ -861,7 +948,7 @@ export class SofabatonEditDetailView extends LitElement {
     if (this.entityId == null || !this.bundle) return nothing;
     const bundle = this.bundle;
     const activityId = Number(this.entityId);
-    const deviceOptions = bundleEditableDeviceOptions(bundle).map((device) => ({
+    const deviceOptions = this._editableDeviceOptions().map((device) => ({
       deviceId: device.id,
       label: device.label,
     }));
@@ -955,7 +1042,7 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.buttonName}</div>
-              <div class="quick-access-chip">button</div>
+              <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.buttonChip}</div>
             </div>
             <div class="quick-access-meta">${item.shortPressLabel}</div>
             ${item.longPress
@@ -966,7 +1053,7 @@ export class SofabatonEditDetailView extends LitElement {
             <button
               class="icon-btn"
               @click=${() => this._openEditBindingDialog(kind, item.buttonId)}
-              aria-label="Edit binding"
+              aria-label=${TOOLS_CARD_STRINGS.backup.editBindingAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -1000,9 +1087,9 @@ export class SofabatonEditDetailView extends LitElement {
     return html`
       <div class="quick-access-section" data-edit-section="network">
         <div class="quick-access-head">
-          <div class="quick-access-title">Network</div>
+          <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailNetwork}</div>
           <div class="quick-access-sub">
-            The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).
+            ${TOOLS_CARD_STRINGS.backup.networkDescription}
           </div>
         </div>
         <div class="quick-access-list">
@@ -1011,16 +1098,16 @@ export class SofabatonEditDetailView extends LitElement {
               <div class="quick-access-row quick-access-row--no-drag">
                 <div class="quick-access-main">
                   <div class="quick-access-label-row">
-                    <div class="quick-access-label">${ip ?? "(not set)"}</div>
-                    <div class="quick-access-chip">ip</div>
+                    <div class="quick-access-label">${ip ?? TOOLS_CARD_STRINGS.backup.hubNameNotSet}</div>
+                    <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.ipChip}</div>
                   </div>
-                  <div class="quick-access-meta">IPv4 dotted-decimal address</div>
+                  <div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.ipv4Description}</div>
                 </div>
                 <div class="quick-access-actions">
                   <button
                     class="icon-btn"
                     @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label="Edit IP address"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editIpAria}
                   >
                     <ha-icon icon="mdi:pencil"></ha-icon>
                   </button>
@@ -1039,11 +1126,11 @@ export class SofabatonEditDetailView extends LitElement {
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">Commands</div>
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailCommands}</div>
             <div class="quick-access-sub">
               ${this.mode === "live"
-                ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup → Edit."
-                : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+                ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp
+                : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
             </div>
           </div>
           ${this.mode === "live"
@@ -1058,7 +1145,7 @@ export class SofabatonEditDetailView extends LitElement {
                       icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
                       class=${this._addCommandPreparing ? "sb-spin" : ""}
                     ></ha-icon>
-                    <span>Add command</span>
+                    <span>${TOOLS_CARD_STRINGS.backup.addCommand}</span>
                   </button>
                 </div>
               `
@@ -1080,7 +1167,7 @@ export class SofabatonEditDetailView extends LitElement {
                 </div>
               </div>
             `
-          : html`<div class="quick-access-empty">This Device does not currently have any commands.</div>`}
+          : html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noDeviceCommands}</div>`}
       </div>
     `;
   }
@@ -1093,17 +1180,19 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${pendingAdd ? "new command" : "command"}</div>
+              <div class="quick-access-chip">${pendingAdd
+                ? TOOLS_CARD_STRINGS.backup.newCommandChip
+                : TOOLS_CARD_STRINGS.backup.commandChip}</div>
             </div>
             <div class="quick-access-meta">
-              Command ID ${item.commandId}
+              ${TOOLS_CARD_STRINGS.backup.commandId} ${item.commandId}
             </div>
           </div>
           <div class="quick-access-actions">
             <button
               class="icon-btn"
               @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-              aria-label="Rename command"
+              aria-label=${TOOLS_CARD_STRINGS.backup.renameCommandAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -1112,8 +1201,8 @@ export class SofabatonEditDetailView extends LitElement {
                   <button
                     class="icon-btn"
                     @click=${() => this._openCommandPayloadDialog(item.commandId)}
-                    aria-label="Edit payload"
-                    title="Edit payload"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                   >
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
@@ -1125,8 +1214,8 @@ export class SofabatonEditDetailView extends LitElement {
                     class="icon-btn"
                     @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
                     ?disabled=${this._payloadFetchingCommandId != null}
-                    aria-label="Edit payload"
-                    title="Fetch and edit this command's payload"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.fetchEditCommandAria}
                   >
                     <ha-icon
                       icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
@@ -1135,9 +1224,8 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            ${this.mode === "live"
-              ? nothing
-              : html`
+            ${(this.mode !== "live" || this._isWifiEventsLiveDevice()) && !this._commandIsLongRecord(item.commandId)
+              ? html`
                   <button
                     class="icon-btn icon-btn--danger"
                     @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
@@ -1145,7 +1233,8 @@ export class SofabatonEditDetailView extends LitElement {
                   >
                     <ha-icon icon="mdi:trash-can-outline"></ha-icon>
                   </button>
-                `}
+                `
+              : nothing}
           </div>
         </div>
       </div>
@@ -1210,7 +1299,8 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const device = (this.bundle?.devices ?? [])
       .find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
-    return String(device?.device?.name || "").trim() || `Device ${item.deviceId ?? "?"}`;
+    return String(device?.device?.name || "").trim()
+      || TOOLS_CARD_STRINGS.common.deviceFallback(item.deviceId ?? "?");
   }
 
   private _renderActivityQuickAccessRow(item: ReturnType<typeof activityQuickAccessItems>[number]) {
@@ -1236,14 +1326,14 @@ export class SofabatonEditDetailView extends LitElement {
               <button
                 class="icon-btn"
                 @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, -1)}
-                aria-label="Move up"
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveUpAria}
               >
                 <ha-icon icon="mdi:chevron-up"></ha-icon>
               </button>
               <button
                 class="icon-btn"
                 @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, 1)}
-                aria-label="Move down"
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveDownAria}
               >
                 <ha-icon icon="mdi:chevron-down"></ha-icon>
               </button>
@@ -1323,8 +1413,8 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>Save</button>
+              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -1349,9 +1439,11 @@ export class SofabatonEditDetailView extends LitElement {
         <div class="dialog medium" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">${this._payloadDialogAddMode ? "Add Command" : "Edit Payload"}</div>
+              <div class="dialog-title">${this._payloadDialogAddMode
+                ? TOOLS_CARD_STRINGS.backup.addCommandTitle
+                : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
               ${deviceClass
-                ? html`<span class="payload-class-badge" title="Device class">${deviceClass}</span>`
+                ? html`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>`
                 : nothing}
             </div>
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
@@ -1360,7 +1452,7 @@ export class SofabatonEditDetailView extends LitElement {
             ${this._payloadDialogAddMode
               ? html`
                   <label class="decoded-field">
-                    <span class="decoded-field-label">Name</span>
+                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
                     <input
                       class="decoded-field-input"
                       type="text"
@@ -1370,7 +1462,7 @@ export class SofabatonEditDetailView extends LitElement {
                       @input=${this._handleAddCommandNameInput}
                       @change=${this._handleAddCommandNameInput}
                     />
-                    <span class="decoded-field-helper">Shown on the remote and in every command picker.</span>
+                    <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
                   </label>
                 `
               : nothing}
@@ -1383,8 +1475,8 @@ export class SofabatonEditDetailView extends LitElement {
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
                       ${this.mode === "live"
-                        ? html`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.`
-                        : html`Verify a changed payload before trusting it: <strong>Test</strong> plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                        ? TOOLS_CARD_STRINGS.backup.verifyPayloadLive
+                        : TOOLS_CARD_STRINGS.backup.verifyPayloadBackup}
                     </span>
                   </div>
                 `
@@ -1399,10 +1491,10 @@ export class SofabatonEditDetailView extends LitElement {
                         : "mdi:progress-clock"}></ha-icon>
                     <span>
                       ${this._payloadDialogTestStatus === "testing"
-                        ? "Sending to the hub…"
+                        ? TOOLS_CARD_STRINGS.backup.sendingToHub
                         : this._payloadDialogTestStatus === "success"
-                          ? "Sent to the hub for one-shot playback."
-                          : this._payloadDialogTestError || "Test failed."}
+                          ? TOOLS_CARD_STRINGS.backup.sentToHub
+                          : this._payloadDialogTestError || TOOLS_CARD_STRINGS.backup.testFailed}
                     </span>
                   </div>
                 `
@@ -1419,12 +1511,12 @@ export class SofabatonEditDetailView extends LitElement {
                       @click=${() => void this._runLivePayloadTest()}
                     >
                       <ha-icon icon="mdi:flash-outline"></ha-icon>
-                      <span>Test</span>
+                      <span>${TOOLS_CARD_STRINGS.backup.test}</span>
                     </button>
                   `
                 : nothing}
-              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>Save</button>
+              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
             </div>
           </div>
         </div>
@@ -1436,14 +1528,13 @@ export class SofabatonEditDetailView extends LitElement {
     return html`
       <div class="decoded-form">
         <div class="decoded-form-head">
-          <div class="decoded-form-title">Raw payload</div>
+          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
           <div class="decoded-form-sub">
-            No structured editor exists for this device class; the bytes below
-            are replayed to the hub verbatim on restore.
+            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
           </div>
         </div>
         <label class="decoded-field">
-          <span class="decoded-field-label">Payload (hex bytes)</span>
+          <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
           <textarea
             class="decoded-field-input decoded-field-input--multiline"
             rows="6"
@@ -1453,7 +1544,7 @@ export class SofabatonEditDetailView extends LitElement {
             @change=${this._handleRawPayloadInput}
           ></textarea>
           <span class="decoded-field-helper">
-            Byte pairs like "0a 4f 22" &mdash; whitespace and 0x prefixes are tolerated.
+            ${TOOLS_CARD_STRINGS.backup.payloadHexHelper}
           </span>
         </label>
       </div>
@@ -1525,20 +1616,23 @@ export class SofabatonEditDetailView extends LitElement {
 
   private _editRenameDialogLabel() {
     const target = this._editRenameDialogTarget;
-    if (!target) return "Rename";
+    const S = TOOLS_CARD_STRINGS.backup;
+    if (!target) return S.rename;
     if (target.kind === "detail") {
-      return target.entityKind === "activity" ? "Rename Activity" : "Rename Device";
+      return target.entityKind === "activity" ? S.renameActivity : S.renameDevice;
     }
-    if (target.kind === "macro") return "Rename Macro";
-    if (target.kind === "favorite") return "Rename Favorite";
-    if (target.kind === "device_ip") return "Edit IP address";
-    if (target.kind === "hub_name") return "Rename Hub";
-    return "Rename Command";
+    if (target.kind === "macro") return S.renameMacro;
+    if (target.kind === "favorite") return S.renameFavorite;
+    if (target.kind === "device_ip") return S.editIpAria;
+    if (target.kind === "hub_name") return S.renameDialogTitle;
+    return S.renameCommand;
   }
 
   /** Per-target label & max length used by the dialog's primary text input. */
   private _editRenameFieldLabel(): string {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
+    return this._editRenameDialogTarget?.kind === "device_ip"
+      ? TOOLS_CARD_STRINGS.backup.ipAddress
+      : TOOLS_CARD_STRINGS.backup.name;
   }
 
   private _editRenameFieldMaxLength(): number {
@@ -1721,7 +1815,7 @@ export class SofabatonEditDetailView extends LitElement {
     try {
       const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
       if (!fetched || !String(fetched.dataHex || "").trim()) {
-        this._payloadFetchError = "The hub returned no payload for this command.";
+        this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noPayloadReturned;
         return;
       }
       this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
@@ -1782,8 +1876,7 @@ export class SofabatonEditDetailView extends LitElement {
 
     const existing = deviceCommandItems(this.bundle, deviceId);
     if (!existing.length) {
-      this._payloadFetchError =
-        "This device has no commands to use as a template — add its first command with the Sofabaton app.";
+      this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noTemplateCommand;
       return;
     }
 
@@ -1835,7 +1928,7 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this.bundle) return;
     const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
     if (!name) {
-      this._payloadDialogError = "Enter a name for the new command.";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.newCommandNameRequired;
       return;
     }
     let restoreData: Record<string, unknown>;
@@ -1849,7 +1942,7 @@ export class SofabatonEditDetailView extends LitElement {
       if (snapshot.className === "ir") {
         const descriptor = String(fields["descriptor"] ?? "").trim();
         if (!descriptor.startsWith("P:")) {
-          this._payloadDialogError = "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).";
+          this._payloadDialogError = TOOLS_CARD_STRINGS.backup.descriptiveIrRequired;
           return;
         }
       }
@@ -1865,14 +1958,14 @@ export class SofabatonEditDetailView extends LitElement {
     } else {
       const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
       if (!normalized) {
-        this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
         return;
       }
       restoreData = { transport: "hub_code_record", data_hex: normalized };
     }
     const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
     if (newId == null) {
-      this._payloadDialogError = "This device has no free command slot left.";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.noFreeCommandSlot;
       return;
     }
     this._commitEditBundleEdit(
@@ -1925,7 +2018,7 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
     if (!normalized) {
-      this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
       return;
     }
     if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
@@ -1945,7 +2038,7 @@ export class SofabatonEditDetailView extends LitElement {
       : String(this._payloadDialogRawDraft ?? "").trim();
     if (!value) {
       this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = "Nothing to test yet.";
+      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.nothingToTest;
       return;
     }
     this._payloadDialogTestStatus = "testing";
@@ -2027,7 +2120,7 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
     if (!normalized) {
-      this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
       return;
     }
     if (normalized !== normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
@@ -2135,7 +2228,21 @@ export class SofabatonEditDetailView extends LitElement {
       }));
       return;
     }
-    this._commitEditBundleEdit(applyBundleDelete(this.bundle, target));
+    let next = applyBundleDelete(this.bundle, target);
+    // W7: deleting a Wifi Event's short record from the events device
+    // editor also removes its long record (they are one event) — the
+    // backend plan then emits both command_delete steps.
+    if (target.kind === "command" && this._isWifiEventsLiveDevice()) {
+      const slotCount = this._wifiEventsSlotCount();
+      if (slotCount > 0 && Number(target.commandId) <= slotCount) {
+        next = applyBundleDelete(next, {
+          kind: "command",
+          deviceId: target.deviceId,
+          commandId: Number(target.commandId) + slotCount,
+        });
+      }
+    }
+    this._commitEditBundleEdit(next);
     // Deleting the entity we're inside removes its detail page — fall back
     // to the overview. Row-level deletes (command / favorite / macro) keep
     // the detail open so the user can continue trimming the list.
@@ -2146,7 +2253,7 @@ export class SofabatonEditDetailView extends LitElement {
   };
 
   private _deleteConfirmTitle(target: BackupDeleteTarget, label: string): string {
-    const name = label || "this item";
+    const name = label || TOOLS_CARD_STRINGS.backup.thisItem;
     switch (target.kind) {
       case "activity":
         return TOOLS_CARD_STRINGS.backup.deleteActivityTitle(name);
@@ -2247,16 +2354,16 @@ export class SofabatonEditDetailView extends LitElement {
   // swaps the dialog's fields.
   private _openAddShortcutDialog = () => {
     if (this.entityId == null || !this.bundle) return;
-    const devices = bundleEditableDeviceOptions(this.bundle);
+    const devices = this._editableDeviceOptions();
     const firstDeviceId = devices[0]?.id ?? null;
     const commands = firstDeviceId != null ? deviceCommandItems(this.bundle, firstDeviceId) : [];
     this._addShortcutKind = "command";
     this._addFavoriteDeviceId = firstDeviceId;
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-    this._addFavoriteName = commands[0]?.label ?? "";
     this._addFavoriteError = "";
     this._addShortcutActionName = "";
     this._resetMacroTarget("shortcut");
+    this._loadWifiEvents();
     this._addFavoriteOpen = true;
   };
 
@@ -2264,7 +2371,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._addFavoriteOpen = false;
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
-    this._addFavoriteName = "";
     this._addFavoriteError = "";
     this._addShortcutKind = "command";
     this._addShortcutActionName = "";
@@ -2279,23 +2385,13 @@ export class SofabatonEditDetailView extends LitElement {
       ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
       : [];
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-    this._addFavoriteName = commands[0]?.label ?? "";
     this._addFavoriteError = "";
   };
 
   private _handleAddFavoriteCommandChange = (event: Event) => {
     const value = Number((event.target as HTMLSelectElement).value);
     this._addFavoriteCommandId = Number.isFinite(value) ? value : null;
-    if (this.bundle && this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null) {
-      const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
-        .find((item) => item.commandId === this._addFavoriteCommandId);
-      this._addFavoriteName = command?.label ?? "";
-    }
     this._addFavoriteError = "";
-  };
-
-  private _handleAddFavoriteNameInput = (event: Event) => {
-    this._addFavoriteName = (event.target as HTMLInputElement).value;
   };
 
   private _applyAddFavorite = () => {
@@ -2304,7 +2400,12 @@ export class SofabatonEditDetailView extends LitElement {
       this._addFavoriteError = TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands;
       return;
     }
-    const name = sanitizeBundleName(this.bundle, this._addFavoriteName);
+    // A favorite has no name of its own — the remote shows it strictly
+    // under the referenced command's name, so the row carries a copy of
+    // that label rather than anything user-entered.
+    const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
+      .find((item) => item.commandId === this._addFavoriteCommandId);
+    const name = sanitizeBundleName(this.bundle, command?.label ?? "");
     this._commitEditBundleEdit(addBundleActivityFavorite(
       this.bundle,
       Number(this.entityId),
@@ -2315,10 +2416,32 @@ export class SofabatonEditDetailView extends LitElement {
     this._closeAddFavoriteDialog();
   };
 
+  private _applyAddShortcutWifiEvent = async () => {
+    if (!this.bundle || this.entityId == null) return;
+    const activityId = Number(this.entityId);
+    try {
+      const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
+      this._commitEditBundleEdit(addBundleActivityFavorite(
+        ref.bundle,
+        activityId,
+        ref.deviceId,
+        ref.shortCommandId,
+        sanitizeBundleName(ref.bundle, ref.name),
+      ));
+      this._closeAddFavoriteDialog();
+    } catch (err) {
+      this._addFavoriteError = err instanceof Error ? err.message : String(err);
+    }
+  };
+
   private _applyAddShortcut = () => {
     if (!this.bundle || this.entityId == null) return;
     if (this._addShortcutKind === "command") {
       this._applyAddFavorite();
+      return;
+    }
+    if (this._addShortcutKind === "wifi_event") {
+      void this._applyAddShortcutWifiEvent();
       return;
     }
     // "action" (custom macro).
@@ -2348,13 +2471,20 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this._addFavoriteOpen || !this.bundle) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
     const kind = this._addShortcutKind;
-    const devices = bundleEditableDeviceOptions(this.bundle);
+    const devices = this._editableDeviceOptions();
     const macros = this._macroOptions();
     const commands = this._addFavoriteDeviceId != null
       ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
       : [];
-    const canAdd = kind !== "command"
-      || (this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null);
+    const canAdd = kind === "command"
+      ? this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null
+      : kind === "wifi_event"
+        ? !this._wifiEventBusy && (
+            this._wifiEventPrimary.mode === "existing"
+              ? this._wifiEventPrimary.slot != null
+              : this._wifiEventPrimary.name.trim().length > 0
+          )
+        : true;
     const commandFields = devices.length === 0
       ? html`<div class="backup-drawer-sub">${S.addFavoriteNoDevices}</div>`
       : html`
@@ -2377,16 +2507,7 @@ export class SofabatonEditDetailView extends LitElement {
                     `)}
                   </select>
                 `}
-          </div>
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-name">${S.addFavoriteName}</label>
-            <input
-              id="sb-add-fav-name"
-              class="decoded-field-input"
-              maxlength="20"
-              .value=${this._addFavoriteName}
-              @input=${this._handleAddFavoriteNameInput}
-            />
+            <div class="decoded-field-helper">${S.addShortcutCommandHelper}</div>
           </div>
         `;
     const actionFields = html`
@@ -2449,16 +2570,33 @@ export class SofabatonEditDetailView extends LitElement {
                 class="decoded-field-input"
                 @change=${(event: Event) => {
                   this._addShortcutKind = (event.target as HTMLSelectElement).value as
-                    | "command" | "action";
+                    ActivityBindingTargetKind;
                   if (this._addShortcutKind === "action") this._resetMacroTarget("shortcut");
+                  if (this._addShortcutKind === "wifi_event") {
+                    this._wifiEventPrimary = this._defaultWifiEventSel();
+                  }
                   this._addFavoriteError = "";
                 }}
               >
                 <option value="command" ?selected=${kind === "command"}>${S.shortcutKindCommand}</option>
                 <option value="action" ?selected=${kind === "action"}>${S.shortcutKindAction}</option>
+                ${this._wifiEventsAvailable()
+                  ? html`<option value="wifi_event" ?selected=${kind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
+                  : nothing}
               </select>
             </div>
-            ${kind === "command" ? commandFields : macroFields}
+            ${kind === "command"
+              ? commandFields
+              : kind === "wifi_event"
+                ? this._renderWifiEventTargetFields({
+                    idPrefix: "sb-add-fav",
+                    sel: this._wifiEventPrimary,
+                    onSelChange: (sel) => {
+                      this._wifiEventPrimary = sel;
+                      this._addFavoriteError = "";
+                    },
+                  })
+                : macroFields}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._addFavoriteError}</div>
@@ -2521,7 +2659,7 @@ export class SofabatonEditDetailView extends LitElement {
     if (target.kind === "device_ip") {
       const draft = this._editRenameDialogDraft.trim();
       if (draft && !IPV4_PATTERN.test(draft)) {
-        this._editRenameDialogError = "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.";
+        this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.ipv4Required;
         return;
       }
       this._commitEditBundleEdit(updateBundleDeviceIp(this.bundle, target.deviceId, draft));
@@ -2530,7 +2668,7 @@ export class SofabatonEditDetailView extends LitElement {
     }
     const next = sanitizeBundleName(this.bundle, this._editRenameDialogDraft);
     if (!next) {
-      this._editRenameDialogError = "Enter a name to continue.";
+      this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.enterName;
       return;
     }
     if (target.kind === "detail") {
@@ -2624,7 +2762,7 @@ export class SofabatonEditDetailView extends LitElement {
   // ── Button bindings (add / edit picker) ─────────────────────────────
   private _bindingCommandDeviceOptions(): Array<{ value: number; label: string }> {
     if (!this.bundle) return [];
-    return bundleEditableDeviceOptions(this.bundle)
+    return this._editableDeviceOptions()
       .map((device) => ({ value: device.id, label: device.label }));
   }
 
@@ -2634,6 +2772,9 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this.bundle || this.entityId == null) return "command";
     const dId = Number(deviceId || 0);
     if (dId === Number(this.entityId)) return "action";
+    if (this._wifiEventsAvailable() && isWifiEventsBrand(bundleDeviceBrand(this.bundle, dId))) {
+      return "wifi_event";
+    }
     return "command";
   }
 
@@ -2648,6 +2789,164 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this.bundle || this.entityId == null) return [];
     return activityUserMacroSummaries(this.bundle, Number(this.entityId))
       .map((macro) => ({ value: macro.buttonId, label: macro.name }));
+  }
+
+  // ── Wifi Event kind (shared by all three Add dialogs, live mode) ────
+
+  /** The Wifi Event kind is offered only in live activity-scope dialogs. */
+  private _wifiEventsAvailable(): boolean {
+    return this.mode === "live" && this.wifiEvents != null;
+  }
+
+  private _deployedWifiEvents(): WifiEvent[] {
+    // W7 full deferral: staged (not-yet-deployed) events are selectable —
+    // they deploy as phase 1 of the Sync press. The name is historical.
+    return this._wifiEventsList ?? [];
+  }
+
+  /** Fire-and-forget refresh of the event list when a dialog opens. */
+  private _loadWifiEvents() {
+    if (!this._wifiEventsAvailable()) return;
+    void this.wifiEvents!.list()
+      .then((events) => {
+        this._wifiEventsList = events;
+        // Re-seat only untouched selections: the response can land after
+        // the user already picked an event or typed a new-event name, and
+        // clobbering that mid-flight would lose their input.
+        const pristine = (sel: WifiEventTargetSel) =>
+          sel.mode === "new" && sel.slot == null && sel.name === "";
+        if (pristine(this._wifiEventPrimary)) this._wifiEventPrimary = this._defaultWifiEventSel();
+      })
+      .catch(() => {
+        this._wifiEventsList = [];
+      });
+  }
+
+  private _defaultWifiEventSel(): WifiEventTargetSel {
+    const first = this._deployedWifiEvents()[0] ?? null;
+    return first
+      ? { mode: "existing", slot: first.slot_index, name: "" }
+      : { mode: "new", slot: null, name: "" };
+  }
+
+  private _renderWifiEventTargetFields(params: {
+    idPrefix: string;
+    sel: WifiEventTargetSel;
+    onSelChange: (sel: WifiEventTargetSel) => void;
+  }) {
+    const S = TOOLS_CARD_STRINGS.backup;
+    const events = this._deployedWifiEvents();
+    const sel = params.sel;
+    return html`
+      ${events.length
+        ? html`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event`}>${S.wifiEventTargetLabel}</label>
+              <select
+                id=${`${params.idPrefix}-wifi-event`}
+                class="decoded-field-input"
+                @change=${(event: Event) => {
+                  const value = (event.target as HTMLSelectElement).value;
+                  params.onSelChange(
+                    value === "__new__"
+                      ? { mode: "new", slot: null, name: sel.name }
+                      : { mode: "existing", slot: Number(value), name: sel.name },
+                  );
+                }}
+              >
+                ${events.map((item) => html`
+                  <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
+                `)}
+                <option value="__new__" ?selected=${sel.mode === "new"}>${S.wifiEventTargetCreateNew}</option>
+              </select>
+            </div>
+          `
+        : html`<div class="quick-access-empty">${S.wifiEventNoneYet}</div>`}
+      ${sel.mode === "new"
+        ? html`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event-name`}>${S.wifiEventNameLabel}</label>
+              <input
+                id=${`${params.idPrefix}-wifi-event-name`}
+                class="decoded-field-input"
+                maxlength="20"
+                .value=${sel.name}
+                ?disabled=${this._wifiEventBusy}
+                @input=${(event: Event) => {
+                  params.onSelChange({ ...sel, name: (event.target as HTMLInputElement).value });
+                }}
+              />
+              <div class="decoded-field-helper">${S.wifiEventNameHelper}</div>
+            </div>
+          `
+        : nothing}
+      ${this._wifiEventBusy
+        ? html`<div class="decoded-field-helper">${S.wifiEventDeploying}</div>`
+        : nothing}
+    `;
+  }
+
+  /**
+   * Resolve a Wifi Event target selection to its atomic ref: a single
+   * event carries BOTH a short and a long record (short = slot+1, long =
+   * short + slot_count). A reference always addresses the event as one
+   * unit — the short record — and the long record is derived from the
+   * same event when a binding's long-press leg needs it (there is no
+   * separate long-press *target*; short vs long is an action-config
+   * distinction made in the Events tab, per the Wifi Events model).
+   *
+   * Returns the (possibly grafted) working bundle to insert into. Creating
+   * a new event is an instant store allocation (W7) — no hub deploy here.
+   * `deviceId` is the placeholder id 0 before the first-ever deploy; the
+   * Sync flow rewrites it. Throws a user-facing Error on failure.
+   */
+  private async _resolveWifiEventRef(
+    sel: WifiEventTargetSel,
+  ): Promise<{
+    deviceId: number;
+    shortCommandId: number;
+    longCommandId: number;
+    slotIndex: number;
+    name: string;
+    bundle: BackupBundlePayload;
+  }> {
+    const S = TOOLS_CARD_STRINGS.backup;
+    if (!this.wifiEvents || !this.bundle) throw new Error(S.bindingIncomplete);
+    if (sel.mode === "existing") {
+      const event = this._deployedWifiEvents().find((item) => item.slot_index === sel.slot);
+      // The host fills device_id (real deployed id, or a computed free
+      // placeholder the Sync flow rewrites) — a null id would be an
+      // internal error, not a user one.
+      if (!event || event.device_id == null) throw new Error(S.bindingIncomplete);
+      const grafted = await this.wifiEvents.ensureGrafted();
+      return {
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
+        name: event.name,
+        bundle: grafted ?? this.bundle,
+      };
+    }
+    const name = sel.name.trim();
+    if (!name) throw new Error(S.wifiEventNameRequired);
+    this._wifiEventBusy = true;
+    try {
+      const created = await this.wifiEvents.create(name);
+      const event = created.event;
+      this._wifiEventsList = null;
+      if (event.device_id == null) throw new Error(S.wifiEventCreateFailed);
+      return {
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
+        name: event.name,
+        bundle: created.bundle ?? this.bundle,
+      };
+    } finally {
+      this._wifiEventBusy = false;
+    }
   }
 
   private _resetMacroTarget(prefix: "shortcut" | "binding" | "bindingLp") {
@@ -2731,6 +3030,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._bindingLpDeviceId = this._bindingDeviceId;
     this._bindingLpCommandId = this._bindingCommandId;
     this._bindingError = "";
+    this._loadWifiEvents();
     this._bindingDialogOpen = true;
   }
 
@@ -2750,6 +3050,21 @@ export class SofabatonEditDetailView extends LitElement {
     this._bindingTargetKind = kind === "activity"
       ? this._bindingTargetKindFor(item.deviceId)
       : "command";
+    if (this._bindingTargetKind === "wifi_event") {
+      // A wifi-event binding is atomic: the primary short record maps to
+      // its event slot (short command id = slot + 1); long press (if
+      // present) is the same event's long record, gated by the toggle.
+      this._wifiEventPrimary = {
+        mode: "existing",
+        slot: Number(item.commandId) - 1,
+        name: "",
+      };
+      this._bindingLongPressEnabled = Boolean(item.longPress);
+      this._bindingError = "";
+      this._loadWifiEvents();
+      this._bindingDialogOpen = true;
+      return;
+    }
     this._bindingActionName = this._bindingTargetKind === "action"
       ? this._macroName(item.commandId)
       : "";
@@ -2769,6 +3084,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._bindingLpMacroMode = this._bindingLpTargetKind === "action" ? "existing" : "new";
     this._bindingLpMacroId = this._bindingLpTargetKind === "action" ? this._bindingLpCommandId : null;
     this._bindingError = "";
+    this._loadWifiEvents();
     this._bindingDialogOpen = true;
   }
 
@@ -2820,6 +3136,10 @@ export class SofabatonEditDetailView extends LitElement {
       this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
       return;
     }
+    if (kind === "wifi_event") {
+      this._wifiEventPrimary = this._defaultWifiEventSel();
+      return;
+    }
     // "action"
     this._resetMacroTarget("binding");
     this._bindingActionName ||= this._macroName(this._bindingCommandId);
@@ -2854,7 +3174,8 @@ export class SofabatonEditDetailView extends LitElement {
       this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
       return;
     }
-    // "action"
+    // "action" (the long-press leg never targets a wifi event — that is
+    // only reachable atomically when the PRIMARY is a wifi event).
     this._resetMacroTarget("bindingLp");
     this._bindingLpActionName ||= this._macroName(this._bindingLpCommandId);
   };
@@ -2974,12 +3295,59 @@ export class SofabatonEditDetailView extends LitElement {
     };
   }
 
+  /**
+   * Async binding apply when the button targets a Wifi Event. The event
+   * is atomic: the short press fires its short record, and — when the
+   * long-press toggle is on — the *same* event's long record is wired to
+   * the button's long press (and the event's long-press action is enabled
+   * for configuration in the Events tab). There is no independent
+   * long-press target here; that would collide with the Wifi Events model
+   * where short/long are two actions of one event.
+   */
+  private _applyActivityBindingWithWifiEvents = async () => {
+    const S = TOOLS_CARD_STRINGS.backup;
+    if (!this.bundle || this.entityId == null) return;
+    const activityId = Number(this.entityId);
+    const buttonId = Number(this._bindingButtonId);
+    if (!buttonId) {
+      this._bindingError = S.bindingIncomplete;
+      return;
+    }
+    try {
+      const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
+      let longPress: { deviceId: number; commandId: number } | null = null;
+      if (this._bindingLongPressEnabled) {
+        // Wire the SAME event's long record and turn on its long-press
+        // action (a pure store-flag edit — the long record is always
+        // deployed; the Events tab exposes the action).
+        await this.wifiEvents!.enableLongPress(ref.slotIndex);
+        this._wifiEventsList = null;
+        longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
+      }
+      this._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
+        buttonId,
+        deviceId: ref.deviceId,
+        commandId: ref.shortCommandId,
+        longPress,
+      }));
+      this._closeBindingDialog();
+    } catch (err) {
+      this._bindingError = err instanceof Error ? err.message : String(err);
+    }
+  };
+
   private _applyBinding = () => {
     if (!this.bundle || this.entityId == null) return;
     const buttonId = Number(this._bindingButtonId);
     const entityId = Number(this.entityId);
     if (!buttonId) {
       this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+      return;
+    }
+    // A Wifi Event binding is atomic (short + long from one event); its
+    // long-press leg is never an independent target.
+    if (this._bindingScope === "activity" && this._bindingTargetKind === "wifi_event") {
+      void this._applyActivityBindingWithWifiEvents();
       return;
     }
     if (this._bindingScope === "activity") {
@@ -3134,12 +3502,20 @@ export class SofabatonEditDetailView extends LitElement {
     const commandOptions = this._bindingCommandOptions(commandDeviceId);
     const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this._bindingLpDeviceId : entityId;
     const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
+    const wifiSelReady = (sel: WifiEventTargetSel) => !this._wifiEventBusy && (
+      sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0
+    );
+    // A wifi-event binding is atomic: the long-press leg is the same
+    // event's long record, so it never gates saving independently.
+    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
     const canSave = this._bindingButtonId != null && (
       scope === "device"
         ? this._bindingCommandId != null
         : targetKind === "command"
           ? this._bindingDeviceId != null && this._bindingCommandId != null
-          : true
+          : targetKind === "wifi_event"
+            ? wifiSelReady(this._wifiEventPrimary)
+            : true
     );
     const title = isEdit
       ? S.bindingDialogEditTitle(buttonName(Number(this._bindingButtonId)))
@@ -3234,11 +3610,25 @@ export class SofabatonEditDetailView extends LitElement {
                     >
                       <option value="command" ?selected=${targetKind === "command"}>${S.shortcutKindCommand}</option>
                       <option value="action" ?selected=${targetKind === "action"}>${S.shortcutKindAction}</option>
+                      ${this._wifiEventsAvailable()
+                        ? html`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
+                        : nothing}
                     </select>
                   </div>
                 `
               : nothing}
-            ${targetKind === "command" ? commandFields : actionFields}
+            ${targetKind === "command"
+              ? commandFields
+              : targetKind === "wifi_event"
+                ? this._renderWifiEventTargetFields({
+                    idPrefix: "sb-binding",
+                    sel: this._wifiEventPrimary,
+                    onSelChange: (sel) => {
+                      this._wifiEventPrimary = sel;
+                      this._bindingError = "";
+                    },
+                  })
+                : actionFields}
             <div class="binding-toggle-row">
               <span class="decoded-field-label">${S.bindingEnableLongPress}</span>
               <ha-switch
@@ -3247,24 +3637,28 @@ export class SofabatonEditDetailView extends LitElement {
               ></ha-switch>
             </div>
             ${this._bindingLongPressEnabled
-              ? html`
-                  ${isActivity
-                    ? html`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-binding-lp-kind"
-                            class="decoded-field-input"
-                            @change=${this._handleBindingLpTargetKindChange}
-                          >
-                            <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
-                            <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
-                          </select>
-                        </div>
-                      `
-                    : nothing}
-                  ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
-                `
+              ? primaryIsWifiEvent
+                ? html`
+                    <div class="decoded-field-helper">${S.wifiEventBindingLongPressNote}</div>
+                  `
+                : html`
+                    ${isActivity
+                      ? html`
+                          <div class="decoded-field">
+                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
+                            <select
+                              id="sb-binding-lp-kind"
+                              class="decoded-field-input"
+                              @change=${this._handleBindingLpTargetKindChange}
+                            >
+                              <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
+                              <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
+                            </select>
+                          </div>
+                        `
+                      : nothing}
+                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
+                  `
               : nothing}
           </div>
           <div class="dialog-footer">
@@ -3337,13 +3731,14 @@ export class SofabatonEditDetailView extends LitElement {
     this._stepDialogEditIndex = null;
     this._stepKind = "command";
     this._stepDeviceId = editor.scope === "activity"
-      ? (bundleEditableDeviceOptions(this.bundle)[0]?.id ?? null)
+      ? (this._editableDeviceOptions()[0]?.id ?? null)
       : editor.entityId;
     const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
     const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
     this._stepCommandId = commands[0]?.commandId ?? null;
     this._stepHoldSeconds = "0";
     this._stepError = "";
+    this._loadWifiEvents();
     this._stepDialogOpen = true;
   };
 
@@ -3358,6 +3753,27 @@ export class SofabatonEditDetailView extends LitElement {
       this._stepKind = "input";
       this._stepDeviceId = item.deviceId ?? null;
       this._stepCommandId = item.commandId ?? null;
+      return;
+    }
+    // A step referencing the (picker-hidden) Wifi Events device edits as
+    // the wifi_event kind — the filtered device select would otherwise
+    // strand it. slot = command_id - 1 (short law).
+    if (
+      this._wifiEventsAvailable()
+      && editor.scope === "activity"
+      && item.deviceId != null
+      && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(item.deviceId)))
+    ) {
+      this._stepKind = "wifi_event";
+      this._stepDeviceId = item.deviceId;
+      this._stepCommandId = item.commandId ?? null;
+      this._stepHoldSeconds = this._byteToSeconds(item.hold);
+      this._wifiEventPrimary = {
+        mode: "existing",
+        slot: item.commandId != null ? Number(item.commandId) - 1 : null,
+        name: "",
+      };
+      this._loadWifiEvents();
       return;
     }
     this._stepKind = "command";
@@ -3416,12 +3832,37 @@ export class SofabatonEditDetailView extends LitElement {
     this._commitEditBundleEdit(next);
   };
 
+  private _applyStepWifiEvent = async () => {
+    const editor = this._macroEditor;
+    if (!editor || !this.bundle) return;
+    const timeByte = this._secondsToByte(this._stepHoldSeconds);
+    const editIndex = this._stepDialogEditIndex;
+    try {
+      const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
+      const next = editIndex === null
+        ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte)
+        : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
+            deviceId: ref.deviceId,
+            commandId: ref.shortCommandId,
+            hold: timeByte,
+          });
+      this._commitEditBundleEdit(next);
+      this._closeStepDialog();
+    } catch (err) {
+      this._stepError = err instanceof Error ? err.message : String(err);
+    }
+  };
+
   private _applyStep = () => {
     const editor = this._macroEditor;
     if (!editor || !this.bundle) return;
     const timeByte = this._secondsToByte(this._stepHoldSeconds);
     const editIndex = this._stepDialogEditIndex;
     const isDevice = editor.scope === "device";
+    if (this._stepKind === "wifi_event") {
+      void this._applyStepWifiEvent();
+      return;
+    }
     // Editing an activity power-macro input ref: set (or clear) the input.
     if (this._stepKind === "input") {
       const deviceId = Number(this._stepDeviceId);
@@ -3528,11 +3969,11 @@ export class SofabatonEditDetailView extends LitElement {
             <div class="quick-access-section">
               <div class="quick-access-head">
                 <div class="quick-access-head-main">
-                  <div class="quick-access-title">Steps</div>
+                  <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.steps}</div>
                   <div class="quick-access-sub">
                     ${this._haSortableReady
-                      ? "Drag to reorder. Each step plays a command; set the wait that follows it on the right."
-                      : "Each step plays a command; set the wait that follows it on the right."}
+                      ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp
+                      : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
                   </div>
                 </div>
                 <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
@@ -3634,10 +4075,18 @@ export class SofabatonEditDetailView extends LitElement {
     const isEdit = this._stepDialogEditIndex !== null;
     const isActivity = editor.scope === "activity";
     const isInput = this._stepKind === "input";
-    const devices = bundleEditableDeviceOptions(this.bundle);
+    const isWifiEvent = this._stepKind === "wifi_event";
+    const devices = this._editableDeviceOptions();
     const commandDeviceId = isInput ? this._stepDeviceId : (isActivity ? this._stepDeviceId : editor.entityId);
     const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    const canSave = isInput || (this._stepCommandId != null && (!isActivity || this._stepDeviceId != null));
+    const canSave = isInput
+      || (isWifiEvent
+        ? !this._wifiEventBusy && (
+            this._wifiEventPrimary.mode === "existing"
+              ? this._wifiEventPrimary.slot != null
+              : this._wifiEventPrimary.name.trim().length > 0
+          )
+        : this._stepCommandId != null && (!isActivity || this._stepDeviceId != null));
     const title = isInput
       ? TOOLS_CARD_STRINGS.backup.inputStepTitle
       : isEdit
@@ -3664,24 +4113,55 @@ export class SofabatonEditDetailView extends LitElement {
                   </div>
                 `
               : html`
-                  ${isActivity
-                    ? this._renderBindingSelect({
-                        id: "sb-step-device",
-                        label: TOOLS_CARD_STRINGS.backup.stepDevice,
-                        value: this._stepDeviceId,
-                        options: devices.map((device) => ({ value: device.id, label: device.label })),
-                        onChange: this._handleStepDeviceChange,
-                        emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
-                      })
+                  ${isActivity && this._wifiEventsAvailable()
+                    ? html`
+                        <div class="decoded-field">
+                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.addShortcutKindLabel}</label>
+                          <select
+                            id="sb-step-kind"
+                            class="decoded-field-input"
+                            @change=${(event: Event) => {
+                              const value = (event.target as HTMLSelectElement).value as MacroStepKind;
+                              this._stepKind = value;
+                              if (value === "wifi_event") this._wifiEventPrimary = this._defaultWifiEventSel();
+                              this._stepError = "";
+                            }}
+                          >
+                            <option value="command" ?selected=${this._stepKind === "command"}>${TOOLS_CARD_STRINGS.backup.shortcutKindCommand}</option>
+                            <option value="wifi_event" ?selected=${isWifiEvent}>${TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent}</option>
+                          </select>
+                        </div>
+                      `
                     : nothing}
-                  ${this._renderBindingSelect({
-                    id: "sb-step-command",
-                    label: TOOLS_CARD_STRINGS.backup.stepCommand,
-                    value: this._stepCommandId,
-                    options: commands.map((command) => ({ value: command.commandId, label: command.label })),
-                    onChange: this._handleStepCommandChange,
-                    emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
-                  })}
+                  ${isWifiEvent
+                    ? this._renderWifiEventTargetFields({
+                        idPrefix: "sb-step",
+                        sel: this._wifiEventPrimary,
+                        onSelChange: (sel) => {
+                          this._wifiEventPrimary = sel;
+                          this._stepError = "";
+                        },
+                      })
+                    : html`
+                        ${isActivity
+                          ? this._renderBindingSelect({
+                              id: "sb-step-device",
+                              label: TOOLS_CARD_STRINGS.backup.stepDevice,
+                              value: this._stepDeviceId,
+                              options: devices.map((device) => ({ value: device.id, label: device.label })),
+                              onChange: this._handleStepDeviceChange,
+                              emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
+                            })
+                          : nothing}
+                        ${this._renderBindingSelect({
+                          id: "sb-step-command",
+                          label: TOOLS_CARD_STRINGS.backup.stepCommand,
+                          value: this._stepCommandId,
+                          options: commands.map((command) => ({ value: command.commandId, label: command.label })),
+                          onChange: this._handleStepCommandChange,
+                          emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
+                        })}
+                      `}
                   <div class="decoded-field">
                     <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
                     <input

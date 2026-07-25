@@ -89,31 +89,22 @@ def _wifi_command_label(command_spec: Any, idx: int) -> str:
 # round-tripped against the records the hub stores.
 #
 # The 0x18.. key ids exist only inside the X1 family-0x0E write payloads:
-# the hub re-exposes the records in its command table as ids 1..20 (live-
-# validated X1 2026-07-12), the same numbering the X1S/X2 virtual-ip flow
-# writes directly — and that 1..20 space is what REQ_ACTIVATE and the
-# power/input binding rows address on both variants.
+# the hub re-exposes the records in its command table as ids 1..N in
+# write order (live-validated X1 2026-07-12 at N=20), the same numbering
+# the X1S/X2 virtual-ip flow writes directly — and that 1..N space is
+# what REQ_ACTIVATE and the power/input binding rows address on both
+# variants.
+#
+# Historically a literal 20-entry table (the vendor scheme's 10 short +
+# 10 long ceiling); the contiguous extension to 100 records (keys
+# 0x18..0x7B, codes 0x4E21..0x4E84) was live-validated on X1 AND X1S
+# 2026-07-22 (bench_140: all ACKs, exact 1..100 re-exposure, callbacks for
+# high ids incl. long records — docs/internal/wifi-events-plan.md §11 W0.4).
+# The Wifi Events record only uses the first 50 (25 short + 25 long); the
+# full table is kept so the validated headroom stays available.
+MAX_WIFI_DEVICE_RECORDS = 100
 _ROKU_APP_SLOTS: list[tuple[int, int]] = [
-    (0x18, 0x4E21),
-    (0x19, 0x4E22),
-    (0x1A, 0x4E23),
-    (0x1B, 0x4E24),
-    (0x1C, 0x4E25),
-    (0x1D, 0x4E26),
-    (0x1E, 0x4E27),
-    (0x1F, 0x4E28),
-    (0x20, 0x4E29),
-    (0x21, 0x4E2A),
-    (0x22, 0x4E2B),
-    (0x23, 0x4E2C),
-    (0x24, 0x4E2D),
-    (0x25, 0x4E2E),
-    (0x26, 0x4E2F),
-    (0x27, 0x4E30),
-    (0x28, 0x4E31),
-    (0x29, 0x4E32),
-    (0x2A, 0x4E33),
-    (0x2B, 0x4E34),
+    (0x18 + idx, 0x4E21 + idx) for idx in range(MAX_WIFI_DEVICE_RECORDS)
 ]
 
 
@@ -227,6 +218,7 @@ class WifiDeviceMixin:
         brand_name: str,
         device_class: str,
         device_class_code: int,
+        commands: list[Any] | None = None,
     ) -> None:
         dev_lo = device_id & 0xFF
         self.state.devices[dev_lo] = normalize_device_entry(
@@ -234,6 +226,17 @@ class WifiDeviceMixin:
             default_class=device_class,
             default_class_code=device_class_code,
         )
+        # Seed the command-name catalog with the records just written. The
+        # hub re-exposes wifi records as command ids 1..N in write order on
+        # every variant (the X1 0x18.. key ids exist only inside the 0x0E
+        # payloads), so favorites and bindings created right after the
+        # deploy resolve real labels instead of falling back to
+        # placeholders until a full cache refresh.
+        if commands:
+            self.state.commands[dev_lo] = {
+                idx + 1: _wifi_command_label(spec, idx)
+                for idx, spec in enumerate(commands)
+            }
 
     def _build_device_power_binding_payload(
         self,
@@ -865,6 +868,7 @@ class WifiDeviceMixin:
             brand_name=brand_name,
             device_class=DEVICE_CLASS_WIFI_ROKU,
             device_class_code=0x0A,
+            commands=normalized_commands[: len(_ROKU_APP_SLOTS)],
         )
 
         if not self._apply_wifi_power_configuration(
@@ -1034,6 +1038,7 @@ class WifiDeviceMixin:
             brand_name=brand_name,
             device_class=DEVICE_CLASS_WIFI_IP,
             device_class_code=0x1C,
+            commands=list(commands or [])[: len(_ROKU_APP_SLOTS)],
         )
 
         if not self._apply_virtual_ip_wifi_power_configuration(

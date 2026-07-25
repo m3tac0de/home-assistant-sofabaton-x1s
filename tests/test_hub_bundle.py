@@ -229,6 +229,36 @@ def test_backup_hub_bundle_stamps_payload_profile(monkeypatch) -> None:
     assert structural["payload_profile"] == "structural"
 
 
+def test_backup_activity_resolves_favorite_labels_before_return(monkeypatch) -> None:
+    """The post-editor structural refresh must rebuild labels after clearing
+    the activity cache, or the remote entity filters every favorite out."""
+
+    proxy = _proxy(monkeypatch)
+    act_lo = 0x65
+    proxy.state.activities[act_lo] = {"name": "Watch TV"}
+    calls: list[bool] = []
+
+    monkeypatch.setattr(proxy, "_refresh_catalog", lambda *_a, **_k: None)
+    monkeypatch.setattr(proxy, "_fetch_and_wait", lambda *_a, **_k: True)
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda *_a, **_k: [])
+
+    def _ensure(_act_id: int, *, fetch_if_missing: bool = True):
+        calls.append(fetch_if_missing)
+        return ({}, len(calls) > 1)
+
+    monkeypatch.setattr(proxy, "ensure_commands_for_activity", _ensure)
+    monkeypatch.setattr(
+        proxy,
+        "assemble_activity_backup_from_state",
+        lambda _act_id: {"kind": "activity_backup", "complete": True},
+    )
+
+    result = proxy.backup_activity(act_lo, wait_timeout=0.1)
+
+    assert result == {"kind": "activity_backup", "complete": True}
+    assert calls == [True, False]
+
+
 def test_assemble_device_backup_payload_profile_defaults_to_full() -> None:
     """Device payload assembly stamps the profile; the default is full."""
 

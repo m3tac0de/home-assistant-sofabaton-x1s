@@ -1,4 +1,5 @@
 import { isPoweredOffLabel } from "./remote-card-state";
+import { str } from "./remote-card-strings";
 
 export function buildActivitySelectState({
   editMode,
@@ -16,22 +17,22 @@ export function buildActivitySelectState({
   pendingExpired: boolean;
 }) {
   const options = [
-    ...(editMode ? ["Default Layout"] : []),
-    "Powered Off",
+    ...(editMode ? [str().card.defaultLayout] : []),
+    str().card.poweredOff,
     ...activities.map((activity) => activity.name),
   ];
 
   const previewLabel = preview
     ? preview.poweredOff
-      ? "Powered Off"
-      : preview.label || `Activity ${preview.activityId}`
+      ? str().card.poweredOff
+      : preview.label || str().card.activityFallback(preview.activityId)
     : null;
 
   if (previewLabel && !options.includes(previewLabel)) {
     options.push(previewLabel);
   }
 
-  const current = previewLabel || currentActivityLabel || "Powered Off";
+  const current = previewLabel || currentActivityLabel || str().card.poweredOff;
   const poweredOff = preview
     ? preview.poweredOff
     : isPoweredOffLabel(current);
@@ -58,7 +59,7 @@ export function noActivitiesWarning(
   loadState: unknown,
 ) {
   if (!isUnavailable && activitiesLength === 0 && loadState !== "loading") {
-    return "No activities found in remote attributes.";
+    return str().card.noActivitiesWarning;
   }
   return "";
 }

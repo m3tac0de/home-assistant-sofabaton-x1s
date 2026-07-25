@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import "../../custom_components/sofabaton_x1s/www/src/tabs/backup-tab";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
+import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import type { BackupOperationStateResponse, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import {
   activityQuickAccessItems,
   reorderBundleActivityQuickAccess,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
+import { renderActivityRolesBlock } from "../../custom_components/sofabaton_x1s/www/src/tabs/activity-editor";
 
 const BackupTabElement = customElements.get("sofabaton-backup-tab") as {
   new (): HTMLElement;
@@ -65,6 +68,26 @@ function createHass(state: BackupOperationStateResponse, onBackupState?: () => v
     connection: null,
   };
 }
+
+test("backup Restore empty state resolves all copy from the active locale", () => {
+  const cases = [
+    ["nl-NL", "Laad een back-upbestand", "Bestand kiezen"],
+    ["de-DE", "Lade eine Backup-Datei", "Datei auswählen"],
+    ["fr-FR", "Chargez un fichier de sauvegarde", "Choisir un fichier"],
+    ["es-ES", "Carga un archivo de copia de seguridad", "Elegir archivo"],
+  ] as const;
+
+  for (const [locale, subtitle, chooseFile] of cases) {
+    setToolsCardLanguage(locale);
+    const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+    const rendered = templateText((element as any)._renderRestoreSectionContent());
+    assert.match(rendered, new RegExp(subtitle));
+    assert.match(rendered, new RegExp(chooseFile));
+    assert.doesNotMatch(rendered, /Load a backup file|Choose backup file/);
+  }
+
+  setToolsCardLanguage("en");
+});
 
 test("backup tab rehydrates a stale running restore when the hub no longer reports an active operation", async () => {
   let unsubscribed = false;
@@ -204,7 +227,7 @@ test("backup tab keeps the loaded restore bundle on a no-op hub update", () => {
 });
 
 test("backup tab renders native radios for scope selection", () => {
-  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
 
   const result = element._renderScopeGroup({
     value: "whole_hub",
@@ -270,7 +293,7 @@ test("backup complete dismiss clears backend result and resets the make view", a
 test("backup edit detail rename updates the selected device name in the bundle", () => {
   // The rename flow lives in the extracted edit-detail element; the
   // backup tab only routes the resulting bundle-change event.
-  const element = new EditDetailViewElement() as HTMLElement & Record<string, unknown>;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
   element.bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -295,7 +318,7 @@ test("backup edit detail rename updates the selected device name in the bundle",
 });
 
 test("edit detail element reports edits through bundle-change", () => {
-  const element = new EditDetailViewElement() as HTMLElement & Record<string, unknown>;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
   element.bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -311,7 +334,7 @@ test("edit detail element reports edits through bundle-change", () => {
   };
   element.kind = "device";
   element.entityId = 7;
-  let emitted: { devices: Array<{ device?: { name?: string } }> } | null = null;
+  let emitted: { devices: Array<{ device?: { name?: string } }> } | undefined;
   (element as unknown as EventTarget).addEventListener("bundle-change", (event) => {
     emitted = (event as CustomEvent<{ bundle: typeof emitted }>).detail.bundle;
   });
@@ -815,4 +838,105 @@ test("activity role picker offers editable devices that are not linked yet", () 
   const result = element._renderActivityRolesBlock();
 
   assert.equal(templateHasValue(result, "Soundbar"), true);
+});
+
+test("activity role labels resolve from the active locale at render time", () => {
+  setToolsCardLanguage("es-ES");
+  try {
+    const result = renderActivityRolesBlock({
+      roles: [
+        { group: "volume", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 4 },
+        { group: "navigation", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 5 },
+        { group: "playback", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 4 },
+        { group: "channels", state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount: 2 },
+      ],
+      optionsFor: () => [],
+      openGroup: null,
+      menuAnchor: null,
+      onToggleMenu: () => undefined,
+      onAssign: () => undefined,
+      customize: {
+        label: "Personalizar botones individuales",
+        meta: null,
+        onOpen: () => undefined,
+      },
+    });
+
+    for (const label of [
+      "Control de botones de volumen",
+      "Control de botones de navegación y OK",
+      "Control de botones de reproducción",
+      "Control de botones de canal",
+    ]) {
+      assert.equal(templateHasValue(result, label), true);
+    }
+    assert.equal(templateHasValue(result, "Volume buttons control"), false);
+  } finally {
+    setToolsCardLanguage("en");
+  }
+});
+
+test("backup edit announces its dirty state to the host dock", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
+  const events: Array<{ dirty: boolean; kind?: string }> = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    const detail = (event as CustomEvent<{ dirty: boolean; kind?: string }>).detail;
+    events.push({ dirty: Boolean(detail.dirty), kind: detail.kind });
+  });
+  element.hub = { entry_id: "hub-1" };
+  element.hass = createHass({ operations: [] } as unknown as BackupOperationStateResponse);
+  element.selectedSection = "edit";
+  element._editBundle = { hub: { name: "Living room" }, activities: [], devices: [] };
+
+  // A file loaded but not edited is clean.
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+
+  // First edit → dirty, tagged as a download (not a hub sync).
+  element._editBundleDirty = true;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, [{ dirty: true, kind: "download" }]);
+
+  // No re-dispatch without a transition.
+  element._notifyDirtyDock();
+  assert.equal(events.length, 1);
+
+  // The draft survives a section switch, but the dock only nags on Edit.
+  element.selectedSection = "make";
+  element._notifyDirtyDock();
+  assert.deepEqual(events[1], { dirty: false, kind: "download" });
+
+  element.selectedSection = "edit";
+  element._notifyDirtyDock();
+  assert.deepEqual(events[2], { dirty: true, kind: "download" });
+
+  // Downloading the edited bundle clears it.
+  element._editBundleDirty = false;
+  element._notifyDirtyDock();
+  assert.deepEqual(events[3], { dirty: false, kind: "download" });
+  assert.equal(events.length, 4);
+});
+
+test("backup edit does not announce dirty from guard states", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
+  const events: boolean[] = [];
+  element.addEventListener("editor-dirty-changed", (event) => {
+    events.push(Boolean((event as CustomEvent<{ dirty: boolean }>).detail.dirty));
+  });
+  element.hub = { entry_id: "hub-1" };
+  element.hass = createHass({ operations: [] } as unknown as BackupOperationStateResponse);
+  element.selectedSection = "edit";
+  element._editBundle = { hub: { name: "Living room" }, activities: [], devices: [] };
+  element._editBundleDirty = true;
+
+  element.blockedTitle = "Hub busy";
+  element.blockedMessage = "Try again later";
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
+
+  element.blockedTitle = null;
+  element.blockedMessage = null;
+  element.loading = true;
+  element._notifyDirtyDock();
+  assert.deepEqual(events, []);
 });

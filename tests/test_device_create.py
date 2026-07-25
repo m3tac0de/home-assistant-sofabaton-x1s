@@ -41,7 +41,7 @@ ensure_stub_package(
     ROOT / "custom_components" / "sofabaton_x1s" / "lib",
 )
 
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X1
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib.device_create import (
     ACK_OPCODE_ACTIVITY_CREATE,
     ACK_OPCODE_BUTTON_BINDING,
@@ -345,6 +345,30 @@ def test_macro_step_rejects_step_record_length_not_multiple_of_ten() -> None:
             label="x",
             step_records=b"\x00" * 9,
         )
+
+
+def test_macro_step_rejects_rows_past_single_frame_limit() -> None:
+    # The family-frame opcode carries the payload length in one byte, so
+    # the single-page write caps at 18 rows on X1S (60B label slot) and
+    # 21 on X1 (30B). One row past the cap must raise, not wrap the
+    # length byte into a corrupt frame.
+    for hub_version, max_rows in ((HUB_VERSION_X1S, 18), (HUB_VERSION_X1, 21)):
+        at_limit = build_macro_step(
+            hub_version=hub_version,
+            device_id=0x0D,
+            key_id=0xC6,
+            label="POWER_ON",
+            step_records=b"\x00" * 10 * max_rows,
+        )
+        assert len(at_limit.payload) <= 0xFF
+        with pytest.raises(ValueError, match="single-page macro write"):
+            build_macro_step(
+                hub_version=hub_version,
+                device_id=0x0D,
+                key_id=0xC6,
+                label="POWER_ON",
+                step_records=b"\x00" * 10 * (max_rows + 1),
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -65,6 +65,7 @@ import {
   upsertDeviceButtonBinding,
   validateBackupBundle,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
+import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
 const bundle = {
   kind: "hub_bundle",
@@ -878,7 +879,7 @@ test("deviceMacroStepItems folds the trailing delay onto its command as wait", (
 
 test("setDeviceMacroStepWait inserts, updates in place, and no-ops at zero", () => {
   const base = deviceMacroBundle(); // one command, no trailing delay
-  const steps = (b: ReturnType<typeof deviceMacroBundle>) =>
+  const steps = (b: BackupBundlePayload) =>
     b.devices[0].macros!.find((m) => m.button_id === 198)!.steps!;
   // Zero wait on a group with no delay materializes nothing.
   assert.equal(steps(setDeviceMacroStepWait(base, 1, 198, 0, 0)).length, 1);

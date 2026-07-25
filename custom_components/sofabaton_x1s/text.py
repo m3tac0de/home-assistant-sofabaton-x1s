@@ -27,6 +27,8 @@ async def async_setup_entry(
 
 class SofabatonHubIpText(TextEntity):
     _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "hub_ip_address"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:ip"
     _attr_entity_registry_enabled_default = False
@@ -35,10 +37,6 @@ class SofabatonHubIpText(TextEntity):
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_ip_address"
-
-    @property
-    def name(self) -> str | None:
-        return f"{get_hub_display_name(self._hub, self._entry)} hub IP address"
 
     @property
     def native_value(self) -> str | None:

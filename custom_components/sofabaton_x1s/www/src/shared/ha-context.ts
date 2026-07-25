@@ -28,11 +28,14 @@ export interface HassConnectionLike {
 
 export interface HassLike {
   states: Record<string, HassEntityState>;
+  locale?: { language?: string };
+  language?: string;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
     domain: string,
     service: string,
     serviceData?: Record<string, unknown>,
+    target?: Record<string, unknown>,
   ): Promise<unknown>;
   connection?: HassConnectionLike | null;
 }
@@ -81,7 +84,15 @@ export interface ControlPanelRuntimeState {
   kind: "idle" | "app_connected" | "operation_running";
   operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | null;
   label?: string | null;
+  /** Backend-authored English prose. Kept as a last-resort fallback only —
+   *  the fields below are what gets localized. */
   detail?: string | null;
+  /** Structured progress, mirroring BackupProgressEvent, so the dock can say
+   *  what the hub is actually doing in the user's language instead of only
+   *  counting steps. */
+  phase?: string | null;
+  current_device_id?: number | null;
+  current_activity_id?: number | null;
   current_step?: number | null;
   total_steps?: number | null;
   device_key?: string | null;
@@ -131,6 +142,43 @@ export interface ControlPanelLogLine {
 
 export interface LogsResponse {
   lines: ControlPanelLogLine[];
+}
+
+/** One configured Wifi Event slot (`sofabaton_x1s/wifi_event/list`). */
+export interface WifiEvent {
+  slot_index: number;
+  name: string;
+  long_press_enabled: boolean;
+  action: Record<string, unknown>;
+  long_press_action: Record<string, unknown>;
+  /** Short law: slot_index + 1. */
+  command_id: number;
+  /** Long law: command_id + slot_count. */
+  long_press_command_id: number;
+  /** The deployed hub device id, or null before the first deploy lands. */
+  device_id: number | null;
+  /** False for a staged slot whose deploy hasn't landed (needs sync). */
+  deployed: boolean;
+}
+
+export interface WifiEventsListResponse {
+  events: WifiEvent[];
+  /** True when the record's staged config differs from the deployed hash —
+   *  the Sync press must run the events-record deploy as phase 1 (W7). */
+  record_needs_sync?: boolean;
+  /** The deployed events-device id, or null before the first deploy ever
+   *  (refs use the placeholder id 0 until the Sync flow rewrites them). */
+  device_id?: number | null;
+}
+
+export interface WifiEventCreateResponse extends WifiEventsListResponse {
+  event: {
+    slot_index: number;
+    name: string;
+    command_id: number;
+    long_press_command_id: number;
+    device_id: number | null;
+  };
 }
 
 /**

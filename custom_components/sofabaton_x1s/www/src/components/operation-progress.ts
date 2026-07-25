@@ -103,7 +103,7 @@ export const operationProgressStyles = css`
     100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
   }
 
-  @media (max-width: 760px) {
+  @container sofabaton-card (max-width: 700px) {
     .progress-disc { width: 64px; height: 64px; }
     .progress-disc ha-icon { --mdc-icon-size: 42px; }
     .progress-disc .progress-hub-svg { width: 50px; height: 50px; }

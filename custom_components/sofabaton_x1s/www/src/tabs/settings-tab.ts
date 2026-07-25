@@ -33,8 +33,13 @@ export function renderSettingsTab(params: {
   const connected = hubConnected(params.hass, hub);
   const proxyOn = proxyClientConnected(params.hass, hub);
   const hubVersion = String(hub.version ?? "").trim();
-  const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
-  const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
+  const firmwareVersion = hub.firmware_version != null
+    ? TOOLS_CARD_STRINGS.hub.firmwareVersion(hub.firmware_version)
+    : "";
+  const versionLine = [
+    hubVersion ? TOOLS_CARD_STRINGS.hub.productVersion(hubVersion) : "",
+    firmwareVersion,
+  ].filter(Boolean).join(" / ");
 
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
