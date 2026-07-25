@@ -13,7 +13,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
 - 🤖 **Home Assistant ➜ Sofabaton**: send commands with `remote.send_command` or the Sofabaton Virtual Remote; find the required IDs using Virtual Remote key capture or the Control Panel.
-- ⚡ **Sofabaton ➜ Home Assistant**: turn selected physical remote button presses, Hub Events, and Activity Events into Home Assistant Actions using the Control Panel's **Automation** tab; see the [`Automation guide`](docs/wifi_commands.md).
+- ⚡ **Sofabaton ➜ Home Assistant**: use Wifi Commands and Wifi Events to make remote presses run Home Assistant Actions, or react to Hub and Activity Events; see the [`Automation guide`](docs/wifi_commands.md).
 - 🔄 **Fully local backup and restore**: "Backup" via the Control Panel card, see [`docs/backup.md`](docs/backup.md)
 - 💾 **Store, share and generate IR codes**: command payloads via the Hub tab's device editor, see [`docs/command_payloads.md`](docs/command_payloads.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
@@ -65,7 +65,7 @@ When the official app is connected to the proxy, HA entities that can send comma
 - 🔌 **Home Assistant and the Sofabaton app together** — the built-in local proxy lets the official app share hub access with Home Assistant.
 - 🖥️ **Live hub editing** — manage Activities, Devices, commands, button assignments, power behavior, shortcuts, and macros from the Control Panel.
 - ⚙️ **Home Assistant ➜ Sofabaton** — send device commands, start or switch Activities, and power off the hub.
-- 💎 **Sofabaton ➜ Home Assistant** — respond to selected physical remote buttons, Hub Events, and Activity Events with Home Assistant Actions or your own automations. See the [`Automation guide`](docs/wifi_commands.md).
+- 💎 **Sofabaton ➜ Home Assistant** — use Wifi Commands and Wifi Events to make remote presses run Home Assistant Actions, or react to Hub and Activity Events with your own automations. See the [`Automation guide`](docs/wifi_commands.md).
 - 🔄 **Local backup and restore** — restore a whole hub or selected Devices, including supported moves to newer hub models. See the [`backup guide`](docs/backup.md).
 - 💾 **Command payload tools** — retrieve, test, edit, generate, save, and share IR command payloads. See the [`command payload guide`](docs/command_payloads.md).
 - 🧰 **Maintenance and diagnostics** — persistent cache, live hub logs, Find Remote, and configurable network listeners and ports.
@@ -123,14 +123,14 @@ When the official app is connected to the proxy, HA entities that can send comma
   - `switch.<hub>_hex_logging`  
     Enables deep protocol logging for diagnostics (see logging docs).
   - `switch.<hub>_wifi_device`  
-    Enables/disables the listener for Wifi Commands. Disabled by default, enabled automatically when deploying Wifi Commands to the hub.
+    Enables/disables the shared HTTP callback listener for Wifi Commands and Wifi Events. It is enabled automatically when either feature is deployed.
 
 - **Sensors**
   - `binary_sensor.<hub>_hub_connected` (is the hub connected/disconnected to the integration)
   - `binary_sensor.<hub>_app_connected` (is the official app connected to the proxy)
   - `sensor.<hub>_activity` (current activity; stays accurate regardless of where it changed, **always available**)
   - `sensor.<hub>_index` (diagnostic: activities/devices/commands/macros/favorites)
-  - `sensor.<hub>_wifi_commands` (updates on Wifi Command key presses)
+  - `sensor.<hub>_wifi_commands` (updates when a Wifi Command or Wifi Event is triggered)
 
 - **Buttons**
   - `button.<hub>_find_remote`
@@ -170,7 +170,7 @@ card_height: 700
 ### What the tabs do
 
 - **Hub** — browse and refresh Activities and Devices. Create, edit, reorder, or delete them; manage Activity membership, inputs, power sequences, button assignments, shortcuts and macros; and edit Device power behavior, commands, IP addresses, and command payloads. See the [`command payload guide`](docs/command_payloads.md).
-- **Automation** — configure **Wifi Commands** that respond to physical remote buttons, or attach Home Assistant Actions to **Hub Events** and **Activity Events**. See the [`Wifi Commands and Events guide`](docs/wifi_commands.md).
+- **Automation** — configure **Wifi Commands**, attach Actions to **Wifi Events**, or react to **Hub Events** and **Activity Events**. See the [`Wifi Commands and Events guide`](docs/wifi_commands.md).
 - **Backup** — create whole-hub or selected-Device backups, edit backup files offline, and selectively restore content to the same hub or a supported newer model. See the [`backup guide`](docs/backup.md).
 - **Settings and Logs** — manage persistent cache, proxy and Wifi listener settings, diagnostic logging, Find Remote, and physical remote sync; inspect live hub logs when troubleshooting.
 
@@ -194,14 +194,21 @@ Each command can run a Home Assistant Action directly. Every press also updates 
 
 <img height="250" alt="Wifi Devices list" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Automation Events" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/automation-events.png" /> <img height="250" alt="Command slot: configuring an Action" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-action.png" />
 
-### Events: react to Hub and Activity Events
+### Wifi Events: put Home Assistant Actions inside Activities
+
+Wifi Events are the quickest way to make a shortcut, physical button, or macro step run something in Home Assistant. Create or select one from an Activity's live editor, press **Sync** to deploy the event and its Activity reference, then attach its Action under **Automation → Events**.
+
+The first Wifi Event creates a shared **Wifi Events** device on the hub and can take about a minute to deploy. Later events normally use a targeted update. Every press also updates `sensor.<hub>_wifi_commands`.
+
+### Events: react to Wifi, Hub, and Activity Events
 
 Under **Automation → Events**, attach Home Assistant Actions to changes reported by the hub:
 
+- **Wifi Events** — Actions for named events used as Activity shortcuts, physical-button assignments, or macro steps.
 - **Hub Events** — when any Activity starts or stops, when the hub is switched off, or when Off is pressed while the hub is already off.
 - **Activity Events** — separate start and stop hooks for every Activity. When switching directly between Activities, the old Activity stops before the new one starts.
 
-Event Actions run entirely in Home Assistant. They require no Wifi Device or command slots and are never synced to the hub.
+All Event Actions run in Home Assistant and can be changed without syncing. Wifi Event definitions and Activity references are hub configuration and are deployed from the live editors; Hub and Activity Events require no Wifi Device or command slots and are never synced to the hub.
 
 Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
@@ -269,14 +276,14 @@ target:
 
 No. The hub does not provide a general stream of every physical button press.
 
-To bring selected buttons into Home Assistant, configure them under **Automation → Wifi Commands** in the Control Panel. Home Assistant can also respond to Activity changes and hub power events through **Automation → Events**.
+To bring selected buttons into Home Assistant, configure them under **Automation → Wifi Commands**, or add a **Wifi Event** to an Activity shortcut, physical button, or macro step. Home Assistant can also respond to Activity changes and hub power events through **Automation → Events**.
 
 </details>
 
 <details>
 <summary><strong>How does this differ from the official X2 integration?</strong></summary>
 
-The [official X2 integration](https://github.com/yomonpet/ha-sofabaton-hub) supports the X2 and communicates through its MQTT interface. **Sofabaton X** supports X1, X1S, and X2 through a direct local connection to the hub. It also provides live hub editing, backup and restore, Wifi Commands, Automation Events, command-payload tools, and a proxy for the Sofabaton app.
+The [official X2 integration](https://github.com/yomonpet/ha-sofabaton-hub) supports the X2 and communicates through its MQTT interface. **Sofabaton X** supports X1, X1S, and X2 through a direct local connection to the hub. It also provides live hub editing, backup and restore, Wifi Commands, Wifi Events, Automation Events, command-payload tools, and a proxy for the Sofabaton app.
 
 </details>
 
