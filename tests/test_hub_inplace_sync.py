@@ -92,7 +92,16 @@ def _payload(*, deployed_port=PORT):
     }
 
 
-def _make_hub(monkeypatch, loop, *, store, device_entry, run_result=None, call_order=None):
+def _make_hub(
+    monkeypatch,
+    loop,
+    *,
+    store,
+    device_entry,
+    run_result=None,
+    call_order=None,
+    replacement_commands_persist=True,
+):
     calls = call_order if call_order is not None else []
     hass = FakeHass(loop)
     hub = SofabatonHub(
@@ -131,6 +140,13 @@ def _make_hub(monkeypatch, loop, *, store, device_entry, run_result=None, call_o
     # replace-path fakes (only reached on fall-through)
     async def _create(*_args, **_kwargs):
         calls.append("create")
+        if replacement_commands_persist:
+            command_rows = {
+                idx + 1: str(command["display_name"])
+                for idx, command in enumerate(_kwargs.get("commands") or [])
+            }
+            hub._proxy.state.commands[9] = command_rows
+            hub._proxy._commands_complete.add(9)
         return {"device_id": 9, "status": "success"}
 
     async def _delete(dev_id, *_args, **_kwargs):
@@ -237,6 +253,54 @@ def test_drifted_records_fall_back(monkeypatch):
     assert result["status"] == "success"
     assert "create" in calls
     assert "inplace_run" not in calls
+    loop.close()
+
+
+def test_missing_managed_commands_fall_back_to_verified_replace(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store()
+    calls: list[str] = []
+    empty_device = _device_entry()
+    empty_device["commands"] = []
+    hub = _make_hub(
+        monkeypatch,
+        loop,
+        store=store,
+        device_entry=empty_device,
+        call_order=calls,
+    )
+
+    result = _run_sync(loop, hub, _payload())
+
+    assert result["status"] == "success"
+    assert "inplace_run" not in calls
+    assert calls.index("create") < calls.index(f"delete:{DEV_ID}")
+    loop.close()
+
+
+def test_failed_replacement_command_readback_keeps_existing_device(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store()
+    calls: list[str] = []
+    hub = _make_hub(
+        monkeypatch,
+        loop,
+        store=store,
+        device_entry=_device_entry(),
+        call_order=calls,
+        replacement_commands_persist=False,
+    )
+
+    with pytest.raises(
+        Exception,
+        match="replacement Wifi Device did not pass command readback",
+    ):
+        _run_sync(loop, hub, _payload(deployed_port=9999))
+
+    assert calls == ["create", "delete:9"]
+    assert f"delete:{DEV_ID}" not in calls
     loop.close()
 
 

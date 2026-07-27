@@ -211,6 +211,12 @@ Forces a resync of the physical remote. Automatically called at the end of a hub
 
 A re-sync (any sync after the first) now **edits the deployed Wifi Device in place**: only the records that actually changed are rewritten, nothing is deleted, and the device keeps its identity on the hub. That means anything you attached to the Wifi Device yourself through the Sofabaton app — extra Activity memberships, favorites, hard-button bindings, macro steps — keeps working across re-syncs. In-place updates are also much faster than a full deploy (a rename is a single record rewrite instead of a multi-minute redeploy).
 
+If a managed command record is missing from the hub, re-sync uses the
+create-first replacement path instead of trying to synthesize the record in
+place. The new device's complete command table is read back before any Activity
+is changed or the old device is deleted. If that readback is incomplete, the
+unreferenced replacement is removed and the existing device remains unchanged.
+
 A few situations still require the older **replace** behaviour (create the new device, move it into its Activities, then delete the old one):
 
 - the **first deploy** of a Wifi Device (and the first sync after upgrading from an integration version that predates in-place updates),
