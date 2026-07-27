@@ -42,6 +42,33 @@ class FakeHass:
             entry.title = title
 
 
+def _cache_created_wifi_commands(
+    hub: SofabatonHub,
+    kwargs: dict,
+    *,
+    device_id: int = 9,
+    slot_count: int = 10,
+) -> None:
+    """Mirror the command-list readback produced by a successful fake create."""
+
+    hub._proxy.state.commands[device_id] = {
+        int(command.get("command_index", 0))
+        + 1
+        + (slot_count if command.get("press_type") == "long" else 0):
+        str(command.get("display_name") or "")
+        for command in kwargs.get("commands") or []
+    }
+
+
+async def _create_wifi_with_command_cache(
+    hub: SofabatonHub,
+    *_args,
+    **kwargs,
+):
+    _cache_created_wifi_commands(hub, kwargs)
+    return {"device_id": 9, "status": "success"}
+
+
 class FakeDeviceRegistry:
     def __init__(self, device=None):
         self.device = device
@@ -2753,6 +2780,7 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
 
     async def _create(*_args, **_kwargs):
         create_calls.append(dict(_kwargs))
+        _cache_created_wifi_commands(hub, _kwargs)
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(*_args, **_kwargs):
@@ -2872,7 +2900,7 @@ def test_sync_command_config_primes_wifi_device_commands_before_refreshing_favor
     monkeypatch.setattr(
         hub,
         "async_create_wifi_device",
-        lambda *_a, **_k: asyncio.sleep(0, result={"device_id": 9, "status": "success"}),
+        lambda *_a, **_k: _create_wifi_with_command_cache(hub, *_a, **_k),
     )
     monkeypatch.setattr(
         hub,
@@ -3144,7 +3172,7 @@ def test_sync_command_config_rewarms_every_touched_activity(monkeypatch):
     monkeypatch.setattr(
         hub,
         "async_create_wifi_device",
-        lambda *_a, **_k: asyncio.sleep(0, result={"device_id": 9, "status": "success"}),
+        lambda *_a, **_k: _create_wifi_with_command_cache(hub, *_a, **_k),
     )
     monkeypatch.setattr(
         hub,
@@ -3445,6 +3473,7 @@ def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
 
     async def _create(*_args, **_kwargs):
         call_order.append("create")
+        _cache_created_wifi_commands(hub, _kwargs)
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(act_id, dev_id, **_kwargs):
@@ -3580,6 +3609,7 @@ def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
 
     async def _create(*_args, **_kwargs):
+        _cache_created_wifi_commands(hub, _kwargs)
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(*_args, **_kwargs):
@@ -3759,6 +3789,7 @@ def test_sync_command_config_post_hoc_reorder_uses_tracked_fav_ids(monkeypatch):
     monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices)
 
     async def _create(*_args, **_kwargs):
+        _cache_created_wifi_commands(hub, _kwargs)
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(*_args, **_kwargs):
@@ -4168,6 +4199,7 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
 
     async def _create(*_args, **kwargs):
         create_calls.append(dict(kwargs))
+        _cache_created_wifi_commands(hub, kwargs)
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(activity_id, device_id, input_cmd_id=None, **_kwargs):
@@ -5049,6 +5081,7 @@ def test_sync_command_config_proceeds_when_activity_labels_match(monkeypatch):
 
     async def _create(*_args, **_kwargs):
         create_calls.append(dict(_kwargs))
+        _cache_created_wifi_commands(hub, _kwargs)
         return {"device_id": 9, "status": "success"}
 
     add_calls: list[int] = []
