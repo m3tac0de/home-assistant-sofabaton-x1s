@@ -13,10 +13,7 @@ import asyncio
 import pytest
 
 import custom_components.sofabaton_x1s.hub as hub_module
-from custom_components.sofabaton_x1s.hub import (
-    SofabatonHub,
-    _required_wifi_command_record_ids,
-)
+from custom_components.sofabaton_x1s.hub import SofabatonHub
 from tests.test_hub_commands import FakeHass
 
 OLD_HASH = "oldhash"
@@ -103,10 +100,6 @@ def _make_hub(monkeypatch, loop, *, store, device_entry, run_result=None, call_o
     )
     hub.roku_server_enabled = True
     hub.activities = {}
-    hub._proxy.state.commands[DEV_ID] = {
-        int(row["command_id"]): str(row["command_label"])
-        for row in device_entry.get("commands", [])
-    }
 
     snapshot = {DEV_ID: {"brand": f"m3-default-{OLD_HASH}", "name": "Home Assistant"}}
 
@@ -121,7 +114,7 @@ def _make_hub(monkeypatch, loop, *, store, device_entry, run_result=None, call_o
     monkeypatch.setattr(hub._proxy, "backup_activity", lambda *_a, **_k: {})
     plans: list = []
 
-    def _run(plan, progress_callback=None, request_port=8060, slot_count=10):
+    def _run(plan, progress_callback=None):
         plans.append(plan)
         calls.append("inplace_run")
         if run_result is not None:
@@ -138,13 +131,6 @@ def _make_hub(monkeypatch, loop, *, store, device_entry, run_result=None, call_o
     # replace-path fakes (only reached on fall-through)
     async def _create(*_args, **_kwargs):
         calls.append("create")
-        hub._proxy.state.commands[9] = {
-            int(command.get("command_index", 0))
-            + 1
-            + (10 if command.get("press_type") == "long" else 0):
-            str(command.get("display_name") or "")
-            for command in _kwargs.get("commands") or []
-        }
         return {"device_id": 9, "status": "success"}
 
     async def _delete(dev_id, *_args, **_kwargs):
@@ -182,114 +168,6 @@ def _run_sync(loop, hub, payload):
     return loop.run_until_complete(
         hub.async_sync_command_config(command_payload=payload, request_port=PORT)
     )
-
-
-def test_required_record_ids_only_include_reachable_short_and_long_slots():
-    payload = _payload()
-    payload["commands"].extend(
-        [
-            {
-                "name": "Fan",
-                "add_as_favorite": False,
-                "hard_button": "green",
-                "long_press_enabled": True,
-                "input_activity_id": "",
-                "activities": ["101"],
-                "action": {},
-            },
-            {
-                "name": "Unused",
-                "add_as_favorite": False,
-                "hard_button": "",
-                "long_press_enabled": False,
-                "input_activity_id": "",
-                "activities": [],
-                "action": {},
-            },
-        ]
-    )
-    payload["commands"][0]["action"] = {
-        "action": "perform-action",
-        "perform_action": "script.turn_on",
-    }
-
-    assert _required_wifi_command_record_ids(
-        payload["commands"],
-        payload,
-        slot_count=10,
-        standalone_long_press=False,
-    ) == {1, 2, 12}
-
-
-def test_missing_live_command_readback_fails_without_saving_deployed_hash(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    store = _Store()
-    calls: list[str] = []
-    hub = _make_hub(
-        monkeypatch,
-        loop,
-        store=store,
-        device_entry={**_device_entry(), "commands": []},
-        call_order=calls,
-    )
-    payload = _payload()
-    payload["commands"][0]["action"] = {
-        "action": "perform-action",
-        "perform_action": "script.turn_on",
-    }
-
-    with pytest.raises(
-        hub_module.HomeAssistantError,
-        match="missing command records 1",
-    ):
-        _run_sync(loop, hub, payload)
-
-    assert [step.kind for step in hub._inplace_plans[0].steps] == [
-        "command_add",
-        "wifi_head_commit",
-    ]
-    assert not store.saved
-    assert "create" not in calls
-    loop.close()
-
-
-def test_command_repair_saves_only_after_fresh_readback(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    store = _Store()
-    calls: list[str] = []
-    hub = _make_hub(
-        monkeypatch,
-        loop,
-        store=store,
-        device_entry={**_device_entry(), "commands": []},
-        call_order=calls,
-    )
-    payload = _payload()
-    payload["commands"][0]["action"] = {
-        "action": "perform-action",
-        "perform_action": "script.turn_on",
-    }
-
-    def _repair(plan, **_kwargs):
-        calls.append("inplace_run")
-        hub._proxy.state.commands[DEV_ID] = {1: "Command 1"}
-        return {
-            "status": "success",
-            "completed_steps": len(plan.steps),
-            "total_steps": len(plan.steps),
-            "counters": {"command_add": 1},
-        }
-
-    monkeypatch.setattr(hub._proxy, "run_wifi_inplace_plan", _repair)
-
-    result = _run_sync(loop, hub, payload)
-
-    assert result["status"] == "success"
-    assert result["inplace"] is True
-    assert store.saved and store.saved[0]["commands_hash"] == NEW_HASH
-    loop.close()
 
 
 def test_inplace_path_runs_and_skips_replace(monkeypatch):

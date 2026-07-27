@@ -123,49 +123,6 @@ def test_empty_plan_is_success_noop():
     assert proxy.dispatched == []
 
 
-def test_wifi_command_add_builds_existing_device_http_record():
-    proxy = FakeProxy()
-    captured: dict = {}
-    proxy.get_routed_local_ip = lambda: "192.168.1.25"
-
-    def _path(**kwargs):
-        captured["path"] = kwargs
-        return "/launch-action/test"
-
-    proxy._build_launch_action_path = _path
-    proxy._build_virtual_ip_http_request = (
-        lambda host, port, path: f"GET {path} {host}:{port}".encode()
-    )
-
-    def _persist(**kwargs):
-        captured["persist"] = kwargs
-        return {"status": "success"}
-
-    proxy.persist_command_record = _persist
-    proxy._register_command_in_device_sort = (
-        lambda **kwargs: captured.setdefault("sort", kwargs)
-    )
-
-    assert proxy._sync_step_wifi_command_add(
-        {
-            "device_id": DEV,
-            "command_id": 12,
-            "command_name": "Fan Long Press",
-        },
-        {"request_port": 8060, "slot_count": 10},
-    )
-    assert captured["path"] == {
-        "device_id": DEV,
-        "command_index": 1,
-        "press_type": "long",
-    }
-    assert captured["persist"]["device_id"] == DEV
-    assert captured["persist"]["command_id"] == 12
-    assert captured["persist"]["command_name"] == "Fan Long Press"
-    assert captured["persist"]["command_data"].startswith(bytes([192, 168, 1, 25]))
-    assert captured["sort"]["new_command_id"] == 12
-
-
 def test_new_step_kinds_resolve_to_drivers():
     for kind in (
         "command_delete",

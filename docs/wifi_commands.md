@@ -211,13 +211,6 @@ Forces a resync of the physical remote. Automatically called at the end of a hub
 
 A re-sync (any sync after the first) now **edits the deployed Wifi Device in place**: only the records that actually changed are rewritten, nothing is deleted, and the device keeps its identity on the hub. That means anything you attached to the Wifi Device yourself through the Sofabaton app — extra Activity memberships, favorites, hard-button bindings, macro steps — keeps working across re-syncs. In-place updates are also much faster than a full deploy (a rename is a single record rewrite instead of a multi-minute redeploy).
 
-If a managed command is still referenced by power, an Activity input, a
-favorite, a hard-button binding, or a Home Assistant Action but its live hub
-record is missing, re-sync reconstructs that callback record in place. Every
-sync reads the required command records back from the hub before recording
-deployment success. A missing record therefore leaves the configuration
-out-of-step and reports an error instead of trusting a stale deployed hash.
-
 A few situations still require the older **replace** behaviour (create the new device, move it into its Activities, then delete the old one):
 
 - the **first deploy** of a Wifi Device (and the first sync after upgrading from an integration version that predates in-place updates),
@@ -237,9 +230,7 @@ X1 hub firmware only delivers a single power callback and a single Activity-star
 ## Recovery
 
 - This feature involves reconfiguring the hub, it is therefore a good idea to create a backup of your hub configuration before using this feature.
-- If the **first deployment** of a Wifi Device fails or required command-record
-  readback is incomplete, a rollback is performed and no trace will be left on
-  the hub.
+- If the **first deployment** of a Wifi Device fails, a rollback is performed and no trace will be left on the hub.
 - If an **in-place update** is interrupted (for example the hub rejects a write mid-way), nothing is rolled back: every in-place write is an independent, safely repeatable edit. The device simply reads as out-of-step and the next sync picks up where it left off.
 - Manual removal: this feature creates a Device on the Sofabaton hub. Removing it through the app is safe and removes the Wifi Commands configuration from your hub. The integration will notice hub configuration is no longer in sync, and provides the option to re-sync.
 

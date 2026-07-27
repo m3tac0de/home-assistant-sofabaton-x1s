@@ -18,7 +18,6 @@ emissions".
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import time
 from dataclasses import replace
@@ -40,7 +39,6 @@ from .devices import build_device_create_payload, parse_device_record
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
-    DEVICE_CLASS_CODE_WIFI_IP,
     FAMILY_FAV_DELETE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
@@ -1041,9 +1039,6 @@ class ActivitySyncMixin:
 
         restore_data = payload.get("restore_data")
         if not isinstance(restore_data, Mapping):
-            wifi_context = getattr(self, "_wifi_inplace_command_context", None)
-            if isinstance(wifi_context, Mapping):
-                return self._sync_step_wifi_command_add(payload, wifi_context)
             self._log.warning(
                 "[DEVICE_SYNC] command_add: no restore_data dev=0x%02X cmd=0x%02X",
                 dev_lo, cmd_lo,
@@ -1152,91 +1147,6 @@ class ActivitySyncMixin:
         # the new command in the device's family-0x61 display-sort table;
         # without a slot the command plays fine but stays off the remote's
         # device-browse screen. Best-effort, same as the IR path.
-        self._register_command_in_device_sort(
-            dev_lo=dev_lo,
-            new_command_id=cmd_lo,
-            ack_timeout=5.0,
-        )
-        return True
-
-    def _sync_step_wifi_command_add(
-        self,
-        payload: Mapping[str, Any],
-        context: Mapping[str, Any],
-    ) -> bool:
-        """Create one missing managed Wifi callback record in place.
-
-        Existing Wifi Devices do not carry command ``restore_data`` because
-        their HTTP callback payload is derived from the managed slot. Build
-        that payload here and use the existing-device record writer; the
-        create-flow family-0x0E payload is ACKed but discarded by X1S/X2 when
-        it targets an existing device.
-        """
-
-        dev_lo = int(payload.get("device_id") or 0) & 0xFF
-        cmd_lo = int(payload.get("command_id") or 0) & 0xFF
-        slot_count = int(context.get("slot_count") or 10)
-        request_port = int(context.get("request_port") or 8060) & 0xFFFF
-        if not dev_lo or not cmd_lo or slot_count < 1:
-            return False
-
-        command_name = (
-            str(payload.get("command_name") or "").strip()
-            or f"Command {cmd_lo}"
-        )
-        press_type = "long" if cmd_lo > slot_count else "short"
-        command_index = (cmd_lo - 1) % slot_count
-        request_host = self.get_routed_local_ip()
-        try:
-            request_ip = ipaddress.IPv4Address(request_host).packed
-        except ipaddress.AddressValueError:
-            self._log.warning(
-                "[WIFI_INPLACE] invalid callback host %s for dev=0x%02X cmd=0x%02X",
-                request_host,
-                dev_lo,
-                cmd_lo,
-            )
-            return False
-
-        request_blob = self._build_virtual_ip_http_request(
-            host=request_host,
-            port=request_port,
-            path=self._build_launch_action_path(
-                device_id=dev_lo,
-                command_index=command_index,
-                press_type=press_type,
-            ),
-        )
-        command_data = (
-            request_ip
-            + request_port.to_bytes(2, "big")
-            + b"\x00"
-            + bytes([len(request_blob) & 0xFF])
-            + request_blob
-        )
-        try:
-            result = self.persist_command_record(
-                device_id=dev_lo,
-                command_name=command_name,
-                library_type=DEVICE_CLASS_CODE_WIFI_IP,
-                command_data=command_data,
-                command_code=0,
-                command_id=cmd_lo,
-            )
-        except ValueError:
-            self._log.exception(
-                "[WIFI_INPLACE] command persist refused dev=0x%02X cmd=0x%02X",
-                dev_lo,
-                cmd_lo,
-            )
-            return False
-        if not isinstance(result, dict) or result.get("status") != "success":
-            self._log.warning(
-                "[WIFI_INPLACE] command persist rejected dev=0x%02X cmd=0x%02X",
-                dev_lo,
-                cmd_lo,
-            )
-            return False
         self._register_command_in_device_sort(
             dev_lo=dev_lo,
             new_command_id=cmd_lo,
@@ -1694,8 +1604,6 @@ class ActivitySyncMixin:
         plan: Any,
         *,
         progress_callback: Callable[..., None] | None = None,
-        request_port: int = 8060,
-        slot_count: int = 10,
     ) -> dict[str, Any]:
         """Walk a :class:`WifiInplacePlan` step by step, ack-gated and serial.
 
@@ -1717,29 +1625,22 @@ class ActivitySyncMixin:
 
         total = len(steps)
         counters: dict[str, int] = {}
-        self._wifi_inplace_command_context = {
-            "request_port": int(request_port),
-            "slot_count": int(slot_count),
-        }
-        try:
-            for index, step in enumerate(steps):
-                _progress(phase="writing", message=step.label, completed_steps=index, total_steps=total)
+        for index, step in enumerate(steps):
+            _progress(phase="writing", message=step.label, completed_steps=index, total_steps=total)
+            ok = self._dispatch_activity_sync_step(step)
+            if not ok:
+                # Every in-place step is an idempotent rewrite, so a transient
+                # ack miss (observed live: a macro-save ack lost under
+                # background hub traffic) is safely retried once.
+                self._log.warning(
+                    "[WIFI_INPLACE] step %s failed; retrying once", step.kind
+                )
+                time.sleep(2.0)
                 ok = self._dispatch_activity_sync_step(step)
-                if not ok:
-                    # Every in-place step is an idempotent rewrite, so a transient
-                    # ack miss (observed live: a macro-save ack lost under
-                    # background hub traffic) is safely retried once.
-                    self._log.warning(
-                        "[WIFI_INPLACE] step %s failed; retrying once", step.kind
-                    )
-                    time.sleep(2.0)
-                    ok = self._dispatch_activity_sync_step(step)
-                if not ok:
-                    return {"status": "failed", "failed_at": step.kind,
-                            "message": f"The hub rejected: {step.label}", "completed_steps": index}
-                counters[step.kind] = counters.get(step.kind, 0) + 1
-        finally:
-            self._wifi_inplace_command_context = None
+            if not ok:
+                return {"status": "failed", "failed_at": step.kind,
+                        "message": f"The hub rejected: {step.label}", "completed_steps": index}
+            counters[step.kind] = counters.get(step.kind, 0) + 1
         _progress(phase="completed", message="Synced to hub.", completed_steps=total, total_steps=total)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
 

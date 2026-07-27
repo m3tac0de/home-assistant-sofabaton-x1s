@@ -83,7 +83,6 @@ from .command_config import (
     DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
     is_wifi_events_device_key,
-    normalize_commands,
     normalize_command_name,
     normalize_power_command_id,
     wifi_device_requires_listener,
@@ -97,51 +96,6 @@ _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.
 # id offset always equals the record's slot count (long = short + N,
 # live-validated at N=6/10/50 — docs/internal/wifi-events-plan.md §11).
 _WIFI_COMMAND_SLOT_COUNT = 10
-
-
-def _required_wifi_command_record_ids(
-    commands: list[dict[str, Any]],
-    command_payload: dict[str, Any],
-    *,
-    slot_count: int,
-    standalone_long_press: bool,
-) -> set[int]:
-    """Return the command records reachable from the managed configuration."""
-
-    normalized_slots = normalize_commands(
-        commands,
-        slot_count=slot_count,
-        standalone_long_press=standalone_long_press,
-    )
-    power_record_ids = {
-        int(command_id)
-        for command_id in (
-            command_payload.get("power_on_command_id"),
-            command_payload.get("power_off_command_id"),
-        )
-        if command_id is not None
-    }
-    configured_record_ids: set[int] = set()
-    for idx, slot in enumerate(normalized_slots):
-        short_id = idx + 1
-        action = slot.get("action")
-        action_configured = isinstance(action, dict) and (
-            str(action.get("action") or "") not in ("", "perform-action")
-            or any(key != "action" for key in action)
-        )
-        record_is_reachable = (
-            short_id in power_record_ids
-            or bool(str(slot.get("hard_button") or "").strip())
-            or bool(str(slot.get("input_activity_id") or "").strip())
-            or (bool(slot.get("add_as_favorite")) and bool(slot.get("activities")))
-            or action_configured
-        )
-        if not record_is_reachable:
-            continue
-        configured_record_ids.add(short_id)
-        if bool(slot.get("long_press_enabled")):
-            configured_record_ids.add(short_id + slot_count)
-    return configured_record_ids
 
 
 def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
@@ -3605,23 +3559,6 @@ class SofabatonHub:
             )
             return None
 
-        required_record_ids = _required_wifi_command_record_ids(
-            commands,
-            command_payload,
-            slot_count=slot_count,
-            standalone_long_press=is_wifi_events_device_key(normalized_device_key),
-        )
-        plan = type(plan)(
-            steps=tuple(
-                step
-                for step in plan.steps
-                if step.kind != "command_add"
-                or int(step.payload.get("command_id") or 0)
-                in required_record_ids
-            ),
-            fallback_reason=plan.fallback_reason,
-        )
-
         total_steps = len(plan.steps) + 2
         if plan.steps:
             loop = self.hass.loop
@@ -3641,13 +3578,7 @@ class SofabatonHub:
                 loop.call_soon_threadsafe(_inner)
 
             result = await self.hass.async_add_executor_job(
-                partial(
-                    self._proxy.run_wifi_inplace_plan,
-                    plan,
-                    progress_callback=_progress,
-                    request_port=request_port,
-                    slot_count=slot_count,
-                )
+                partial(self._proxy.run_wifi_inplace_plan, plan, progress_callback=_progress)
             )
             if not isinstance(result, dict) or result.get("status") != "success":
                 # Writes started and one was rejected. Do NOT fall back to the
@@ -3674,16 +3605,8 @@ class SofabatonHub:
             for step in plan.steps
         )
         refresh_acts: set[int] = set(touched_acts)
-        if command_records_touched or required_record_ids:
+        if command_records_touched:
             await self.async_fetch_device_commands(dev_id)
-            live_record_ids = set(self._proxy.state.commands.get(dev_id, {}))
-            missing_record_ids = sorted(required_record_ids - live_record_ids)
-            if missing_record_ids:
-                raise HomeAssistantError(
-                    "Wifi Device command verification failed; "
-                    f"hub device {dev_id} is missing command records "
-                    + ", ".join(str(command_id) for command_id in missing_record_ids)
-                )
             # Record rewrites change labels that other activities' cached
             # favorite/keybinding label maps still hold (they are resolved
             # copies, not references into the device catalog). Re-warm
@@ -4058,32 +3981,6 @@ class SofabatonHub:
                     raise HomeAssistantError("Failed creating Wifi Device")
 
                 wifi_device_id = int(created["device_id"])
-                required_record_ids = _required_wifi_command_record_ids(
-                    commands,
-                    command_payload,
-                    slot_count=slot_count,
-                    standalone_long_press=is_wifi_events_device_key(
-                        normalized_device_key
-                    ),
-                )
-                if required_record_ids:
-                    await self.async_fetch_device_commands(wifi_device_id)
-                    live_record_ids = set(
-                        self._proxy.state.commands.get(wifi_device_id, {})
-                    )
-                    missing_record_ids = sorted(
-                        required_record_ids - live_record_ids
-                    )
-                    if missing_record_ids:
-                        await self.async_delete_device(wifi_device_id)
-                        raise HomeAssistantError(
-                            "Wifi Device command verification failed; "
-                            f"new hub device {wifi_device_id} is missing command records "
-                            + ", ".join(
-                                str(command_id)
-                                for command_id in missing_record_ids
-                            )
-                        )
                 cached_created_device = self._proxy.state.entities("device").get(wifi_device_id & 0xFF)
                 if isinstance(cached_created_device, dict):
                     self.devices[wifi_device_id & 0xFF] = dict(cached_created_device)
