@@ -49,6 +49,22 @@ from .protocol_const import (
 _POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
 _ACTIVITY_SYNC_DELETE_ACK_TIMEOUT = 12.0
 
+
+def _power_macro_label(button_id: int) -> str | None:
+    """Canonical on-hub label for a power macro slot, else ``None``.
+
+    The hub (and every client, including the vendor app and this
+    integration) hides the 198/199 macros by their ``POWER_*`` label, so
+    the label is protocol, not user data: writing anything else — a UI
+    fallback name, a translated string — un-hides the macro everywhere.
+    """
+    key = button_id & 0xFF
+    if key == ButtonName.POWER_ON:
+        return "POWER_ON"
+    if key == ButtonName.POWER_OFF:
+        return "POWER_OFF"
+    return None
+
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str)
 
@@ -860,11 +876,12 @@ class ActivitySyncMixin:
             session_ids.add(button_id & 0xFF)
         key_sequence = self._macro_key_sequence_from_steps(payload.get("steps") or [])
         label_slot = self._activity_sync_macro_label_slot(entity_id, button_id)
+        label = _power_macro_label(button_id) or str(payload.get("name") or "")
         wire = build_macro_save_payload(
             activity_id=entity_id & 0xFF,
             key_id=button_id & 0xFF,
             key_sequence=key_sequence,
-            label=str(payload.get("name") or ""),
+            label=label,
             hub_version=self.hub_version,
             label_slot=label_slot,
         )
@@ -907,7 +924,7 @@ class ActivitySyncMixin:
             hub_version=self.hub_version,
             device_id=dev_lo,
             key_id=button_id & 0xFF,
-            label=str(payload.get("name") or ""),
+            label=_power_macro_label(button_id) or str(payload.get("name") or ""),
             step_records=bytes(step_records),
         )
         self.reset_ack_queues()
@@ -922,6 +939,14 @@ class ActivitySyncMixin:
             return None
         for record in getter(activity_id):
             if (getattr(record, "key_id", 0) & 0xFF) == (button_id & 0xFF):
+                label = str(getattr(record, "label", "") or "")
+                if not label.startswith("POWER_"):
+                    # A power slot without a POWER_* label was written by
+                    # the integration's own nameless-macro bug (#263). It
+                    # is a from-scratch zero-padded slot with no vendor
+                    # metadata to round-trip, so rebuild it from the
+                    # canonical label instead of re-saving the corruption.
+                    return None
                 slot = getattr(record, "raw_label_slot", b"")
                 return bytes(slot) if slot else None
         return None

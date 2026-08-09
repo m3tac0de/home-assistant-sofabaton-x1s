@@ -8233,7 +8233,7 @@ function activityPowerDeviceIds(activity) {
       const command = Number(step?.command_id || 0);
       if (command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND) {
         const deviceId = Number(step?.device_id || 0);
-        if (deviceId > 0) ids.add(deviceId);
+        if (deviceId > 0 && deviceId < ACTIVITY_ENTITY_ID_MIN) ids.add(deviceId);
       }
     }
   }
@@ -8244,7 +8244,7 @@ function activityUsageDeviceIds(activity) {
   const ids = /* @__PURE__ */ new Set();
   const add = (value) => {
     const id = Number(value || 0);
-    if (id > 0 && id !== selfId) ids.add(id);
+    if (id > 0 && id < ACTIVITY_ENTITY_ID_MIN && id !== selfId) ids.add(id);
   };
   for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
   for (const binding of activity.button_bindings ?? []) {
@@ -8269,6 +8269,7 @@ function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
   const { prefix, groups } = groupMacroSteps(existingSteps);
   const kept = flattenMacroGroups(prefix, groups.filter((group) => {
     const deviceId = Number(group.head?.device_id || 0);
+    if (deviceId >= ACTIVITY_ENTITY_ID_MIN && deviceId !== 255) return true;
     return deviceId > 0 ? memberSet.has(deviceId) : true;
   }));
   const out = [...kept];
@@ -8314,7 +8315,7 @@ function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
     const memberSet = new Set(activityMemberDeviceIds(activity));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
-      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
+      if (extraId > 0 && extraId < ACTIVITY_ENTITY_ID_MIN && extraId !== selfId) memberSet.add(extraId);
     }
     const members = [...memberSet].sort((left, right) => left - right);
     const macros = [...activity.macros ?? []];
@@ -8326,7 +8327,10 @@ function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
       const next = {
         ...existing ?? {},
         button_id: buttonId,
-        name: existing?.name ?? name,
+        // The POWER_* label is protocol, not user data — the hub hides
+        // power macros by it. Always write the canonical name so a bad
+        // label (empty, or a UI fallback from the #263 bug) self-heals.
+        name,
         steps
       };
       if (index >= 0) macros[index] = next;
@@ -8703,7 +8707,12 @@ function updateActivityMacro(bundle, activityId, buttonId, transform) {
     const nextMacro = {
       ...existing ?? {},
       button_id: bId,
-      name: existing?.name ?? TOOLS_CARD_STRINGS.common.macroFallback(bId),
+      // `||` (not `??`): an empty name must also fall back, and for the
+      // power slots defaultMacroName returns the canonical POWER_* label
+      // rather than the localized display fallback — that label is
+      // protocol (the hub hides power macros by it) and must never
+      // carry UI text (#263).
+      name: existing?.name || defaultMacroName(bId),
       steps: transform(existing?.steps ?? [])
     };
     if (index >= 0) macros[index] = nextMacro;

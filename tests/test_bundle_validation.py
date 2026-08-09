@@ -231,6 +231,21 @@ def test_delay_rows_must_be_attached_but_zero_wait_may_be_absent_or_retained():
         validate_hub_bundle_for_model(consecutive, hub_version="X1S")
 
 
+def test_activity_range_linked_ids_are_grandfathered():
+    # Exports from <= 0.6.4 leaked activity-range ids into
+    # referenced_source_device_ids (a macro-target binding carries the
+    # activity's own id — issue #263). Such entries are ignored, not
+    # fatal: the field is a derived mirror and restore recomputes it.
+    legacy = valid_bundle()
+    legacy["activities"][0]["button_bindings"].append(
+        {"button_id": 0xB6, "device_id": 101, "command_id": 2}
+    )
+    legacy["activities"][0]["referenced_source_device_ids"] = [1, 101]
+    validate_hub_bundle_for_model(legacy, hub_version="X1S")
+    # Baseline (non-strict) mode must accept it too.
+    validate_hub_bundle_for_model(legacy, hub_version="X1S", strict_entity_ids=())
+
+
 def test_link_mirror_and_all_three_required_power_rows_are_enforced():
     stale_mirror = valid_bundle()
     stale_mirror["activities"][0]["referenced_source_device_ids"] = []

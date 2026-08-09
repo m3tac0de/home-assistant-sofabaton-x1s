@@ -1827,7 +1827,9 @@ function activityPowerDeviceIds(activity: BackupBundleActivityPayload): Set<numb
         || command === DEVICE_POWER_OFF_REF_COMMAND
       ) {
         const deviceId = Number(step?.device_id || 0);
-        if (deviceId > 0) ids.add(deviceId);
+        // Chain steps (a power ref whose target is another activity) are
+        // preserved in the macro but never count as member devices.
+        if (deviceId > 0 && deviceId < ACTIVITY_ENTITY_ID_MIN) ids.add(deviceId);
       }
     }
   }
@@ -1843,9 +1845,10 @@ function activityUsageDeviceIds(activity: BackupBundleActivityPayload): Set<numb
   const ids = new Set<number>();
   const add = (value: unknown) => {
     const id = Number(value || 0);
-    // The activity's own id appears as a binding target for MACRO bindings;
-    // it is not a source device and must not pull power steps for itself.
-    if (id > 0 && id !== selfId) ids.add(id);
+    // The activity's own id appears as a binding target for MACRO bindings,
+    // and other activities' ids appear in cross-activity chain steps;
+    // neither is a source device and must not pull power steps.
+    if (id > 0 && id < ACTIVITY_ENTITY_ID_MIN && id !== selfId) ids.add(id);
   };
   for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
   for (const binding of activity.button_bindings ?? []) {
@@ -1891,6 +1894,9 @@ function reconcilePowerMacroSteps(
   const { prefix, groups } = groupMacroSteps(existingSteps);
   const kept = flattenMacroGroups(prefix, groups.filter((group) => {
     const deviceId = Number(group.head?.device_id || 0);
+    // Activity-range targets are cross-activity chain rows; they are not
+    // member-managed, so preserve them verbatim.
+    if (deviceId >= ACTIVITY_ENTITY_ID_MIN && deviceId !== 0xFF) return true;
     return deviceId > 0 ? memberSet.has(deviceId) : true;
   }));
   const out = [...kept];
@@ -1949,7 +1955,7 @@ export function reconcileActivityPowerMacros(
     const memberSet = new Set(activityMemberDeviceIds(activity));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
-      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
+      if (extraId > 0 && extraId < ACTIVITY_ENTITY_ID_MIN && extraId !== selfId) memberSet.add(extraId);
     }
     const members = [...memberSet].sort((left, right) => left - right);
     const macros = [...(activity.macros ?? [])];
@@ -1961,7 +1967,10 @@ export function reconcileActivityPowerMacros(
       const next: BackupBundleMacroRow = {
         ...(existing ?? {}),
         button_id: buttonId,
-        name: existing?.name ?? name,
+        // The POWER_* label is protocol, not user data — the hub hides
+        // power macros by it. Always write the canonical name so a bad
+        // label (empty, or a UI fallback from the #263 bug) self-heals.
+        name,
         steps,
       };
       if (index >= 0) macros[index] = next;
@@ -2808,7 +2817,12 @@ function updateActivityMacro(
     const nextMacro: BackupBundleMacroRow = {
       ...(existing ?? {}),
       button_id: bId,
-      name: existing?.name ?? TOOLS_CARD_STRINGS.common.macroFallback(bId),
+      // `||` (not `??`): an empty name must also fall back, and for the
+      // power slots defaultMacroName returns the canonical POWER_* label
+      // rather than the localized display fallback — that label is
+      // protocol (the hub hides power macros by it) and must never
+      // carry UI text (#263).
+      name: existing?.name || defaultMacroName(bId),
       steps: transform(existing?.steps ?? []),
     };
     if (index >= 0) macros[index] = nextMacro;

@@ -319,7 +319,9 @@ def test_macro_write_passes_label_hub_version_and_preserves_power_label_slot():
     )
     proxy = FakeProxy(fresh_activity=_activity(base))
     raw_label_slot = "POWER_ON".encode("utf-16-be").ljust(58, b"\x00") + b"\x12\x34"
-    proxy.macro_records = [SimpleNamespace(key_id=198, raw_label_slot=raw_label_slot)]
+    proxy.macro_records = [
+        SimpleNamespace(key_id=198, label="POWER_ON", raw_label_slot=raw_label_slot)
+    ]
 
     result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
 
@@ -328,6 +330,50 @@ def test_macro_write_passes_label_hub_version_and_preserves_power_label_slot():
     assert macro_call[1][0] == 198
     assert isinstance(macro_call[1][1], bytes)
     assert raw_label_slot in macro_call[1][1]
+
+
+def test_power_macro_write_discards_corrupt_label_slot_and_writes_canonical_name():
+    # #263: an affected version wrote the UI fallback ("Macro 198") into
+    # the power slot. That slot is our own from-scratch write — no vendor
+    # metadata to round-trip — so the executor must rebuild it from the
+    # canonical POWER_ON label instead of re-saving the corruption.
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 10, "button_code": 0x010203040506, "duration": 0, "delay": 0}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    corrupt_slot = "Macro 198".encode("utf-16-be").ljust(60, b"\x00")
+    proxy.macro_records = [
+        SimpleNamespace(key_id=198, label="Macro 198", raw_label_slot=corrupt_slot)
+    ]
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    macro_call = next(call for call in proxy.calls if call[0] == "macro_write")
+    assert corrupt_slot not in macro_call[1][1]
+    assert "POWER_ON".encode("utf-16-be") in macro_call[1][1]
+
+
+def test_power_macro_write_forces_canonical_label_over_payload_name():
+    # Even if the edited bundle carries a bad power-macro name (e.g. a
+    # localized fallback), the wire label is protocol and stays POWER_ON.
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"][0]["name"] = "Makro 198"
+    _activity(edited)["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 10, "button_code": 0x010203040506, "duration": 0, "delay": 0}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    proxy.macro_records = []
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    macro_call = next(call for call in proxy.calls if call[0] == "macro_write")
+    assert "POWER_ON".encode("utf-16-be") in macro_call[1][1]
+    assert "Makro 198".encode("utf-16-be") not in macro_call[1][1]
 
 
 def test_stale_preflight_blocks_before_any_write():
