@@ -51,7 +51,7 @@ test("unknown control-panel languages fall back to English", () => {
   setToolsCardLanguage("en");
 });
 
-test("bundled British English uses en-GB spelling and English fallback", () => {
+test("bundled English (en-GB) uses proper English spelling and American English fallback", () => {
   setToolsCardLanguage("en-GB");
 
   assert.equal(TOOLS_CARD_STRINGS.cache.favorites, "Favourites");

@@ -1,4 +1,4 @@
-// British English (en-GB) translation for the Sofabaton Virtual Remote card.
+// English (en-GB) translation for the Sofabaton Virtual Remote card.
 //
 // Deliberately partial: only the keys whose spelling differs from the
 // American English base table (favourites, colour, customise). Everything
