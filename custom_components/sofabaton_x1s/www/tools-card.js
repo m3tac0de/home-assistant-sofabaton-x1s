@@ -2051,19 +2051,17 @@ var TOOLS_CARD_STRINGS_EN = {
     powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
     powerOnLabel: "Power-on sequence",
     powerOffLabel: "Power-off sequence",
-    // Activity member roster (power-only membership). Membership is defined
-    // by the power-ref rows, so the roster lives inside the power section.
-    memberListTitle: "Devices in this Activity",
-    memberListSub: "The devices the startup and shutdown sequences switch. A device can be part of the Activity without any buttons or shortcuts.",
-    memberListEmpty: "No devices yet. Add one to build the startup and shutdown sequences.",
+    // Activity membership (power-only members). The sequences are the
+    // management surface: Add device sits beside Add step in the sequence
+    // editor, deleting a power-ref row removes the device, and the power
+    // section shows a one-line roster summary.
+    memberSummary: (names) => `Devices: ${names}`,
+    memberSummaryEmpty: "No devices yet. Open a sequence and use Add device.",
     addMemberButton: "Add device",
     addMemberTitle: "Add device to this Activity",
     addMemberHelper: "The device is added to the startup and shutdown sequences. Assign buttons or shortcuts later, or leave it without any.",
     addMemberConfirm: "Add",
     addMemberNoneLeft: "All devices are already part of this Activity.",
-    memberPowersOn: "Powers on",
-    memberPowersOff: "Powers off",
-    memberNoPowerSteps: "Not in the power sequences",
     removeMemberAria: "Remove device from this Activity",
     // Automatic-power dropdown (device only). One hub byte encodes the whole
     // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
@@ -11549,6 +11547,10 @@ var SofabatonEditDetailView = class extends i4 {
     this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
     this._confirmDeleteLabel = deviceName;
   }
+  _memberDeviceName(activityId, deviceId) {
+    const member = activityMemberViews(this.bundle, activityId).find((candidate) => candidate.deviceId === deviceId);
+    return member?.deviceName || TOOLS_CARD_STRINGS.common.deviceFallback(deviceId);
+  }
   _renderAddMemberDialog() {
     if (!this._addMemberOpen || !this.bundle) return A;
     const S5 = TOOLS_CARD_STRINGS.backup;
@@ -12374,10 +12376,18 @@ var SofabatonEditDetailView = class extends i4 {
                     ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
                   </div>
                 </div>
-                <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
-                  <ha-icon icon="mdi:plus"></ha-icon>
-                  <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
-                </button>
+                <div class="quick-access-head-actions">
+                  ${editor.scope === "activity" && POWER_MACRO_BUTTON_IDS.has(editor.buttonId) ? b2`
+                        <button class="quick-access-add-btn add-member-btn" @click=${this._openAddMemberDialog}>
+                          <ha-icon icon="mdi:plus"></ha-icon>
+                          <span>${TOOLS_CARD_STRINGS.backup.addMemberButton}</span>
+                        </button>
+                      ` : A}
+                  <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
+                    <ha-icon icon="mdi:plus"></ha-icon>
+                    <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
+                  </button>
+                </div>
               </div>
               ${items.length ? b2`
                     <div class="quick-access-list">
@@ -12399,6 +12409,8 @@ var SofabatonEditDetailView = class extends i4 {
         </div>
         ${this._renderStepDialog()}
         ${this._renderEditRenameDialog()}
+        ${this._renderAddMemberDialog()}
+        ${this._renderDeleteConfirmDialog()}
       </div>
     `;
   }
@@ -12407,6 +12419,8 @@ var SofabatonEditDetailView = class extends i4 {
     const isInput = item.kind === "input";
     const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold)) : "";
     const chip = isPower || isInput ? "required" : "command";
+    const editor = this._macroEditor;
+    const memberDeviceId = isPower && editor?.scope === "activity" ? Number(item.deviceId ?? 0) : 0;
     return b2`
       <div class="quick-access-sortable-item" data-step-index=${item.index}>
         <div class="quick-access-row">
@@ -12435,7 +12449,19 @@ var SofabatonEditDetailView = class extends i4 {
                 <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
               </span>
             </label>
-            ${isPower ? A : b2`
+            ${isPower ? memberDeviceId > 0 ? b2`
+                      <button
+                        class="icon-btn icon-btn--danger"
+                        @click=${() => this._openMemberRemoveConfirm(
+      Number(editor?.entityId ?? 0),
+      memberDeviceId,
+      this._memberDeviceName(Number(editor?.entityId ?? 0), memberDeviceId)
+    )}
+                        aria-label=${TOOLS_CARD_STRINGS.backup.removeMemberAria}
+                      >
+                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                      </button>
+                    ` : A : b2`
                   <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
                   </button>
@@ -12616,60 +12642,22 @@ var SofabatonEditDetailView = class extends i4 {
     `;
   }
   /**
-   * Member-device roster inside the Activity power section. Membership is
-   * defined by the power-ref rows, so this block lists exactly the devices
-   * the sequences switch, and "Add device" creates a power-only member —
-   * a device that is part of the Activity with no buttons or shortcuts
-   * (issue #263 request).
+   * One-line member summary under the Activity power-sequence rows. The
+   * sequences themselves are the management surface (Add device beside
+   * Add step; deleting a power-ref row removes the device), so the
+   * section level keeps only the glanceable roster: device names with
+   * their configured input in parentheses.
    */
   _renderActivityMemberBlock(activityId) {
     if (!this.bundle) return A;
     const S5 = TOOLS_CARD_STRINGS.backup;
     const members = activityMemberViews(this.bundle, activityId);
+    const names = members.map(
+      (member) => member.inputOrdinal > 0 && member.inputCommandName ? `${member.deviceName} (${member.inputCommandName})` : member.deviceName
+    ).join(", ");
     return b2`
-      <div class="quick-access-head">
-        <div class="quick-access-head-main">
-          <div class="quick-access-title">${S5.memberListTitle}</div>
-          <div class="quick-access-sub">${S5.memberListSub}</div>
-        </div>
-        <div class="quick-access-head-actions">
-          <button class="quick-access-add-btn" @click=${this._openAddMemberDialog}>
-            <ha-icon icon="mdi:plus"></ha-icon>
-            <span>${S5.addMemberButton}</span>
-          </button>
-        </div>
-      </div>
-      <div class="quick-access-list">
-        <div class="quick-access-sortable-container">
-          ${members.map((member) => {
-      const parts = [];
-      if (member.powersOn) parts.push(S5.memberPowersOn);
-      if (member.inputOrdinal > 0 && member.inputCommandName) parts.push(member.inputCommandName);
-      if (member.powersOff) parts.push(S5.memberPowersOff);
-      return b2`
-              <div class="quick-access-sortable-item" data-kind="member" data-device-id=${member.deviceId}>
-                <div class="quick-access-row quick-access-row--no-drag">
-                  <div class="quick-access-main">
-                    <div class="quick-access-label-row">
-                      <div class="quick-access-label">${member.deviceName}</div>
-                    </div>
-                    <div class="quick-access-meta">${parts.length ? parts.join(" \xB7 ") : S5.memberNoPowerSteps}</div>
-                  </div>
-                  <div class="quick-access-actions">
-                    <button
-                      class="icon-btn icon-btn--danger"
-                      @click=${() => this._openMemberRemoveConfirm(activityId, member.deviceId, member.deviceName)}
-                      aria-label=${S5.removeMemberAria}
-                    >
-                      <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            `;
-    })}
-          ${members.length === 0 ? b2`<div class="quick-access-empty">${S5.memberListEmpty}</div>` : A}
-        </div>
+      <div class="quick-access-sub power-members-summary" data-kind="member-summary">
+        ${members.length ? S5.memberSummary(names) : S5.memberSummaryEmpty}
       </div>
     `;
   }
@@ -12835,6 +12823,10 @@ SofabatonEditDetailView.properties = {
 SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButtonStyles, i`
     :host {
       flex-direction: column;
+    }
+    /* Glanceable member roster under the Activity power-sequence rows. */
+    .power-members-summary {
+      padding: 8px 4px 0;
     }
     /* Live-mode header Sync button — styled identically to the Wifi command
        editor's .detail-sync-btn (primary when there are pending changes, a

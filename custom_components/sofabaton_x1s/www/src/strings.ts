@@ -549,21 +549,18 @@ export const TOOLS_CARD_STRINGS_EN = {
     powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
     powerOnLabel: "Power-on sequence",
     powerOffLabel: "Power-off sequence",
-    // Activity member roster (power-only membership). Membership is defined
-    // by the power-ref rows, so the roster lives inside the power section.
-    memberListTitle: "Devices in this Activity",
-    memberListSub:
-      "The devices the startup and shutdown sequences switch. A device can be part of the Activity without any buttons or shortcuts.",
-    memberListEmpty: "No devices yet. Add one to build the startup and shutdown sequences.",
+    // Activity membership (power-only members). The sequences are the
+    // management surface: Add device sits beside Add step in the sequence
+    // editor, deleting a power-ref row removes the device, and the power
+    // section shows a one-line roster summary.
+    memberSummary: (names: string) => `Devices: ${names}`,
+    memberSummaryEmpty: "No devices yet. Open a sequence and use Add device.",
     addMemberButton: "Add device",
     addMemberTitle: "Add device to this Activity",
     addMemberHelper:
       "The device is added to the startup and shutdown sequences. Assign buttons or shortcuts later, or leave it without any.",
     addMemberConfirm: "Add",
     addMemberNoneLeft: "All devices are already part of this Activity.",
-    memberPowersOn: "Powers on",
-    memberPowersOff: "Powers off",
-    memberNoPowerSteps: "Not in the power sequences",
     removeMemberAria: "Remove device from this Activity",
     // Automatic-power dropdown (device only). One hub byte encodes the whole
     // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.

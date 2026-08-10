@@ -170,7 +170,10 @@ test.describe("tools-card activity editor harness", () => {
   test("adding a device with no buttons or shortcuts makes it a power-only member", async ({ page }) => {
     await mountActivityEditor(page);
 
-    await page.locator('[data-edit-section="power"] .quick-access-add-btn').click();
+    // The sequences are the management surface: Add device sits beside
+    // Add step inside the power-sequence editor.
+    await page.getByRole("button", { name: "Power-on sequence", exact: false }).click();
+    await page.locator(".add-member-btn").click();
     await page.locator("#sb-add-member-device").selectOption("3");
     await page.locator(".dialog-footer .dialog-btn-primary").click();
 
@@ -182,15 +185,20 @@ test.describe("tools-card activity editor harness", () => {
     expect((activity.button_bindings ?? []).some((binding) => Number(binding.device_id) === 3)).toBe(false);
     assertActivityMembershipInvariant(bundle, 101);
 
-    // The roster row removes it again through the impact-confirm dialog.
-    const memberRow = page.locator('[data-kind="member"]').filter({ hasText: "Streamer" });
-    await memberRow.getByRole("button", { name: "Remove device from this Activity", exact: true }).click();
+    // Deleting the device's power-ref row = removing the device, via the
+    // member impact-confirm dialog.
+    await page.locator("[data-step-index]").filter({ hasText: "Streamer" })
+      .getByRole("button", { name: "Remove device from this Activity", exact: true }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
 
     const after = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
     expect(after.activities.find((candidate) => candidate.device?.device_id === 101)
       .referenced_source_device_ids).toEqual([1, 2]);
     assertActivityMembershipInvariant(after, 101);
+
+    // Back at the section level, the roster is a one-line summary.
+    await page.locator(".back-btn").click();
+    await expect(page.locator('[data-kind="member-summary"]')).toContainText("Television");
   });
 
   test("deleting a device's final favorite removes its power linkage", async ({ page }) => {
