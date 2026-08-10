@@ -1444,3 +1444,57 @@ Open findings (not Wifi-Events-specific machinery):
    throughout, so the record itself is sound.
 
 Artifacts: scripts/hub-bench/out/evE2E-X1S*.json / evE2E-press-check.json.
+
+## Measured: MQTT vs HTTP callback latency (X2, 2026-08-10)
+
+MQTT transport plan gate M0.5 (docs/internal/mqtt-transport-plan.md).
+Bench: `bench_90_mqtt_vs_http_latency.py` with the dependency-free
+subscriber in `bench_mqtt_client.py`. X2 at .123, broker (Mosquitto) at
+.77, listener on the bench PC. Two scratch devices restored (a
+`wifi_ip` HA-action host aimed at the bench listener, and a `wifi_mqtt`
+device synthesized from the plan's §4 profile), 40 timed rounds per
+transport, both arms fired per round via `REQ_ACTIVATE`, arm order
+alternating per round. Cleanup deleted both devices; device and
+activity catalogs verified back at baseline.
+
+Results (ms, activation to delivery, n=40 each, zero misses):
+
+| transport | min | p50 | mean | p95 | max | stdev |
+| --- | --- | --- | --- | --- | --- | --- |
+| HTTP | 158.5 | 447.2 | 398.6 | 505.7 | 516.5 | 95.2 |
+| MQTT | 39.1 | 259.3 | 263.3 | 343.7 | 345.3 | 83.5 |
+
+Paired per-round diff (mqtt - http): p50 **-131 ms**, mean -135 ms.
+**MQTT wins clearly at the median.** Not every round: phase effects
+occasionally invert a pair (one round measured http 171 / mqtt 339).
+
+Findings beyond the headline number:
+
+- **Latencies are quantized, not noise-shaped.** MQTT samples cluster
+  at ~210 ms or ~341 ms (occasional dips to 39-57 ms); HTTP at ~340 ms
+  or ~470 ms; which cluster a trial lands in correlates with arm order
+  within the round. Consistent with a periodic outbound-queue service
+  tick in hub firmware (~130-150 ms grain), phase-dependent on prior
+  activity. The floor values (39 ms MQTT, 158 ms HTTP) show the
+  best-case when the tick aligns.
+- **Exactly one delivery per activation on both arms** (no HTTP
+  delivery retries with the integration-shape 200 response, no MQTT
+  duplicates).
+- **Publish facts:** topic is the UPPERCASE MAC (`FC012C39D390/up`;
+  the lowercase subscription stayed silent), QoS 0, retain false,
+  dup false. Payload carries the hub-assigned ids.
+- **Partial M0.2 evidence:** a `wifi_mqtt` device synthesized from the
+  §4 profile (not a captured bundle) restored through the generic
+  `hub_code_record` replay path and published correctly with the
+  hub's own ids (F2 confirmed on a from-scratch record). Delete was
+  clean.
+
+Caveats: absolute numbers include the common trigger leg (TCP
+`REQ_ACTIVATE` enqueue + hub handling), so the pure hub-to-HA leg is
+smaller for both; the measured MQTT path was hub -> broker -> bench PC,
+an upper bound vs the production loopback (broker on the HA box). The
+differential is the robust claim. Physical-remote presses were not
+timed (no way to timestamp the press itself); the trigger leg is
+identical either way.
+
+Artifacts: scripts/hub-bench/out/mqtt-lat-x2.json.
