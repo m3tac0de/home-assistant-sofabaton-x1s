@@ -188,7 +188,7 @@ test.describe("tools-card activity editor harness", () => {
     // Deleting the device's power-ref row = removing the device, via the
     // member impact-confirm dialog.
     await page.locator("[data-step-index]").filter({ hasText: "Streamer" })
-      .getByRole("button", { name: "Remove device from this Activity", exact: true }).click();
+      .getByRole("button", { name: "Remove device from this activity", exact: true }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
 
     const after = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());

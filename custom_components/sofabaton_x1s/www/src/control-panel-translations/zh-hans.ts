@@ -246,7 +246,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     powerSetupTitle: "电源控制", powerSetupDeviceSub: "设置 Hub 在活动中如何开关此设备，以及发送哪些命令。",
     powerSetupActivitySub: "此活动在启动和结束时执行的操作。", powerOnLabel: "开机操作", powerOffLabel: "关机操作",
     memberSummary: (names: string) => `设备：${names}`,
-    memberSummaryEmpty: "尚无设备。请打开开机或关机操作并使用添加设备。",
+    memberSummaryEmpty: "尚无设备。请打开开机或关机操作并使用“添加设备”。",
     addMemberButton: "添加设备", addMemberTitle: "将设备添加到此活动",
     addMemberHelper: "设备将被添加到开机和关机操作中。稍后可以分配按键或快捷项，也可以保持不设。",
     addMemberConfirm: "添加", addMemberNoneLeft: "所有设备都已属于此活动。",

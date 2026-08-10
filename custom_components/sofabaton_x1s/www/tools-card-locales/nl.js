@@ -452,7 +452,7 @@ var TOOLS_CARD_STRINGS_NL = {
     powerOnLabel: "Acties bij inschakelen",
     powerOffLabel: "Acties bij uitschakelen",
     memberSummary: (names) => `Apparaten: ${names}`,
-    memberSummaryEmpty: "Nog geen apparaten. Open een actiereeks en gebruik Apparaat toevoegen.",
+    memberSummaryEmpty: 'Nog geen apparaten. Open de acties bij het in- of uitschakelen en gebruik "Apparaat toevoegen".',
     addMemberButton: "Apparaat toevoegen",
     addMemberTitle: "Apparaat aan deze activiteit toevoegen",
     addMemberHelper: "Het apparaat wordt toegevoegd aan de start- en afsluitacties. Wijs later knoppen of snelkoppelingen toe, of laat het zonder.",

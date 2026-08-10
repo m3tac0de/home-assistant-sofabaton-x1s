@@ -248,7 +248,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     powerSetupTitle: "Aan/uit-beheer", powerSetupDeviceSub: "Bepaal hoe de hub dit apparaat in- en uitschakelt tijdens activiteiten, en welke commando's hiervoor worden verzonden.",
     powerSetupActivitySub: "De acties die deze activiteit uitvoert bij het starten en afsluiten.", powerOnLabel: "Acties bij inschakelen", powerOffLabel: "Acties bij uitschakelen",
     memberSummary: (names: string) => `Apparaten: ${names}`,
-    memberSummaryEmpty: "Nog geen apparaten. Open een actiereeks en gebruik Apparaat toevoegen.",
+    memberSummaryEmpty: 'Nog geen apparaten. Open de acties bij het in- of uitschakelen en gebruik "Apparaat toevoegen".',
     addMemberButton: "Apparaat toevoegen", addMemberTitle: "Apparaat aan deze activiteit toevoegen",
     addMemberHelper: "Het apparaat wordt toegevoegd aan de start- en afsluitacties. Wijs later knoppen of snelkoppelingen toe, of laat het zonder.",
     addMemberConfirm: "Toevoegen", addMemberNoneLeft: "Alle apparaten maken al deel uit van deze activiteit.",

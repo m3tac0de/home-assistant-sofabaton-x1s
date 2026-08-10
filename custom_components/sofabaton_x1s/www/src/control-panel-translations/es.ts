@@ -193,7 +193,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     powerSetupDeviceSub: "Define cómo el hub enciende y apaga este dispositivo en las actividades, y qué comandos envía para hacerlo.", powerSetupActivitySub: "La secuencia de inicio y apagado que ejecuta esta actividad.",
     powerOnLabel: "Secuencia de encendido", powerOffLabel: "Secuencia de apagado", powerControlTitle: "Encendido y apagado automático", powerControlUnset: "No capturado",
     memberSummary: (names: string) => `Dispositivos: ${names}`,
-    memberSummaryEmpty: "Aún no hay dispositivos. Abre una secuencia y usa Añadir dispositivo.",
+    memberSummaryEmpty: "Aún no hay dispositivos. Abre una secuencia y usa «Añadir dispositivo».",
     addMemberButton: "Añadir dispositivo", addMemberTitle: "Añadir dispositivo a esta actividad",
     addMemberHelper: "El dispositivo se añade a las secuencias de encendido y apagado. Asigna botones o accesos directos más tarde, o déjalo sin ellos.",
     addMemberConfirm: "Añadir", addMemberNoneLeft: "Todos los dispositivos ya forman parte de esta actividad.",

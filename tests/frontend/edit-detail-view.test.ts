@@ -522,13 +522,13 @@ test("delete confirm copy matches the mode and delete kind", () => {
   // Backup mode: reaches the hub only when existing data is erased on restore.
   element.mode = "backup";
   let text = templateText(element._renderDeleteConfirmDialog());
-  assert.ok(text.includes("Erase existing Devices and Activities"));
+  assert.ok(text.includes("Erase existing devices and activities"));
 
   // Live mode, device delete: hits the hub immediately, no "backup" wording.
   element.mode = "live";
   text = templateText(element._renderDeleteConfirmDialog());
   assert.ok(text.includes("applied to the hub immediately"));
-  assert.ok(!text.includes("Erase existing Devices and Activities"));
+  assert.ok(!text.includes("Erase existing devices and activities"));
   assert.ok(!text.includes("loaded backup"));
   assert.ok(!text.includes("in the backup"));
 
@@ -539,7 +539,7 @@ test("delete confirm copy matches the mode and delete kind", () => {
   element._confirmDeleteLabel = "Volume Combo";
   text = templateText(element._renderDeleteConfirmDialog());
   assert.ok(text.includes("next Sync"));
-  assert.ok(!text.includes("Erase existing Devices and Activities"));
+  assert.ok(!text.includes("Erase existing devices and activities"));
 });
 
 test("payload test hint shows only when editing an IR command", () => {

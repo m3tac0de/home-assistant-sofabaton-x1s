@@ -208,7 +208,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     powerSetupDeviceSub: "Legt fest, wie der Hub dieses Gerät für Aktivitäten ein- und ausschaltet und welche Befehle er dafür sendet.",
     powerSetupActivitySub: "Die Aktionen, die diese Aktivität beim Starten und Beenden ausführt.", powerOnLabel: "Aktionen beim Einschalten", powerOffLabel: "Aktionen beim Ausschalten", powerControlTitle: "Automatisches Ein- und Ausschalten",
     memberSummary: (names: string) => `Geräte: ${names}`,
-    memberSummaryEmpty: "Noch keine Geräte. Öffne eine Aktionsfolge und nutze Gerät hinzufügen.",
+    memberSummaryEmpty: "Noch keine Geräte. Öffne die Aktionen beim Ein- oder Ausschalten und nutze „Gerät hinzufügen“.",
     addMemberButton: "Gerät hinzufügen", addMemberTitle: "Gerät zu dieser Aktivität hinzufügen",
     addMemberHelper: "Das Gerät wird den Start- und Beenden-Aktionen hinzugefügt. Weise später Tasten oder Verknüpfungen zu, oder lass es ohne.",
     addMemberConfirm: "Hinzufügen", addMemberNoneLeft: "Alle Geräte sind bereits Teil dieser Aktivität.",

@@ -450,7 +450,7 @@ var TOOLS_CARD_STRINGS_ES = {
     powerControlTitle: "Encendido y apagado autom\xE1tico",
     powerControlUnset: "No capturado",
     memberSummary: (names) => `Dispositivos: ${names}`,
-    memberSummaryEmpty: "A\xFAn no hay dispositivos. Abre una secuencia y usa A\xF1adir dispositivo.",
+    memberSummaryEmpty: "A\xFAn no hay dispositivos. Abre una secuencia y usa \xABA\xF1adir dispositivo\xBB.",
     addMemberButton: "A\xF1adir dispositivo",
     addMemberTitle: "A\xF1adir dispositivo a esta actividad",
     addMemberHelper: "El dispositivo se a\xF1ade a las secuencias de encendido y apagado. Asigna botones o accesos directos m\xE1s tarde, o d\xE9jalo sin ellos.",

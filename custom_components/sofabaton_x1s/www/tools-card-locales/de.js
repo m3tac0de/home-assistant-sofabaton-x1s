@@ -450,7 +450,7 @@ var TOOLS_CARD_STRINGS_DE = {
     powerOffLabel: "Aktionen beim Ausschalten",
     powerControlTitle: "Automatisches Ein- und Ausschalten",
     memberSummary: (names) => `Ger\xE4te: ${names}`,
-    memberSummaryEmpty: "Noch keine Ger\xE4te. \xD6ffne eine Aktionsfolge und nutze Ger\xE4t hinzuf\xFCgen.",
+    memberSummaryEmpty: "Noch keine Ger\xE4te. \xD6ffne die Aktionen beim Ein- oder Ausschalten und nutze \u201EGer\xE4t hinzuf\xFCgen\u201C.",
     addMemberButton: "Ger\xE4t hinzuf\xFCgen",
     addMemberTitle: "Ger\xE4t zu dieser Aktivit\xE4t hinzuf\xFCgen",
     addMemberHelper: "Das Ger\xE4t wird den Start- und Beenden-Aktionen hinzugef\xFCgt. Weise sp\xE4ter Tasten oder Verkn\xFCpfungen zu, oder lass es ohne.",
