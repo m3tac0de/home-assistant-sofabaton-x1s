@@ -2051,6 +2051,20 @@ var TOOLS_CARD_STRINGS_EN = {
     powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
     powerOnLabel: "Power-on sequence",
     powerOffLabel: "Power-off sequence",
+    // Activity member roster (power-only membership). Membership is defined
+    // by the power-ref rows, so the roster lives inside the power section.
+    memberListTitle: "Devices in this Activity",
+    memberListSub: "The devices the startup and shutdown sequences switch. A device can be part of the Activity without any buttons or shortcuts.",
+    memberListEmpty: "No devices yet. Add one to build the startup and shutdown sequences.",
+    addMemberButton: "Add device",
+    addMemberTitle: "Add device to this Activity",
+    addMemberHelper: "The device is added to the startup and shutdown sequences. Assign buttons or shortcuts later, or leave it without any.",
+    addMemberConfirm: "Add",
+    addMemberNoneLeft: "All devices are already part of this Activity.",
+    memberPowersOn: "Powers on",
+    memberPowersOff: "Powers off",
+    memberNoPowerSteps: "Not in the power sequences",
+    removeMemberAria: "Remove device from this Activity",
     // Automatic-power dropdown (device only). One hub byte encodes the whole
     // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
     powerControlTitle: "Automatic power control",
@@ -8390,6 +8404,69 @@ function findBundleActivity(bundle, activityId) {
     (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
   );
 }
+function activityMemberViews(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = activityMemberDeviceIds(activity);
+  const memberSet = new Set(members);
+  const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
+  const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
+  const powerOff = macroFor(POWER_OFF_MACRO_BUTTON_ID);
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && memberSet.has(id) && !order.includes(id)) order.push(id);
+  };
+  for (const step of powerOn?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const step of powerOff?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const id of members) push(id);
+  return order.map((deviceId) => {
+    const onSteps = (powerOn?.steps ?? []).filter(
+      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId
+    );
+    const powersOn = onSteps.some(
+      (step) => Number(step?.command_id || 0) === DEVICE_POWER_ON_REF_COMMAND
+    );
+    const inputStep = onSteps.find(
+      (step) => Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    const powersOff = (powerOff?.steps ?? []).some(
+      (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, DEVICE_POWER_OFF_REF_COMMAND)
+    );
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle, deviceId),
+      powersOn,
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(inputOrdinal) : null),
+      powersOff
+    };
+  });
+}
+function activityAddableDevices(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = new Set(activityMemberDeviceIds(activity));
+  return bundleDeviceOptions(bundle).filter(
+    (option) => !members.has(option.id)
+  );
+}
+function addActivityMemberDevice(bundle, activityId, deviceId) {
+  const dId = Number(deviceId);
+  const aId = Number(activityId);
+  if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
+  const activity = findBundleActivity(bundle, aId);
+  if (!activity) return bundle;
+  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  return reconcileActivityPowerMacros(bundle, aId, [dId]);
+}
 function removeActivityMemberDevice(bundle, activityId, deviceId) {
   const aId = Number(activityId);
   const next = updateActivity(
@@ -9251,6 +9328,8 @@ var SofabatonEditDetailView = class extends i4 {
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
+    this._addMemberOpen = false;
+    this._addMemberDeviceId = null;
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
     this._addFavoriteError = "";
@@ -9553,6 +9632,24 @@ var SofabatonEditDetailView = class extends i4 {
         name
       ));
       this._closeAddFavoriteDialog();
+    };
+    this._openAddMemberDialog = () => {
+      const options = this._addableMemberDevices();
+      this._addMemberDeviceId = options[0]?.id ?? null;
+      this._addMemberOpen = true;
+    };
+    this._closeAddMemberDialog = () => {
+      this._addMemberOpen = false;
+      this._addMemberDeviceId = null;
+    };
+    this._applyAddMember = () => {
+      if (!this.bundle || this.entityId == null || this._addMemberDeviceId == null) return;
+      this._commitEditBundleEdit(addActivityMemberDevice(
+        this.bundle,
+        Number(this.entityId),
+        this._addMemberDeviceId
+      ));
+      this._closeAddMemberDialog();
     };
     this._applyAddShortcutWifiEvent = async () => {
       if (!this.bundle || this.entityId == null) return;
@@ -10077,6 +10174,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._addCommandPreparing = false;
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
+    this._closeAddMemberDialog();
     this._closeBindingDialog();
     this._macroEditor = null;
     this._closeStepDialog();
@@ -10198,6 +10296,7 @@ var SofabatonEditDetailView = class extends i4 {
         ${this._renderCommandPayloadDialog()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
+        ${this._renderAddMemberDialog()}
         ${this._renderBindingDialog()}
         ${this._renderRoleConfirmDialog()}
       </div>
@@ -11430,6 +11529,72 @@ var SofabatonEditDetailView = class extends i4 {
       </div>
     `;
   }
+  // ── Activity member devices (power-only membership, issue #263) ─────
+  /**
+   * Devices offered by the "Add device" picker. In LIVE mode every
+   * managed Wifi Commands device (including the reserved Wifi Events
+   * device) is excluded: their activity membership is owned by the Wifi
+   * Commands deploy, and a manual add here would silently be undone by
+   * the next resync. The offline Backup editor keeps showing everything.
+   */
+  _addableMemberDevices() {
+    if (!this.bundle || this.entityId == null) return [];
+    const options = activityAddableDevices(this.bundle, Number(this.entityId));
+    if (this.mode !== "live") return options;
+    return options.filter(
+      (option) => !isManagedWifiBrand(bundleDeviceBrand(this.bundle, option.id))
+    );
+  }
+  _openMemberRemoveConfirm(activityId, deviceId, deviceName) {
+    this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
+    this._confirmDeleteLabel = deviceName;
+  }
+  _renderAddMemberDialog() {
+    if (!this._addMemberOpen || !this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const options = this._addableMemberDevices();
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeAddMemberDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.addMemberTitle}</div>
+            <button class="dialog-close" @click=${this._closeAddMemberDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${options.length === 0 ? b2`<div class="backup-drawer-sub">${S5.addMemberNoneLeft}</div>` : b2`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-add-member-device">${S5.addFavoriteDevice}</label>
+                    <select
+                      id="sb-add-member-device"
+                      class="decoded-field-input"
+                      @change=${(event) => {
+      const value = Number(event.target.value);
+      this._addMemberDeviceId = Number.isFinite(value) ? value : null;
+    }}
+                    >
+                      ${options.map((device) => b2`
+                        <option value=${device.id} ?selected=${device.id === this._addMemberDeviceId}>${device.label}</option>
+                      `)}
+                    </select>
+                    <div class="decoded-field-helper">${S5.addMemberHelper}</div>
+                  </div>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeAddMemberDialog}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
+              <button
+                class="dialog-btn dialog-btn-primary"
+                ?disabled=${options.length === 0 || this._addMemberDeviceId == null}
+                @click=${this._applyAddMember}
+              >${S5.addMemberConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
   _renderAddFavoriteDialog() {
     if (!this._addFavoriteOpen || !this.bundle) return A;
     const S5 = TOOLS_CARD_STRINGS.backup;
@@ -12446,6 +12611,65 @@ var SofabatonEditDetailView = class extends i4 {
             ${this._renderPowerSetupRow(scope, entityId, 199, S5.powerOffLabel, sequencesDisabled)}
           </div>
         </div>
+        ${isDevice ? A : this._renderActivityMemberBlock(entityId)}
+      </div>
+    `;
+  }
+  /**
+   * Member-device roster inside the Activity power section. Membership is
+   * defined by the power-ref rows, so this block lists exactly the devices
+   * the sequences switch, and "Add device" creates a power-only member —
+   * a device that is part of the Activity with no buttons or shortcuts
+   * (issue #263 request).
+   */
+  _renderActivityMemberBlock(activityId) {
+    if (!this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const members = activityMemberViews(this.bundle, activityId);
+    return b2`
+      <div class="quick-access-head">
+        <div class="quick-access-head-main">
+          <div class="quick-access-title">${S5.memberListTitle}</div>
+          <div class="quick-access-sub">${S5.memberListSub}</div>
+        </div>
+        <div class="quick-access-head-actions">
+          <button class="quick-access-add-btn" @click=${this._openAddMemberDialog}>
+            <ha-icon icon="mdi:plus"></ha-icon>
+            <span>${S5.addMemberButton}</span>
+          </button>
+        </div>
+      </div>
+      <div class="quick-access-list">
+        <div class="quick-access-sortable-container">
+          ${members.map((member) => {
+      const parts = [];
+      if (member.powersOn) parts.push(S5.memberPowersOn);
+      if (member.inputOrdinal > 0 && member.inputCommandName) parts.push(member.inputCommandName);
+      if (member.powersOff) parts.push(S5.memberPowersOff);
+      return b2`
+              <div class="quick-access-sortable-item" data-kind="member" data-device-id=${member.deviceId}>
+                <div class="quick-access-row quick-access-row--no-drag">
+                  <div class="quick-access-main">
+                    <div class="quick-access-label-row">
+                      <div class="quick-access-label">${member.deviceName}</div>
+                    </div>
+                    <div class="quick-access-meta">${parts.length ? parts.join(" \xB7 ") : S5.memberNoPowerSteps}</div>
+                  </div>
+                  <div class="quick-access-actions">
+                    <button
+                      class="icon-btn icon-btn--danger"
+                      @click=${() => this._openMemberRemoveConfirm(activityId, member.deviceId, member.deviceName)}
+                      aria-label=${S5.removeMemberAria}
+                    >
+                      <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+    })}
+          ${members.length === 0 ? b2`<div class="quick-access-empty">${S5.memberListEmpty}</div>` : A}
+        </div>
       </div>
     `;
   }
@@ -12564,6 +12788,8 @@ SofabatonEditDetailView.properties = {
   _confirmDeleteTarget: { state: true },
   _confirmDeleteLabel: { state: true },
   _addFavoriteOpen: { state: true },
+  _addMemberOpen: { state: true },
+  _addMemberDeviceId: { state: true },
   _addFavoriteDeviceId: { state: true },
   _addFavoriteCommandId: { state: true },
   _addFavoriteError: { state: true },
