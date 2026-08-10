@@ -2432,6 +2432,14 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventLongPressToggleTitle: "Enable long press",
     wifiEventNeedsSyncBadge: "needs sync",
     wifiEventRetrySync: "Retry sync",
+    // Orphaned-config notice, split around the clickable phrase so locales
+    // can place it anywhere in the sentence.
+    wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
+    wifiEventsStaleNoticeLink: "remove this configuration from Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
+    wifiEventsStaleConfirmRemove: "Remove",
+    wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
     wifiEventDeleteTitle: "Delete Wifi Event",
     wifiEventDeleteConfirmTitle: (name) => `Delete "${name}"?`,
     wifiEventDeleteScanning: "Checking what references this event\u2026",
@@ -14406,6 +14414,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
     this._wifiEventsRows = null;
     this._wifiEventsLoading = false;
+    this._wifiEventsDeviceId = null;
+    this._wifiEventsStaleConfirm = false;
+    this._wifiEventsStaleBusy = false;
+    this._wifiEventsStaleError = "";
     this.selectedSection = "wifi";
     this.setSelectedSection = () => {
     };
@@ -14977,6 +14989,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _wifiEventBySlot(slotIndex) {
     return (this._wifiEventsRows ?? []).find((event) => event.slot_index === slotIndex) ?? null;
   }
+  /** Apply a `wifi_event/*` state payload: rows plus the record-level
+   *  deployed device id (null = orphaned or never deployed). */
+  _applyWifiEventsState(state) {
+    this._wifiEventsRows = state?.events ?? [];
+    const deviceId = state?.device_id;
+    this._wifiEventsDeviceId = typeof deviceId === "number" ? deviceId : null;
+  }
   async _loadWifiEventsRows() {
     const entityId = String(this._entityId() || "").trim();
     if (!entityId || !this.hass?.callWS || this._wifiEventsLoading) return;
@@ -14986,11 +15005,37 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         type: "sofabaton_x1s/wifi_event/list",
         entity_id: entityId
       });
-      this._wifiEventsRows = result?.events ?? [];
+      this._applyWifiEventsState(result);
     } catch (_error) {
       this._wifiEventsRows = this._wifiEventsRows ?? [];
     } finally {
       this._wifiEventsLoading = false;
+    }
+  }
+  /** True when configured events survive in the store but their hub-side
+   *  device is gone (deployed ownership cleared by the reconcile pass) —
+   *  the state behind the orphaned-config notice. Also true for events
+   *  that were never deployed at all; the notice's remedies (attach one
+   *  to an activity, or remove the config) are the right ones there too. */
+  _wifiEventsOrphaned() {
+    return (this._wifiEventsRows ?? []).length > 0 && this._wifiEventsDeviceId == null;
+  }
+  async _removeWifiEventsConfig() {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS || this._wifiEventsStaleBusy) return;
+    this._wifiEventsStaleBusy = true;
+    this._wifiEventsStaleError = "";
+    try {
+      const result = await this.hass.callWS({
+        type: "sofabaton_x1s/wifi_event/clear_all",
+        entity_id: entityId
+      });
+      this._applyWifiEventsState(result);
+      this._wifiEventsStaleConfirm = false;
+    } catch (_error) {
+      this._wifiEventsStaleError = TOOLS_CARD_STRINGS.wifiCommands.wifiEventsStaleRemoveFailed;
+    } finally {
+      this._wifiEventsStaleBusy = false;
     }
   }
   _actionForHubEventTarget(target) {
@@ -15016,7 +15061,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         press_type: target.pressType,
         action: this._normalizeCommandAction(action)
       });
-      if (result2?.events) this._wifiEventsRows = result2.events;
+      if (result2?.events) this._applyWifiEventsState(result2);
       return true;
     }
     const nextActions = { ...this._hubEventActions };
@@ -15135,19 +15180,21 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       }}
           ><ha-icon icon="mdi:close"></ha-icon></button>` : A}`;
     };
+    const orphaned = this._wifiEventsOrphaned();
     return b2`
       <div class="hub-events">
         <div class="section-title-wrap">
           <div class="acc-title">${W.wifiEventsTitle}</div>
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
+        ${orphaned ? this._renderWifiEventsStaleNotice() : A}
         ${events.length ? b2`
           <ul class="hub-event-lines">
             ${events.map((event) => b2`
               <li class="hub-event-line">
                 <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
                 <span class="hub-event-text">
-                  ${W.wifiEventRowPress(event.name)}${event.deployed ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
+                  ${W.wifiEventRowPress(event.name)}${event.deployed || orphaned ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
                   ${renderAction(event, "short")}${event.long_press_enabled ? b2`, ${W.wifiEventRowLongPress}
                   ${renderAction(event, "long")}` : A}.
                 </span>
@@ -15155,6 +15202,48 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             `)}
           </ul>
         ` : b2`<div class="empty-hint">${W.wifiEventsEmpty}</div>`}
+      </div>
+    `;
+  }
+  /** Second header line for the orphaned state (the hub-side device was
+   *  deleted out-of-band): explains the two ways out. The remove phrase
+   *  swaps in an inline confirm; the per-row needs-sync badges are
+   *  suppressed while this line shows (it says the same thing once). */
+  _renderWifiEventsStaleNotice() {
+    const W = TOOLS_CARD_STRINGS.wifiCommands;
+    if (this._wifiEventsStaleConfirm) {
+      return b2`
+        <div class="section-subtitle wifi-events-stale">
+          ${W.wifiEventsStaleConfirmText}
+          <span class="wifi-events-stale-actions">
+            <button
+              class="dialog-btn"
+              ?disabled=${this._wifiEventsStaleBusy}
+              @click=${() => {
+        void this._removeWifiEventsConfig();
+      }}
+            >${W.wifiEventsStaleConfirmRemove}</button>
+            <button
+              class="dialog-btn"
+              ?disabled=${this._wifiEventsStaleBusy}
+              @click=${() => {
+        this._wifiEventsStaleConfirm = false;
+        this._wifiEventsStaleError = "";
+      }}
+            >${TOOLS_CARD_STRINGS.common.cancel}</button>
+          </span>
+          ${this._wifiEventsStaleError ? b2`<span class="wifi-events-stale-error">${this._wifiEventsStaleError}</span>` : A}
+        </div>
+      `;
+    }
+    return b2`
+      <div class="section-subtitle wifi-events-stale">
+        ${W.wifiEventsStaleNoticePrefix}<button
+          class="hub-event-action-link"
+          @click=${() => {
+      this._wifiEventsStaleConfirm = true;
+    }}
+        >${W.wifiEventsStaleNoticeLink}</button>${W.wifiEventsStaleNoticeSuffix}
       </div>
     `;
   }
@@ -15755,6 +15844,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._hubEventActions = this._defaultHubEventActions();
       this._activityEventActions = {};
       this._wifiEventsRows = null;
+      this._wifiEventsDeviceId = null;
+      this._wifiEventsStaleConfirm = false;
+      this._wifiEventsStaleError = "";
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const entityId = String(this._entityId() || "").trim();
@@ -16849,6 +16941,10 @@ _SofabatonWifiCommandsTab.properties = {
   _activityEventActions: { state: true },
   _wifiEventsRows: { state: true },
   _wifiEventsLoading: { state: true },
+  _wifiEventsDeviceId: { state: true },
+  _wifiEventsStaleConfirm: { state: true },
+  _wifiEventsStaleBusy: { state: true },
+  _wifiEventsStaleError: { state: true },
   selectedSection: { attribute: false },
   setSelectedSection: { attribute: false },
   _devicePowerPickerKind: { state: true },
@@ -17037,6 +17133,10 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
+    .wifi-events-stale { color: var(--warning-color, #b58a00); }
+    .wifi-events-stale .hub-event-action-link { display: inline; font-size: inherit; }
+    .wifi-events-stale-actions { display: inline-flex; gap: 8px; margin-left: 8px; vertical-align: middle; }
+    .wifi-events-stale-error { color: var(--error-color, #db4437); margin-left: 8px; }
     .hub-event-longpress-toggle {
       display: inline-flex;
       align-items: center;

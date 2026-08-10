@@ -318,6 +318,13 @@ export const TOOLS_CARD_STRINGS_FR = {
     wifiEventLongPressToggleTitle: "Activer l’appui long",
     wifiEventNeedsSyncBadge: "synchronisation requise",
     wifiEventRetrySync: "Réessayer la synchronisation",
+    wifiEventsStaleNoticePrefix:
+      "Ces événements ne sont plus sur le hub. Ajoutez-en un à une activité pour tous les redéployer, ou ",
+    wifiEventsStaleNoticeLink: "supprimez cette configuration de Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Supprimer tous les événements Wifi et leurs actions de Home Assistant ?",
+    wifiEventsStaleConfirmRemove: "Supprimer",
+    wifiEventsStaleRemoveFailed: "La suppression de la configuration des événements Wifi a échoué.",
     wifiEventDeleteTitle: "Supprimer l’événement Wifi",
     wifiEventDeleteConfirmTitle: (name: string) => `Supprimer « ${name} » ?`,
     wifiEventDeleteScanning: "Vérification des références à cet événement…",

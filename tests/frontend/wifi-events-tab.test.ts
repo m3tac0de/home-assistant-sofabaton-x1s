@@ -102,3 +102,50 @@ test("W7: the tab exposes no lifecycle mutations (actions only)", () => {
   assert.equal(tab._scanWifiEventRefs, undefined);
   assert.equal(tab._renderWifiEventDeleteConfirm, undefined);
 });
+
+test("orphaned notice gates on configured rows plus a null record device id", () => {
+  const tab = makeTab();
+  // makeTab seeds one row and the default record device id (null).
+  assert.equal(tab._wifiEventsOrphaned(), true);
+  tab._wifiEventsDeviceId = 10;
+  assert.equal(tab._wifiEventsOrphaned(), false);
+  tab._wifiEventsDeviceId = null;
+  tab._wifiEventsRows = [];
+  assert.equal(tab._wifiEventsOrphaned(), false);
+});
+
+test("state payloads carry the record-level device id into the tab", () => {
+  const tab = makeTab();
+  tab._applyWifiEventsState({ events: [EVENT], device_id: 10 });
+  assert.equal(tab._wifiEventsDeviceId, 10);
+  assert.equal(tab._wifiEventsRows.length, 1);
+  // a payload without device_id reads as not deployed
+  tab._applyWifiEventsState({ events: [EVENT] });
+  assert.equal(tab._wifiEventsDeviceId, null);
+});
+
+test("remove-config goes through wifi_event/clear_all and applies the response", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const tab = makeTab(async (msg) => {
+    calls.push(msg);
+    return { events: [], record_needs_sync: false, device_id: null };
+  });
+  tab._wifiEventsStaleConfirm = true;
+  await tab._removeWifiEventsConfig();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].type, "sofabaton_x1s/wifi_event/clear_all");
+  assert.deepEqual(tab._wifiEventsRows, []);
+  assert.equal(tab._wifiEventsStaleConfirm, false);
+  assert.equal(tab._wifiEventsStaleError, "");
+});
+
+test("remove-config failure keeps the rows and surfaces the error", async () => {
+  const tab = makeTab(async () => {
+    throw new Error("boom");
+  });
+  tab._wifiEventsStaleConfirm = true;
+  await tab._removeWifiEventsConfig();
+  assert.equal(tab._wifiEventsRows.length, 1);
+  assert.equal(tab._wifiEventsStaleConfirm, true);
+  assert.notEqual(tab._wifiEventsStaleError, "");
+});

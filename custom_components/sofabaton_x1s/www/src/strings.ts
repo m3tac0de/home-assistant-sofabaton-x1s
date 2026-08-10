@@ -961,6 +961,15 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiEventLongPressToggleTitle: "Enable long press",
     wifiEventNeedsSyncBadge: "needs sync",
     wifiEventRetrySync: "Retry sync",
+    // Orphaned-config notice, split around the clickable phrase so locales
+    // can place it anywhere in the sentence.
+    wifiEventsStaleNoticePrefix:
+      "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
+    wifiEventsStaleNoticeLink: "remove this configuration from Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
+    wifiEventsStaleConfirmRemove: "Remove",
+    wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
     wifiEventDeleteTitle: "Delete Wifi Event",
     wifiEventDeleteConfirmTitle: (name: string) => `Delete "${name}"?`,
     wifiEventDeleteScanning: "Checking what references this event…",

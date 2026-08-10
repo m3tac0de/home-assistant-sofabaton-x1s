@@ -501,3 +501,66 @@ def test_ws_reserved_record_guards(monkeypatch):
         )
     )
     assert conn.error is not None and conn.error[1] == "reserved_device"
+
+
+def test_ws_wifi_event_clear_all_removes_orphaned_config(monkeypatch):
+    # Never-deployed events (device_id None) clear wholesale: the record is
+    # dropped, actions included, with zero hub calls.
+    store, hub = _setup(monkeypatch)
+    conn = _Conn()
+    _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
+    conn = _Conn()
+    _run(integration._ws_create_wifi_event(None, conn, _msg(name="Lights")))
+    _run(
+        store.async_set_wifi_event_action(
+            "entry-1", 0, "short", {"action": "perform-action", "perform_action": "script.a"}
+        )
+    )
+    conn = _Conn()
+    _run(integration._ws_clear_all_wifi_events(None, conn, _msg()))
+    assert conn.error is None
+    assert conn.result[1] == {"events": [], "record_needs_sync": False, "device_id": None}
+    assert hub.sync_calls == []
+    assert store.wifi_events_record_state("entry-1", roku_listen_port=8060)["exists"] is False
+
+
+def test_ws_wifi_event_clear_all_guards_deployed_record(monkeypatch):
+    # A record that still owns a deployed hub device must keep its config —
+    # the staged slots are what the callback runtime reads.
+    store, _hub = _setup(monkeypatch)
+    conn = _Conn()
+    _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
+    conn = _Conn()
+    _run(integration._ws_sync_wifi_events(None, conn, _msg()))  # phase 1 deploys
+    assert conn.error is None
+    conn = _Conn()
+    _run(integration._ws_clear_all_wifi_events(None, conn, _msg()))
+    assert conn.error is not None and conn.error[1] == "still_deployed"
+    assert len(store.list_wifi_events("entry-1")) == 1
+
+
+def test_ws_wifi_event_clear_all_after_hub_purge_reconcile(monkeypatch):
+    # The real orphaned flow: deployed, then the hub-side device vanishes
+    # out-of-band and the devices-burst reconcile clears the deployed
+    # ownership — clear_all now proceeds and drops the record.
+    store, _hub = _setup(monkeypatch)
+    conn = _Conn()
+    _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
+    conn = _Conn()
+    _run(integration._ws_sync_wifi_events(None, conn, _msg()))
+    assert conn.error is None
+    assert store.wifi_events_record_state("entry-1", roku_listen_port=8060)["device_id"] == 10
+    _run(store.async_reconcile_deployed_wifi_devices("entry-1", []))
+    conn = _Conn()
+    _run(integration._ws_clear_all_wifi_events(None, conn, _msg()))
+    assert conn.error is None
+    assert conn.result[1]["events"] == []
+    assert store.wifi_events_record_state("entry-1", roku_listen_port=8060)["exists"] is False
+
+
+def test_ws_wifi_event_clear_all_without_record_is_idempotent(monkeypatch):
+    _setup(monkeypatch)
+    conn = _Conn()
+    _run(integration._ws_clear_all_wifi_events(None, conn, _msg()))
+    assert conn.error is None
+    assert conn.result[1] == {"events": [], "record_needs_sync": False, "device_id": None}

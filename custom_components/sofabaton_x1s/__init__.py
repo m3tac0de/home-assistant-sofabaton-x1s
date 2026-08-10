@@ -1452,6 +1452,45 @@ async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/clear_all",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Drop the entire HA-side Wifi Events configuration, record included.
+
+    The Events tab offers this only in the orphaned state: the hub-side
+    device was deleted out-of-band (an app re-sync purge) and the deployed
+    ownership was cleared by the reconcile pass, so there is nothing left
+    on the hub to clean up. Guarded on that state; a record that still
+    owns a deployed device must keep its config (the staged slots are what
+    the callback runtime reads).
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    record_state = store.wifi_events_record_state(
+        hub.entry_id, roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id)
+    )
+    if record_state.get("device_id") is not None:
+        connection.send_error(
+            msg["id"],
+            "still_deployed",
+            "The Wifi Events device is still deployed on the hub",
+        )
+        return
+    # Whole-record delete mirrors the last-event branch of wifi_event/delete
+    # (plan §10): the next event create re-creates a fresh record.
+    await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/wifi_event/set_action",
         vol.Required("entity_id"): cv.entity_id,
         vol.Required("slot_index"): int,
@@ -3583,6 +3622,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_create_wifi_event)
     websocket_api.async_register_command(hass, _ws_delete_wifi_event)
     websocket_api.async_register_command(hass, _ws_sync_wifi_events)
+    websocket_api.async_register_command(hass, _ws_clear_all_wifi_events)
     websocket_api.async_register_command(hass, _ws_set_wifi_event_action)
     websocket_api.async_register_command(hass, _ws_set_wifi_event_longpress)
     websocket_api.async_register_command(hass, _ws_get_hub_event_actions)

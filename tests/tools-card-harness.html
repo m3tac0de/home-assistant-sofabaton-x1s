@@ -1721,6 +1721,9 @@
               }
               return respond(type, wifiEventsResponse());
             }
+            case "sofabaton_x1s/wifi_event/clear_all":
+              mock.wifiEvents = [];
+              return respond(type, wifiEventsResponse());
             case "sofabaton_x1s/wifi_event/set_longpress": {
               const event = mock.wifiEvents.find(
                 (item) => item.slot_index === Number(message.slot_index),
@@ -2508,6 +2511,24 @@
           await openAutomationEvents(card);
           await new Promise((resolve) => setTimeout(resolve, 300));
         },
+      },
+      {
+        id: "automation-events-orphaned", group: "Automation Events",
+        label: "Events — Wifi Events gone from the hub",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        wifiDevices: WIFI_DEVICES_HEALTHY,
+        // Hub-side purge: the reconcile cleared deployed ownership, the
+        // staged events (and actions) survive with a null device id.
+        wifiEvents: WIFI_EVENTS.map((event) => ({
+          ...event,
+          device_id: null,
+          deployed: false,
+        })),
+        postLoad: card => openAutomationEvents(card),
       },
       {
         id: "automation-events-empty", group: "Automation Events",

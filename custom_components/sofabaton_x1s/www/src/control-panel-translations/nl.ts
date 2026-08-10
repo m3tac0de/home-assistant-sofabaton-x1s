@@ -384,6 +384,13 @@ export const TOOLS_CARD_STRINGS_NL = {
     wifiEventLongPressToggleTitle: "Lang indrukken inschakelen",
     wifiEventNeedsSyncBadge: "sync nodig",
     wifiEventRetrySync: "Sync opnieuw proberen",
+    wifiEventsStaleNoticePrefix:
+      "Deze events staan niet meer op de hub. Voeg er een aan een activiteit toe om ze allemaal opnieuw naar de hub te sturen, of ",
+    wifiEventsStaleNoticeLink: "verwijder deze configuratie uit Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Alle Wifi-events en hun acties uit Home Assistant verwijderen?",
+    wifiEventsStaleConfirmRemove: "Verwijderen",
+    wifiEventsStaleRemoveFailed: "Het verwijderen van de Wifi-events-configuratie is mislukt.",
     wifiEventDeleteTitle: "Wifi-event verwijderen",
     wifiEventDeleteConfirmTitle: (name: string) => `"${name}" verwijderen?`,
     wifiEventDeleteScanning: "Controleren wat naar dit event verwijst…",
