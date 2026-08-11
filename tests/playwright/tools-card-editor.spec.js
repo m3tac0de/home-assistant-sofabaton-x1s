@@ -71,7 +71,7 @@ test.describe("tools-card activity editor harness", () => {
   test("adding a favorite through the UI links its device and repairs power macros", async ({ page }) => {
     await mountActivityEditor(page);
 
-    await page.locator(".quick-access-head-actions .quick-access-add-btn").click();
+    await page.locator('[data-edit-section="quick_access"] .quick-access-add-btn').click();
     await page.locator("#sb-add-fav-device").selectOption("3");
     await page.locator("#sb-add-fav-command").selectOption("30");
     await page.locator(".dialog-footer .dialog-btn-primary").click();
@@ -167,10 +167,44 @@ test.describe("tools-card activity editor harness", () => {
     assertActivityMembershipInvariant(afterDelete, 101);
   });
 
+  test("adding a device with no buttons or shortcuts makes it a power-only member", async ({ page }) => {
+    await mountActivityEditor(page);
+
+    // The sequences are the management surface: Add device sits beside
+    // Add step inside the power-sequence editor.
+    await page.getByRole("button", { name: "Power-on sequence", exact: false }).click();
+    await page.locator(".add-member-btn").click();
+    await page.locator("#sb-add-member-device").selectOption("3");
+    await page.locator(".dialog-footer .dialog-btn-primary").click();
+
+    const bundle = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
+    const activity = bundle.activities.find((candidate) => candidate.device?.device_id === 101);
+    // Member with no editable references: no favorite, binding, or step.
+    expect(activity.referenced_source_device_ids).toEqual([1, 2, 3]);
+    expect((activity.favorite_slots ?? []).some((slot) => Number(slot.device_id) === 3)).toBe(false);
+    expect((activity.button_bindings ?? []).some((binding) => Number(binding.device_id) === 3)).toBe(false);
+    assertActivityMembershipInvariant(bundle, 101);
+
+    // Deleting the device's power-ref row = removing the device, via the
+    // member impact-confirm dialog.
+    await page.locator("[data-step-index]").filter({ hasText: "Streamer" })
+      .getByRole("button", { name: "Remove device from this activity", exact: true }).click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+
+    const after = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
+    expect(after.activities.find((candidate) => candidate.device?.device_id === 101)
+      .referenced_source_device_ids).toEqual([1, 2]);
+    assertActivityMembershipInvariant(after, 101);
+
+    // Back at the section level, the roster is a one-line summary.
+    await page.locator(".back-btn").click();
+    await expect(page.locator('[data-kind="member-summary"]')).toContainText("Television");
+  });
+
   test("deleting a device's final favorite removes its power linkage", async ({ page }) => {
     await mountActivityEditor(page);
 
-    await page.locator(".quick-access-head-actions .quick-access-add-btn").click();
+    await page.locator('[data-edit-section="quick_access"] .quick-access-add-btn').click();
     await page.locator("#sb-add-fav-device").selectOption("3");
     await page.locator("#sb-add-fav-command").selectOption("30");
     await page.locator(".dialog-footer .dialog-btn-primary").click();

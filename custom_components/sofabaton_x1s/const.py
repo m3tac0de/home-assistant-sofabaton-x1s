@@ -30,6 +30,12 @@ CONF_MAC = "mac"
 CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_NAME = "name"
+# The hub's SELF-REPORTED MAC from the connect banner (payload[0:6]),
+# persisted so MQTT ingress can subscribe before the first TCP connect
+# after a restart. Never used for entry identity or entity unique_ids —
+# CONF_MAC (which may be the manual-add synthetic value) keeps that
+# role so nothing existing re-keys.
+CONF_BANNER_MAC = "banner_mac"
 CONF_MDNS_TXT = "mdns_txt"
 CONF_MDNS_VERSION = "mdns_version"
 CONF_PROXY_ENABLED = "proxy_enabled"

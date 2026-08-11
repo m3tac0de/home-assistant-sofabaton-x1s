@@ -185,6 +185,11 @@ class CacheBackupMixin:
             name = str(banner_info.get("name", "")).strip()
             if name:
                 sanitized["name"] = name
+            mac = "".join(
+                ch for ch in str(banner_info.get("mac") or "") if ch.lower() in "0123456789abcdef"
+            ).upper()
+            if len(mac) == 12 and set(mac) != {"0"}:
+                sanitized["mac"] = mac
             with self._banner_info_lock:
                 self._banner_info = sanitized
             if sanitized.get("model"):

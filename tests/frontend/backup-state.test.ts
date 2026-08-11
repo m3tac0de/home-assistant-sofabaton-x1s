@@ -785,6 +785,39 @@ test("adding a favorite appends only the new device's power steps", () => {
   assert.deepEqual([...new Set(on.steps!.filter((s) => s.command_id === 0xC6).map((s) => s.device_id))], [1, 2]);
 });
 
+test("chain steps to another activity stay in the macro but never become members", () => {
+  // Vendor-app construct (#263): a POWER_OFF that hands over to another
+  // activity carries that activity's id in a power-ref step.
+  const withChain = realPowerActivity();
+  withChain.activities[0].macros![1].steps!.push(
+    { device_id: 102, command_id: 198, button_code: 0, duration: 0, delay: 255 },
+  );
+  const next = reconcileActivityPowerMacros(withChain, 101);
+  const act = next.activities[0];
+  assert.deepEqual(act.referenced_source_device_ids, [3, 9]); // 102 not promoted
+  const off = act.macros!.find((m) => m.button_id === 199)!;
+  assert.ok(off.steps!.some((s) => s.device_id === 102 && s.command_id === 198)); // chain row preserved
+  const on = act.macros!.find((m) => m.button_id === 198)!;
+  assert.ok(!on.steps!.some((s) => s.device_id === 102)); // no power rows materialized for it
+});
+
+test("a power macro created from scratch gets the canonical POWER_* name (#263)", () => {
+  // Fresh integration-created activities carry no 198/199 macros; the row
+  // must be created with the protocol name, never the UI fallback label.
+  const next = addActivityMacroCommandStep(powerMacroBundle(), 101, 198, 1, 10, 0);
+  const on = next.activities[0].macros!.find((m) => m.button_id === 198)!;
+  assert.equal(on.name, "POWER_ON");
+  const off = next.activities[0].macros!.find((m) => m.button_id === 199);
+  if (off) assert.equal(off.name, "POWER_OFF");
+});
+
+test("reconcile repairs a corrupted power-macro name (#263)", () => {
+  const corrupt = realPowerActivity();
+  corrupt.activities[0].macros![0].name = "Macro 198";
+  const next = reconcileActivityPowerMacros(corrupt, 101);
+  assert.equal(next.activities[0].macros!.find((m) => m.button_id === 198)!.name, "POWER_ON");
+});
+
 // Activity referencing device 1 (with HDMI 1 already a configured input) and
 // device 2 (no inputs yet), reconciled to flat power steps.
 function powerEditorBundle() {

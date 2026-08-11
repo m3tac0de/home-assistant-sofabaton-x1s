@@ -436,7 +436,10 @@ def _trim_macro_label(decoded: str) -> str:
         idx = decoded.find(marker)
         if idx >= 0:
             return decoded[idx:].split("\x00", 1)[0].strip()
-    return decoded.rstrip("\x00").strip()
+    # Hubs keep non-zero metadata bytes in the label slot's tail beyond the
+    # first NUL (see MacroRecord.raw_label_slot); decoding them as text
+    # yields mojibake. The label proper always ends at the first NUL.
+    return decoded.split("\x00", 1)[0].strip()
 
 
 def _encode_macro_schema_label(label: str, *, label_len: int, encoding: str) -> bytes:

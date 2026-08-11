@@ -261,8 +261,8 @@
         <div class="harness-field">
           <label for="harness-language">Language</label>
           <select id="harness-language">
-            <option value="en">English</option>
-            <option value="en-gb">English (United Kingdom)</option>
+            <option value="en">American English</option>
+            <option value="en-gb">English</option>
             <option value="de">Deutsch</option>
             <option value="es">Español</option>
             <option value="fr">Français</option>
@@ -295,7 +295,7 @@
         <div class="status-label">Active Scenario</div>
         <div class="active-scenario-name" id="active-scenario-name">—</div>
         <div class="harness-status-row">
-          <span class="harness-chip" id="active-language">English</span>
+          <span class="harness-chip" id="active-language">American English</span>
           <span class="harness-chip" id="active-theme">Light</span>
           <span class="harness-chip" id="unhandled-api-count">API contract clean</span>
         </div>
@@ -1632,6 +1632,7 @@
               return respond(type, {
                 devices: mock.wifiDevices,
                 max_devices: scenario.maxWifiDevices ?? 5,
+                mqtt_available: scenario.mqttAvailable ?? false,
               });
             case "sofabaton_x1s/command_config/get": {
               const key = String(message.device_key ?? "");
@@ -1658,6 +1659,8 @@
                 device_name: String(message.device_name || "New Wifi Device"),
                 configured_slot_count: 0,
                 deployed_device_id: null,
+                requested_transport: String(message.transport || "http"),
+                deployed_transport: null,
                 ...WIFI_SYNC_IDLE,
               });
               mock.wifiCommandsByKey[key] = [];
@@ -1721,6 +1724,9 @@
               }
               return respond(type, wifiEventsResponse());
             }
+            case "sofabaton_x1s/wifi_event/clear_all":
+              mock.wifiEvents = [];
+              return respond(type, wifiEventsResponse());
             case "sofabaton_x1s/wifi_event/set_longpress": {
               const event = mock.wifiEvents.find(
                 (item) => item.slot_index === Number(message.slot_index),
@@ -2508,6 +2514,24 @@
           await openAutomationEvents(card);
           await new Promise((resolve) => setTimeout(resolve, 300));
         },
+      },
+      {
+        id: "automation-events-orphaned", group: "Automation Events",
+        label: "Events — Wifi Events gone from the hub",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        wifiDevices: WIFI_DEVICES_HEALTHY,
+        // Hub-side purge: the reconcile cleared deployed ownership, the
+        // staged events (and actions) survive with a null device id.
+        wifiEvents: WIFI_EVENTS.map((event) => ({
+          ...event,
+          device_id: null,
+          deployed: false,
+        })),
+        postLoad: card => openAutomationEvents(card),
       },
       {
         id: "automation-events-empty", group: "Automation Events",

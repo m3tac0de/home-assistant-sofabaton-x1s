@@ -222,6 +222,39 @@ def test_x1s_x2_utf16be_label_with_0xff_in_codepoint() -> None:
     assert record.label == "AÿB"
 
 
+def test_x1s_x2_non_power_label_ignores_metadata_after_first_nul() -> None:
+    # Real hubs keep non-zero metadata bytes in the label slot's tail (e.g.
+    # ``37 37 00 00 35 35``). For POWER_* labels the decoder rebases on the
+    # marker; a non-POWER label (e.g. the #263 "Macro 198" corruption) must
+    # equally stop at the first NUL instead of surfacing the metadata as
+    # mojibake.
+    encoded = "Macro 198".encode("utf-16-be") + b"\x00\x00" + bytes.fromhex("37 37 00 00 35 35")
+    label_bytes = encoded.ljust(MACRO_LABEL_LEN_X1S_X2, b"\x00")
+    region = (
+        bytes([0xC6, 0]) + label_bytes + bytes([_MACRO_REGION_TERMINATOR])
+    )
+
+    record = parse_macro_record_from_region(
+        region, activity_id=0x65, hub_version=HUB_VERSION_X1S
+    )
+
+    assert record is not None
+    assert record.label == "Macro 198"
+
+
+def test_x1_non_power_label_ignores_metadata_after_first_nul() -> None:
+    encoded = b"Macro 198\x00" + bytes.fromhex("37 37")
+    label_bytes = encoded.ljust(MACRO_LABEL_LEN_X1, b"\x00")
+    region = bytes([0xC6, 0]) + label_bytes + bytes([_MACRO_REGION_TERMINATOR])
+
+    record = parse_macro_record_from_region(
+        region, activity_id=0x65, hub_version=HUB_VERSION_X1
+    )
+
+    assert record is not None
+    assert record.label == "Macro 198"
+
+
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------

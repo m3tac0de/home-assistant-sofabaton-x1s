@@ -123,7 +123,7 @@ When the official app is connected to the proxy, HA entities that can send comma
   - `switch.<hub>_hex_logging`  
     Enables deep protocol logging for diagnostics (see logging docs).
   - `switch.<hub>_wifi_device`  
-    Enables/disables the shared HTTP callback listener for Wifi Commands and Wifi Events. It is enabled automatically when either feature is deployed.
+    Enables/disables the shared HTTP callback listener for Wifi Commands and Wifi Events. It is enabled automatically while at least one HTTP-delivered Wifi Device or the Wifi Events device needs it. MQTT-only Wifi Commands do not use this listener.
 
 - **Sensors**
   - `binary_sensor.<hub>_hub_connected` (is the hub connected/disconnected to the integration)
@@ -186,7 +186,7 @@ Turn physical remote button presses and hub events into Home Assistant Actions.
 
 ### Wifi Commands: respond to physical button presses
 
-Configure **Automation → Wifi Commands** in the Control Panel to bring physical remote button presses into Home Assistant. You can create up to 5 Wifi Devices per hub, each with 10 command slots.
+Configure **Automation → Wifi Commands** in the Control Panel to bring physical remote button presses into Home Assistant. You can create up to 5 Wifi Devices per hub, each with 10 command slots. New Wifi Devices on an X2 can deliver presses through the Home Assistant MQTT integration when the hub and Home Assistant use the same broker; HTTP delivery remains available on every supported hub.
 
 Each command can run a Home Assistant Action directly. Every press also updates `sensor.<hub>_wifi_commands`, so configuring an Action is optional: you can instead trigger your own automations and inspect the command, Wifi Device, and short- or long-press type.
 
@@ -283,14 +283,14 @@ To bring selected buttons into Home Assistant, configure them under **Automation
 <details>
 <summary><strong>How does this differ from the official X2 integration?</strong></summary>
 
-The [official X2 integration](https://github.com/yomonpet/ha-sofabaton-hub) supports the X2 and communicates through its MQTT interface. **Sofabaton X** supports X1, X1S, and X2 through a direct local connection to the hub. It also provides live hub editing, backup and restore, Wifi Commands, Wifi Events, Automation Events, command-payload tools, and a proxy for the Sofabaton app.
+The [official X2 integration](https://github.com/yomonpet/ha-sofabaton-hub) supports the X2 and uses its MQTT interface for hub entities and control. **Sofabaton X** supports X1, X1S, and X2 through a direct local connection for hub control and configuration. On X2, it can also use Home Assistant's MQTT integration as an optional delivery path for Wifi Command presses. Sofabaton X additionally provides live hub editing, backup and restore, Wifi Events, Automation Events, command-payload tools, and a proxy for the Sofabaton app.
 
 </details>
 
 <details>
 <summary><strong>Can I run both X2 integrations?</strong></summary>
 
-Yes. They use separate communication paths and separate Home Assistant integration domains: the official X2 integration uses MQTT, while Sofabaton X uses the hub's local protocol. They do not collide, so both can be configured for the same X2 hub. You can choose which integration's entities to use in each dashboard or automation.
+Yes. They use separate Home Assistant integration domains and can coexist on the same X2 hub. Sofabaton X keeps its own direct local session for hub control and configuration. If you choose MQTT delivery for its Wifi Commands, both integrations may use the same broker and subscribe to hub topics, but those subscriptions do not conflict. You can choose which integration's entities to use in each dashboard or automation.
 
 </details>
 

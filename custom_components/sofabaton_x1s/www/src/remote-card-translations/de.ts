@@ -6,9 +6,12 @@
 // Lovelace, Sofabaton) and the "X2 → Activities" MQTT device name are kept
 // as-is on purpose.
 
-import { registerRemoteCardTranslation } from "../remote-card-strings";
+import {
+  registerRemoteCardTranslation,
+  type RemoteCardStrings,
+} from "../remote-card-strings";
 
-registerRemoteCardTranslation("de", {
+const REMOTE_CARD_STRINGS_DE = {
   card: {
     selectEntityError: "Wähle eine Sofabaton-Fernbedienungsentität aus",
     remoteUnavailable:
@@ -164,4 +167,6 @@ registerRemoteCardTranslation("de", {
     b: "B",
     c: "C",
   },
-});
+} satisfies RemoteCardStrings;
+
+registerRemoteCardTranslation("de", REMOTE_CARD_STRINGS_DE);

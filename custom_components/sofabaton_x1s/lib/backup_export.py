@@ -41,6 +41,13 @@ from .protocol_const import (
     normalize_device_class,
 )
 
+# Shared entity-id space: ids below this are source devices, ids at or
+# above it are activities. Binding/step targets in the activity range
+# (a macro-target binding carries the activity's own id; a chain step
+# carries another activity's id) are not source devices and must never
+# enter ``referenced_source_device_ids``.
+ACTIVITY_ID_BASE = 0x65
+
 _NETWORK_CALLBACK_CLASSES = {
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_IP,
@@ -407,7 +414,8 @@ def build_activity_button_rows(
             # has no mapping for this button. Neither is an actionable
             # binding, and bundle validation rejects command_id 0.
             continue
-        referenced.add(target_device_id)
+        if target_device_id < ACTIVITY_ID_BASE:
+            referenced.add(target_device_id)
         rows.append(
             {
                 "button_id": button_id & 0xFF,
@@ -427,7 +435,9 @@ def build_activity_button_rows(
             }
         )
         if details.get("long_press_device_id") is not None:
-            referenced.add(int(details["long_press_device_id"]) & 0xFF)
+            long_press_device_id = int(details["long_press_device_id"]) & 0xFF
+            if 0 < long_press_device_id < ACTIVITY_ID_BASE:
+                referenced.add(long_press_device_id)
     return rows, referenced
 
 
@@ -442,7 +452,7 @@ def build_activity_macro_rows(
             step_device_id = entry.device_id & 0xFF
             step_command_id = entry.key_id & 0xFF
             is_delay_step = step_device_id == 0xFF or step_command_id == 0xFF
-            if not is_delay_step and step_device_id != 0:
+            if not is_delay_step and 0 < step_device_id < ACTIVITY_ID_BASE:
                 referenced.add(step_device_id)
             step_entries.append(
                 {
@@ -474,7 +484,7 @@ def build_activity_favorite_rows(
         if not isinstance(slot, dict):
             continue
         target_device_id = int(slot.get("device_id", 0)) & 0xFF
-        if target_device_id != 0:
+        if 0 < target_device_id < ACTIVITY_ID_BASE:
             referenced.add(target_device_id)
         rows.append(
             {

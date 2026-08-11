@@ -44,6 +44,7 @@ class _Store:
     async def async_save_deployed_wifi_commands(
         self, entry_id, device_key, commands, *,
         deployed_device_id=None, commands_hash="", request_port=None,
+        deployed_transport=None,
     ):
         self.saved.append(
             {

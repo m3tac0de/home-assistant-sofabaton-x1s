@@ -658,6 +658,84 @@ class WifiDeviceMixin:
             return None
         return {"device_id": result.device_id, "status": "success"}
 
+    def create_wifi_mqtt_device(
+        self,
+        device_name: str = "Home Assistant",
+        commands: list[Any] | None = None,
+        brand_name: str = "m3tac0de",
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
+        input_command_ids: list[int] | None = None,
+    ) -> dict[str, Any] | None:
+        """Create a ``wifi_mqtt`` (X2 virtual MQTT) device from wifi command defs.
+
+        Takes the same ``commands`` rows :meth:`create_wifi_device` takes
+        (``display_name`` / ``press_type`` / ``command_index``) so the
+        deploy layer can branch on transport without reshaping its
+        inputs. Records land at the standard slot layout — shorts at
+        ``1..N``, longs at ``N + 1..2N`` — via the generic restore
+        pipeline (record bodies are inert;
+        live-validated by bench_90). Power and input configuration reuse
+        the in-place sync's step writers, keeping one code path for
+        first deploy and later edits.
+        """
+
+        from .wifi_mqtt_profile import build_wifi_mqtt_device_payload
+
+        defs = [row for row in (commands or []) if isinstance(row, dict)]
+        shorts = [row for row in defs if str(row.get("press_type") or "short") == "short"]
+        longs = [row for row in defs if str(row.get("press_type") or "") == "long"]
+        slot_count = len(shorts)
+        if not slot_count:
+            self._log.info("[WIFI] create_wifi_mqtt_device ignored: no command defs")
+            return None
+        names: dict[int, str] = {}
+        for row in shorts:
+            index = int(row.get("command_index", 0))
+            names[index + 1] = str(row.get("display_name") or f"Command {index + 1}")
+        for row in longs:
+            index = int(row.get("command_index", 0))
+            names[slot_count + index + 1] = str(
+                row.get("display_name") or f"Command {index + 1} Long Press"
+            )
+
+        payload = build_wifi_mqtt_device_payload(
+            device_name=device_name,
+            brand_name=brand_name,
+            command_names=names,
+        )
+        result = self.restore_device(payload)
+        if not result or result.get("status") != "success" or result.get("device_id") is None:
+            return None
+        device_id = int(result["device_id"]) & 0xFF
+
+        if power_on_command_id is not None or power_off_command_id is not None:
+            if not self._sync_step_wifi_power_config(
+                {
+                    "device_id": device_id,
+                    "power_on_command_id": power_on_command_id,
+                    "power_off_command_id": power_off_command_id,
+                }
+            ):
+                self._log.warning(
+                    "[WIFI] create_wifi_mqtt_device: power config failed for dev=0x%02X",
+                    device_id,
+                )
+                return None
+        validated_inputs = _validate_wifi_input_ids(
+            input_command_ids, max_command_id=slot_count
+        )
+        if validated_inputs:
+            if not self._sync_step_wifi_input_config(
+                {"device_id": device_id, "input_command_ids": validated_inputs}
+            ):
+                self._log.warning(
+                    "[WIFI] create_wifi_mqtt_device: input config failed for dev=0x%02X",
+                    device_id,
+                )
+                return None
+        return {"device_id": device_id, "status": "success"}
+
     def _run_network_callback_create(
         self, request: DeviceCreateRequest
     ) -> DeviceCreateResult:

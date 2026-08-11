@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 import pytest
 from types import SimpleNamespace
@@ -3866,6 +3866,7 @@ def test_sync_command_config_with_zero_slots_keeps_listener_when_another_device_
             deployed_device_id=None,
             commands_hash="",
             request_port=None,
+            deployed_transport=None,
         ):
             self.devices[device_key] = {
                 "device_key": device_key,
@@ -4062,6 +4063,7 @@ def test_sync_command_config_with_missing_metadata_matches_unique_hash_only_bran
             deployed_device_id=None,
             commands_hash="",
             request_port=None,
+            deployed_transport=None,
         ):
             return None
 
@@ -4141,6 +4143,7 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
             deployed_device_id=None,
             commands_hash="",
             request_port=None,
+            deployed_transport=None,
         ):
             return None
 
@@ -5830,3 +5833,126 @@ def test_wifi_events_device_rebinds_by_brand_after_restore():
         assert by_key == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
     finally:
         loop.close()
+
+
+# ---------------------------------------------------------------------------
+# MQTT press ingress
+# ---------------------------------------------------------------------------
+
+
+def _mqtt_msg(payload, retain=False):
+    return SimpleNamespace(payload=payload, retain=retain)
+
+
+def _make_mqtt_ingress_fake(dispatched):
+    fake = SimpleNamespace(
+        _log=logging.getLogger("test-mqtt-ingress"),
+        hass=None,
+        entry_id="entry-id",
+        devices={11: {"name": "Lights"}},
+        _last_wifi_mqtt_press_at=None,
+    )
+    fake._get_cached_device_name = lambda device_id: None
+
+    async def fake_dispatch(**kwargs):
+        dispatched.append(kwargs)
+
+    fake._async_dispatch_wifi_press = fake_dispatch
+    return fake
+
+
+class _FakeMqttStore:
+    def __init__(self):
+        self.devices = [
+            {
+                "device_key": "lights",
+                "deployed_device_id": 11,
+                "deployed_transport": "mqtt",
+                "slot_count": 2,
+            },
+            {
+                "device_key": "legacy",
+                "deployed_device_id": 12,
+                "deployed_transport": "http",
+                "slot_count": 10,
+            },
+        ]
+
+    async def async_list_hub_devices(self, entry_id):
+        return list(self.devices)
+
+    def get_deployed_wifi_commands(self, entry_id, hub_device_id=None):
+        if hub_device_id == 11:
+            return [{"name": "Lights Toggle"}, {"name": "Lights Scene"}]
+        return []
+
+
+def test_mqtt_ingress_handler_guards_and_dispatch(monkeypatch):
+    dispatched = []
+    fake = _make_mqtt_ingress_fake(dispatched)
+
+    async def fake_get_store(hass):
+        return _FakeMqttStore()
+
+    monkeypatch.setattr(hub_module, "async_get_command_config_store", fake_get_store)
+    handler = SofabatonHub._async_handle_wifi_mqtt_message
+
+    loop = asyncio.new_event_loop()
+    try:
+        run = loop.run_until_complete
+
+        # Retained messages are dropped before anything else (restart
+        # replay must never run an Action) and do not even count as a
+        # liveness signal.
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 1}', retain=True)))
+        assert dispatched == []
+        assert fake._last_wifi_mqtt_press_at is None
+
+        # Malformed payloads are dropped silently.
+        run(handler(fake, _mqtt_msg("not json")))
+        run(handler(fake, _mqtt_msg('{"device_id": "x", "key_id": 1}')))
+        assert dispatched == []
+
+        # Unmanaged device ids never fire (app-created MQTT devices), but
+        # DO update the passive liveness timestamp.
+        run(handler(fake, _mqtt_msg('{"device_id": 99, "key_id": 1}')))
+        assert dispatched == []
+        assert fake._last_wifi_mqtt_press_at is not None
+
+        # A device deployed over HTTP is not routable via MQTT either.
+        run(handler(fake, _mqtt_msg('{"device_id": 12, "key_id": 1}')))
+        assert dispatched == []
+
+        # Short press: key 2 on a 2-slot device -> index 1, short.
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 2}')))
+        assert len(dispatched) == 1
+        assert dispatched[-1]["command_index"] == 1
+        assert dispatched[-1]["press_type"] == "short"
+        assert dispatched[-1]["command_label"] == "Lights Scene"
+        assert dispatched[-1]["record"]["transport"] == "mqtt"
+        assert dispatched[-1]["record"]["source_ip"] == ""
+
+        # Long press: key 3 -> index 0, long (long = short + slot_count).
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 3}')))
+        assert dispatched[-1]["command_index"] == 0
+        assert dispatched[-1]["press_type"] == "long"
+
+        # Out-of-range key ids are dropped (slot_count 2 -> max key 4).
+        before = len(dispatched)
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 5}')))
+        assert len(dispatched) == before
+    finally:
+        loop.close()
+
+
+def test_map_wifi_mqtt_key_law():
+    from custom_components.sofabaton_x1s.command_config import map_wifi_mqtt_key
+
+    assert map_wifi_mqtt_key(1, 10) == (0, "short")
+    assert map_wifi_mqtt_key(10, 10) == (9, "short")
+    assert map_wifi_mqtt_key(11, 10) == (0, "long")
+    assert map_wifi_mqtt_key(20, 10) == (9, "long")
+    assert map_wifi_mqtt_key(21, 10) is None
+    assert map_wifi_mqtt_key(0, 10) is None
+    assert map_wifi_mqtt_key("junk", 10) is None
+    assert map_wifi_mqtt_key(1, 0) is None

@@ -120,7 +120,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     dvr: "DVR",
     resetCardDefault: "Reset card layout",
     resetDefaultLayout: "Reset layout",
-    noteDefaultLayout: "Used for Activities without their own layout",
+    noteDefaultLayout: "Used for activities without their own layout",
     noteCustomLayout: "Using custom layout",
     noteUsingDefault: "Using default layout",
   },

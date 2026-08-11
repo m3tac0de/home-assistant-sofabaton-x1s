@@ -422,7 +422,11 @@ class SofabatonIpCommandsSensor(SensorEntity):
 
     @property
     def available(self) -> bool:
-        return self._hub.roku_server_enabled
+        # Always available: presses can arrive over the HTTP listener OR
+        # over MQTT (mqtt-transport-plan §6), so tying availability to
+        # the listener switch would blank the sensor in an MQTT-only
+        # setup. At-rest it simply shows its waiting state.
+        return True
 
     @property
     def state(self) -> str:
@@ -445,6 +449,7 @@ class SofabatonIpCommandsSensor(SensorEntity):
                 "press_type": "Unknown",
                 "timestamp": None,
                 "source_ip": None,
+                "transport": None,
             }
 
         return {
@@ -455,5 +460,8 @@ class SofabatonIpCommandsSensor(SensorEntity):
             "press_type": self._display_command.get("press_type") or "short",
             "timestamp": self._display_command.get("iso_time")
             or self._display_command.get("timestamp"),
+            # Empty for MQTT deliveries by design (no source ip exists on a
+            # broker hop; never faked).
             "source_ip": self._display_command.get("source_ip"),
+            "transport": self._display_command.get("transport") or "http",
         }

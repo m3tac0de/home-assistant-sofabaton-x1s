@@ -1,7 +1,8 @@
-// British English (en-GB) translation for the Sofabaton Control Panel card.
+// English (en-GB) translation for the Sofabaton Control Panel card.
 //
 // Deliberately partial: only copy whose spelling differs from the American
-// English reference table is overridden. All other keys fall back to English.
+// English reference table is overridden. All other keys fall back to that
+// American English base.
 
 import type { ToolsCardTranslation } from "../strings";
 

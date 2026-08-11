@@ -1715,13 +1715,13 @@ var TOOLS_CARD_STRINGS_EN = {
     editActivity: "Edit activity",
     editDevice: "Edit device",
     changeOrder: "Change order",
-    addActivity: "Add Activity",
+    addActivity: "Add activity",
     reorderSync: "Sync to Hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
     reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
     reorderSyncing: "Writing the new order to the hub\u2026",
-    addActivityTitle: "Add Activity",
+    addActivityTitle: "Add activity",
     addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
     addActivityPlaceholder: "Activity name",
     addActivityCancel: "Cancel",
@@ -1804,13 +1804,13 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiReadingDevice: "Reading the deployed Wifi Device\u2026",
     wifiEnablingDevice: "Enabling the Wifi Device\u2026",
     wifiDisablingDevice: "Disabling the Wifi Device\u2026",
-    wifiValidatingActivities: "Checking Activities against the hub\u2026",
+    wifiValidatingActivities: "Checking activities against the hub\u2026",
     wifiCreatingDevice: "Creating the Wifi Device on the hub\u2026",
     wifiDeletingDevice: "Removing the previous Wifi Device\u2026",
-    wifiAddingToActivities: "Adding the Wifi Device to Activities\u2026",
-    wifiApplyingFavorites: "Applying Activity shortcuts\u2026",
-    wifiApplyingBindings: "Applying Activity button assignments\u2026",
-    wifiRefreshingMaps: "Refreshing Activity buttons and shortcuts\u2026",
+    wifiAddingToActivities: "Adding the Wifi Device to activities\u2026",
+    wifiApplyingFavorites: "Applying activity shortcuts\u2026",
+    wifiApplyingBindings: "Applying activity button assignments\u2026",
+    wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
     wifiResyncingRemote: "Resyncing the physical remote\u2026",
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
@@ -1938,16 +1938,16 @@ var TOOLS_CARD_STRINGS_EN = {
     downloadBackup: "Download backup",
     complete: "Complete",
     restoreCompletedTitle: "Restore completed",
-    restoreCompletedSubtitle: "The selected Activities and Devices were restored to the hub.",
+    restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
     restoreCompletedStatus: "Restore completed.",
     restoreCompletedSuccessfully: "Restore completed successfully.",
     backupCompletedSuccessfully: "Backup completed successfully.",
     wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
     restoreRunningSubtitle: "The hub is restoring your backup.",
     restoreFinishedSubtitle: "Your restore has completed.",
-    restoreChooseSubtitle: "Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on.",
+    restoreChooseSubtitle: "Load a backup file, then choose exactly what to restore. Activities automatically pull in the devices they depend on.",
     itemsToRestore: "Items to restore",
-    eraseExisting: "Erase existing Devices and Activities",
+    eraseExisting: "Erase existing devices and activities",
     startRestore: "Start restore",
     startingBackup: "Starting backup\u2026",
     startingRestore: "Starting restore\u2026",
@@ -1964,7 +1964,7 @@ var TOOLS_CARD_STRINGS_EN = {
     selectedDevices: "Selected devices",
     devicesToInclude: "Devices to include",
     selectedCount: (count) => `${count} selected`,
-    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "Activity" : "Activities"} and ${devices} ${devices === 1 ? "Device" : "Devices"} backed up`,
+    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
     activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favorite" : "favorites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     linkedDevices: (count) => `${count} linked ${count === 1 ? "device" : "devices"}`,
     deselectAll: "Deselect all",
@@ -1972,9 +1972,9 @@ var TOOLS_CARD_STRINGS_EN = {
     noDevicesAvailable: "No devices available.",
     working: "Working",
     startBackup: "Start backup",
-    editLoadPrompt: "Load a backup file, then choose an Activity or Device to edit.",
+    editLoadPrompt: "Load a backup file, then choose an activity or device to edit.",
     chooseBackupFile: "Choose backup file",
-    reorderHint: " Drag the handle on any row to reorder Activities and Devices.",
+    reorderHint: " Drag the handle on any row to reorder activities and devices.",
     macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the wait that follows it on the right.",
     macroStepsHelp: "Each step plays a command; set the wait that follows it on the right.",
     hubName: "Hub name",
@@ -1996,7 +1996,7 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-    deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing Devices and Activities" is enabled during restore.',
+    deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
     deleteSimpleBodyLive: "This removes it.",
@@ -2015,8 +2015,8 @@ var TOOLS_CARD_STRINGS_EN = {
     addFavoriteNoDevices: "This backup has no devices with commands to add.",
     addFavoriteNoCommands: "This device has no commands to add.",
     buttonBindingsTitle: "Button bindings",
-    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this Activity.",
-    buttonBindingsDeviceSub: "Bind remote buttons to this Device's own commands.",
+    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this activity.",
+    buttonBindingsDeviceSub: "Bind remote buttons to this device's own commands.",
     buttonBindingsEmpty: "No button bindings configured.",
     addBinding: "Add binding",
     bindingButton: "Button",
@@ -2047,10 +2047,22 @@ var TOOLS_CARD_STRINGS_EN = {
     // which reads as a PSU spec — or, in nl/es/fr, as nutrition. Keep the
     // English explicit so the behaviour is what gets translated.
     powerSetupTitle: "Power control",
-    powerSetupDeviceSub: "How the hub switches this device on and off during Activities, and the commands it sends to do it.",
-    powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
+    powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
+    powerSetupActivitySub: "The startup and shutdown sequence this activity runs.",
     powerOnLabel: "Power-on sequence",
     powerOffLabel: "Power-off sequence",
+    // Activity membership (power-only members). The sequences are the
+    // management surface: Add device sits beside Add step in the sequence
+    // editor, deleting a power-ref row removes the device, and the power
+    // section shows a one-line roster summary.
+    memberSummary: (names) => `Devices: ${names}`,
+    memberSummaryEmpty: 'No devices yet. Open a sequence and use "Add device".',
+    addMemberButton: "Add device",
+    addMemberTitle: "Add device to this activity",
+    addMemberHelper: "The device is added to both power sequences. Assign buttons or shortcuts later, or leave them empty.",
+    addMemberConfirm: "Add",
+    addMemberNoneLeft: "All devices are already part of this activity.",
+    removeMemberAria: "Remove device from this activity",
     // Automatic-power dropdown (device only). One hub byte encodes the whole
     // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
     powerControlTitle: "Automatic power control",
@@ -2059,8 +2071,8 @@ var TOOLS_CARD_STRINGS_EN = {
     powerControlDisabled: "Don't control power",
     powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
     powerControlAutoOff: "Turn off when idle",
-    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
-    powerControlStayOn: "Stay on between Activities",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
+    powerControlStayOn: "Stay on between activities",
     powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
     powerControlAlwaysOn: "Always stay on",
     powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
@@ -2093,7 +2105,7 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
     shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
     powerSectionTitle: "Power control",
-    powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
+    powerActivitySub: "Each device the activity uses powers on here. Pick its input and adjust the timing.",
     powerInputLabel: "Input",
     powerInputNone: "\u2014 none \u2014",
     powerDelayLabel: "Delay (s)",
@@ -2181,7 +2193,7 @@ var TOOLS_CARD_STRINGS_EN = {
     buttonChip: "button",
     ipChip: "ip",
     thisItem: "this item",
-    noDeviceCommands: "This Device does not currently have any commands.",
+    noDeviceCommands: "This device does not currently have any commands.",
     renameCommandAria: "Rename command",
     commandId: "Command ID",
     editPayloadAria: "Edit payload",
@@ -2202,8 +2214,8 @@ var TOOLS_CARD_STRINGS_EN = {
     payloadHex: "Payload (hex bytes)",
     payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
     rename: "Rename",
-    renameActivity: "Rename Activity",
-    renameDevice: "Rename Device",
+    renameActivity: "Rename activity",
+    renameDevice: "Rename device",
     renameMacro: "Rename Macro",
     renameFavorite: "Rename Favorite",
     renameCommand: "Rename Command",
@@ -2293,6 +2305,10 @@ var TOOLS_CARD_STRINGS_EN = {
     urlPath: "URL path",
     bodyBlock: "Body block (raw wire string)",
     bodyBlockHelper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count.",
+    mqttTitle: "MQTT identifiers",
+    mqttSubtitle: "Both bytes are ignored by the hub: at press time it publishes its own device and key IDs to the broker. There is nothing to configure.",
+    mqttDeviceId: "Device ID (ignored by the hub)",
+    mqttCommandId: "Command ID (ignored by the hub)",
     irTitle: "Descriptive IR payload",
     irSubtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
     descriptor: "Descriptor",
@@ -2340,7 +2356,7 @@ var TOOLS_CARD_STRINGS_EN = {
     replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
     replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
     none: "None",
-    commandSlotDescription: "Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
+    commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device\u2026",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}\u2026`,
     syncInProgress: "Sync in progress",
@@ -2374,6 +2390,12 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteDeviceFailed: "Unable to delete Wifi Device",
     createModalCancel: "Cancel",
     createModalCreate: "Create",
+    transportLabel: "Delivery method",
+    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
+    transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
+    transportPillDeployedTitle: "Current delivery method",
+    transportPillPreviewTitle: "Selected delivery method",
     deleteModalTitle: "Delete Wifi Device?",
     deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
     deleteModalDelete: "Delete",
@@ -2387,23 +2409,23 @@ var TOOLS_CARD_STRINGS_EN = {
     commandSlotActionTitle: (slotIndex) => `Command Slot ${slotIndex + 1} Action`,
     commandDisplayName: "Command Display Name",
     advanced: "Advanced",
-    activityInput: "Perform this command when an Activity starts",
-    activityInputHint: "The command is set as the Activity's input on the hub, so it runs during the Activity's startup sequence.",
+    activityInput: "Perform this command when an activity starts",
+    activityInputHint: "The command is set as the activity's input on the hub, so it runs during the activity's startup sequence.",
     activityInputReplaces: (slotName, activityName) => `Replaces "${slotName}" when ${activityName} starts`,
-    noActivitiesForHub: "No Activities available for this hub.",
+    noActivitiesForHub: "No activities available for this hub.",
     activityInputLabel: "Activity that performs this command",
     devicePowerOnLabel: "When the hub turns this device ON",
     devicePowerOffLabel: "When the hub turns this device OFF",
     devicePowerNothing: "Nothing",
-    devicePowerHint: "Runs as part of this device's power sequence in your Activities. Synced to the hub.",
+    devicePowerHint: "Runs as part of this device's power sequence in your activities. Synced to the hub.",
     devicePowerPerform: (commandName) => `perform ${commandName}`,
     hubEventsTitle: "Hub Events",
     hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
     hubEventPowerOff: "When the hub is switched OFF",
     hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
-    hubEventActivityStart: "When any Activity starts",
+    hubEventActivityStart: "When any activity starts",
     hubEventActivityStops: "and when one stops",
-    hubEventActivityStopModalTitle: "When any Activity stops",
+    hubEventActivityStopModalTitle: "When any activity stops",
     hubEventDoNothing: "do nothing",
     hubEventPerform: (service) => `perform ${service}`,
     hubEventClearTitle: "Reset to do nothing",
@@ -2420,6 +2442,14 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventLongPressToggleTitle: "Enable long press",
     wifiEventNeedsSyncBadge: "needs sync",
     wifiEventRetrySync: "Retry sync",
+    // Orphaned-config notice, split around the clickable phrase so locales
+    // can place it anywhere in the sentence.
+    wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
+    wifiEventsStaleNoticeLink: "remove this configuration from Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
+    wifiEventsStaleConfirmRemove: "Remove",
+    wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
     wifiEventDeleteTitle: "Delete Wifi Event",
     wifiEventDeleteConfirmTitle: (name) => `Delete "${name}"?`,
     wifiEventDeleteScanning: "Checking what references this event\u2026",
@@ -2428,17 +2458,17 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventDeleteConfirm: "Delete",
     wifiEventDeleteFailed: "Deleting the Wifi Event failed.",
     activityEventsTitle: "Activity Events",
-    activityEventsSubtitle: "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
+    activityEventsSubtitle: "Perform a Home Assistant Action when a specific activity starts or stops. Switching between activities stops the old one and starts the new one.",
     activityEventStarts: (name) => `When ${name} starts`,
     activityEventStops: "and when it stops",
     activityEventStartModalTitle: (name) => `When ${name} starts`,
     activityEventStopModalTitle: (name) => `When ${name} stops`,
     activityEventFallbackName: (id) => `Activity ${id}`,
-    noActivitiesForEvents: "No Activities on this hub yet.",
+    noActivitiesForEvents: "No activities on this hub yet.",
     favorite: "Set as Favorite",
     physicalButtonAssignment: "Physical Button Assignment",
     enableLongPress: "Enable long-press",
-    applyToActivities: "Apply to these Activities",
+    applyToActivities: "Apply to these activities",
     actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
     shortPress: "Short press",
     longPress: "Long press",
@@ -7201,6 +7231,14 @@ function decodedClassFormSpecs() {
         }
       ]
     },
+    wifi_mqtt: {
+      title: S5.mqttTitle,
+      subtitle: S5.mqttSubtitle,
+      fields: [
+        { key: "device_id", label: S5.mqttDeviceId, numeric: true, readonly: true },
+        { key: "command_id", label: S5.mqttCommandId, numeric: true, readonly: true }
+      ]
+    },
     ir: {
       title: S5.irTitle,
       subtitle: S5.irSubtitle,
@@ -8233,7 +8271,7 @@ function activityPowerDeviceIds(activity) {
       const command = Number(step?.command_id || 0);
       if (command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND) {
         const deviceId = Number(step?.device_id || 0);
-        if (deviceId > 0) ids.add(deviceId);
+        if (deviceId > 0 && deviceId < ACTIVITY_ENTITY_ID_MIN) ids.add(deviceId);
       }
     }
   }
@@ -8244,7 +8282,7 @@ function activityUsageDeviceIds(activity) {
   const ids = /* @__PURE__ */ new Set();
   const add = (value) => {
     const id = Number(value || 0);
-    if (id > 0 && id !== selfId) ids.add(id);
+    if (id > 0 && id < ACTIVITY_ENTITY_ID_MIN && id !== selfId) ids.add(id);
   };
   for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
   for (const binding of activity.button_bindings ?? []) {
@@ -8269,6 +8307,7 @@ function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
   const { prefix, groups } = groupMacroSteps(existingSteps);
   const kept = flattenMacroGroups(prefix, groups.filter((group) => {
     const deviceId = Number(group.head?.device_id || 0);
+    if (deviceId >= ACTIVITY_ENTITY_ID_MIN && deviceId !== 255) return true;
     return deviceId > 0 ? memberSet.has(deviceId) : true;
   }));
   const out = [...kept];
@@ -8314,7 +8353,7 @@ function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
     const memberSet = new Set(activityMemberDeviceIds(activity));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
-      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
+      if (extraId > 0 && extraId < ACTIVITY_ENTITY_ID_MIN && extraId !== selfId) memberSet.add(extraId);
     }
     const members = [...memberSet].sort((left, right) => left - right);
     const macros = [...activity.macros ?? []];
@@ -8326,7 +8365,10 @@ function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
       const next = {
         ...existing ?? {},
         button_id: buttonId,
-        name: existing?.name ?? name,
+        // The POWER_* label is protocol, not user data — the hub hides
+        // power macros by it. Always write the canonical name so a bad
+        // label (empty, or a UI fallback from the #263 bug) self-heals.
+        name,
         steps
       };
       if (index >= 0) macros[index] = next;
@@ -8385,6 +8427,69 @@ function findBundleActivity(bundle, activityId) {
   return (bundle?.activities ?? []).find(
     (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
   );
+}
+function activityMemberViews(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = activityMemberDeviceIds(activity);
+  const memberSet = new Set(members);
+  const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
+  const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
+  const powerOff = macroFor(POWER_OFF_MACRO_BUTTON_ID);
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && memberSet.has(id) && !order.includes(id)) order.push(id);
+  };
+  for (const step of powerOn?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const step of powerOff?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const id of members) push(id);
+  return order.map((deviceId) => {
+    const onSteps = (powerOn?.steps ?? []).filter(
+      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId
+    );
+    const powersOn = onSteps.some(
+      (step) => Number(step?.command_id || 0) === DEVICE_POWER_ON_REF_COMMAND
+    );
+    const inputStep = onSteps.find(
+      (step) => Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    const powersOff = (powerOff?.steps ?? []).some(
+      (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, DEVICE_POWER_OFF_REF_COMMAND)
+    );
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle, deviceId),
+      powersOn,
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(inputOrdinal) : null),
+      powersOff
+    };
+  });
+}
+function activityAddableDevices(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = new Set(activityMemberDeviceIds(activity));
+  return bundleDeviceOptions(bundle).filter(
+    (option) => !members.has(option.id)
+  );
+}
+function addActivityMemberDevice(bundle, activityId, deviceId) {
+  const dId = Number(deviceId);
+  const aId = Number(activityId);
+  if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
+  const activity = findBundleActivity(bundle, aId);
+  if (!activity) return bundle;
+  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  return reconcileActivityPowerMacros(bundle, aId, [dId]);
 }
 function removeActivityMemberDevice(bundle, activityId, deviceId) {
   const aId = Number(activityId);
@@ -8703,7 +8808,12 @@ function updateActivityMacro(bundle, activityId, buttonId, transform) {
     const nextMacro = {
       ...existing ?? {},
       button_id: bId,
-      name: existing?.name ?? TOOLS_CARD_STRINGS.common.macroFallback(bId),
+      // `||` (not `??`): an empty name must also fall back, and for the
+      // power slots defaultMacroName returns the canonical POWER_* label
+      // rather than the localized display fallback — that label is
+      // protocol (the hub hides power macros by it) and must never
+      // carry UI text (#263).
+      name: existing?.name || defaultMacroName(bId),
       steps: transform(existing?.steps ?? [])
     };
     if (index >= 0) macros[index] = nextMacro;
@@ -9242,6 +9352,8 @@ var SofabatonEditDetailView = class extends i4 {
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
+    this._addMemberOpen = false;
+    this._addMemberDeviceId = null;
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
     this._addFavoriteError = "";
@@ -9544,6 +9656,24 @@ var SofabatonEditDetailView = class extends i4 {
         name
       ));
       this._closeAddFavoriteDialog();
+    };
+    this._openAddMemberDialog = () => {
+      const options = this._addableMemberDevices();
+      this._addMemberDeviceId = options[0]?.id ?? null;
+      this._addMemberOpen = true;
+    };
+    this._closeAddMemberDialog = () => {
+      this._addMemberOpen = false;
+      this._addMemberDeviceId = null;
+    };
+    this._applyAddMember = () => {
+      if (!this.bundle || this.entityId == null || this._addMemberDeviceId == null) return;
+      this._commitEditBundleEdit(addActivityMemberDevice(
+        this.bundle,
+        Number(this.entityId),
+        this._addMemberDeviceId
+      ));
+      this._closeAddMemberDialog();
     };
     this._applyAddShortcutWifiEvent = async () => {
       if (!this.bundle || this.entityId == null) return;
@@ -10068,6 +10198,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._addCommandPreparing = false;
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
+    this._closeAddMemberDialog();
     this._closeBindingDialog();
     this._macroEditor = null;
     this._closeStepDialog();
@@ -10189,6 +10320,7 @@ var SofabatonEditDetailView = class extends i4 {
         ${this._renderCommandPayloadDialog()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
+        ${this._renderAddMemberDialog()}
         ${this._renderBindingDialog()}
         ${this._renderRoleConfirmDialog()}
       </div>
@@ -10932,8 +11064,9 @@ var SofabatonEditDetailView = class extends i4 {
                 type=${field.numeric ? "number" : "text"}
                 spellcheck="false"
                 .value=${value}
-                @input=${onInput}
-                @change=${onInput}
+                ?disabled=${Boolean(field.readonly)}
+                @input=${field.readonly ? null : onInput}
+                @change=${field.readonly ? null : onInput}
               />
             `}
         ${field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A}
@@ -11415,6 +11548,76 @@ var SofabatonEditDetailView = class extends i4 {
             <div class="dialog-footer-actions">
               <button class="dialog-btn" @click=${this._closeDeleteConfirm}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
               <button class="dialog-btn dialog-btn-danger" @click=${this._confirmDelete}>${TOOLS_CARD_STRINGS.backup.deleteConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // ── Activity member devices (power-only membership, issue #263) ─────
+  /**
+   * Devices offered by the "Add device" picker. In LIVE mode every
+   * managed Wifi Commands device (including the reserved Wifi Events
+   * device) is excluded: their activity membership is owned by the Wifi
+   * Commands deploy, and a manual add here would silently be undone by
+   * the next resync. The offline Backup editor keeps showing everything.
+   */
+  _addableMemberDevices() {
+    if (!this.bundle || this.entityId == null) return [];
+    const options = activityAddableDevices(this.bundle, Number(this.entityId));
+    if (this.mode !== "live") return options;
+    return options.filter(
+      (option) => !isManagedWifiBrand(bundleDeviceBrand(this.bundle, option.id))
+    );
+  }
+  _openMemberRemoveConfirm(activityId, deviceId, deviceName) {
+    this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
+    this._confirmDeleteLabel = deviceName;
+  }
+  _memberDeviceName(activityId, deviceId) {
+    const member = activityMemberViews(this.bundle, activityId).find((candidate) => candidate.deviceId === deviceId);
+    return member?.deviceName || TOOLS_CARD_STRINGS.common.deviceFallback(deviceId);
+  }
+  _renderAddMemberDialog() {
+    if (!this._addMemberOpen || !this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const options = this._addableMemberDevices();
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeAddMemberDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.addMemberTitle}</div>
+            <button class="dialog-close" @click=${this._closeAddMemberDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${options.length === 0 ? b2`<div class="backup-drawer-sub">${S5.addMemberNoneLeft}</div>` : b2`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-add-member-device">${S5.addFavoriteDevice}</label>
+                    <select
+                      id="sb-add-member-device"
+                      class="decoded-field-input"
+                      @change=${(event) => {
+      const value = Number(event.target.value);
+      this._addMemberDeviceId = Number.isFinite(value) ? value : null;
+    }}
+                    >
+                      ${options.map((device) => b2`
+                        <option value=${device.id} ?selected=${device.id === this._addMemberDeviceId}>${device.label}</option>
+                      `)}
+                    </select>
+                    <div class="decoded-field-helper">${S5.addMemberHelper}</div>
+                  </div>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeAddMemberDialog}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
+              <button
+                class="dialog-btn dialog-btn-primary"
+                ?disabled=${options.length === 0 || this._addMemberDeviceId == null}
+                @click=${this._applyAddMember}
+              >${S5.addMemberConfirm}</button>
             </div>
           </div>
         </div>
@@ -12200,10 +12403,18 @@ var SofabatonEditDetailView = class extends i4 {
                     ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
                   </div>
                 </div>
-                <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
-                  <ha-icon icon="mdi:plus"></ha-icon>
-                  <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
-                </button>
+                <div class="quick-access-head-actions">
+                  ${editor.scope === "activity" && POWER_MACRO_BUTTON_IDS.has(editor.buttonId) ? b2`
+                        <button class="quick-access-add-btn add-member-btn" @click=${this._openAddMemberDialog}>
+                          <ha-icon icon="mdi:plus"></ha-icon>
+                          <span>${TOOLS_CARD_STRINGS.backup.addMemberButton}</span>
+                        </button>
+                      ` : A}
+                  <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
+                    <ha-icon icon="mdi:plus"></ha-icon>
+                    <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
+                  </button>
+                </div>
               </div>
               ${items.length ? b2`
                     <div class="quick-access-list">
@@ -12225,6 +12436,8 @@ var SofabatonEditDetailView = class extends i4 {
         </div>
         ${this._renderStepDialog()}
         ${this._renderEditRenameDialog()}
+        ${this._renderAddMemberDialog()}
+        ${this._renderDeleteConfirmDialog()}
       </div>
     `;
   }
@@ -12233,6 +12446,8 @@ var SofabatonEditDetailView = class extends i4 {
     const isInput = item.kind === "input";
     const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold)) : "";
     const chip = isPower || isInput ? "required" : "command";
+    const editor = this._macroEditor;
+    const memberDeviceId = isPower && editor?.scope === "activity" ? Number(item.deviceId ?? 0) : 0;
     return b2`
       <div class="quick-access-sortable-item" data-step-index=${item.index}>
         <div class="quick-access-row">
@@ -12261,7 +12476,19 @@ var SofabatonEditDetailView = class extends i4 {
                 <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
               </span>
             </label>
-            ${isPower ? A : b2`
+            ${isPower ? memberDeviceId > 0 ? b2`
+                      <button
+                        class="icon-btn icon-btn--danger"
+                        @click=${() => this._openMemberRemoveConfirm(
+      Number(editor?.entityId ?? 0),
+      memberDeviceId,
+      this._memberDeviceName(Number(editor?.entityId ?? 0), memberDeviceId)
+    )}
+                        aria-label=${TOOLS_CARD_STRINGS.backup.removeMemberAria}
+                      >
+                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                      </button>
+                    ` : A : b2`
                   <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
                   </button>
@@ -12437,6 +12664,27 @@ var SofabatonEditDetailView = class extends i4 {
             ${this._renderPowerSetupRow(scope, entityId, 199, S5.powerOffLabel, sequencesDisabled)}
           </div>
         </div>
+        ${isDevice ? A : this._renderActivityMemberBlock(entityId)}
+      </div>
+    `;
+  }
+  /**
+   * One-line member summary under the Activity power-sequence rows. The
+   * sequences themselves are the management surface (Add device beside
+   * Add step; deleting a power-ref row removes the device), so the
+   * section level keeps only the glanceable roster: device names with
+   * their configured input in parentheses.
+   */
+  _renderActivityMemberBlock(activityId) {
+    if (!this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const members = activityMemberViews(this.bundle, activityId);
+    const names = members.map(
+      (member) => member.inputOrdinal > 0 && member.inputCommandName ? `${member.deviceName} (${member.inputCommandName})` : member.deviceName
+    ).join(", ");
+    return b2`
+      <div class="quick-access-sub power-members-summary" data-kind="member-summary">
+        ${members.length ? S5.memberSummary(names) : S5.memberSummaryEmpty}
       </div>
     `;
   }
@@ -12555,6 +12803,8 @@ SofabatonEditDetailView.properties = {
   _confirmDeleteTarget: { state: true },
   _confirmDeleteLabel: { state: true },
   _addFavoriteOpen: { state: true },
+  _addMemberOpen: { state: true },
+  _addMemberDeviceId: { state: true },
   _addFavoriteDeviceId: { state: true },
   _addFavoriteCommandId: { state: true },
   _addFavoriteError: { state: true },
@@ -12600,6 +12850,10 @@ SofabatonEditDetailView.properties = {
 SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButtonStyles, i`
     :host {
       flex-direction: column;
+    }
+    /* Glanceable member roster under the Activity power-sequence rows. */
+    .power-members-summary {
+      padding: 8px 4px 0;
     }
     /* Live-mode header Sync button — styled identically to the Wifi command
        editor's .detail-sync-btn (primary when there are pending changes, a
@@ -14174,11 +14428,18 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._deletingDeviceKey = null;
     this._creatingDevice = false;
     this._maxWifiDevices = 5;
+    // The MQTT option shows only when the backend reports X2 + MQTT integration.
+    this._mqttAvailable = false;
+    this._newDeviceTransport = "mqtt";
     this._hubEventActions = this._defaultHubEventActions();
     this._activityEventActions = {};
     // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
     this._wifiEventsRows = null;
     this._wifiEventsLoading = false;
+    this._wifiEventsDeviceId = null;
+    this._wifiEventsStaleConfirm = false;
+    this._wifiEventsStaleBusy = false;
+    this._wifiEventsStaleError = "";
     this.selectedSection = "wifi";
     this.setSelectedSection = () => {
     };
@@ -14302,6 +14563,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._openCreateDeviceModal = () => {
       if (this._hubCommandLocked()) return;
       this._newDeviceName = "";
+      this._newDeviceTransport = "mqtt";
       this._deviceMutationError = "";
       this._createDeviceModalOpen = true;
     };
@@ -14489,6 +14751,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${selectedDevice.device_name}</div>
+                ${this._renderTransportPill(selectedDevice)}
               </div>
               <div class="detail-title-actions">
                 ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
@@ -14518,6 +14781,22 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
       </div>
+    `;
+  }
+  _deviceTransport(device) {
+    const deployed = String(device.deployed_transport || "").toLowerCase();
+    if (deployed === "mqtt" || deployed === "http") return deployed;
+    return String(device.requested_transport || "").toLowerCase() === "mqtt" ? "mqtt" : "http";
+  }
+  _renderTransportPill(device) {
+    const transport = this._deviceTransport(device);
+    if (!this._mqttAvailable && transport !== "mqtt") return A;
+    const deployed = Boolean(device.deployed_transport);
+    return b2`
+      <span
+        class="transport-pill ${transport}"
+        title=${deployed ? TOOLS_CARD_STRINGS.wifiCommands.transportPillDeployedTitle : TOOLS_CARD_STRINGS.wifiCommands.transportPillPreviewTitle}
+      >${transport === "mqtt" ? "MQTT" : "HTTP"}</span>
     `;
   }
   _renderDeviceListView() {
@@ -14559,6 +14838,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                     <div class="device-card-count">${TOOLS_CARD_STRINGS.wifiCommands.configuredSlots(Number(device.configured_slot_count || 0))}</div>
                   </div>
                   <div class="device-card-meta">
+                    ${this._renderTransportPill(device)}
                     <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
                       <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
                       <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
@@ -14750,6 +15030,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _wifiEventBySlot(slotIndex) {
     return (this._wifiEventsRows ?? []).find((event) => event.slot_index === slotIndex) ?? null;
   }
+  /** Apply a `wifi_event/*` state payload: rows plus the record-level
+   *  deployed device id (null = orphaned or never deployed). */
+  _applyWifiEventsState(state) {
+    this._wifiEventsRows = state?.events ?? [];
+    const deviceId = state?.device_id;
+    this._wifiEventsDeviceId = typeof deviceId === "number" ? deviceId : null;
+  }
   async _loadWifiEventsRows() {
     const entityId = String(this._entityId() || "").trim();
     if (!entityId || !this.hass?.callWS || this._wifiEventsLoading) return;
@@ -14759,11 +15046,37 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         type: "sofabaton_x1s/wifi_event/list",
         entity_id: entityId
       });
-      this._wifiEventsRows = result?.events ?? [];
+      this._applyWifiEventsState(result);
     } catch (_error) {
       this._wifiEventsRows = this._wifiEventsRows ?? [];
     } finally {
       this._wifiEventsLoading = false;
+    }
+  }
+  /** True when configured events survive in the store but their hub-side
+   *  device is gone (deployed ownership cleared by the reconcile pass) —
+   *  the state behind the orphaned-config notice. Also true for events
+   *  that were never deployed at all; the notice's remedies (attach one
+   *  to an activity, or remove the config) are the right ones there too. */
+  _wifiEventsOrphaned() {
+    return (this._wifiEventsRows ?? []).length > 0 && this._wifiEventsDeviceId == null;
+  }
+  async _removeWifiEventsConfig() {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS || this._wifiEventsStaleBusy) return;
+    this._wifiEventsStaleBusy = true;
+    this._wifiEventsStaleError = "";
+    try {
+      const result = await this.hass.callWS({
+        type: "sofabaton_x1s/wifi_event/clear_all",
+        entity_id: entityId
+      });
+      this._applyWifiEventsState(result);
+      this._wifiEventsStaleConfirm = false;
+    } catch (_error) {
+      this._wifiEventsStaleError = TOOLS_CARD_STRINGS.wifiCommands.wifiEventsStaleRemoveFailed;
+    } finally {
+      this._wifiEventsStaleBusy = false;
     }
   }
   _actionForHubEventTarget(target) {
@@ -14789,7 +15102,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         press_type: target.pressType,
         action: this._normalizeCommandAction(action)
       });
-      if (result2?.events) this._wifiEventsRows = result2.events;
+      if (result2?.events) this._applyWifiEventsState(result2);
       return true;
     }
     const nextActions = { ...this._hubEventActions };
@@ -14908,19 +15221,21 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       }}
           ><ha-icon icon="mdi:close"></ha-icon></button>` : A}`;
     };
+    const orphaned = this._wifiEventsOrphaned();
     return b2`
       <div class="hub-events">
         <div class="section-title-wrap">
           <div class="acc-title">${W.wifiEventsTitle}</div>
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
+        ${orphaned ? this._renderWifiEventsStaleNotice() : A}
         ${events.length ? b2`
           <ul class="hub-event-lines">
             ${events.map((event) => b2`
               <li class="hub-event-line">
                 <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
                 <span class="hub-event-text">
-                  ${W.wifiEventRowPress(event.name)}${event.deployed ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
+                  ${W.wifiEventRowPress(event.name)}${event.deployed || orphaned ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
                   ${renderAction(event, "short")}${event.long_press_enabled ? b2`, ${W.wifiEventRowLongPress}
                   ${renderAction(event, "long")}` : A}.
                 </span>
@@ -14928,6 +15243,48 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             `)}
           </ul>
         ` : b2`<div class="empty-hint">${W.wifiEventsEmpty}</div>`}
+      </div>
+    `;
+  }
+  /** Second header line for the orphaned state (the hub-side device was
+   *  deleted out-of-band): explains the two ways out. The remove phrase
+   *  swaps in an inline confirm; the per-row needs-sync badges are
+   *  suppressed while this line shows (it says the same thing once). */
+  _renderWifiEventsStaleNotice() {
+    const W = TOOLS_CARD_STRINGS.wifiCommands;
+    if (this._wifiEventsStaleConfirm) {
+      return b2`
+        <div class="section-subtitle wifi-events-stale">
+          ${W.wifiEventsStaleConfirmText}
+          <span class="wifi-events-stale-actions">
+            <button
+              class="dialog-btn"
+              ?disabled=${this._wifiEventsStaleBusy}
+              @click=${() => {
+        void this._removeWifiEventsConfig();
+      }}
+            >${W.wifiEventsStaleConfirmRemove}</button>
+            <button
+              class="dialog-btn"
+              ?disabled=${this._wifiEventsStaleBusy}
+              @click=${() => {
+        this._wifiEventsStaleConfirm = false;
+        this._wifiEventsStaleError = "";
+      }}
+            >${TOOLS_CARD_STRINGS.common.cancel}</button>
+          </span>
+          ${this._wifiEventsStaleError ? b2`<span class="wifi-events-stale-error">${this._wifiEventsStaleError}</span>` : A}
+        </div>
+      `;
+    }
+    return b2`
+      <div class="section-subtitle wifi-events-stale">
+        ${W.wifiEventsStaleNoticePrefix}<button
+          class="hub-event-action-link"
+          @click=${() => {
+      this._wifiEventsStaleConfirm = true;
+    }}
+        >${W.wifiEventsStaleNoticeLink}</button>${W.wifiEventsStaleNoticeSuffix}
       </div>
     `;
   }
@@ -15143,6 +15500,31 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     }}
                   ></ha-input>
                 `}
+            ${this._mqttAvailable ? b2`
+                  <div class="transport-choice">
+                    <div class="transport-choice-label">${TOOLS_CARD_STRINGS.wifiCommands.transportLabel}</div>
+                    ${["mqtt", "http"].map(
+      (option) => b2`
+                        <label class="transport-option ${this._newDeviceTransport === option ? "selected" : ""}">
+                          <input
+                            type="radio"
+                            name="sb-new-device-transport"
+                            .checked=${this._newDeviceTransport === option}
+                            ?disabled=${this._creatingDevice}
+                            @change=${() => {
+        this._newDeviceTransport = option;
+      }}
+                          />
+                          <span class="transport-option-copy">
+                            <span class="transport-option-name">${option === "mqtt" ? "MQTT" : "HTTP"}</span>
+                            <span class="transport-option-hint">${option === "mqtt" ? TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
+                          </span>
+                        </label>
+                      `
+    )}
+                    <div class="transport-choice-note">${TOOLS_CARD_STRINGS.wifiCommands.transportLockedNote}</div>
+                  </div>
+                ` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._deviceMutationError}</div>
@@ -15528,6 +15910,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._hubEventActions = this._defaultHubEventActions();
       this._activityEventActions = {};
       this._wifiEventsRows = null;
+      this._wifiEventsDeviceId = null;
+      this._wifiEventsStaleConfirm = false;
+      this._wifiEventsStaleError = "";
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const entityId = String(this._entityId() || "").trim();
@@ -15850,6 +16235,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         type: "sofabaton_x1s/command_devices/list",
         entity_id: entityId
       });
+      this._mqttAvailable = Boolean(result?.mqtt_available);
       this._wifiDevices = Array.isArray(result?.devices) ? result.devices : [];
       if (this._selectedDeviceKey && this._syncState.status !== "idle") {
         this._wifiDevices = this._wifiDevices.map(
@@ -16395,7 +16781,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const payload = await this.hass.callWS({
         type: "sofabaton_x1s/command_device/create",
         entity_id: entityId,
-        device_name: deviceName
+        device_name: deviceName,
+        ...this._mqttAvailable ? { transport: this._newDeviceTransport } : {}
       });
       this._closeCreateDeviceModal();
       await this._loadWifiDevices(true);
@@ -16618,10 +17005,16 @@ _SofabatonWifiCommandsTab.properties = {
   _deletingDeviceKey: { state: true },
   _creatingDevice: { state: true },
   _maxWifiDevices: { state: true },
+  _mqttAvailable: { state: true },
+  _newDeviceTransport: { state: true },
   _hubEventActions: { state: true },
   _activityEventActions: { state: true },
   _wifiEventsRows: { state: true },
   _wifiEventsLoading: { state: true },
+  _wifiEventsDeviceId: { state: true },
+  _wifiEventsStaleConfirm: { state: true },
+  _wifiEventsStaleBusy: { state: true },
+  _wifiEventsStaleError: { state: true },
   selectedSection: { attribute: false },
   setSelectedSection: { attribute: false },
   _devicePowerPickerKind: { state: true },
@@ -16718,6 +17111,17 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
+    .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
+    .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
+    .transport-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
+    .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); cursor: pointer; }
+    .transport-option.selected { border-color: var(--primary-color); }
+    .transport-option input { margin-top: 2px; accent-color: var(--primary-color); }
+    .transport-option-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .transport-option-name { font-size: 13px; font-weight: 700; color: var(--primary-text-color); }
+    .transport-option-hint { font-size: 12px; color: var(--secondary-text-color); }
+    .transport-choice-note { font-size: 11px; color: var(--secondary-text-color); }
     .device-card-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
@@ -16810,6 +17214,10 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
+    .wifi-events-stale { color: var(--warning-color, #b58a00); }
+    .wifi-events-stale .hub-event-action-link { display: inline; font-size: inherit; }
+    .wifi-events-stale-actions { display: inline-flex; gap: 8px; margin-left: 8px; vertical-align: middle; }
+    .wifi-events-stale-error { color: var(--error-color, #db4437); margin-left: 8px; }
     .hub-event-longpress-toggle {
       display: inline-flex;
       align-items: center;
