@@ -257,29 +257,6 @@ def test_drifted_records_fall_back(monkeypatch):
     loop.close()
 
 
-def test_missing_managed_commands_fall_back_to_verified_replace(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    store = _Store()
-    calls: list[str] = []
-    empty_device = _device_entry()
-    empty_device["commands"] = []
-    hub = _make_hub(
-        monkeypatch,
-        loop,
-        store=store,
-        device_entry=empty_device,
-        call_order=calls,
-    )
-
-    result = _run_sync(loop, hub, _payload())
-
-    assert result["status"] == "success"
-    assert "inplace_run" not in calls
-    assert calls.index("create") < calls.index(f"delete:{DEV_ID}")
-    loop.close()
-
-
 def test_failed_replacement_command_readback_keeps_existing_device(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

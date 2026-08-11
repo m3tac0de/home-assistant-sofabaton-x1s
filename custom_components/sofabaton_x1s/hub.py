@@ -3929,20 +3929,6 @@ class SofabatonHub:
             )
             return None
 
-        # Command-add records need the Wifi callback payload produced by the
-        # create pipeline. The generic in-place executor cannot reconstruct
-        # that payload from the live backup, and some X1S firmware acknowledges
-        # a synthetic add without retaining it. Use create-first replacement;
-        # the old device remains intact until the replacement has passed a
-        # fresh command-table readback.
-        if any(step.kind == "command_add" for step in plan.steps):
-            _LOGGER.info(
-                "[%s] in-place sync declined: managed Wifi command additions "
-                "require the replace path",
-                self.entry_id,
-            )
-            return None
-
         total_steps = len(plan.steps) + 2
         if plan.steps:
             loop = self.hass.loop
