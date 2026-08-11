@@ -6674,7 +6674,7 @@ registerRemoteCardTranslation("en-gb", {
 });
 
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/de.ts
-registerRemoteCardTranslation("de", {
+var REMOTE_CARD_STRINGS_DE = {
   card: {
     selectEntityError: "W\xE4hle eine Sofabaton-Fernbedienungsentit\xE4t aus",
     remoteUnavailable: "Die Fernbedienung ist nicht verf\xFCgbar (m\xF6glicherweise ist die Sofabaton-App verbunden).",
@@ -6817,7 +6817,8 @@ registerRemoteCardTranslation("de", {
     b: "B",
     c: "C"
   }
-});
+};
+registerRemoteCardTranslation("de", REMOTE_CARD_STRINGS_DE);
 
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/es.ts
 var plural = (count, singular, pluralForm = `${singular}s`) => count === 1 ? singular : pluralForm;
@@ -7023,9 +7024,9 @@ var REMOTE_CARD_STRINGS_FR = {
       eventOther: (label) => `\xC9v\xE9nement\xA0: ${label}`,
       header: (activityName, eventLabel) => `**Activit\xE9\xA0: ${activityName} | ${eventLabel}**`,
       lovelaceHeading: "\u{1F4CB} **Code de bouton Lovelace**",
-      lovelaceCopy: "*Copiez ceci dans le YAML de votre tableau de bord :*",
+      lovelaceCopy: "*Copiez ceci dans le YAML de votre tableau de bord\xA0:*",
       serviceHeading: "\u2699\uFE0F **Appel de service (automatisation)**",
-      serviceCopy: "*Utilisez ceci dans vos scripts ou automatisations :*"
+      serviceCopy: "*Utilisez ceci dans vos scripts ou automatisations\xA0:*"
     }
   },
   editor: {
@@ -7116,7 +7117,7 @@ var REMOTE_CARD_STRINGS_FR = {
 registerRemoteCardTranslation("fr", REMOTE_CARD_STRINGS_FR);
 
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/nl.ts
-registerRemoteCardTranslation("nl", {
+var REMOTE_CARD_STRINGS_NL = {
   card: {
     selectEntityError: "Selecteer een Sofabaton remote-entiteit",
     remoteUnavailable: "De remote is niet beschikbaar (mogelijk omdat de Sofabaton-app verbonden is).",
@@ -7139,7 +7140,7 @@ registerRemoteCardTranslation("nl", {
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label) => `Vastgelegd: ${label}`,
     notCaptured: "Niet vastgelegd.",
-    working: "Bezig...",
+    working: "Bezig\u2026",
     triggersReady: "Triggers klaar voor gebruik",
     createTriggers: "MQTT Discovery-triggers aanmaken",
     startCapturing: "Begin met commando's vastleggen",
@@ -7259,7 +7260,8 @@ registerRemoteCardTranslation("nl", {
     b: "B",
     c: "C"
   }
-});
+};
+registerRemoteCardTranslation("nl", REMOTE_CARD_STRINGS_NL);
 
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/zh-hans.ts
 var REMOTE_CARD_STRINGS_ZH_HANS = {

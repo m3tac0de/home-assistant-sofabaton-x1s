@@ -558,7 +558,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     addMemberButton: "Add device",
     addMemberTitle: "Add device to this activity",
     addMemberHelper:
-      "The device is added to the startup and shutdown sequences. Assign buttons or shortcuts later, or leave it without any.",
+      "The device is added to both power sequences. Assign buttons or shortcuts later, or leave them empty.",
     addMemberConfirm: "Add",
     addMemberNoneLeft: "All devices are already part of this activity.",
     removeMemberAria: "Remove device from this activity",
@@ -824,11 +824,11 @@ export const TOOLS_CARD_STRINGS_EN = {
     bodyBlock: "Body block (raw wire string)",
     bodyBlockHelper:
       "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value — it must match the body byte count.",
-    mqttTitle: "MQTT record",
+    mqttTitle: "MQTT identifiers",
     mqttSubtitle:
-      "Both bytes are ignored by the hub: at press time it publishes its own device and key ids to the broker. There is nothing to configure.",
-    mqttDeviceId: "Device id (ignored by the hub)",
-    mqttCommandId: "Command id (ignored by the hub)",
+      "Both bytes are ignored by the hub: at press time it publishes its own device and key IDs to the broker. There is nothing to configure.",
+    mqttDeviceId: "Device ID (ignored by the hub)",
+    mqttCommandId: "Command ID (ignored by the hub)",
     irTitle: "Descriptive IR payload",
     irSubtitle:
       "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR payloads are not editable here.",
@@ -919,13 +919,13 @@ export const TOOLS_CARD_STRINGS_EN = {
     deleteDeviceFailed: "Unable to delete Wifi Device",
     createModalCancel: "Cancel",
     createModalCreate: "Create",
-    transportLabel: "Delivery transport",
+    transportLabel: "Delivery method",
     transportMqttHint:
       "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
     transportHttpHint: "The hub calls Home Assistant directly over your network.",
-    transportLockedNote: "The transport is fixed once the device is deployed.",
-    transportPillDeployedTitle: "Deployed transport",
-    transportPillPreviewTitle: "Will deploy with this transport",
+    transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
+    transportPillDeployedTitle: "Current delivery method",
+    transportPillPreviewTitle: "Selected delivery method",
     deleteModalTitle: "Delete Wifi Device?",
     deleteModalBody: (deviceName: string) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
     deleteModalDelete: "Delete",

@@ -32,6 +32,60 @@ test.describe("tools-card browser harness", () => {
     )).toEqual([]);
   });
 
+  test("compact controls do not clip at narrow width in any supported locale", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto("/tests/tools-card-harness.html?width=360");
+
+    const languages = await page.evaluate(
+      () => window.__toolsCardHarness.supportedLanguages,
+    );
+    const scenarios = ["1", "activities-capture", "backup-edit", "automation-events", "18", "21", "24"];
+    const failures = [];
+
+    for (const language of languages) {
+      await page.evaluate(
+        (value) => window.__toolsCardHarness.setLanguage(value),
+        language,
+      );
+      for (const scenario of scenarios) {
+        const clipped = await page.evaluate(async (scenarioId) => {
+          await window.__toolsCardHarness.loadScenario(scenarioId);
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+          const card = window.__toolsCardHarness.getCard();
+          const roots = [];
+          const visit = (root) => {
+            roots.push(root);
+            for (const element of root.querySelectorAll("*")) {
+              if (element.shadowRoot) visit(element.shadowRoot);
+            }
+          };
+          if (card?.shadowRoot) visit(card.shadowRoot);
+
+          const failures = [];
+          for (const root of roots) {
+            for (const element of root.querySelectorAll("button, [role='tab'], .chip, .pill")) {
+              const text = element.textContent?.replace(/\s+/g, " ").trim();
+              if (!text || !element.getClientRects().length) continue;
+              if (element.scrollWidth > element.clientWidth + 1) {
+                failures.push({
+                  text,
+                  clientWidth: element.clientWidth,
+                  scrollWidth: element.scrollWidth,
+                });
+              }
+            }
+          }
+          return failures;
+        }, scenario);
+
+        if (clipped.length) failures.push({ language, scenario, clipped });
+      }
+    }
+
+    expect(failures).toEqual([]);
+  });
+
   test("switches locale, theme, and width while keeping a shareable URL", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html?width=320");
 

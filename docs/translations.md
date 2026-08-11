@@ -1,8 +1,27 @@
 # Translating the Sofabaton cards
 
 Both frontend cards follow the same localization rules: Home Assistant's UI
-language selects a deep-partial translation overlay, regional codes fall back
-to their base language, and missing entries safely fall back to English.
+language selects a translation overlay, regional codes fall back to their base
+language, and missing entries safely fall back to English.
+
+## Supported languages
+
+| Language | Control Panel | Virtual Remote |
+| --- | --- | --- |
+| English (`en`, `en-GB`) | Yes | Yes |
+| German (`de`) | Yes | Yes |
+| Spanish (`es`) | Yes | Yes |
+| French (`fr`) | Yes | Yes |
+| Dutch (`nl`) | Yes | Yes |
+| Simplified Chinese (`zh-Hans`) | Yes | Yes |
+| Arabic (`ar`) | English fallback | Yes, including RTL layout |
+
+Support is intentionally recorded per card. In particular, Arabic currently
+has a reviewed Virtual Remote catalogue but no complete Control Panel
+catalogue. The Control Panel therefore uses its complete English fallback
+instead of shipping a large, unreviewed machine translation. Add `ar` to the
+Control Panel manifest only together with a complete, native-reviewed
+catalogue and RTL browser coverage.
 
 ## Control Panel card
 
@@ -56,6 +75,24 @@ Parameterized entries remain functions so each language controls word order
 and pluralization. The frontend test suite also rejects newly introduced
 literal UI text outside the English table.
 
+## Style and space constraints
+
+- Keep product and feature names unchanged: `Sofabaton`, `Home Assistant`,
+  `Wifi Commands`, `Wifi Events`, and `MQTT Discovery`.
+- Translate generic uses of *event*, *action*, *activity*, *device*, and
+  *synchronization*. A product name such as `Wifi Events` does not make every
+  surrounding use of “event” a product name.
+- Use sentence case. Use the single-character ellipsis (`…`) for progress text,
+  not three periods (`...`). French uses a non-breaking space before `:`, `;`,
+  `?`, and `!` so punctuation cannot wrap onto a line by itself.
+- Treat tabs, pills, chips, and buttons as compact copy. Prefer a direct verb
+  when the surrounding UI already supplies the object. Put a longer
+  explanation in helper text, a tooltip, or an `aria-label` rather than in the
+  visible control.
+- Judge compact copy by rendered width, not character count. The browser
+  harness exercises every supported Control Panel locale at narrow card widths
+  and rejects horizontally overflowing controls.
+
 ## Virtual Remote card
 
 The Virtual Remote card renders every user-facing string through a central
@@ -80,19 +117,25 @@ incomplete translation is safe to ship and improves incrementally.
 1. Create `custom_components/sofabaton_x1s/www/src/remote-card-translations/<lang>.ts`
    that registers a table mirroring the shape of `REMOTE_CARD_STRINGS_EN`.
    [`nl.ts`](../custom_components/sofabaton_x1s/www/src/remote-card-translations/nl.ts)
-   is a complete example; a partial table is equally valid:
+   is a complete example. Complete catalogues must use
+   `satisfies RemoteCardStrings`; a deliberately partial table may omit it and
+   rely on English fallback:
 
    ```ts
-   import { registerRemoteCardTranslation } from "../remote-card-strings";
+   import {
+     registerRemoteCardTranslation,
+     type RemoteCardStrings,
+   } from "../remote-card-strings";
 
-   registerRemoteCardTranslation("de", {
+   const translation = {
      card: {
        poweredOff: "Ausgeschaltet",
        noMacros: "Keine Makros verfügbar",
        activityFallback: (id) => `Aktivität ${id}`,
      },
-     // ...any subset of the English table
-   });
+   } satisfies RemoteCardStrings;
+
+   registerRemoteCardTranslation("de", translation);
    ```
 
 2. Add `import "./<lang>";` to

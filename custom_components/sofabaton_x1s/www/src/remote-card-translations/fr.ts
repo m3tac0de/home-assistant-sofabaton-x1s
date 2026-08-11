@@ -77,9 +77,9 @@ export const REMOTE_CARD_STRINGS_FR = {
       header: (activityName: string, eventLabel: string) =>
         `**Activité : ${activityName} | ${eventLabel}**`,
       lovelaceHeading: "📋 **Code de bouton Lovelace**",
-      lovelaceCopy: "*Copiez ceci dans le YAML de votre tableau de bord :*",
+      lovelaceCopy: "*Copiez ceci dans le YAML de votre tableau de bord :*",
       serviceHeading: "⚙️ **Appel de service (automatisation)**",
-      serviceCopy: "*Utilisez ceci dans vos scripts ou automatisations :*",
+      serviceCopy: "*Utilisez ceci dans vos scripts ou automatisations :*",
     },
   },
   editor: {
