@@ -158,3 +158,56 @@ Full deploy-pipeline validation (create → add-to-activity → favorites
 → bindings → re-sync/rollback, both hub models) is recorded in
 [live-hub-testing.md](live-hub-testing.md) under "Validated: Wifi
 Commands deploy pipeline".
+
+## Virtual MQTT devices (`wifi_mqtt`, class `0x20`, X2 only)
+
+The X2 firmware supports a virtual device class whose command
+activations publish to the hub's MQTT broker instead of issuing an
+HTTP request. Facts below were established against real X2 hardware
+(bench captures 2026-07 and bench_90, 2026-08-10; design context in
+docs/internal/mqtt-transport-plan.md §2).
+
+**Device head.** `device_class_code` / `code_type` `0x20`,
+`device_type` `0x10`, `icon` 8, `idle_behavior` 4, `input_mode` 2,
+`power_mode` 1, `ip_address` null, `poll_time` 0, `code_id_hex` all
+zero, `tail_marker` 1. Whatever the hub needs to reach the broker
+lives at hub scope, written by the vendor app; no read-back opcode is
+known to exist.
+
+**Command records.** Plain family-`0x0E` `hub_code_record` rows,
+`library_type` `0x20`, `command_code` six zero bytes, and a body of
+**exactly two bytes** (nominally `(device_id, command_id)` as the app
+writes them) plus the standard per-record checksum. The hub **ignores
+the two bytes**: at press time it publishes its own actual device and
+key ids. A restored or synthesized record with any byte content
+publishes correctly. There is no topic, broker address, QoS, or retain
+flag anywhere in the records.
+
+**Publish shape.** On activation the hub publishes
+`{"device_id": <int>, "key_id": <int>}` to `<MAC>/up`, where the MAC
+is the hub's MAC as UPPERCASE bare hex (the lowercase topic stays
+silent), QoS 0, retain false. `key_id` is the command id of the record
+the hub executed; short vs. hold resolution happens hub-side against
+the binding and record tables, so a long press arrives as the
+long-record's command id (our layout: `short + slot_count`). There is
+no press-type field. Only virtual MQTT device activations reach the
+broker; the hub does not mirror other key presses (no free ingress).
+
+**Behavioral parity.** An MQTT virtual device is otherwise a fully
+normal device: power commands, inputs/activity-start, macros,
+favorites, and hard buttons all work, with no X1-style carve-outs.
+Capacity matches HTTP wifi devices. Hold does NOT repeat (one publish
+per press), unlike the ~4 Hz HTTP repeat.
+
+**Broker behavior.** The hub retains nothing and registers no LWT; a
+dead hub→broker link is silent from the subscriber's side. The hub
+does answer the app's hub-scoped request topics
+(`activity/{mac}/list_request` → `activity/{mac}/list`, payload
+`{"data": "activity_list"}`) even with no MQTT device deployed, which
+the official vendor integration uses as its bootstrap.
+
+**Latency.** Activation→delivery measured on the same X2, interleaved
+trials: MQTT p50 259 ms vs HTTP p50 447 ms (paired median diff
+-131 ms). Both are quantized by a firmware queue-service tick
+(~130-150 ms grain). Details in [live-hub-testing.md](live-hub-testing.md)
+under "Measured: MQTT vs HTTP callback latency".

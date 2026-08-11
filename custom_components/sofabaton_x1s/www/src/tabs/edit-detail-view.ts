@@ -1618,8 +1618,9 @@ export class SofabatonEditDetailView extends LitElement {
                 type=${field.numeric ? "number" : "text"}
                 spellcheck="false"
                 .value=${value}
-                @input=${onInput}
-                @change=${onInput}
+                ?disabled=${Boolean(field.readonly)}
+                @input=${field.readonly ? null : onInput}
+                @change=${field.readonly ? null : onInput}
               />
             `}
         ${field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}

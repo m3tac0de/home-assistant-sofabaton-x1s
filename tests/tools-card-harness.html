@@ -1632,6 +1632,7 @@
               return respond(type, {
                 devices: mock.wifiDevices,
                 max_devices: scenario.maxWifiDevices ?? 5,
+                mqtt_available: scenario.mqttAvailable ?? false,
               });
             case "sofabaton_x1s/command_config/get": {
               const key = String(message.device_key ?? "");
@@ -1658,6 +1659,8 @@
                 device_name: String(message.device_name || "New Wifi Device"),
                 configured_slot_count: 0,
                 deployed_device_id: null,
+                requested_transport: String(message.transport || "http"),
+                deployed_transport: null,
                 ...WIFI_SYNC_IDLE,
               });
               mock.wifiCommandsByKey[key] = [];

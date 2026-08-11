@@ -209,6 +209,8 @@ interface WifiDeviceSummary extends SyncState {
   commands?: Array<Record<string, unknown>>;
   power_on_command_id?: number | null;
   power_off_command_id?: number | null;
+  requested_transport?: string;
+  deployed_transport?: string | null;
 }
 
 class SofabatonWifiCommandsTab extends LitElement {
@@ -257,6 +259,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     _deletingDeviceKey: { state: true },
     _creatingDevice: { state: true },
     _maxWifiDevices: { state: true },
+    _mqttAvailable: { state: true },
+    _newDeviceTransport: { state: true },
     _hubEventActions: { state: true },
     _activityEventActions: { state: true },
     _wifiEventsRows: { state: true },
@@ -362,6 +366,17 @@ class SofabatonWifiCommandsTab extends LitElement {
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
+    .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
+    .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
+    .transport-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
+    .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); cursor: pointer; }
+    .transport-option.selected { border-color: var(--primary-color); }
+    .transport-option input { margin-top: 2px; accent-color: var(--primary-color); }
+    .transport-option-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .transport-option-name { font-size: 13px; font-weight: 700; color: var(--primary-text-color); }
+    .transport-option-hint { font-size: 12px; color: var(--secondary-text-color); }
+    .transport-choice-note { font-size: 11px; color: var(--secondary-text-color); }
     .device-card-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
@@ -837,6 +852,10 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _deletingDeviceKey: string | null = null;
   private _creatingDevice = false;
   private _maxWifiDevices = 5;
+  // MQTT transport (docs/internal/mqtt-transport-plan.md §10/§12): the
+  // option shows only when the backend reports X2 + MQTT integration.
+  private _mqttAvailable = false;
+  private _newDeviceTransport: "mqtt" | "http" = "mqtt";
   private _hubEventActions: Record<HubEventKey, WifiCommandAction> = this._defaultHubEventActions();
   private _activityEventActions: Record<string, ActivityEventEntry> = {};
   // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
@@ -1013,6 +1032,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${selectedDevice.device_name}</div>
+                ${this._renderTransportPill(selectedDevice)}
               </div>
               <div class="detail-title-actions">
                 ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
@@ -1046,6 +1066,29 @@ class SofabatonWifiCommandsTab extends LitElement {
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
       </div>
+    `;
+  }
+
+  private _deviceTransport(device: WifiDeviceSummary): "mqtt" | "http" {
+    const deployed = String(device.deployed_transport || "").toLowerCase();
+    if (deployed === "mqtt" || deployed === "http") return deployed as "mqtt" | "http";
+    return String(device.requested_transport || "").toLowerCase() === "mqtt" ? "mqtt" : "http";
+  }
+
+  private _renderTransportPill(device: WifiDeviceSummary) {
+    // X2-with-MQTT entries only — everywhere else every Wifi Device is
+    // HTTP and the pill is noise. A device already deployed over MQTT
+    // keeps its pill even if the MQTT integration goes away.
+    const transport = this._deviceTransport(device);
+    if (!this._mqttAvailable && transport !== "mqtt") return nothing;
+    const deployed = Boolean(device.deployed_transport);
+    return html`
+      <span
+        class="transport-pill ${transport}"
+        title=${deployed
+          ? TOOLS_CARD_STRINGS.wifiCommands.transportPillDeployedTitle
+          : TOOLS_CARD_STRINGS.wifiCommands.transportPillPreviewTitle}
+      >${transport === "mqtt" ? "MQTT" : "HTTP"}</span>
     `;
   }
 
@@ -1083,6 +1126,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                     <div class="device-card-count">${TOOLS_CARD_STRINGS.wifiCommands.configuredSlots(Number(device.configured_slot_count || 0))}</div>
                   </div>
                   <div class="device-card-meta">
+                    ${this._renderTransportPill(device)}
                     <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
                       <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
                       <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
@@ -1805,6 +1849,35 @@ class SofabatonWifiCommandsTab extends LitElement {
                     @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); void this._createWifiDevice(); } }}
                   ></ha-input>
                 `}
+            ${this._mqttAvailable
+              ? html`
+                  <div class="transport-choice">
+                    <div class="transport-choice-label">${TOOLS_CARD_STRINGS.wifiCommands.transportLabel}</div>
+                    ${(["mqtt", "http"] as const).map(
+                      (option) => html`
+                        <label class="transport-option ${this._newDeviceTransport === option ? "selected" : ""}">
+                          <input
+                            type="radio"
+                            name="sb-new-device-transport"
+                            .checked=${this._newDeviceTransport === option}
+                            ?disabled=${this._creatingDevice}
+                            @change=${() => {
+                              this._newDeviceTransport = option;
+                            }}
+                          />
+                          <span class="transport-option-copy">
+                            <span class="transport-option-name">${option === "mqtt" ? "MQTT" : "HTTP"}</span>
+                            <span class="transport-option-hint">${option === "mqtt"
+                              ? TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint
+                              : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
+                          </span>
+                        </label>
+                      `,
+                    )}
+                    <div class="transport-choice-note">${TOOLS_CARD_STRINGS.wifiCommands.transportLockedNote}</div>
+                  </div>
+                `
+              : nothing}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._deviceMutationError}</div>
@@ -2583,10 +2656,15 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (this._deviceListLoading && !force) return false;
     this._deviceListLoading = true;
     try {
-      const result = await this.hass.callWS<{ devices?: WifiDeviceSummary[]; max_devices?: number }>({
+      const result = await this.hass.callWS<{
+        devices?: WifiDeviceSummary[];
+        max_devices?: number;
+        mqtt_available?: boolean;
+      }>({
         type: "sofabaton_x1s/command_devices/list",
         entity_id: entityId,
       });
+      this._mqttAvailable = Boolean(result?.mqtt_available);
       this._wifiDevices = Array.isArray(result?.devices) ? result.devices : [];
       if (this._selectedDeviceKey && this._syncState.status !== "idle") {
         this._wifiDevices = this._wifiDevices.map((device) =>
@@ -3322,6 +3400,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _openCreateDeviceModal = () => {
     if (this._hubCommandLocked()) return;
     this._newDeviceName = "";
+    this._newDeviceTransport = "mqtt";
     this._deviceMutationError = "";
     this._createDeviceModalOpen = true;
   };
@@ -3348,6 +3427,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         type: "sofabaton_x1s/command_device/create",
         entity_id: entityId,
         device_name: deviceName,
+        ...(this._mqttAvailable ? { transport: this._newDeviceTransport } : {}),
       });
       this._closeCreateDeviceModal();
       await this._loadWifiDevices(true);

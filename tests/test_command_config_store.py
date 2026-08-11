@@ -706,3 +706,148 @@ def test_rename_hub_device_rejects_unknown_key_and_empty_name() -> None:
     assert _run(store.async_rename_hub_device("hub-1", device_key, "   ")) is False
     record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
     assert record["device_name"] == "Lights"
+
+
+# ---------------------------------------------------------------------------
+# Wifi transport fields (mqtt-transport-plan §3 / M2)
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_wifi_transport_defaults_to_http() -> None:
+    from custom_components.sofabaton_x1s.command_config import normalize_wifi_transport
+
+    assert normalize_wifi_transport(None) == "http"
+    assert normalize_wifi_transport("") == "http"
+    assert normalize_wifi_transport("junk") == "http"
+    assert normalize_wifi_transport("http") == "http"
+    assert normalize_wifi_transport("mqtt") == "mqtt"
+    assert normalize_wifi_transport(" MQTT ") == "mqtt"
+
+
+def test_wifi_device_requires_listener_transport_matrix() -> None:
+    from custom_components.sofabaton_x1s.command_config import wifi_device_requires_listener
+
+    # Undeployed records never need the listener, whatever they request.
+    assert wifi_device_requires_listener({}) is False
+    assert wifi_device_requires_listener({"requested_transport": "mqtt"}) is False
+
+    # Deployed with no transport field (every pre-MQTT record): HTTP.
+    assert wifi_device_requires_listener({"deployed_device_id": 9}) is True
+    assert wifi_device_requires_listener({"deployed_commands_hash": "abc"}) is True
+
+    # Deployed explicitly over HTTP.
+    assert (
+        wifi_device_requires_listener(
+            {"deployed_device_id": 9, "deployed_transport": "http"}
+        )
+        is True
+    )
+
+    # Deployed over MQTT: presses arrive on the broker, no listener needed.
+    assert (
+        wifi_device_requires_listener(
+            {"deployed_device_id": 9, "deployed_transport": "mqtt"}
+        )
+        is False
+    )
+    assert (
+        wifi_device_requires_listener(
+            {"deployed_commands_hash": "abc", "deployed_transport": "mqtt"}
+        )
+        is False
+    )
+
+
+def test_requested_transport_roundtrip_and_hash_stability() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    created = _run(store.async_create_hub_device("hub-1", "Lights"))
+    device_key = created["device_key"]
+
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["requested_transport"] == "http"
+    assert record["deployed_transport"] is None
+    hash_before = record["commands_hash"]
+
+    assert _run(store.async_set_requested_transport("hub-1", device_key, "mqtt")) is True
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["requested_transport"] == "mqtt"
+    # An UNDEPLOYED record's hash may move with the transport request —
+    # MQTT records hash with a constant listener port (0), and with no
+    # deployed hash to compare against the change is inert. It must be
+    # deterministic and reversible.
+    hash_mqtt = record["commands_hash"]
+    assert _run(store.async_set_requested_transport("hub-1", device_key, "http")) is True
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["commands_hash"] == hash_before
+    assert _run(store.async_set_requested_transport("hub-1", device_key, "mqtt")) is True
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["commands_hash"] == hash_mqtt
+
+    # Idempotent set reports no change.
+    assert _run(store.async_set_requested_transport("hub-1", device_key, "mqtt")) is False
+
+
+def test_deployed_http_record_hash_ignores_requested_transport() -> None:
+    # Once deployed, deployed_transport wins the hash-port decision: a
+    # stray requested_transport flip must never flag a deployed HTTP
+    # record out-of-step (the UI locks the field, the store pins it).
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    created = _run(store.async_create_hub_device("hub-1", "Lights"))
+    device_key = created["device_key"]
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    hash_http = record["commands_hash"]
+
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1",
+            device_key,
+            [{"name": "A"}],
+            deployed_device_id=9,
+            commands_hash=hash_http,
+            deployed_transport="http",
+        )
+    )
+    _run(store.async_set_requested_transport("hub-1", device_key, "mqtt"))
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["commands_hash"] == hash_http
+    assert record["commands_hash"] == record["deployed_commands_hash"]
+
+
+def test_save_deployed_wifi_commands_transport_semantics() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    created = _run(store.async_create_hub_device("hub-1", "Lights"))
+    device_key = created["device_key"]
+
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1",
+            device_key,
+            [{"name": "A"}],
+            deployed_device_id=9,
+            commands_hash="hash1",
+            deployed_transport="mqtt",
+        )
+    )
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["deployed_transport"] == "mqtt"
+
+    # An in-place re-sync passes deployed_transport=None and must keep
+    # the recorded value (never rewritten by an in-place sync, plan §3).
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1",
+            device_key,
+            [{"name": "A"}],
+            deployed_device_id=9,
+            commands_hash="hash2",
+        )
+    )
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["deployed_transport"] == "mqtt"
+    assert record["deployed_commands_hash"] == "hash2"

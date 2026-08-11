@@ -2305,6 +2305,10 @@ var TOOLS_CARD_STRINGS_EN = {
     urlPath: "URL path",
     bodyBlock: "Body block (raw wire string)",
     bodyBlockHelper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count.",
+    mqttTitle: "MQTT record",
+    mqttSubtitle: "Both bytes are ignored by the hub: at press time it publishes its own device and key ids to the broker. There is nothing to configure.",
+    mqttDeviceId: "Device id (ignored by the hub)",
+    mqttCommandId: "Command id (ignored by the hub)",
     irTitle: "Descriptive IR payload",
     irSubtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
     descriptor: "Descriptor",
@@ -2386,6 +2390,12 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteDeviceFailed: "Unable to delete Wifi Device",
     createModalCancel: "Cancel",
     createModalCreate: "Create",
+    transportLabel: "Delivery transport",
+    transportMqttHint: "Faster delivery through your MQTT broker; no listener port or firewall rule. The hub's broker must be configured in the Sofabaton app.",
+    transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    transportLockedNote: "The transport is fixed once the device is deployed.",
+    transportPillDeployedTitle: "Deployed transport",
+    transportPillPreviewTitle: "Will deploy with this transport",
     deleteModalTitle: "Delete Wifi Device?",
     deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
     deleteModalDelete: "Delete",
@@ -7221,6 +7231,14 @@ function decodedClassFormSpecs() {
         }
       ]
     },
+    wifi_mqtt: {
+      title: S5.mqttTitle,
+      subtitle: S5.mqttSubtitle,
+      fields: [
+        { key: "device_id", label: S5.mqttDeviceId, numeric: true, readonly: true },
+        { key: "command_id", label: S5.mqttCommandId, numeric: true, readonly: true }
+      ]
+    },
     ir: {
       title: S5.irTitle,
       subtitle: S5.irSubtitle,
@@ -11046,8 +11064,9 @@ var SofabatonEditDetailView = class extends i4 {
                 type=${field.numeric ? "number" : "text"}
                 spellcheck="false"
                 .value=${value}
-                @input=${onInput}
-                @change=${onInput}
+                ?disabled=${Boolean(field.readonly)}
+                @input=${field.readonly ? null : onInput}
+                @change=${field.readonly ? null : onInput}
               />
             `}
         ${field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A}
@@ -14409,6 +14428,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._deletingDeviceKey = null;
     this._creatingDevice = false;
     this._maxWifiDevices = 5;
+    // MQTT transport (docs/internal/mqtt-transport-plan.md §10/§12): the
+    // option shows only when the backend reports X2 + MQTT integration.
+    this._mqttAvailable = false;
+    this._newDeviceTransport = "mqtt";
     this._hubEventActions = this._defaultHubEventActions();
     this._activityEventActions = {};
     // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
@@ -14541,6 +14564,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._openCreateDeviceModal = () => {
       if (this._hubCommandLocked()) return;
       this._newDeviceName = "";
+      this._newDeviceTransport = "mqtt";
       this._deviceMutationError = "";
       this._createDeviceModalOpen = true;
     };
@@ -14728,6 +14752,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${selectedDevice.device_name}</div>
+                ${this._renderTransportPill(selectedDevice)}
               </div>
               <div class="detail-title-actions">
                 ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
@@ -14757,6 +14782,22 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
       </div>
+    `;
+  }
+  _deviceTransport(device) {
+    const deployed = String(device.deployed_transport || "").toLowerCase();
+    if (deployed === "mqtt" || deployed === "http") return deployed;
+    return String(device.requested_transport || "").toLowerCase() === "mqtt" ? "mqtt" : "http";
+  }
+  _renderTransportPill(device) {
+    const transport = this._deviceTransport(device);
+    if (!this._mqttAvailable && transport !== "mqtt") return A;
+    const deployed = Boolean(device.deployed_transport);
+    return b2`
+      <span
+        class="transport-pill ${transport}"
+        title=${deployed ? TOOLS_CARD_STRINGS.wifiCommands.transportPillDeployedTitle : TOOLS_CARD_STRINGS.wifiCommands.transportPillPreviewTitle}
+      >${transport === "mqtt" ? "MQTT" : "HTTP"}</span>
     `;
   }
   _renderDeviceListView() {
@@ -14798,6 +14839,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                     <div class="device-card-count">${TOOLS_CARD_STRINGS.wifiCommands.configuredSlots(Number(device.configured_slot_count || 0))}</div>
                   </div>
                   <div class="device-card-meta">
+                    ${this._renderTransportPill(device)}
                     <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
                       <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
                       <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
@@ -15459,6 +15501,31 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     }}
                   ></ha-input>
                 `}
+            ${this._mqttAvailable ? b2`
+                  <div class="transport-choice">
+                    <div class="transport-choice-label">${TOOLS_CARD_STRINGS.wifiCommands.transportLabel}</div>
+                    ${["mqtt", "http"].map(
+      (option) => b2`
+                        <label class="transport-option ${this._newDeviceTransport === option ? "selected" : ""}">
+                          <input
+                            type="radio"
+                            name="sb-new-device-transport"
+                            .checked=${this._newDeviceTransport === option}
+                            ?disabled=${this._creatingDevice}
+                            @change=${() => {
+        this._newDeviceTransport = option;
+      }}
+                          />
+                          <span class="transport-option-copy">
+                            <span class="transport-option-name">${option === "mqtt" ? "MQTT" : "HTTP"}</span>
+                            <span class="transport-option-hint">${option === "mqtt" ? TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
+                          </span>
+                        </label>
+                      `
+    )}
+                    <div class="transport-choice-note">${TOOLS_CARD_STRINGS.wifiCommands.transportLockedNote}</div>
+                  </div>
+                ` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._deviceMutationError}</div>
@@ -16169,6 +16236,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         type: "sofabaton_x1s/command_devices/list",
         entity_id: entityId
       });
+      this._mqttAvailable = Boolean(result?.mqtt_available);
       this._wifiDevices = Array.isArray(result?.devices) ? result.devices : [];
       if (this._selectedDeviceKey && this._syncState.status !== "idle") {
         this._wifiDevices = this._wifiDevices.map(
@@ -16714,7 +16782,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const payload = await this.hass.callWS({
         type: "sofabaton_x1s/command_device/create",
         entity_id: entityId,
-        device_name: deviceName
+        device_name: deviceName,
+        ...this._mqttAvailable ? { transport: this._newDeviceTransport } : {}
       });
       this._closeCreateDeviceModal();
       await this._loadWifiDevices(true);
@@ -16937,6 +17006,8 @@ _SofabatonWifiCommandsTab.properties = {
   _deletingDeviceKey: { state: true },
   _creatingDevice: { state: true },
   _maxWifiDevices: { state: true },
+  _mqttAvailable: { state: true },
+  _newDeviceTransport: { state: true },
   _hubEventActions: { state: true },
   _activityEventActions: { state: true },
   _wifiEventsRows: { state: true },
@@ -17041,6 +17112,17 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
+    .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
+    .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
+    .transport-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
+    .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); cursor: pointer; }
+    .transport-option.selected { border-color: var(--primary-color); }
+    .transport-option input { margin-top: 2px; accent-color: var(--primary-color); }
+    .transport-option-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .transport-option-name { font-size: 13px; font-weight: 700; color: var(--primary-text-color); }
+    .transport-option-hint { font-size: 12px; color: var(--secondary-text-color); }
+    .transport-choice-note { font-size: 11px; color: var(--secondary-text-color); }
     .device-card-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }

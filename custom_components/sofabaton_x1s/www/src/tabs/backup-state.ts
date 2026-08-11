@@ -56,6 +56,7 @@ export type DecodableCommandClass =
   | "wifi_roku"
   | "wifi_hue"
   | "wifi_sonos"
+  | "wifi_mqtt"
   | "ir";
 
 /**
@@ -83,6 +84,11 @@ export interface DecodedFieldSpec {
   // right control because long escaped strings need to wrap visually.
   escapedDisplay?: boolean;
   helper?: string;
+  // True for fields the hub provably ignores (wifi_mqtt: the record's
+  // two bytes are inert — the hub publishes its own ids at press time).
+  // Rendered disabled: an editable field that silently does nothing is
+  // a worse trap than raw hex.
+  readonly?: boolean;
 }
 
 export interface DecodedFormSpec {
@@ -153,6 +159,14 @@ function decodedClassFormSpecs(): Record<DecodableCommandClass, DecodedFormSpec>
         escapedDisplay: true,
         helper: S.bodyBlockHelper,
       },
+    ],
+  },
+  wifi_mqtt: {
+    title: S.mqttTitle,
+    subtitle: S.mqttSubtitle,
+    fields: [
+      { key: "device_id", label: S.mqttDeviceId, numeric: true, readonly: true },
+      { key: "command_id", label: S.mqttCommandId, numeric: true, readonly: true },
     ],
   },
   ir: {

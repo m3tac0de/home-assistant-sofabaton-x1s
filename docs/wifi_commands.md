@@ -135,6 +135,27 @@ Unlike user-managed Wifi Devices, this device is editable under **Hub → Device
 
 Wifi Events work on **all hub versions, including the X1** — the power/Activity-start restrictions below do not apply to them (they use neither power nor input slots).
 
+## MQTT delivery (X2)
+
+On an **X2 hub** with the Home Assistant **MQTT integration** loaded, a new Wifi Device can deliver its presses over MQTT instead of HTTP. The choice appears when you create the device (MQTT is pre-selected when available) and every device shows an `MQTT` or `HTTP` pill telling you how it is, or will be, deployed.
+
+Why MQTT:
+
+- **Faster.** Measured on real hardware, an MQTT press reaches Home Assistant about 130 ms sooner at the median than an HTTP callback. You can feel the difference on lights.
+- **No listener.** MQTT devices need no HTTP callback listener: no port `8060`, no Emulated Roku conflict, no inbound firewall or VLAN rule, and `switch.<hub>_wifi_device` stays off in an MQTT-only setup.
+- **Nothing network-local in the records.** HTTP callbacks embed Home Assistant's IP and listener port on the hub, which is why changing either forces a redeploy. MQTT records contain neither, so those redeploy triggers disappear. Deploys are also much faster.
+
+What you need: the hub's MQTT broker must be configured **in the Sofabaton app** (host, port, credentials), pointing at the same broker your Home Assistant MQTT integration uses. The integration cannot read or verify that setting; the broker link is yours to manage. The quickest sanity check after a deploy is pressing one of the device's commands on the remote and watching `sensor.<hub>_wifi_commands` update with `transport: mqtt`. If nothing arrives, check the app's broker settings first.
+
+Things to know:
+
+- **The hub's real MAC address must be known.** The press topic on the broker is the hub's own MAC, which the integration learns from mDNS discovery. A hub that was **added manually** (by IP, typically across VLANs without mDNS forwarding) carries a placeholder identity instead, so the MQTT option is not offered for it; it appears automatically once mDNS identifies the hub.
+- **The transport is fixed at first deploy.** The pill is read-only afterwards; switching a deployed device's transport means deleting and recreating it, with the same cautions as any full re-deploy (see "How re-syncing works" below).
+- **Existing devices are never migrated.** A device deployed over HTTP keeps working over HTTP forever unless you explicitly recreate it.
+- **Hold behavior differs.** Holding a button on an HTTP device makes the hub repeat the request roughly 4 times per second for as long as you hold, and each repeat fires the Action and updates the sensor. An MQTT device publishes **once** per press (short or long). If you trigger automations from the sensor, expect churn during a hold on HTTP and a single update on MQTT.
+- **Security.** Anyone with write access to your broker can publish a fake press and run the command's Action. Give the hub's broker user a narrow ACL, and treat broker credentials like any other automation credential. The HTTP listener's source-IP check has no MQTT equivalent.
+- **Messages are not queued.** If Home Assistant is down when a press happens, an HTTP callback fails loudly on the hub side (it retries delivery); an MQTT press is simply gone.
+
 ## Configuration
 
 Wifi Commands and Wifi Events share an HTTP callback listener that attempts to bind to port `8060` by default.
@@ -162,7 +183,8 @@ state _changing away_ from that value rather than on a specific command name.
 | `from_device`      | `Home Assistant`            | Wifi Device name (`Wifi Events` for an event) |
 | `press_type`       | `short` / `long`            | Short or long press         |
 | `timestamp`        | `2026-04-28T21:00:00+00:00` | ISO 8601 time of the press  |
-| `source_ip`        | `192.168.1.50`              | IP the hub called back from |
+| `source_ip`        | `192.168.1.50`              | IP the hub called back from; empty for MQTT deliveries |
+| `transport`        | `http` / `mqtt`             | How the press reached Home Assistant |
 
 **State value** when pressed: `<device>/<command>` or `<device>/<command>/longpress`  
 **State value** at rest: `Waiting for button press`
@@ -202,7 +224,7 @@ action:
 Updates whenever a deployed Wifi Command or Wifi Event is triggered from the physical remote, the Sofabaton app, or a virtual remote. Used for automation triggers.
 
 `switch.<hub>_wifi_device`  
-Enables or disables the shared HTTP callback listener. It is off by default and is enabled automatically when a Wifi Commands device or the Wifi Events device is deployed. The integration turns it off automatically only after no deployed callback device still needs it. Turning it off manually prevents Wifi Command and Wifi Event Actions and sensor updates from being received.
+Enables or disables the shared HTTP callback listener. It is off by default and is enabled automatically when a Wifi Commands device or the Wifi Events device is deployed over HTTP. The integration turns it off automatically only after no deployed callback device still needs it. Devices deployed over MQTT do not need the listener and do not count towards it. Turning it off manually prevents HTTP-delivered Wifi Command and Wifi Event Actions and sensor updates from being received.
 
 `button.<hub>_resync_remote`  
 Forces a resync of the physical remote. Automatically called at the end of a hub synchronization sequence.

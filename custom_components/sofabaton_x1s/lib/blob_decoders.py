@@ -46,6 +46,7 @@ from .protocol_const import (
     DEVICE_CLASS_IR,
     DEVICE_CLASS_WIFI_HUE,
     DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_SONOS,
     normalize_device_class,
@@ -66,6 +67,7 @@ DECODABLE_CLASSES: Tuple[str, ...] = (
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_HUE,
     DEVICE_CLASS_WIFI_SONOS,
+    DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_IR,
 )
 
@@ -619,6 +621,34 @@ def _encode_descriptive_ir(decoded: Dict[str, Any]) -> bytes:
     return body + trailer
 
 
+def _decode_wifi_mqtt(data: bytes) -> Dict[str, Any]:
+    """Decode a ``wifi_mqtt`` (0x20) command record body.
+
+    The body is exactly two bytes — nominally ``(device_id, command_id)``
+    as the vendor app writes them — and the hub ignores both: at press
+    time it publishes its OWN device and key ids to ``<MAC>/up``
+    (mqtt-transport-plan §2, findings F1/F2). The fields are surfaced
+    read-only so the editor can label them as ignored; there is nothing
+    to configure.
+    """
+
+    if len(data) != 2:
+        raise ValueError("wifi_mqtt record body must be exactly two bytes")
+    return {
+        "device_id": data[0],
+        "command_id": data[1],
+        "trailer_hex": "",
+    }
+
+
+def _encode_wifi_mqtt(decoded: Dict[str, Any]) -> bytes:
+    trailer = bytes.fromhex(str(decoded.get("trailer_hex") or "").replace(" ", ""))
+    return (
+        bytes([int(decoded["device_id"]) & 0xFF, int(decoded["command_id"]) & 0xFF])
+        + trailer
+    )
+
+
 # ---------------------------------------------------------------------------
 # Registry + high-level entry points
 # ---------------------------------------------------------------------------
@@ -629,6 +659,7 @@ _DECODERS: Dict[str, Callable[[bytes], Dict[str, Any]]] = {
     DEVICE_CLASS_WIFI_ROKU: _decode_wifi_roku,
     DEVICE_CLASS_WIFI_HUE: _decode_wifi_hue_like,
     DEVICE_CLASS_WIFI_SONOS: _decode_wifi_hue_like,
+    DEVICE_CLASS_WIFI_MQTT: _decode_wifi_mqtt,
     DEVICE_CLASS_IR: _decode_descriptive_ir,
 }
 
@@ -637,6 +668,7 @@ _ENCODERS: Dict[str, Callable[[Dict[str, Any]], bytes]] = {
     DEVICE_CLASS_WIFI_ROKU: _encode_wifi_roku,
     DEVICE_CLASS_WIFI_HUE: _encode_wifi_hue_like,
     DEVICE_CLASS_WIFI_SONOS: _encode_wifi_hue_like,
+    DEVICE_CLASS_WIFI_MQTT: _encode_wifi_mqtt,
     DEVICE_CLASS_IR: _encode_descriptive_ir,
 }
 

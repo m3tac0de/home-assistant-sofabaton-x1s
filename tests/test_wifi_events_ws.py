@@ -306,6 +306,9 @@ class _ListenerHub:
     async def async_delete_device(self, _device_id):
         return {"status": "success"}
 
+    async def async_update_wifi_mqtt_ingress(self):
+        return None
+
     async def _async_refresh_devices_snapshot(self):
         return {}
 

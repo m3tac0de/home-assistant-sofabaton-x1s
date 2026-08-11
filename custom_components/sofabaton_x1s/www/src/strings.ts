@@ -824,6 +824,11 @@ export const TOOLS_CARD_STRINGS_EN = {
     bodyBlock: "Body block (raw wire string)",
     bodyBlockHelper:
       "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value — it must match the body byte count.",
+    mqttTitle: "MQTT record",
+    mqttSubtitle:
+      "Both bytes are ignored by the hub: at press time it publishes its own device and key ids to the broker. There is nothing to configure.",
+    mqttDeviceId: "Device id (ignored by the hub)",
+    mqttCommandId: "Command id (ignored by the hub)",
     irTitle: "Descriptive IR payload",
     irSubtitle:
       "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR payloads are not editable here.",
@@ -914,6 +919,13 @@ export const TOOLS_CARD_STRINGS_EN = {
     deleteDeviceFailed: "Unable to delete Wifi Device",
     createModalCancel: "Cancel",
     createModalCreate: "Create",
+    transportLabel: "Delivery transport",
+    transportMqttHint:
+      "Faster delivery through your MQTT broker; no listener port or firewall rule. The hub's broker must be configured in the Sofabaton app.",
+    transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    transportLockedNote: "The transport is fixed once the device is deployed.",
+    transportPillDeployedTitle: "Deployed transport",
+    transportPillPreviewTitle: "Will deploy with this transport",
     deleteModalTitle: "Delete Wifi Device?",
     deleteModalBody: (deviceName: string) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
     deleteModalDelete: "Delete",

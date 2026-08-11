@@ -79,6 +79,10 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 
 When using this integration's [Wifi Commands or Wifi Events](wifi_commands.md), the hub makes HTTP requests into the integration. Both features share the same listener. The default port is **8060**. It is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
 
+### Optional / MQTT delivery (X2)
+
+Wifi Devices deployed over [MQTT](wifi_commands.md#mqtt-delivery-x2) do not use the HTTP listener at all. The path is hub → MQTT broker → Home Assistant's MQTT integration: both the hub and Home Assistant connect **outbound** to the broker (default TCP `1883`), so no inbound rule towards Home Assistant is needed and the transport works across subnets as long as both sides reach the broker. The hub's broker settings are configured in the Sofabaton app; the integration only subscribes through the Home Assistant MQTT integration. Security-wise the broker's own authentication and ACLs are the boundary: anyone who can publish to the hub's press topic can trigger the configured Actions.
+
 ### Firewall rules to allow
 
 - mDNS/Bonjour from hub → Home Assistant (or mDNS forwarded across VLANs).

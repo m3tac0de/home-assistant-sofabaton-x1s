@@ -265,12 +265,81 @@ def count_configured_command_slots(
     return configured
 
 
+#: Wifi-device transport values (docs/internal/mqtt-transport-plan.md §3).
+WIFI_TRANSPORT_HTTP = "http"
+WIFI_TRANSPORT_MQTT = "mqtt"
+
+
+def normalize_wifi_transport(value: Any) -> str:
+    """Normalize a stored transport value; anything unrecognized is HTTP.
+
+    Absent ⇒ ``"http"`` is the compatibility rule: every record that
+    predates the MQTT transport work deployed over HTTP.
+    """
+
+    return (
+        WIFI_TRANSPORT_MQTT
+        if str(value or "").strip().lower() == WIFI_TRANSPORT_MQTT
+        else WIFI_TRANSPORT_HTTP
+    )
+
+
+def record_hash_listen_port(record: dict[str, Any], roku_listen_port: int) -> int:
+    """The listener port a record's commands hash must be computed with.
+
+    MQTT records carry no listener port, so their hash must not move
+    with it: hash with a constant 0 whenever the record's effective
+    transport is MQTT (deployed wins; the create-flow request decides
+    for undeployed records). All-HTTP stores hash byte-identically to
+    pre-MQTT builds. Every hash computation for a store record MUST go
+    through this helper or listing and deployed hashes drift apart.
+    """
+
+    effective_transport = normalize_wifi_transport(
+        record.get("deployed_transport") or record.get("requested_transport")
+    )
+    return 0 if effective_transport == WIFI_TRANSPORT_MQTT else int(roku_listen_port)
+
+
+def map_wifi_mqtt_key(key_id: Any, slot_count: int) -> tuple[int, str] | None:
+    """Map a published ``key_id`` to ``(command_index, press_type)``.
+
+    The hub publishes the command id of the record it executed
+    (mqtt-transport-plan F3); our record layout places shorts at
+    ``1..N`` and long variants at ``N+1..2N`` (N = ``slot_count``), so
+    the mapping is our own layout read back. Out-of-range ids return
+    ``None`` — callers log and drop.
+    """
+
+    try:
+        key = int(key_id)
+    except (TypeError, ValueError):
+        return None
+    count = int(slot_count)
+    if count <= 0:
+        return None
+    if 1 <= key <= count:
+        return key - 1, "short"
+    if count < key <= 2 * count:
+        return key - count - 1, "long"
+    return None
+
+
 def wifi_device_requires_listener(config_payload: dict[str, Any]) -> bool:
-    """Return True when this wifi-device record still expects callbacks."""
+    """Return True when this wifi-device record still expects HTTP callbacks.
+
+    A record deployed over MQTT never needs the HTTP listener — its
+    presses arrive on the broker subscription instead. This predicate is
+    the ONLY place that filtering may happen (mqtt-transport-plan §3
+    hard rule): never filter MQTT records out of
+    :meth:`CommandConfigStore.async_list_hub_devices`.
+    """
 
     deployed_device_id = config_payload.get("deployed_device_id")
     deployed_commands_hash = str(config_payload.get("deployed_commands_hash") or "").strip()
-    return isinstance(deployed_device_id, int) or bool(deployed_commands_hash)
+    if not (isinstance(deployed_device_id, int) or bool(deployed_commands_hash)):
+        return False
+    return normalize_wifi_transport(config_payload.get("deployed_transport")) != WIFI_TRANSPORT_MQTT
 
 
 def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -394,6 +463,14 @@ def _default_device_payload(
         # re-sync path may only run while it is unchanged; None (pre-upgrade
         # deploys) forces one replace-path sync that backfills it.
         "deployed_request_port": None,
+        # The create-flow transport choice, consulted only at first deploy
+        # (mqtt-transport-plan §3). Neither transport field may enter the
+        # commands hash: a transport change is not in-place applicable.
+        "requested_transport": WIFI_TRANSPORT_HTTP,
+        # What the deploy actually wrote; None until first deploy (absent
+        # and legacy records both read back as HTTP via
+        # normalize_wifi_transport). Never rewritten by an in-place sync.
+        "deployed_transport": None,
     }
 
 
@@ -427,6 +504,11 @@ def _normalize_device_payload(
     deployed_request_port = device.get("deployed_request_port")
     payload["deployed_request_port"] = (
         int(deployed_request_port) if isinstance(deployed_request_port, int) else None
+    )
+    payload["requested_transport"] = normalize_wifi_transport(device.get("requested_transport"))
+    deployed_transport = device.get("deployed_transport")
+    payload["deployed_transport"] = (
+        normalize_wifi_transport(deployed_transport) if deployed_transport is not None else None
     )
     return payload
 
@@ -541,6 +623,7 @@ class CommandConfigStore:
         power_on_command_id = normalize_power_command_id(device.get("power_on_command_id"))
         power_off_command_id = normalize_power_command_id(device.get("power_off_command_id"))
         device_name = str(device.get("device_name") or DEFAULT_WIFI_DEVICE_NAME).strip() or DEFAULT_WIFI_DEVICE_NAME
+        hash_listen_port = record_hash_listen_port(device, roku_listen_port)
         return {
             "device_key": device_key,
             "device_name": device_name,
@@ -552,7 +635,7 @@ class CommandConfigStore:
             "commands_hash": compute_commands_hash(
                 commands,
                 device_name=device_name,
-                roku_listen_port=roku_listen_port,
+                roku_listen_port=hash_listen_port,
                 power_on_command_id=power_on_command_id,
                 power_off_command_id=power_off_command_id,
                 slot_count=slot_count,
@@ -566,6 +649,12 @@ class CommandConfigStore:
             "deployed_device_id": device.get("deployed_device_id"),
             "deployed_commands_hash": str(device.get("deployed_commands_hash") or ""),
             "deployed_request_port": device.get("deployed_request_port"),
+            "requested_transport": normalize_wifi_transport(device.get("requested_transport")),
+            "deployed_transport": (
+                normalize_wifi_transport(device.get("deployed_transport"))
+                if device.get("deployed_transport") is not None
+                else None
+            ),
         }
 
     async def async_list_hub_devices(
@@ -710,6 +799,7 @@ class CommandConfigStore:
         deployed_device_id: int | None = None,
         commands_hash: str = "",
         request_port: int | None = None,
+        deployed_transport: str | None = None,
     ) -> None:
         """Persist the command list that was last successfully synced to the hub.
 
@@ -717,7 +807,9 @@ class CommandConfigStore:
         ``command_index`` values embedded in callback URLs, so it must never be
         mutated after being written here. ``request_port`` records the listener
         port the deployed callbacks were built with (gates the in-place
-        re-sync path).
+        re-sync path). ``deployed_transport`` records which transport the
+        deploy wrote; ``None`` keeps the record's existing value so in-place
+        re-syncs never rewrite it (mqtt-transport-plan §3).
         """
         hub_device = self._find_hub_device_record(entry_id, device_key)
         hub_device["deployed_commands"] = commands
@@ -726,7 +818,34 @@ class CommandConfigStore:
         hub_device["deployed_request_port"] = (
             int(request_port) if isinstance(request_port, int) else None
         )
+        if deployed_transport is not None:
+            hub_device["deployed_transport"] = normalize_wifi_transport(deployed_transport)
+        elif deployed_device_id is None and not str(commands_hash or "").strip():
+            # The record is back to undeployed (zero-slot teardown): clear
+            # the transport stamp so the next first deploy chooses fresh.
+            hub_device["deployed_transport"] = None
         await self._store.async_save(self._data)
+
+    async def async_set_requested_transport(
+        self,
+        entry_id: str,
+        device_key: str,
+        transport: Any,
+    ) -> bool:
+        """Persist the create-flow transport choice for a Wifi Device record.
+
+        Pure store edit, no hub I/O; consulted only at first deploy. The
+        caller is responsible for rejecting edits on already-deployed
+        records (the UI locks the field once ``deployed_transport`` is set).
+        """
+
+        hub_device = self._find_hub_device_record(entry_id, device_key)
+        normalized = normalize_wifi_transport(transport)
+        if normalize_wifi_transport(hub_device.get("requested_transport")) == normalized:
+            return False
+        hub_device["requested_transport"] = normalized
+        await self._store.async_save(self._data)
+        return True
 
     async def async_set_deployed_device_id(
         self,
@@ -1259,7 +1378,7 @@ class CommandConfigStore:
             record["deployed_commands_hash"] = compute_commands_hash(
                 commands,
                 device_name=str(record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
-                roku_listen_port=roku_listen_port,
+                roku_listen_port=record_hash_listen_port(record, roku_listen_port),
                 power_on_command_id=normalize_power_command_id(record.get("power_on_command_id")),
                 power_off_command_id=normalize_power_command_id(record.get("power_off_command_id")),
                 slot_count=slot_count,
@@ -1323,7 +1442,7 @@ class CommandConfigStore:
             record["deployed_commands_hash"] = compute_commands_hash(
                 commands,
                 device_name=str(record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
-                roku_listen_port=roku_listen_port,
+                roku_listen_port=record_hash_listen_port(record, roku_listen_port),
                 power_on_command_id=normalize_power_command_id(record.get("power_on_command_id")),
                 power_off_command_id=normalize_power_command_id(record.get("power_off_command_id")),
                 slot_count=slot_count,
