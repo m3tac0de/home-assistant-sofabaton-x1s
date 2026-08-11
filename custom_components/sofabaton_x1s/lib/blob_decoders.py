@@ -626,8 +626,7 @@ def _decode_wifi_mqtt(data: bytes) -> Dict[str, Any]:
 
     The body is exactly two bytes — nominally ``(device_id, command_id)``
     as the vendor app writes them — and the hub ignores both: at press
-    time it publishes its OWN device and key ids to ``<MAC>/up``
-    (mqtt-transport-plan §2, findings F1/F2). The fields are surfaced
+    time it publishes its OWN device and key ids to ``<MAC>/up``. The fields are surfaced
     read-only so the editor can label them as ignored; there is nothing
     to configure.
     """

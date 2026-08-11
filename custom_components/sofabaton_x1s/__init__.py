@@ -1223,7 +1223,7 @@ async def _ws_set_command_device_transport(hass: HomeAssistant, connection, msg:
     """Persist the create-flow transport choice for an UNDEPLOYED record.
 
     Locked once deployed: changing transport then means changing the
-    device class, which is a full replace (mqtt-transport-plan §3/D11).
+    device class, which requires a full replacement.
     """
 
     hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})

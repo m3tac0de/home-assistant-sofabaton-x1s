@@ -921,7 +921,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     createModalCreate: "Create",
     transportLabel: "Delivery transport",
     transportMqttHint:
-      "Faster delivery through your MQTT broker; no listener port or firewall rule. The hub's broker must be configured in the Sofabaton app.",
+      "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
     transportHttpHint: "The hub calls Home Assistant directly over your network.",
     transportLockedNote: "The transport is fixed once the device is deployed.",
     transportPillDeployedTitle: "Deployed transport",

@@ -709,7 +709,7 @@ def test_rename_hub_device_rejects_unknown_key_and_empty_name() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Wifi transport fields (mqtt-transport-plan §3 / M2)
+# Wifi transport fields
 # ---------------------------------------------------------------------------
 
 

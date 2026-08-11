@@ -285,5 +285,12 @@ def test_wifi_commands_sensor_updates_on_wifi_device_toggle(monkeypatch) -> None
     hub.roku_server_enabled = False
     entity._handle_wifi_device_toggle()
 
-    assert entity.available is False
+    # The sensor is transport-agnostic (presses arrive over HTTP OR
+    # MQTT), so the HTTP listener switch must never blank it — an
+    # MQTT-only setup keeps that switch off permanently.
+    assert entity.available is True
     assert state_writes["count"] == 1
+
+    hub.roku_server_enabled = True
+    entity._handle_wifi_device_toggle()
+    assert entity.available is True

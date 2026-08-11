@@ -311,7 +311,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     deviceDeleting: "Wird gelöscht...", deviceSynced: "Synchronisiert", seeDocumentation: "Dokumentation anzeigen", actionButtonUnavailable: "Nicht verfügbar", actionButtonSyncing: "Wird synchronisiert...", actionButtonBusy: "Beschäftigt",
     actionButtonSyncToHub: "Synchronisieren", actionButtonUpToDate: "Aktuell", createDeviceBusy: "WLAN-Gerät wird erstellt...", deviceName: "Gerätename", createDeviceNameRequired: "Gerätename ist erforderlich.", createDeviceFailed: "WLAN-Gerät konnte nicht erstellt werden",
     deleteDeviceBusy: "WLAN-Gerät wird gelöscht...", deleteDeviceFailed: "WLAN-Gerät konnte nicht gelöscht werden", createModalCancel: "Abbrechen", createModalCreate: "Erstellen",
-    transportLabel: "Übertragungsweg", transportMqttHint: "Schnellere Zustellung über den MQTT-Broker; kein Listener-Port und keine Firewall-Regel nötig. Der Broker muss über die Sofabaton-App im Hub konfiguriert sein.",
+    transportLabel: "Übertragungsweg", transportMqttHint: "Schnellere Zustellung über den MQTT-Broker; der Sofabaton-HTTP-Listener auf Port 8060 wird nicht benötigt. Der Hub muss den in der Sofabaton-App konfigurierten Broker erreichen können.",
     transportHttpHint: "Der Hub ruft Home Assistant direkt über das Netzwerk auf.", transportLockedNote: "Der Übertragungsweg steht nach dem Deployment des Geräts fest.",
     transportPillDeployedTitle: "Verwendeter Übertragungsweg", transportPillPreviewTitle: "Wird mit diesem Übertragungsweg bereitgestellt",
     deleteModalTitle: "WLAN-Gerät löschen?",

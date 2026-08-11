@@ -1,8 +1,7 @@
 """M1 library tests for the ``wifi_mqtt`` (X2 virtual MQTT) profile.
 
-Plan: docs/internal/mqtt-transport-plan.md. Test vectors mirror the
-captured app-created device from §2 (F1: two-byte record bodies) and
-the §4 head profile; the same shape was validated live on an X2 by
+Test vectors mirror the captured app-created device's two-byte record
+bodies and the documented head profile; the same shape was validated live on an X2 by
 bench_90 (docs/protocol/live-hub-testing.md "Measured: MQTT vs HTTP
 callback latency").
 """
@@ -288,12 +287,15 @@ def test_select_wifi_command_transport_matrix():
 
     from custom_components.sofabaton_x1s.hub import SofabatonHub
 
-    def select(version, components, payload, mac=REAL_MAC):
+    def select(version, components, payload, mac=REAL_MAC, banner_mac=None):
         fake = SimpleNamespace(
             version=version,
             mac=mac,
+            banner_mac=banner_mac,
+            entry_id="entry-1",
             hass=SimpleNamespace(config=SimpleNamespace(components=components)),
         )
+        fake._wifi_mqtt_mac = lambda: SofabatonHub._wifi_mqtt_mac(fake)
         fake.wifi_mqtt_available = lambda: SofabatonHub.wifi_mqtt_available(fake)
         return SofabatonHub._select_wifi_command_transport(fake, payload)
 
@@ -320,3 +322,43 @@ def test_select_wifi_command_transport_matrix():
     # unknowable, so MQTT is never selected for a fresh deploy.
     assert select("X2", {"mqtt"}, {"requested_transport": "mqtt"}, mac=SYNTHETIC_MAC) == "http"
     assert select("X2", {"mqtt"}, {"requested_transport": "mqtt"}, mac=None) == "http"
+    # ...but the banner self-report unlocks it: once the hub has
+    # connected once, its own MAC (even a local/multicast-bit one, as
+    # real X1/X1S hardware carries) overrides the synthetic identity.
+    assert (
+        select(
+            "X2",
+            {"mqtt"},
+            {"requested_transport": "mqtt"},
+            mac=SYNTHETIC_MAC,
+            banner_mac="E26A44861B45",
+        )
+        == "mqtt"
+    )
+
+
+def test_wifi_mqtt_mac_preference_chain():
+    from types import SimpleNamespace
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    def mac_for(mac, banner_mac=None, stored=None):
+        entry = SimpleNamespace(data={"banner_mac": stored} if stored else {})
+        config_entries = SimpleNamespace(async_get_entry=lambda _id: entry)
+        fake = SimpleNamespace(
+            mac=mac,
+            banner_mac=banner_mac,
+            entry_id="entry-1",
+            hass=SimpleNamespace(config_entries=config_entries),
+        )
+        return SofabatonHub._wifi_mqtt_mac(fake)
+
+    # Banner self-report wins outright, OUI bits notwithstanding.
+    assert mac_for(SYNTHETIC_MAC, banner_mac="CB383539684B") == "CB383539684B"
+    # Entry-persisted banner MAC covers restarts before first connect.
+    assert mac_for(SYNTHETIC_MAC, stored="e2:6a:44:86:1b:45") == "E26A44861B45"
+    # Heuristic fallback: real discovery MAC passes, synthetic does not.
+    assert mac_for(REAL_MAC) == "FC012C39D3D0"
+    assert mac_for(SYNTHETIC_MAC) is None
+    # All-zero stored value is treated as absent.
+    assert mac_for(SYNTHETIC_MAC, stored="000000000000") is None

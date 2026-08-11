@@ -163,9 +163,9 @@ Commands deploy pipeline".
 
 The X2 firmware supports a virtual device class whose command
 activations publish to the hub's MQTT broker instead of issuing an
-HTTP request. Facts below were established against real X2 hardware
-(bench captures 2026-07 and bench_90, 2026-08-10; design context in
-docs/internal/mqtt-transport-plan.md §2).
+HTTP request. The facts below were established against real X2
+hardware in captures from 2026-07 and the committed 2026-08-10
+latency benchmark.
 
 **Device head.** `device_class_code` / `code_type` `0x20`,
 `device_type` `0x10`, `icon` 8, `idle_behavior` 4, `input_mode` 2,

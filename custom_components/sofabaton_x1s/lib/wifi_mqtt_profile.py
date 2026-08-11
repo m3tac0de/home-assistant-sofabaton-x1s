@@ -1,9 +1,9 @@
 """Profile builders for ``wifi_mqtt`` (X2 virtual MQTT) Wifi Devices.
 
-Plan: docs/internal/mqtt-transport-plan.md (§4 record/device profile,
-§5 deploy reuse). A ``wifi_mqtt`` device carries plain family-0x0E
-``hub_code_record`` rows whose two-byte bodies the hub ignores
-(findings F1/F2): at press time the hub publishes its OWN device and
+The record and device profile is documented in
+``docs/protocol/wifi-commands.md``. A ``wifi_mqtt`` device carries plain
+family-0x0E ``hub_code_record`` rows whose two-byte bodies the hub ignores:
+at press time the hub publishes its OWN device and
 key ids to ``<MAC>/up``. That makes the whole deploy expressible as a
 ``device_backup``-shaped payload replayed through the generic restore
 pipeline — the exact path validated live on an X2 (bench_90,

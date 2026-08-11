@@ -97,8 +97,7 @@ def _to_bytes(hex_string: str) -> bytes:
 
 def test_decodable_classes_covers_all_in_scope_classes():
     # Five virtual-device classes plus IR (content-sniffed via the
-    # descriptive-protocol magic prefix). wifi_mqtt joined with the
-    # MQTT transport work (docs/internal/mqtt-transport-plan.md §12.4).
+    # descriptive-protocol magic prefix).
     assert set(DECODABLE_CLASSES) == {
         DEVICE_CLASS_WIFI_IP,
         DEVICE_CLASS_WIFI_ROKU,

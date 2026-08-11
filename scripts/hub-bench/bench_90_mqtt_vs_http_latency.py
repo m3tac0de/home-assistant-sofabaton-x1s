@@ -1,4 +1,4 @@
-"""MQTT vs HTTP callback latency bench (mqtt-transport-plan gate M0.5).
+"""MQTT vs HTTP callback latency benchmark.
 
 Users claim an X2 MQTT "callback" reaches its automation faster than an
 HTTP callback. This bench measures activation-to-delivery latency for
@@ -9,8 +9,8 @@ Method
 ------
 - Restore two scratch devices: a ``wifi_ip`` HA-action host whose
   callback URL points at this machine's BenchWifiListener, and a
-  ``wifi_mqtt`` device built from the §4 profile in
-  docs/internal/mqtt-transport-plan.md. Neither joins any activity and
+  ``wifi_mqtt`` device built from the profile documented in
+  docs/protocol/wifi-commands.md. Neither joins any activity and
   neither binds any button, so deleting them afterwards touches nothing
   else on the hub.
 - Subscribe to ``<MAC>/up`` (upper and lower case variants) on the
@@ -162,7 +162,7 @@ def http_host_payload(host: str, port: int) -> tuple[dict, str]:
 
 
 def mqtt_host_payload() -> dict:
-    """wifi_mqtt scratch device per mqtt-transport-plan §4.
+    """Build a ``wifi_mqtt`` scratch device from the documented profile.
 
     data_hex content is ignored by the hub (finding F2); the natural
     (device_id, command_id) pair is written anyway to match what the

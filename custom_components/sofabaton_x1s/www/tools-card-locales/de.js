@@ -778,7 +778,7 @@ var TOOLS_CARD_STRINGS_DE = {
     createModalCancel: "Abbrechen",
     createModalCreate: "Erstellen",
     transportLabel: "\xDCbertragungsweg",
-    transportMqttHint: "Schnellere Zustellung \xFCber den MQTT-Broker; kein Listener-Port und keine Firewall-Regel n\xF6tig. Der Broker muss \xFCber die Sofabaton-App im Hub konfiguriert sein.",
+    transportMqttHint: "Schnellere Zustellung \xFCber den MQTT-Broker; der Sofabaton-HTTP-Listener auf Port 8060 wird nicht ben\xF6tigt. Der Hub muss den in der Sofabaton-App konfigurierten Broker erreichen k\xF6nnen.",
     transportHttpHint: "Der Hub ruft Home Assistant direkt \xFCber das Netzwerk auf.",
     transportLockedNote: "Der \xDCbertragungsweg steht nach dem Deployment des Ger\xE4ts fest.",
     transportPillDeployedTitle: "Verwendeter \xDCbertragungsweg",

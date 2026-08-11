@@ -5830,7 +5830,7 @@ def test_wifi_events_device_rebinds_by_brand_after_restore():
 
 
 # ---------------------------------------------------------------------------
-# MQTT press ingress (mqtt-transport-plan §6 / M4)
+# MQTT press ingress
 # ---------------------------------------------------------------------------
 
 

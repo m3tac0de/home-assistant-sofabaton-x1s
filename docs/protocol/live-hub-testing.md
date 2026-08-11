@@ -1447,12 +1447,14 @@ Artifacts: scripts/hub-bench/out/evE2E-X1S*.json / evE2E-press-check.json.
 
 ## Measured: MQTT vs HTTP callback latency (X2, 2026-08-10)
 
-MQTT transport plan gate M0.5 (docs/internal/mqtt-transport-plan.md).
-Bench: `bench_90_mqtt_vs_http_latency.py` with the dependency-free
-subscriber in `bench_mqtt_client.py`. X2 at .123, broker (Mosquitto) at
+Reproduction tooling: [`bench_90_mqtt_vs_http_latency.py`](../../scripts/hub-bench/bench_90_mqtt_vs_http_latency.py)
+with the dependency-free subscriber in
+[`bench_mqtt_client.py`](../../scripts/hub-bench/bench_mqtt_client.py).
+X2 at .123, broker (Mosquitto) at
 .77, listener on the bench PC. Two scratch devices restored (a
 `wifi_ip` HA-action host aimed at the bench listener, and a `wifi_mqtt`
-device synthesized from the plan's §4 profile), 40 timed rounds per
+device synthesized from the profile documented in
+[wifi-commands.md](wifi-commands.md#virtual-mqtt-devices-wifi_mqtt-class-0x20-x2-only)), 40 timed rounds per
 transport, both arms fired per round via `REQ_ACTIVATE`, arm order
 alternating per round. Cleanup deleted both devices; device and
 activity catalogs verified back at baseline.
@@ -1497,4 +1499,6 @@ differential is the robust claim. Physical-remote presses were not
 timed (no way to timestamp the press itself); the trigger leg is
 identical either way.
 
-Artifacts: scripts/hub-bench/out/mqtt-lat-x2.json.
+The summary statistics and observed publish facts from the retained
+run are recorded above; the raw bench-network artifact is not part of
+the repository.

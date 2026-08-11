@@ -2391,7 +2391,7 @@ var TOOLS_CARD_STRINGS_EN = {
     createModalCancel: "Cancel",
     createModalCreate: "Create",
     transportLabel: "Delivery transport",
-    transportMqttHint: "Faster delivery through your MQTT broker; no listener port or firewall rule. The hub's broker must be configured in the Sofabaton app.",
+    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
     transportHttpHint: "The hub calls Home Assistant directly over your network.",
     transportLockedNote: "The transport is fixed once the device is deployed.",
     transportPillDeployedTitle: "Deployed transport",
@@ -14428,8 +14428,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._deletingDeviceKey = null;
     this._creatingDevice = false;
     this._maxWifiDevices = 5;
-    // MQTT transport (docs/internal/mqtt-transport-plan.md §10/§12): the
-    // option shows only when the backend reports X2 + MQTT integration.
+    // The MQTT option shows only when the backend reports X2 + MQTT integration.
     this._mqttAvailable = false;
     this._newDeviceTransport = "mqtt";
     this._hubEventActions = this._defaultHubEventActions();

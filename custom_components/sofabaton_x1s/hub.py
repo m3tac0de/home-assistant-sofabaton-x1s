@@ -27,6 +27,7 @@ from .const import (
     CONF_MDNS_VERSION,
     CONF_PROXY_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
+    CONF_BANNER_MAC,
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
@@ -241,6 +242,9 @@ class SofabatonHub:
         self.client_connected: bool = False
         self.hub_connected: bool = False
         self.banner_model: str | None = None
+        # The hub's self-reported MAC from the connect banner — ground
+        # truth for the MQTT press topic (see _wifi_mqtt_mac).
+        self.banner_mac: str | None = None
         self.hub_firmware_version: int | None = None
         self.production_batch: str | None = None
         self.activities_ready: bool = False
@@ -268,7 +272,7 @@ class SofabatonHub:
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
         self._app_activations: list[dict[str, Any]] = []
         self._last_ip_command: dict[str, Any] | None = None
-        # MQTT press ingress (mqtt-transport-plan §6): one subscription on
+        # MQTT press ingress: one subscription on
         # <MAC>/up, established only while a record is deployed over MQTT.
         self._mqtt_press_unsub: Any = None
         self._mqtt_press_topic: str | None = None
@@ -305,11 +309,26 @@ class SofabatonHub:
         next_batch = str(info.get("production_batch") or "").strip() or None
         firmware_value = info.get("firmware_version")
         next_firmware = int(firmware_value) if isinstance(firmware_value, (int, float)) else None
+        # Self-reported MAC (banner payload[0:6]). Deliberately NOT run
+        # through real_hub_mac(): real Sofabaton MACs can carry the
+        # locally-administered / multicast bits (X1 and X1S captures),
+        # and the banner cannot contain the manual-add synthetic value.
+        raw_mac = str(info.get("mac") or "")
+        normalized_mac = "".join(
+            ch for ch in raw_mac if ch.lower() in "0123456789abcdef"
+        ).upper()
+        next_banner_mac = (
+            normalized_mac if len(normalized_mac) == 12 and set(normalized_mac) != {"0"} else None
+        )
+        # A missing banner never clears a previously learned MAC.
+        if next_banner_mac is None:
+            next_banner_mac = self.banner_mac
 
         changed = (
             self.banner_model != next_model
             or self.production_batch != next_batch
             or self.hub_firmware_version != next_firmware
+            or self.banner_mac != next_banner_mac
         )
         if not changed:
             return False
@@ -317,6 +336,7 @@ class SofabatonHub:
         self.banner_model = next_model
         self.production_batch = next_batch
         self.hub_firmware_version = next_firmware
+        self.banner_mac = next_banner_mac
         return True
 
     def _build_authoritative_mdns_txt(
@@ -382,6 +402,11 @@ class SofabatonHub:
         next_version = self.banner_model
         next_firmware = self.hub_firmware_version
         if not next_name or not next_version or next_firmware is None:
+            if banner_changed:
+                # The banner MAC may have just arrived even when the rest
+                # of the identity is incomplete; the press subscription
+                # depends on it.
+                await self.async_update_wifi_mqtt_ingress()
             return banner_changed
 
         next_txt = self._build_authoritative_mdns_txt(
@@ -435,6 +460,12 @@ class SofabatonHub:
                 changed = True
             if options.get(CONF_MDNS_VERSION) != next_version:
                 options[CONF_MDNS_VERSION] = next_version
+                changed = True
+            if self.banner_mac and data.get(CONF_BANNER_MAC) != self.banner_mac:
+                # Persist the self-reported MAC so MQTT ingress can
+                # subscribe right at setup after a restart, before the
+                # hub's first TCP connect delivers a fresh banner.
+                data[CONF_BANNER_MAC] = self.banner_mac
                 changed = True
             expected_title = format_hub_entry_title(
                 next_version,
@@ -3044,8 +3075,8 @@ class SofabatonHub:
     ) -> None:
         """Shared delivery tail for wifi presses.
 
-        HTTP callbacks and MQTT publishes converge here
-        (mqtt-transport-plan §6): sensor record, dispatcher signal, and
+        HTTP callbacks and MQTT publishes converge here: sensor record,
+        dispatcher signal, and
         the slot-action runner are transport-agnostic.
         """
 
@@ -3452,7 +3483,7 @@ class SofabatonHub:
         return any(wifi_device_requires_listener(device) for device in devices)
 
     def _select_wifi_command_transport(self, command_payload: dict[str, Any]) -> str:
-        """Pick the deploy transport per mqtt-transport-plan §5.
+        """Pick the transport for the first deployment.
 
         A record that has already deployed keeps its transport forever
         (changing it is an explicit re-deploy, never a side effect of a
@@ -3473,33 +3504,64 @@ class SofabatonHub:
         return normalize_wifi_transport(command_payload.get("requested_transport"))
 
     # ------------------------------------------------------------------
-    # MQTT press ingress (mqtt-transport-plan §6 / M4)
+    # MQTT press ingress
     # ------------------------------------------------------------------
+
+    def _wifi_mqtt_mac(self) -> str | None:
+        """The MAC to build the press topic from, in preference order.
+
+        1. The hub's SELF-REPORTED MAC from the connect banner
+           (payload[0:6], bench-verified on X1/X1S/X2) — ground truth,
+           deliberately exempt from the OUI heuristic because real
+           Sofabaton MACs can carry the locally-administered or even
+           multicast bit (X1/X1S captures).
+        2. The banner MAC persisted in entry data by a previous session,
+           so a restart subscribes before the first TCP connect.
+        3. The discovery MAC through :func:`real_hub_mac`, whose only
+           remaining job is rejecting the manual-add synthetic identity.
+        """
+
+        if self.banner_mac:
+            return self.banner_mac
+        config_entries = getattr(self.hass, "config_entries", None)
+        entry = (
+            config_entries.async_get_entry(self.entry_id)
+            if config_entries is not None and hasattr(config_entries, "async_get_entry")
+            else None
+        )
+        stored = str(entry.data.get(CONF_BANNER_MAC) or "") if entry is not None else ""
+        normalized = "".join(
+            ch for ch in stored if ch.lower() in "0123456789abcdef"
+        ).upper()
+        if len(normalized) == 12 and set(normalized) != {"0"}:
+            self.banner_mac = normalized
+            return normalized
+        return real_hub_mac(self.mac)
 
     def wifi_mqtt_available(self) -> bool:
         """Whether MQTT transport may be offered for this hub.
 
-        X2, MQTT integration loaded, and a REAL hub MAC known: the press
+        X2, MQTT integration loaded, and the hub's MAC known: the press
         topic is the hub's own MAC, so without it the transport cannot
-        work. Manually-added hubs carry a synthetic MAC until mDNS
-        identifies them (see :func:`real_hub_mac`).
+        work. The banner self-report covers manually-added hubs from
+        their first TCP connect onward (see :meth:`_wifi_mqtt_mac`).
         """
 
         return (
             self.version == HUB_VERSION_X2
             and "mqtt" in self.hass.config.components
-            and real_hub_mac(self.mac) is not None
+            and self._wifi_mqtt_mac() is not None
         )
 
     def _wifi_mqtt_press_topic(self) -> str | None:
         """``<MAC>/up`` with the MAC as uppercase bare hex.
 
         The hub publishes on the uppercase form (bench 2026-08-10; the
-        lowercase subscription stayed silent). ``None`` when no real MAC
-        is known — never subscribe on a synthetic manual-add MAC.
+        lowercase subscription stayed silent). ``None`` when no credible
+        MAC is known — never subscribe on a synthetic manual-add MAC.
         """
 
-        normalized = real_hub_mac(self.mac)
+        normalized = self._wifi_mqtt_mac()
         if normalized is None:
             return None
         return f"{normalized}/up"
@@ -3737,7 +3799,7 @@ class SofabatonHub:
         # Gate 1: the callback port is baked into the deployed records; only
         # the replace path can change it. None = pre-upgrade deploy with no
         # recorded port — one replace-path sync backfills it. MQTT records
-        # carry no port at all (mqtt-transport-plan §1), so the gate does
+        # carry no port at all, so the gate does
         # not apply to them.
         deployed_over_mqtt = (
             normalize_wifi_transport(command_payload.get("deployed_transport"))

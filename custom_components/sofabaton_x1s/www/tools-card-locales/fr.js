@@ -778,7 +778,7 @@ var TOOLS_CARD_STRINGS_FR = {
     createModalCancel: "Annuler",
     createModalCreate: "Cr\xE9er",
     transportLabel: "Transport de livraison",
-    transportMqttHint: "Livraison plus rapide via votre broker MQTT ; pas de port d\u2019\xE9coute ni de r\xE8gle de pare-feu. Le broker doit \xEAtre configur\xE9 sur le hub via l\u2019application Sofabaton.",
+    transportMqttHint: "Livraison plus rapide via votre broker MQTT ; le listener HTTP Sofabaton sur le port 8060 n\u2019est pas n\xE9cessaire. Le hub doit pouvoir joindre le broker configur\xE9 dans l\u2019application Sofabaton.",
     transportHttpHint: "Le hub appelle Home Assistant directement sur votre r\xE9seau.",
     transportLockedNote: "Le transport est fig\xE9 une fois l\u2019appareil d\xE9ploy\xE9.",
     transportPillDeployedTitle: "Transport d\xE9ploy\xE9",

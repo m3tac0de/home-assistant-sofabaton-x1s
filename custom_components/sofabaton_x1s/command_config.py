@@ -265,7 +265,7 @@ def count_configured_command_slots(
     return configured
 
 
-#: Wifi-device transport values (docs/internal/mqtt-transport-plan.md §3).
+#: Wifi-device transport values; see docs/protocol/wifi-commands.md.
 WIFI_TRANSPORT_HTTP = "http"
 WIFI_TRANSPORT_MQTT = "mqtt"
 
@@ -304,8 +304,8 @@ def record_hash_listen_port(record: dict[str, Any], roku_listen_port: int) -> in
 def map_wifi_mqtt_key(key_id: Any, slot_count: int) -> tuple[int, str] | None:
     """Map a published ``key_id`` to ``(command_index, press_type)``.
 
-    The hub publishes the command id of the record it executed
-    (mqtt-transport-plan F3); our record layout places shorts at
+    The hub publishes the command id of the record it executed; our
+    record layout places shorts at
     ``1..N`` and long variants at ``N+1..2N`` (N = ``slot_count``), so
     the mapping is our own layout read back. Out-of-range ids return
     ``None`` — callers log and drop.
@@ -330,8 +330,7 @@ def wifi_device_requires_listener(config_payload: dict[str, Any]) -> bool:
 
     A record deployed over MQTT never needs the HTTP listener — its
     presses arrive on the broker subscription instead. This predicate is
-    the ONLY place that filtering may happen (mqtt-transport-plan §3
-    hard rule): never filter MQTT records out of
+    the ONLY place that filtering may happen: never filter MQTT records out of
     :meth:`CommandConfigStore.async_list_hub_devices`.
     """
 
@@ -463,8 +462,8 @@ def _default_device_payload(
         # re-sync path may only run while it is unchanged; None (pre-upgrade
         # deploys) forces one replace-path sync that backfills it.
         "deployed_request_port": None,
-        # The create-flow transport choice, consulted only at first deploy
-        # (mqtt-transport-plan §3). Neither transport field may enter the
+        # The create-flow transport choice, consulted only at first deploy.
+        # Neither transport field may enter the
         # commands hash: a transport change is not in-place applicable.
         "requested_transport": WIFI_TRANSPORT_HTTP,
         # What the deploy actually wrote; None until first deploy (absent
@@ -809,7 +808,7 @@ class CommandConfigStore:
         port the deployed callbacks were built with (gates the in-place
         re-sync path). ``deployed_transport`` records which transport the
         deploy wrote; ``None`` keeps the record's existing value so in-place
-        re-syncs never rewrite it (mqtt-transport-plan §3).
+        re-syncs never rewrite it.
         """
         hub_device = self._find_hub_device_record(entry_id, device_key)
         hub_device["deployed_commands"] = commands

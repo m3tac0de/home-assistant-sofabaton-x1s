@@ -852,8 +852,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _deletingDeviceKey: string | null = null;
   private _creatingDevice = false;
   private _maxWifiDevices = 5;
-  // MQTT transport (docs/internal/mqtt-transport-plan.md §10/§12): the
-  // option shows only when the backend reports X2 + MQTT integration.
+  // The MQTT option shows only when the backend reports X2 + MQTT integration.
   private _mqttAvailable = false;
   private _newDeviceTransport: "mqtt" | "http" = "mqtt";
   private _hubEventActions: Record<HubEventKey, WifiCommandAction> = this._defaultHubEventActions();

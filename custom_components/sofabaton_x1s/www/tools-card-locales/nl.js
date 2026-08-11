@@ -781,7 +781,7 @@ var TOOLS_CARD_STRINGS_NL = {
     createModalCancel: "Annuleren",
     createModalCreate: "Aanmaken",
     transportLabel: "Transport",
-    transportMqttHint: "Snellere bezorging via je MQTT-broker; geen listener-poort of firewallregel nodig. De broker moet op de hub zijn ingesteld via de Sofabaton-app.",
+    transportMqttHint: "Snellere levering via je MQTT-broker; de Sofabaton-HTTP-listener op poort 8060 is niet nodig. De hub moet de broker kunnen bereiken die in de Sofabaton-app is ingesteld.",
     transportHttpHint: "De hub roept Home Assistant rechtstreeks aan via je netwerk.",
     transportLockedNote: "Het transport ligt vast zodra het apparaat is gesynchroniseerd naar de hub.",
     transportPillDeployedTitle: "Gebruikt transport",

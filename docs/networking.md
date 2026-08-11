@@ -81,13 +81,14 @@ When using this integration's [Wifi Commands or Wifi Events](wifi_commands.md), 
 
 ### Optional / MQTT delivery (X2)
 
-Wifi Devices deployed over [MQTT](wifi_commands.md#mqtt-delivery-x2) do not use the HTTP listener at all. The path is hub → MQTT broker → Home Assistant's MQTT integration: both the hub and Home Assistant connect **outbound** to the broker (default TCP `1883`), so no inbound rule towards Home Assistant is needed and the transport works across subnets as long as both sides reach the broker. The hub's broker settings are configured in the Sofabaton app; the integration only subscribes through the Home Assistant MQTT integration. Security-wise the broker's own authentication and ACLs are the boundary: anyone who can publish to the hub's press topic can trigger the configured Actions.
+Wifi Devices deployed over [MQTT](wifi_commands.md#mqtt-delivery-x2) do not use the integration's HTTP listener on port `8060`. The path is hub → MQTT broker → Home Assistant's MQTT integration. The network must allow both the hub and Home Assistant to reach the broker (default TCP `1883`); when the broker runs on the Home Assistant host, this usually means allowing inbound broker traffic from the hub. Cross-subnet setups therefore still need the appropriate firewall or VLAN rule towards the broker. The hub's broker settings are configured in the Sofabaton app; the integration subscribes through the Home Assistant MQTT integration. Security-wise the broker's own authentication and ACLs are the boundary: anyone who can publish to the hub's press topic can trigger the configured Actions.
 
 ### Firewall rules to allow
 
 - mDNS/Bonjour from hub → Home Assistant (or mDNS forwarded across VLANs).
 - UDP from Home Assistant → hub on the Sofabaton UDP port (`8102` by default).
 - TCP from hub → Home Assistant on the proxy listen port (8200 by default), shared by all configured hubs.
+- For MQTT-delivered Wifi Commands, TCP from the hub and Home Assistant → MQTT broker (1883 by default). If the broker is hosted by Home Assistant, allow the hub to reach that port on the Home Assistant host.
 
 If discovery works but the integration never shows the hub as connected, the TCP connect-back from the hub to Home Assistant is usually being blocked.
 

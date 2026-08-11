@@ -674,7 +674,7 @@ class WifiDeviceMixin:
         deploy layer can branch on transport without reshaping its
         inputs. Records land at the standard slot layout — shorts at
         ``1..N``, longs at ``N + 1..2N`` — via the generic restore
-        pipeline (record bodies are inert, mqtt-transport-plan §5/F2;
+        pipeline (record bodies are inert;
         live-validated by bench_90). Power and input configuration reuse
         the in-place sync's step writers, keeping one code path for
         first deploy and later edits.

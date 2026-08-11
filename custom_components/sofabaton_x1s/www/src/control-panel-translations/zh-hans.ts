@@ -363,7 +363,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     actionButtonSyncToHub: "同步", actionButtonUpToDate: "已是最新", createDeviceBusy: "正在创建 Wifi 设备…", deviceName: "设备名称", createDeviceNameRequired: "必须填写设备名称。",
     createDeviceFailed: "无法创建 Wifi 设备", deleteDeviceBusy: "正在删除 Wifi 设备…", deleteDeviceFailed: "无法删除 Wifi 设备",
     createModalCancel: "取消", createModalCreate: "创建",
-    transportLabel: "传输方式", transportMqttHint: "通过你的 MQTT broker 传输更快；无需监听端口和防火墙规则。需先在 Sofabaton 应用中为 Hub 配置 broker。",
+    transportLabel: "传输方式", transportMqttHint: "通过 MQTT broker 传输更快；无需使用 Sofabaton 位于 8060 端口的 HTTP 监听器。Hub 必须能够连接到在 Sofabaton 应用中配置的 broker。",
     transportHttpHint: "Hub 通过局域网直接调用 Home Assistant。", transportLockedNote: "设备部署后传输方式即固定。",
     transportPillDeployedTitle: "已部署的传输方式", transportPillPreviewTitle: "将使用此传输方式部署",
     deleteModalTitle: "删除 Wifi 设备？", deleteModalBody: (deviceName: string) => `从 Hub 删除“${deviceName}”并清除其已保存的命令槽位配置？`,
