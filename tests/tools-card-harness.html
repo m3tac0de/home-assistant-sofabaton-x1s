@@ -2700,6 +2700,57 @@
         postLoad: card => clickTab(card, "Automation"),
       },
 
+      // ── H: Firmware gate ────────────────────────────────────────────────────────
+
+      {
+        id: 29, group: "Firmware",
+        label: "29. Update available (nag chip)",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, firmware_version: 4, firmware_outdated: true,
+                   firmware_unsupported: false, firmware_min_recommended: 5, firmware_min_supported: 3 }],
+        },
+        postLoad: card => clickTab(card, "Settings"),
+      },
+      {
+        id: 30, group: "Firmware",
+        label: "30. Unsupported — Backup blocked",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, firmware_version: 2, firmware_outdated: true,
+                   firmware_unsupported: true, firmware_min_recommended: 5, firmware_min_supported: 5 }],
+        },
+        postLoad: card => clickTab(card, "Backup"),
+      },
+      {
+        id: 31, group: "Firmware",
+        label: "31. Unsupported — Automation blocked",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, firmware_version: 2, firmware_outdated: true,
+                   firmware_unsupported: true, firmware_min_recommended: 5, firmware_min_supported: 5,
+                   settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        wifiDevices: WIFI_DEVICES_HEALTHY,
+        postLoad: card => clickTab(card, "Automation"),
+      },
+      {
+        id: "firmware-editor-guard", group: "Firmware",
+        label: "32. Unsupported — editor guarded",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, firmware_version: 2, firmware_outdated: true,
+                   firmware_unsupported: true, firmware_min_recommended: 5, firmware_min_supported: 5 }],
+        },
+        async postLoad(card) {
+          await openActivityEditor(card, "Watch TV");
+        },
+      },
+
     ];
 
     // ── Build sidebar ─────────────────────────────────────────────────────────────

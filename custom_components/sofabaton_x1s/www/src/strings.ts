@@ -93,6 +93,8 @@ export const TOOLS_CARD_STRINGS_EN = {
       "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
     backupBlockedByProxy:
       "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    blockedByFirmware: (installed: string | number, required: string | number) =>
+      `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`,
   },
   buttonNames: {
     0x97: "C",
@@ -304,6 +306,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
     appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
+    firmwareUnsupportedTitle: "Hub firmware update required",
+    firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
+      `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Editing is disabled to protect your hub configuration. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`,
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -799,6 +804,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     integrationVersion: "Integration version",
     firmwareVersion: (version: string | number) => `FW: v${version}`,
     productVersion: (version: string) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "Firmware update available",
+    firmwareUpdateAvailableTooltip: (recommended: string | number) =>
+      `Firmware version ${recommended} or newer is recommended. Update the hub in the Sofabaton app (over Bluetooth).`,
   },
   decodedPayload: {
     httpTitle: "HTTP request",

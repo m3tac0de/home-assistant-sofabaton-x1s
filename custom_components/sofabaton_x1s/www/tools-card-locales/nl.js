@@ -71,7 +71,8 @@ var TOOLS_CARD_STRINGS_NL = {
     automationUnavailable: "Automatisering niet beschikbaar",
     backupUnavailable: "Back-up niet beschikbaar",
     automationBlockedByProxy: "Automatisering kan niet worden gebruikt zolang de Sofabaton-app via de proxy met de hub is verbonden.",
-    backupBlockedByProxy: "Back-up kan niet worden gebruikt zolang de Sofabaton-app via de proxy met de hub is verbonden."
+    backupBlockedByProxy: "Back-up kan niet worden gebruikt zolang de Sofabaton-app via de proxy met de hub is verbonden.",
+    blockedByFirmware: (installed, required) => `Deze hub draait firmwareversie ${installed}, die er bekend om staat configuratiewijzigingen stilzwijgend te negeren. Werk de hub in de Sofabaton-app (via Bluetooth) bij naar versie ${required} of nieuwer; de blokkering verdwijnt automatisch zodra de hub de nieuwe firmware meldt.`
   },
   buttonNames: {
     151: "C",
@@ -252,6 +253,8 @@ var TOOLS_CARD_STRINGS_NL = {
     activityFallback: (id) => `Activiteit ${id}`,
     appConnectedTitle: "De Sofabaton-app is verbonden",
     appConnectedBody: "Sluit de Sofabaton-app om de hubconfiguratie te bewerken.",
+    firmwareUnsupportedTitle: "Hub-firmware-update vereist",
+    firmwareUnsupportedBody: (installed, required) => `Deze hub draait firmwareversie ${installed}, die er bekend om staat configuratiewijzigingen stilzwijgend te negeren. Bewerken is uitgeschakeld om je hubconfiguratie te beschermen. Werk de hub in de Sofabaton-app (via Bluetooth) bij naar versie ${required} of nieuwer; bewerken wordt automatisch weer vrijgegeven zodra de hub de nieuwe firmware meldt.`,
     operationRunningTitle: "Er wordt een andere bewerking uitgevoerd",
     operationRunningBody: "Wacht tot de huidige back-up, herstelbewerking of synchronisatie is voltooid en probeer het daarna opnieuw.",
     captureTitle: "Je hub uitlezen",
@@ -672,7 +675,9 @@ var TOOLS_CARD_STRINGS_NL = {
     devices: "Apparaten",
     integrationVersion: "Integratieversie",
     firmwareVersion: (version) => `FW: v${version}`,
-    productVersion: (version) => `Sofabaton ${version}`
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "Firmware-update beschikbaar",
+    firmwareUpdateAvailableTooltip: (recommended) => `Firmwareversie ${recommended} of nieuwer wordt aanbevolen. Werk de hub bij in de Sofabaton-app (via Bluetooth).`
   },
   decodedPayload: {
     httpTitle: "HTTP-verzoek",

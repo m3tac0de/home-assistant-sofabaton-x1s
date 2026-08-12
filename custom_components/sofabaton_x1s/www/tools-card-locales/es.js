@@ -67,7 +67,8 @@ var TOOLS_CARD_STRINGS_ES = {
     automationUnavailable: "Automatizaci\xF3n no disponible",
     backupUnavailable: "Copia de seguridad no disponible",
     automationBlockedByProxy: "La automatizaci\xF3n no se puede usar mientras la aplicaci\xF3n Sofabaton est\xE1 conectada al hub mediante el proxy.",
-    backupBlockedByProxy: "La copia de seguridad no se puede usar mientras la aplicaci\xF3n Sofabaton est\xE1 conectada al hub mediante el proxy."
+    backupBlockedByProxy: "La copia de seguridad no se puede usar mientras la aplicaci\xF3n Sofabaton est\xE1 conectada al hub mediante el proxy.",
+    blockedByFirmware: (installed, required) => `Este hub ejecuta la versi\xF3n de firmware ${installed}, que se sabe que descarta silenciosamente los cambios de configuraci\xF3n. Actualiza el hub a la versi\xF3n ${required} o posterior en la aplicaci\xF3n Sofabaton (por Bluetooth); el bloqueo se levanta autom\xE1ticamente cuando el hub informa del nuevo firmware.`
   },
   buttonNames: {
     151: "C",
@@ -248,6 +249,8 @@ var TOOLS_CARD_STRINGS_ES = {
     activityFallback: (id) => `Actividad ${id}`,
     appConnectedTitle: "La aplicaci\xF3n Sofabaton est\xE1 conectada",
     appConnectedBody: "Cierra la aplicaci\xF3n Sofabaton para editar la configuraci\xF3n del hub.",
+    firmwareUnsupportedTitle: "Se requiere actualizar el firmware del hub",
+    firmwareUnsupportedBody: (installed, required) => `Este hub ejecuta la versi\xF3n de firmware ${installed}, que se sabe que descarta silenciosamente los cambios de configuraci\xF3n. La edici\xF3n est\xE1 desactivada para proteger la configuraci\xF3n del hub. Actualiza el hub a la versi\xF3n ${required} o posterior en la aplicaci\xF3n Sofabaton (por Bluetooth); la edici\xF3n se desbloquea autom\xE1ticamente cuando el hub informa del nuevo firmware.`,
     operationRunningTitle: "Hay otra operaci\xF3n en curso",
     operationRunningBody: "Espera a que termine la copia de seguridad, restauraci\xF3n o sincronizaci\xF3n actual y vuelve a intentarlo.",
     captureTitle: "Leyendo tu hub",
@@ -668,7 +671,9 @@ var TOOLS_CARD_STRINGS_ES = {
     devices: "Dispositivos",
     integrationVersion: "Versi\xF3n de la integraci\xF3n",
     firmwareVersion: (version) => `FW: v${version}`,
-    productVersion: (version) => `Sofabaton ${version}`
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "Actualizaci\xF3n de firmware disponible",
+    firmwareUpdateAvailableTooltip: (recommended) => `Se recomienda la versi\xF3n de firmware ${recommended} o posterior. Actualiza el hub en la aplicaci\xF3n Sofabaton (por Bluetooth).`
   },
   decodedPayload: {
     httpTitle: "Solicitud HTTP",

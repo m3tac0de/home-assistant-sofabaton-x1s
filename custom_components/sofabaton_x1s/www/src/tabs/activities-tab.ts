@@ -296,7 +296,8 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   private _openBlocked() {
-    return this.selectedHubProxyConnected
+    return !!this.hub?.firmware_unsupported
+      || this.selectedHubProxyConnected
       || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
 
@@ -814,6 +815,18 @@ class SofabatonActivitiesTab extends LitElement {
   // closing. Guard panels (§4.1) render full-panel, in priority order;
   // otherwise _maybeAutoOpen is about to kick off the capture.
   private _renderIdle() {
+    if (this.hub?.firmware_unsupported) {
+      // Firmware guard outranks the transient ones: it persists until the
+      // user updates the hub from the Sofabaton app.
+      return this._renderGuard(
+        "mdi:chip",
+        S.firmwareUnsupportedTitle,
+        S.firmwareUnsupportedBody(
+          this.hub?.firmware_version ?? "?",
+          this.hub?.firmware_min_supported ?? "?",
+        ),
+      );
+    }
     if (this.selectedHubProxyConnected) {
       return this._renderGuard("mdi:cellphone-link", S.appConnectedTitle, S.appConnectedBody);
     }

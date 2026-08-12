@@ -45,6 +45,14 @@ export interface ControlPanelHubState {
   name?: string;
   version?: string;
   firmware_version?: number | string | null;
+  /** Firmware gate, computed backend-side (the floor tables live in Python).
+   *  "outdated" nags (newer firmware recommended); "unsupported" blocks the
+   *  write surfaces because such firmware ACKs writes and silently drops
+   *  them. Absent fields mean "no confident comparison" and never gate. */
+  firmware_outdated?: boolean;
+  firmware_unsupported?: boolean;
+  firmware_min_recommended?: number | null;
+  firmware_min_supported?: number | null;
   ip_address?: string;
   activity_count?: number;
   device_count?: number;

@@ -46,6 +46,8 @@ export const TOOLS_CARD_STRINGS_DE = {
     refreshDashboard: "Aktualisiere das Dashboard, um die neue Sofabaton-Steuerzentrale zu laden.", automationUnavailable: "Automatisierung nicht verfügbar", backupUnavailable: "Backup nicht verfügbar",
     automationBlockedByProxy: "Die Automatisierung kann nicht verwendet werden, während die Sofabaton-App über den Proxy mit dem Hub verbunden ist.",
     backupBlockedByProxy: "Die Backup-Funktion kann nicht verwendet werden, während die Sofabaton-App über den Proxy mit dem Hub verbunden ist.",
+    blockedByFirmware: (installed: string | number, required: string | number) =>
+      `Dieser Hub läuft mit Firmware-Version ${installed}, die bekannt dafür ist, Konfigurationsänderungen stillschweigend zu verwerfen. Aktualisiere den Hub in der Sofabaton-App (über Bluetooth) auf Version ${required} oder neuer; die Sperre wird automatisch aufgehoben, sobald der Hub die neue Firmware meldet.`,
   },
   buttonNames: {
     0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Beenden", 0x9b: "DVR", 0x9c: "Wiedergabe", 0x9d: "Guide",
@@ -130,6 +132,9 @@ export const TOOLS_CARD_STRINGS_DE = {
   activities: {
     loading: "Aktivitäten werden geladen…", selectHub: "Wähle einen Hub aus, um seine Aktivitäten zu bearbeiten.", activityFallback: (id: number) => `Aktivität ${id}`,
     appConnectedTitle: "Die Sofabaton-App ist verbunden", appConnectedBody: "Schließe die Sofabaton-App, um die Hub-Konfiguration zu bearbeiten.",
+    firmwareUnsupportedTitle: "Hub-Firmware-Update erforderlich",
+    firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
+      `Dieser Hub läuft mit Firmware-Version ${installed}, die bekannt dafür ist, Konfigurationsänderungen stillschweigend zu verwerfen. Die Bearbeitung ist deaktiviert, um deine Hub-Konfiguration zu schützen. Aktualisiere den Hub in der Sofabaton-App (über Bluetooth) auf Version ${required} oder neuer; die Bearbeitung wird automatisch freigegeben, sobald der Hub die neue Firmware meldet.`,
     operationRunningTitle: "Ein anderer Vorgang wird ausgeführt", operationRunningBody: "Warte, bis das aktuelle Backup, die Wiederherstellung oder die Synchronisierung abgeschlossen ist, und versuche es dann erneut.",
     captureTitle: "Hub wird ausgelesen", captureMessage: "Konfiguration deines Hubs wird ausgelesen…", captureMessageWithStep: (current: number, total: number) => `Konfiguration deines Hubs wird ausgelesen… (Gerät ${current} von ${total})`,
     captureFailedTitle: "Hub konnte nicht ausgelesen werden", captureFailedBody: "Der Hub antwortete nicht mehr, bevor das Auslesen abgeschlossen war.", retry: "Erneut versuchen", back: "Zurück",
@@ -279,6 +284,8 @@ export const TOOLS_CARD_STRINGS_DE = {
   hub: {
     loading: "Wird geladen…", unknown: "Unbekannt", connectionStatusAria: "Hub-Verbindungsstatus", hubConnected: "Hub verbunden", hubNotConnected: "Hub nicht verbunden", appConnected: "App verbunden", appNotConnected: "App nicht verbunden",
     version: "Version", ipAddress: "IP-Adresse", activities: "Aktivitäten", devices: "Geräte", integrationVersion: "Integrationsversion", firmwareVersion: (version: string | number) => `FW: v${version}`, productVersion: (version: string) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "Firmware-Update verfügbar",
+    firmwareUpdateAvailableTooltip: (recommended: string | number) => `Firmware-Version ${recommended} oder neuer wird empfohlen. Aktualisiere den Hub in der Sofabaton-App (über Bluetooth).`,
   },
   decodedPayload: {
     httpTitle: "HTTP-Anfrage", httpSubtitle: "Änderungen werden über den wifi_ip-Schreiber des Hubs wiedergegeben. Host, Port und Content-Length werden abgeleitet und hier nicht festgelegt.",

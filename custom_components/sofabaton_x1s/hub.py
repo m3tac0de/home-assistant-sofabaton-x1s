@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
@@ -32,6 +33,8 @@ from .const import (
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
     HVER_BY_HUB_VERSION,
+    MIN_RECOMMENDED_FIRMWARE,
+    firmware_is_outdated,
     classify_hub_version,
     format_hub_entry_title,
     signal_activity,
@@ -364,20 +367,7 @@ class SofabatonHub:
         if device_registry is None:
             return
 
-        config_entries = getattr(self.hass, "config_entries", None)
-        entry = (
-            config_entries.async_get_entry(self.entry_id)
-            if config_entries is not None and hasattr(config_entries, "async_get_entry")
-            else None
-        )
-        hub_mac = str(self.mac or (entry.data.get(CONF_MAC) if entry is not None else "") or "").strip()
-        if not hub_mac or not hasattr(device_registry, "async_get_device") or not hasattr(device_registry, "async_update_device"):
-            return
-
-        device = device_registry.async_get_device(
-            identifiers={(DOMAIN, hub_mac)},
-            connections=set(),
-        )
+        device = self._async_hub_device(device_registry)
         if device is None:
             return
 
@@ -389,6 +379,74 @@ class SofabatonHub:
             return
 
         device_registry.async_update_device(device.id, name=normalized_name)
+
+    def _async_hub_device(self, device_registry: "dr.DeviceRegistry"):
+        """Look up this hub's device-registry entry, or None if not found."""
+
+        config_entries = getattr(self.hass, "config_entries", None)
+        entry = (
+            config_entries.async_get_entry(self.entry_id)
+            if config_entries is not None and hasattr(config_entries, "async_get_entry")
+            else None
+        )
+        hub_mac = str(
+            self.mac or (entry.data.get(CONF_MAC) if entry is not None else "") or ""
+        ).strip()
+        if (
+            not hub_mac
+            or not hasattr(device_registry, "async_get_device")
+            or not hasattr(device_registry, "async_update_device")
+        ):
+            return None
+        return device_registry.async_get_device(
+            identifiers={(DOMAIN, hub_mac)},
+            connections=set(),
+        )
+
+    async def _async_update_firmware_state(self) -> None:
+        """Publish the hub firmware version and raise/clear the outdated-firmware repair.
+
+        Several tracker reports (integration issues #270, #271 and #272)
+        traced back to bugs already fixed in newer hub firmware, so we
+        surface the installed version on the hub's device page and prompt
+        the user through Home Assistant's Repairs panel when it falls below
+        the minimum we recommend. The prompt is informational: the hub
+        updates over Bluetooth from the Sofabaton app, not from Home
+        Assistant, so there is nothing for us to "fix" automatically.
+        """
+
+        installed = self.hub_firmware_version
+        hub_version = self.version
+
+        if installed is not None:
+            device_registry = dr.async_get(self.hass)
+            if device_registry is not None:
+                device = self._async_hub_device(device_registry)
+                if device is not None and str(
+                    getattr(device, "sw_version", "") or ""
+                ) != str(installed):
+                    device_registry.async_update_device(
+                        device.id, sw_version=str(installed)
+                    )
+
+        issue_id = f"outdated_firmware_{self.entry_id}"
+        if firmware_is_outdated(hub_version, installed):
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="outdated_firmware",
+                translation_placeholders={
+                    "name": str(self.name or hub_version or "hub"),
+                    "model": str(hub_version or ""),
+                    "installed": str(installed),
+                    "recommended": str(MIN_RECOMMENDED_FIRMWARE.get(hub_version, "")),
+                },
+            )
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
     async def _async_sync_authoritative_identity(
         self,
@@ -407,6 +465,7 @@ class SofabatonHub:
                 # of the identity is incomplete; the press subscription
                 # depends on it.
                 await self.async_update_wifi_mqtt_ingress()
+            await self._async_update_firmware_state()
             return banner_changed
 
         next_txt = self._build_authoritative_mdns_txt(
@@ -483,6 +542,8 @@ class SofabatonHub:
 
         if previous_name != next_name:
             await self._async_update_device_registry_name(next_name)
+
+        await self._async_update_firmware_state()
 
         return banner_changed or identity_changed
 

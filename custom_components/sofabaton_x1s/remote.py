@@ -131,11 +131,13 @@ class SofabatonRemote(RemoteEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
+        firmware = getattr(self._hub, "hub_firmware_version", None)
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=get_hub_display_name(self._hub, self._entry),
             manufacturer="Sofabaton",
             model=get_hub_model(self._entry),
+            sw_version=str(firmware) if firmware is not None else None,
         )
 
     async def async_added_to_hass(self) -> None:

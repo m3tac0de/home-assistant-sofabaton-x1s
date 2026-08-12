@@ -1495,6 +1495,8 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-compact-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 70%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
+  .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
   .hub-compact-stats { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
   .hub-compact-stat { display: flex; flex-direction: row; align-items: center; gap: 9px; padding: 0 14px; }
   .hub-compact-stat-icon { display: inline-flex; align-items: center; color: var(--secondary-text-color); flex-shrink: 0; }
@@ -1616,7 +1618,8 @@ var TOOLS_CARD_STRINGS_EN = {
     automationUnavailable: "Automation unavailable",
     backupUnavailable: "Backup unavailable",
     automationBlockedByProxy: "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
-    backupBlockedByProxy: "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy."
+    backupBlockedByProxy: "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    blockedByFirmware: (installed, required) => `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`
   },
   buttonNames: {
     151: "C",
@@ -1824,6 +1827,8 @@ var TOOLS_CARD_STRINGS_EN = {
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
     appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
+    firmwareUnsupportedTitle: "Hub firmware update required",
+    firmwareUnsupportedBody: (installed, required) => `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Editing is disabled to protect your hub configuration. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`,
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -2281,7 +2286,9 @@ var TOOLS_CARD_STRINGS_EN = {
     devices: "Devices",
     integrationVersion: "Integration version",
     firmwareVersion: (version) => `FW: v${version}`,
-    productVersion: (version) => `Sofabaton ${version}`
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "Firmware update available",
+    firmwareUpdateAvailableTooltip: (recommended) => `Firmware version ${recommended} or newer is recommended. Update the hub in the Sofabaton app (over Bluetooth).`
   },
   decodedPayload: {
     httpTitle: "HTTP request",
@@ -3154,6 +3161,12 @@ function proxyClientConnected(hass, hub) {
 function hubConnected(hass, hub) {
   return remoteAvailableForHub(hass, hub) || proxyClientConnected(hass, hub);
 }
+function firmwareUnsupported(hub) {
+  return !!hub?.firmware_unsupported;
+}
+function firmwareOutdated(hub) {
+  return !!hub?.firmware_outdated || firmwareUnsupported(hub);
+}
 function canRunHubActions(hass, hub) {
   return remoteAvailableForHub(hass, hub);
 }
@@ -3258,6 +3271,17 @@ function resolveTabAvailability(snapshot, tabId) {
     return { kind: "available" };
   }
   const hub = selectedHub(snapshot);
+  if (hub && firmwareUnsupported(hub)) {
+    const title = tabId === "wifi_commands" ? TOOLS_CARD_STRINGS.availability.automationUnavailable : TOOLS_CARD_STRINGS.availability.backupUnavailable;
+    return {
+      kind: "blocked",
+      title,
+      message: TOOLS_CARD_STRINGS.availability.blockedByFirmware(
+        hub.firmware_version ?? "?",
+        hub.firmware_min_supported ?? "?"
+      )
+    };
+  }
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
     const title = tabId === "wifi_commands" ? TOOLS_CARD_STRINGS.availability.automationUnavailable : TOOLS_CARD_STRINGS.availability.backupUnavailable;
     const message = tabId === "wifi_commands" ? TOOLS_CARD_STRINGS.availability.automationBlockedByProxy : TOOLS_CARD_STRINGS.availability.backupBlockedByProxy;
@@ -4740,6 +4764,10 @@ function renderSettingsTab(params) {
             <div class="hub-compact-text">
               <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
               ${versionLine ? b2`<div class="hub-compact-meta">${versionLine}</div>` : A}
+              ${firmwareOutdated(hub) ? b2`<div class="hub-compact-meta"><span
+                class="hub-fw-chip"
+                title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateAvailableTooltip(hub.firmware_min_recommended ?? "")}
+              ><ha-icon icon="mdi:update"></ha-icon>${TOOLS_CARD_STRINGS.hub.firmwareUpdateAvailable}</span></div>` : A}
               ${hub.ip_address ? b2`<div class="hub-compact-meta">${hub.ip_address}</div>` : A}
             </div>
           </div>
@@ -17945,7 +17973,7 @@ var SofabatonActivitiesTab = class extends i4 {
     void this._startCapture(requested);
   }
   _openBlocked() {
-    return this.selectedHubProxyConnected || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
+    return !!this.hub?.firmware_unsupported || this.selectedHubProxyConnected || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
   // Card reloaded mid-sync: pick up a running sync op for this kind from the
   // shared backup/state registry and resubscribe to its progress.
@@ -18257,6 +18285,16 @@ var SofabatonActivitiesTab = class extends i4 {
   // closing. Guard panels (§4.1) render full-panel, in priority order;
   // otherwise _maybeAutoOpen is about to kick off the capture.
   _renderIdle() {
+    if (this.hub?.firmware_unsupported) {
+      return this._renderGuard(
+        "mdi:chip",
+        S4.firmwareUnsupportedTitle,
+        S4.firmwareUnsupportedBody(
+          this.hub?.firmware_version ?? "?",
+          this.hub?.firmware_min_supported ?? "?"
+        )
+      );
+    }
     if (this.selectedHubProxyConnected) {
       return this._renderGuard("mdi:cellphone-link", S4.appConnectedTitle, S4.appConnectedBody);
     }

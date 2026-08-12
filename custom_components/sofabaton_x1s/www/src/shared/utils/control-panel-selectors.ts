@@ -206,6 +206,17 @@ export function hubConnected(hass: HassLike | null, hub: ControlPanelHubState | 
   return remoteAvailableForHub(hass, hub) || proxyClientConnected(hass, hub);
 }
 
+/** Firmware below the supported floor: write surfaces are blocked because
+ *  the hub ACKs writes and silently drops them. Backend-computed. */
+export function firmwareUnsupported(hub: ControlPanelHubState | null) {
+  return !!hub?.firmware_unsupported;
+}
+
+/** Firmware below the recommended floor (nag only, nothing is blocked). */
+export function firmwareOutdated(hub: ControlPanelHubState | null) {
+  return !!hub?.firmware_outdated || firmwareUnsupported(hub);
+}
+
 export function canRunHubActions(hass: HassLike | null, hub: ControlPanelHubState | null) {
   return remoteAvailableForHub(hass, hub);
 }
@@ -383,6 +394,21 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
   }
 
   const hub = selectedHub(snapshot);
+  // Checked before app-connected: the firmware block persists until the
+  // user updates the hub, so it must not be masked by a transient state.
+  if (hub && firmwareUnsupported(hub)) {
+    const title = tabId === "wifi_commands"
+      ? TOOLS_CARD_STRINGS.availability.automationUnavailable
+      : TOOLS_CARD_STRINGS.availability.backupUnavailable;
+    return {
+      kind: "blocked",
+      title,
+      message: TOOLS_CARD_STRINGS.availability.blockedByFirmware(
+        hub.firmware_version ?? "?",
+        hub.firmware_min_supported ?? "?",
+      ),
+    };
+  }
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
     const title = tabId === "wifi_commands"
       ? TOOLS_CARD_STRINGS.availability.automationUnavailable

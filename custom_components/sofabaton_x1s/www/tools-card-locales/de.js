@@ -68,7 +68,8 @@ var TOOLS_CARD_STRINGS_DE = {
     automationUnavailable: "Automatisierung nicht verf\xFCgbar",
     backupUnavailable: "Backup nicht verf\xFCgbar",
     automationBlockedByProxy: "Die Automatisierung kann nicht verwendet werden, w\xE4hrend die Sofabaton-App \xFCber den Proxy mit dem Hub verbunden ist.",
-    backupBlockedByProxy: "Die Backup-Funktion kann nicht verwendet werden, w\xE4hrend die Sofabaton-App \xFCber den Proxy mit dem Hub verbunden ist."
+    backupBlockedByProxy: "Die Backup-Funktion kann nicht verwendet werden, w\xE4hrend die Sofabaton-App \xFCber den Proxy mit dem Hub verbunden ist.",
+    blockedByFirmware: (installed, required) => `Dieser Hub l\xE4uft mit Firmware-Version ${installed}, die bekannt daf\xFCr ist, Konfigurations\xE4nderungen stillschweigend zu verwerfen. Aktualisiere den Hub in der Sofabaton-App (\xFCber Bluetooth) auf Version ${required} oder neuer; die Sperre wird automatisch aufgehoben, sobald der Hub die neue Firmware meldet.`
   },
   buttonNames: {
     151: "C",
@@ -249,6 +250,8 @@ var TOOLS_CARD_STRINGS_DE = {
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
     appConnectedTitle: "Die Sofabaton-App ist verbunden",
     appConnectedBody: "Schlie\xDFe die Sofabaton-App, um die Hub-Konfiguration zu bearbeiten.",
+    firmwareUnsupportedTitle: "Hub-Firmware-Update erforderlich",
+    firmwareUnsupportedBody: (installed, required) => `Dieser Hub l\xE4uft mit Firmware-Version ${installed}, die bekannt daf\xFCr ist, Konfigurations\xE4nderungen stillschweigend zu verwerfen. Die Bearbeitung ist deaktiviert, um deine Hub-Konfiguration zu sch\xFCtzen. Aktualisiere den Hub in der Sofabaton-App (\xFCber Bluetooth) auf Version ${required} oder neuer; die Bearbeitung wird automatisch freigegeben, sobald der Hub die neue Firmware meldet.`,
     operationRunningTitle: "Ein anderer Vorgang wird ausgef\xFChrt",
     operationRunningBody: "Warte, bis das aktuelle Backup, die Wiederherstellung oder die Synchronisierung abgeschlossen ist, und versuche es dann erneut.",
     captureTitle: "Hub wird ausgelesen",
@@ -669,7 +672,9 @@ var TOOLS_CARD_STRINGS_DE = {
     devices: "Ger\xE4te",
     integrationVersion: "Integrationsversion",
     firmwareVersion: (version) => `FW: v${version}`,
-    productVersion: (version) => `Sofabaton ${version}`
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "Firmware-Update verf\xFCgbar",
+    firmwareUpdateAvailableTooltip: (recommended) => `Firmware-Version ${recommended} oder neuer wird empfohlen. Aktualisiere den Hub in der Sofabaton-App (\xFCber Bluetooth).`
   },
   decodedPayload: {
     httpTitle: "HTTP-Anfrage",

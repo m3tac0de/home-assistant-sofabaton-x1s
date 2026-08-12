@@ -537,5 +537,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "outdated_firmware": {
+      "title": "Sofabaton hub firmware is out of date",
+      "description": "The Sofabaton hub **{name}** ({model}) is running firmware version {installed}. Version {recommended} or newer is recommended, because several known issues are already fixed in newer firmware. To update, open the Sofabaton app on your phone and update the hub over Bluetooth. This notice clears automatically once the hub reports the updated firmware to Home Assistant."
+    }
   }
 }

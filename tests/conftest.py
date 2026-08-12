@@ -140,6 +140,14 @@ def _install_homeassistant_stubs() -> None:
     device_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.device_registry", device_registry)
 
+    issue_registry = types.ModuleType("homeassistant.helpers.issue_registry")
+    issue_registry.async_create_issue = lambda *args, **kwargs: None
+    issue_registry.async_delete_issue = lambda *args, **kwargs: None
+    issue_registry.IssueSeverity = types.SimpleNamespace(
+        WARNING="warning", ERROR="error", CRITICAL="critical"
+    )
+    sys.modules.setdefault("homeassistant.helpers.issue_registry", issue_registry)
+
 
     storage = types.ModuleType("homeassistant.helpers.storage")
 

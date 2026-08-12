@@ -23,6 +23,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 
 from .const import (
     DOMAIN,
@@ -45,6 +46,10 @@ from .const import (
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
     HUB_VERSION_X2,
+    MIN_RECOMMENDED_FIRMWARE,
+    MIN_SUPPORTED_FIRMWARE,
+    firmware_is_outdated,
+    firmware_is_unsupported,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -826,11 +831,23 @@ async def _async_build_control_panel_hub_payload(
     devices = getattr(hub, "devices", {}) or {}
     active_backup_operation = registry.running_for_entry(hub.entry_id)
     runtime_state = await _async_build_control_panel_runtime_payload(hass, hub)
+    installed_firmware = getattr(hub, "hub_firmware_version", None)
+    # Same classified version the firmware repair issue compares against,
+    # so the card gate and the HA repair can never disagree.
+    classified_version = getattr(hub, "version", None)
     return {
         "entry_id": hub.entry_id,
         "name": hub.name,
         "version": version,
-        "firmware_version": getattr(hub, "hub_firmware_version", None),
+        "firmware_version": installed_firmware,
+        # Firmware gate for the card, computed here so the floor tables
+        # stay Python-only. "outdated" nags (update available), while
+        # "unsupported" blocks the write surfaces (editors, Wifi Commands,
+        # backup) because such firmware ACKs writes and drops them.
+        "firmware_outdated": firmware_is_outdated(classified_version, installed_firmware),
+        "firmware_unsupported": firmware_is_unsupported(classified_version, installed_firmware),
+        "firmware_min_recommended": MIN_RECOMMENDED_FIRMWARE.get(classified_version or ""),
+        "firmware_min_supported": MIN_SUPPORTED_FIRMWARE.get(classified_version or ""),
         "ip_address": getattr(hub, "host", ""),
         "device_count": len(devices),
         "activity_count": len(activities),
@@ -4169,6 +4186,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     the Sofabaton app. The bounce is a no-op if no other hubs keep the shared
     listener alive (last hub removed → port already closed).
     """
+
+    # The outdated-firmware repair is only cleared by the hub reporting
+    # newer firmware; a removed hub can never do that, so drop it here.
+    ir.async_delete_issue(hass, DOMAIN, f"outdated_firmware_{entry.entry_id}")
 
     await hass.async_add_executor_job(bounce_hub_listener)
 

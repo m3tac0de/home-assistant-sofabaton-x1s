@@ -68,7 +68,8 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     automationUnavailable: "\u81EA\u52A8\u5316\u4E0D\u53EF\u7528",
     backupUnavailable: "\u5907\u4EFD\u4E0D\u53EF\u7528",
     automationBlockedByProxy: "Sofabaton \u5E94\u7528\u901A\u8FC7\u4EE3\u7406\u8FDE\u63A5\u5230 Hub \u65F6\uFF0C\u65E0\u6CD5\u4F7F\u7528\u81EA\u52A8\u5316\u529F\u80FD\u3002",
-    backupBlockedByProxy: "Sofabaton \u5E94\u7528\u901A\u8FC7\u4EE3\u7406\u8FDE\u63A5\u5230 Hub \u65F6\uFF0C\u65E0\u6CD5\u4F7F\u7528\u5907\u4EFD\u529F\u80FD\u3002"
+    backupBlockedByProxy: "Sofabaton \u5E94\u7528\u901A\u8FC7\u4EE3\u7406\u8FDE\u63A5\u5230 Hub \u65F6\uFF0C\u65E0\u6CD5\u4F7F\u7528\u5907\u4EFD\u529F\u80FD\u3002",
+    blockedByFirmware: (installed, required) => `\u6B64 Hub \u8FD0\u884C\u7684\u56FA\u4EF6\u7248\u672C\u4E3A ${installed}\uFF0C\u5DF2\u77E5\u8BE5\u7248\u672C\u4F1A\u6084\u6084\u4E22\u5F03\u914D\u7F6E\u5199\u5165\u3002\u8BF7\u5728 Sofabaton \u5E94\u7528\u4E2D\uFF08\u901A\u8FC7\u84DD\u7259\uFF09\u5C06 Hub \u66F4\u65B0\u5230\u7248\u672C ${required} \u6216\u66F4\u9AD8\uFF1BHub \u4E0A\u62A5\u65B0\u56FA\u4EF6\u540E\u5C06\u81EA\u52A8\u89E3\u9664\u9650\u5236\u3002`
   },
   buttonNames: {
     151: "C",
@@ -249,6 +250,8 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     activityFallback: (id) => `\u6D3B\u52A8 ${id}`,
     appConnectedTitle: "Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5",
     appConnectedBody: "\u8BF7\u5173\u95ED Sofabaton \u5E94\u7528\u540E\u518D\u7F16\u8F91 Hub \u914D\u7F6E\u3002",
+    firmwareUnsupportedTitle: "\u9700\u8981\u66F4\u65B0 Hub \u56FA\u4EF6",
+    firmwareUnsupportedBody: (installed, required) => `\u6B64 Hub \u8FD0\u884C\u7684\u56FA\u4EF6\u7248\u672C\u4E3A ${installed}\uFF0C\u5DF2\u77E5\u8BE5\u7248\u672C\u4F1A\u6084\u6084\u4E22\u5F03\u914D\u7F6E\u5199\u5165\u3002\u4E3A\u4FDD\u62A4\u4F60\u7684 Hub \u914D\u7F6E\uFF0C\u7F16\u8F91\u529F\u80FD\u5DF2\u7981\u7528\u3002\u8BF7\u5728 Sofabaton \u5E94\u7528\u4E2D\uFF08\u901A\u8FC7\u84DD\u7259\uFF09\u5C06 Hub \u66F4\u65B0\u5230\u7248\u672C ${required} \u6216\u66F4\u9AD8\uFF1BHub \u4E0A\u62A5\u65B0\u56FA\u4EF6\u540E\u5C06\u81EA\u52A8\u6062\u590D\u7F16\u8F91\u3002`,
     operationRunningTitle: "\u53E6\u4E00\u9879\u64CD\u4F5C\u6B63\u5728\u8FD0\u884C",
     operationRunningBody: "\u8BF7\u7B49\u5F85\u5F53\u524D\u5907\u4EFD\u3001\u6062\u590D\u6216\u540C\u6B65\u64CD\u4F5C\u5B8C\u6210\uFF0C\u7136\u540E\u91CD\u8BD5\u3002",
     captureTitle: "\u6B63\u5728\u8BFB\u53D6 Hub",
@@ -669,7 +672,9 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     devices: "\u8BBE\u5907",
     integrationVersion: "\u96C6\u6210\u7248\u672C",
     firmwareVersion: (version) => `\u56FA\u4EF6\uFF1Av${version}`,
-    productVersion: (version) => `Sofabaton ${version}`
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "\u6709\u53EF\u7528\u7684\u56FA\u4EF6\u66F4\u65B0",
+    firmwareUpdateAvailableTooltip: (recommended) => `\u5EFA\u8BAE\u4F7F\u7528\u56FA\u4EF6\u7248\u672C ${recommended} \u6216\u66F4\u9AD8\u3002\u8BF7\u5728 Sofabaton \u5E94\u7528\u4E2D\uFF08\u901A\u8FC7\u84DD\u7259\uFF09\u66F4\u65B0 Hub\u3002`
   },
   decodedPayload: {
     httpTitle: "HTTP \u8BF7\u6C42",

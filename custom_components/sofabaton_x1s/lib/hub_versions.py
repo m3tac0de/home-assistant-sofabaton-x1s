@@ -41,6 +41,77 @@ HVER_BY_HUB_VERSION = {
     HUB_VERSION_X2: HVER_X2,
 }
 
+# Minimum hub firmware we recommend per line, keyed by the classified hub
+# version. These are the AVER integers reported in the connect banner
+# (byte 6) and the mDNS TXT record. The integration compares a connected
+# hub against this table and raises a Home Assistant "repair" issue when
+# the hub is older: several tracker reports (integration issues #270, #271
+# and #272) traced back to bugs already fixed in newer hub firmware.
+#
+# X1 and X1S firmware is frozen upstream, so their floors are effectively
+# permanent. X2 firmware is still evolving; raise its floor when a newer
+# release fixes something worth prompting users to install. Keep every
+# value at or below a version we have actually observed in the wild so the
+# integration never nags a user toward firmware that does not exist.
+MIN_RECOMMENDED_FIRMWARE: dict[str, int] = {
+    HUB_VERSION_X1: 17,
+    HUB_VERSION_X1S: 5,
+    HUB_VERSION_X2: 8,
+}
+
+
+def firmware_is_outdated(hub_version: str | None, installed: int | None) -> bool:
+    """True when a known hub line reports firmware below its recommended floor.
+
+    Returns False whenever a confident comparison is impossible -- an
+    unknown hub line, or a hub that has not yet reported its firmware -- so
+    an unclassifiable hub is never prompted to update.
+    """
+
+    if installed is None or hub_version is None:
+        return False
+    floor = MIN_RECOMMENDED_FIRMWARE.get(hub_version)
+    if floor is None:
+        return False
+    return installed < floor
+
+
+# Minimum hub firmware the integration's write features are known to work
+# with. Below this floor the hub is known-broken territory: an X1S on
+# AVER=2 ACKed every command write and silently discarded it (integration
+# issues #270 and #272), which turns the editors, Wifi Commands deploys
+# and backup restores into silent data loss. The Control Panel card blocks
+# those surfaces below this floor and only nags (via the repair issue and
+# MIN_RECOMMENDED_FIRMWARE) between the two floors.
+#
+# Unlike the recommended floor, this one must NOT track the latest
+# release: raise it only when a specific older version is shown to break
+# the write path, so a release-cadence bump never locks users out. X1 and
+# X1S are frozen upstream at their final versions (17 / 5), so for them
+# the two floors coincide: everything below final is untested territory
+# and the update is free and final. The X2 value is a conservative
+# baseline, not an observed breakage.
+MIN_SUPPORTED_FIRMWARE: dict[str, int] = {
+    HUB_VERSION_X1: 17,
+    HUB_VERSION_X1S: 5,
+    HUB_VERSION_X2: 5,
+}
+
+
+def firmware_is_unsupported(hub_version: str | None, installed: int | None) -> bool:
+    """True when a known hub line reports firmware below its supported floor.
+
+    Same fail-open shape as :func:`firmware_is_outdated`: an unknown hub
+    line or a hub that has not reported its firmware is never blocked.
+    """
+
+    if installed is None or hub_version is None:
+        return False
+    floor = MIN_SUPPORTED_FIRMWARE.get(hub_version)
+    if floor is None:
+        return False
+    return installed < floor
+
 MDNS_SERVICE_TYPE_BY_VERSION = {
     HUB_VERSION_X1: MDNS_SERVICE_TYPE_X1,
     HUB_VERSION_X1S: MDNS_SERVICE_TYPE_X1,

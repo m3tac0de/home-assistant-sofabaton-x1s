@@ -68,7 +68,8 @@ var TOOLS_CARD_STRINGS_FR = {
     automationUnavailable: "Automatisation indisponible",
     backupUnavailable: "Sauvegarde indisponible",
     automationBlockedByProxy: "L\u2019automatisation ne peut pas \xEAtre utilis\xE9e lorsque l\u2019application Sofabaton est connect\xE9e au hub par le proxy.",
-    backupBlockedByProxy: "La sauvegarde ne peut pas \xEAtre utilis\xE9e lorsque l\u2019application Sofabaton est connect\xE9e au hub par le proxy."
+    backupBlockedByProxy: "La sauvegarde ne peut pas \xEAtre utilis\xE9e lorsque l\u2019application Sofabaton est connect\xE9e au hub par le proxy.",
+    blockedByFirmware: (installed, required) => `Ce hub fonctionne avec la version de firmware ${installed}, connue pour ignorer silencieusement les modifications de configuration. Mettez \xE0 jour le hub vers la version ${required} ou plus r\xE9cente dans l\u2019application Sofabaton (via Bluetooth)\xA0; le blocage sera lev\xE9 automatiquement d\xE8s que le hub signalera le nouveau firmware.`
   },
   buttonNames: {
     151: "C",
@@ -249,6 +250,8 @@ var TOOLS_CARD_STRINGS_FR = {
     activityFallback: (id) => `Activit\xE9 ${id}`,
     appConnectedTitle: "L\u2019application Sofabaton est connect\xE9e",
     appConnectedBody: "Fermez l\u2019application Sofabaton pour modifier la configuration du hub.",
+    firmwareUnsupportedTitle: "Mise \xE0 jour du firmware du hub requise",
+    firmwareUnsupportedBody: (installed, required) => `Ce hub fonctionne avec la version de firmware ${installed}, connue pour ignorer silencieusement les modifications de configuration. La modification est d\xE9sactiv\xE9e pour prot\xE9ger la configuration de votre hub. Mettez \xE0 jour le hub vers la version ${required} ou plus r\xE9cente dans l\u2019application Sofabaton (via Bluetooth)\xA0; la modification sera de nouveau disponible d\xE8s que le hub signalera le nouveau firmware.`,
     operationRunningTitle: "Une autre op\xE9ration est en cours",
     operationRunningBody: "Attendez la fin de la sauvegarde, de la restauration ou de la synchronisation en cours, puis r\xE9essayez.",
     captureTitle: "Lecture de votre hub",
@@ -669,7 +672,9 @@ var TOOLS_CARD_STRINGS_FR = {
     devices: "Appareils",
     integrationVersion: "Version de l\u2019int\xE9gration",
     firmwareVersion: (version) => `FW\xA0: v${version}`,
-    productVersion: (version) => `Sofabaton ${version}`
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateAvailable: "Mise \xE0 jour du firmware disponible",
+    firmwareUpdateAvailableTooltip: (recommended) => `La version de firmware ${recommended} ou plus r\xE9cente est recommand\xE9e. Mettez \xE0 jour le hub dans l\u2019application Sofabaton (via Bluetooth).`
   },
   decodedPayload: {
     httpTitle: "Requ\xEAte HTTP",

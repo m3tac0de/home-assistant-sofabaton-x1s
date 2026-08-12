@@ -586,6 +586,8 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 70%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
+  .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
   .hub-compact-stats { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
   .hub-compact-stat { display: flex; flex-direction: row; align-items: center; gap: 9px; padding: 0 14px; }
   .hub-compact-stat-icon { display: inline-flex; align-items: center; color: var(--secondary-text-color); flex-shrink: 0; }
