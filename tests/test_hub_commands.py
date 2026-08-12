@@ -3548,6 +3548,12 @@ def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
 
     async def _create(*_args, **_kwargs):
         call_order.append("create")
+        command_rows = {
+            idx + 1: str(command["display_name"])
+            for idx, command in enumerate(_kwargs.get("commands") or [])
+        }
+        hub._proxy.state.commands[9] = command_rows
+        hub._proxy._commands_complete.add(9)
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(act_id, dev_id, **_kwargs):

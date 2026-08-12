@@ -138,6 +138,7 @@ Syncing a configuration with no command slots left removes the deployed hub devi
 ### Failure and recovery
 
 - A failed first deployment is rolled back, leaving no managed device on the hub.
+- When a replacement of an existing managed device is required, the replacement's complete command table is read back before any Activity is changed or the previous device is deleted. If that readback is incomplete, the unreferenced replacement is removed, the existing device is kept unchanged, and the sync reports an error.
 - An interrupted in-place update is safe to retry. Completed writes remain, and the next sync continues from the resulting state.
 - If a managed Wifi Device is deleted through the Sofabaton app, its saved Wifi Commands configuration remains in Home Assistant. The Control Panel detects the missing device and allows it to be synchronized back to the hub or deleted from the Wifi Commands list.
 - Deleting a Wifi Device from **Automation → Wifi Commands** removes both the hub device and its saved command configuration.

@@ -4428,6 +4428,34 @@ class SofabatonHub:
                     raise HomeAssistantError("Failed creating Wifi Device")
 
                 wifi_device_id = int(created["device_id"])
+                # An ACK only proves the hub accepted each frame. Verify that
+                # every command row survived the create transaction before
+                # touching activities or deleting the old managed device.
+                if managed:
+                    await self.async_fetch_device_commands(wifi_device_id)
+                    command_rows, commands_ready = (
+                        await self.hass.async_add_executor_job(
+                            partial(
+                                self._proxy.get_commands_for_entity,
+                                wifi_device_id,
+                                fetch_if_missing=False,
+                            )
+                        )
+                    )
+                    actual_commands = {
+                        int(command_id) & 0xFF: str(label)
+                        for command_id, label in dict(command_rows or {}).items()
+                    }
+                    expected_commands = {
+                        idx + 1: str(command["display_name"])
+                        for idx, command in enumerate(command_defs)
+                    }
+                    if not commands_ready or actual_commands != expected_commands:
+                        await self.async_delete_device(wifi_device_id)
+                        raise HomeAssistantError(
+                            "The replacement Wifi Device did not pass command "
+                            "readback; the existing device was kept unchanged"
+                        )
                 cached_created_device = self._proxy.state.entities("device").get(wifi_device_id & 0xFF)
                 if isinstance(cached_created_device, dict):
                     self.devices[wifi_device_id & 0xFF] = dict(cached_created_device)
