@@ -68,7 +68,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     automationBlockedByProxy: "Sofabaton 应用通过代理连接到 Hub 时，无法使用自动化功能。",
     backupBlockedByProxy: "Sofabaton 应用通过代理连接到 Hub 时，无法使用备份功能。",
     blockedByFirmware: (installed: string | number, required: string | number) =>
-      `此 Hub 当前运行固件版本 ${installed}。版本 ${required} 或更高版本是控制面板中会更改 Hub 配置的功能所支持的最低版本。请通过蓝牙使用 Sofabaton 应用更新 Hub。Hub 报告更新后的固件版本后，此功能将自动恢复可用。`,
+      `此 Hub 当前固件版本为 ${installed}。要使用控制面板中修改 Hub 配置的功能，请先使用 Sofabaton 应用通过蓝牙将 Hub 固件升级至 ${required} 或更高版本。Hub 上报新固件版本后，此功能将自动恢复。`,
   },
   buttonNames: {
     0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "退出", 0x9b: "DVR", 0x9c: "播放", 0x9d: "节目指南",
@@ -161,7 +161,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     appConnectedTitle: "Sofabaton 应用已连接", appConnectedBody: "请关闭 Sofabaton 应用后再编辑 Hub 配置。",
     firmwareUnsupportedTitle: "需要更新 Hub 固件",
     firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
-      `此 Hub 当前运行固件版本 ${installed}。要安全编辑 Hub 配置，至少需要版本 ${required}。为保护你的配置，编辑功能已禁用。请通过蓝牙使用 Sofabaton 应用更新 Hub。Hub 报告更新后的固件版本后，编辑功能将自动恢复。`,
+      `此 Hub 当前固件版本为 ${installed}。要安全编辑 Hub 配置，需要 ${required} 或更高版本。为保护你的配置，编辑功能已禁用。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。Hub 上报新固件版本后，编辑功能将自动恢复。`,
     operationRunningTitle: "另一项操作正在运行", operationRunningBody: "请等待当前备份、恢复或同步操作完成，然后重试。",
     captureTitle: "正在读取 Hub", captureMessage: "正在读取 Hub 配置…",
     captureMessageWithStep: (current: number, total: number) => `正在读取 Hub 配置…（设备 ${current}/${total}）`,
@@ -334,14 +334,14 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     firmwareUpdateRequired: "需要更新固件",
     firmwareUpdateRecommended: "建议更新固件",
     firmwareUpdateTooltip: (recommended: string | number, required: string | number, unsupported: boolean) => {
-      const update = "请通过蓝牙使用 Sofabaton 应用更新 Hub。";
+      const update = "请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。";
       if (unsupported) {
         const recommendation = String(recommended) === String(required)
           ? ""
-          : ` 固件版本 ${recommended} 或更高版本包含已知问题修复，建议使用。`;
-        return `控制面板需要固件版本 ${required} 或更高版本才能更改 Hub 配置。${recommendation}${update}`;
+          : `建议升级至 ${recommended} 或更高版本，其中包含针对已知问题的修复。`;
+        return `控制面板中的配置修改功能要求固件版本不低于 ${required}。${recommendation}${update}`;
       }
-      return `固件版本 ${recommended} 或更高版本包含已知问题修复，建议使用。当前安装的固件仍支持通过控制面板更改 Hub 配置。${update}`;
+      return `建议将固件升级至 ${recommended} 或更高版本，其中包含针对已知问题的修复。当前固件仍支持通过控制面板修改配置。${update}`;
     },
   },
   decodedPayload: {

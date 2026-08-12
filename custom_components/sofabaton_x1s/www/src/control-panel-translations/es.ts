@@ -43,7 +43,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     automationBlockedByProxy: "La automatización no se puede usar mientras la aplicación Sofabaton está conectada al hub mediante el proxy.",
     backupBlockedByProxy: "La copia de seguridad no se puede usar mientras la aplicación Sofabaton está conectada al hub mediante el proxy.",
     blockedByFirmware: (installed: string | number, required: string | number) =>
-      `Este hub tiene instalada la versión de firmware ${installed}. La versión ${required} o posterior es la mínima compatible con las funciones del Panel de control que modifican la configuración del hub. Actualiza el hub por Bluetooth con la aplicación Sofabaton. Esta función volverá a estar disponible automáticamente cuando el hub comunique la versión de firmware actualizada.`,
+      `Este hub tiene instalada la versión de firmware ${installed}. La versión ${required} es la versión mínima compatible con las funciones del Panel de control que modifican la configuración del hub. Actualiza el hub por Bluetooth con la aplicación Sofabaton. Esta función volverá a estar disponible automáticamente cuando el hub comunique la versión de firmware actualizada.`,
   },
   buttonNames: {
     0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Salir", 0x9b: "DVR", 0x9c: "Reproducir", 0x9d: "Guía",

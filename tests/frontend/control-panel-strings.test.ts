@@ -287,6 +287,28 @@ test("firmware copy distinguishes required updates from recommendations", () => 
     assert.notEqual(blocked, advisory, `${locale} required and recommended states`);
   }
 
+  setToolsCardLanguage("zh-Hans");
+  assert.equal(
+    TOOLS_CARD_STRINGS.availability.blockedByFirmware(2, 5),
+    "此 Hub 当前固件版本为 2。要使用控制面板中修改 Hub 配置的功能，请先使用 Sofabaton 应用通过蓝牙将 Hub 固件升级至 5 或更高版本。Hub 上报新固件版本后，此功能将自动恢复。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.activities.firmwareUnsupportedBody(2, 5),
+    "此 Hub 当前固件版本为 2。要安全编辑 Hub 配置，需要 5 或更高版本。为保护你的配置，编辑功能已禁用。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。Hub 上报新固件版本后，编辑功能将自动恢复。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, true),
+    "控制面板中的配置修改功能要求固件版本不低于 5。建议升级至 8 或更高版本，其中包含针对已知问题的修复。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, false),
+    "建议将固件升级至 8 或更高版本，其中包含针对已知问题的修复。当前固件仍支持通过控制面板修改配置。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(5, 5, true),
+    "控制面板中的配置修改功能要求固件版本不低于 5。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。",
+  );
+
   setToolsCardLanguage("en");
 });
 

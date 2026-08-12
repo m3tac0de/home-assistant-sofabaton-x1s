@@ -94,7 +94,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     backupBlockedByProxy:
       "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
     blockedByFirmware: (installed: string | number, required: string | number) =>
-      `This hub is running firmware version ${installed}. Version ${required} or newer is the minimum supported version for Control Panel features that change the hub configuration. Update the hub over Bluetooth using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`,
+      `This hub is running firmware version ${installed}. Version ${required} is the minimum supported version for Control Panel features that change the hub configuration. Update the hub over Bluetooth using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`,
   },
   buttonNames: {
     0x97: "C",

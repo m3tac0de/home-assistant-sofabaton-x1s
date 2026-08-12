@@ -68,7 +68,7 @@ var TOOLS_CARD_STRINGS_ES = {
     backupUnavailable: "Copia de seguridad no disponible",
     automationBlockedByProxy: "La automatizaci\xF3n no se puede usar mientras la aplicaci\xF3n Sofabaton est\xE1 conectada al hub mediante el proxy.",
     backupBlockedByProxy: "La copia de seguridad no se puede usar mientras la aplicaci\xF3n Sofabaton est\xE1 conectada al hub mediante el proxy.",
-    blockedByFirmware: (installed, required) => `Este hub tiene instalada la versi\xF3n de firmware ${installed}. La versi\xF3n ${required} o posterior es la m\xEDnima compatible con las funciones del Panel de control que modifican la configuraci\xF3n del hub. Actualiza el hub por Bluetooth con la aplicaci\xF3n Sofabaton. Esta funci\xF3n volver\xE1 a estar disponible autom\xE1ticamente cuando el hub comunique la versi\xF3n de firmware actualizada.`
+    blockedByFirmware: (installed, required) => `Este hub tiene instalada la versi\xF3n de firmware ${installed}. La versi\xF3n ${required} es la versi\xF3n m\xEDnima compatible con las funciones del Panel de control que modifican la configuraci\xF3n del hub. Actualiza el hub por Bluetooth con la aplicaci\xF3n Sofabaton. Esta funci\xF3n volver\xE1 a estar disponible autom\xE1ticamente cuando el hub comunique la versi\xF3n de firmware actualizada.`
   },
   buttonNames: {
     151: "C",
