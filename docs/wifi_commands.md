@@ -35,7 +35,7 @@ Wifi Commands are appropriate when the remote should expose a reusable group of 
    - on a long press of that physical button,
    - when the Wifi Device is powered on or off, or
    - as the Wifi Device's input when an Activity starts.
-5. Optionally attach separate Home Assistant Actions for short and long presses. Actions can also be omitted if you plan to automate from `sensor.<hub>_wifi_commands`; see the [MQTT-only availability note](#wifi-commands-sensor).
+5. Optionally attach separate Home Assistant Actions for short and long presses. Actions can also be omitted if you plan to automate from `sensor.<hub>_wifi_commands`.
 6. Finish the device's configuration, then select **Sync to Hub** once.
 
 The first deployment creates a device and can take several minutes. Hub interactions are blocked while it runs. At the end, the integration asks the physical remote to resynchronize, which can add another few minutes.
@@ -243,9 +243,6 @@ The state returns to `Waiting for button press` after about 0.3 seconds. Trigger
 | `transport` | `http` / `mqtt` | Delivery transport |
 
 State while pressed: `<device>/<command>` or `<device>/<command>/longpress`.
-
-> **MQTT-only availability note**
-> In the current release, this sensor's availability follows the HTTP listener switch. If a hub has only MQTT Wifi Devices and no Wifi Events, the sensor can show as unavailable even though configured MQTT Actions still run. This limitation does not affect Action execution.
 
 ### Sensor automation example
 
