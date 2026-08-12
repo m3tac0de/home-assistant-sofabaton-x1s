@@ -4044,7 +4044,8 @@ export class SofabatonEditDetailView extends LitElement {
     // their fixed names, so no pencil for those.
     const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
     const sortable = this._haSortableReady && items.length > 1;
-    const renderRows = () => items.map((item) => this._renderMacroStepRow(item, sortable));
+    const renderRows = () =>
+      items.map((item, position) => this._renderMacroStepRow(item, sortable, position === items.length - 1));
     return html`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
@@ -4134,7 +4135,7 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  private _renderMacroStepRow(item: BackupMacroStepItem, sortable: boolean) {
+  private _renderMacroStepRow(item: BackupMacroStepItem, sortable: boolean, isLast: boolean) {
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
     const meta = item.kind === "command" && item.hold > 0
@@ -4151,7 +4152,11 @@ export class SofabatonEditDetailView extends LitElement {
       : 0;
     // Power refs: command/order protected (no rename) but their
     // attached wait is editable. Input refs: editable (change input), no
-    // delete. Commands: full edit + delete. Every row owns an inline wait.
+    // delete. Commands: full edit + delete. Every row owns an attached wait,
+    // rendered as a slim sub-row UNDER the step (matching execution order:
+    // step first, then the wait before the next step) — except the last
+    // step, whose wait is dead time: the sub-row is hidden and mutations
+    // normalize the stored value to 0.
     return html`
       <div class="quick-access-sortable-item" data-step-index=${item.index}>
         <div class="quick-access-row">
@@ -4166,22 +4171,6 @@ export class SofabatonEditDetailView extends LitElement {
             ${meta ? html`<div class="quick-access-meta">${meta}</div>` : nothing}
           </div>
           <div class="quick-access-actions">
-            <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
-              <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
-              <span class="step-wait-field">
-                <input
-                  class="step-wait-input"
-                  type="number"
-                  min="0"
-                  max="120"
-                  step="0.5"
-                  aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                  .value=${this._byteToSeconds(item.wait)}
-                  @change=${(event: Event) => this._handleStepWaitChange(item, event)}
-                />
-                <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
-              </span>
-            </label>
             ${isPower
               ? (memberDeviceId > 0
                   ? html`
@@ -4212,6 +4201,26 @@ export class SofabatonEditDetailView extends LitElement {
                 `}
           </div>
         </div>
+        ${isLast
+          ? nothing
+          : html`
+              <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
+                <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
+                <span class="step-wait-field">
+                  <input
+                    class="step-wait-input"
+                    type="number"
+                    min="0"
+                    max="120"
+                    step="0.5"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                    .value=${this._byteToSeconds(item.wait)}
+                    @change=${(event: Event) => this._handleStepWaitChange(item, event)}
+                  />
+                  <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+                </span>
+              </label>
+            `}
       </div>
     `;
   }

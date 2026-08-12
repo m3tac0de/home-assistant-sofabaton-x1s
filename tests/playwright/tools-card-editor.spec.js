@@ -109,12 +109,14 @@ test.describe("tools-card activity editor harness", () => {
     assertActivityMembershipInvariant(edited, 101);
   });
 
-  test("editing and reordering a macro keeps a nonzero wait attached", async ({ page }) => {
+  test("macro waits attach to their step and a wait landing last is zeroed", async ({ page }) => {
     await mountActivityEditor(page);
 
     await page.getByRole("button", { name: "Edit steps", exact: true }).click();
+    // Two steps but only one wait control: the last step's wait sub-row is
+    // hidden (a trailing wait is dead time).
     const waitInputs = page.locator(".step-wait-input");
-    await expect(waitInputs).toHaveCount(2);
+    await expect(waitInputs).toHaveCount(1);
     await waitInputs.nth(0).fill("4");
     await waitInputs.nth(0).press("Tab");
 
@@ -128,13 +130,30 @@ test.describe("tools-card activity editor harness", () => {
       }));
     });
 
+    // The waited step landed last, so its wait was normalized to 0.
+    const reordered = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
+    const activityAfterReorder = reordered.activities.find((candidate) => candidate.device?.device_id === 101);
+    const macroAfterReorder = activityAfterReorder.macros.find((candidate) => candidate.button_id === 3);
+    expect(macroAfterReorder.steps.map((step) => [step.device_id, step.command_id, step.delay])).toEqual([
+      [2, 21, undefined],
+      [1, 11, undefined],
+      [DELAY, DELAY, 0],
+    ]);
+
+    // The single visible wait control now belongs to the new first step;
+    // a wait set there stays attached mid-sequence.
+    await expect(waitInputs).toHaveCount(1);
+    await waitInputs.nth(0).fill("2");
+    await waitInputs.nth(0).press("Tab");
+
     const bundle = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
     const activity = bundle.activities.find((candidate) => candidate.device?.device_id === 101);
     const userMacro = activity.macros.find((candidate) => candidate.button_id === 3);
     expect(userMacro.steps.map((step) => [step.device_id, step.command_id, step.delay])).toEqual([
       [2, 21, undefined],
+      [DELAY, DELAY, 4],
       [1, 11, undefined],
-      [DELAY, DELAY, 8],
+      [DELAY, DELAY, 0],
     ]);
     assertActivityMembershipInvariant(bundle, 101);
   });

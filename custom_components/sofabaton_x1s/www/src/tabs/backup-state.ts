@@ -2547,6 +2547,25 @@ function applyGroupWait(group: MacroStepGroup, waitByte: number, isActivity: boo
   }
 }
 
+/**
+ * Zero the wait attached to the LAST group. Nothing runs after the final
+ * step, so its wait is dead time — the editor hides that row outright, and
+ * every step mutation lands through this normalizer so the stored tail
+ * converges on wait 0 (imported macros with a trailing delay self-heal on
+ * their first edit). Follows applyGroupWait semantics: an existing delay
+ * row is patched to 0, never deleted, and none is materialized.
+ */
+function zeroTrailingGroupWait(
+  steps: BackupBundleMacroStep[],
+  isActivity: boolean,
+): BackupBundleMacroStep[] {
+  const { prefix, groups } = groupMacroSteps(steps);
+  const last = groups[groups.length - 1];
+  if (!last || groupWait(last) === 0) return steps;
+  applyGroupWait(last, 0, isActivity);
+  return flattenMacroGroups(prefix, groups);
+}
+
 /** Summaries of a device's macros (its power-on/off plus any user macros). */
 export function deviceMacroSummaries(
   bundle: BackupBundlePayload | null,
@@ -2609,7 +2628,7 @@ function updateDeviceMacro(
         ...(existing ?? {}),
         button_id: bId,
         name: existing?.name ?? defaultMacroName(bId),
-        steps: transform(existing?.steps ?? []),
+        steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), false),
       };
       if (index >= 0) macros[index] = next;
       else macros.push(next);
@@ -2837,7 +2856,7 @@ function updateActivityMacro(
       // protocol (the hub hides power macros by it) and must never
       // carry UI text (#263).
       name: existing?.name || defaultMacroName(bId),
-      steps: transform(existing?.steps ?? []),
+      steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), true),
     };
     if (index >= 0) macros[index] = nextMacro;
     else macros.push(nextMacro);

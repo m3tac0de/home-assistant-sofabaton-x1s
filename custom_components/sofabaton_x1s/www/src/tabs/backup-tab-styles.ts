@@ -862,24 +862,20 @@ export const backupTabStyles = css`
       gap: 8px;
       flex: 0 0 auto;
     }
-    /* Inline per-row wait control: the delay that trails this command.
-       The "Delay" caption stacks above the number inside the same bordered
-       pill so the label and field read as one piece. The caption is tiny
-       and the pill stays shorter than the row, so it adds no row height. */
+    /* Attached wait sub-row: the delay that runs AFTER its step, before
+       the next one. It renders as a slim tinted band glued under the step
+       row — same sortable item, so it drags and deletes with the step —
+       and sits between the two step rows it separates, so the top-to-
+       bottom read matches execution order. The tint plus the shared item
+       borders keep step + band reading as one unit. The last step never
+       renders one (its wait is dead time, normalized to 0 on edit). */
     .step-wait {
-      display: inline-flex;
-      flex-direction: column;
+      display: flex;
       align-items: center;
-      gap: 1px;
-      flex: 0 0 auto;
-      padding: 2px 6px 3px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
+      gap: 6px;
+      padding: 3px 14px 6px;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--divider-color)) 45%, transparent);
       cursor: text;
-    }
-    .step-wait:focus-within {
-      border-color: var(--primary-color);
     }
     .step-wait-caption {
       font-size: 9px;
@@ -894,6 +890,13 @@ export const backupTabStyles = css`
       display: inline-flex;
       align-items: baseline;
       gap: 3px;
+      padding: 1px 6px 2px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .step-wait-field:focus-within {
+      border-color: var(--primary-color);
     }
     .step-wait-input {
       width: 42px;

@@ -6341,24 +6341,20 @@ var backupTabStyles = i`
       gap: 8px;
       flex: 0 0 auto;
     }
-    /* Inline per-row wait control: the delay that trails this command.
-       The "Delay" caption stacks above the number inside the same bordered
-       pill so the label and field read as one piece. The caption is tiny
-       and the pill stays shorter than the row, so it adds no row height. */
+    /* Attached wait sub-row: the delay that runs AFTER its step, before
+       the next one. It renders as a slim tinted band glued under the step
+       row — same sortable item, so it drags and deletes with the step —
+       and sits between the two step rows it separates, so the top-to-
+       bottom read matches execution order. The tint plus the shared item
+       borders keep step + band reading as one unit. The last step never
+       renders one (its wait is dead time, normalized to 0 on edit). */
     .step-wait {
-      display: inline-flex;
-      flex-direction: column;
+      display: flex;
       align-items: center;
-      gap: 1px;
-      flex: 0 0 auto;
-      padding: 2px 6px 3px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
+      gap: 6px;
+      padding: 3px 14px 6px;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--divider-color)) 45%, transparent);
       cursor: text;
-    }
-    .step-wait:focus-within {
-      border-color: var(--primary-color);
     }
     .step-wait-caption {
       font-size: 9px;
@@ -6373,6 +6369,13 @@ var backupTabStyles = i`
       display: inline-flex;
       align-items: baseline;
       gap: 3px;
+      padding: 1px 6px 2px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .step-wait-field:focus-within {
+      border-color: var(--primary-color);
     }
     .step-wait-input {
       width: 42px;
@@ -8697,6 +8700,13 @@ function applyGroupWait(group, waitByte, isActivity) {
     group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
   }
 }
+function zeroTrailingGroupWait(steps, isActivity) {
+  const { prefix, groups } = groupMacroSteps(steps);
+  const last = groups[groups.length - 1];
+  if (!last || groupWait(last) === 0) return steps;
+  applyGroupWait(last, 0, isActivity);
+  return flattenMacroGroups(prefix, groups);
+}
 function deviceMacroStepItems(bundle, deviceId, buttonId) {
   const device = findDevice(bundle, deviceId);
   const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
@@ -8728,7 +8738,7 @@ function updateDeviceMacro(bundle, deviceId, buttonId, transform) {
         ...existing ?? {},
         button_id: bId,
         name: existing?.name ?? defaultMacroName(bId),
-        steps: transform(existing?.steps ?? [])
+        steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), false)
       };
       if (index >= 0) macros[index] = next;
       else macros.push(next);
@@ -8863,7 +8873,7 @@ function updateActivityMacro(bundle, activityId, buttonId, transform) {
       // protocol (the hub hides power macros by it) and must never
       // carry UI text (#263).
       name: existing?.name || defaultMacroName(bId),
-      steps: transform(existing?.steps ?? [])
+      steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), true)
     };
     if (index >= 0) macros[index] = nextMacro;
     else macros.push(nextMacro);
@@ -12411,7 +12421,7 @@ var SofabatonEditDetailView = class extends i4 {
     const items = this._currentMacroStepItems();
     const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
     const sortable = this._haSortableReady && items.length > 1;
-    const renderRows = () => items.map((item) => this._renderMacroStepRow(item, sortable));
+    const renderRows = () => items.map((item, position) => this._renderMacroStepRow(item, sortable, position === items.length - 1));
     return b2`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
@@ -12490,7 +12500,7 @@ var SofabatonEditDetailView = class extends i4 {
       </div>
     `;
   }
-  _renderMacroStepRow(item, sortable) {
+  _renderMacroStepRow(item, sortable, isLast) {
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
     const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold)) : "";
@@ -12509,22 +12519,6 @@ var SofabatonEditDetailView = class extends i4 {
             ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
           </div>
           <div class="quick-access-actions">
-            <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
-              <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
-              <span class="step-wait-field">
-                <input
-                  class="step-wait-input"
-                  type="number"
-                  min="0"
-                  max="120"
-                  step="0.5"
-                  aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                  .value=${this._byteToSeconds(item.wait)}
-                  @change=${(event) => this._handleStepWaitChange(item, event)}
-                />
-                <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
-              </span>
-            </label>
             ${isPower ? memberDeviceId > 0 ? b2`
                       <button
                         class="icon-btn icon-btn--danger"
@@ -12549,6 +12543,24 @@ var SofabatonEditDetailView = class extends i4 {
                 `}
           </div>
         </div>
+        ${isLast ? A : b2`
+              <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
+                <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
+                <span class="step-wait-field">
+                  <input
+                    class="step-wait-input"
+                    type="number"
+                    min="0"
+                    max="120"
+                    step="0.5"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                    .value=${this._byteToSeconds(item.wait)}
+                    @change=${(event) => this._handleStepWaitChange(item, event)}
+                  />
+                  <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+                </span>
+              </label>
+            `}
       </div>
     `;
   }
