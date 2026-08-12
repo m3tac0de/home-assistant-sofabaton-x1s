@@ -3514,11 +3514,12 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
 
 
 
-def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
+def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=(), snapshot=None):
     """Build a hub whose sync-relevant methods record into *call_order*.
 
-    The hub snapshot contains one managed device (id 11) so the deploy runs
-    the full delete/create/add sequence.
+    The default hub snapshot contains one managed device (id 11) so the
+    deploy runs the full delete/create/add sequence; pass ``snapshot={}``
+    for a first deploy.
     """
     hass = FakeHass(loop)
     hub = SofabatonHub(
@@ -3535,7 +3536,8 @@ def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
     )
     hub.roku_server_enabled = True
 
-    snapshot = {11: {"brand": "m3-default-oldhash", "name": "Managed Device"}}
+    if snapshot is None:
+        snapshot = {11: {"brand": "m3-default-oldhash", "name": "Managed Device"}}
 
     async def _snapshot(*_args, **_kwargs):
         return dict(snapshot)
@@ -3642,6 +3644,65 @@ def test_sync_command_config_rolls_back_created_device_when_managed_delete_fails
         )
 
     assert call_order == ["create", "add:101:9", "delete:11", "delete:9"]
+
+    loop.close()
+
+
+def test_sync_command_config_replace_warm_reuses_verified_readback(monkeypatch):
+    """The step-5 command-cache warm reuses the replace-path readback
+    guard's verified fetch instead of clearing and refetching the same
+    table a second time."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    fetches: list[int] = []
+
+    async def _fetch(ent_id, **_kwargs):
+        fetches.append(int(ent_id))
+
+    monkeypatch.setattr(hub, "async_fetch_device_commands", _fetch)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert result["status"] == "success"
+    assert fetches == [9]
+
+    loop.close()
+
+
+def test_sync_command_config_first_deploy_still_warms_command_cache(monkeypatch):
+    """First deploys skip the readback guard, and the create pipeline seeds
+    the command cache with the names it wrote (an unverified echo), so the
+    step-5 warm must still refetch the table from the hub."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order, snapshot={})
+
+    fetches: list[int] = []
+
+    async def _fetch(ent_id, **_kwargs):
+        fetches.append(int(ent_id))
+
+    monkeypatch.setattr(hub, "async_fetch_device_commands", _fetch)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert result["status"] == "success"
+    assert call_order == ["create", "add:101:9"]
+    assert fetches == [9]
 
     loop.close()
 

@@ -4547,7 +4547,22 @@ class SofabatonHub:
                 # Warm the wifi-device command cache before activity refreshes
                 # so favorite-label resolution can reuse the full REQ_COMMANDS
                 # result instead of falling back to per-command lookups later.
-                await self.async_fetch_device_commands(wifi_device_id)
+                # On the replace path the readback guard above already turned
+                # this cache into verified hub truth, so reuse it while it is
+                # still complete. First deploys must always fetch: the create
+                # pipeline seeds the cache with the names it wrote (an echo of
+                # the request, not a readback of what the hub persisted).
+                warm_cache_verified = False
+                if managed:
+                    _, warm_cache_verified = await self.hass.async_add_executor_job(
+                        partial(
+                            self._proxy.get_commands_for_entity,
+                            wifi_device_id,
+                            fetch_if_missing=False,
+                        )
+                    )
+                if not warm_cache_verified:
+                    await self.async_fetch_device_commands(wifi_device_id)
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
