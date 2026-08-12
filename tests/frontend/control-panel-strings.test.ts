@@ -249,6 +249,47 @@ test("compact navigation and button copy stays clear in translated UI", () => {
   setToolsCardLanguage("en");
 });
 
+test("firmware copy distinguishes required updates from recommendations", () => {
+  setToolsCardLanguage("en");
+
+  assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired, "Firmware update required");
+  assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended, "Firmware update recommended");
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, true),
+    "Firmware version 5 or newer is required for Control Panel configuration changes. Firmware version 8 or newer is recommended because it contains fixes for known issues. Update the hub over Bluetooth using the Sofabaton app.",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, false),
+    "Firmware version 8 or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. Update the hub over Bluetooth using the Sofabaton app.",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(5, 5, true),
+    "Firmware version 5 or newer is required for Control Panel configuration changes. Update the hub over Bluetooth using the Sofabaton app.",
+  );
+
+  const labels = [
+    ["de", "Firmware-Update erforderlich", "Firmware-Update empfohlen"],
+    ["es", "Actualización de firmware necesaria", "Actualización de firmware recomendada"],
+    ["fr", "Mise à jour du firmware requise", "Mise à jour du firmware recommandée"],
+    ["nl", "Firmware-update vereist", "Firmware-update aanbevolen"],
+    ["zh-Hans", "需要更新固件", "建议更新固件"],
+  ] as const;
+
+  for (const [locale, required, recommended] of labels) {
+    setToolsCardLanguage(locale);
+    assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired, required, locale);
+    assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended, recommended, locale);
+
+    const blocked = TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, true);
+    const advisory = TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, false);
+    assert.match(blocked, /5/, `${locale} required version`);
+    assert.match(blocked, /8/, `${locale} recommended version`);
+    assert.notEqual(blocked, advisory, `${locale} required and recommended states`);
+  }
+
+  setToolsCardLanguage("en");
+});
+
 test("activity membership and MQTT delivery copy stays explicit in every locale", () => {
   const cases = [
     {

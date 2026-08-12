@@ -1619,7 +1619,7 @@ var TOOLS_CARD_STRINGS_EN = {
     backupUnavailable: "Backup unavailable",
     automationBlockedByProxy: "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
     backupBlockedByProxy: "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
-    blockedByFirmware: (installed, required) => `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`
+    blockedByFirmware: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is the minimum supported version for Control Panel features that change the hub configuration. Update the hub over Bluetooth using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`
   },
   buttonNames: {
     151: "C",
@@ -1828,7 +1828,7 @@ var TOOLS_CARD_STRINGS_EN = {
     appConnectedTitle: "The Sofabaton app is connected",
     appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
     firmwareUnsupportedTitle: "Hub firmware update required",
-    firmwareUnsupportedBody: (installed, required) => `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Editing is disabled to protect your hub configuration. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`,
+    firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub over Bluetooth using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -2287,8 +2287,16 @@ var TOOLS_CARD_STRINGS_EN = {
     integrationVersion: "Integration version",
     firmwareVersion: (version) => `FW: v${version}`,
     productVersion: (version) => `Sofabaton ${version}`,
-    firmwareUpdateAvailable: "Firmware update available",
-    firmwareUpdateAvailableTooltip: (recommended) => `Firmware version ${recommended} or newer is recommended. Update the hub in the Sofabaton app (over Bluetooth).`
+    firmwareUpdateRequired: "Firmware update required",
+    firmwareUpdateRecommended: "Firmware update recommended",
+    firmwareUpdateTooltip: (recommended, required, unsupported) => {
+      const update = "Update the hub over Bluetooth using the Sofabaton app.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required) ? "" : ` Firmware version ${recommended} or newer is recommended because it contains fixes for known issues.`;
+        return `Firmware version ${required} or newer is required for Control Panel configuration changes.${recommendation} ${update}`;
+      }
+      return `Firmware version ${recommended} or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. ${update}`;
+    }
   },
   decodedPayload: {
     httpTitle: "HTTP request",
@@ -4766,8 +4774,12 @@ function renderSettingsTab(params) {
               ${versionLine ? b2`<div class="hub-compact-meta">${versionLine}</div>` : A}
               ${firmwareOutdated(hub) ? b2`<div class="hub-compact-meta"><span
                 class="hub-fw-chip"
-                title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateAvailableTooltip(hub.firmware_min_recommended ?? "")}
-              ><ha-icon icon="mdi:update"></ha-icon>${TOOLS_CARD_STRINGS.hub.firmwareUpdateAvailable}</span></div>` : A}
+                title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(
+    hub.firmware_min_recommended ?? "?",
+    hub.firmware_min_supported ?? "?",
+    firmwareUnsupported(hub)
+  )}
+              ><ha-icon icon="mdi:update"></ha-icon>${firmwareUnsupported(hub) ? TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired : TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended}</span></div>` : A}
               ${hub.ip_address ? b2`<div class="hub-compact-meta">${hub.ip_address}</div>` : A}
             </div>
           </div>

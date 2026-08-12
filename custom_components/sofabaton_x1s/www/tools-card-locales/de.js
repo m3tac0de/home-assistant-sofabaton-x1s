@@ -69,7 +69,7 @@ var TOOLS_CARD_STRINGS_DE = {
     backupUnavailable: "Backup nicht verf\xFCgbar",
     automationBlockedByProxy: "Die Automatisierung kann nicht verwendet werden, w\xE4hrend die Sofabaton-App \xFCber den Proxy mit dem Hub verbunden ist.",
     backupBlockedByProxy: "Die Backup-Funktion kann nicht verwendet werden, w\xE4hrend die Sofabaton-App \xFCber den Proxy mit dem Hub verbunden ist.",
-    blockedByFirmware: (installed, required) => `Dieser Hub l\xE4uft mit Firmware-Version ${installed}, die bekannt daf\xFCr ist, Konfigurations\xE4nderungen stillschweigend zu verwerfen. Aktualisiere den Hub in der Sofabaton-App (\xFCber Bluetooth) auf Version ${required} oder neuer; die Sperre wird automatisch aufgehoben, sobald der Hub die neue Firmware meldet.`
+    blockedByFirmware: (installed, required) => `Auf diesem Hub ist Firmware-Version ${installed} installiert. Version ${required} oder neuer ist f\xFCr Funktionen der Sofabaton-Steuerzentrale erforderlich, die die Hub-Konfiguration \xE4ndern. Aktualisiere den Hub \xFCber Bluetooth mit der Sofabaton-App. Diese Funktion wird automatisch wieder verf\xFCgbar, sobald der Hub die aktualisierte Firmware-Version meldet.`
   },
   buttonNames: {
     151: "C",
@@ -250,8 +250,8 @@ var TOOLS_CARD_STRINGS_DE = {
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
     appConnectedTitle: "Die Sofabaton-App ist verbunden",
     appConnectedBody: "Schlie\xDFe die Sofabaton-App, um die Hub-Konfiguration zu bearbeiten.",
-    firmwareUnsupportedTitle: "Hub-Firmware-Update erforderlich",
-    firmwareUnsupportedBody: (installed, required) => `Dieser Hub l\xE4uft mit Firmware-Version ${installed}, die bekannt daf\xFCr ist, Konfigurations\xE4nderungen stillschweigend zu verwerfen. Die Bearbeitung ist deaktiviert, um deine Hub-Konfiguration zu sch\xFCtzen. Aktualisiere den Hub in der Sofabaton-App (\xFCber Bluetooth) auf Version ${required} oder neuer; die Bearbeitung wird automatisch freigegeben, sobald der Hub die neue Firmware meldet.`,
+    firmwareUnsupportedTitle: "Update der Hub-Firmware erforderlich",
+    firmwareUnsupportedBody: (installed, required) => `Auf diesem Hub ist Firmware-Version ${installed} installiert. Version ${required} oder neuer ist erforderlich, um die Hub-Konfiguration sicher zu bearbeiten. Die Bearbeitung ist zum Schutz deiner Konfiguration deaktiviert. Aktualisiere den Hub \xFCber Bluetooth mit der Sofabaton-App. Die Bearbeitung ist automatisch wieder m\xF6glich, sobald der Hub die aktualisierte Firmware-Version meldet.`,
     operationRunningTitle: "Ein anderer Vorgang wird ausgef\xFChrt",
     operationRunningBody: "Warte, bis das aktuelle Backup, die Wiederherstellung oder die Synchronisierung abgeschlossen ist, und versuche es dann erneut.",
     captureTitle: "Hub wird ausgelesen",
@@ -673,8 +673,16 @@ var TOOLS_CARD_STRINGS_DE = {
     integrationVersion: "Integrationsversion",
     firmwareVersion: (version) => `FW: v${version}`,
     productVersion: (version) => `Sofabaton ${version}`,
-    firmwareUpdateAvailable: "Firmware-Update verf\xFCgbar",
-    firmwareUpdateAvailableTooltip: (recommended) => `Firmware-Version ${recommended} oder neuer wird empfohlen. Aktualisiere den Hub in der Sofabaton-App (\xFCber Bluetooth).`
+    firmwareUpdateRequired: "Firmware-Update erforderlich",
+    firmwareUpdateRecommended: "Firmware-Update empfohlen",
+    firmwareUpdateTooltip: (recommended, required, unsupported) => {
+      const update = "Aktualisiere den Hub \xFCber Bluetooth mit der Sofabaton-App.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required) ? "" : ` Firmware-Version ${recommended} oder neuer wird empfohlen, da sie Korrekturen f\xFCr bekannte Probleme enth\xE4lt.`;
+        return `Firmware-Version ${required} oder neuer ist f\xFCr Konfigurations\xE4nderungen \xFCber die Sofabaton-Steuerzentrale erforderlich.${recommendation} ${update}`;
+      }
+      return `Firmware-Version ${recommended} oder neuer wird empfohlen, da sie Korrekturen f\xFCr bekannte Probleme enth\xE4lt. Mit deiner installierten Firmware werden Konfigurations\xE4nderungen \xFCber die Sofabaton-Steuerzentrale weiterhin unterst\xFCtzt. ${update}`;
+    }
   },
   decodedPayload: {
     httpTitle: "HTTP-Anfrage",

@@ -94,7 +94,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     backupBlockedByProxy:
       "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
     blockedByFirmware: (installed: string | number, required: string | number) =>
-      `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`,
+      `This hub is running firmware version ${installed}. Version ${required} or newer is the minimum supported version for Control Panel features that change the hub configuration. Update the hub over Bluetooth using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`,
   },
   buttonNames: {
     0x97: "C",
@@ -308,7 +308,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
     firmwareUnsupportedTitle: "Hub firmware update required",
     firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
-      `This hub runs firmware version ${installed}, which is known to silently drop configuration writes. Editing is disabled to protect your hub configuration. Update the hub to version ${required} or newer in the Sofabaton app (over Bluetooth); this unlocks automatically once the hub reports the new firmware.`,
+      `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub over Bluetooth using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -804,9 +804,22 @@ export const TOOLS_CARD_STRINGS_EN = {
     integrationVersion: "Integration version",
     firmwareVersion: (version: string | number) => `FW: v${version}`,
     productVersion: (version: string) => `Sofabaton ${version}`,
-    firmwareUpdateAvailable: "Firmware update available",
-    firmwareUpdateAvailableTooltip: (recommended: string | number) =>
-      `Firmware version ${recommended} or newer is recommended. Update the hub in the Sofabaton app (over Bluetooth).`,
+    firmwareUpdateRequired: "Firmware update required",
+    firmwareUpdateRecommended: "Firmware update recommended",
+    firmwareUpdateTooltip: (
+      recommended: string | number,
+      required: string | number,
+      unsupported: boolean,
+    ) => {
+      const update = "Update the hub over Bluetooth using the Sofabaton app.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required)
+          ? ""
+          : ` Firmware version ${recommended} or newer is recommended because it contains fixes for known issues.`;
+        return `Firmware version ${required} or newer is required for Control Panel configuration changes.${recommendation} ${update}`;
+      }
+      return `Firmware version ${recommended} or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. ${update}`;
+    },
   },
   decodedPayload: {
     httpTitle: "HTTP request",

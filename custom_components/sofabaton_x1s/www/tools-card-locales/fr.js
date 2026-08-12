@@ -69,7 +69,7 @@ var TOOLS_CARD_STRINGS_FR = {
     backupUnavailable: "Sauvegarde indisponible",
     automationBlockedByProxy: "L\u2019automatisation ne peut pas \xEAtre utilis\xE9e lorsque l\u2019application Sofabaton est connect\xE9e au hub par le proxy.",
     backupBlockedByProxy: "La sauvegarde ne peut pas \xEAtre utilis\xE9e lorsque l\u2019application Sofabaton est connect\xE9e au hub par le proxy.",
-    blockedByFirmware: (installed, required) => `Ce hub fonctionne avec la version de firmware ${installed}, connue pour ignorer silencieusement les modifications de configuration. Mettez \xE0 jour le hub vers la version ${required} ou plus r\xE9cente dans l\u2019application Sofabaton (via Bluetooth)\xA0; le blocage sera lev\xE9 automatiquement d\xE8s que le hub signalera le nouveau firmware.`
+    blockedByFirmware: (installed, required) => `Ce hub utilise la version ${installed} du firmware. La version ${required} ou ult\xE9rieure est requise pour les fonctions du panneau de contr\xF4le qui modifient la configuration du hub. Mettez \xE0 jour le hub via Bluetooth \xE0 l\u2019aide de l\u2019application Sofabaton. Cette fonction sera de nouveau disponible automatiquement lorsque le hub aura signal\xE9 la version mise \xE0 jour du firmware.`
   },
   buttonNames: {
     151: "C",
@@ -251,7 +251,7 @@ var TOOLS_CARD_STRINGS_FR = {
     appConnectedTitle: "L\u2019application Sofabaton est connect\xE9e",
     appConnectedBody: "Fermez l\u2019application Sofabaton pour modifier la configuration du hub.",
     firmwareUnsupportedTitle: "Mise \xE0 jour du firmware du hub requise",
-    firmwareUnsupportedBody: (installed, required) => `Ce hub fonctionne avec la version de firmware ${installed}, connue pour ignorer silencieusement les modifications de configuration. La modification est d\xE9sactiv\xE9e pour prot\xE9ger la configuration de votre hub. Mettez \xE0 jour le hub vers la version ${required} ou plus r\xE9cente dans l\u2019application Sofabaton (via Bluetooth)\xA0; la modification sera de nouveau disponible d\xE8s que le hub signalera le nouveau firmware.`,
+    firmwareUnsupportedBody: (installed, required) => `Ce hub utilise la version ${installed} du firmware. La version ${required} ou ult\xE9rieure est n\xE9cessaire pour modifier la configuration du hub en toute s\xE9curit\xE9. La modification est d\xE9sactiv\xE9e afin de prot\xE9ger votre configuration. Mettez \xE0 jour le hub via Bluetooth \xE0 l\u2019aide de l\u2019application Sofabaton. La modification de la configuration sera automatiquement r\xE9activ\xE9e lorsque le hub aura signal\xE9 la version mise \xE0 jour du firmware.`,
     operationRunningTitle: "Une autre op\xE9ration est en cours",
     operationRunningBody: "Attendez la fin de la sauvegarde, de la restauration ou de la synchronisation en cours, puis r\xE9essayez.",
     captureTitle: "Lecture de votre hub",
@@ -673,8 +673,16 @@ var TOOLS_CARD_STRINGS_FR = {
     integrationVersion: "Version de l\u2019int\xE9gration",
     firmwareVersion: (version) => `FW\xA0: v${version}`,
     productVersion: (version) => `Sofabaton ${version}`,
-    firmwareUpdateAvailable: "Mise \xE0 jour du firmware disponible",
-    firmwareUpdateAvailableTooltip: (recommended) => `La version de firmware ${recommended} ou plus r\xE9cente est recommand\xE9e. Mettez \xE0 jour le hub dans l\u2019application Sofabaton (via Bluetooth).`
+    firmwareUpdateRequired: "Mise \xE0 jour du firmware requise",
+    firmwareUpdateRecommended: "Mise \xE0 jour du firmware recommand\xE9e",
+    firmwareUpdateTooltip: (recommended, required, unsupported) => {
+      const update = "Mettez \xE0 jour le hub via Bluetooth \xE0 l\u2019aide de l\u2019application Sofabaton.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required) ? "" : ` La version ${recommended} ou ult\xE9rieure du firmware est recommand\xE9e, car elle contient des correctifs pour des probl\xE8mes connus.`;
+        return `La version ${required} ou ult\xE9rieure du firmware est n\xE9cessaire pour modifier la configuration depuis le panneau de contr\xF4le.${recommendation} ${update}`;
+      }
+      return `La version ${recommended} ou ult\xE9rieure du firmware est recommand\xE9e, car elle contient des correctifs pour des probl\xE8mes connus. Le firmware install\xE9 permet toujours de modifier la configuration depuis le panneau de contr\xF4le. ${update}`;
+    }
   },
   decodedPayload: {
     httpTitle: "Requ\xEAte HTTP",

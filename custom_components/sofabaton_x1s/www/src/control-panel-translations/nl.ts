@@ -70,7 +70,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     automationBlockedByProxy: "Automatisering kan niet worden gebruikt zolang de Sofabaton-app via de proxy met de hub is verbonden.",
     backupBlockedByProxy: "Back-up kan niet worden gebruikt zolang de Sofabaton-app via de proxy met de hub is verbonden.",
     blockedByFirmware: (installed: string | number, required: string | number) =>
-      `Deze hub draait firmwareversie ${installed}, die er bekend om staat configuratiewijzigingen stilzwijgend te negeren. Werk de hub in de Sofabaton-app (via Bluetooth) bij naar versie ${required} of nieuwer; de blokkering verdwijnt automatisch zodra de hub de nieuwe firmware meldt.`,
+      `Op deze hub is firmwareversie ${installed} geïnstalleerd. Voor functies van het bedieningspaneel die de hubconfiguratie wijzigen, is minimaal versie ${required} vereist. Werk de hub via Bluetooth bij met de Sofabaton-app. Deze functie wordt automatisch weer beschikbaar zodra de hub de bijgewerkte firmwareversie doorgeeft.`,
   },
   buttonNames: {
     0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Afsluiten", 0x9b: "DVR", 0x9c: "Afspelen", 0x9d: "Gids",
@@ -161,9 +161,9 @@ export const TOOLS_CARD_STRINGS_NL = {
   activities: {
     loading: "Activiteiten laden…", selectHub: "Selecteer een hub om de activiteiten te bewerken.", activityFallback: (id: number) => `Activiteit ${id}`,
     appConnectedTitle: "De Sofabaton-app is verbonden", appConnectedBody: "Sluit de Sofabaton-app om de hubconfiguratie te bewerken.",
-    firmwareUnsupportedTitle: "Hub-firmware-update vereist",
+    firmwareUnsupportedTitle: "Update van hubfirmware vereist",
     firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
-      `Deze hub draait firmwareversie ${installed}, die er bekend om staat configuratiewijzigingen stilzwijgend te negeren. Bewerken is uitgeschakeld om je hubconfiguratie te beschermen. Werk de hub in de Sofabaton-app (via Bluetooth) bij naar versie ${required} of nieuwer; bewerken wordt automatisch weer vrijgegeven zodra de hub de nieuwe firmware meldt.`,
+      `Op deze hub is firmwareversie ${installed} geïnstalleerd. Versie ${required} of nieuwer is vereist om de hubconfiguratie veilig te bewerken. Bewerken is uitgeschakeld om je configuratie te beschermen. Werk de hub via Bluetooth bij met de Sofabaton-app. Bewerken is automatisch weer mogelijk zodra de hub de bijgewerkte firmwareversie doorgeeft.`,
     operationRunningTitle: "Er wordt een andere bewerking uitgevoerd", operationRunningBody: "Wacht tot de huidige back-up, herstelbewerking of synchronisatie is voltooid en probeer het daarna opnieuw.",
     captureTitle: "Je hub uitlezen", captureMessage: "Configuratie van je hub uitlezen…",
     captureMessageWithStep: (current: number, total: number) => `Configuratie van je hub uitlezen… (apparaat ${current} van ${total})`,
@@ -333,8 +333,18 @@ export const TOOLS_CARD_STRINGS_NL = {
     loading: "Laden…", unknown: "Onbekend", connectionStatusAria: "Hubverbindingsstatus", hubConnected: "Hub verbonden", hubNotConnected: "Hub niet verbonden",
     appConnected: "App verbonden", appNotConnected: "App niet verbonden", version: "Versie", ipAddress: "IP-adres", activities: "Activiteiten", devices: "Apparaten",
     integrationVersion: "Integratieversie", firmwareVersion: (version: string | number) => `FW: v${version}`, productVersion: (version: string) => `Sofabaton ${version}`,
-    firmwareUpdateAvailable: "Firmware-update beschikbaar",
-    firmwareUpdateAvailableTooltip: (recommended: string | number) => `Firmwareversie ${recommended} of nieuwer wordt aanbevolen. Werk de hub bij in de Sofabaton-app (via Bluetooth).`,
+    firmwareUpdateRequired: "Firmware-update vereist",
+    firmwareUpdateRecommended: "Firmware-update aanbevolen",
+    firmwareUpdateTooltip: (recommended: string | number, required: string | number, unsupported: boolean) => {
+      const update = "Werk de hub via Bluetooth bij met de Sofabaton-app.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required)
+          ? ""
+          : ` Firmwareversie ${recommended} of nieuwer wordt aanbevolen omdat deze oplossingen voor bekende problemen bevat.`;
+        return `Firmwareversie ${required} of nieuwer is vereist voor configuratiewijzigingen via het bedieningspaneel.${recommendation} ${update}`;
+      }
+      return `Firmwareversie ${recommended} of nieuwer wordt aanbevolen omdat deze oplossingen voor bekende problemen bevat. Met de geïnstalleerde firmware kun je de configuratie nog steeds via het bedieningspaneel wijzigen. ${update}`;
+    },
   },
   decodedPayload: {
     httpTitle: "HTTP-verzoek", httpSubtitle: "Wijzigingen worden afgespeeld via de wifi_ip-schrijver van de hub. Host, poort en Content-Length worden afgeleid; je stelt ze hier niet in.",
