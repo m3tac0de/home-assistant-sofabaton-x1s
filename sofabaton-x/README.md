@@ -222,6 +222,8 @@ x> activities
 x> commands 1                        # list (command_id, label) for device 1
 x> send 1 5                          # numeric ids, exactly like the Python API
 x> send 101 POWER_ON                 # the CLI also resolves button names to codes
+x> testir 01 20 00 10 01 00 94 ac .. # fire a raw IR payload once (nothing saved)
+x> addir 1 "Power Toggle" 01 20 ..   # save that payload as a new command
 ```
 
 The last form is a CLI convenience: `send` (alias `press`) accepts either
@@ -230,9 +232,17 @@ The Python API itself is numeric-only — `send(entity_id, command_id)` —
 with the `ButtonName` constants importable from the package root when
 you want named button codes.
 
+`testir` and `addir` work with raw IR payload hex (the bytes a command
+replays, as shown in a backup's `data_hex` fields): `testir` plays a
+payload once without saving, `addir` persists it as a new command on an
+existing IR device and prints the assigned command id. In the Python API
+these are `play_ir_blob(blob)` and
+`persist_ir_blob(device_id=..., command_name=..., blob=...)`.
+
 Runnable examples — discovery, watching a live session, taking control
 of a hub, reading per-entity detail (commands/macros/favorites),
-schema-versioned backup/restore, provisioning a WiFi-IP device from
+schema-versioned backup/restore, adding an IR command with a custom hex
+payload to an existing device, provisioning a WiFi-IP device from
 scratch via restore, and building an HTTP callback listener on top of the
 library — live in
 [`sofabaton-x/examples/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x/examples).

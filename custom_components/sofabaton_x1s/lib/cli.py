@@ -12,12 +12,13 @@ events print as they happen, and every command maps to a facade call.
 import argparse
 import asyncio
 import logging
+import shlex
 import sys
 from typing import Awaitable, Callable, Dict, Optional
 
 from .aio import AsyncXProxy, async_discover_hubs
 from .hub_versions import HVER_BY_HUB_VERSION
-from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
+from .protocol_const import BUTTONNAME_BY_CODE, DEVICE_CLASS_IR, ButtonName
 
 # ----------------- helpers -----------------
 
@@ -43,6 +44,19 @@ def resolve_button(code_or_name: str) -> int | None:
         if name.upper() == upper:
             return code
     return None
+
+
+def parse_payload_hex(text: str) -> bytes:
+    """Parse pasted IR-payload hex into bytes.
+
+    Accepts the formats payloads circulate in: space/newline-separated
+    byte pairs, contiguous hex, comma-separated lists, and ``0x``
+    prefixes. Raises ``ValueError`` on anything that isn't clean hex.
+    """
+
+    tokens = text.replace(",", " ").split()
+    cleaned = "".join(t[2:] if t.lower().startswith("0x") else t for t in tokens)
+    return bytes.fromhex(cleaned)
 
 
 def _kv_list_to_dict(items) -> Dict[str, str]:
@@ -192,6 +206,8 @@ class AsyncShell:
             "start": self.cmd_start,
             "stop": self.cmd_stop,
             "find": self.cmd_find,
+            "testir": self.cmd_testir,
+            "addir": self.cmd_addir,
             "proxy": self.cmd_proxy,
             "backup": self.cmd_backup,
             "restore": self.cmd_restore,
@@ -339,6 +355,83 @@ class AsyncShell:
         ok = await self.p.find_remote()
         print("sent find-remote" if ok else "refused (need control mode: disconnect the app)")
 
+    async def cmd_testir(self, args: str) -> None:
+        if not args.strip():
+            print("usage: testir <hex payload>      (e.g. testir 01 20 00 10 01 00 94 ac ...)")
+            print("fires the payload out of the IR blaster once; nothing is saved")
+            return
+        try:
+            payload = parse_payload_hex(args)
+        except ValueError as err:
+            print(f"not a valid hex payload: {err}")
+            return
+        if len(payload) < 10:
+            print(f"payload too short ({len(payload)}B) to be a stored IR payload")
+            return
+        ok = await self.p.play_ir_blob(payload)
+        if ok:
+            print(f"played {len(payload)}B payload -- check the target device reacted")
+        else:
+            print("refused or rejected (need control mode, or the hub NACKed the payload)")
+
+    async def cmd_addir(self, args: str) -> None:
+        usage = (
+            'usage: addir <device_id> <name> <hex payload>\n'
+            '       e.g. addir 3 "Power Toggle" 01 20 00 10 01 00 94 ac ...\n'
+            "saves the payload as a new IR command on the device (test first with: testir)"
+        )
+        try:
+            tokens = shlex.split(args)
+        except ValueError as err:
+            print(f"bad quoting: {err}")
+            return
+        if len(tokens) < 3:
+            print(usage)
+            return
+        try:
+            dev = parse_int(tokens[0])
+        except ValueError:
+            print(usage)
+            return
+        name = tokens[1]
+        try:
+            payload = parse_payload_hex(" ".join(tokens[2:]))
+        except ValueError as err:
+            print(f"not a valid hex payload: {err}")
+            return
+        if len(payload) < 10:
+            print(f"payload too short ({len(payload)}B) to be a stored IR payload")
+            return
+
+        # The save path writes the IR codec; refuse a known non-IR target.
+        devs = await self._safe("addir", self.p.devices())
+        if devs is None:
+            return
+        info = devs.get(dev)
+        if info is None:
+            print(f"device {dev} not found on the hub")
+            return
+        device_class = info.get("device_class")
+        if device_class not in (None, DEVICE_CLASS_IR):
+            print(f"device {dev} ({info.get('name')}) is {device_class!r}, not IR")
+            return
+
+        # Refresh occupancy so the auto-picked command id comes from the
+        # hub's authoritative command list, never a stale cache.
+        if await self._safe("addir", self.p.commands(dev)) is None:
+            return
+        result = await self._safe(
+            "addir",
+            self.p.persist_ir_blob(device_id=dev, command_name=name, blob=payload),
+        )
+        if not result:
+            print("save failed (need control mode, hub rejected the write, or an ack timed out)")
+            return
+        print(
+            f"saved {result['command_name']!r} as command_id={result['command_id']} "
+            f"on device {dev}   send with: press {dev} {result['command_id']}"
+        )
+
     async def cmd_proxy(self, args: str) -> None:
         arg = args.strip().lower()
         if arg == "on":
@@ -440,6 +533,8 @@ class AsyncShell:
         print("  press <ent> <id-or-button>     send a command/button (alias: send)")
         print("  start <act> | stop <act>       switch activity power")
         print("  find                           find-my-remote")
+        print("  testir <hex..>                 play an IR payload once (nothing saved)")
+        print("  addir <dev> <name> <hex..>     save a new IR command (quote multi-word names)")
         print("  proxy on|off                   toggle pass-through")
         print("  backup [file] [devices=ID,..]  back up the hub (subset = devices only)")
         print("  restore <file> [devices=ID,..] [activities=ID,..] [erase]")
