@@ -125,11 +125,29 @@ test("Wifi Commands deploy stages are localized from their phase, not counted", 
   }
   setToolsCardLanguage("en");
 
+  // The baseline read is the exception: it is the one long stage (one step
+  // per activity read off the hub), so its label carries a compact counter
+  // and visibly advances. Without step data it stays a plain label.
+  assert.equal(stage("reading_device"), "Reading the deployed Wifi Device… (3/8)");
+  assert.equal(
+    localizeBackendProgress({ kind: "command_sync", phase: "reading_device" } as any, "wifi_deploy"),
+    "Reading the deployed Wifi Device…",
+  );
+
   // The in-place planner names steps after the user's own commands, so those
-  // carry no phase. Relaying the hub's label beats a bare step counter.
+  // carry no phase — the pipeline clears it (null) once the plan starts, so
+  // the stale read stage cannot mask the live labels. Relaying the hub's
+  // label beats a bare step counter.
   assert.equal(
     localizeBackendProgress(
       { kind: "command_sync", message: "Adding command “Kitchen lights”…", current_step: 2, total_steps: 5 } as any,
+      "wifi_deploy",
+    ),
+    "Adding command “Kitchen lights”…",
+  );
+  assert.equal(
+    localizeBackendProgress(
+      { kind: "command_sync", phase: null, message: "Adding command “Kitchen lights”…", current_step: 2, total_steps: 5 } as any,
       "wifi_deploy",
     ),
     "Adding command “Kitchen lights”…",

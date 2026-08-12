@@ -3001,11 +3001,12 @@ def test_sync_command_config_primes_wifi_device_commands_before_refreshing_favor
 
     call_order: list[str] = []
 
-    async def _fetch_device_commands(ent_id: int, *, wait_timeout: float = 10.0):
-        assert ent_id == 9
+    def _backup_device(dev_id, *, include_blobs=True, reuse_commands=False, **_kwargs):
+        assert dev_id == 9
         call_order.append("req_commands")
-        hub._proxy.state.commands[ent_id & 0xFF] = {1: "Scene Lights"}
-        hub._proxy._commands_complete.add(ent_id & 0xFF)
+        hub._proxy.state.commands[dev_id & 0xFF] = {1: "Scene Lights"}
+        hub._proxy._commands_complete.add(dev_id & 0xFF)
+        return {"kind": "device_backup"}
 
     def _request_map(act_id: int) -> bool:
         call_order.append("request_activity_mapping")
@@ -3025,7 +3026,7 @@ def test_sync_command_config_primes_wifi_device_commands_before_refreshing_favor
         call_order.append("ensure_commands_for_activity")
         return original_ensure_commands(act_id, fetch_if_missing=fetch_if_missing)
 
-    monkeypatch.setattr(hub, "async_fetch_device_commands", _fetch_device_commands)
+    monkeypatch.setattr(hub._proxy, "backup_device", _backup_device)
     monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
     monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", _get_buttons_for_entity)
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_a, **_k: None)
@@ -3585,6 +3586,16 @@ def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=(), s
         return None
 
     monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+
+    backup_calls: list[tuple[int, bool]] = []
+
+    def _backup_device(dev_id, *, include_blobs=True, reuse_commands=False, **_kwargs):
+        call_order.append(f"backup:{dev_id}")
+        backup_calls.append((int(dev_id), bool(reuse_commands)))
+        return {"kind": "device_backup"}
+
+    monkeypatch.setattr(hub._proxy, "backup_device", _backup_device)
+    hub._test_backup_calls = backup_calls
     return hub
 
 
@@ -3619,7 +3630,7 @@ def test_sync_command_config_deletes_managed_device_after_activity_add(monkeypat
         )
     )
 
-    assert call_order == ["create", "add:101:9", "delete:11"]
+    assert call_order == ["create", "add:101:9", "delete:11", "backup:9"]
     assert result["status"] == "success"
     assert result["wifi_device_id"] == 9
 
@@ -3649,9 +3660,10 @@ def test_sync_command_config_rolls_back_created_device_when_managed_delete_fails
 
 
 def test_sync_command_config_replace_warm_reuses_verified_readback(monkeypatch):
-    """The step-5 command-cache warm reuses the replace-path readback
-    guard's verified fetch instead of clearing and refetching the same
-    table a second time."""
+    """On the replace path the step-7 backup-grade warm reuses the readback
+    guard's verified command fetch instead of clearing and refetching the
+    same table a second time: the only REQ_COMMANDS fetch is the guard's,
+    and backup_device is told to reuse it."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -3673,6 +3685,7 @@ def test_sync_command_config_replace_warm_reuses_verified_readback(monkeypatch):
 
     assert result["status"] == "success"
     assert fetches == [9]
+    assert hub._test_backup_calls == [(9, True)]
 
     loop.close()
 
@@ -3680,7 +3693,7 @@ def test_sync_command_config_replace_warm_reuses_verified_readback(monkeypatch):
 def test_sync_command_config_first_deploy_still_warms_command_cache(monkeypatch):
     """First deploys skip the readback guard, and the create pipeline seeds
     the command cache with the names it wrote (an unverified echo), so the
-    step-5 warm must still refetch the table from the hub."""
+    step-7 backup-grade warm must fetch a real table (reuse_commands=False)."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -3701,8 +3714,93 @@ def test_sync_command_config_first_deploy_still_warms_command_cache(monkeypatch)
     )
 
     assert result["status"] == "success"
-    assert call_order == ["create", "add:101:9"]
-    assert fetches == [9]
+    assert call_order == ["create", "add:101:9", "backup:9"]
+    assert fetches == []
+    assert hub._test_backup_calls == [(9, False)]
+
+    loop.close()
+
+
+def test_sync_command_config_warm_runs_after_device_bindings(monkeypatch):
+    """The backup-grade device warm must run AFTER the device-page key-row
+    writes: those writes clear the device's cached key rows, so a warm
+    taken before them would be immediately invalidated."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    async def _button(*args, **_kwargs):
+        call_order.append(f"button:{args[0]}")
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert result["status"] == "success"
+    # _SYNC_ORDER_PAYLOAD claims the "ok" hard button unambiguously, so the
+    # pipeline writes the activity binding (101) and the device-page row (9),
+    # then warms the device.
+    assert call_order == [
+        "create",
+        "add:101:9",
+        "delete:11",
+        "button:101",
+        "button:9",
+        "backup:9",
+    ]
+
+    loop.close()
+
+
+def test_sync_command_config_persists_cache_without_activity_refs(monkeypatch):
+    """A deploy whose slots reference no activities still changed the device
+    catalog (create + managed delete), so the epilogue must bump the cache
+    generation and persist unconditionally — gating on activity references
+    froze the frontend on the mid-deploy snapshot and skipped the disk
+    persist entirely."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    persists: list[bool] = []
+
+    async def _persist():
+        persists.append(True)
+        return True
+
+    monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _persist)
+
+    payload = {
+        "commands": [
+            {
+                "name": "Command 1",
+                "add_as_favorite": False,
+                "hard_button": "",
+                "activities": [],
+                "action": {"action": "perform-action"},
+            }
+        ],
+        "commands_hash": "abc",
+    }
+    generation_before = hub.cache_generation
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert result["status"] == "success"
+    assert result["activities"] == []
+    assert persists == [True]
+    assert hub.cache_generation > generation_before
+    assert call_order == ["create", "delete:11", "backup:9"]
 
     loop.close()
 

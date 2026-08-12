@@ -3889,24 +3889,48 @@ class SofabatonHub:
         # activity (membership is only discoverable by reading them).
         activity_ids = sorted(int(a) for a in self.activities)
 
+        # `phase` is the stable, translatable name of this stage; `message` is
+        # the English rendering kept for logs and for any consumer that has no
+        # localization table. The control panel localizes `phase` and only
+        # falls back to `message` for stages it does not know.
+        #
+        # The baseline read is the long pole of an in-place sync (one hub
+        # exchange per activity), so it counts its reads up through
+        # current_step/total_steps instead of sitting silent until the plan
+        # runs.
+        total_reads = 1 + len(activity_ids)
+        loop = self.hass.loop
+
+        def _report_read_progress(completed_reads: int) -> None:
+            def _report() -> None:
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=completed_reads,
+                    total_steps=total_reads,
+                    phase="reading_device",
+                    message=f"Reading the deployed Wifi Device ({completed_reads} of {total_reads})",
+                )
+
+            loop.call_soon_threadsafe(_report)
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=0,
+            total_steps=total_reads,
+            phase="reading_device",
+            message="Reading the deployed Wifi Device",
+        )
+
         def _read_baseline():
             device_entry = self._proxy.backup_device(dev_id, include_blobs=False)
             activity_entries = []
-            for act_id in activity_ids:
+            for idx, act_id in enumerate(activity_ids):
+                _report_read_progress(idx + 1)
                 payload = self._proxy.backup_activity(act_id)
                 if isinstance(payload, dict):
                     activity_entries.append(payload)
             return device_entry, activity_entries
 
-        # `phase` is the stable, translatable name of this stage; `message` is
-        # the English rendering kept for logs and for any consumer that has no
-        # localization table. The control panel localizes `phase` and only
-        # falls back to `message` for stages it does not know.
-        self._set_command_sync_progress(
-            device_key=normalized_device_key,
-            phase="reading_device",
-            message="Reading the deployed Wifi Device",
-        )
         device_entry, activity_entries = await self.hass.async_add_executor_job(_read_baseline)
         if not isinstance(device_entry, dict) or len(activity_entries) < len(activity_ids):
             _LOGGER.info("[%s] in-place sync declined: baseline read incomplete", self.entry_id)
@@ -3992,17 +4016,23 @@ class SofabatonHub:
 
         total_steps = len(plan.steps) + 2
         if plan.steps:
-            loop = self.hass.loop
 
             def _progress(**data: Any) -> None:
                 message = str(data.get("message") or "")
                 completed = int(data.get("completed_steps") or 0)
 
                 def _inner() -> None:
+                    # The planner labels its steps after the user's own data
+                    # ("Adding command "Kitchen lights"…"), so there is no
+                    # fixed phase to report. phase=None clears the stale
+                    # "reading_device" left by the merge in
+                    # _set_command_sync_progress; consumers then fall back to
+                    # `message` instead of narrating the read forever.
                     self._set_command_sync_progress(
                         device_key=normalized_device_key,
                         current_step=completed + 1,
                         total_steps=total_steps,
+                        phase=None,
                         message=message,
                     )
 
@@ -4544,26 +4574,6 @@ class SofabatonHub:
                         )
                     )
 
-                # Warm the wifi-device command cache before activity refreshes
-                # so favorite-label resolution can reuse the full REQ_COMMANDS
-                # result instead of falling back to per-command lookups later.
-                # On the replace path the readback guard above already turned
-                # this cache into verified hub truth, so reuse it while it is
-                # still complete. First deploys must always fetch: the create
-                # pipeline seeds the cache with the names it wrote (an echo of
-                # the request, not a readback of what the hub persisted).
-                warm_cache_verified = False
-                if managed:
-                    _, warm_cache_verified = await self.hass.async_add_executor_job(
-                        partial(
-                            self._proxy.get_commands_for_entity,
-                            wifi_device_id,
-                            fetch_if_missing=False,
-                        )
-                    )
-                if not warm_cache_verified:
-                    await self.async_fetch_device_commands(wifi_device_id)
-
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=5,
@@ -4701,6 +4711,33 @@ class SofabatonHub:
                     phase="refreshing_maps",
                     message="Refreshing activity maps and buttons",
                 )
+                # Backup-grade re-warm of the deployed device, before the
+                # activity re-warms so their favorite/binding label
+                # resolution reads a populated command catalog. The binding
+                # writes above cleared the device's cached key rows, and the
+                # create pipeline never fetched key-sort/inputs/idle at all;
+                # this is the same fetch as the Hub tab's per-device refresh,
+                # so the editor baseline and the persisted cache leave the
+                # deploy bundle-grade instead of needing a manual row
+                # refresh. On the replace path the readback guard above
+                # already verified the command table, so it is reused; first
+                # deploys still hold the unverified create-time echo and
+                # fetch a real one.
+                try:
+                    await self.hass.async_add_executor_job(
+                        partial(
+                            self._proxy.backup_device,
+                            wifi_device_id,
+                            include_blobs=False,
+                            reuse_commands=bool(managed),
+                        )
+                    )
+                except Exception:  # noqa: BLE001 - warm is best-effort tail work
+                    self._log.warning(
+                        "[%s] deploy finished, but the post-deploy device warm failed",
+                        self.entry_id,
+                        exc_info=True,
+                    )
                 # Re-warm every touched activity with the same clear-then-fetch
                 # sequence as the Hub tab's per-activity refresh. The write
                 # steps above (managed-device delete, activity re-add, favorite
@@ -4729,17 +4766,24 @@ class SofabatonHub:
                         continue
                     await self._async_fetch_activity_commands(act_lo)
 
-                if activity_ids or delete_confirmed_acts:
-                    self._bump_cache_generation()
-                    async_dispatcher_send(self.hass, signal_commands(self.entry_id))
-                    try:
-                        await self._async_persist_cache_if_enabled()
-                    except Exception:  # noqa: BLE001 - persist is best-effort
-                        self._log.debug(
-                            "[%s] post-deploy cache persist failed",
-                            self.entry_id,
-                            exc_info=True,
-                        )
+                # Unconditional: every deploy that reaches here changed the
+                # device catalog (create + managed delete), and the only
+                # earlier generation bump fired mid-pipeline, before the
+                # cache was warm. Gating this on activity references froze
+                # the frontend on that mid-deploy snapshot (a device with an
+                # empty command table) and skipped the disk persist entirely
+                # for activity-less deploys.
+                self._bump_cache_generation()
+                async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+                async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+                try:
+                    await self._async_persist_cache_if_enabled()
+                except Exception:  # noqa: BLE001 - persist is best-effort
+                    self._log.debug(
+                        "[%s] post-deploy cache persist failed",
+                        self.entry_id,
+                        exc_info=True,
+                    )
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,

@@ -192,8 +192,8 @@ interface SyncState {
   current_step: number;
   total_steps: number;
   /** Stable stage name the deploy pipeline reports; localized for display.
-   *  Absent for the in-place planner's per-step writes, which fall back to
-   *  `message`. */
+   *  Cleared (null) for the in-place planner's per-step writes, which fall
+   *  back to `message`. */
   phase?: string | null;
   message: string;
   commands_hash: string;
@@ -2442,6 +2442,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       status: "idle",
       current_step: 0,
       total_steps: 0,
+      phase: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.idle,
       commands_hash: "",
       managed_command_hashes: [],
@@ -2622,6 +2623,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         status: String(result?.status || "idle"),
         current_step: Number(result?.current_step || 0),
         total_steps: Number(result?.total_steps || 0),
+        phase: result?.phase == null ? null : String(result.phase),
         message: String(result?.message || TOOLS_CARD_STRINGS.wifiCommands.idle),
         commands_hash: String(result?.commands_hash || ""),
         managed_command_hashes: Array.isArray(result?.managed_command_hashes)
@@ -3530,6 +3532,9 @@ class SofabatonWifiCommandsTab extends LitElement {
       status: "running",
       current_step: 0,
       total_steps: Number(this._syncState.total_steps || 0),
+      // Optimistic pre-service state: a stale phase from the previous run
+      // would be localized ahead of the message, so clear it explicitly.
+      phase: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.startSync,
       sync_needed: true,
     };

@@ -3173,6 +3173,30 @@ def test_clear_entity_cache_resets_all(monkeypatch) -> None:
     assert ent_lo not in proxy._commands_complete
     assert ent_lo not in proxy._pending_button_requests
 
+
+def test_clear_entity_cache_can_keep_command_catalog() -> None:
+    """``clear_commands=False`` keeps the command catalog (labels, record
+    metadata, key-sort, completeness) while the flagged groups still clear."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    ent_lo = 0x42
+    proxy.state.commands[ent_lo] = {0x01: "One"}
+    proxy.state.command_metadata[ent_lo] = {0x01: {"library_type": 3}}
+    proxy.state.device_key_sorts[ent_lo] = {"keys": [0x01]}
+    proxy.state.buttons[ent_lo] = {ButtonName.VOL_UP}
+    proxy._commands_complete.add(ent_lo)
+    proxy._pending_button_requests.add(ent_lo)
+
+    proxy.clear_entity_cache(ent_lo, True, clear_commands=False)
+
+    assert proxy.state.commands[ent_lo] == {0x01: "One"}
+    assert proxy.state.command_metadata[ent_lo] == {0x01: {"library_type": 3}}
+    assert proxy.state.device_key_sorts[ent_lo] == {"keys": [0x01]}
+    assert ent_lo in proxy._commands_complete
+    assert ent_lo not in proxy.state.buttons
+    assert ent_lo not in proxy._pending_button_requests
+
 def test_partial_commands_still_trigger_full_fetch(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -4698,12 +4722,12 @@ def test_command_to_button_replays_sequence(monkeypatch) -> None:
 
     monkeypatch.setattr(proxy, "get_buttons_for_entity", _get_buttons_for_entity)
 
-    cleared: list[tuple[int, bool, bool, bool]] = []
+    cleared: list[tuple[int, bool, bool, bool, bool]] = []
     monkeypatch.setattr(
         proxy,
         "clear_entity_cache",
-        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False: cleared.append(
-            (ent_id, clear_buttons, clear_favorites, clear_macros)
+        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False, clear_commands=True: cleared.append(
+            (ent_id, clear_buttons, clear_favorites, clear_macros, clear_commands)
         ),
     )
 
@@ -4725,7 +4749,7 @@ def test_command_to_button_replays_sequence(monkeypatch) -> None:
         [(0x013E, 0xC1), (0x0103, None)],
         [(0x0103, None)],
     ]
-    assert cleared == [(0x65, True, False, False)]
+    assert cleared == [(0x65, True, False, False, False)]
     assert requested_map == [0x65]
     assert requested_buttons == [(0x65, True)]
 
@@ -4753,7 +4777,7 @@ def test_command_to_button_with_long_press(monkeypatch) -> None:
     monkeypatch.setattr(
         proxy,
         "clear_entity_cache",
-        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False: None,
+        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False, clear_commands=True: None,
     )
 
     result = proxy.command_to_button(
@@ -4808,6 +4832,49 @@ def test_command_to_button_can_skip_refresh_after_write(monkeypatch) -> None:
     assert result is not None
     assert requested_map == []
     assert requested_buttons == []
+
+
+def test_command_to_button_keeps_command_catalog(monkeypatch) -> None:
+    """A keymap write cannot change the entity's command records, so the
+    post-write invalidation must keep the command catalog. Regression: the
+    wifi deploy writes device-page key rows with the device itself as the
+    keymap entity, and the old blanket clear wiped the command table warmed
+    one step earlier — the deploy then persisted a device with zero
+    commands (favorites-only deploys were unaffected)."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    def _wait_for_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+        not_before: float | None = None,
+    ) -> tuple[int, bytes] | None:
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_ack_any", _wait_for_ack_any)
+
+    dev_lo = 0x09
+    proxy.state.commands[dev_lo] = {1: "Lights On", 2: "Lights Off"}
+    proxy.state.command_metadata[dev_lo] = {1: {"library_type": 5}}
+    proxy.state.buttons[dev_lo] = {ButtonName.VOL_UP}
+    proxy._commands_complete.add(dev_lo)
+
+    # Device-page key row: the keymap entity is the device itself.
+    result = proxy.command_to_button(
+        dev_lo, 0xC1, dev_lo, 0x02, refresh_after_write=False
+    )
+
+    assert result is not None
+    assert proxy.state.commands[dev_lo] == {1: "Lights On", 2: "Lights Off"}
+    assert proxy.state.command_metadata[dev_lo] == {1: {"library_type": 5}}
+    assert dev_lo in proxy._commands_complete
+    # The key rows themselves DID change, so the buttons cache clears.
+    assert dev_lo not in proxy.state.buttons
 
 
 def test_command_to_button_requires_all_acks(monkeypatch) -> None:

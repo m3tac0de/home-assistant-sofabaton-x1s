@@ -140,7 +140,21 @@ export function localizeBackendProgress(
       break;
     case "wifi_deploy": {
       const stage = WIFI_DEPLOY_PHASES[phase];
-      if (stage) return S[stage];
+      if (stage) {
+        // The in-place baseline read is the one long stage: it reports one
+        // step per activity it reads off the hub. Append a compact,
+        // language-neutral counter so it visibly advances instead of looking
+        // hung on the phase label. Every other phase is a single step, where
+        // a counter says nothing.
+        if (stage === "wifiReadingDevice") {
+          const total = positiveInteger(progress.total_steps);
+          const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? 0);
+          if (total && Number.isFinite(rawCurrent) && rawCurrent >= 1) {
+            return `${S[stage]} (${Math.min(total, Math.trunc(rawCurrent))}/${total})`;
+          }
+        }
+        return S[stage];
+      }
       // The in-place planner labels its steps after the user's own data
       // ("Adding command "Kitchen lights"…"), so those stages have no fixed
       // phase to translate. Relaying that English label is still far more

@@ -152,6 +152,7 @@ class BackupExportMixin:
         *,
         wait_timeout: float = 10.0,
         include_blobs: bool = True,
+        reuse_commands: bool = False,
     ) -> dict[str, Any] | None:
         """Build a restore-oriented ``device_backup`` payload from the hub.
 
@@ -164,6 +165,11 @@ class BackupExportMixin:
         key bindings, macros, input records and idle behaviour (everything the
         live activity editor needs) but is **not** restorable (no command
         payloads). Used by the structural "refresh entire hub cache" path.
+
+        ``reuse_commands=True`` keeps an already-complete command table
+        instead of clearing and refetching it — for callers that just
+        readback-verified the table in the same locked pipeline (the wifi
+        deploy epilogue). Ignored when the table is not complete.
         """
 
         dev_lo = device_id & 0xFF
@@ -178,14 +184,18 @@ class BackupExportMixin:
         skip_macros = device_config is not None and not device_config.is_power_configured
         skip_inputs = device_config is not None and not device_config.is_input_configured
 
-        self.clear_entity_cache(dev_lo, True, True, True)
-
-        self._fetch_and_wait(
-            f"commands:{dev_lo}",
-            lambda: self.get_commands_for_entity(dev_lo, fetch_if_missing=True),
-            lambda: dev_lo in self._commands_complete,
-            timeout=wait_timeout,
+        reuse_commands = bool(reuse_commands) and dev_lo in self._commands_complete
+        self.clear_entity_cache(
+            dev_lo, True, True, True, clear_commands=not reuse_commands
         )
+
+        if not reuse_commands:
+            self._fetch_and_wait(
+                f"commands:{dev_lo}",
+                lambda: self.get_commands_for_entity(dev_lo, fetch_if_missing=True),
+                lambda: dev_lo in self._commands_complete,
+                timeout=wait_timeout,
+            )
         self._fetch_and_wait(
             f"buttons:{dev_lo}",
             lambda: self.get_buttons_for_entity(dev_lo, fetch_if_missing=True),

@@ -3007,7 +3007,16 @@ function localizeBackendProgress(progress, operationOverride) {
       break;
     case "wifi_deploy": {
       const stage = WIFI_DEPLOY_PHASES[phase];
-      if (stage) return S5[stage];
+      if (stage) {
+        if (stage === "wifiReadingDevice") {
+          const total = positiveInteger(progress.total_steps);
+          const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? 0);
+          if (total && Number.isFinite(rawCurrent) && rawCurrent >= 1) {
+            return `${S5[stage]} (${Math.min(total, Math.trunc(rawCurrent))}/${total})`;
+          }
+        }
+        return S5[stage];
+      }
       const message = String(progress.message || "").trim();
       if (message) return message;
       return progressStep(progress) || S5.wifiSyncing;
@@ -16091,6 +16100,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       status: "idle",
       current_step: 0,
       total_steps: 0,
+      phase: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.idle,
       commands_hash: "",
       managed_command_hashes: [],
@@ -16243,6 +16253,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         status: String(result?.status || "idle"),
         current_step: Number(result?.current_step || 0),
         total_steps: Number(result?.total_steps || 0),
+        phase: result?.phase == null ? null : String(result.phase),
         message: String(result?.message || TOOLS_CARD_STRINGS.wifiCommands.idle),
         commands_hash: String(result?.commands_hash || ""),
         managed_command_hashes: Array.isArray(result?.managed_command_hashes) ? result.managed_command_hashes.map((item) => String(item || "")).filter(Boolean) : [],
@@ -16867,6 +16878,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       status: "running",
       current_step: 0,
       total_steps: Number(this._syncState.total_steps || 0),
+      // Optimistic pre-service state: a stale phase from the previous run
+      // would be localized ahead of the message, so clear it explicitly.
+      phase: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.startSync,
       sync_needed: true
     };
