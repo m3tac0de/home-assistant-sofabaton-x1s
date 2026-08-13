@@ -101,7 +101,12 @@ The integration includes two dashboard cards and deploys them automatically.
 
 ### Sofabaton Virtual Remote
 
-The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **Automation Assist → Key capture**.
+The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **Automation Assist → Key capture**. Add it from the dashboard card picker or use YAML, replacing the entity with the `remote` entity created for your hub:
+
+```yaml
+type: custom:sofabaton-virtual-remote
+entity: remote.<hub>_remote
+```
 
 [Virtual Remote documentation](https://github.com/m3tac0de/sofabaton-virtual-remote)
 
