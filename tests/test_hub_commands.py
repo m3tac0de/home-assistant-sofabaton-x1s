@@ -6218,3 +6218,67 @@ def test_map_wifi_mqtt_key_law():
     assert map_wifi_mqtt_key(0, 10) is None
     assert map_wifi_mqtt_key("junk", 10) is None
     assert map_wifi_mqtt_key(1, 0) is None
+
+
+def test_async_send_key_resolution(monkeypatch):
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    sent = []
+    monkeypatch.setattr(
+        hub._proxy, "send_command", lambda ent_id, code: sent.append((ent_id, code)) or True
+    )
+    hub.current_activity = 101
+
+    try:
+        # Known button name (case-insensitive) -> ButtonName code to the
+        # current activity.
+        loop.run_until_complete(hub.async_send_key("vol_up"))
+        assert sent == [(101, ButtonName.VOL_UP)]
+
+        # Numeric string without device -> raw command id to the current
+        # activity (the HA service schema stringifies every command).
+        sent.clear()
+        loop.run_until_complete(hub.async_send_key("123"))
+        assert sent == [(101, 123)]
+
+        # Numeric string with device -> raw command id to that entity.
+        sent.clear()
+        loop.run_until_complete(hub.async_send_key("12", device=3))
+        assert sent == [(3, 12)]
+
+        # Garbage without device -> clean error, nothing sent.
+        sent.clear()
+        with pytest.raises(HomeAssistantError, match="Unknown command"):
+            loop.run_until_complete(hub.async_send_key("NOT_A_BUTTON"))
+        assert sent == []
+
+        # Button name with device -> clean error (direct targeting is
+        # numeric-only), nothing sent.
+        with pytest.raises(HomeAssistantError, match="numeric command ID"):
+            loop.run_until_complete(hub.async_send_key("VOL_UP", device=3))
+        assert sent == []
+
+        # No active activity -> clean error.
+        hub.current_activity = None
+        with pytest.raises(HomeAssistantError, match="No activity active"):
+            loop.run_until_complete(hub.async_send_key("VOL_UP"))
+    finally:
+        loop.close()

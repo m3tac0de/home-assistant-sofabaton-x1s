@@ -4982,7 +4982,13 @@ class SofabatonHub:
 
         # advanced path: user specified the target entity
         if device is not None:
-            code = self._normalize_command_id(key)
+            try:
+                code = self._normalize_command_id(key)
+            except ValueError as err:
+                raise HomeAssistantError(
+                    f"Command '{key}' is not a numeric command ID; "
+                    "button names are only supported without 'device'"
+                ) from err
             await self.async_send_raw_command(device, code)
             return
 
@@ -4992,15 +4998,18 @@ class SofabatonHub:
 
         # string -> try to treat as ButtonName first
         if isinstance(key, str):
-            norm = key.strip().upper()
-            try:
-                btn = getattr(ButtonName, norm)
-            except KeyError:
-                # not a ButtonName -> treat as numeric
-                code = self._normalize_command_id(key)
-                await self.async_send_raw_command(self.current_activity, code)
-            else:
+            btn = getattr(ButtonName, key.strip().upper(), None)
+            if btn is not None:
                 await self.async_send_button(btn)
+                return
+            # not a ButtonName -> treat as numeric
+            try:
+                code = self._normalize_command_id(key)
+            except ValueError as err:
+                raise HomeAssistantError(
+                    f"Unknown command '{key}': not a button name or a numeric command ID"
+                ) from err
+            await self.async_send_raw_command(self.current_activity, code)
             return
 
         # int -> just send as raw command to current activity
