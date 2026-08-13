@@ -1,4 +1,4 @@
-<img alt="Sofabaton X for Home Assistant - local, bidirectional control of Sofabaton X1, X1S and X2 hubs" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/readme-banner.png">
+<img alt="Sofabaton X for Home Assistant - local, bidirectional control of Sofabaton X1, X1S and X2 hubs" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/dev/docs/images/readme-banner.png">
 
 # Sofabaton X for Home Assistant
 
