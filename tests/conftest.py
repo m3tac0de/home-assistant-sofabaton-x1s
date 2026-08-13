@@ -221,6 +221,23 @@ def _install_homeassistant_stubs() -> None:
     switch.SwitchEntity = SwitchEntity
     sys.modules.setdefault("homeassistant.components.switch", switch)
 
+    remote = types.ModuleType("homeassistant.components.remote")
+
+    class RemoteEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    class RemoteEntityFeature:  # pragma: no cover - only used as stub
+        ACTIVITY = 4
+
+    remote.ATTR_DELAY_SECS = "delay_secs"
+    remote.RemoteEntity = RemoteEntity
+    remote.RemoteEntityFeature = RemoteEntityFeature
+    sys.modules.setdefault("homeassistant.components.remote", remote)
+
     sensor = types.ModuleType("homeassistant.components.sensor")
 
     class SensorEntity:  # pragma: no cover - only used as stub
