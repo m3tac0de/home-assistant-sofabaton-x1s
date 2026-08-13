@@ -69,6 +69,31 @@ def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str)
 
 
+def _progress_step_kind(step: SyncStep) -> str:
+    """Stable, translatable name of one plan step for progress consumers.
+
+    The control panel maps these to localized copy (its `step.label` stays
+    the English fallback for consumers without a translation table).
+    ``macro_write`` is split by slot so the start/end-sequence wording the
+    editor uses survives translation; every other kind is specific enough
+    on its own.
+    """
+
+    if step.kind == "macro_write":
+        button_id = _int(step.payload.get("button_id")) & 0xFF
+        if button_id == ButtonName.POWER_ON:
+            return "macro_write_power_on"
+        if button_id == ButtonName.POWER_OFF:
+            return "macro_write_power_off"
+        return "macro_write_custom"
+    if step.kind == "member_replay" and step.payload.get("join"):
+        # Wifi in-place plans reuse member_replay both for joining an
+        # activity and for rewriting a kept activity's input selection;
+        # the payload's progress-only "join" flag tells them apart.
+        return "member_replay_join"
+    return step.kind
+
+
 def _int(value: Any, default: int = 0) -> int:
     try:
         return int(value)
@@ -420,7 +445,10 @@ class ActivitySyncMixin:
             total = len(plan)
             counters: dict[str, int] = {}
             for index, step in enumerate(plan):
-                _progress(phase="writing", message=step.label, completed_steps=index,
+                _progress(phase="writing", message=step.label,
+                          step_kind=_progress_step_kind(step),
+                          step_device_id=step.target_device_id,
+                          completed_steps=index,
                           total_steps=total, current_activity_id=activity_id)
                 ok = self._dispatch_activity_sync_step(step)
                 if not ok:
@@ -436,8 +464,14 @@ class ActivitySyncMixin:
             # validator accepting a session key id that no longer exists).
             self._activity_sync_reset_run_state()
 
-        _progress(phase="completed", message="Synced to hub.", completed_steps=total,
-                  total_steps=total, current_activity_id=activity_id)
+        # The settle window below can take seconds; "completed" is only
+        # emitted once it finishes so the UI never claims synced while the
+        # engine is still working. step_kind is cleared explicitly: progress
+        # consumers merge payloads into the previous record, so leaving it
+        # out would carry the last write step's kind into this stage.
+        _progress(phase="settling", message="Waiting for the hub to finish processing the changes…",
+                  step_kind=None, step_device_id=None,
+                  completed_steps=total, total_steps=total, current_activity_id=activity_id)
         # Refresh internal mapping so the cache/remote reflect the new state.
         self.request_activity_mapping(activity_id)
         # Settle on user-editable rows only: role-page slots can keep
@@ -450,6 +484,8 @@ class ActivitySyncMixin:
             ),
             log_tag="ACTIVITY_SYNC",
         )
+        _progress(phase="completed", message="Synced to hub.", completed_steps=total,
+                  total_steps=total, current_activity_id=activity_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
 
     def _settle_post_sync_reread(self, read_signature: Callable[[], str], *, log_tag: str) -> None:
@@ -527,7 +563,10 @@ class ActivitySyncMixin:
             total = len(plan)
             counters: dict[str, int] = {}
             for index, step in enumerate(plan):
-                _progress(phase="writing", message=step.label, completed_steps=index,
+                _progress(phase="writing", message=step.label,
+                          step_kind=_progress_step_kind(step),
+                          step_device_id=step.target_device_id,
+                          completed_steps=index,
                           total_steps=total, current_device_id=device_id)
                 ok = self._dispatch_activity_sync_step(step)
                 if not ok:
@@ -539,8 +578,12 @@ class ActivitySyncMixin:
             # See sync_activity: run state must not outlive the step walk.
             self._activity_sync_reset_run_state()
 
-        _progress(phase="completed", message="Synced to hub.", completed_steps=total,
-                  total_steps=total, current_device_id=device_id)
+        # See sync_activity: "completed" waits for the settle window, and
+        # step_kind is cleared so the merge in progress consumers cannot
+        # carry the last write step's kind into this stage.
+        _progress(phase="settling", message="Waiting for the hub to finish processing the changes…",
+                  step_kind=None, step_device_id=None,
+                  completed_steps=total, total_steps=total, current_device_id=device_id)
         # Re-ingest the device's structural detail so proxy state (and the
         # bundles assembled from it) reflect what was just written; settle
         # against the hub's asynchronous canonicalization (see helper).
@@ -548,6 +591,8 @@ class ActivitySyncMixin:
             lambda: _device_block_signature(self.backup_device(device_id, include_blobs=False)),
             log_tag="DEVICE_SYNC",
         )
+        _progress(phase="completed", message="Synced to hub.", completed_steps=total,
+                  total_steps=total, current_device_id=device_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
 
     # ── Stale pre-flight ────────────────────────────────────────────────
@@ -1651,7 +1696,13 @@ class ActivitySyncMixin:
         total = len(steps)
         counters: dict[str, int] = {}
         for index, step in enumerate(steps):
-            _progress(phase="writing", message=step.label, completed_steps=index, total_steps=total)
+            # step_name carries the user's own command label for the record
+            # steps, so the control panel can name it inside translated copy.
+            step_name = step.payload.get("command_name") or step.payload.get("name")
+            _progress(phase="writing", message=step.label,
+                      step_kind=_progress_step_kind(step),
+                      step_name=str(step_name) if step_name else None,
+                      completed_steps=index, total_steps=total)
             ok = self._dispatch_activity_sync_step(step)
             if not ok:
                 # Every in-place step is an idempotent rewrite, so a transient
@@ -1666,7 +1717,8 @@ class ActivitySyncMixin:
                 return {"status": "failed", "failed_at": step.kind,
                         "message": f"The hub rejected: {step.label}", "completed_steps": index}
             counters[step.kind] = counters.get(step.kind, 0) + 1
-        _progress(phase="completed", message="Synced to hub.", completed_steps=total, total_steps=total)
+        _progress(phase="completed", message="Synced to hub.", step_kind=None, step_name=None,
+                  completed_steps=total, total_steps=total)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
 
     # ── Low-level primitives ────────────────────────────────────────────

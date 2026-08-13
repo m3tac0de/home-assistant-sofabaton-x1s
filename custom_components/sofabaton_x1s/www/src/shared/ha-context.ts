@@ -99,6 +99,9 @@ export interface ControlPanelRuntimeState {
    *  what the hub is actually doing in the user's language instead of only
    *  counting steps. */
   phase?: string | null;
+  step_kind?: string | null;
+  step_device_id?: number | null;
+  step_name?: string | null;
   current_device_id?: number | null;
   current_activity_id?: number | null;
   current_step?: number | null;
@@ -385,6 +388,12 @@ export interface BackupProgressEvent {
   entry_id: string;
   status: string;
   phase?: string | null;
+  /** Sync write walks: the plan step's stable kind (localized by the card)
+   *  plus its parameters — the targeted device id (entity sync) or the
+   *  user's own command label (Wifi in-place sync). */
+  step_kind?: string | null;
+  step_device_id?: number | null;
+  step_name?: string | null;
   mode?: string | null;
   message?: string | null;
   completed_steps?: number | null;

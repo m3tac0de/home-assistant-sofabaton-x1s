@@ -192,9 +192,12 @@ interface SyncState {
   current_step: number;
   total_steps: number;
   /** Stable stage name the deploy pipeline reports; localized for display.
-   *  Cleared (null) for the in-place planner's per-step writes, which fall
-   *  back to `message`. */
+   *  Cleared (null) for the in-place planner's per-step writes, which carry
+   *  a structured `step_kind` (+ the command's own label in `step_name`)
+   *  instead, falling back to `message` for unknown kinds. */
   phase?: string | null;
+  step_kind?: string | null;
+  step_name?: string | null;
   message: string;
   commands_hash: string;
   managed_command_hashes: string[];
@@ -2443,6 +2446,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       current_step: 0,
       total_steps: 0,
       phase: null,
+      step_kind: null,
+      step_name: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.idle,
       commands_hash: "",
       managed_command_hashes: [],
@@ -2624,6 +2629,8 @@ class SofabatonWifiCommandsTab extends LitElement {
         current_step: Number(result?.current_step || 0),
         total_steps: Number(result?.total_steps || 0),
         phase: result?.phase == null ? null : String(result.phase),
+        step_kind: result?.step_kind == null ? null : String(result.step_kind),
+        step_name: result?.step_name == null ? null : String(result.step_name),
         message: String(result?.message || TOOLS_CARD_STRINGS.wifiCommands.idle),
         commands_hash: String(result?.commands_hash || ""),
         managed_command_hashes: Array.isArray(result?.managed_command_hashes)
@@ -3532,9 +3539,12 @@ class SofabatonWifiCommandsTab extends LitElement {
       status: "running",
       current_step: 0,
       total_steps: Number(this._syncState.total_steps || 0),
-      // Optimistic pre-service state: a stale phase from the previous run
-      // would be localized ahead of the message, so clear it explicitly.
+      // Optimistic pre-service state: a stale phase or step from the
+      // previous run would be localized ahead of the message, so clear
+      // them explicitly.
       phase: null,
+      step_kind: null,
+      step_name: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.startSync,
       sync_needed: true,
     };

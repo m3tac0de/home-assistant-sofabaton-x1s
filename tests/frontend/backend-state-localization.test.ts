@@ -5,7 +5,9 @@ import path from "node:path";
 
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 import {
+  ENTITY_SYNC_STEP_KINDS,
   WIFI_DEPLOY_PHASES,
+  WIFI_INPLACE_STEP_KINDS,
   localizeBackendOperationDetail,
   localizeBackendProgress,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization";
@@ -29,9 +31,10 @@ test("structured backend progress is localized without relaying its English mess
       progress: {
         kind: "activity_sync",
         phase: "writing",
+        step_kind: "activity_rename",
         message: "Renaming the activity…",
       },
-      expected: "Änderungen werden auf den Hub übertragen…",
+      expected: "Aktivität wird umbenannt…",
     },
     {
       locale: "fr",
@@ -172,6 +175,164 @@ test("Wifi Commands deploy stages are localized from their phase, not counted", 
     ),
     "Doing a new thing…",
   );
+});
+
+test("entity-sync write steps are localized from their step kind, with a counter", () => {
+  const writing = (extra: Record<string, unknown>) =>
+    localizeBackendProgress(
+      { kind: "activity_sync", phase: "writing", completed_steps: 2, total_steps: 5, ...extra } as any,
+      "entity_sync",
+    );
+
+  // Structured step kind → translated copy; the counter is 1-based (the
+  // engine emits completed_steps BEFORE the write).
+  assert.equal(writing({ step_kind: "activity_rename" }), "Renaming the activity… (3/5)");
+  assert.equal(writing({ step_kind: "macro_write_power_on" }), "Updating the start sequence… (3/5)");
+  assert.equal(
+    writing({ step_kind: "command_rename", step_device_id: 7 }),
+    "Renaming a command on device 7… (3/5)",
+  );
+  assert.equal(writing({ step_kind: "command_rename" }), "Renaming a command… (3/5)");
+
+  // In the user's language, not the hub's.
+  setToolsCardLanguage("de");
+  assert.equal(writing({ step_kind: "favorite_add" }), "Verknüpfung wird hinzugefügt… (3/5)");
+  setToolsCardLanguage("zh-Hans");
+  assert.equal(writing({ step_kind: "remote_sync" }), "正在同步遥控器… (3/5)");
+  setToolsCardLanguage("en");
+
+  // Unknown step kind (newer engine than card): relay the engine's own
+  // label; absent both, fall back to the generic phase copy.
+  assert.equal(
+    writing({ step_kind: "some_new_step", message: "Doing a new thing…" }),
+    "Doing a new thing… (3/5)",
+  );
+  assert.equal(writing({}), "Applying changes to the hub… (3/5)");
+  assert.equal(
+    localizeBackendProgress({ kind: "activity_sync", phase: "writing", step_kind: "favorite_add" } as any, "entity_sync"),
+    "Adding a shortcut…",
+  );
+
+  // The settle window has its own phase; "Synced to hub." is reserved for
+  // the actual completion.
+  assert.equal(
+    localizeBackendProgress({ kind: "activity_sync", phase: "settling" } as any, "entity_sync"),
+    "Waiting for the hub to finish processing the changes…",
+  );
+});
+
+test("every entity-sync step kind the engine emits has frontend copy", () => {
+  // Same seam guard as the wifi phases below: the engine names a step, the
+  // card translates it. Plan-step kinds come from activity_sync.py;
+  // macro_write is refined into three display variants by
+  // proxy_activity_sync's _progress_step_kind.
+  const source = readFileSync(
+    path.resolve("custom_components/sofabaton_x1s/lib/activity_sync.py"),
+    "utf8",
+  );
+  const emitted = new Set<string>();
+  for (const match of source.matchAll(/\bkind="([a-z_]+)"/g)) emitted.add(match[1]);
+  assert.ok(emitted.size >= 15, `expected the plan builders to name their steps, saw ${emitted.size}`);
+
+  emitted.delete("macro_write");
+  emitted.add("macro_write_power_on");
+  emitted.add("macro_write_power_off");
+  emitted.add("macro_write_custom");
+
+  const unmapped = [...emitted].filter((kind) => !(kind in ENTITY_SYNC_STEP_KINDS)).sort();
+  assert.deepEqual(unmapped, [], `engine step kinds with no frontend string: ${unmapped.join(", ")}`);
+  const dead = Object.keys(ENTITY_SYNC_STEP_KINDS).filter((kind) => !emitted.has(kind)).sort();
+  assert.deepEqual(dead, [], `frontend strings for step kinds the engine never sends: ${dead.join(", ")}`);
+});
+
+test("Wifi in-place write steps are localized from their step kind", () => {
+  const writing = (extra: Record<string, unknown>) =>
+    localizeBackendProgress(
+      { kind: "command_sync", current_step: 2, total_steps: 5, ...extra } as any,
+      "wifi_deploy",
+    );
+
+  // Structured step kind + the user's own command label, translated copy
+  // around it. In-place progress is already 1-based, so no +1 here.
+  assert.equal(
+    writing({ step_kind: "command_add", step_name: "Kitchen lights" }),
+    "Adding command “Kitchen lights”… (2/5)",
+  );
+  assert.equal(writing({ step_kind: "command_delete" }), "Removing a command… (2/5)");
+  assert.equal(writing({ step_kind: "wifi_head_commit" }), "Saving the device… (2/5)");
+  // The two member_replay flavors are distinguished by the refined kind.
+  assert.equal(writing({ step_kind: "member_replay" }), "Updating input selection… (2/5)");
+  assert.equal(writing({ step_kind: "member_replay_join" }), "Adding the device to an activity… (2/5)");
+  // Shared kinds reuse the entity-sync strings.
+  assert.equal(writing({ step_kind: "favorite_add" }), "Adding a shortcut… (2/5)");
+
+  setToolsCardLanguage("de");
+  assert.equal(
+    writing({ step_kind: "command_rename", step_name: "Licht an" }),
+    'Befehl wird in "Licht an" umbenannt… (2/5)',
+  );
+  setToolsCardLanguage("en");
+
+  // Unknown kind: the pipeline's own label still wins over the counter.
+  assert.equal(
+    writing({ step_kind: "some_new_step", message: "Doing a new thing…" }),
+    "Doing a new thing…",
+  );
+});
+
+test("every Wifi in-place step kind the pipeline emits has frontend copy", () => {
+  const source = readFileSync(
+    path.resolve("custom_components/sofabaton_x1s/lib/wifi_inplace_plan.py"),
+    "utf8",
+  );
+  const emitted = new Set<string>();
+  for (const match of source.matchAll(/\bkind="([a-z_]+)"/g)) emitted.add(match[1]);
+  assert.ok(emitted.size >= 10, `expected the in-place planner to name its steps, saw ${emitted.size}`);
+
+  // member_replay is refined at emission time by its progress-only "join"
+  // payload flag (proxy_activity_sync._progress_step_kind).
+  emitted.add("member_replay_join");
+
+  const unmapped = [...emitted].filter((kind) => !(kind in WIFI_INPLACE_STEP_KINDS)).sort();
+  assert.deepEqual(unmapped, [], `in-place step kinds with no frontend string: ${unmapped.join(", ")}`);
+  const dead = Object.keys(WIFI_INPLACE_STEP_KINDS).filter((kind) => !emitted.has(kind)).sort();
+  assert.deepEqual(dead, [], `frontend strings for step kinds the planner never sends: ${dead.join(", ")}`);
+});
+
+test("a running operation outranks a lingering completion notice", () => {
+  setToolsCardLanguage("en");
+  const snapshot = {
+    selectedHubEntryId: "hub-1",
+    state: {
+      hubs: [{
+        entry_id: "hub-1",
+        runtime_state: {
+          kind: "operation_running",
+          operation: "entity_sync",
+          phase: "writing",
+          step_kind: "favorite_add",
+          current_step: 1,
+          total_steps: 4,
+        },
+      }],
+    },
+    runtimeCompletionNoticeByHub: { "hub-1": { tone: "success", label: "Wifi Device deployed" } },
+    externalHubCommandByHub: {},
+    refreshBusyByHub: {},
+    hass: null,
+  } as any;
+
+  // Chained flows (Wifi Events deploy → activity sync) must narrate the
+  // second operation, not spend the notice TTL on the first one's banner.
+  const running = resolveRuntimeState(snapshot);
+  assert.equal(running?.kind, "operation_running");
+  assert.equal(running?.detail, "Adding a shortcut… (2/4)");
+
+  // Once nothing is running the notice still shows.
+  snapshot.state.hubs[0].runtime_state = { kind: "idle" };
+  const notice = resolveRuntimeState(snapshot);
+  assert.equal(notice?.kind, "completion");
+  assert.equal(notice?.label, "Wifi Device deployed");
 });
 
 test("the bottom dock narrates the running phase, not just the step counter", () => {

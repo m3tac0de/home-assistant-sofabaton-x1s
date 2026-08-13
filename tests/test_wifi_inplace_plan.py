@@ -68,7 +68,9 @@ def test_command_delete():
     baseline = snapshot(slots={**snapshot().slots, 4: slot(4, "Old")})
     plan = build_wifi_inplace_plan(baseline, snapshot())
     assert kinds(plan) == ["command_delete"]
-    assert plan.steps[0].payload == {"device_id": DEV, "command_id": 4}
+    # command_name is progress-only: it feeds the control panel's localized
+    # step copy; the delete write ignores it.
+    assert plan.steps[0].payload == {"device_id": DEV, "command_id": 4, "command_name": "Old"}
 
 
 def test_command_rename_label_only():
@@ -143,7 +145,10 @@ def test_membership_add_joins_with_input():
     )
     plan = build_wifi_inplace_plan(snapshot(input_command_ids=(3,)), desired)
     assert kinds(plan) == ["member_replay", "favorite_add"]
-    assert plan.steps[0].payload == {"activity_id": ACT_B, "device_id": DEV, "input_cmd_id": 3}
+    # "join" is progress-only: it distinguishes joining an activity from the
+    # kept-activity input rewrite for localized step copy; the replay write
+    # ignores it.
+    assert plan.steps[0].payload == {"activity_id": ACT_B, "device_id": DEV, "input_cmd_id": 3, "join": True}
 
 
 def test_membership_remove_multi_member():

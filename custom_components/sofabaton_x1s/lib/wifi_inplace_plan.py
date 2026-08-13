@@ -260,7 +260,13 @@ def build_wifi_inplace_plan(
                 kind="command_delete",
                 label=f"Removing command “{baseline.slots[cid].label}”…",
                 target_device_id=dev,
-                payload={"device_id": dev, "command_id": cid},
+                # command_name is progress-only (the delete write ignores it):
+                # it lets the control panel name the command in its own locale.
+                payload={
+                    "device_id": dev,
+                    "command_id": cid,
+                    "command_name": baseline.slots[cid].label,
+                },
             )
         )
 
@@ -367,12 +373,16 @@ def build_wifi_inplace_plan(
         member_steps.append(
             SyncStep(
                 kind="member_replay",
-                label="Adding to an activity…",
+                label="Adding the device to an activity…",
                 target_device_id=dev,
+                # "join" is progress-only (the replay write ignores it): it
+                # distinguishes joining an activity from the kept-activity
+                # input rewrite above, which shares this step kind.
                 payload={
                     "activity_id": act_id,
                     "device_id": dev,
                     "input_cmd_id": _input_cmd_for(d.input_ordinal),
+                    "join": True,
                 },
             )
         )
@@ -397,7 +407,7 @@ def build_wifi_inplace_plan(
         membership_remove_steps.append(
             SyncStep(
                 kind="membership_remove",
-                label="Removing from an activity…",
+                label="Removing the device from an activity…",
                 target_device_id=dev,
                 payload={"device_id": dev, "activity_id": act_id},
             )

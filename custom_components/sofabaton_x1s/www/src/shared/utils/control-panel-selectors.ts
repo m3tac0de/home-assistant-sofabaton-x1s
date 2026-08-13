@@ -288,7 +288,11 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
   const hub = selectedHub(snapshot);
   const entryId = hub?.entry_id ?? null;
   const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : undefined;
-  if (completionNotice) {
+  const hubRuntime = hub?.runtime_state;
+  // A running operation outranks a lingering completion notice: chained
+  // flows (the Wifi Events deploy followed by the activity sync) otherwise
+  // spend the notice's TTL masking the second operation's narration.
+  if (completionNotice && hubRuntime?.kind !== "operation_running") {
     return {
       kind: "completion",
       tone: completionNotice.tone,
@@ -297,7 +301,6 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
     };
   }
 
-  const hubRuntime = hub?.runtime_state;
   if (hubRuntime?.kind === "operation_running") {
     const operation = hubRuntime.operation === "backup_restore"
       ? "backup_restore"

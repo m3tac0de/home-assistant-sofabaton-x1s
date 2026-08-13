@@ -1799,8 +1799,32 @@ var TOOLS_CARD_STRINGS_EN = {
     cacheFinalizing: "Finalizing hub cache\u2026",
     entityChecking: "Checking for changes on the hub\u2026",
     entityWriting: "Applying changes to the hub\u2026",
+    entitySettling: "Waiting for the hub to finish processing the changes\u2026",
     entityRefreshing: "Refreshing the cached hub state\u2026",
     entityComplete: "Synced to hub.",
+    // Live-sync engine write steps, keyed by the `step_kind` the engine
+    // reports (proxy_activity_sync). Kinds that target a specific device
+    // take its id; null when the engine did not name one.
+    entityStepActivityRename: "Renaming the activity\u2026",
+    entityStepBindingDelete: "Clearing a button assignment\u2026",
+    entityStepBindingWrite: "Writing button assignments\u2026",
+    entityStepCommandAdd: (id) => id == null ? "Adding a command\u2026" : `Adding a command on device ${id}\u2026`,
+    entityStepCommandDelete: (id) => id == null ? "Removing a command\u2026" : `Removing a command on device ${id}\u2026`,
+    entityStepCommandPayload: (id) => id == null ? "Updating a command\u2026" : `Updating a command on device ${id}\u2026`,
+    entityStepCommandRename: (id) => id == null ? "Renaming a command\u2026" : `Renaming a command on device ${id}\u2026`,
+    entityStepDeviceIp: "Updating the IP address\u2026",
+    entityStepDeviceRename: "Renaming the device\u2026",
+    entityStepFavoriteAdd: "Adding a shortcut\u2026",
+    entityStepFavoriteDelete: "Removing a shortcut\u2026",
+    entityStepFavoriteOrder: "Reordering shortcuts\u2026",
+    entityStepIdleBehavior: "Updating automatic power control\u2026",
+    entityStepInputsWrite: (id) => id == null ? "Updating inputs\u2026" : `Updating inputs on device ${id}\u2026`,
+    entityStepMacroDelete: "Removing a macro\u2026",
+    entityStepMacroPowerOn: "Updating the start sequence\u2026",
+    entityStepMacroPowerOff: "Updating the end sequence\u2026",
+    entityStepMacroCustom: "Updating a macro\u2026",
+    entityStepMemberReplay: "Adding a device to the activity\u2026",
+    entityStepRemoteSync: "Syncing the remote\u2026",
     wifiSyncing: "Syncing Wifi Commands\u2026",
     // Deploy pipeline stages, keyed by the `phase` the hub reports.
     wifiStarting: "Starting the sync\u2026",
@@ -1818,7 +1842,20 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
     wifiDeviceRemoved: "Wifi Device removed \u2014 no commands configured.",
-    wifiComplete: "Wifi Commands synced."
+    wifiComplete: "Wifi Commands synced.",
+    // In-place deploy write steps, keyed by the `step_kind` the pipeline
+    // reports. The command steps carry the user's own command label.
+    wifiStepCommandAdd: (name) => name == null ? "Adding a command\u2026" : `Adding command \u201C${name}\u201D\u2026`,
+    wifiStepCommandPayload: (name) => name == null ? "Updating a command\u2026" : `Updating command \u201C${name}\u201D\u2026`,
+    wifiStepCommandRename: (name) => name == null ? "Renaming a command\u2026" : `Renaming command to \u201C${name}\u201D\u2026`,
+    wifiStepCommandDelete: (name) => name == null ? "Removing a command\u2026" : `Removing command \u201C${name}\u201D\u2026`,
+    wifiStepPowerConfig: "Updating power control\u2026",
+    wifiStepInputConfig: "Updating input configuration\u2026",
+    wifiStepInputSelect: "Updating input selection\u2026",
+    wifiStepActivityJoin: "Adding the device to an activity\u2026",
+    wifiStepActivityLeave: "Removing the device from an activity\u2026",
+    wifiStepHeadCommit: "Saving the device\u2026",
+    wifiStepBindingWrite: "Assigning a button\u2026"
   },
   activities: {
     loading: "Loading activities\u2026",
@@ -2925,6 +2962,44 @@ function progressStep(progress) {
   const current = Math.min(total, Math.max(1, Number.isFinite(rawCurrent) ? Math.trunc(rawCurrent) : 1));
   return TOOLS_CARD_STRINGS.backendState.step(current, total);
 }
+var ENTITY_SYNC_STEP_KINDS = {
+  activity_rename: "entityStepActivityRename",
+  binding_delete: "entityStepBindingDelete",
+  binding_write: "entityStepBindingWrite",
+  command_add: "entityStepCommandAdd",
+  command_delete: "entityStepCommandDelete",
+  command_payload: "entityStepCommandPayload",
+  command_rename: "entityStepCommandRename",
+  device_ip: "entityStepDeviceIp",
+  device_rename: "entityStepDeviceRename",
+  favorite_add: "entityStepFavoriteAdd",
+  favorite_delete: "entityStepFavoriteDelete",
+  favorite_order: "entityStepFavoriteOrder",
+  idle_behavior: "entityStepIdleBehavior",
+  inputs_write: "entityStepInputsWrite",
+  macro_delete: "entityStepMacroDelete",
+  macro_write_power_on: "entityStepMacroPowerOn",
+  macro_write_power_off: "entityStepMacroPowerOff",
+  macro_write_custom: "entityStepMacroCustom",
+  member_replay: "entityStepMemberReplay",
+  remote_sync: "entityStepRemoteSync"
+};
+var WIFI_INPLACE_STEP_KINDS = {
+  command_add: "wifiStepCommandAdd",
+  command_payload: "wifiStepCommandPayload",
+  command_rename: "wifiStepCommandRename",
+  command_delete: "wifiStepCommandDelete",
+  wifi_power_config: "wifiStepPowerConfig",
+  wifi_input_config: "wifiStepInputConfig",
+  member_replay: "wifiStepInputSelect",
+  member_replay_join: "wifiStepActivityJoin",
+  membership_remove: "wifiStepActivityLeave",
+  wifi_head_commit: "wifiStepHeadCommit",
+  favorite_add: "entityStepFavoriteAdd",
+  favorite_delete: "entityStepFavoriteDelete",
+  binding_delete: "entityStepBindingDelete",
+  binding_write: "wifiStepBindingWrite"
+};
 var WIFI_DEPLOY_PHASES = {
   starting: "wifiStarting",
   reading_device: "wifiReadingDevice",
@@ -2999,12 +3074,26 @@ function localizeBackendProgress(progress, operationOverride) {
       if (phase === "activity" && activityId) return S5.cacheActivity(activityId);
       if (phase === "finalizing" || phase === "completed" || phase === "complete") return S5.cacheFinalizing;
       break;
-    case "entity_sync":
+    case "entity_sync": {
       if (phase === "stale_check" || phase === "plan") return S5.entityChecking;
-      if (phase === "writing") return S5.entityWriting;
+      if (phase === "writing") {
+        const stepKey = ENTITY_SYNC_STEP_KINDS[String(progress.step_kind || "").trim().toLowerCase()];
+        const entry = stepKey ? S5[stepKey] : void 0;
+        const stepLabel = typeof entry === "function" ? entry(positiveInteger(progress.step_device_id)) : entry;
+        const label = stepLabel || String(progress.message || "").trim() || S5.entityWriting;
+        const total = positiveInteger(progress.total_steps);
+        const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? NaN);
+        if (total && Number.isFinite(rawCurrent)) {
+          const current = Math.min(total, Math.max(1, Math.trunc(rawCurrent) + 1));
+          return `${label} (${current}/${total})`;
+        }
+        return label;
+      }
+      if (phase === "settling") return S5.entitySettling;
       if (phase === "cache_refresh") return S5.entityRefreshing;
       if (phase === "completed" || phase === "complete") return S5.entityComplete;
       break;
+    }
     case "wifi_deploy": {
       const stage = WIFI_DEPLOY_PHASES[phase];
       if (stage) {
@@ -3016,6 +3105,18 @@ function localizeBackendProgress(progress, operationOverride) {
           }
         }
         return S5[stage];
+      }
+      const stepKey = WIFI_INPLACE_STEP_KINDS[String(progress.step_kind || "").trim().toLowerCase()];
+      if (stepKey) {
+        const entry = S5[stepKey];
+        const rawName = typeof progress.step_name === "string" ? progress.step_name.trim() : "";
+        const label = typeof entry === "function" ? entry(rawName || null) : entry;
+        const total = positiveInteger(progress.total_steps);
+        const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? NaN);
+        if (total && Number.isFinite(rawCurrent) && rawCurrent >= 1) {
+          return `${label} (${Math.min(total, Math.trunc(rawCurrent))}/${total})`;
+        }
+        return label;
       }
       const message = String(progress.message || "").trim();
       if (message) return message;
@@ -3207,7 +3308,8 @@ function resolveRuntimeState(snapshot) {
   const hub = selectedHub(snapshot);
   const entryId = hub?.entry_id ?? null;
   const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : void 0;
-  if (completionNotice) {
+  const hubRuntime = hub?.runtime_state;
+  if (completionNotice && hubRuntime?.kind !== "operation_running") {
     return {
       kind: "completion",
       tone: completionNotice.tone,
@@ -3215,7 +3317,6 @@ function resolveRuntimeState(snapshot) {
       detail: null
     };
   }
-  const hubRuntime = hub?.runtime_state;
   if (hubRuntime?.kind === "operation_running") {
     const operation = hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy";
     const total = Number(hubRuntime.total_steps || 0);
@@ -16113,6 +16214,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       current_step: 0,
       total_steps: 0,
       phase: null,
+      step_kind: null,
+      step_name: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.idle,
       commands_hash: "",
       managed_command_hashes: [],
@@ -16266,6 +16369,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         current_step: Number(result?.current_step || 0),
         total_steps: Number(result?.total_steps || 0),
         phase: result?.phase == null ? null : String(result.phase),
+        step_kind: result?.step_kind == null ? null : String(result.step_kind),
+        step_name: result?.step_name == null ? null : String(result.step_name),
         message: String(result?.message || TOOLS_CARD_STRINGS.wifiCommands.idle),
         commands_hash: String(result?.commands_hash || ""),
         managed_command_hashes: Array.isArray(result?.managed_command_hashes) ? result.managed_command_hashes.map((item) => String(item || "")).filter(Boolean) : [],
@@ -16890,9 +16995,12 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       status: "running",
       current_step: 0,
       total_steps: Number(this._syncState.total_steps || 0),
-      // Optimistic pre-service state: a stale phase from the previous run
-      // would be localized ahead of the message, so clear it explicitly.
+      // Optimistic pre-service state: a stale phase or step from the
+      // previous run would be localized ahead of the message, so clear
+      // them explicitly.
       phase: null,
+      step_kind: null,
+      step_name: null,
       message: TOOLS_CARD_STRINGS.wifiCommands.startSync,
       sync_needed: true
     };

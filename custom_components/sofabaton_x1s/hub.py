@@ -4020,19 +4020,24 @@ class SofabatonHub:
             def _progress(**data: Any) -> None:
                 message = str(data.get("message") or "")
                 completed = int(data.get("completed_steps") or 0)
+                step_kind = data.get("step_kind")
+                step_name = data.get("step_name")
 
                 def _inner() -> None:
-                    # The planner labels its steps after the user's own data
+                    # The planner names its steps after the user's own data
                     # ("Adding command "Kitchen lights"…"), so there is no
-                    # fixed phase to report. phase=None clears the stale
+                    # fixed phase to report — phase=None clears the stale
                     # "reading_device" left by the merge in
-                    # _set_command_sync_progress; consumers then fall back to
-                    # `message` instead of narrating the read forever.
+                    # _set_command_sync_progress. step_kind/step_name are the
+                    # structured form the control panel localizes; `message`
+                    # stays the English fallback.
                     self._set_command_sync_progress(
                         device_key=normalized_device_key,
                         current_step=completed + 1,
                         total_steps=total_steps,
                         phase=None,
+                        step_kind=step_kind,
+                        step_name=step_name,
                         message=message,
                     )
 
@@ -4094,6 +4099,8 @@ class SofabatonHub:
                 current_step=total_steps - 1,
                 total_steps=total_steps,
                 phase="resyncing_remote",
+                step_kind=None,
+                step_name=None,
                 message="Resyncing physical remote",
             )
             await self.async_resync_remote()

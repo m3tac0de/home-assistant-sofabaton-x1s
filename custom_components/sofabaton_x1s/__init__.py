@@ -758,6 +758,8 @@ async def _async_build_control_panel_runtime_payload(
                 or "Working..."
             ),
             "phase": active_backup_operation.get("phase"),
+            "step_kind": active_backup_operation.get("step_kind"),
+            "step_device_id": active_backup_operation.get("step_device_id"),
             "current_device_id": active_backup_operation.get("current_device_id"),
             "current_activity_id": active_backup_operation.get("current_activity_id"),
             "current_step": active_backup_operation.get("completed_steps"),
@@ -796,6 +798,8 @@ async def _async_build_control_panel_runtime_payload(
             # have no fixed phase).
             "detail": str(sync_payload.get("message") or "Sync in progress"),
             "phase": sync_payload.get("phase"),
+            "step_kind": sync_payload.get("step_kind"),
+            "step_name": sync_payload.get("step_name"),
             "current_step": sync_payload.get("current_step"),
             "total_steps": sync_payload.get("total_steps"),
             "device_key": device_key or None,
