@@ -274,6 +274,12 @@ class _FakeHub:
     async def async_stop(self):
         self.stopped = True
 
+    async def async_update_wifi_mqtt_ingress(self):
+        return None
+
+    async def async_stop_wifi_mqtt_ingress(self):
+        return None
+
     async def async_apply_new_settings(self, **kwargs):
         self.host = kwargs.get("host", self.host)
         self.port = kwargs.get("port", self.port)
@@ -559,7 +565,11 @@ def test_async_setup_entry_reregisters_storage_resources_after_last_hub_reenable
         "config": {"persistent_cache_enabled": False},
         "frontend_bootstrap_registered": True,
         "storage_resources_registered": True,
-        "entry-1": SimpleNamespace(entry_id="entry-1", async_stop=_async_noop),
+        "entry-1": SimpleNamespace(
+            entry_id="entry-1",
+            async_stop=_async_noop,
+            async_stop_wifi_mqtt_ingress=_async_noop,
+        ),
     }
     unload_entry = SimpleNamespace(entry_id="entry-1")
     setup_entry = _FakeEntry()
@@ -671,7 +681,11 @@ def test_async_unload_entry_unregisters_frontend_resources_when_last_hub_is_remo
     hass.data["sofabaton_x1s"] = {
         "frontend_bootstrap_registered": True,
         "storage_resources_registered": True,
-        "entry-1": SimpleNamespace(entry_id="entry-1", async_stop=_async_noop),
+        "entry-1": SimpleNamespace(
+            entry_id="entry-1",
+            async_stop=_async_noop,
+            async_stop_wifi_mqtt_ingress=_async_noop,
+        ),
     }
     entry = SimpleNamespace(entry_id="entry-1")
     listener = SimpleNamespace(async_remove_hub=_async_noop)

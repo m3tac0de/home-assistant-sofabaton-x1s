@@ -9,7 +9,7 @@ documented separately in [wifi-commands.md](wifi-commands.md).
 
 ---
 
-## Common write families
+## ◇ Common write families
 
 | Family / opcode | Direction | Purpose | Ack |
 |-----------------|-----------|---------|-----|
@@ -55,7 +55,7 @@ ack for free. See `services.yaml` for the service surface.
 
 ---
 
-## Standard device-create sequence
+## ◇ Standard device-create sequence
 
 For non-WiFi devices, the observed create/update pipeline is:
 
@@ -80,7 +80,7 @@ Observed properties:
 
 ---
 
-## Standard activity-create sequence
+## ◇ Standard activity-create sequence
 
 Observed activity creation reuses the same fixed-size record body as device
 creation, but on family `0x37` instead of family `0x07`.
@@ -104,7 +104,7 @@ in [opcodes.md](opcodes.md).
 
 ---
 
-## Paging conventions for write families
+## ◇ Paging conventions for write families
 
 Observed paged write families use a shared outer wrapper:
 

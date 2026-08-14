@@ -1,7 +1,12 @@
 from __future__ import annotations
+import asyncio
 from typing import Any
 
-from homeassistant.components.remote import RemoteEntity, RemoteEntityFeature
+from homeassistant.components.remote import (
+    ATTR_DELAY_SECS,
+    RemoteEntity,
+    RemoteEntityFeature,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -17,6 +22,12 @@ from .const import (
     signal_macros,
 )
 from .hub import get_hub_display_name, get_hub_model
+
+# Home Assistant leaves ``delay_secs`` unset when the caller omits it, so the
+# integration picks its own default. We keep sending back-to-back like we always
+# have instead of adopting the core default of 0.4 s, so existing automations do
+# not suddenly get slower.
+DEFAULT_DELAY_SECS = 0.0
 
 
 async def async_setup_entry(
@@ -131,11 +142,13 @@ class SofabatonRemote(RemoteEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
+        firmware = getattr(self._hub, "hub_firmware_version", None)
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=get_hub_display_name(self._hub, self._entry),
             manufacturer="Sofabaton",
             model=get_hub_model(self._entry),
+            sw_version=str(firmware) if firmware is not None else None,
         )
 
     async def async_added_to_hass(self) -> None:
@@ -202,6 +215,13 @@ class SofabatonRemote(RemoteEntity):
             commands = command
 
         device = kwargs.get("device")
+        delay_secs = kwargs.get(ATTR_DELAY_SECS)
+        if delay_secs is None:
+            delay_secs = DEFAULT_DELAY_SECS
+        delay_secs = float(delay_secs)
 
-        for cmd in commands:
+        for index, cmd in enumerate(commands):
+            # Wait between commands only, never after the last one.
+            if index and delay_secs > 0:
+                await asyncio.sleep(delay_secs)
             await self._hub.async_send_key(cmd, device=device)

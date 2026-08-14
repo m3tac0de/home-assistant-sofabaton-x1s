@@ -7,7 +7,7 @@ in [reference-impl.md](reference-impl.md).
 
 ---
 
-## Status-ack opcode
+## ◇ Status-ack opcode
 
 The hub answers most writes with a frame on opcode `0x0103`
 (`STATUS_ACK`). The payload's first byte encodes the outcome:
@@ -46,7 +46,7 @@ activity-edit engine emissions".
 
 ---
 
-## Three-way outcome
+## ◇ Three-way outcome
 
 A client driving a multi-step sequence must distinguish:
 
@@ -70,7 +70,7 @@ declined.
 
 ---
 
-## Activity-inputs burst rejects
+## ◇ Activity-inputs burst rejects
 
 The `REQ_ACTIVITY_INPUTS` (`0x0148`) flow normally answers with a
 family-`0x47` burst of input candidate rows. A hub-side refusal of

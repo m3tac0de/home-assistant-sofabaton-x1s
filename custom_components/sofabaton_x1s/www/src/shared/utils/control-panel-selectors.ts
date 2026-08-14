@@ -206,6 +206,17 @@ export function hubConnected(hass: HassLike | null, hub: ControlPanelHubState | 
   return remoteAvailableForHub(hass, hub) || proxyClientConnected(hass, hub);
 }
 
+/** Firmware below the supported floor: write surfaces are blocked because
+ *  the hub ACKs writes and silently drops them. Backend-computed. */
+export function firmwareUnsupported(hub: ControlPanelHubState | null) {
+  return !!hub?.firmware_unsupported;
+}
+
+/** Firmware below the recommended floor (nag only, nothing is blocked). */
+export function firmwareOutdated(hub: ControlPanelHubState | null) {
+  return !!hub?.firmware_outdated || firmwareUnsupported(hub);
+}
+
 export function canRunHubActions(hass: HassLike | null, hub: ControlPanelHubState | null) {
   return remoteAvailableForHub(hass, hub);
 }
@@ -277,7 +288,11 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
   const hub = selectedHub(snapshot);
   const entryId = hub?.entry_id ?? null;
   const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : undefined;
-  if (completionNotice) {
+  const hubRuntime = hub?.runtime_state;
+  // A running operation outranks a lingering completion notice: chained
+  // flows (the Wifi Events deploy followed by the activity sync) otherwise
+  // spend the notice's TTL masking the second operation's narration.
+  if (completionNotice && hubRuntime?.kind !== "operation_running") {
     return {
       kind: "completion",
       tone: completionNotice.tone,
@@ -286,7 +301,6 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
     };
   }
 
-  const hubRuntime = hub?.runtime_state;
   if (hubRuntime?.kind === "operation_running") {
     const operation = hubRuntime.operation === "backup_restore"
       ? "backup_restore"
@@ -383,6 +397,21 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
   }
 
   const hub = selectedHub(snapshot);
+  // Checked before app-connected: the firmware block persists until the
+  // user updates the hub, so it must not be masked by a transient state.
+  if (hub && firmwareUnsupported(hub)) {
+    const title = tabId === "wifi_commands"
+      ? TOOLS_CARD_STRINGS.availability.automationUnavailable
+      : TOOLS_CARD_STRINGS.availability.backupUnavailable;
+    return {
+      kind: "blocked",
+      title,
+      message: TOOLS_CARD_STRINGS.availability.blockedByFirmware(
+        hub.firmware_version ?? "?",
+        hub.firmware_min_supported ?? "?",
+      ),
+    };
+  }
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
     const title = tabId === "wifi_commands"
       ? TOOLS_CARD_STRINGS.availability.automationUnavailable

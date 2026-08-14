@@ -910,20 +910,29 @@ class CatalogMixin:
         clear_buttons: bool = False,
         clear_favorites: bool = False,
         clear_macros: bool = False,
+        *,
+        clear_commands: bool = True,
     ) -> None:
-        """Remove cached data for a given entity."""
+        """Remove cached data for a given entity.
+
+        ``clear_commands=False`` keeps the entity's command catalog
+        (labels, record metadata, key-sort, completeness) for writes that
+        cannot change command records — keymap writes being the case in
+        point.
+        """
 
         ent_lo = ent_id & 0xFF
 
-        self.state.commands.pop(ent_lo, None)
-        # command_metadata is captured by the same REQ_COMMANDS parse that
-        # fills state.commands; clearing one without the other leaves record
-        # metadata (library_type/button_code) describing commands that no
-        # longer exist in the label map.
-        self.state.command_metadata.pop(ent_lo, None)
-        self.state.device_key_sorts.pop(ent_lo, None)
-        self._commands_complete.discard(ent_lo)
-        self._pending_command_requests.pop(ent_lo, None)
+        if clear_commands:
+            self.state.commands.pop(ent_lo, None)
+            # command_metadata is captured by the same REQ_COMMANDS parse
+            # that fills state.commands; clearing one without the other
+            # leaves record metadata (library_type/button_code) describing
+            # commands that no longer exist in the label map.
+            self.state.command_metadata.pop(ent_lo, None)
+            self.state.device_key_sorts.pop(ent_lo, None)
+            self._commands_complete.discard(ent_lo)
+            self._pending_command_requests.pop(ent_lo, None)
 
         if clear_buttons:
             self.state.buttons.pop(ent_lo, None)

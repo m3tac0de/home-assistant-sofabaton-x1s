@@ -14,7 +14,7 @@ If you are new to command payloads, read
 
 With these exporters users convert IR signals into Sofabaton hub-compatible command payloads.
 
-## Files in this directory
+## ◇ Files in this directory
 
 - [sofabaton-x.xml](sofabaton-x.xml)
   exports the raw timing-style Sofabaton IR payload used by all X-series hubs.
@@ -25,7 +25,7 @@ With these exporters users convert IR signals into Sofabaton hub-compatible comm
   is a maintainer note with current protocol validation status for the X2
   exporter.
 
-## Limitations
+## ◇ Limitations
 
 There are 2 ways that a Sofabaton hub stores IR command payloads:
 
@@ -41,7 +41,7 @@ What that means for these exporters:
 
 All known IR commands can be converted into Sofabaton compatible payloads, it is a matter of mapping protocol labels.
 
-## Installation
+## ◇ Installation
 
 - Download and install [IrScrutinizer](https://github.com/bengtmartensson/IrScrutinizer).
   Grab the installer for your platform from [this page](https://github.com/bengtmartensson/IrScrutinizer/releases).
@@ -55,7 +55,7 @@ All known IR commands can be converted into Sofabaton compatible payloads, it is
   - `Sofabaton X-series`
   - `Sofabaton X2`
 
-## What the exporters produce
+## ◇ What the exporters produce
 
 ### `Sofabaton X-series`
 
@@ -87,7 +87,7 @@ This format is intended for:
 
 - X2 hubs
 
-## Example workflow
+## ◇ Example workflow
 
 This is the practical path that leads to a usable command payload in Home Assistant.
 

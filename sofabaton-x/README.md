@@ -16,7 +16,7 @@ the integration is its reference consumer.
 > Sofabaton. The protocol was reverse-engineered from network captures;
 > behavior may break with future hub firmware.
 
-## What it does
+## ◇ What it does
 
 - **Proxy** a physical hub: the library advertises itself via mDNS exactly
   like a real hub, the official app connects to it, and every frame is
@@ -41,7 +41,7 @@ WiFi/IP devices define (e.g. a Roku-style ECP listener). The library carries
 the protocol artifacts for those features so applications can build them on
 top — the Home Assistant integration does exactly that.
 
-## Install
+## ◇ Install
 
 ```
 pip install sofabaton-x
@@ -51,7 +51,7 @@ Python 3.11+. The only dependency is
 [python-zeroconf](https://pypi.org/project/zeroconf/) (mDNS advertising and
 hub discovery).
 
-## Quickstart
+## ◇ Quickstart
 
 Find a hub, then proxy it. Blocking work runs in the event loop's
 executor and callbacks (plain functions or coroutines) are delivered on
@@ -170,7 +170,7 @@ returns on its own. Both waiters are plain state predicates, so a
 long-running application can simply re-await
 `wait_until_controllable()` whenever a send comes back `False`.
 
-## Live editing
+## ◇ Live editing
 
 Editing is bundle-based: capture a backup as the baseline, modify a copy,
 and sync. The engine diffs the two bundles into an ordered plan of
@@ -222,6 +222,8 @@ x> activities
 x> commands 1                        # list (command_id, label) for device 1
 x> send 1 5                          # numeric ids, exactly like the Python API
 x> send 101 POWER_ON                 # the CLI also resolves button names to codes
+x> testir 01 20 00 10 01 00 94 ac .. # fire a raw IR payload once (nothing saved)
+x> addir 1 "Power Toggle" 01 20 ..   # save that payload as a new command
 ```
 
 The last form is a CLI convenience: `send` (alias `press`) accepts either
@@ -230,14 +232,22 @@ The Python API itself is numeric-only — `send(entity_id, command_id)` —
 with the `ButtonName` constants importable from the package root when
 you want named button codes.
 
+`testir` and `addir` work with raw IR payload hex (the bytes a command
+replays, as shown in a backup's `data_hex` fields): `testir` plays a
+payload once without saving, `addir` persists it as a new command on an
+existing IR device and prints the assigned command id. In the Python API
+these are `play_ir_blob(blob)` and
+`persist_ir_blob(device_id=..., command_name=..., blob=...)`.
+
 Runnable examples — discovery, watching a live session, taking control
 of a hub, reading per-entity detail (commands/macros/favorites),
-schema-versioned backup/restore, provisioning a WiFi-IP device from
+schema-versioned backup/restore, adding an IR command with a custom hex
+payload to an existing device, provisioning a WiFi-IP device from
 scratch via restore, and building an HTTP callback listener on top of the
 library — live in
 [`sofabaton-x/examples/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x/examples).
 
-## Protocol & networking docs
+## ◇ Protocol & networking docs
 
 This library is a reverse-engineered implementation; the wire protocol and
 network topology are documented in the repository:
@@ -254,7 +264,7 @@ network topology are documented in the repository:
   [`docs/networking.md`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md):
   the full port map, the two proxy faces, firewall rules and VLAN caveats.
 
-## Stability
+## ◇ Stability
 
 Names importable from the package root — `from sofabaton import ...`,
 the set listed in `sofabaton.__all__` — are the supported API and follow
@@ -268,7 +278,7 @@ stdlib exceptions (`ValueError` for malformed/unclassifiable input,
 `RuntimeError` / `TimeoutError` for transport and ack failures); there
 are no custom exception types. Until 1.0, pin a minor version.
 
-## Issues & release notes
+## ◇ Issues & release notes
 
 Bugs and feature requests go to the shared
 [issue tracker](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues).
@@ -280,6 +290,6 @@ Library versions are tagged `sofabaton-x-vX.Y.Z`; release notes live on
 the
 [GitHub releases page](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/releases).
 
-## License
+## ◇ License
 
 MIT — see [LICENSE](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/LICENSE).

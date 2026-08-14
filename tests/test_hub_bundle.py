@@ -209,6 +209,74 @@ def test_backup_hub_bundle_structural_propagates_include_blobs(monkeypatch) -> N
     assert seen == [False, False]
 
 
+def _backup_device_fetch_harness(monkeypatch, proxy: X1Proxy, dev_lo: int) -> list[str]:
+    """Neutralise backup_device's wire fetches, recording _fetch_and_wait
+    names. clear_entity_cache stays REAL so command-cache retention is
+    observable."""
+
+    meta = {"name": "Wifi Device", "brand": "sbx-test"}
+    proxy.state.devices[dev_lo] = dict(meta)
+
+    def _snapshot(*, timeout: float):
+        return {dev_lo: dict(meta)}
+
+    fetched: list[str] = []
+
+    def _fetch_and_wait(name, _trigger, _predicate, *, timeout: float = 10.0):
+        fetched.append(name)
+
+    monkeypatch.setattr(proxy, "_refresh_devices_snapshot", _snapshot)
+    monkeypatch.setattr(proxy, "_fetch_and_wait", _fetch_and_wait)
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda *_a, **_k: None)
+    monkeypatch.setattr(proxy, "fetch_device_key_sort", lambda *_a, **_k: None)
+    monkeypatch.setattr(proxy, "fetch_idle_behavior", lambda *_a, **_k: None)
+    return fetched
+
+
+def test_backup_device_reuse_commands_keeps_verified_table(monkeypatch) -> None:
+    """``reuse_commands=True`` with a complete command table skips the
+    commands refetch and keeps the table through the structural clear — the
+    wifi deploy epilogue reuses its readback-verified fetch this way."""
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    dev_lo = 0x09
+    fetched = _backup_device_fetch_harness(monkeypatch, proxy, dev_lo)
+
+    proxy.state.commands[dev_lo] = {1: "Lights On"}
+    proxy._commands_complete.add(dev_lo)
+
+    proxy.backup_device(dev_lo, include_blobs=False, reuse_commands=True)
+
+    assert f"commands:{dev_lo}" not in fetched
+    assert f"buttons:{dev_lo}" in fetched
+    assert proxy.state.commands[dev_lo] == {1: "Lights On"}
+    assert dev_lo in proxy._commands_complete
+    assert dev_lo in proxy.state.detail_fetched_at["device"]
+
+
+def test_backup_device_reuse_commands_requires_complete_table(monkeypatch) -> None:
+    """Without a complete table, ``reuse_commands=True`` is ignored: the
+    unverified create-time echo is dropped and a real fetch is issued."""
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    dev_lo = 0x09
+    fetched = _backup_device_fetch_harness(monkeypatch, proxy, dev_lo)
+
+    # Create-time seed: labels present but never readback-verified.
+    proxy.state.commands[dev_lo] = {1: "Lights On"}
+
+    proxy.backup_device(dev_lo, include_blobs=False, reuse_commands=True)
+
+    assert f"commands:{dev_lo}" in fetched
+    assert dev_lo not in proxy.state.commands
+
+
 def test_backup_hub_bundle_stamps_payload_profile(monkeypatch) -> None:
     """Bundles declare full_backup vs structural via ``payload_profile``."""
 

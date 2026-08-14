@@ -785,6 +785,39 @@ test("adding a favorite appends only the new device's power steps", () => {
   assert.deepEqual([...new Set(on.steps!.filter((s) => s.command_id === 0xC6).map((s) => s.device_id))], [1, 2]);
 });
 
+test("chain steps to another activity stay in the macro but never become members", () => {
+  // Vendor-app construct (#263): a POWER_OFF that hands over to another
+  // activity carries that activity's id in a power-ref step.
+  const withChain = realPowerActivity();
+  withChain.activities[0].macros![1].steps!.push(
+    { device_id: 102, command_id: 198, button_code: 0, duration: 0, delay: 255 },
+  );
+  const next = reconcileActivityPowerMacros(withChain, 101);
+  const act = next.activities[0];
+  assert.deepEqual(act.referenced_source_device_ids, [3, 9]); // 102 not promoted
+  const off = act.macros!.find((m) => m.button_id === 199)!;
+  assert.ok(off.steps!.some((s) => s.device_id === 102 && s.command_id === 198)); // chain row preserved
+  const on = act.macros!.find((m) => m.button_id === 198)!;
+  assert.ok(!on.steps!.some((s) => s.device_id === 102)); // no power rows materialized for it
+});
+
+test("a power macro created from scratch gets the canonical POWER_* name (#263)", () => {
+  // Fresh integration-created activities carry no 198/199 macros; the row
+  // must be created with the protocol name, never the UI fallback label.
+  const next = addActivityMacroCommandStep(powerMacroBundle(), 101, 198, 1, 10, 0);
+  const on = next.activities[0].macros!.find((m) => m.button_id === 198)!;
+  assert.equal(on.name, "POWER_ON");
+  const off = next.activities[0].macros!.find((m) => m.button_id === 199);
+  if (off) assert.equal(off.name, "POWER_OFF");
+});
+
+test("reconcile repairs a corrupted power-macro name (#263)", () => {
+  const corrupt = realPowerActivity();
+  corrupt.activities[0].macros![0].name = "Macro 198";
+  const next = reconcileActivityPowerMacros(corrupt, 101);
+  assert.equal(next.activities[0].macros!.find((m) => m.button_id === 198)!.name, "POWER_ON");
+});
+
 // Activity referencing device 1 (with HDMI 1 already a configured input) and
 // device 2 (no inputs yet), reconciled to flat power steps.
 function powerEditorBundle() {
@@ -863,32 +896,38 @@ function deviceMacroBundle() {
 }
 
 test("deviceMacroStepItems folds the trailing delay onto its command as wait", () => {
-  const base = deviceMacroBundle();
-  // One command, no delay yet → a single command item with wait 0.
+  // Two commands, no delay yet → command items with wait 0. (Two because
+  // the LAST group's wait is normalized to 0, so a single-command macro
+  // can never hold a wait.)
+  const base = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0);
   assert.deepEqual(
     deviceMacroStepItems(base, 1, 198).map((i) => [i.kind, i.label, i.hold, i.wait]),
-    [["command", "Power", 0, 0]],
+    [["command", "Power", 0, 0], ["command", "Vol Up", 0, 0]],
   );
   // Setting the wait folds onto that same command (no standalone delay row).
   const withWait = setDeviceMacroStepWait(base, 1, 198, 0, 4);
   assert.deepEqual(
     deviceMacroStepItems(withWait, 1, 198).map((i) => [i.kind, i.wait]),
-    [["command", 4]],
+    [["command", 4], ["command", 0]],
   );
 });
 
 test("setDeviceMacroStepWait inserts, updates in place, and no-ops at zero", () => {
-  const base = deviceMacroBundle(); // one command, no trailing delay
+  const base = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0); // commands [10, 11]
   const steps = (b: BackupBundlePayload) =>
     b.devices[0].macros!.find((m) => m.button_id === 198)!.steps!;
   // Zero wait on a group with no delay materializes nothing.
-  assert.equal(steps(setDeviceMacroStepWait(base, 1, 198, 0, 0)).length, 1);
+  assert.equal(steps(setDeviceMacroStepWait(base, 1, 198, 0, 0)).length, 2);
   // Non-zero inserts a delay row right after the command.
   const ins = setDeviceMacroStepWait(base, 1, 198, 0, 4);
-  assert.deepEqual(steps(ins).map((s) => [s.command_id, s.delay]), [[10, 0], [255, 4]]);
+  assert.deepEqual(steps(ins).map((s) => [s.command_id, s.delay]), [[10, 0], [255, 4], [11, 0xFF]]);
   // Re-setting patches the existing delay in place (kept even at 0).
   const upd = setDeviceMacroStepWait(ins, 1, 198, 0, 0);
-  assert.deepEqual(steps(upd).map((s) => [s.command_id, s.delay]), [[10, 0], [255, 0]]);
+  assert.deepEqual(steps(upd).map((s) => [s.command_id, s.delay]), [[10, 0], [255, 0], [11, 0xFF]]);
+  // A wait aimed at the LAST group is normalized straight back to 0:
+  // trailing dead time never persists.
+  const tail = setDeviceMacroStepWait(base, 1, 198, 1, 6);
+  assert.deepEqual(steps(tail).map((s) => [s.command_id, s.delay]), [[10, 0], [11, 0xFF], [255, 0]]);
 });
 
 test("addDeviceMacroCommandStep appends with a hold (delay sentinel 0xFF), and creates the macro if absent", () => {
@@ -919,16 +958,29 @@ test("removeDeviceMacroStep and reorderDeviceMacroSteps", () => {
 });
 
 test("a command's attached wait follows it through reorder and remove", () => {
+  let three = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0);
+  three = addDeviceMacroCommandStep(three, 1, 198, 11, 0); // commands [10, 11, 11]
+  three = setDeviceMacroStepWait(three, 1, 198, 0, 6); // command 10 waits 6
+  const steps = (b: typeof three) => b.devices[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  // Reordering moves the wait with command 10 while it stays mid-sequence.
+  const reordered = reorderDeviceMacroSteps(three, 1, 198, [1, 0, 2]);
+  assert.deepEqual(deviceMacroStepItems(reordered, 1, 198).map((i) => [i.commandId, i.wait]), [[11, 0], [10, 6], [11, 0]]);
+  assert.deepEqual(steps(reordered).map((s) => s.command_id), [11, 10, 255, 11]);
+  // Removing command 10 (group index 1) takes its trailing wait too.
+  const removed = removeDeviceMacroStep(reordered, 1, 198, 1);
+  assert.deepEqual(steps(removed).map((s) => s.command_id), [11, 11]);
+});
+
+test("a wait that lands on the final step is normalized to 0", () => {
   let two = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0); // commands [10, 11]
   two = setDeviceMacroStepWait(two, 1, 198, 0, 6); // command 10 waits 6
   const steps = (b: typeof two) => b.devices[0].macros!.find((m) => m.button_id === 198)!.steps!;
-  // Reordering moves the wait with command 10 (now last).
+  // Reordering command 10 to the end zeroes its now-trailing wait.
   const reordered = reorderDeviceMacroSteps(two, 1, 198, [1, 0]);
-  assert.deepEqual(deviceMacroStepItems(reordered, 1, 198).map((i) => [i.commandId, i.wait]), [[11, 0], [10, 6]]);
-  assert.deepEqual(steps(reordered).map((s) => s.command_id), [11, 10, 255]);
-  // Removing command 10 (group index 1) takes its trailing wait too.
-  const removed = removeDeviceMacroStep(reordered, 1, 198, 1);
-  assert.deepEqual(steps(removed).map((s) => s.command_id), [11]);
+  assert.deepEqual(deviceMacroStepItems(reordered, 1, 198).map((i) => [i.commandId, i.wait]), [[11, 0], [10, 0]]);
+  // Removing the final step zeroes the wait of the step that becomes last.
+  const removed = removeDeviceMacroStep(two, 1, 198, 1);
+  assert.deepEqual(steps(removed).map((s) => [s.command_id, s.delay]), [[10, 0], [255, 0]]);
 });
 
 function userMacroBundle() {
@@ -960,8 +1012,8 @@ test("addActivityMacroCommandStep synthesizes button_code and pulls the device i
 
 test("activityMacroStepItems labels device · command and folds the wait onto it", () => {
   let b = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
-  b = setActivityMacroStepWait(b, 101, 1, 0, 30); // wait after TV · Power
   b = addActivityMacroCommandStep(b, 101, 1, 2, 20, 0);
+  b = setActivityMacroStepWait(b, 101, 1, 0, 30); // wait after TV · Power
   assert.deepEqual(activityMacroStepItems(b, 101, 1).map((i) => [i.kind, i.label, i.wait]), [
     ["command", "TV · Power", 30], ["command", "AVR · Power", 0],
   ]);
@@ -969,11 +1021,18 @@ test("activityMacroStepItems labels device · command and folds the wait onto it
 
 test("reorderActivityMacroSteps carries a command's attached wait", () => {
   let b = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
-  b = setActivityMacroStepWait(b, 101, 1, 0, 12); // TV · Power waits 12
   b = addActivityMacroCommandStep(b, 101, 1, 2, 20, 0);
-  const reordered = reorderActivityMacroSteps(b, 101, 1, [1, 0]);
+  b = addActivityMacroCommandStep(b, 101, 1, 1, 11, 0);
+  b = setActivityMacroStepWait(b, 101, 1, 0, 12); // TV · Power waits 12
+  const reordered = reorderActivityMacroSteps(b, 101, 1, [1, 0, 2]);
   assert.deepEqual(activityMacroStepItems(reordered, 101, 1).map((i) => [i.label, i.wait]), [
-    ["AVR · Power", 0], ["TV · Power", 12],
+    ["AVR · Power", 0], ["TV · Power", 12], ["TV · Vol", 0],
+  ]);
+  // Landing the waited command last zeroes its wait — the final step's
+  // delay is dead time and never survives an edit.
+  const toEnd = reorderActivityMacroSteps(b, 101, 1, [1, 2, 0]);
+  assert.deepEqual(activityMacroStepItems(toEnd, 101, 1).map((i) => [i.label, i.wait]), [
+    ["AVR · Power", 0], ["TV · Vol", 0], ["TV · Power", 0],
   ]);
 });
 

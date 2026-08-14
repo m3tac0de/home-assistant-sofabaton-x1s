@@ -183,6 +183,52 @@ def test_activity_button_rows_collect_referenced_devices() -> None:
     assert referenced == {11, 12}
 
 
+def test_activity_button_rows_exclude_activity_range_targets() -> None:
+    # A hard button bound to a quick-access macro is stored on the hub as
+    # (device_id = the activity's OWN id, command_id = macro key). Issue
+    # #263: exporting that id into referenced_source_device_ids made the
+    # baseline fail its own validation on every subsequent sync.
+    button_details = {
+        0x9A: {"device_id": 103, "command_id": 10},  # macro binding (self id)
+        0x9B: {"device_id": 11, "command_id": 3, "long_press_device_id": 105, "long_press_command_id": 2},
+    }
+    rows, referenced = bx.build_activity_button_rows(
+        button_codes=[0x9A, 0x9B], button_details=button_details
+    )
+    # The binding rows themselves are preserved verbatim...
+    assert [row["device_id"] for row in rows] == [103, 11]
+    assert rows[1]["long_press_device_id"] == 105
+    # ...but activity-range targets never count as source devices.
+    assert referenced == {11}
+
+
+def test_activity_macro_rows_exclude_cross_activity_chain_refs() -> None:
+    macro = _Macro(
+        key_id=0xC7,
+        label="POWER_OFF",
+        key_sequence=[
+            _Step(device_id=11, key_id=0xC7, fid=0, duration=0, delay=0),
+            # Chain step: power-off hands over to another activity.
+            _Step(device_id=102, key_id=0xC6, fid=0, duration=0, delay=0),
+        ],
+    )
+    rows, referenced = bx.build_activity_macro_rows([macro])
+    assert referenced == {11}
+    # The chain step itself survives in the exported rows.
+    assert rows[0]["steps"][1]["device_id"] == 102
+
+
+def test_activity_favorite_rows_exclude_activity_range_targets() -> None:
+    rows, referenced = bx.build_activity_favorite_rows(
+        [
+            {"button_id": 1, "device_id": 11, "command_id": 2},
+            {"button_id": 2, "device_id": 101, "command_id": 198},
+        ]
+    )
+    assert len(rows) == 2
+    assert referenced == {11}
+
+
 def test_activity_macro_rows_preserve_delay_sentinels_and_refs() -> None:
     macro = _Macro(
         key_id=0xC6,

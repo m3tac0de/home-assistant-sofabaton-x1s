@@ -23,7 +23,7 @@ In practice:
 
 ---
 
-## Part 1 — mDNS discovery path
+## ◇ Part 1 — mDNS discovery path
 
 ### 1.1 Hub mDNS advertisement
 
@@ -120,7 +120,7 @@ Observed meaning:
 
 ---
 
-## Part 2 — UDP broadcast discovery path
+## ◇ Part 2 — UDP broadcast discovery path
 
 The official app can also discover hubs through a UDP broadcast exchange. This is the
 same hub-discovery concept as above, but using broadcast instead of mDNS.
@@ -321,7 +321,7 @@ or framing error in discovery or banner handling.
 
 ---
 
-## Session lifecycle summary
+## ◇ Session lifecycle summary
 
 ```
 CLIENT                               HUB
@@ -372,7 +372,7 @@ PROXY                                APP
 
 ---
 
-## Port summary
+## ◇ Port summary
 
 | Port  | Protocol | Direction      | Purpose |
 |-------|----------|----------------|---------|

@@ -7,7 +7,7 @@ used both as the user-facing "Restore factory settings" button on the
 remote-app side and as the implicit clear-and-restore preamble before
 a backup is rewritten onto the hub.
 
-## Frame layout
+## ◇ Frame layout
 
 ```
 A5 5A 00 1D <checksum>
@@ -26,7 +26,7 @@ device id selector, no scope selector: the operation always erases
 activities, button bindings, macros, favourites, inputs). It is the
 single-shot equivalent of deleting every device individually.
 
-## Variant coverage
+## ◇ Variant coverage
 
 | Hub variant | Opcode | Frame shape | Notes |
 |-------------|--------|-------------|-------|
@@ -37,7 +37,7 @@ single-shot equivalent of deleting every device individually.
 No per-variant divergence has been observed. A single builder is
 sufficient.
 
-## Live validation (2026-07-12, backup/restore bench chunk 6)
+## ◇ Live validation (2026-07-12, backup/restore bench chunk 6)
 
 `erase_configuration` ran live on both an X1 and an X1S (first runs
 through our code): ack in **19.7 s (X1)** and **23.0 s (X1S)**, both
@@ -47,7 +47,7 @@ The 2-minute suggested timeout is comfortably generous; a follow-up
 replace-mode `restore_hub_bundle` rebuilt both hubs fully with every
 entity content-equal to the pre-erase capture.
 
-## Response and timing
+## ◇ Response and timing
 
 Observed behaviour after the frame is sent:
 
@@ -80,7 +80,7 @@ Observed behaviour after the frame is sent:
   - A disconnect arriving *after* the ack is the expected post-erase
     state and the client is expected to reconnect.
 
-## Pre-flight and post-flight
+## ◇ Pre-flight and post-flight
 
 The erase opcode has no documented pre-flight requirement. It can be
 sent without first quiescing in-flight catalog requests or pending
@@ -101,7 +101,7 @@ ready to accept the next request. A short settle delay (1-2 s) before
 issuing the first post-erase request avoids spurious "no answer"
 classifications.
 
-## Sequence used by the bundle-restore "replace" mode
+## ◇ Sequence used by the bundle-restore "replace" mode
 
 When a bundle that contains activities is restored, the wire
 sequence the integration must issue is:
@@ -119,7 +119,7 @@ The pure "device append" mode -- a bundle whose `activities` list is
 empty -- does **not** issue `0x001D`; existing devices stay on the
 hub and the bundle's devices are added alongside them.
 
-## Implementation note for the integration
+## ◇ Implementation note for the integration
 
 `SofabatonHub.async_erase_configuration()` is the single entry point.
 It should:

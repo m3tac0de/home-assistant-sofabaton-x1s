@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from time import monotonic
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
@@ -26,9 +28,13 @@ from .const import (
     CONF_MDNS_VERSION,
     CONF_PROXY_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
+    CONF_BANNER_MAC,
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
+    HUB_VERSION_X2,
     HVER_BY_HUB_VERSION,
+    MIN_RECOMMENDED_FIRMWARE,
+    firmware_is_outdated,
     classify_hub_version,
     format_hub_entry_title,
     signal_activity,
@@ -83,8 +89,12 @@ from .command_config import (
     DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
     is_wifi_events_device_key,
+    map_wifi_mqtt_key,
     normalize_command_name,
     normalize_power_command_id,
+    normalize_wifi_transport,
+    WIFI_TRANSPORT_HTTP,
+    WIFI_TRANSPORT_MQTT,
     wifi_device_requires_listener,
 )
 
@@ -113,6 +123,30 @@ def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
     device_key, command_hash = suffix.split("-", 1)
     device_key = "".join(ch for ch in str(device_key).lower() if ch.isalnum())
     return (device_key or DEFAULT_WIFI_DEVICE_KEY), command_hash.strip()
+
+
+def real_hub_mac(value: Any) -> str | None:
+    """Normalize a hub MAC to uppercase bare hex, rejecting synthetic ones.
+
+    Manually-added hubs get a stable MAC-LIKE identity from
+    ``config_flow.generate_static_mac`` (MD5 of ``host:port`` with the
+    locally-administered bit forced on). That value is fine as an entry
+    id but is NOT the hub's MAC, and the MQTT press topic is the hub's
+    real MAC — subscribing on the synthetic one connects cleanly and
+    then never receives anything. Production hub MACs are OUI-assigned
+    (locally-administered bit clear), so that bit separates the two.
+    Returns ``None`` for missing, malformed, multicast, or
+    locally-administered values.
+    """
+
+    raw = str(value or "").strip()
+    normalized = "".join(ch for ch in raw if ch.lower() in "0123456789abcdef").upper()
+    if len(normalized) != 12:
+        return None
+    first_byte = int(normalized[:2], 16)
+    if first_byte & 0x03:
+        return None
+    return normalized
 
 
 def _is_network_callback_device_class(device_class: Any) -> bool:
@@ -211,6 +245,9 @@ class SofabatonHub:
         self.client_connected: bool = False
         self.hub_connected: bool = False
         self.banner_model: str | None = None
+        # The hub's self-reported MAC from the connect banner — ground
+        # truth for the MQTT press topic (see _wifi_mqtt_mac).
+        self.banner_mac: str | None = None
         self.hub_firmware_version: int | None = None
         self.production_batch: str | None = None
         self.activities_ready: bool = False
@@ -238,6 +275,11 @@ class SofabatonHub:
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
         self._app_activations: list[dict[str, Any]] = []
         self._last_ip_command: dict[str, Any] | None = None
+        # MQTT press ingress: one subscription on
+        # <MAC>/up, established only while a record is deployed over MQTT.
+        self._mqtt_press_unsub: Any = None
+        self._mqtt_press_topic: str | None = None
+        self._last_wifi_mqtt_press_at: float | None = None
         self._last_hub_event: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
@@ -270,11 +312,26 @@ class SofabatonHub:
         next_batch = str(info.get("production_batch") or "").strip() or None
         firmware_value = info.get("firmware_version")
         next_firmware = int(firmware_value) if isinstance(firmware_value, (int, float)) else None
+        # Self-reported MAC (banner payload[0:6]). Deliberately NOT run
+        # through real_hub_mac(): real Sofabaton MACs can carry the
+        # locally-administered / multicast bits (X1 and X1S captures),
+        # and the banner cannot contain the manual-add synthetic value.
+        raw_mac = str(info.get("mac") or "")
+        normalized_mac = "".join(
+            ch for ch in raw_mac if ch.lower() in "0123456789abcdef"
+        ).upper()
+        next_banner_mac = (
+            normalized_mac if len(normalized_mac) == 12 and set(normalized_mac) != {"0"} else None
+        )
+        # A missing banner never clears a previously learned MAC.
+        if next_banner_mac is None:
+            next_banner_mac = self.banner_mac
 
         changed = (
             self.banner_model != next_model
             or self.production_batch != next_batch
             or self.hub_firmware_version != next_firmware
+            or self.banner_mac != next_banner_mac
         )
         if not changed:
             return False
@@ -282,6 +339,7 @@ class SofabatonHub:
         self.banner_model = next_model
         self.production_batch = next_batch
         self.hub_firmware_version = next_firmware
+        self.banner_mac = next_banner_mac
         return True
 
     def _build_authoritative_mdns_txt(
@@ -309,20 +367,7 @@ class SofabatonHub:
         if device_registry is None:
             return
 
-        config_entries = getattr(self.hass, "config_entries", None)
-        entry = (
-            config_entries.async_get_entry(self.entry_id)
-            if config_entries is not None and hasattr(config_entries, "async_get_entry")
-            else None
-        )
-        hub_mac = str(self.mac or (entry.data.get(CONF_MAC) if entry is not None else "") or "").strip()
-        if not hub_mac or not hasattr(device_registry, "async_get_device") or not hasattr(device_registry, "async_update_device"):
-            return
-
-        device = device_registry.async_get_device(
-            identifiers={(DOMAIN, hub_mac)},
-            connections=set(),
-        )
+        device = self._async_hub_device(device_registry)
         if device is None:
             return
 
@@ -334,6 +379,74 @@ class SofabatonHub:
             return
 
         device_registry.async_update_device(device.id, name=normalized_name)
+
+    def _async_hub_device(self, device_registry: "dr.DeviceRegistry"):
+        """Look up this hub's device-registry entry, or None if not found."""
+
+        config_entries = getattr(self.hass, "config_entries", None)
+        entry = (
+            config_entries.async_get_entry(self.entry_id)
+            if config_entries is not None and hasattr(config_entries, "async_get_entry")
+            else None
+        )
+        hub_mac = str(
+            self.mac or (entry.data.get(CONF_MAC) if entry is not None else "") or ""
+        ).strip()
+        if (
+            not hub_mac
+            or not hasattr(device_registry, "async_get_device")
+            or not hasattr(device_registry, "async_update_device")
+        ):
+            return None
+        return device_registry.async_get_device(
+            identifiers={(DOMAIN, hub_mac)},
+            connections=set(),
+        )
+
+    async def _async_update_firmware_state(self) -> None:
+        """Publish the hub firmware version and raise/clear the outdated-firmware repair.
+
+        Several tracker reports (integration issues #270, #271 and #272)
+        traced back to bugs already fixed in newer hub firmware, so we
+        surface the installed version on the hub's device page and prompt
+        the user through Home Assistant's Repairs panel when it falls below
+        the minimum we recommend. The prompt is informational: the hub
+        updates over Bluetooth from the Sofabaton app, not from Home
+        Assistant, so there is nothing for us to "fix" automatically.
+        """
+
+        installed = self.hub_firmware_version
+        hub_version = self.version
+
+        if installed is not None:
+            device_registry = dr.async_get(self.hass)
+            if device_registry is not None:
+                device = self._async_hub_device(device_registry)
+                if device is not None and str(
+                    getattr(device, "sw_version", "") or ""
+                ) != str(installed):
+                    device_registry.async_update_device(
+                        device.id, sw_version=str(installed)
+                    )
+
+        issue_id = f"outdated_firmware_{self.entry_id}"
+        if firmware_is_outdated(hub_version, installed):
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="outdated_firmware",
+                translation_placeholders={
+                    "name": str(self.name or hub_version or "hub"),
+                    "model": str(hub_version or ""),
+                    "installed": str(installed),
+                    "recommended": str(MIN_RECOMMENDED_FIRMWARE.get(hub_version, "")),
+                },
+            )
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
     async def _async_sync_authoritative_identity(
         self,
@@ -347,6 +460,12 @@ class SofabatonHub:
         next_version = self.banner_model
         next_firmware = self.hub_firmware_version
         if not next_name or not next_version or next_firmware is None:
+            if banner_changed:
+                # The banner MAC may have just arrived even when the rest
+                # of the identity is incomplete; the press subscription
+                # depends on it.
+                await self.async_update_wifi_mqtt_ingress()
+            await self._async_update_firmware_state()
             return banner_changed
 
         next_txt = self._build_authoritative_mdns_txt(
@@ -375,6 +494,9 @@ class SofabatonHub:
                 hub_version=self.version,
             )
         )
+        # A manually-added hub that mDNS just identified gains its REAL
+        # MAC here; re-point (or first-establish) the press subscription.
+        await self.async_update_wifi_mqtt_ingress()
 
         config_entries = getattr(self.hass, "config_entries", None)
         entry = (
@@ -398,6 +520,12 @@ class SofabatonHub:
             if options.get(CONF_MDNS_VERSION) != next_version:
                 options[CONF_MDNS_VERSION] = next_version
                 changed = True
+            if self.banner_mac and data.get(CONF_BANNER_MAC) != self.banner_mac:
+                # Persist the self-reported MAC so MQTT ingress can
+                # subscribe right at setup after a restart, before the
+                # hub's first TCP connect delivers a fresh banner.
+                data[CONF_BANNER_MAC] = self.banner_mac
+                changed = True
             expected_title = format_hub_entry_title(
                 next_version,
                 data.get("host"),
@@ -414,6 +542,8 @@ class SofabatonHub:
 
         if previous_name != next_name:
             await self._async_update_device_registry_name(next_name)
+
+        await self._async_update_firmware_state()
 
         return banner_changed or identity_changed
 
@@ -2132,6 +2262,29 @@ class SofabatonHub:
             ),
         )
 
+    async def async_create_wifi_mqtt_device(
+        self,
+        device_name: str = "Home Assistant",
+        commands: list[Any] | None = None,
+        brand_name: str = "m3tac0de",
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
+        input_command_ids: list[int] | None = None,
+    ) -> dict[str, Any] | None:
+        """Create a wifi_mqtt (X2 virtual MQTT) device on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.create_wifi_mqtt_device,
+                device_name=device_name,
+                commands=commands,
+                brand_name=brand_name,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
+                input_command_ids=input_command_ids,
+            ),
+        )
+
     async def async_add_device_to_activity(
         self,
         activity_id: int,
@@ -2951,6 +3104,7 @@ class SofabatonHub:
             "path": path,
             "body": body.decode("utf-8", errors="ignore"),
             "headers": headers,
+            "transport": "http",
         }
         self._log.info(
             "[WIFI_HTTP] mapped listener request source_ip=%s device_id=%s device_name=%s command=%s press_type=%s path=%s",
@@ -2961,6 +3115,32 @@ class SofabatonHub:
             press_type,
             path,
         )
+        await self._async_dispatch_wifi_press(
+            record=record,
+            resolved_slot=resolved_slot,
+            command_index=command_index,
+            device_id=device_id,
+            command_label=command_label,
+            press_type=press_type,
+        )
+
+    async def _async_dispatch_wifi_press(
+        self,
+        *,
+        record: dict[str, Any],
+        resolved_slot: dict[str, Any] | None,
+        command_index: int | None,
+        device_id: int,
+        command_label: str,
+        press_type: str,
+    ) -> None:
+        """Shared delivery tail for wifi presses.
+
+        HTTP callbacks and MQTT publishes converge here: sensor record,
+        dispatcher signal, and
+        the slot-action runner are transport-agnostic.
+        """
+
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
         if resolved_slot is not None and command_index is not None:
@@ -3363,6 +3543,251 @@ class SofabatonHub:
         devices = await store.async_list_hub_devices(self.entry_id)
         return any(wifi_device_requires_listener(device) for device in devices)
 
+    def _select_wifi_command_transport(self, command_payload: dict[str, Any]) -> str:
+        """Pick the transport for the first deployment.
+
+        A record that has already deployed keeps its transport forever
+        (changing it is an explicit re-deploy, never a side effect of a
+        re-sync). Fresh deploys honor the create-flow choice only when
+        the hub is an X2 and the MQTT integration is loaded; everything
+        else is HTTP.
+        """
+
+        already_deployed = isinstance(
+            command_payload.get("deployed_device_id"), int
+        ) or bool(str(command_payload.get("deployed_commands_hash") or "").strip())
+        if already_deployed:
+            # Absent ⇒ HTTP: every record that predates the MQTT work
+            # deployed over HTTP, and a replace must never migrate it.
+            return normalize_wifi_transport(command_payload.get("deployed_transport"))
+        if not self.wifi_mqtt_available():
+            return WIFI_TRANSPORT_HTTP
+        return normalize_wifi_transport(command_payload.get("requested_transport"))
+
+    # ------------------------------------------------------------------
+    # MQTT press ingress
+    # ------------------------------------------------------------------
+
+    def _wifi_mqtt_mac(self) -> str | None:
+        """The MAC to build the press topic from, in preference order.
+
+        1. The hub's SELF-REPORTED MAC from the connect banner
+           (payload[0:6], bench-verified on X1/X1S/X2) — ground truth,
+           deliberately exempt from the OUI heuristic because real
+           Sofabaton MACs can carry the locally-administered or even
+           multicast bit (X1/X1S captures).
+        2. The banner MAC persisted in entry data by a previous session,
+           so a restart subscribes before the first TCP connect.
+        3. The discovery MAC through :func:`real_hub_mac`, whose only
+           remaining job is rejecting the manual-add synthetic identity.
+        """
+
+        if self.banner_mac:
+            return self.banner_mac
+        config_entries = getattr(self.hass, "config_entries", None)
+        entry = (
+            config_entries.async_get_entry(self.entry_id)
+            if config_entries is not None and hasattr(config_entries, "async_get_entry")
+            else None
+        )
+        stored = str(entry.data.get(CONF_BANNER_MAC) or "") if entry is not None else ""
+        normalized = "".join(
+            ch for ch in stored if ch.lower() in "0123456789abcdef"
+        ).upper()
+        if len(normalized) == 12 and set(normalized) != {"0"}:
+            self.banner_mac = normalized
+            return normalized
+        return real_hub_mac(self.mac)
+
+    def wifi_mqtt_available(self) -> bool:
+        """Whether MQTT transport may be offered for this hub.
+
+        X2, MQTT integration loaded, and the hub's MAC known: the press
+        topic is the hub's own MAC, so without it the transport cannot
+        work. The banner self-report covers manually-added hubs from
+        their first TCP connect onward (see :meth:`_wifi_mqtt_mac`).
+        """
+
+        return (
+            self.version == HUB_VERSION_X2
+            and "mqtt" in self.hass.config.components
+            and self._wifi_mqtt_mac() is not None
+        )
+
+    def _wifi_mqtt_press_topic(self) -> str | None:
+        """``<MAC>/up`` with the MAC as uppercase bare hex.
+
+        The hub publishes on the uppercase form (bench 2026-08-10; the
+        lowercase subscription stayed silent). ``None`` when no credible
+        MAC is known — never subscribe on a synthetic manual-add MAC.
+        """
+
+        normalized = self._wifi_mqtt_mac()
+        if normalized is None:
+            return None
+        return f"{normalized}/up"
+
+    async def _async_wifi_mqtt_ingress_needed(self) -> bool:
+        store = await async_get_command_config_store(self.hass)
+        devices = await store.async_list_hub_devices(self.entry_id)
+        return any(
+            device.get("deployed_transport") == WIFI_TRANSPORT_MQTT
+            for device in devices
+        )
+
+    async def async_update_wifi_mqtt_ingress(self) -> None:
+        """Align the ``<MAC>/up`` subscription with the store state.
+
+        Mirrors the HTTP listener's refcount rule: subscribed while at
+        least one record is deployed over MQTT, torn down when none
+        remain. Safe to call at any time; a no-op when nothing changed
+        or when the MQTT integration is unavailable.
+        """
+
+        try:
+            needed = await self._async_wifi_mqtt_ingress_needed()
+        except Exception:  # noqa: BLE001 - never let ingress upkeep raise
+            self._log.debug(
+                "[%s] mqtt ingress store check failed", self.entry_id, exc_info=True
+            )
+            needed = False
+        topic = self._wifi_mqtt_press_topic()
+        if not needed or topic is None or "mqtt" not in self.hass.config.components:
+            await self.async_stop_wifi_mqtt_ingress()
+            return
+        if self._mqtt_press_unsub is not None and self._mqtt_press_topic == topic:
+            return
+        await self.async_stop_wifi_mqtt_ingress()
+        try:
+            from homeassistant.components import mqtt as ha_mqtt
+
+            self._mqtt_press_unsub = await ha_mqtt.async_subscribe(
+                self.hass, topic, self._async_handle_wifi_mqtt_message
+            )
+            self._mqtt_press_topic = topic
+            self._log.info("[WIFI_MQTT] subscribed to %s", topic)
+        except Exception as err:  # noqa: BLE001 - broker/integration not ready
+            self._mqtt_press_unsub = None
+            self._mqtt_press_topic = None
+            self._log.warning("[WIFI_MQTT] subscribe to %s failed: %s", topic, err)
+
+    async def async_stop_wifi_mqtt_ingress(self) -> None:
+        unsub, self._mqtt_press_unsub = self._mqtt_press_unsub, None
+        self._mqtt_press_topic = None
+        if unsub is not None:
+            try:
+                unsub()
+            except Exception:  # noqa: BLE001
+                self._log.debug("[WIFI_MQTT] unsubscribe failed", exc_info=True)
+
+    async def _async_handle_wifi_mqtt_message(self, msg: Any) -> None:
+        # Hard retain drop: a broker, bridge, or user tooling can retain
+        # even though the hub does not (F6) — a replayed press must never
+        # run an Action on restart (§6 step 1).
+        if getattr(msg, "retain", False):
+            return
+        payload_raw = msg.payload
+        if isinstance(payload_raw, (bytes, bytearray)):
+            payload_raw = payload_raw.decode("utf-8", "replace")
+        try:
+            data = json.loads(payload_raw)
+        except (TypeError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        try:
+            device_id = int(data.get("device_id"))
+            key_id = int(data.get("key_id"))
+        except (TypeError, ValueError):
+            return
+
+        # Passive liveness signal (§9.3): any message on the topic proves
+        # the hub→broker→HA link, managed or not.
+        self._last_wifi_mqtt_press_at = datetime.now(timezone.utc).timestamp()
+
+        # Unmanaged-device guard (§6 step 3): only devices we deployed
+        # over MQTT may fire Actions — app-created MQTT devices stay
+        # invisible here.
+        store = await async_get_command_config_store(self.hass)
+        devices = await store.async_list_hub_devices(self.entry_id)
+        record_payload = next(
+            (
+                device
+                for device in devices
+                if device.get("deployed_device_id") == device_id
+                and device.get("deployed_transport") == WIFI_TRANSPORT_MQTT
+            ),
+            None,
+        )
+        if record_payload is None:
+            self._log.debug(
+                "[WIFI_MQTT] dropping unmanaged press device_id=%s key_id=%s",
+                device_id,
+                key_id,
+            )
+            return
+
+        deployed = store.get_deployed_wifi_commands(
+            self.entry_id, hub_device_id=device_id
+        )
+        slot_count = len(deployed) or int(record_payload.get("slot_count") or 0)
+        mapped = map_wifi_mqtt_key(key_id, slot_count)
+        if mapped is None:
+            self._log.info(
+                "[WIFI_MQTT] dropping out-of-range key_id=%s (slot_count=%s) device_id=%s",
+                key_id,
+                slot_count,
+                device_id,
+            )
+            return
+        command_index, press_type = mapped
+        resolved_slot = (
+            deployed[command_index] if 0 <= command_index < len(deployed) else None
+        )
+        command_label = str((resolved_slot or {}).get("name") or "")
+
+        timestamp = datetime.now(timezone.utc)
+        resolved_device_name = (
+            self._get_cached_device_name(device_id)
+            or self.devices.get(device_id, {}).get("name")
+        )
+        record = {
+            "entity_id": device_id,
+            "entity_kind": "device",
+            "entity_name": resolved_device_name,
+            "command_id": command_label,
+            "command_index": command_index,
+            "command_label": command_label,
+            "button_label": command_label,
+            "press_type": press_type,
+            "timestamp": timestamp.timestamp(),
+            "iso_time": timestamp.isoformat(),
+            # No source ip exists for a broker delivery; left empty rather
+            # than faked (plan §6 sensor note).
+            "source_ip": "",
+            "path": "",
+            "body": "",
+            "headers": {},
+            "transport": "mqtt",
+        }
+        self._log.info(
+            "[WIFI_MQTT] press device_id=%s key_id=%s -> index=%s press=%s command=%s",
+            device_id,
+            key_id,
+            command_index,
+            press_type,
+            command_label or "<unresolved>",
+        )
+        await self._async_dispatch_wifi_press(
+            record=record,
+            resolved_slot=resolved_slot,
+            command_index=command_index,
+            device_id=device_id,
+            command_label=command_label,
+            press_type=press_type,
+        )
+
+
     async def async_delete_wifi_event_records(
         self,
         *,
@@ -3434,9 +3859,15 @@ class SofabatonHub:
 
         # Gate 1: the callback port is baked into the deployed records; only
         # the replace path can change it. None = pre-upgrade deploy with no
-        # recorded port — one replace-path sync backfills it.
+        # recorded port — one replace-path sync backfills it. MQTT records
+        # carry no port at all, so the gate does
+        # not apply to them.
+        deployed_over_mqtt = (
+            normalize_wifi_transport(command_payload.get("deployed_transport"))
+            == WIFI_TRANSPORT_MQTT
+        )
         deployed_request_port = command_payload.get("deployed_request_port")
-        if deployed_request_port != request_port:
+        if not deployed_over_mqtt and deployed_request_port != request_port:
             _LOGGER.info(
                 "[%s] in-place sync declined: request_port %s != deployed %s",
                 self.entry_id, request_port, deployed_request_port,
@@ -3458,24 +3889,48 @@ class SofabatonHub:
         # activity (membership is only discoverable by reading them).
         activity_ids = sorted(int(a) for a in self.activities)
 
+        # `phase` is the stable, translatable name of this stage; `message` is
+        # the English rendering kept for logs and for any consumer that has no
+        # localization table. The control panel localizes `phase` and only
+        # falls back to `message` for stages it does not know.
+        #
+        # The baseline read is the long pole of an in-place sync (one hub
+        # exchange per activity), so it counts its reads up through
+        # current_step/total_steps instead of sitting silent until the plan
+        # runs.
+        total_reads = 1 + len(activity_ids)
+        loop = self.hass.loop
+
+        def _report_read_progress(completed_reads: int) -> None:
+            def _report() -> None:
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=completed_reads,
+                    total_steps=total_reads,
+                    phase="reading_device",
+                    message=f"Reading the deployed Wifi Device ({completed_reads} of {total_reads})",
+                )
+
+            loop.call_soon_threadsafe(_report)
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=0,
+            total_steps=total_reads,
+            phase="reading_device",
+            message="Reading the deployed Wifi Device",
+        )
+
         def _read_baseline():
             device_entry = self._proxy.backup_device(dev_id, include_blobs=False)
             activity_entries = []
-            for act_id in activity_ids:
+            for idx, act_id in enumerate(activity_ids):
+                _report_read_progress(idx + 1)
                 payload = self._proxy.backup_activity(act_id)
                 if isinstance(payload, dict):
                     activity_entries.append(payload)
             return device_entry, activity_entries
 
-        # `phase` is the stable, translatable name of this stage; `message` is
-        # the English rendering kept for logs and for any consumer that has no
-        # localization table. The control panel localizes `phase` and only
-        # falls back to `message` for stages it does not know.
-        self._set_command_sync_progress(
-            device_key=normalized_device_key,
-            phase="reading_device",
-            message="Reading the deployed Wifi Device",
-        )
         device_entry, activity_entries = await self.hass.async_add_executor_job(_read_baseline)
         if not isinstance(device_entry, dict) or len(activity_entries) < len(activity_ids):
             _LOGGER.info("[%s] in-place sync declined: baseline read incomplete", self.entry_id)
@@ -3561,17 +4016,28 @@ class SofabatonHub:
 
         total_steps = len(plan.steps) + 2
         if plan.steps:
-            loop = self.hass.loop
 
             def _progress(**data: Any) -> None:
                 message = str(data.get("message") or "")
                 completed = int(data.get("completed_steps") or 0)
+                step_kind = data.get("step_kind")
+                step_name = data.get("step_name")
 
                 def _inner() -> None:
+                    # The planner names its steps after the user's own data
+                    # ("Adding command "Kitchen lights"…"), so there is no
+                    # fixed phase to report — phase=None clears the stale
+                    # "reading_device" left by the merge in
+                    # _set_command_sync_progress. step_kind/step_name are the
+                    # structured form the control panel localizes; `message`
+                    # stays the English fallback.
                     self._set_command_sync_progress(
                         device_key=normalized_device_key,
                         current_step=completed + 1,
                         total_steps=total_steps,
+                        phase=None,
+                        step_kind=step_kind,
+                        step_name=step_name,
                         message=message,
                     )
 
@@ -3633,6 +4099,8 @@ class SofabatonHub:
                 current_step=total_steps - 1,
                 total_steps=total_steps,
                 phase="resyncing_remote",
+                step_kind=None,
+                step_name=None,
                 message="Resyncing physical remote",
             )
             await self.async_resync_remote()
@@ -3644,7 +4112,7 @@ class SofabatonHub:
                 list(commands[:slot_count]),
                 deployed_device_id=dev_id,
                 commands_hash=commands_hash,
-                request_port=request_port,
+                request_port=None if deployed_over_mqtt else request_port,
             )
 
         self._set_command_sync_progress(
@@ -3704,6 +4172,7 @@ class SofabatonHub:
             deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
             deployed_device_id = command_payload.get("deployed_device_id")
             brand_name = f"{COMMAND_BRAND_PREFIX}-{normalized_device_key}-{commands_hash}"
+            selected_transport = self._select_wifi_command_transport(command_payload)
             total_steps = 8 if configured_slots > 0 else 7
             store = await async_get_command_config_store(self.hass)
             self._set_command_sync_progress(
@@ -3722,7 +4191,11 @@ class SofabatonHub:
                     phase="enabling_device",
                     message="Ensuring Wifi Device is enabled",
                 )
-                if configured_slots > 0 and not self.roku_server_enabled:
+                if (
+                    configured_slots > 0
+                    and selected_transport != WIFI_TRANSPORT_MQTT
+                    and not self.roku_server_enabled
+                ):
                     await self.async_set_roku_server_enabled(True)
                     from .roku_listener import async_get_roku_listener
 
@@ -3857,6 +4330,7 @@ class SofabatonHub:
                             deployed_device_id=None,
                             commands_hash="",
                         )
+                    await self.async_update_wifi_mqtt_ingress()
 
                     if self.roku_server_enabled and not await self._async_wifi_listener_needed():
                         self._set_command_sync_progress(
@@ -3968,19 +4442,57 @@ class SofabatonHub:
                     phase="creating_device",
                     message="Creating Wifi Device on Hub",
                 )
-                created = await self.async_create_wifi_device(
-                    device_name=device_name,
-                    commands=command_defs,
-                    request_port=request_port,
-                    brand_name=brand_name,
-                    power_on_command_id=power_on_command_id,
-                    power_off_command_id=power_off_command_id,
-                    input_command_ids=input_command_ids or None,
-                )
+                if selected_transport == WIFI_TRANSPORT_MQTT:
+                    created = await self.async_create_wifi_mqtt_device(
+                        device_name=device_name,
+                        commands=command_defs,
+                        brand_name=brand_name,
+                        power_on_command_id=power_on_command_id,
+                        power_off_command_id=power_off_command_id,
+                        input_command_ids=input_command_ids or None,
+                    )
+                else:
+                    created = await self.async_create_wifi_device(
+                        device_name=device_name,
+                        commands=command_defs,
+                        request_port=request_port,
+                        brand_name=brand_name,
+                        power_on_command_id=power_on_command_id,
+                        power_off_command_id=power_off_command_id,
+                        input_command_ids=input_command_ids or None,
+                    )
                 if not created or not created.get("device_id"):
                     raise HomeAssistantError("Failed creating Wifi Device")
 
                 wifi_device_id = int(created["device_id"])
+                # An ACK only proves the hub accepted each frame. Verify that
+                # every command row survived the create transaction before
+                # touching activities or deleting the old managed device.
+                if managed:
+                    await self.async_fetch_device_commands(wifi_device_id)
+                    command_rows, commands_ready = (
+                        await self.hass.async_add_executor_job(
+                            partial(
+                                self._proxy.get_commands_for_entity,
+                                wifi_device_id,
+                                fetch_if_missing=False,
+                            )
+                        )
+                    )
+                    actual_commands = {
+                        int(command_id) & 0xFF: str(label)
+                        for command_id, label in dict(command_rows or {}).items()
+                    }
+                    expected_commands = {
+                        idx + 1: str(command["display_name"])
+                        for idx, command in enumerate(command_defs)
+                    }
+                    if not commands_ready or actual_commands != expected_commands:
+                        await self.async_delete_device(wifi_device_id)
+                        raise HomeAssistantError(
+                            "The replacement Wifi Device did not pass command "
+                            "readback; the existing device was kept unchanged"
+                        )
                 cached_created_device = self._proxy.state.entities("device").get(wifi_device_id & 0xFF)
                 if isinstance(cached_created_device, dict):
                     self.devices[wifi_device_id & 0xFF] = dict(cached_created_device)
@@ -4068,11 +4580,6 @@ class SofabatonHub:
                             else result.get("confirmed_activities") or []
                         )
                     )
-
-                # Warm the wifi-device command cache before activity refreshes
-                # so favorite-label resolution can reuse the full REQ_COMMANDS
-                # result instead of falling back to per-command lookups later.
-                await self.async_fetch_device_commands(wifi_device_id)
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
@@ -4211,6 +4718,33 @@ class SofabatonHub:
                     phase="refreshing_maps",
                     message="Refreshing activity maps and buttons",
                 )
+                # Backup-grade re-warm of the deployed device, before the
+                # activity re-warms so their favorite/binding label
+                # resolution reads a populated command catalog. The binding
+                # writes above cleared the device's cached key rows, and the
+                # create pipeline never fetched key-sort/inputs/idle at all;
+                # this is the same fetch as the Hub tab's per-device refresh,
+                # so the editor baseline and the persisted cache leave the
+                # deploy bundle-grade instead of needing a manual row
+                # refresh. On the replace path the readback guard above
+                # already verified the command table, so it is reused; first
+                # deploys still hold the unverified create-time echo and
+                # fetch a real one.
+                try:
+                    await self.hass.async_add_executor_job(
+                        partial(
+                            self._proxy.backup_device,
+                            wifi_device_id,
+                            include_blobs=False,
+                            reuse_commands=bool(managed),
+                        )
+                    )
+                except Exception:  # noqa: BLE001 - warm is best-effort tail work
+                    self._log.warning(
+                        "[%s] deploy finished, but the post-deploy device warm failed",
+                        self.entry_id,
+                        exc_info=True,
+                    )
                 # Re-warm every touched activity with the same clear-then-fetch
                 # sequence as the Hub tab's per-activity refresh. The write
                 # steps above (managed-device delete, activity re-add, favorite
@@ -4239,17 +4773,24 @@ class SofabatonHub:
                         continue
                     await self._async_fetch_activity_commands(act_lo)
 
-                if activity_ids or delete_confirmed_acts:
-                    self._bump_cache_generation()
-                    async_dispatcher_send(self.hass, signal_commands(self.entry_id))
-                    try:
-                        await self._async_persist_cache_if_enabled()
-                    except Exception:  # noqa: BLE001 - persist is best-effort
-                        self._log.debug(
-                            "[%s] post-deploy cache persist failed",
-                            self.entry_id,
-                            exc_info=True,
-                        )
+                # Unconditional: every deploy that reaches here changed the
+                # device catalog (create + managed delete), and the only
+                # earlier generation bump fired mid-pipeline, before the
+                # cache was warm. Gating this on activity references froze
+                # the frontend on that mid-deploy snapshot (a device with an
+                # empty command table) and skipped the disk persist entirely
+                # for activity-less deploys.
+                self._bump_cache_generation()
+                async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+                async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+                try:
+                    await self._async_persist_cache_if_enabled()
+                except Exception:  # noqa: BLE001 - persist is best-effort
+                    self._log.debug(
+                        "[%s] post-deploy cache persist failed",
+                        self.entry_id,
+                        exc_info=True,
+                    )
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
@@ -4269,8 +4810,15 @@ class SofabatonHub:
                         list(commands[:slot_count]),
                         deployed_device_id=wifi_device_id,
                         commands_hash=commands_hash,
-                        request_port=request_port,
+                        # No port is baked into MQTT records; storing None keeps
+                        # listener-port changes from ever forcing a replace.
+                        request_port=(
+                            None if selected_transport == WIFI_TRANSPORT_MQTT else request_port
+                        ),
+                        deployed_transport=selected_transport,
                     )
+
+                await self.async_update_wifi_mqtt_ingress()
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
@@ -4434,7 +4982,13 @@ class SofabatonHub:
 
         # advanced path: user specified the target entity
         if device is not None:
-            code = self._normalize_command_id(key)
+            try:
+                code = self._normalize_command_id(key)
+            except ValueError as err:
+                raise HomeAssistantError(
+                    f"Command '{key}' is not a numeric command ID; "
+                    "button names are only supported without 'device'"
+                ) from err
             await self.async_send_raw_command(device, code)
             return
 
@@ -4444,15 +4998,18 @@ class SofabatonHub:
 
         # string -> try to treat as ButtonName first
         if isinstance(key, str):
-            norm = key.strip().upper()
-            try:
-                btn = getattr(ButtonName, norm)
-            except KeyError:
-                # not a ButtonName -> treat as numeric
-                code = self._normalize_command_id(key)
-                await self.async_send_raw_command(self.current_activity, code)
-            else:
+            btn = getattr(ButtonName, key.strip().upper(), None)
+            if btn is not None:
                 await self.async_send_button(btn)
+                return
+            # not a ButtonName -> treat as numeric
+            try:
+                code = self._normalize_command_id(key)
+            except ValueError as err:
+                raise HomeAssistantError(
+                    f"Unknown command '{key}': not a button name or a numeric command ID"
+                ) from err
+            await self.async_send_raw_command(self.current_activity, code)
             return
 
         # int -> just send as raw command to current activity

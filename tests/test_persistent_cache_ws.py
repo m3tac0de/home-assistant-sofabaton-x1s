@@ -52,6 +52,8 @@ class _Hub:
         self.cache_generation = 7
         self.host = "192.168.1.50"
         self.banner_model = None
+        # Classified hub line + banner AVER, as the firmware gate reads them.
+        self.version = "X1S"
         self.hub_firmware_version = 5
         self.activities = {101: {"name": "Movies"}, 102: {"name": "TV"}}
         self.devices = {1: {"name": "TV"}, 2: {"name": "Amp"}}
@@ -366,6 +368,12 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                     "name": "Living Room",
                     "version": "X1S",
                     "firmware_version": 5,
+                    # X1S firmware is frozen at its final version 5, so both
+                    # floors coincide there and AVER 5 clears them.
+                    "firmware_outdated": False,
+                    "firmware_unsupported": False,
+                    "firmware_min_recommended": 5,
+                    "firmware_min_supported": 5,
                     "ip_address": "192.168.1.50",
                     "device_count": 2,
                     "activity_count": 2,

@@ -974,11 +974,20 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         batch = payload[8:12].hex()
         firmware_version = payload[12] & 0xFF
         banner_name = payload[15:].decode("utf-8", errors="ignore").strip("\x00").strip()
+        # payload[0:6] is the hub's OWN MAC address (bench-verified on
+        # X1, X1S and X2). This is authoritative device ground truth:
+        # real Sofabaton MACs can carry the locally-administered or even
+        # the multicast bit (X1/X1S captures), so consumers must NOT
+        # apply OUI-style plausibility filters to it. All-zero means the
+        # firmware did not populate it.
+        mac_bytes = payload[0:6]
+        banner_mac = mac_bytes.hex().upper() if any(mac_bytes) else None
         parsed = {
             "model": model,
             "production_batch": batch,
             "firmware_version": firmware_version,
             "name": banner_name,
+            "mac": banner_mac,
         }
 
         changed = False

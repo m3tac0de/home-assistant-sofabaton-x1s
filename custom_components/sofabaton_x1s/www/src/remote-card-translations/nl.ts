@@ -5,9 +5,12 @@
 // for that key. Feature names (Wifi Commands, Sofabaton Control Panel) and
 // the "X2 → Activities" MQTT device name are kept as-is on purpose.
 
-import { registerRemoteCardTranslation } from "../remote-card-strings";
+import {
+  registerRemoteCardTranslation,
+  type RemoteCardStrings,
+} from "../remote-card-strings";
 
-registerRemoteCardTranslation("nl", {
+const REMOTE_CARD_STRINGS_NL = {
   card: {
     selectEntityError: "Selecteer een Sofabaton remote-entiteit",
     remoteUnavailable:
@@ -32,7 +35,7 @@ registerRemoteCardTranslation("nl", {
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label: string) => `Vastgelegd: ${label}`,
     notCaptured: "Niet vastgelegd.",
-    working: "Bezig...",
+    working: "Bezig…",
     triggersReady: "Triggers klaar voor gebruik",
     createTriggers: "MQTT Discovery-triggers aanmaken",
     startCapturing: "Begin met commando's vastleggen",
@@ -159,4 +162,6 @@ registerRemoteCardTranslation("nl", {
     b: "B",
     c: "C",
   },
-});
+} satisfies RemoteCardStrings;
+
+registerRemoteCardTranslation("nl", REMOTE_CARD_STRINGS_NL);

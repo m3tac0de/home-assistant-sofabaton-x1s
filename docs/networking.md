@@ -47,7 +47,7 @@ sequenceDiagram
 > Broadcast Discovery is optional for Android clients.  
 > HTTP callbacks for Wifi Commands and Wifi Events are optional.
 
-## Security / listener model
+## ◇ Security / listener model
 
 The listener ports are intended for a trusted local network, not for exposure to the public internet. The Sofabaton hub protocol and the Wifi Commands/Wifi Events callback format do not provide TLS or user authentication, so the network boundary is your router, VLAN, container publishing rules, and host firewall.
 
@@ -59,7 +59,7 @@ The integration still applies narrow application-level filtering:
 
 Recommended deployment: allow the exact hub/app networks listed below, avoid publishing these ports through reverse proxies or internet-facing NAT, and prefer VLAN/firewall rules over relying on the listeners as a security boundary.
 
-## Segment 1 – Hub ↔ Integration
+## ◇ Segment 1 – Hub ↔ Integration
 
 The integration discovers the physical hub and then keeps a bidirectional session open.
 
@@ -79,15 +79,20 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 
 When using this integration's [Wifi Commands or Wifi Events](wifi_commands.md), the hub makes HTTP requests into the integration. Both features share the same listener. The default port is **8060**. It is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
 
+### Optional / MQTT delivery (X2)
+
+Wifi Devices deployed over [MQTT](wifi_commands.md#mqtt-setup-on-x2) do not use the integration's HTTP listener on port `8060`. The path is hub → MQTT broker → Home Assistant's MQTT integration. The network must allow both the hub and Home Assistant to reach the broker (default TCP `1883`); when the broker runs on the Home Assistant host, this usually means allowing inbound broker traffic from the hub. Cross-subnet setups therefore still need the appropriate firewall or VLAN rule towards the broker. The hub's broker settings are configured in the Sofabaton app; the integration subscribes through the Home Assistant MQTT integration. Security-wise the broker's own authentication and ACLs are the boundary: anyone who can publish to the hub's press topic can trigger the configured Actions.
+
 ### Firewall rules to allow
 
 - mDNS/Bonjour from hub → Home Assistant (or mDNS forwarded across VLANs).
 - UDP from Home Assistant → hub on the Sofabaton UDP port (`8102` by default).
 - TCP from hub → Home Assistant on the proxy listen port (8200 by default), shared by all configured hubs.
+- For MQTT-delivered Wifi Commands, TCP from the hub and Home Assistant → MQTT broker (1883 by default). If the broker is hosted by Home Assistant, allow the hub to reach that port on the Home Assistant host.
 
 If discovery works but the integration never shows the hub as connected, the TCP connect-back from the hub to Home Assistant is usually being blocked.
 
-## Segment 2 – Integration ↔ Official app (proxy)
+## ◇ Segment 2 – Integration ↔ Official app (proxy)
 
 ### Discovery (app side)
 
@@ -140,7 +145,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 - Allow the app to use UDP (unicast and broadcast) and TCP within **8100–8110** toward Home Assistant so it can send the call-me and handle the connect-back. Broadcast is only required for iOS compatibility.
 - If Home Assistant runs in a container, bind the proxy UDP/TCP ports to the host interfaces that your mobile devices can reach.
 
-## Multiple hubs and VLANs checklist
+## ◇ Multiple hubs and VLANs checklist
 
 - Ensure each hub's mDNS traffic reaches Home Assistant (multicast forwarding or manual configuration).
 - Reserve the TCP listener port (8200 by default) for hub connect-back. Avoid collisions with other services on the host.
@@ -155,7 +160,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 - **The iOS app cannot discover more than 1 hub at a time from this integration's proxy!**
   A side effect of how iOS discovery works. The app assumes that each hub has a unique MAC address. In iOS discovery it reads the MAC address from the header of a UDP packet that the hub broadcasts. The integration cannot work around this.
 
-## Troubleshooting
+## ◇ Troubleshooting
 
 - **Seen in discovery but never connects:** likely missing TCP allow rule from hub to Home Assistant.
 - **No discovery across VLANs:** forward mDNS or configure the hub manually.
@@ -166,7 +171,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
   boundaries by default.
 - **iOS app sees only 1 hub while there should be more:** this is an unfortunate limitation of how iOS discovery works and cannot be resolved.
 
-## Complete port reference
+## ◇ Complete port reference
 
 | From        | To          | Protocol | Port(s)     | Used for                                      | Needed for                             |
 | ----------- | ----------- | -------- | ----------- | --------------------------------------------- | -------------------------------------- |

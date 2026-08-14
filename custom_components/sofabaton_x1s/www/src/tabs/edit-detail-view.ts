@@ -28,9 +28,12 @@ import { backupTabStyles } from "./backup-tab-styles";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
 import type { BackupBundlePayload, BlobFetchDecodedBlock, WifiEvent } from "../shared/ha-context";
 import {
+  activityAddableDevices,
   activityButtonBindingItems,
   activityMacroStepItems,
+  activityMemberViews,
   activityRoleAssignments,
+  addActivityMemberDevice,
   type ActivityRoleGroupId,
   activityUserMacroSummaries,
   roleMappableButtonCount,
@@ -226,6 +229,8 @@ export class SofabatonEditDetailView extends LitElement {
     _confirmDeleteTarget: { state: true },
     _confirmDeleteLabel: { state: true },
     _addFavoriteOpen: { state: true },
+    _addMemberOpen: { state: true },
+    _addMemberDeviceId: { state: true },
     _addFavoriteDeviceId: { state: true },
     _addFavoriteCommandId: { state: true },
     _addFavoriteError: { state: true },
@@ -272,6 +277,10 @@ export class SofabatonEditDetailView extends LitElement {
   static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, css`
     :host {
       flex-direction: column;
+    }
+    /* Glanceable member roster under the Activity power-sequence rows. */
+    .power-members-summary {
+      padding: 8px 4px 0;
     }
     /* Live-mode header Sync button — styled identically to the Wifi command
        editor's .detail-sync-btn (primary when there are pending changes, a
@@ -431,6 +440,8 @@ export class SofabatonEditDetailView extends LitElement {
   private _confirmDeleteTarget: BackupDeleteTarget | null = null;
   private _confirmDeleteLabel = "";
   private _addFavoriteOpen = false;
+  private _addMemberOpen = false;
+  private _addMemberDeviceId: number | null = null;
   private _addFavoriteDeviceId: number | null = null;
   private _addFavoriteCommandId: number | null = null;
   private _addFavoriteError = "";
@@ -497,6 +508,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._addCommandPreparing = false;
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
+    this._closeAddMemberDialog();
     this._closeBindingDialog();
     this._macroEditor = null;
     this._closeStepDialog();
@@ -658,6 +670,7 @@ export class SofabatonEditDetailView extends LitElement {
         ${this._renderCommandPayloadDialog()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
+        ${this._renderAddMemberDialog()}
         ${this._renderBindingDialog()}
         ${this._renderRoleConfirmDialog()}
       </div>
@@ -1605,8 +1618,9 @@ export class SofabatonEditDetailView extends LitElement {
                 type=${field.numeric ? "number" : "text"}
                 spellcheck="false"
                 .value=${value}
-                @input=${onInput}
-                @change=${onInput}
+                ?disabled=${Boolean(field.readonly)}
+                @input=${field.readonly ? null : onInput}
+                @change=${field.readonly ? null : onInput}
               />
             `}
         ${field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}
@@ -2415,6 +2429,105 @@ export class SofabatonEditDetailView extends LitElement {
     ));
     this._closeAddFavoriteDialog();
   };
+
+  // ── Activity member devices (power-only membership, issue #263) ─────
+
+  /**
+   * Devices offered by the "Add device" picker. In LIVE mode every
+   * managed Wifi Commands device (including the reserved Wifi Events
+   * device) is excluded: their activity membership is owned by the Wifi
+   * Commands deploy, and a manual add here would silently be undone by
+   * the next resync. The offline Backup editor keeps showing everything.
+   */
+  private _addableMemberDevices() {
+    if (!this.bundle || this.entityId == null) return [];
+    const options = activityAddableDevices(this.bundle, Number(this.entityId));
+    if (this.mode !== "live") return options;
+    return options.filter(
+      (option) => !isManagedWifiBrand(bundleDeviceBrand(this.bundle, option.id)),
+    );
+  }
+
+  private _openAddMemberDialog = () => {
+    const options = this._addableMemberDevices();
+    this._addMemberDeviceId = options[0]?.id ?? null;
+    this._addMemberOpen = true;
+  };
+
+  private _closeAddMemberDialog = () => {
+    this._addMemberOpen = false;
+    this._addMemberDeviceId = null;
+  };
+
+  private _applyAddMember = () => {
+    if (!this.bundle || this.entityId == null || this._addMemberDeviceId == null) return;
+    this._commitEditBundleEdit(addActivityMemberDevice(
+      this.bundle,
+      Number(this.entityId),
+      this._addMemberDeviceId,
+    ));
+    this._closeAddMemberDialog();
+  };
+
+  private _openMemberRemoveConfirm(activityId: number, deviceId: number, deviceName: string) {
+    this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
+    this._confirmDeleteLabel = deviceName;
+  }
+
+  private _memberDeviceName(activityId: number, deviceId: number): string {
+    const member = activityMemberViews(this.bundle, activityId)
+      .find((candidate) => candidate.deviceId === deviceId);
+    return member?.deviceName || TOOLS_CARD_STRINGS.common.deviceFallback(deviceId);
+  }
+
+  private _renderAddMemberDialog() {
+    if (!this._addMemberOpen || !this.bundle) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const options = this._addableMemberDevices();
+    return html`
+      <div class="modal-backdrop" @click=${this._closeAddMemberDialog}>
+        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S.addMemberTitle}</div>
+            <button class="dialog-close" @click=${this._closeAddMemberDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${options.length === 0
+              ? html`<div class="backup-drawer-sub">${S.addMemberNoneLeft}</div>`
+              : html`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-add-member-device">${S.addFavoriteDevice}</label>
+                    <select
+                      id="sb-add-member-device"
+                      class="decoded-field-input"
+                      @change=${(event: Event) => {
+                        const value = Number((event.target as HTMLSelectElement).value);
+                        this._addMemberDeviceId = Number.isFinite(value) ? value : null;
+                      }}
+                    >
+                      ${options.map((device) => html`
+                        <option value=${device.id} ?selected=${device.id === this._addMemberDeviceId}>${device.label}</option>
+                      `)}
+                    </select>
+                    <div class="decoded-field-helper">${S.addMemberHelper}</div>
+                  </div>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeAddMemberDialog}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
+              <button
+                class="dialog-btn dialog-btn-primary"
+                ?disabled=${options.length === 0 || this._addMemberDeviceId == null}
+                @click=${this._applyAddMember}
+              >${S.addMemberConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   private _applyAddShortcutWifiEvent = async () => {
     if (!this.bundle || this.entityId == null) return;
@@ -3931,7 +4044,8 @@ export class SofabatonEditDetailView extends LitElement {
     // their fixed names, so no pencil for those.
     const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
     const sortable = this._haSortableReady && items.length > 1;
-    const renderRows = () => items.map((item) => this._renderMacroStepRow(item, sortable));
+    const renderRows = () =>
+      items.map((item, position) => this._renderMacroStepRow(item, sortable, position === items.length - 1));
     return html`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
@@ -3976,10 +4090,20 @@ export class SofabatonEditDetailView extends LitElement {
                       : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
                   </div>
                 </div>
-                <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
-                  <ha-icon icon="mdi:plus"></ha-icon>
-                  <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
-                </button>
+                <div class="quick-access-head-actions">
+                  ${editor.scope === "activity" && POWER_MACRO_BUTTON_IDS.has(editor.buttonId)
+                    ? html`
+                        <button class="quick-access-add-btn add-member-btn" @click=${this._openAddMemberDialog}>
+                          <ha-icon icon="mdi:plus"></ha-icon>
+                          <span>${TOOLS_CARD_STRINGS.backup.addMemberButton}</span>
+                        </button>
+                      `
+                    : nothing}
+                  <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
+                    <ha-icon icon="mdi:plus"></ha-icon>
+                    <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
+                  </button>
+                </div>
               </div>
               ${items.length
                 ? html`
@@ -4005,20 +4129,34 @@ export class SofabatonEditDetailView extends LitElement {
         </div>
         ${this._renderStepDialog()}
         ${this._renderEditRenameDialog()}
+        ${this._renderAddMemberDialog()}
+        ${this._renderDeleteConfirmDialog()}
       </div>
     `;
   }
 
-  private _renderMacroStepRow(item: BackupMacroStepItem, sortable: boolean) {
+  private _renderMacroStepRow(item: BackupMacroStepItem, sortable: boolean, isLast: boolean) {
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
     const meta = item.kind === "command" && item.hold > 0
       ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold))
       : "";
     const chip = isPower || isInput ? "required" : "command";
-    // Power refs: command/order protected (no rename/delete) but their
+    // An activity power-ref row is the device's membership token, so its
+    // delete affordance means "remove the device from this Activity" and
+    // routes through the member impact-confirm (both sequences, favorites,
+    // bindings, steps). Input refs keep their edit-only treatment.
+    const editor = this._macroEditor;
+    const memberDeviceId = isPower && editor?.scope === "activity"
+      ? Number(item.deviceId ?? 0)
+      : 0;
+    // Power refs: command/order protected (no rename) but their
     // attached wait is editable. Input refs: editable (change input), no
-    // delete. Commands: full edit + delete. Every row owns an inline wait.
+    // delete. Commands: full edit + delete. Every row owns an attached wait,
+    // rendered as a slim sub-row UNDER the step (matching execution order:
+    // step first, then the wait before the next step) — except the last
+    // step, whose wait is dead time: the sub-row is hidden and mutations
+    // normalize the stored value to 0.
     return html`
       <div class="quick-access-sortable-item" data-step-index=${item.index}>
         <div class="quick-access-row">
@@ -4033,24 +4171,22 @@ export class SofabatonEditDetailView extends LitElement {
             ${meta ? html`<div class="quick-access-meta">${meta}</div>` : nothing}
           </div>
           <div class="quick-access-actions">
-            <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
-              <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
-              <span class="step-wait-field">
-                <input
-                  class="step-wait-input"
-                  type="number"
-                  min="0"
-                  max="120"
-                  step="0.5"
-                  aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                  .value=${this._byteToSeconds(item.wait)}
-                  @change=${(event: Event) => this._handleStepWaitChange(item, event)}
-                />
-                <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
-              </span>
-            </label>
             ${isPower
-              ? nothing
+              ? (memberDeviceId > 0
+                  ? html`
+                      <button
+                        class="icon-btn icon-btn--danger"
+                        @click=${() => this._openMemberRemoveConfirm(
+                          Number(editor?.entityId ?? 0),
+                          memberDeviceId,
+                          this._memberDeviceName(Number(editor?.entityId ?? 0), memberDeviceId),
+                        )}
+                        aria-label=${TOOLS_CARD_STRINGS.backup.removeMemberAria}
+                      >
+                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                      </button>
+                    `
+                  : nothing)
               : html`
                   <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
@@ -4065,6 +4201,26 @@ export class SofabatonEditDetailView extends LitElement {
                 `}
           </div>
         </div>
+        ${isLast
+          ? nothing
+          : html`
+              <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
+                <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
+                <span class="step-wait-field">
+                  <input
+                    class="step-wait-input"
+                    type="number"
+                    min="0"
+                    max="120"
+                    step="0.5"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                    .value=${this._byteToSeconds(item.wait)}
+                    @change=${(event: Event) => this._handleStepWaitChange(item, event)}
+                  />
+                  <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+                </span>
+              </label>
+            `}
       </div>
     `;
   }
@@ -4262,6 +4418,30 @@ export class SofabatonEditDetailView extends LitElement {
             ${this._renderPowerSetupRow(scope, entityId, 199, S.powerOffLabel, sequencesDisabled)}
           </div>
         </div>
+        ${isDevice ? nothing : this._renderActivityMemberBlock(entityId)}
+      </div>
+    `;
+  }
+
+  /**
+   * One-line member summary under the Activity power-sequence rows. The
+   * sequences themselves are the management surface (Add device beside
+   * Add step; deleting a power-ref row removes the device), so the
+   * section level keeps only the glanceable roster: device names with
+   * their configured input in parentheses.
+   */
+  private _renderActivityMemberBlock(activityId: number) {
+    if (!this.bundle) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const members = activityMemberViews(this.bundle, activityId);
+    const names = members.map((member) =>
+      member.inputOrdinal > 0 && member.inputCommandName
+        ? `${member.deviceName} (${member.inputCommandName})`
+        : member.deviceName,
+    ).join(", ");
+    return html`
+      <div class="quick-access-sub power-members-summary" data-kind="member-summary">
+        ${members.length ? S.memberSummary(names) : S.memberSummaryEmpty}
       </div>
     `;
   }

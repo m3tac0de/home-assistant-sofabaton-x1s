@@ -93,6 +93,8 @@ export const TOOLS_CARD_STRINGS_EN = {
       "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
     backupBlockedByProxy:
       "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    blockedByFirmware: (installed: string | number, required: string | number) =>
+      `This hub is running firmware version ${installed}. Version ${required} is the minimum supported version for Control Panel features that change the hub configuration. Update the hub over Bluetooth using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`,
   },
   buttonNames: {
     0x97: "C",
@@ -195,13 +197,13 @@ export const TOOLS_CARD_STRINGS_EN = {
     editActivity: "Edit activity",
     editDevice: "Edit device",
     changeOrder: "Change order",
-    addActivity: "Add Activity",
+    addActivity: "Add activity",
     reorderSync: "Sync to Hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
     reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
     reorderSyncing: "Writing the new order to the hub…",
-    addActivityTitle: "Add Activity",
+    addActivityTitle: "Add activity",
     addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
     addActivityPlaceholder: "Activity name",
     addActivityCancel: "Cancel",
@@ -276,26 +278,63 @@ export const TOOLS_CARD_STRINGS_EN = {
     cacheFinalizing: "Finalizing hub cache…",
     entityChecking: "Checking for changes on the hub…",
     entityWriting: "Applying changes to the hub…",
+    entitySettling: "Waiting for the hub to finish processing the changes…",
     entityRefreshing: "Refreshing the cached hub state…",
     entityComplete: "Synced to hub.",
+    // Live-sync engine write steps, keyed by the `step_kind` the engine
+    // reports (proxy_activity_sync). Kinds that target a specific device
+    // take its id; null when the engine did not name one.
+    entityStepActivityRename: "Renaming the activity…",
+    entityStepBindingDelete: "Clearing a button assignment…",
+    entityStepBindingWrite: "Writing button assignments…",
+    entityStepCommandAdd: (id: number | null) => (id == null ? "Adding a command…" : `Adding a command on device ${id}…`),
+    entityStepCommandDelete: (id: number | null) => (id == null ? "Removing a command…" : `Removing a command on device ${id}…`),
+    entityStepCommandPayload: (id: number | null) => (id == null ? "Updating a command…" : `Updating a command on device ${id}…`),
+    entityStepCommandRename: (id: number | null) => (id == null ? "Renaming a command…" : `Renaming a command on device ${id}…`),
+    entityStepDeviceIp: "Updating the IP address…",
+    entityStepDeviceRename: "Renaming the device…",
+    entityStepFavoriteAdd: "Adding a shortcut…",
+    entityStepFavoriteDelete: "Removing a shortcut…",
+    entityStepFavoriteOrder: "Reordering shortcuts…",
+    entityStepIdleBehavior: "Updating automatic power control…",
+    entityStepInputsWrite: (id: number | null) => (id == null ? "Updating inputs…" : `Updating inputs on device ${id}…`),
+    entityStepMacroDelete: "Removing a macro…",
+    entityStepMacroPowerOn: "Updating the start sequence…",
+    entityStepMacroPowerOff: "Updating the end sequence…",
+    entityStepMacroCustom: "Updating a macro…",
+    entityStepMemberReplay: "Adding a device to the activity…",
+    entityStepRemoteSync: "Syncing the remote…",
     wifiSyncing: "Syncing Wifi Commands…",
     // Deploy pipeline stages, keyed by the `phase` the hub reports.
     wifiStarting: "Starting the sync…",
     wifiReadingDevice: "Reading the deployed Wifi Device…",
     wifiEnablingDevice: "Enabling the Wifi Device…",
     wifiDisablingDevice: "Disabling the Wifi Device…",
-    wifiValidatingActivities: "Checking Activities against the hub…",
+    wifiValidatingActivities: "Checking activities against the hub…",
     wifiCreatingDevice: "Creating the Wifi Device on the hub…",
     wifiDeletingDevice: "Removing the previous Wifi Device…",
-    wifiAddingToActivities: "Adding the Wifi Device to Activities…",
-    wifiApplyingFavorites: "Applying Activity shortcuts…",
-    wifiApplyingBindings: "Applying Activity button assignments…",
-    wifiRefreshingMaps: "Refreshing Activity buttons and shortcuts…",
+    wifiAddingToActivities: "Adding the Wifi Device to activities…",
+    wifiApplyingFavorites: "Applying activity shortcuts…",
+    wifiApplyingBindings: "Applying activity button assignments…",
+    wifiRefreshingMaps: "Refreshing activity buttons and shortcuts…",
     wifiResyncingRemote: "Resyncing the physical remote…",
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
     wifiDeviceRemoved: "Wifi Device removed — no commands configured.",
     wifiComplete: "Wifi Commands synced.",
+    // In-place deploy write steps, keyed by the `step_kind` the pipeline
+    // reports. The command steps carry the user's own command label.
+    wifiStepCommandAdd: (name: string | null) => (name == null ? "Adding a command…" : `Adding command “${name}”…`),
+    wifiStepCommandPayload: (name: string | null) => (name == null ? "Updating a command…" : `Updating command “${name}”…`),
+    wifiStepCommandRename: (name: string | null) => (name == null ? "Renaming a command…" : `Renaming command to “${name}”…`),
+    wifiStepCommandDelete: (name: string | null) => (name == null ? "Removing a command…" : `Removing command “${name}”…`),
+    wifiStepPowerConfig: "Updating power control…",
+    wifiStepInputConfig: "Updating input configuration…",
+    wifiStepInputSelect: "Updating input selection…",
+    wifiStepActivityJoin: "Adding the device to an activity…",
+    wifiStepActivityLeave: "Removing the device from an activity…",
+    wifiStepHeadCommit: "Saving the device…",
+    wifiStepBindingWrite: "Assigning a button…",
   },
   activities: {
     loading: "Loading activities…",
@@ -304,6 +343,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
     appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
+    firmwareUnsupportedTitle: "Hub firmware update required",
+    firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
+      `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub over Bluetooth using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -423,7 +465,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     downloadBackup: "Download backup",
     complete: "Complete",
     restoreCompletedTitle: "Restore completed",
-    restoreCompletedSubtitle: "The selected Activities and Devices were restored to the hub.",
+    restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
     restoreCompletedStatus: "Restore completed.",
     restoreCompletedSuccessfully: "Restore completed successfully.",
     backupCompletedSuccessfully: "Backup completed successfully.",
@@ -431,9 +473,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     restoreRunningSubtitle: "The hub is restoring your backup.",
     restoreFinishedSubtitle: "Your restore has completed.",
     restoreChooseSubtitle:
-      "Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on.",
+      "Load a backup file, then choose exactly what to restore. Activities automatically pull in the devices they depend on.",
     itemsToRestore: "Items to restore",
-    eraseExisting: "Erase existing Devices and Activities",
+    eraseExisting: "Erase existing devices and activities",
     startRestore: "Start restore",
     startingBackup: "Starting backup…",
     startingRestore: "Starting restore…",
@@ -451,7 +493,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     devicesToInclude: "Devices to include",
     selectedCount: (count: number) => `${count} selected`,
     backupResultSummary: (activities: number, devices: number) =>
-      `${activities} ${activities === 1 ? "Activity" : "Activities"} and ${devices} ${devices === 1 ? "Device" : "Devices"} backed up`,
+      `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
     activityMeta: (favorites: number, macros: number) =>
       `${favorites} ${favorites === 1 ? "favorite" : "favorites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
     linkedDevices: (count: number) =>
@@ -461,9 +503,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     noDevicesAvailable: "No devices available.",
     working: "Working",
     startBackup: "Start backup",
-    editLoadPrompt: "Load a backup file, then choose an Activity or Device to edit.",
+    editLoadPrompt: "Load a backup file, then choose an activity or device to edit.",
     chooseBackupFile: "Choose backup file",
-    reorderHint: " Drag the handle on any row to reorder Activities and Devices.",
+    reorderHint: " Drag the handle on any row to reorder activities and devices.",
     macroStepsSortableHelp:
       "Drag to reorder. Each step plays a command; set the wait that follows it on the right.",
     macroStepsHelp:
@@ -492,7 +534,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     deleteImpactPowerSteps: (count: number) =>
       `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
     deleteReplaceNote:
-      'Deletions are applied to the hub only when "Erase existing Devices and Activities" is enabled during restore.',
+      'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
     deleteSimpleBodyLive: "This removes it.",
@@ -511,8 +553,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     addFavoriteNoDevices: "This backup has no devices with commands to add.",
     addFavoriteNoCommands: "This device has no commands to add.",
     buttonBindingsTitle: "Button bindings",
-    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this Activity.",
-    buttonBindingsDeviceSub: "Bind remote buttons to this Device's own commands.",
+    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this activity.",
+    buttonBindingsDeviceSub: "Bind remote buttons to this device's own commands.",
     buttonBindingsEmpty: "No button bindings configured.",
     addBinding: "Add binding",
     bindingButton: "Button",
@@ -545,10 +587,23 @@ export const TOOLS_CARD_STRINGS_EN = {
     // English explicit so the behaviour is what gets translated.
     powerSetupTitle: "Power control",
     powerSetupDeviceSub:
-      "How the hub switches this device on and off during Activities, and the commands it sends to do it.",
-    powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
+      "How the hub switches this device on and off during activities, and the commands it sends to do it.",
+    powerSetupActivitySub: "The startup and shutdown sequence this activity runs.",
     powerOnLabel: "Power-on sequence",
     powerOffLabel: "Power-off sequence",
+    // Activity membership (power-only members). The sequences are the
+    // management surface: Add device sits beside Add step in the sequence
+    // editor, deleting a power-ref row removes the device, and the power
+    // section shows a one-line roster summary.
+    memberSummary: (names: string) => `Devices: ${names}`,
+    memberSummaryEmpty: 'No devices yet. Open a sequence and use "Add device".',
+    addMemberButton: "Add device",
+    addMemberTitle: "Add device to this activity",
+    addMemberHelper:
+      "The device is added to both power sequences. Assign buttons or shortcuts later, or leave them empty.",
+    addMemberConfirm: "Add",
+    addMemberNoneLeft: "All devices are already part of this activity.",
+    removeMemberAria: "Remove device from this activity",
     // Automatic-power dropdown (device only). One hub byte encodes the whole
     // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
     powerControlTitle: "Automatic power control",
@@ -558,8 +613,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     powerControlDisabled: "Don't control power",
     powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
     powerControlAutoOff: "Turn off when idle",
-    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
-    powerControlStayOn: "Stay on between Activities",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
+    powerControlStayOn: "Stay on between activities",
     powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
     powerControlAlwaysOn: "Always stay on",
     powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
@@ -595,7 +650,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     shortcutDeleteAria: (kind: "macro" | "favorite") =>
       kind === "macro" ? "Delete macro" : "Delete shortcut",
     powerSectionTitle: "Power control",
-    powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
+    powerActivitySub: "Each device the activity uses powers on here. Pick its input and adjust the timing.",
     powerInputLabel: "Input",
     powerInputNone: "— none —",
     powerDelayLabel: "Delay (s)",
@@ -690,7 +745,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     buttonChip: "button",
     ipChip: "ip",
     thisItem: "this item",
-    noDeviceCommands: "This Device does not currently have any commands.",
+    noDeviceCommands: "This device does not currently have any commands.",
     renameCommandAria: "Rename command",
     commandId: "Command ID",
     editPayloadAria: "Edit payload",
@@ -714,8 +769,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     payloadHex: "Payload (hex bytes)",
     payloadHexHelper: "Byte pairs like \"0a 4f 22\"; whitespace and 0x prefixes are tolerated.",
     rename: "Rename",
-    renameActivity: "Rename Activity",
-    renameDevice: "Rename Device",
+    renameActivity: "Rename activity",
+    renameDevice: "Rename device",
     renameMacro: "Rename Macro",
     renameFavorite: "Rename Favorite",
     renameCommand: "Rename Command",
@@ -786,6 +841,22 @@ export const TOOLS_CARD_STRINGS_EN = {
     integrationVersion: "Integration version",
     firmwareVersion: (version: string | number) => `FW: v${version}`,
     productVersion: (version: string) => `Sofabaton ${version}`,
+    firmwareUpdateRequired: "Firmware update required",
+    firmwareUpdateRecommended: "Firmware update recommended",
+    firmwareUpdateTooltip: (
+      recommended: string | number,
+      required: string | number,
+      unsupported: boolean,
+    ) => {
+      const update = "Update the hub over Bluetooth using the Sofabaton app.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required)
+          ? ""
+          : ` Firmware version ${recommended} or newer is recommended because it contains fixes for known issues.`;
+        return `Firmware version ${required} or newer is required for Control Panel configuration changes.${recommendation} ${update}`;
+      }
+      return `Firmware version ${recommended} or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. ${update}`;
+    },
   },
   decodedPayload: {
     httpTitle: "HTTP request",
@@ -811,6 +882,11 @@ export const TOOLS_CARD_STRINGS_EN = {
     bodyBlock: "Body block (raw wire string)",
     bodyBlockHelper:
       "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value — it must match the body byte count.",
+    mqttTitle: "MQTT identifiers",
+    mqttSubtitle:
+      "Both bytes are ignored by the hub: at press time it publishes its own device and key IDs to the broker. There is nothing to configure.",
+    mqttDeviceId: "Device ID (ignored by the hub)",
+    mqttCommandId: "Command ID (ignored by the hub)",
     irTitle: "Descriptive IR payload",
     irSubtitle:
       "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR payloads are not editable here.",
@@ -867,7 +943,7 @@ export const TOOLS_CARD_STRINGS_EN = {
       `Replaces "${slot}" from ${device}`,
     none: "None",
     commandSlotDescription:
-      "Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
+      "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device…",
     syncingDeviceNamed: (deviceName: string) => `Syncing ${deviceName}…`,
     syncInProgress: "Sync in progress",
@@ -901,6 +977,13 @@ export const TOOLS_CARD_STRINGS_EN = {
     deleteDeviceFailed: "Unable to delete Wifi Device",
     createModalCancel: "Cancel",
     createModalCreate: "Create",
+    transportLabel: "Delivery method",
+    transportMqttHint:
+      "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
+    transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
+    transportPillDeployedTitle: "Current delivery method",
+    transportPillPreviewTitle: "Selected delivery method",
     deleteModalTitle: "Delete Wifi Device?",
     deleteModalBody: (deviceName: string) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
     deleteModalDelete: "Delete",
@@ -914,23 +997,23 @@ export const TOOLS_CARD_STRINGS_EN = {
     commandSlotActionTitle: (slotIndex: number) => `Command Slot ${slotIndex + 1} Action`,
     commandDisplayName: "Command Display Name",
     advanced: "Advanced",
-    activityInput: "Perform this command when an Activity starts",
-    activityInputHint: "The command is set as the Activity's input on the hub, so it runs during the Activity's startup sequence.",
+    activityInput: "Perform this command when an activity starts",
+    activityInputHint: "The command is set as the activity's input on the hub, so it runs during the activity's startup sequence.",
     activityInputReplaces: (slotName: string, activityName: string) => `Replaces "${slotName}" when ${activityName} starts`,
-    noActivitiesForHub: "No Activities available for this hub.",
+    noActivitiesForHub: "No activities available for this hub.",
     activityInputLabel: "Activity that performs this command",
     devicePowerOnLabel: "When the hub turns this device ON",
     devicePowerOffLabel: "When the hub turns this device OFF",
     devicePowerNothing: "Nothing",
-    devicePowerHint: "Runs as part of this device's power sequence in your Activities. Synced to the hub.",
+    devicePowerHint: "Runs as part of this device's power sequence in your activities. Synced to the hub.",
     devicePowerPerform: (commandName: string) => `perform ${commandName}`,
     hubEventsTitle: "Hub Events",
     hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
     hubEventPowerOff: "When the hub is switched OFF",
     hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
-    hubEventActivityStart: "When any Activity starts",
+    hubEventActivityStart: "When any activity starts",
     hubEventActivityStops: "and when one stops",
-    hubEventActivityStopModalTitle: "When any Activity stops",
+    hubEventActivityStopModalTitle: "When any activity stops",
     hubEventDoNothing: "do nothing",
     hubEventPerform: (service: string) => `perform ${service}`,
     hubEventClearTitle: "Reset to do nothing",
@@ -948,6 +1031,15 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiEventLongPressToggleTitle: "Enable long press",
     wifiEventNeedsSyncBadge: "needs sync",
     wifiEventRetrySync: "Retry sync",
+    // Orphaned-config notice, split around the clickable phrase so locales
+    // can place it anywhere in the sentence.
+    wifiEventsStaleNoticePrefix:
+      "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
+    wifiEventsStaleNoticeLink: "remove this configuration from Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
+    wifiEventsStaleConfirmRemove: "Remove",
+    wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
     wifiEventDeleteTitle: "Delete Wifi Event",
     wifiEventDeleteConfirmTitle: (name: string) => `Delete "${name}"?`,
     wifiEventDeleteScanning: "Checking what references this event…",
@@ -958,17 +1050,17 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiEventDeleteFailed: "Deleting the Wifi Event failed.",
     activityEventsTitle: "Activity Events",
     activityEventsSubtitle:
-      "Perform a Home Assistant Action when a specific Activity starts or stops. Switching between Activities stops the old one and starts the new one.",
+      "Perform a Home Assistant Action when a specific activity starts or stops. Switching between activities stops the old one and starts the new one.",
     activityEventStarts: (name: string) => `When ${name} starts`,
     activityEventStops: "and when it stops",
     activityEventStartModalTitle: (name: string) => `When ${name} starts`,
     activityEventStopModalTitle: (name: string) => `When ${name} stops`,
     activityEventFallbackName: (id: string) => `Activity ${id}`,
-    noActivitiesForEvents: "No Activities on this hub yet.",
+    noActivitiesForEvents: "No activities on this hub yet.",
     favorite: "Set as Favorite",
     physicalButtonAssignment: "Physical Button Assignment",
     enableLongPress: "Enable long-press",
-    applyToActivities: "Apply to these Activities",
+    applyToActivities: "Apply to these activities",
     actionModalNote:
       "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
     shortPress: "Short press",

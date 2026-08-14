@@ -12,7 +12,7 @@ Implementation notes for this repository's Python code are kept separate in
 
 ---
 
-## Scope
+## ◇ Scope
 
 These documents focus on:
 - frame layout
@@ -30,7 +30,7 @@ They intentionally avoid:
 
 ---
 
-## Tested hub lines
+## ◇ Tested hub lines
 
 | Model | `HVER` |
 |-------|--------|
@@ -40,7 +40,7 @@ They intentionally avoid:
 
 ---
 
-## Contents
+## ◇ Contents
 
 | Document | Purpose |
 |----------|---------|
@@ -61,7 +61,7 @@ reference. Treat the documents above as the normative protocol set.
 
 ---
 
-## Quick orientation
+## ◇ Quick orientation
 
 At a high level:
 

@@ -226,8 +226,12 @@ class MacroHandler(BaseFrameHandler):
                 proxy.cache_macro_record(record)
 
                 # Suppress auto-generated POWER_* macros from the activity
-                # UI list.
+                # UI list. Match by key id as well as label: the reserved
+                # power slots (198/199) stay hidden even when a bad label
+                # was written to them (#263), mirroring the vendor app.
                 if not record.label or record.label.upper().startswith("POWER_"):
+                    continue
+                if (record.key_id & 0xFF) in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
                     continue
                 macros.append({"command_id": record.key_id, "label": record.label})
 

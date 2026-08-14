@@ -51,7 +51,7 @@ test("unknown control-panel languages fall back to English", () => {
   setToolsCardLanguage("en");
 });
 
-test("bundled British English uses en-GB spelling and English fallback", () => {
+test("bundled English (en-GB) uses proper English spelling and American English fallback", () => {
   setToolsCardLanguage("en-GB");
 
   assert.equal(TOOLS_CARD_STRINGS.cache.favorites, "Favourites");
@@ -161,6 +161,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       backupSections: ["Maken", "Bewerken", "Herstellen"],
       backupButtons: ["Downloaden", "Geen", "Alles", "Starten", "Bestand kiezen"],
       wifiButtons: ["Toevoegen", "Synchroniseren"],
+      retrySync: "Opnieuw synchroniseren",
     },
     {
       locale: "de",
@@ -169,6 +170,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       backupSections: ["Sichern", "Ändern", "Wiederherstellen"],
       backupButtons: ["Herunterladen", "Keine", "Alle", "Starten", "Datei auswählen"],
       wifiButtons: ["Hinzufügen", "Synchronisieren"],
+      retrySync: "Erneut synchronisieren",
     },
     {
       locale: "fr",
@@ -177,6 +179,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       backupSections: ["Créer", "Modifier", "Restaurer"],
       backupButtons: ["Télécharger", "Aucun", "Tout", "Démarrer", "Choisir un fichier"],
       wifiButtons: ["Ajouter", "Synchroniser"],
+      retrySync: "Resynchroniser",
     },
     {
       locale: "es",
@@ -185,6 +188,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       backupSections: ["Crear", "Editar", "Restaurar"],
       backupButtons: ["Descargar", "Ninguno", "Todos", "Iniciar", "Elegir archivo"],
       wifiButtons: ["Añadir", "Sincronizar"],
+      retrySync: "Reintentar",
     },
   ] as const;
 
@@ -235,7 +239,148 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       item.wifiButtons,
       `${item.locale} Automation actions`,
     );
+    assert.deepEqual(
+      [TOOLS_CARD_STRINGS.activities.syncRetry, TOOLS_CARD_STRINGS.wifiCommands.wifiEventRetrySync],
+      [item.retrySync, item.retrySync],
+      `${item.locale} retry-sync actions`,
+    );
   }
+
+  setToolsCardLanguage("en");
+});
+
+test("firmware copy distinguishes required updates from recommendations", () => {
+  setToolsCardLanguage("en");
+
+  assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired, "Firmware update required");
+  assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended, "Firmware update recommended");
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, true),
+    "Firmware version 5 or newer is required for Control Panel configuration changes. Firmware version 8 or newer is recommended because it contains fixes for known issues. Update the hub over Bluetooth using the Sofabaton app.",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, false),
+    "Firmware version 8 or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. Update the hub over Bluetooth using the Sofabaton app.",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(5, 5, true),
+    "Firmware version 5 or newer is required for Control Panel configuration changes. Update the hub over Bluetooth using the Sofabaton app.",
+  );
+
+  const labels = [
+    ["de", "Firmware-Update erforderlich", "Firmware-Update empfohlen"],
+    ["es", "Actualización de firmware necesaria", "Actualización de firmware recomendada"],
+    ["fr", "Mise à jour du firmware requise", "Mise à jour du firmware recommandée"],
+    ["nl", "Firmware-update vereist", "Firmware-update aanbevolen"],
+    ["zh-Hans", "需要更新固件", "建议更新固件"],
+  ] as const;
+
+  for (const [locale, required, recommended] of labels) {
+    setToolsCardLanguage(locale);
+    assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired, required, locale);
+    assert.equal(TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended, recommended, locale);
+
+    const blocked = TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, true);
+    const advisory = TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, false);
+    assert.match(blocked, /5/, `${locale} required version`);
+    assert.match(blocked, /8/, `${locale} recommended version`);
+    assert.notEqual(blocked, advisory, `${locale} required and recommended states`);
+  }
+
+  setToolsCardLanguage("zh-Hans");
+  assert.equal(
+    TOOLS_CARD_STRINGS.availability.blockedByFirmware(2, 5),
+    "此 Hub 当前固件版本为 2。要使用控制面板中修改 Hub 配置的功能，请先使用 Sofabaton 应用通过蓝牙将 Hub 固件升级至 5 或更高版本。Hub 上报新固件版本后，此功能将自动恢复。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.activities.firmwareUnsupportedBody(2, 5),
+    "此 Hub 当前固件版本为 2。要安全编辑 Hub 配置，需要 5 或更高版本。为保护你的配置，编辑功能已禁用。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。Hub 上报新固件版本后，编辑功能将自动恢复。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, true),
+    "控制面板中的配置修改功能要求固件版本不低于 5。建议升级至 8 或更高版本，其中包含针对已知问题的修复。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(8, 5, false),
+    "建议将固件升级至 8 或更高版本，其中包含针对已知问题的修复。当前固件仍支持通过控制面板修改配置。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。",
+  );
+  assert.equal(
+    TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(5, 5, true),
+    "控制面板中的配置修改功能要求固件版本不低于 5。请使用 Sofabaton 应用通过蓝牙升级 Hub 固件。",
+  );
+
+  setToolsCardLanguage("en");
+});
+
+test("activity membership and MQTT delivery copy stays explicit in every locale", () => {
+  const cases = [
+    {
+      locale: "en",
+      helper: "The device is added to both power sequences. Assign buttons or shortcuts later, or leave them empty.",
+      mqttTitle: "MQTT identifiers",
+      transportLabel: "Delivery method",
+      transportLocked: "The delivery method cannot be changed after the device is synced to the hub.",
+    },
+    {
+      locale: "de",
+      helper: "Das Gerät wird beiden Ein-/Ausschaltsequenzen hinzugefügt. Tasten oder Verknüpfungen kannst du später zuweisen; die Sequenzen dürfen auch leer bleiben.",
+      mqttTitle: "MQTT-Kennungen",
+      transportLabel: "Übertragungsweg",
+      transportLocked: "Der Übertragungsweg kann nach der Synchronisierung des Geräts mit dem Hub nicht mehr geändert werden.",
+    },
+    {
+      locale: "es",
+      helper: "El dispositivo se añade a las secuencias de encendido y apagado. Puedes asignar botones o accesos directos más tarde, o dejar las secuencias vacías.",
+      mqttTitle: "Identificadores MQTT",
+      transportLabel: "Método de transmisión",
+      transportLocked: "El método no se puede cambiar después de sincronizar el dispositivo con el hub.",
+    },
+    {
+      locale: "fr",
+      helper: "L’appareil est ajouté aux séquences d’allumage et d’extinction. Vous pourrez attribuer des touches ou des raccourcis plus tard, ou laisser les séquences vides.",
+      mqttTitle: "Identifiants MQTT",
+      transportLabel: "Mode de transmission",
+      transportLocked: "Le mode de transmission ne peut plus être modifié après la synchronisation de l’appareil avec le hub.",
+    },
+    {
+      locale: "nl",
+      helper: "Het apparaat wordt toegevoegd aan de in- en uitschakelreeksen. Je kunt later knoppen of snelkoppelingen toewijzen, of de reeksen leeg laten.",
+      mqttTitle: "MQTT-id's",
+      transportLabel: "Overdrachtsmethode",
+      transportLocked: "De overdrachtsmethode kan niet meer worden gewijzigd nadat het apparaat met de hub is gesynchroniseerd.",
+    },
+    {
+      locale: "zh-Hans",
+      helper: "将设备添加到开机和关机序列。稍后可分配按键或快捷项，也可将序列留空。",
+      mqttTitle: "MQTT 标识符",
+      transportLabel: "传输方式",
+      transportLocked: "设备同步到 Hub 后，传输方式无法更改。",
+    },
+  ] as const;
+
+  for (const item of cases) {
+    setToolsCardLanguage(item.locale);
+    assert.equal(TOOLS_CARD_STRINGS.backup.addMemberHelper, item.helper, item.locale);
+    assert.equal(TOOLS_CARD_STRINGS.decodedPayload.mqttTitle, item.mqttTitle, item.locale);
+    assert.equal(TOOLS_CARD_STRINGS.wifiCommands.transportLabel, item.transportLabel, item.locale);
+    assert.equal(TOOLS_CARD_STRINGS.wifiCommands.transportLockedNote, item.transportLocked, item.locale);
+  }
+
+  setToolsCardLanguage("en");
+  assert.equal(TOOLS_CARD_STRINGS.decodedPayload.mqttDeviceId, "Device ID (ignored by the hub)");
+  assert.equal(TOOLS_CARD_STRINGS.decodedPayload.mqttCommandId, "Command ID (ignored by the hub)");
+});
+
+test("German and Dutch use native terminology for generic Wifi event copy", () => {
+  setToolsCardLanguage("de");
+  assert.equal(TOOLS_CARD_STRINGS.backup.wifiEventNameLabel, "Ereignisname");
+  assert.match(TOOLS_CARD_STRINGS.wifiCommands.wifiEventsSubtitle, /^Ereignisse,/);
+  assert.equal(TOOLS_CARD_STRINGS.wifiCommands.wifiEventNeedsSyncBadge, "Synchronisierung nötig");
+
+  setToolsCardLanguage("nl");
+  assert.equal(TOOLS_CARD_STRINGS.backup.wifiEventNameLabel, "Naam van de gebeurtenis");
+  assert.match(TOOLS_CARD_STRINGS.wifiCommands.wifiEventsSubtitle, /^Gebeurtenissen /);
+  assert.equal(TOOLS_CARD_STRINGS.wifiCommands.wifiEventNeedsSyncBadge, "Synchronisatie nodig");
 
   setToolsCardLanguage("en");
 });
@@ -417,6 +562,49 @@ function isTechnicalHtmlExpressionLiteral(node: ts.StringLiteralLike): boolean {
   }
   return false;
 }
+
+test("western locale source uses compact ellipses and French non-breaking punctuation", () => {
+  const sourceRoot = path.resolve("custom_components/sofabaton_x1s/www/src");
+  const offenders: string[] = [];
+  const catalogues = [
+    ...["de", "es", "fr", "nl"].map((locale) => ({
+      locale,
+      file: path.join(sourceRoot, "control-panel-translations", `${locale}.ts`),
+    })),
+    { locale: "fr", file: path.join(sourceRoot, "remote-card-translations", "fr.ts") },
+    { locale: "nl", file: path.join(sourceRoot, "remote-card-translations", "nl.ts") },
+  ];
+
+  for (const { locale, file } of catalogues) {
+    const source = ts.createSourceFile(
+      file,
+      readFileSync(file, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+
+    const visit = (node: ts.Node) => {
+      const isTextNode = ts.isStringLiteralLike(node)
+        || ts.isTemplateHead(node)
+        || ts.isTemplateMiddle(node)
+        || ts.isTemplateTail(node);
+      if (isTextNode) {
+        const value = (node as ts.StringLiteralLike).text;
+        if (value.includes("...")) {
+          offenders.push(`${locale}:${lineOf(source, node)} uses three periods`);
+        }
+        if (locale === "fr" && / (?=[:;?!])/.test(value)) {
+          offenders.push(`${locale}:${lineOf(source, node)} uses a breaking punctuation space`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+
+  assert.deepEqual(offenders, [], offenders.join("\n"));
+});
 
 test("control-panel UI source does not introduce literal user-facing strings", () => {
   const root = path.resolve("custom_components/sofabaton_x1s/www/src");

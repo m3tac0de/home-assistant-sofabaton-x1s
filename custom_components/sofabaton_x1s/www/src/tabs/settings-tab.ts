@@ -7,7 +7,14 @@ import type {
   PendingSettingKey,
   SettingKey,
 } from "../shared/ha-context";
-import { canRunHubActions, hubConnected, hubIcon, proxyClientConnected } from "../shared/utils/control-panel-selectors";
+import {
+  canRunHubActions,
+  firmwareOutdated,
+  firmwareUnsupported,
+  hubConnected,
+  hubIcon,
+  proxyClientConnected,
+} from "../shared/utils/control-panel-selectors";
 import { renderSettingTile } from "../components/setting-tile";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
@@ -59,6 +66,16 @@ export function renderSettingsTab(params: {
             <div class="hub-compact-text">
               <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
               ${versionLine ? html`<div class="hub-compact-meta">${versionLine}</div>` : nothing}
+              ${firmwareOutdated(hub) ? html`<div class="hub-compact-meta"><span
+                class="hub-fw-chip"
+                title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(
+                  hub.firmware_min_recommended ?? "?",
+                  hub.firmware_min_supported ?? "?",
+                  firmwareUnsupported(hub),
+                )}
+              ><ha-icon icon="mdi:update"></ha-icon>${firmwareUnsupported(hub)
+                ? TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired
+                : TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended}</span></div>` : nothing}
               ${hub.ip_address ? html`<div class="hub-compact-meta">${hub.ip_address}</div>` : nothing}
             </div>
           </div>

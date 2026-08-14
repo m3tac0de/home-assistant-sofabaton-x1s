@@ -178,6 +178,7 @@ test("reconcile repairs every missing start/shutdown row and is idempotent", () 
 
 test("a zero wait accepts either an omitted or retained physical delay row", () => {
   let bundle = addActivityMacroCommandStep(emptyBundle("X1S"), 101, 1, 1, 10, 0);
+  bundle = addActivityMacroCommandStep(bundle, 101, 1, 2, 20, 0);
   let userMacro = macro(bundle.activities[0], 1);
 
   assert.equal((userMacro.steps ?? []).filter(isDelay).length, 0);
@@ -186,28 +187,38 @@ test("a zero wait accepts either an omitted or retained physical delay row", () 
   userMacro = macro(bundle.activities[0], 1);
   assert.deepEqual(
     (userMacro.steps ?? []).map((step) => [step.device_id, step.command_id, step.delay]),
-    [[1, 10, DELAY], [DELAY, DELAY, 5]],
+    [[1, 10, DELAY], [DELAY, DELAY, 5], [2, 20, DELAY]],
   );
 
   bundle = setActivityMacroStepWait(bundle, 101, 1, 0, 0);
   userMacro = macro(bundle.activities[0], 1);
   assert.deepEqual(
     (userMacro.steps ?? []).map((step) => [step.device_id, step.command_id, step.delay]),
-    [[1, 10, DELAY], [DELAY, DELAY, 0]],
+    [[1, 10, DELAY], [DELAY, DELAY, 0], [2, 20, DELAY]],
   );
 });
 
-test("a nonzero macro wait remains attached through reorder", () => {
+test("a nonzero macro wait remains attached through reorder; landing last zeroes it", () => {
   let bundle = addActivityMacroCommandStep(emptyBundle("X1S"), 101, 1, 1, 10, 0);
-  bundle = setActivityMacroStepWait(bundle, 101, 1, 0, 8);
   bundle = addActivityMacroCommandStep(bundle, 101, 1, 2, 20, 0);
-  const reordered = reorderActivityMacroSteps(bundle, 101, 1, [1, 0]);
+  bundle = addActivityMacroCommandStep(bundle, 101, 1, 3, 30, 0);
+  bundle = setActivityMacroStepWait(bundle, 101, 1, 0, 8);
+  const reordered = reorderActivityMacroSteps(bundle, 101, 1, [1, 0, 2]);
   const userMacro = macro(reordered.activities[0], 1);
 
   assertNonzeroWaitRowsAreAttached(userMacro);
   assert.deepEqual(
     (userMacro.steps ?? []).map((step) => [step.device_id, step.command_id, step.delay]),
-    [[2, 20, DELAY], [1, 10, DELAY], [DELAY, DELAY, 8]],
+    [[2, 20, DELAY], [1, 10, DELAY], [DELAY, DELAY, 8], [3, 30, DELAY]],
   );
   assertActivityMembershipInvariant(reordered, 101);
+
+  // The final step's wait is dead time: a reorder that lands the waited
+  // command last normalizes its wait to 0 (row kept, value zeroed).
+  const toEnd = reorderActivityMacroSteps(bundle, 101, 1, [1, 2, 0]);
+  const tailMacro = macro(toEnd.activities[0], 1);
+  assert.deepEqual(
+    (tailMacro.steps ?? []).map((step) => [step.device_id, step.command_id, step.delay]),
+    [[2, 20, DELAY], [3, 30, DELAY], [1, 10, DELAY], [DELAY, DELAY, 0]],
+  );
 });

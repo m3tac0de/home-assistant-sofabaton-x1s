@@ -353,7 +353,7 @@ def build_activity_sync_plan(
 
     plan = [*prereq, *members, *macros, *bindings, *favorites, *idle, *rename]
     if plan:
-        plan.append(SyncStep(kind="remote_sync", label="Refreshing the remote…", payload={"activity_id": activity_id}))
+        plan.append(SyncStep(kind="remote_sync", label="Syncing the remote…", payload={"activity_id": activity_id}))
     return plan
 
 
@@ -903,7 +903,7 @@ def _plan_macros(
             out.append(
                 SyncStep(
                     kind="macro_delete",
-                    label="Removing a custom action…",
+                    label="Removing a macro…",
                     payload={"activity_id": activity_id, "button_id": button_id},
                 )
             )
@@ -947,7 +947,7 @@ def _plan_macros(
         out.append(
             SyncStep(
                 kind="macro_delete",
-                label="Removing a custom action…",
+                label="Removing a macro…",
                 payload={"activity_id": activity_id, "button_id": _int(macro.get("button_id"))},
             )
         )
@@ -958,7 +958,7 @@ def _macro_label(button_id: int) -> str:
         return "Updating start sequence…"
     if button_id == POWER_OFF_MACRO_BUTTON_ID:
         return "Updating end sequence…"
-    return "Updating a custom action…"
+    return "Updating a macro…"
 
 
 def _normalize_binding_macro_refs(

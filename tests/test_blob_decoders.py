@@ -96,13 +96,14 @@ def _to_bytes(hex_string: str) -> bytes:
 
 
 def test_decodable_classes_covers_all_in_scope_classes():
-    # Four virtual-device classes plus IR (content-sniffed via the
+    # Five virtual-device classes plus IR (content-sniffed via the
     # descriptive-protocol magic prefix).
     assert set(DECODABLE_CLASSES) == {
         DEVICE_CLASS_WIFI_IP,
         DEVICE_CLASS_WIFI_ROKU,
         DEVICE_CLASS_WIFI_HUE,
         DEVICE_CLASS_WIFI_SONOS,
+        DEVICE_CLASS_WIFI_MQTT,
         DEVICE_CLASS_IR,
     }
 
@@ -134,7 +135,6 @@ def test_is_decodable_class_for_in_scope_aliases(device_class):
     "device_class",
     [
         DEVICE_CLASS_BLUETOOTH,
-        DEVICE_CLASS_WIFI_MQTT,
         "rf",
         "rf_433mhz",
         "",

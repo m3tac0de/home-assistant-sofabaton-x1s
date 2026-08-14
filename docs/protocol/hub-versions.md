@@ -6,7 +6,7 @@ exposed in the mDNS TXT record `AVER`.
 
 ---
 
-## Version identification
+## ◇ Version identification
 
 | `HVER` | Model |
 |--------|-------|
@@ -32,7 +32,7 @@ distinguishes X1 from X1S/X2:
 
 ---
 
-## mDNS service types
+## ◇ mDNS service types
 
 Observed physical hub advertisements:
 
@@ -47,7 +47,7 @@ but the physical X2 hardware has been observed using `_sofabaton_hub._udp.local.
 
 ---
 
-## Banner / version block differences
+## ◇ Banner / version block differences
 
 The same core version block appears in:
 
@@ -74,7 +74,7 @@ Representative observed blocks:
 
 ---
 
-## NOTIFY_ME reply differences
+## ◇ NOTIFY_ME reply differences
 
 The UDP discovery reply is structurally shared across all observed hub lines:
 
@@ -94,7 +94,7 @@ The main per-family differences are the device-id tail and the version block con
 
 ---
 
-## Major opcode-family differences
+## ◇ Major opcode-family differences
 
 ### Catalog rows
 
@@ -132,7 +132,7 @@ The main per-family differences are the device-id tail and the version block con
 
 ---
 
-## Activity-input responses
+## ◇ Activity-input responses
 
 The request opcode is the same on all observed hub lines:
 
@@ -147,7 +147,7 @@ The response layout differs:
 
 ---
 
-## Text encoding differences by family
+## ◇ Text encoding differences by family
 
 The protocol does not use one universal string encoding.
 
@@ -167,7 +167,7 @@ hub version alone.
 
 ---
 
-## Per-variant record dimensions
+## ◇ Per-variant record dimensions
 
 X1S and X2 share the same record layouts across every observed
 family; X1 uses narrower fixed slots and ASCII labels.

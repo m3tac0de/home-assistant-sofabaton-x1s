@@ -71,7 +71,7 @@ test.describe("tools-card activity editor harness", () => {
   test("adding a favorite through the UI links its device and repairs power macros", async ({ page }) => {
     await mountActivityEditor(page);
 
-    await page.locator(".quick-access-head-actions .quick-access-add-btn").click();
+    await page.locator('[data-edit-section="quick_access"] .quick-access-add-btn').click();
     await page.locator("#sb-add-fav-device").selectOption("3");
     await page.locator("#sb-add-fav-command").selectOption("30");
     await page.locator(".dialog-footer .dialog-btn-primary").click();
@@ -109,12 +109,14 @@ test.describe("tools-card activity editor harness", () => {
     assertActivityMembershipInvariant(edited, 101);
   });
 
-  test("editing and reordering a macro keeps a nonzero wait attached", async ({ page }) => {
+  test("macro waits attach to their step and a wait landing last is zeroed", async ({ page }) => {
     await mountActivityEditor(page);
 
     await page.getByRole("button", { name: "Edit steps", exact: true }).click();
+    // Two steps but only one wait control: the last step's wait sub-row is
+    // hidden (a trailing wait is dead time).
     const waitInputs = page.locator(".step-wait-input");
-    await expect(waitInputs).toHaveCount(2);
+    await expect(waitInputs).toHaveCount(1);
     await waitInputs.nth(0).fill("4");
     await waitInputs.nth(0).press("Tab");
 
@@ -128,13 +130,30 @@ test.describe("tools-card activity editor harness", () => {
       }));
     });
 
+    // The waited step landed last, so its wait was normalized to 0.
+    const reordered = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
+    const activityAfterReorder = reordered.activities.find((candidate) => candidate.device?.device_id === 101);
+    const macroAfterReorder = activityAfterReorder.macros.find((candidate) => candidate.button_id === 3);
+    expect(macroAfterReorder.steps.map((step) => [step.device_id, step.command_id, step.delay])).toEqual([
+      [2, 21, undefined],
+      [1, 11, undefined],
+      [DELAY, DELAY, 0],
+    ]);
+
+    // The single visible wait control now belongs to the new first step;
+    // a wait set there stays attached mid-sequence.
+    await expect(waitInputs).toHaveCount(1);
+    await waitInputs.nth(0).fill("2");
+    await waitInputs.nth(0).press("Tab");
+
     const bundle = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
     const activity = bundle.activities.find((candidate) => candidate.device?.device_id === 101);
     const userMacro = activity.macros.find((candidate) => candidate.button_id === 3);
     expect(userMacro.steps.map((step) => [step.device_id, step.command_id, step.delay])).toEqual([
       [2, 21, undefined],
+      [DELAY, DELAY, 4],
       [1, 11, undefined],
-      [DELAY, DELAY, 8],
+      [DELAY, DELAY, 0],
     ]);
     assertActivityMembershipInvariant(bundle, 101);
   });
@@ -167,10 +186,44 @@ test.describe("tools-card activity editor harness", () => {
     assertActivityMembershipInvariant(afterDelete, 101);
   });
 
+  test("adding a device with no buttons or shortcuts makes it a power-only member", async ({ page }) => {
+    await mountActivityEditor(page);
+
+    // The sequences are the management surface: Add device sits beside
+    // Add step inside the power-sequence editor.
+    await page.getByRole("button", { name: "Power-on sequence", exact: false }).click();
+    await page.locator(".add-member-btn").click();
+    await page.locator("#sb-add-member-device").selectOption("3");
+    await page.locator(".dialog-footer .dialog-btn-primary").click();
+
+    const bundle = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
+    const activity = bundle.activities.find((candidate) => candidate.device?.device_id === 101);
+    // Member with no editable references: no favorite, binding, or step.
+    expect(activity.referenced_source_device_ids).toEqual([1, 2, 3]);
+    expect((activity.favorite_slots ?? []).some((slot) => Number(slot.device_id) === 3)).toBe(false);
+    expect((activity.button_bindings ?? []).some((binding) => Number(binding.device_id) === 3)).toBe(false);
+    assertActivityMembershipInvariant(bundle, 101);
+
+    // Deleting the device's power-ref row = removing the device, via the
+    // member impact-confirm dialog.
+    await page.locator("[data-step-index]").filter({ hasText: "Streamer" })
+      .getByRole("button", { name: "Remove device from this activity", exact: true }).click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+
+    const after = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());
+    expect(after.activities.find((candidate) => candidate.device?.device_id === 101)
+      .referenced_source_device_ids).toEqual([1, 2]);
+    assertActivityMembershipInvariant(after, 101);
+
+    // Back at the section level, the roster is a one-line summary.
+    await page.locator(".back-btn").click();
+    await expect(page.locator('[data-kind="member-summary"]')).toContainText("Television");
+  });
+
   test("deleting a device's final favorite removes its power linkage", async ({ page }) => {
     await mountActivityEditor(page);
 
-    await page.locator(".quick-access-head-actions .quick-access-add-btn").click();
+    await page.locator('[data-edit-section="quick_access"] .quick-access-add-btn').click();
     await page.locator("#sb-add-fav-device").selectOption("3");
     await page.locator("#sb-add-fav-command").selectOption("30");
     await page.locator(".dialog-footer .dialog-btn-primary").click();

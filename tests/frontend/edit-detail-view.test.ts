@@ -301,6 +301,11 @@ test("macro timing conversion covers invalid, boundary, rounding, and saturation
 
 test("wait change snaps the control and emits the exact attached delay row", () => {
   const element = createEditor();
+  // A second step so index 0 isn't the last group (a last-group wait is
+  // normalized to 0 and its control is never rendered).
+  element.bundle.activities[0].macros![0].steps!.push(
+    { device_id: 1, command_id: 10, button_code: 0x4E0A, duration: 0, delay: 0xFF },
+  );
   const changes = collectBundleChanges(element);
   element._macroEditor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
   const { event, control } = mutableControlEvent("0.3");
@@ -312,8 +317,16 @@ test("wait change snaps the control and emits the exact attached delay row", () 
   const macro = changes[0].activities[0].macros?.find((row) => row.button_id === 3);
   assert.deepEqual(
     macro?.steps?.map((step) => [step.device_id, step.command_id, step.delay]),
-    [[1, 10, 0xFF], [0xFF, 0xFF, 1]],
+    [[1, 10, 0xFF], [0xFF, 0xFF, 1], [1, 10, 0xFF]],
   );
+});
+
+test("the attached-wait sub-row renders under every step except the last", () => {
+  const element = createEditor();
+  element._macroEditor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
+  const item = { index: 0, kind: "command", commandId: 10, deviceId: 1, label: "TV · Power", hold: 0, wait: 2 };
+  assert.ok(templateText(element._renderMacroStepRow(item, false, false)).includes("step-wait"));
+  assert.ok(!templateText(element._renderMacroStepRow(item, false, true)).includes("step-wait"));
 });
 
 test("macro step Save blocks incomplete input and commits a quantized valid step", () => {
@@ -522,13 +535,13 @@ test("delete confirm copy matches the mode and delete kind", () => {
   // Backup mode: reaches the hub only when existing data is erased on restore.
   element.mode = "backup";
   let text = templateText(element._renderDeleteConfirmDialog());
-  assert.ok(text.includes("Erase existing Devices and Activities"));
+  assert.ok(text.includes("Erase existing devices and activities"));
 
   // Live mode, device delete: hits the hub immediately, no "backup" wording.
   element.mode = "live";
   text = templateText(element._renderDeleteConfirmDialog());
   assert.ok(text.includes("applied to the hub immediately"));
-  assert.ok(!text.includes("Erase existing Devices and Activities"));
+  assert.ok(!text.includes("Erase existing devices and activities"));
   assert.ok(!text.includes("loaded backup"));
   assert.ok(!text.includes("in the backup"));
 
@@ -539,7 +552,7 @@ test("delete confirm copy matches the mode and delete kind", () => {
   element._confirmDeleteLabel = "Volume Combo";
   text = templateText(element._renderDeleteConfirmDialog());
   assert.ok(text.includes("next Sync"));
-  assert.ok(!text.includes("Erase existing Devices and Activities"));
+  assert.ok(!text.includes("Erase existing devices and activities"));
 });
 
 test("payload test hint shows only when editing an IR command", () => {

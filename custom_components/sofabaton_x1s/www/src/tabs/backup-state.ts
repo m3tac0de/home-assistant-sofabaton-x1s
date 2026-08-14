@@ -56,6 +56,7 @@ export type DecodableCommandClass =
   | "wifi_roku"
   | "wifi_hue"
   | "wifi_sonos"
+  | "wifi_mqtt"
   | "ir";
 
 /**
@@ -83,6 +84,11 @@ export interface DecodedFieldSpec {
   // right control because long escaped strings need to wrap visually.
   escapedDisplay?: boolean;
   helper?: string;
+  // True for fields the hub provably ignores (wifi_mqtt: the record's
+  // two bytes are inert — the hub publishes its own ids at press time).
+  // Rendered disabled: an editable field that silently does nothing is
+  // a worse trap than raw hex.
+  readonly?: boolean;
 }
 
 export interface DecodedFormSpec {
@@ -153,6 +159,14 @@ function decodedClassFormSpecs(): Record<DecodableCommandClass, DecodedFormSpec>
         escapedDisplay: true,
         helper: S.bodyBlockHelper,
       },
+    ],
+  },
+  wifi_mqtt: {
+    title: S.mqttTitle,
+    subtitle: S.mqttSubtitle,
+    fields: [
+      { key: "device_id", label: S.mqttDeviceId, numeric: true, readonly: true },
+      { key: "command_id", label: S.mqttCommandId, numeric: true, readonly: true },
     ],
   },
   ir: {
@@ -1827,7 +1841,9 @@ function activityPowerDeviceIds(activity: BackupBundleActivityPayload): Set<numb
         || command === DEVICE_POWER_OFF_REF_COMMAND
       ) {
         const deviceId = Number(step?.device_id || 0);
-        if (deviceId > 0) ids.add(deviceId);
+        // Chain steps (a power ref whose target is another activity) are
+        // preserved in the macro but never count as member devices.
+        if (deviceId > 0 && deviceId < ACTIVITY_ENTITY_ID_MIN) ids.add(deviceId);
       }
     }
   }
@@ -1843,9 +1859,10 @@ function activityUsageDeviceIds(activity: BackupBundleActivityPayload): Set<numb
   const ids = new Set<number>();
   const add = (value: unknown) => {
     const id = Number(value || 0);
-    // The activity's own id appears as a binding target for MACRO bindings;
-    // it is not a source device and must not pull power steps for itself.
-    if (id > 0 && id !== selfId) ids.add(id);
+    // The activity's own id appears as a binding target for MACRO bindings,
+    // and other activities' ids appear in cross-activity chain steps;
+    // neither is a source device and must not pull power steps.
+    if (id > 0 && id < ACTIVITY_ENTITY_ID_MIN && id !== selfId) ids.add(id);
   };
   for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
   for (const binding of activity.button_bindings ?? []) {
@@ -1891,6 +1908,9 @@ function reconcilePowerMacroSteps(
   const { prefix, groups } = groupMacroSteps(existingSteps);
   const kept = flattenMacroGroups(prefix, groups.filter((group) => {
     const deviceId = Number(group.head?.device_id || 0);
+    // Activity-range targets are cross-activity chain rows; they are not
+    // member-managed, so preserve them verbatim.
+    if (deviceId >= ACTIVITY_ENTITY_ID_MIN && deviceId !== 0xFF) return true;
     return deviceId > 0 ? memberSet.has(deviceId) : true;
   }));
   const out = [...kept];
@@ -1949,7 +1969,7 @@ export function reconcileActivityPowerMacros(
     const memberSet = new Set(activityMemberDeviceIds(activity));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
-      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
+      if (extraId > 0 && extraId < ACTIVITY_ENTITY_ID_MIN && extraId !== selfId) memberSet.add(extraId);
     }
     const members = [...memberSet].sort((left, right) => left - right);
     const macros = [...(activity.macros ?? [])];
@@ -1961,7 +1981,10 @@ export function reconcileActivityPowerMacros(
       const next: BackupBundleMacroRow = {
         ...(existing ?? {}),
         button_id: buttonId,
-        name: existing?.name ?? name,
+        // The POWER_* label is protocol, not user data — the hub hides
+        // power macros by it. Always write the canonical name so a bad
+        // label (empty, or a UI fallback from the #263 bug) self-heals.
+        name,
         steps,
       };
       if (index >= 0) macros[index] = next;
@@ -2524,6 +2547,25 @@ function applyGroupWait(group: MacroStepGroup, waitByte: number, isActivity: boo
   }
 }
 
+/**
+ * Zero the wait attached to the LAST group. Nothing runs after the final
+ * step, so its wait is dead time — the editor hides that row outright, and
+ * every step mutation lands through this normalizer so the stored tail
+ * converges on wait 0 (imported macros with a trailing delay self-heal on
+ * their first edit). Follows applyGroupWait semantics: an existing delay
+ * row is patched to 0, never deleted, and none is materialized.
+ */
+function zeroTrailingGroupWait(
+  steps: BackupBundleMacroStep[],
+  isActivity: boolean,
+): BackupBundleMacroStep[] {
+  const { prefix, groups } = groupMacroSteps(steps);
+  const last = groups[groups.length - 1];
+  if (!last || groupWait(last) === 0) return steps;
+  applyGroupWait(last, 0, isActivity);
+  return flattenMacroGroups(prefix, groups);
+}
+
 /** Summaries of a device's macros (its power-on/off plus any user macros). */
 export function deviceMacroSummaries(
   bundle: BackupBundlePayload | null,
@@ -2586,7 +2628,7 @@ function updateDeviceMacro(
         ...(existing ?? {}),
         button_id: bId,
         name: existing?.name ?? defaultMacroName(bId),
-        steps: transform(existing?.steps ?? []),
+        steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), false),
       };
       if (index >= 0) macros[index] = next;
       else macros.push(next);
@@ -2808,8 +2850,13 @@ function updateActivityMacro(
     const nextMacro: BackupBundleMacroRow = {
       ...(existing ?? {}),
       button_id: bId,
-      name: existing?.name ?? TOOLS_CARD_STRINGS.common.macroFallback(bId),
-      steps: transform(existing?.steps ?? []),
+      // `||` (not `??`): an empty name must also fall back, and for the
+      // power slots defaultMacroName returns the canonical POWER_* label
+      // rather than the localized display fallback — that label is
+      // protocol (the hub hides power macros by it) and must never
+      // carry UI text (#263).
+      name: existing?.name || defaultMacroName(bId),
+      steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), true),
     };
     if (index >= 0) macros[index] = nextMacro;
     else macros.push(nextMacro);

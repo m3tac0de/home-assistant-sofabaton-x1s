@@ -23,6 +23,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 
 from .const import (
     DOMAIN,
@@ -44,6 +45,11 @@ from .const import (
     signal_ip_commands,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
+    HUB_VERSION_X2,
+    MIN_RECOMMENDED_FIRMWARE,
+    MIN_SUPPORTED_FIRMWARE,
+    firmware_is_outdated,
+    firmware_is_unsupported,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -66,6 +72,9 @@ from .command_config import (
     normalize_hub_event_actions,
     normalize_command_id_list,
     normalize_power_command_id,
+    normalize_wifi_transport,
+    record_hash_listen_port,
+    WIFI_TRANSPORT_MQTT,
     wifi_device_requires_listener,
 )
 from .cache_store import PersistentCacheStore
@@ -749,6 +758,8 @@ async def _async_build_control_panel_runtime_payload(
                 or "Working..."
             ),
             "phase": active_backup_operation.get("phase"),
+            "step_kind": active_backup_operation.get("step_kind"),
+            "step_device_id": active_backup_operation.get("step_device_id"),
             "current_device_id": active_backup_operation.get("current_device_id"),
             "current_activity_id": active_backup_operation.get("current_activity_id"),
             "current_step": active_backup_operation.get("completed_steps"),
@@ -787,6 +798,8 @@ async def _async_build_control_panel_runtime_payload(
             # have no fixed phase).
             "detail": str(sync_payload.get("message") or "Sync in progress"),
             "phase": sync_payload.get("phase"),
+            "step_kind": sync_payload.get("step_kind"),
+            "step_name": sync_payload.get("step_name"),
             "current_step": sync_payload.get("current_step"),
             "total_steps": sync_payload.get("total_steps"),
             "device_key": device_key or None,
@@ -822,11 +835,23 @@ async def _async_build_control_panel_hub_payload(
     devices = getattr(hub, "devices", {}) or {}
     active_backup_operation = registry.running_for_entry(hub.entry_id)
     runtime_state = await _async_build_control_panel_runtime_payload(hass, hub)
+    installed_firmware = getattr(hub, "hub_firmware_version", None)
+    # Same classified version the firmware repair issue compares against,
+    # so the card gate and the HA repair can never disagree.
+    classified_version = getattr(hub, "version", None)
     return {
         "entry_id": hub.entry_id,
         "name": hub.name,
         "version": version,
-        "firmware_version": getattr(hub, "hub_firmware_version", None),
+        "firmware_version": installed_firmware,
+        # Firmware gate for the card, computed here so the floor tables
+        # stay Python-only. "outdated" nags (update available), while
+        # "unsupported" blocks the write surfaces (editors, Wifi Commands,
+        # backup) because such firmware ACKs writes and drops them.
+        "firmware_outdated": firmware_is_outdated(classified_version, installed_firmware),
+        "firmware_unsupported": firmware_is_unsupported(classified_version, installed_firmware),
+        "firmware_min_recommended": MIN_RECOMMENDED_FIRMWARE.get(classified_version or ""),
+        "firmware_min_supported": MIN_SUPPORTED_FIRMWARE.get(classified_version or ""),
         "ip_address": getattr(hub, "host", ""),
         "device_count": len(devices),
         "activity_count": len(activities),
@@ -903,6 +928,7 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
     except KeyError:
         connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
         return
+    payload["mqtt_available"] = _hub_mqtt_available(hass, hub)
     connection.send_result(msg["id"], payload)
 
 
@@ -1102,6 +1128,23 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
     )
 
 
+def _hub_mqtt_available(hass: HomeAssistant, hub: Any) -> bool:
+    """Whether the create flow may offer the MQTT transport for this hub.
+
+    Delegates to the hub (X2 + MQTT integration loaded + a REAL hub MAC
+    known — manually-added hubs carry a synthetic MAC until mDNS
+    identifies them, and the press topic needs the real one). Whether
+    the hub actually reaches a broker stays unknowable (F7) and is the
+    user's responsibility.
+    """
+
+    del hass  # the hub checks its own hass reference
+    checker = getattr(hub, "wifi_mqtt_available", None)
+    if not callable(checker):
+        return False
+    return bool(checker())
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_devices/list",
@@ -1131,7 +1174,14 @@ async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[st
             **device,
             **_build_wifi_device_sync_payload(hub, device, device_key=device_key),
         })
-    connection.send_result(msg["id"], {"devices": payload, "max_devices": MAX_WIFI_DEVICES})
+    connection.send_result(
+        msg["id"],
+        {
+            "devices": payload,
+            "max_devices": MAX_WIFI_DEVICES,
+            "mqtt_available": _hub_mqtt_available(hass, hub),
+        },
+    )
 
 
 @websocket_api.websocket_command(
@@ -1139,6 +1189,7 @@ async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[st
         vol.Required("type"): f"{DOMAIN}/command_device/create",
         vol.Required("entity_id"): cv.entity_id,
         vol.Required("device_name"): str,
+        vol.Optional("transport"): str,
     }
 )
 @websocket_api.async_response
@@ -1152,6 +1203,14 @@ async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[s
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return
+    requested_transport = normalize_wifi_transport(msg.get("transport"))
+    if requested_transport == WIFI_TRANSPORT_MQTT and not _hub_mqtt_available(hass, hub):
+        connection.send_error(
+            msg["id"],
+            "mqtt_unavailable",
+            "MQTT transport needs an X2 hub and the MQTT integration",
+        )
+        return
     store = await _async_get_command_config_store(hass)
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
     try:
@@ -1163,7 +1222,64 @@ async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[s
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return
+    if requested_transport == WIFI_TRANSPORT_MQTT:
+        await store.async_set_requested_transport(
+            hub.entry_id, str(payload.get("device_key") or ""), requested_transport
+        )
+        payload = dict(payload)
+        payload["requested_transport"] = requested_transport
     connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_device/set_transport",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("device_key"): str,
+        vol.Required("transport"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_command_device_transport(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Persist the create-flow transport choice for an UNDEPLOYED record.
+
+    Locked once deployed: changing transport then means changing the
+    device class, which requires a full replacement.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    transport = normalize_wifi_transport(msg.get("transport"))
+    if transport == WIFI_TRANSPORT_MQTT and not _hub_mqtt_available(hass, hub):
+        connection.send_error(
+            msg["id"],
+            "mqtt_unavailable",
+            "MQTT transport needs an X2 hub and the MQTT integration",
+        )
+        return
+    store = await _async_get_command_config_store(hass)
+    try:
+        record = await store.async_get_hub_config(hub.entry_id, device_key=msg["device_key"])
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
+    if record.get("deployed_transport") is not None or wifi_device_requires_listener(record):
+        connection.send_error(
+            msg["id"],
+            "transport_locked",
+            "Transport is fixed at first deploy; re-deploy the device to change it",
+        )
+        return
+    changed = await store.async_set_requested_transport(
+        hub.entry_id, msg["device_key"], transport
+    )
+    connection.send_result(
+        msg["id"], {"requested_transport": transport, "changed": changed}
+    )
+
+
 
 
 @websocket_api.websocket_command(
@@ -1232,6 +1348,7 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
         and not await _async_wifi_listener_needed(hass, hub.entry_id)
     ):
         await hub.async_set_roku_server_enabled(False)
+    await hub.async_update_wifi_mqtt_ingress()
     connection.send_result(msg["id"], {"deleted_config": deleted_config, "deleted_hub_device": deleted_hub_device})
 
 
@@ -1447,6 +1564,45 @@ async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
         code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
         connection.send_error(msg["id"], code, message)
         return
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_event/clear_all",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Drop the entire HA-side Wifi Events configuration, record included.
+
+    The Events tab offers this only in the orphaned state: the hub-side
+    device was deleted out-of-band (an app re-sync purge) and the deployed
+    ownership was cleared by the reconcile pass, so there is nothing left
+    on the hub to clean up. Guarded on that state; a record that still
+    owns a deployed device must keep its config (the staged slots are what
+    the callback runtime reads).
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    record_state = store.wifi_events_record_state(
+        hub.entry_id, roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id)
+    )
+    if record_state.get("device_id") is not None:
+        connection.send_error(
+            msg["id"],
+            "still_deployed",
+            "The Wifi Events device is still deployed on the hub",
+        )
+        return
+    # Whole-record delete mirrors the last-event branch of wifi_event/delete
+    # (plan §10): the next event create re-creates a fresh record.
+    await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
     connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
@@ -2369,7 +2525,7 @@ async def _async_prepare_managed_wifi_rename(
         new_hash = compute_commands_hash(
             list(record.get("commands") or []),
             device_name=new_name,
-            roku_listen_port=roku_listen_port,
+            roku_listen_port=record_hash_listen_port(record, roku_listen_port),
             power_on_command_id=record.get("power_on_command_id"),
             power_off_command_id=record.get("power_off_command_id"),
             slot_count=record_slot_count,
@@ -3578,11 +3734,13 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_list_command_devices)
     websocket_api.async_register_command(hass, _ws_create_command_device)
+    websocket_api.async_register_command(hass, _ws_set_command_device_transport)
     websocket_api.async_register_command(hass, _ws_delete_command_device)
     websocket_api.async_register_command(hass, _ws_list_wifi_events)
     websocket_api.async_register_command(hass, _ws_create_wifi_event)
     websocket_api.async_register_command(hass, _ws_delete_wifi_event)
     websocket_api.async_register_command(hass, _ws_sync_wifi_events)
+    websocket_api.async_register_command(hass, _ws_clear_all_wifi_events)
     websocket_api.async_register_command(hass, _ws_set_wifi_event_action)
     websocket_api.async_register_command(hass, _ws_set_wifi_event_longpress)
     websocket_api.async_register_command(hass, _ws_get_hub_event_actions)
@@ -3943,6 +4101,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await roku_listener.async_set_listen_port(int(roku_listen_port))
     await roku_listener.async_register_hub(hub, enabled=roku_server_enabled)
 
+    # MQTT press ingress: subscribe now if the store has MQTT-deployed
+    # records (safe no-op otherwise; the sync flow keeps it aligned).
+    await hub.async_update_wifi_mqtt_ingress()
+
     # ← important: tell HA to call us when options change
     entry.async_on_unload(
         entry.add_update_listener(async_update_options)
@@ -4003,6 +4165,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
             await _async_persist_hub_cache(hass, hub)
+            await hub.async_stop_wifi_mqtt_ingress()
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
@@ -4027,6 +4190,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     the Sofabaton app. The bounce is a no-op if no other hubs keep the shared
     listener alive (last hub removed → port already closed).
     """
+
+    # The outdated-firmware repair is only cleared by the hub reporting
+    # newer firmware; a removed hub can never do that, so drop it here.
+    ir.async_delete_issue(hass, DOMAIN, f"outdated_firmware_{entry.entry_id}")
 
     await hass.async_add_executor_job(bounce_hub_listener)
 

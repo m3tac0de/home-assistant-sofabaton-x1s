@@ -10,7 +10,7 @@ Activity was running or whether a Device was powered on.
 
 <img src="images/control-panel-backup-tab.png" alt="Sofabaton Control Panel Backup Make tab" width="500" />
 
-## Before you start
+## ◇ Before you start
 
 - **Persistent cache must be enabled to make a backup.** The card uses the
   cached hub catalog to offer the available Devices and Activities.
@@ -19,7 +19,7 @@ Activity was running or whether a Device was powered on.
 - Keep the downloaded JSON file somewhere safe. The integration does not
   maintain a backup archive for you.
 
-## Make a backup
+## ◇ Make a backup
 
 Open **Backup → Make** and choose a scope:
 
@@ -40,7 +40,7 @@ When the backup is ready, download it within **5 minutes**. That limit applies
 only to the integration's temporary copy; the JSON file you downloaded does not
 expire. If the temporary copy expires, create another backup.
 
-## Edit a backup
+## ◇ Edit a backup
 
 Open **Backup → Edit** and choose a backup file. Editing works on an in-memory
 copy and does not change the hub.
@@ -65,7 +65,7 @@ Editing does not modify the original backup file or the hub.
 For command payload fields and formats, see the
 [command payload guide](command_payloads.md).
 
-## Restore a backup
+## ◇ Restore a backup
 
 1. Open **Backup → Restore** and choose a full backup JSON file.
 2. Select the Activities and Devices to restore.
@@ -94,7 +94,7 @@ applied only in this mode.
 Devices are restored before Activities. Activity references are remapped to the
 new Device ids assigned by the destination hub.
 
-## Compatibility
+## ◇ Compatibility
 
 The source hub model is stored in the backup. Restoring to the same model or a
 newer model is supported; restoring to an older model is blocked.
@@ -112,7 +112,7 @@ integration. Older or newer schema versions are rejected; there is no automatic
 migration. Only full backup bundles can be edited or restored—structural cache
 bundles do not contain command payloads and are rejected.
 
-## Failure behavior
+## ◇ Failure behavior
 
 If an erase fails, restore stops before writing backup content. Once Device or
 Activity restoration has begun, however, there is no automatic rollback. If a
@@ -123,7 +123,7 @@ Keep the source backup until you have verified the restored hub. After a partial
 failure, you can retry the missing content or run an erase-and-restore again for
 a clean rebuild.
 
-## Advanced JSON editing
+## ◇ Advanced JSON editing
 
 The card editor is the recommended way to modify a backup. Manual JSON editing
 is possible, but changing ids, required fields, or the bundle structure can make
@@ -131,10 +131,10 @@ the file invalid.
 
 Command payloads use `restore_data.data_hex` and, when supported, a structured
 `restore_data.decoded` block. See the
-[command payload guide](command_payloads.md#payloads-in-backups) before editing
+[command payload guide](command_payloads.md#-payloads-in-backups) before editing
 those fields by hand.
 
-## Related documentation
+## ◇ Related documentation
 
 - [Command payloads](command_payloads.md)
 - [Home Assistant Action reference](actions.md)

@@ -120,6 +120,10 @@ def test_record_banner_payload_parses_all_hub_lines() -> None:
         "production_batch": "20210609",
         "firmware_version": 17,
         "name": "X1 HUB test",
+        # payload[0:6] is the hub's own MAC. Note the multicast AND
+        # locally-administered bits are set on this real X1 — banner MACs
+        # must never be filtered by OUI-plausibility rules.
+        "mac": "CB383539684B",
     }
 
     x1s_proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
@@ -132,6 +136,7 @@ def test_record_banner_payload_parses_all_hub_lines() -> None:
         "production_batch": "20221120",
         "firmware_version": 5,
         "name": "Souterrain hub",
+        "mac": "E26A44861B45",
     }
 
     x2_proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
@@ -144,6 +149,7 @@ def test_record_banner_payload_parses_all_hub_lines() -> None:
         "production_batch": "20221120",
         "firmware_version": 8,
         "name": "X2 HUB",
+        "mac": "FC012C39D390",
     }
     assert x2_proxy.hub_version == "X2"
 
@@ -164,7 +170,20 @@ def test_record_banner_payload_accepts_nonzero_flag_bytes() -> None:
         "production_batch": "20221120",
         "firmware_version": 5,
         "name": "Souterrain hub",
+        "mac": "E26A44861B45",
     }
+
+
+def test_record_banner_payload_zero_mac_reads_as_absent() -> None:
+    # An all-zero payload[0:6] means the firmware did not populate the
+    # MAC field; consumers must treat it as unknown, not as a topic.
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    parsed = proxy.record_banner_payload(
+        0x1D02,
+        bytes.fromhex("000000000000000220221120050100536f757465727261696e20687562"),
+    )
+    assert parsed is not None
+    assert parsed["mac"] is None
 
 
 def test_record_banner_payload_rejects_unknown_model_code() -> None:
@@ -214,6 +233,7 @@ def test_banner_info_roundtrips_through_cache_export() -> None:
         "production_batch": "20221120",
         "firmware_version": 5,
         "name": "Souterrain hub",
+        "mac": "E26A44861B45",
     }
     assert restored.hub_version == "X1S"
 

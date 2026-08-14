@@ -1,6 +1,9 @@
-﻿import asyncio
+import asyncio
+import json
 import logging
+import re
 import pytest
+from pathlib import Path
 from types import SimpleNamespace
 
 import custom_components.sofabaton_x1s.hub as hub_module
@@ -1941,9 +1944,109 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
     assert entry.options["mdns_version"] == "X2"
     assert discovery_updates[-1][0]["NAME"] == "X2 HUB"
     assert discovery_updates[-1][1] == "X2"
-    assert device_registry.updated == [("device-1", {"name": "X2 HUB"})]
+    # The identity sync publishes the authoritative name and then mirrors
+    # the hub's reported firmware onto the device (surfaced on the device
+    # page and in diagnostics).
+    assert device_registry.updated == [
+        ("device-1", {"name": "X2 HUB"}),
+        ("device-1", {"sw_version": "8"}),
+    ]
     assert store.saved
     assert store.saved[-1][1]["banner_info"]["firmware_version"] == 8
+
+    loop.close()
+
+
+def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "X2 HUB",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    entry = SimpleNamespace(
+        entry_id="entry-id",
+        data={"mac": "aa:bb:cc:dd:ee:ff"},
+        options={},
+        title="title",
+    )
+    hass._entries["entry-id"] = entry
+
+    device_registry = FakeDeviceRegistry(
+        SimpleNamespace(id="device-1", name="X2 HUB", name_by_user=None)
+    )
+    monkeypatch.setattr(hub_module.dr, "async_get", lambda hass: device_registry)
+
+    created = []
+    deleted = []
+    monkeypatch.setattr(
+        hub_module.ir,
+        "async_create_issue",
+        lambda hass, domain, issue_id, **kwargs: created.append((domain, issue_id, kwargs)),
+    )
+    monkeypatch.setattr(
+        hub_module.ir,
+        "async_delete_issue",
+        lambda hass, domain, issue_id: deleted.append((domain, issue_id)),
+    )
+
+    hub.version = "X2"
+    hub.name = "X2 HUB"
+    hub.hub_firmware_version = 7  # X2 floor is 8
+
+    loop.run_until_complete(hub._async_update_firmware_state())
+
+    assert deleted == []
+    assert len(created) == 1
+    domain, issue_id, kwargs = created[0]
+    assert domain == hub_module.DOMAIN
+    assert issue_id == "outdated_firmware_entry-id"
+    assert kwargs["is_fixable"] is False
+    assert kwargs["severity"] == hub_module.ir.IssueSeverity.WARNING
+    assert kwargs["translation_key"] == "outdated_firmware"
+    assert kwargs["translation_placeholders"] == {
+        "name": "X2 HUB",
+        "model": "X2",
+        "installed": "7",
+        "recommended": "8",
+    }
+    # The installed firmware is mirrored onto the device even while outdated.
+    assert device_registry.updated == [("device-1", {"sw_version": "7"})]
+
+    # The placeholders must line up with the repair text in en.json; a
+    # rename on either side silently breaks the rendered issue.
+    translations = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "custom_components"
+            / "sofabaton_x1s"
+            / "translations"
+            / "en.json"
+        ).read_text(encoding="utf-8")
+    )
+    repair_text = translations["issues"]["outdated_firmware"]
+    referenced = set(
+        re.findall(r"\{(\w+)\}", repair_text["title"] + repair_text["description"])
+    )
+    assert referenced == set(kwargs["translation_placeholders"])
+
+    # Hub reports the recommended firmware -> the repair clears.
+    hub.hub_firmware_version = 8
+    loop.run_until_complete(hub._async_update_firmware_state())
+
+    assert len(created) == 1  # no second issue raised
+    assert deleted == [(hub_module.DOMAIN, "outdated_firmware_entry-id")]
+    assert device_registry.updated[-1] == ("device-1", {"sw_version": "8"})
 
     loop.close()
 
@@ -2898,11 +3001,12 @@ def test_sync_command_config_primes_wifi_device_commands_before_refreshing_favor
 
     call_order: list[str] = []
 
-    async def _fetch_device_commands(ent_id: int, *, wait_timeout: float = 10.0):
-        assert ent_id == 9
+    def _backup_device(dev_id, *, include_blobs=True, reuse_commands=False, **_kwargs):
+        assert dev_id == 9
         call_order.append("req_commands")
-        hub._proxy.state.commands[ent_id & 0xFF] = {1: "Scene Lights"}
-        hub._proxy._commands_complete.add(ent_id & 0xFF)
+        hub._proxy.state.commands[dev_id & 0xFF] = {1: "Scene Lights"}
+        hub._proxy._commands_complete.add(dev_id & 0xFF)
+        return {"kind": "device_backup"}
 
     def _request_map(act_id: int) -> bool:
         call_order.append("request_activity_mapping")
@@ -2922,7 +3026,7 @@ def test_sync_command_config_primes_wifi_device_commands_before_refreshing_favor
         call_order.append("ensure_commands_for_activity")
         return original_ensure_commands(act_id, fetch_if_missing=fetch_if_missing)
 
-    monkeypatch.setattr(hub, "async_fetch_device_commands", _fetch_device_commands)
+    monkeypatch.setattr(hub._proxy, "backup_device", _backup_device)
     monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
     monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", _get_buttons_for_entity)
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_a, **_k: None)
@@ -3411,11 +3515,12 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
 
 
 
-def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
+def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=(), snapshot=None):
     """Build a hub whose sync-relevant methods record into *call_order*.
 
-    The hub snapshot contains one managed device (id 11) so the deploy runs
-    the full delete/create/add sequence.
+    The default hub snapshot contains one managed device (id 11) so the
+    deploy runs the full delete/create/add sequence; pass ``snapshot={}``
+    for a first deploy.
     """
     hass = FakeHass(loop)
     hub = SofabatonHub(
@@ -3432,7 +3537,8 @@ def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
     )
     hub.roku_server_enabled = True
 
-    snapshot = {11: {"brand": "m3-default-oldhash", "name": "Managed Device"}}
+    if snapshot is None:
+        snapshot = {11: {"brand": "m3-default-oldhash", "name": "Managed Device"}}
 
     async def _snapshot(*_args, **_kwargs):
         return dict(snapshot)
@@ -3445,6 +3551,12 @@ def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
 
     async def _create(*_args, **_kwargs):
         call_order.append("create")
+        command_rows = {
+            idx + 1: str(command["display_name"])
+            for idx, command in enumerate(_kwargs.get("commands") or [])
+        }
+        hub._proxy.state.commands[9] = command_rows
+        hub._proxy._commands_complete.add(9)
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(act_id, dev_id, **_kwargs):
@@ -3474,6 +3586,16 @@ def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
         return None
 
     monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+
+    backup_calls: list[tuple[int, bool]] = []
+
+    def _backup_device(dev_id, *, include_blobs=True, reuse_commands=False, **_kwargs):
+        call_order.append(f"backup:{dev_id}")
+        backup_calls.append((int(dev_id), bool(reuse_commands)))
+        return {"kind": "device_backup"}
+
+    monkeypatch.setattr(hub._proxy, "backup_device", _backup_device)
+    hub._test_backup_calls = backup_calls
     return hub
 
 
@@ -3508,7 +3630,7 @@ def test_sync_command_config_deletes_managed_device_after_activity_add(monkeypat
         )
     )
 
-    assert call_order == ["create", "add:101:9", "delete:11"]
+    assert call_order == ["create", "add:101:9", "delete:11", "backup:9"]
     assert result["status"] == "success"
     assert result["wifi_device_id"] == 9
 
@@ -3533,6 +3655,152 @@ def test_sync_command_config_rolls_back_created_device_when_managed_delete_fails
         )
 
     assert call_order == ["create", "add:101:9", "delete:11", "delete:9"]
+
+    loop.close()
+
+
+def test_sync_command_config_replace_warm_reuses_verified_readback(monkeypatch):
+    """On the replace path the step-7 backup-grade warm reuses the readback
+    guard's verified command fetch instead of clearing and refetching the
+    same table a second time: the only REQ_COMMANDS fetch is the guard's,
+    and backup_device is told to reuse it."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    fetches: list[int] = []
+
+    async def _fetch(ent_id, **_kwargs):
+        fetches.append(int(ent_id))
+
+    monkeypatch.setattr(hub, "async_fetch_device_commands", _fetch)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert result["status"] == "success"
+    assert fetches == [9]
+    assert hub._test_backup_calls == [(9, True)]
+
+    loop.close()
+
+
+def test_sync_command_config_first_deploy_still_warms_command_cache(monkeypatch):
+    """First deploys skip the readback guard, and the create pipeline seeds
+    the command cache with the names it wrote (an unverified echo), so the
+    step-7 backup-grade warm must fetch a real table (reuse_commands=False)."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order, snapshot={})
+
+    fetches: list[int] = []
+
+    async def _fetch(ent_id, **_kwargs):
+        fetches.append(int(ent_id))
+
+    monkeypatch.setattr(hub, "async_fetch_device_commands", _fetch)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert result["status"] == "success"
+    assert call_order == ["create", "add:101:9", "backup:9"]
+    assert fetches == []
+    assert hub._test_backup_calls == [(9, False)]
+
+    loop.close()
+
+
+def test_sync_command_config_warm_runs_after_device_bindings(monkeypatch):
+    """The backup-grade device warm must run AFTER the device-page key-row
+    writes: those writes clear the device's cached key rows, so a warm
+    taken before them would be immediately invalidated."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    async def _button(*args, **_kwargs):
+        call_order.append(f"button:{args[0]}")
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert result["status"] == "success"
+    # _SYNC_ORDER_PAYLOAD claims the "ok" hard button unambiguously, so the
+    # pipeline writes the activity binding (101) and the device-page row (9),
+    # then warms the device.
+    assert call_order == [
+        "create",
+        "add:101:9",
+        "delete:11",
+        "button:101",
+        "button:9",
+        "backup:9",
+    ]
+
+    loop.close()
+
+
+def test_sync_command_config_persists_cache_without_activity_refs(monkeypatch):
+    """A deploy whose slots reference no activities still changed the device
+    catalog (create + managed delete), so the epilogue must bump the cache
+    generation and persist unconditionally — gating on activity references
+    froze the frontend on the mid-deploy snapshot and skipped the disk
+    persist entirely."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    persists: list[bool] = []
+
+    async def _persist():
+        persists.append(True)
+        return True
+
+    monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _persist)
+
+    payload = {
+        "commands": [
+            {
+                "name": "Command 1",
+                "add_as_favorite": False,
+                "hard_button": "",
+                "activities": [],
+                "action": {"action": "perform-action"},
+            }
+        ],
+        "commands_hash": "abc",
+    }
+    generation_before = hub.cache_generation
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert result["status"] == "success"
+    assert result["activities"] == []
+    assert persists == [True]
+    assert hub.cache_generation > generation_before
+    assert call_order == ["create", "delete:11", "backup:9"]
 
     loop.close()
 
@@ -3860,6 +4128,7 @@ def test_sync_command_config_with_zero_slots_keeps_listener_when_another_device_
             deployed_device_id=None,
             commands_hash="",
             request_port=None,
+            deployed_transport=None,
         ):
             self.devices[device_key] = {
                 "device_key": device_key,
@@ -4056,6 +4325,7 @@ def test_sync_command_config_with_missing_metadata_matches_unique_hash_only_bran
             deployed_device_id=None,
             commands_hash="",
             request_port=None,
+            deployed_transport=None,
         ):
             return None
 
@@ -4135,6 +4405,7 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
             deployed_device_id=None,
             commands_hash="",
             request_port=None,
+            deployed_transport=None,
         ):
             return None
 
@@ -5822,5 +6093,192 @@ def test_wifi_events_device_rebinds_by_brand_after_restore():
         )
         assert ambiguous_by_key is False
         assert by_key == [(new_device_id, "haevents", events_hash, f"m3-haevents-{events_hash}")]
+    finally:
+        loop.close()
+
+
+# ---------------------------------------------------------------------------
+# MQTT press ingress
+# ---------------------------------------------------------------------------
+
+
+def _mqtt_msg(payload, retain=False):
+    return SimpleNamespace(payload=payload, retain=retain)
+
+
+def _make_mqtt_ingress_fake(dispatched):
+    fake = SimpleNamespace(
+        _log=logging.getLogger("test-mqtt-ingress"),
+        hass=None,
+        entry_id="entry-id",
+        devices={11: {"name": "Lights"}},
+        _last_wifi_mqtt_press_at=None,
+    )
+    fake._get_cached_device_name = lambda device_id: None
+
+    async def fake_dispatch(**kwargs):
+        dispatched.append(kwargs)
+
+    fake._async_dispatch_wifi_press = fake_dispatch
+    return fake
+
+
+class _FakeMqttStore:
+    def __init__(self):
+        self.devices = [
+            {
+                "device_key": "lights",
+                "deployed_device_id": 11,
+                "deployed_transport": "mqtt",
+                "slot_count": 2,
+            },
+            {
+                "device_key": "legacy",
+                "deployed_device_id": 12,
+                "deployed_transport": "http",
+                "slot_count": 10,
+            },
+        ]
+
+    async def async_list_hub_devices(self, entry_id):
+        return list(self.devices)
+
+    def get_deployed_wifi_commands(self, entry_id, hub_device_id=None):
+        if hub_device_id == 11:
+            return [{"name": "Lights Toggle"}, {"name": "Lights Scene"}]
+        return []
+
+
+def test_mqtt_ingress_handler_guards_and_dispatch(monkeypatch):
+    dispatched = []
+    fake = _make_mqtt_ingress_fake(dispatched)
+
+    async def fake_get_store(hass):
+        return _FakeMqttStore()
+
+    monkeypatch.setattr(hub_module, "async_get_command_config_store", fake_get_store)
+    handler = SofabatonHub._async_handle_wifi_mqtt_message
+
+    loop = asyncio.new_event_loop()
+    try:
+        run = loop.run_until_complete
+
+        # Retained messages are dropped before anything else (restart
+        # replay must never run an Action) and do not even count as a
+        # liveness signal.
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 1}', retain=True)))
+        assert dispatched == []
+        assert fake._last_wifi_mqtt_press_at is None
+
+        # Malformed payloads are dropped silently.
+        run(handler(fake, _mqtt_msg("not json")))
+        run(handler(fake, _mqtt_msg('{"device_id": "x", "key_id": 1}')))
+        assert dispatched == []
+
+        # Unmanaged device ids never fire (app-created MQTT devices), but
+        # DO update the passive liveness timestamp.
+        run(handler(fake, _mqtt_msg('{"device_id": 99, "key_id": 1}')))
+        assert dispatched == []
+        assert fake._last_wifi_mqtt_press_at is not None
+
+        # A device deployed over HTTP is not routable via MQTT either.
+        run(handler(fake, _mqtt_msg('{"device_id": 12, "key_id": 1}')))
+        assert dispatched == []
+
+        # Short press: key 2 on a 2-slot device -> index 1, short.
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 2}')))
+        assert len(dispatched) == 1
+        assert dispatched[-1]["command_index"] == 1
+        assert dispatched[-1]["press_type"] == "short"
+        assert dispatched[-1]["command_label"] == "Lights Scene"
+        assert dispatched[-1]["record"]["transport"] == "mqtt"
+        assert dispatched[-1]["record"]["source_ip"] == ""
+
+        # Long press: key 3 -> index 0, long (long = short + slot_count).
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 3}')))
+        assert dispatched[-1]["command_index"] == 0
+        assert dispatched[-1]["press_type"] == "long"
+
+        # Out-of-range key ids are dropped (slot_count 2 -> max key 4).
+        before = len(dispatched)
+        run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 5}')))
+        assert len(dispatched) == before
+    finally:
+        loop.close()
+
+
+def test_map_wifi_mqtt_key_law():
+    from custom_components.sofabaton_x1s.command_config import map_wifi_mqtt_key
+
+    assert map_wifi_mqtt_key(1, 10) == (0, "short")
+    assert map_wifi_mqtt_key(10, 10) == (9, "short")
+    assert map_wifi_mqtt_key(11, 10) == (0, "long")
+    assert map_wifi_mqtt_key(20, 10) == (9, "long")
+    assert map_wifi_mqtt_key(21, 10) is None
+    assert map_wifi_mqtt_key(0, 10) is None
+    assert map_wifi_mqtt_key("junk", 10) is None
+    assert map_wifi_mqtt_key(1, 0) is None
+
+
+def test_async_send_key_resolution(monkeypatch):
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    sent = []
+    monkeypatch.setattr(
+        hub._proxy, "send_command", lambda ent_id, code: sent.append((ent_id, code)) or True
+    )
+    hub.current_activity = 101
+
+    try:
+        # Known button name (case-insensitive) -> ButtonName code to the
+        # current activity.
+        loop.run_until_complete(hub.async_send_key("vol_up"))
+        assert sent == [(101, ButtonName.VOL_UP)]
+
+        # Numeric string without device -> raw command id to the current
+        # activity (the HA service schema stringifies every command).
+        sent.clear()
+        loop.run_until_complete(hub.async_send_key("123"))
+        assert sent == [(101, 123)]
+
+        # Numeric string with device -> raw command id to that entity.
+        sent.clear()
+        loop.run_until_complete(hub.async_send_key("12", device=3))
+        assert sent == [(3, 12)]
+
+        # Garbage without device -> clean error, nothing sent.
+        sent.clear()
+        with pytest.raises(HomeAssistantError, match="Unknown command"):
+            loop.run_until_complete(hub.async_send_key("NOT_A_BUTTON"))
+        assert sent == []
+
+        # Button name with device -> clean error (direct targeting is
+        # numeric-only), nothing sent.
+        with pytest.raises(HomeAssistantError, match="numeric command ID"):
+            loop.run_until_complete(hub.async_send_key("VOL_UP", device=3))
+        assert sent == []
+
+        # No active activity -> clean error.
+        hub.current_activity = None
+        with pytest.raises(HomeAssistantError, match="No activity active"):
+            loop.run_until_complete(hub.async_send_key("VOL_UP"))
     finally:
         loop.close()

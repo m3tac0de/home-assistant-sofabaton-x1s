@@ -1324,7 +1324,18 @@ class ActivityOpsMixin:
         if not _step.ok:
             return None
 
-        self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=False, clear_macros=False)
+        # A 0x3E keymap write changes the entity's key rows only; its
+        # command catalog is untouched hub-side, so keep it cached. The
+        # wifi deploy binds device-page rows with the device itself as the
+        # keymap entity, and wiping commands here stranded the freshly
+        # warmed table with no caller ever refetching it.
+        self.clear_entity_cache(
+            act_lo,
+            clear_buttons=True,
+            clear_favorites=False,
+            clear_macros=False,
+            clear_commands=False,
+        )
         self._activity_map_complete.discard(act_lo)
         if refresh_after_write:
             self.request_activity_mapping(act_lo)

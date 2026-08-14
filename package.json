@@ -7,6 +7,8 @@
     "build:remote-card": "node ./scripts/build-remote-card.mjs",
     "build:frontend": "npm run build:tools-card && npm run build:remote-card",
     "build:tools-card-harness-site": "node ./scripts/build-tools-card-harness-site.mjs",
+    "build:readme-remote-shot": "node ./scripts/build-readme-remote-shot.mjs",
+    "build:readme-banner": "npm run build:readme-remote-shot && node ./scripts/build-readme-banner.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "build:frontend-tests": "node ./scripts/build-frontend-tests.mjs",
     "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist",

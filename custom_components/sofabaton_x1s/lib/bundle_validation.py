@@ -426,10 +426,16 @@ def _validate_activity(
                     raise _error(f"{path}.macros", "power reference appears in the wrong macro")
 
     linked_raw = activity.get("referenced_source_device_ids") or []
+    # Exports from integration versions <= 0.6.4 leaked activity-range ids
+    # (macro-target bindings carry the activity's own id; chain steps carry
+    # another activity's) into this derived mirror. Restore recomputes the
+    # device-range set anyway, so grandfather those entries instead of
+    # rejecting the whole backup (issue #263).
     linked = [
-        _integer(value, f"{path}.referenced_source_device_ids[{index}]", minimum=1, maximum=ACTIVITY_ID_BASE - 1)
+        _integer(value, f"{path}.referenced_source_device_ids[{index}]", minimum=1, maximum=0xFF)
         for index, value in enumerate(_list(linked_raw, f"{path}.referenced_source_device_ids"))
     ]
+    linked = [device_id for device_id in linked if device_id < ACTIVITY_ID_BASE]
     if len(linked) != len(set(linked)):
         raise _error(f"{path}.referenced_source_device_ids", "must not contain duplicates")
     for device_id in linked:
