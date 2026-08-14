@@ -18,8 +18,8 @@ Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from 
 - [Install and add your hub](#installation)
 - [Understand the local proxy](#how-the-local-proxy-works)
 - [Add the dashboard cards](#dashboard-cards)
-- [Send commands from Home Assistant](#send-commands-from-home-assistant)
-- [Run Home Assistant Actions from the remote](#run-home-assistant-actions-from-the-remote)
+- [Control the hub from dashboards, automations, and scripts](#control-the-hub-from-home-assistant)
+- [Trigger Home Assistant from the remote or hub](#trigger-home-assistant-from-the-remote-and-hub)
 - [Back up, restore, and edit your hub](#advanced-features)
 - [Solve discovery, VLAN, or connection problems](#troubleshooting)
 
@@ -128,7 +128,7 @@ card_height: 700
 Its main areas are:
 
 - **Hub**: browse and edit Activities, Devices, commands, inputs, power behavior, button assignments, shortcuts, and macros.
-- **Automation**: configure Wifi Commands and Actions for Wifi, Hub, and Activity Events.
+- **Automation**: configure Home Assistant Actions triggered by Wifi Commands, Wifi Events, Hub Events, and Activity Events.
 - **Backup**: create and restore whole-hub or selected device backups.
 - **Settings and Logs**: manage caching, network listeners, diagnostic logging, Find Remote, physical remote synchronization, and live hub logs.
 
@@ -136,136 +136,23 @@ Edits are reviewed before synchronization. The card also prevents conflicting wr
 
 <img height="250" alt="Control Panel Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png"> <img height="250" alt="Control Panel Automation tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/automation-events.png"> <img height="250" alt="Control Panel Backup tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-backup-tab.png">
 
-## Send commands from Home Assistant
+## Control and automation
 
-Each configured hub provides a `remote` entity. In the examples below, replace `remote.<hub>_remote` with the entity created for your hub, such as `remote.living_room_remote`.
+Sofabaton X works in both directions: Home Assistant can control the hub, and activity on the remote or hub can trigger Home Assistant.
 
-### Send a button in the current Activity
+### Control the hub from Home Assistant
 
-When no `device` is supplied, the command is resolved in the context of the currently active Activity:
+Use the integration's entities and actions in your own dashboards or custom UIs, automations, and scripts. Each configured hub provides a `remote` entity for starting or switching Activities, powering off the hub, and sending one or more commands. Named buttons target the current Activity; numeric IDs can target a Device or Activity directly. Optional delays are supported for command sequences.
 
-```yaml
-action: remote.send_command
-target:
-  entity_id: remote.<hub>_remote
-data:
-  command: VOL_UP
-```
-
-This mode requires an active Activity. If the hub is powered off, the action reports that no Activity is active.
-
-Supported button names are:
-
-```text
-UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU,
-VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN,
-REW, PLAY, PAUSE, FWD, GUIDE, DVR, EXIT,
-RED, GREEN, YELLOW, BLUE, A, B, C,
-POWER_ON, POWER_OFF
-```
-
-The extended buttons `A`, `B`, `C`, `EXIT`, `DVR`, `PLAY`, and `GUIDE` are intended for X2 hubs. Button names are case-insensitive, but using the uppercase names above makes automations easier to read.
-
-### Send several buttons
-
-Pass a list to send commands sequentially:
-
-```yaml
-action: remote.send_command
-target:
-  entity_id: remote.<hub>_remote
-data:
-  command:
-    - HOME
-    - MENU
-```
-
-### Wait between commands
-
-`delay_secs` inserts a pause between the commands of a single `remote.send_command` action. It is applied between commands only, so nothing is added before the first or after the last one:
-
-```yaml
-action: remote.send_command
-target:
-  entity_id: remote.<hub>_remote
-data:
-  command:
-    - HOME
-    - MENU
-    - OK
-  delay_secs: 0.5
-```
-
-When `delay_secs` is omitted the commands are sent back-to-back. Use it when a device needs time to react before it accepts the next command, for example when navigating a menu.
-
-### Send a command directly by ID
-
-Use this form when you know the numeric command ID and the Device or Activity that owns it:
-
-```yaml
-action: remote.send_command
-target:
-  entity_id: remote.<hub>_remote
-data:
-  command: 12
-  device: 3
-```
-
-Important details:
-
-- `command` is the numeric command ID.
-- Despite the field name, `device` may contain either a **Device ID** or an **Activity ID**.
-- Device IDs start at `1`; Activity IDs start at `101`.
-- Supplying `device` bypasses the current Activity.
-- Direct targeting requires the numeric command ID; named buttons such as `VOL_UP` belong to the current activity mode.
-
-You can also send several numeric commands to the same target:
-
-```yaml
-action: remote.send_command
-target:
-  entity_id: remote.<hub>_remote
-data:
-  command:
-    - 12
-    - 15
-  device: 3
-```
-
-### Start or switch Activity
-
-```yaml
-action: remote.turn_on
-target:
-  entity_id: remote.<hub>_remote
-data:
-  activity: Watch a movie
-```
-
-The Activity name must match the name on the hub.
-
-### Power off
-
-```yaml
-action: remote.turn_off
-target:
-  entity_id: remote.<hub>_remote
-```
-
-### Find Device, Activity, and command IDs
-
-Choose whichever method best fits your workflow:
-
-1. **Virtual Remote (recommended):** enable [Automation Assist → Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md). Press a key to receive the IDs and ready-to-use YAML in a Home Assistant notification.
-2. **Control Panel:** enable persistent cache, browse the Hub tab, and inspect the relevant Activity, Device, or command.
+For action examples, supported button names, numeric-ID targeting, and ways to find IDs, see the [remote entity guide](docs/remote_entity.md).
 
 The sending entities are unavailable while the official Sofabaton app is connected to the proxy.
 
-## Run Home Assistant Actions from the remote
+### Trigger Home Assistant from the remote and hub
 
-The Control Panel supports several ways to bring remote and hub activity into Home Assistant.
+The Control Panel supports several ways for remote and hub activity to trigger Home Assistant Actions.
 
-### Wifi Commands
+#### Wifi Commands
 
 Use **Automation → Wifi Commands** to create up to five managed Wifi Devices per hub, each with ten command slots. A command can:
 
@@ -278,13 +165,13 @@ HTTP delivery works on every supported hub. X2 can also deliver new Wifi Command
 
 Action-only changes do not require a hub synchronization. Creating or structurally changing a managed Wifi Device does.
 
-### Wifi Events
+#### Wifi Events
 
 A Wifi Event is a named Home Assistant trigger placed in an Activity shortcut, physical-button assignment, or macro. Wifi Events are useful when you want a single action without creating a complete ten-slot Wifi Device.
 
 Create and place the event from the Activity editor, synchronize the Activity, then attach its Action under **Automation → Events**.
 
-### Hub and Activity Events
+#### Hub and Activity Events
 
 Under **Automation → Events**, Actions can also respond to:
 
@@ -295,36 +182,21 @@ Under **Automation → Events**, Actions can also respond to:
 
 These Actions run entirely in Home Assistant and are never synchronized to the hub.
 
-For configuration, delivery choices, limits, and automation examples, see the [Wifi Commands and Events guide](docs/wifi_commands.md).
+For configuration, delivery choices, limits, and automation examples, see the [remote and hub trigger guide](docs/wifi_commands.md).
 
 ## Entities
 
-Home Assistant generates entity IDs from the hub name. The defaults below use `<hub>` as a placeholder; entity IDs can be renamed in Home Assistant.
+The integration provides entities for both automation directions: remotes, selects, and buttons control the hub, while sensors expose Activity changes, Wifi Command presses, and connection state as automation inputs. Additional entities manage the proxy, listener, diagnostics, and maintenance tasks.
 
-| Platform      | Default entity                                   | Purpose                                                         |
-| ------------- | ------------------------------------------------ | --------------------------------------------------------------- |
-| Remote        | `remote.<hub>_remote`                            | Send commands and control Activities                            |
-| Select        | `select.<hub>_activity`                          | View or change the current Activity                             |
-| Sensor        | `sensor.<hub>_activity`                          | Current Activity, including while the app is connected          |
-| Sensor        | `sensor.<hub>_index`                             | Diagnostic Activity, Device, command, macro, and favorite index |
-| Sensor        | `sensor.<hub>_wifi_commands`                     | Latest Wifi Command or Wifi Event press                         |
-| Binary sensor | `binary_sensor.<hub>_hub_connected`              | Physical hub connection state                                   |
-| Binary sensor | `binary_sensor.<hub>_app_connected`              | Official-app proxy connection state                             |
-| Switch        | `switch.<hub>_proxy_enabled`                     | Enable or disable proxy discovery and listening                 |
-| Switch        | `switch.<hub>_hex_logging`                       | Enable detailed protocol logging                                |
-| Switch        | `switch.<hub>_wifi_device`                       | Control the shared HTTP callback listener; re-enables itself while an HTTP-delivered Wifi Device or the Wifi Events device needs it |
-| Button        | `button.<hub>_find_remote`                       | Sound the physical remote's buzzer                              |
-| Button        | `button.<hub>_resync_remote`                     | Synchronize the physical remote                                 |
-| Button        | `button.<hub>_volume_up`, `button.<hub>_mute`, … | Activity-aware command buttons                                  |
-| Text          | `text.<hub>_ip_address`                          | Override the stored hub IP; disabled by default                 |
-
-Entities that write to the hub become unavailable while the official app is connected. Diagnostic and state-reporting entities remain available where possible.
+See the [entity reference](docs/entities.md) for default entity IDs, purposes, and availability behavior.
 
 ## Advanced features
 
 | Feature                                                             | Documentation                                                                                                                                     |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wifi Commands, Wifi Events, Hub Events, and Activity Events         | [Automation guide](docs/wifi_commands.md)                                                                                                         |
+| Control, automation, configuration, and diagnostic entities         | [Entity reference](docs/entities.md)                                                                                                              |
+| Remote entity actions, button names, and numeric-ID targeting       | [Remote entity guide](docs/remote_entity.md)                                                                                                      |
+| Wifi Commands, Wifi Events, Hub Events, and Activity Events         | [Remote and hub trigger guide](docs/wifi_commands.md)                                                                                             |
 | Whole-hub and selective backup and restore                          | [Backup guide](docs/backup.md)                                                                                                                    |
 | Retrieve, test, edit, generate, save, and share IR command payloads | [Command payload guide](docs/command_payloads.md)                                                                                                 |
 | VLANs, ports, containers, firewalls, and app discovery              | [Networking guide](docs/networking.md)                                                                                                            |

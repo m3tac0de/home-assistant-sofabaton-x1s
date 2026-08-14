@@ -48,12 +48,11 @@ const panels = [
 ];
 
 const chips = [
-  'Local hub control',
-  'Live hub editing',
   'Backup &amp; restore',
-  'Wifi Commands',
-  'Events &amp; Actions',
-  'Official-app proxy',
+  'Remote runs HA actions',
+  'Live hub editing',
+  'Activity state in HA',
+  'Official app still works',
 ];
 
 const html = `<!doctype html>
@@ -212,8 +211,8 @@ ${panels
       </div>
     </div>
     <div class="tagline">
-      Local, bidirectional control of Sofabaton <b>X1</b>, <b>X1S</b> and <b>X2</b> hubs.
-      Drive the hub, edit its configuration live, and keep the official app working.
+      Local, two-way control of Sofabaton <b>X1</b>, <b>X1S</b> and <b>X2</b> hubs.
+      <br>Home Assistant drives the hub. <br>The remote drives Home Assistant.
     </div>
     <div class="chips">
 ${chips.map((c) => `      <div class="chip">${c}</div>`).join('\n')}
