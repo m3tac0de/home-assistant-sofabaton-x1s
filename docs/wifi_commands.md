@@ -27,7 +27,7 @@ Action changes apply immediately and never require a hub sync. Deploying Wifi Co
 
 ## Wifi Commands
 
-With Wifi Commands, you build your own Home Assistant device for the remote: a set of commands that each run any Action you like. Put them on favorites, physical buttons, and macro steps, and use them across Activities just like commands from a real device. You can create up to **5 user-managed Wifi Devices** per hub, each with **10 command slots**. The reserved Wifi Events device does not count towards this limit.
+With Wifi Commands, you build your own Home Assistant device for the remote: a set of commands that each run any Action you like. Put them on favorites and physical buttons, and use them across Activities just like commands from a real device. You can create up to **5 user-managed Wifi Devices** per hub, each with **10 command slots**. The reserved Wifi Events device does not count towards this limit.
 
 ### Create and deploy a Wifi Device
 
@@ -69,7 +69,7 @@ The Wifi Commands configuration owns the managed device's commands, power/input 
 Two exceptions are intentional:
 
 - Renaming the deployed device in **Hub → Devices → Edit** is detected and carried back into the Wifi Commands configuration.
-- References created outside Wifi Commands—such as an additional favorite, button binding, macro step, or Activity membership added with the Sofabaton app—are preserved by normal in-place syncs.
+- References created outside Wifi Commands—such as an additional favorite, button binding, or Activity membership added with the Sofabaton app—are preserved by normal in-place syncs.
 
 ### HTTP and MQTT delivery
 
