@@ -1,11 +1,14 @@
 // Renders the README header banner to docs/images/readme-banner.png.
 //
-// Usage: node ./scripts/build-readme-banner.mjs
+// Usage: node ./scripts/build-readme-banner.mjs [--out=NAME] [--emit-html]
 //
-// The banner is laid out as HTML/CSS and screenshotted with Playwright's
+// The banner carries no copy of its own - the README heading and text below it
+// tell the story. All it does is show the logo and a fanned gallery of the real
+// integration UI. It is laid out as HTML/CSS and screenshotted with Playwright's
 // Chromium above 1x, so it stays crisp on high-DPI displays while keeping the
-// file small enough for a README hero. Panel artwork is embedded from the real
-// UI screenshots already stored in the repo.
+// file small enough for a README hero. Panel artwork is embedded from the UI
+// screenshots already stored in the repo, plus the themed remote card written by
+// build-readme-remote-shot.mjs (npm run build:readme-banner runs both).
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -13,47 +16,47 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = resolve(ROOT, 'docs/images/readme-banner.png');
 
 const WIDTH = 1280;
-const HEIGHT = 440;
+const HEIGHT = 420;
 const SCALE = 1.5;
 
 const TEAL = '#21b394';
 const GREEN = '#79c143';
+
+const argv = process.argv.slice(2);
+const arg = (name, fallback) =>
+  argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
+
+const outName = arg('out', 'readme-banner');
+const OUT = resolve(ROOT, `docs/images/${outName}.png`);
 
 function dataUri(relPath) {
   const bytes = readFileSync(resolve(ROOT, relPath));
   return `data:image/png;base64,${bytes.toString('base64')}`;
 }
 
-const art = {
-  logo: dataUri('custom_components/sofabaton_x1s/logo.png'),
-  events: dataUri('docs/images/automation-events.png'),
-  hub: dataUri('docs/images/control-panel-hub-tab.png'),
-  wifi: dataUri('docs/images/wifi-commands-command-grid.png'),
-  remote: dataUri(
-    'tests/playwright/remote-card.spec.js-snapshots/remote-card-active-win32.png',
-  ),
-};
+const logo = dataUri('custom_components/sofabaton_x1s/logo.png');
 
-// Fan of UI panels, back to front. Artwork is always laid in at full panel
-// width so nothing is zoom-cropped; a tall screenshot simply shows its top.
-// `dim` pushes the back panels into the background.
+// The gallery, back to front: backups, the Activity list, hub and Activity
+// Events, the Wifi Commands grid, and the remote card with its favorites open.
+// The fan opens to the right, so each panel overlaps the one before it and the
+// last one bleeds off the edge. Every panel is a different screen - two views of
+// the same one read as a duplicate at this size.
+//
+// `dim` only pushes the back panels back a little - the screenshots are the
+// point, so they stay bright and sharp.
 const panels = [
-  { img: art.events, left: 618, top: 96, w: 228, h: 316, rot: -9, dim: 0.86 },
-  { img: art.hub, left: 748, top: 54, w: 244, h: 293, rot: -4, dim: 0.93 },
-  { img: art.wifi, left: 894, top: 98, w: 234, h: 324, rot: 4, dim: 0.98 },
-  { img: art.remote, left: 1058, top: 58, w: 190, h: 296, rot: 9, dim: 1 },
-];
-
-const chips = [
-  'Backup &amp; restore',
-  'Remote runs HA actions',
-  'Live hub editing',
-  'Activity state in HA',
-  'Official app still works',
-];
+  { src: 'docs/images/control-panel-backup-tab.png', left: 300, top: 76, w: 216, h: 259, rot: -11, dim: 0.86 },
+  { src: 'docs/images/control-panel-hub-tab.png', left: 468, top: 46, w: 230, h: 276, rot: -6, dim: 0.92 },
+  { src: 'docs/images/automation-events.png', left: 652, top: 60, w: 226, h: 317, rot: -1, dim: 0.96 },
+  { src: 'docs/images/wifi-commands-command-grid.png', left: 848, top: 76, w: 228, h: 320, rot: 4, dim: 1 },
+  // The remote card is far taller than the banner, so it is laid in at its full
+  // height and runs off the bottom and right edges. Sizing it to fit would put a
+  // hard edge mid-card and read as though the remote simply stops there.
+  // Rendered by build-readme-remote-shot.mjs, not a Playwright baseline.
+  { src: 'docs/images/banner-remote-card.png', left: 1064, top: 22, w: 208, h: 605, rot: 7, dim: 1 },
+].map((p) => ({ ...p, img: dataUri(p.src), bleeds: p.top + p.h > HEIGHT }));
 
 const html = `<!doctype html>
 <meta charset="utf-8">
@@ -61,7 +64,7 @@ const html = `<!doctype html>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: ${WIDTH}px; height: ${HEIGHT}px; }
   body {
-    font-family: 'Segoe UI', Inter, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+    font-family: 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
     background: #050f14;
     overflow: hidden;
   }
@@ -72,9 +75,9 @@ const html = `<!doctype html>
     height: ${HEIGHT}px;
     overflow: hidden;
     background:
-      radial-gradient(1100px 620px at 74% 18%, rgba(33, 179, 148, 0.30), transparent 62%),
-      radial-gradient(700px 520px at 4% 92%, rgba(121, 193, 67, 0.16), transparent 66%),
-      linear-gradient(140deg, #071820 0%, #06121a 46%, #050d12 100%);
+      radial-gradient(1200px 640px at 50% 8%, rgba(33, 179, 148, 0.30), transparent 64%),
+      radial-gradient(700px 480px at 6% 96%, rgba(121, 193, 67, 0.10), transparent 68%),
+      linear-gradient(150deg, #07191f 0%, #06121a 48%, #050d12 100%);
   }
 
   /* faint grid, keeps the flat gradient from looking empty */
@@ -82,84 +85,20 @@ const html = `<!doctype html>
     position: absolute;
     inset: 0;
     background-image:
-      linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
     background-size: 44px 44px;
-    mask-image: radial-gradient(900px 460px at 22% 40%, #000 0%, transparent 78%);
-  }
-
-  .vignette {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(120% 100% at 50% 45%, transparent 40%, rgba(0, 0, 0, 0.55) 100%);
-  }
-
-  .content {
-    position: absolute;
-    left: 62px;
-    top: 0;
-    height: 100%;
-    width: 560px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 20px;
-    z-index: 5;
-  }
-
-  .brand { display: flex; align-items: center; gap: 20px; }
-  .brand img {
-    width: 78px;
-    height: 78px;
-    filter: drop-shadow(0 8px 22px rgba(33, 179, 148, 0.45));
-  }
-  .name {
-    font-size: 44px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-    color: #ffffff;
-    line-height: 1.05;
-  }
-  .for {
-    margin-top: 4px;
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: 0.2px;
-    background: linear-gradient(90deg, ${TEAL}, ${GREEN});
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .tagline {
-    font-size: 17px;
-    line-height: 1.55;
-    color: #9db4bd;
-    max-width: 470px;
-  }
-  .tagline b { color: #dceaef; font-weight: 600; }
-
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; max-width: 500px; }
-  .chip {
-    font-size: 12.5px;
-    font-weight: 500;
-    letter-spacing: 0.2px;
-    color: #cfeae3;
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(33, 179, 148, 0.36);
-    background: rgba(33, 179, 148, 0.10);
-    white-space: nowrap;
+    mask-image: radial-gradient(760px 420px at 50% 24%, #000 0%, transparent 80%);
   }
 
   /* soft light behind the fan so the panels lift off the background */
   .fan-glow {
     position: absolute;
-    left: 560px;
-    top: -80px;
-    width: 820px;
-    height: 600px;
-    background: radial-gradient(closest-side, rgba(33, 179, 148, 0.34), transparent 100%);
+    left: 400px;
+    top: -150px;
+    width: 1080px;
+    height: 700px;
+    background: radial-gradient(closest-side, rgba(33, 179, 148, 0.30), transparent 100%);
   }
 
   .panel {
@@ -172,11 +111,47 @@ const html = `<!doctype html>
       0 4px 12px rgba(0, 0, 0, 0.4),
       0 0 0 1px rgba(255, 255, 255, 0.10);
   }
-  .panel::after {
+  /* Only panels that end inside the frame get a bottom fade. A panel that runs
+     off the edge must stay clean, or the fade reads as the card ending. */
+  .panel.seated::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, transparent 52%, rgba(5, 15, 20, 0.62) 100%);
+    background: linear-gradient(180deg, transparent 78%, rgba(5, 15, 20, 0.55) 100%);
+  }
+
+  /* corners only - enough to seat the bleed without fogging the screenshots */
+  .edges {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: radial-gradient(150% 120% at 50% 40%, transparent 62%, rgba(0, 0, 0, 0.55) 100%);
+  }
+
+  .mark {
+    position: absolute;
+    z-index: 30;
+    left: 84px;
+    top: 50%;
+    width: 148px;
+    height: 148px;
+    margin-top: -78px;
+  }
+  .mark::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 420px;
+    height: 420px;
+    margin: -210px 0 0 -210px;
+    background: radial-gradient(closest-side, rgba(33, 179, 148, 0.22), transparent 100%);
+  }
+  .mark img {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.55));
   }
 
   .accent {
@@ -185,6 +160,7 @@ const html = `<!doctype html>
     right: 0;
     bottom: 0;
     height: 4px;
+    z-index: 40;
     background: linear-gradient(90deg, ${TEAL} 0%, ${GREEN} 52%, rgba(121, 193, 67, 0) 100%);
   }
 </style>
@@ -193,38 +169,22 @@ const html = `<!doctype html>
   <div class="fan-glow"></div>
 ${panels
   .map(
-    (p) => `  <div class="panel" style="
+    (p) => `  <div class="panel${p.bleeds ? '' : ' seated'}" style="
     left: ${p.left}px; top: ${p.top}px; width: ${p.w}px; height: ${p.h}px;
     transform: rotate(${p.rot}deg);
     background-image: url('${p.img}');
-    filter: brightness(${p.dim}) contrast(${2 - p.dim});
+    filter: brightness(${p.dim}) contrast(${(2 - p.dim).toFixed(3)});
   "></div>`,
   )
   .join('\n')}
-  <div class="vignette"></div>
-  <div class="content">
-    <div class="brand">
-      <img src="${art.logo}" alt="">
-      <div>
-        <div class="name">Sofabaton X</div>
-        <div class="for">for Home Assistant</div>
-      </div>
-    </div>
-    <div class="tagline">
-      Local, two-way control of Sofabaton <b>X1</b>, <b>X1S</b> and <b>X2</b> hubs.
-      <br>Home Assistant drives the hub. <br>The remote drives Home Assistant.
-    </div>
-    <div class="chips">
-${chips.map((c) => `      <div class="chip">${c}</div>`).join('\n')}
-    </div>
-  </div>
+  <div class="edges"></div>
+  <div class="mark"><img src="${logo}" alt=""></div>
   <div class="accent"></div>
 </div>
 `;
 
-const debugHtml = process.argv.includes('--emit-html');
-if (debugHtml) {
-  writeFileSync(resolve(ROOT, 'docs/images/readme-banner.debug.html'), html);
+if (argv.includes('--emit-html')) {
+  writeFileSync(resolve(ROOT, `docs/images/${outName}.debug.html`), html);
 }
 
 const browser = await chromium.launch();
@@ -236,4 +196,4 @@ await page.setContent(html, { waitUntil: 'load' });
 await page.screenshot({ path: OUT, type: 'png' });
 await browser.close();
 
-console.log(`wrote ${OUT} (${WIDTH * SCALE}x${HEIGHT * SCALE})`);
+console.log(`wrote ${OUT} (${WIDTH * SCALE}x${HEIGHT * SCALE}, scale=${SCALE}x)`);
