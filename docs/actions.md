@@ -10,7 +10,7 @@ filter by `sofabaton_x1s`.
 
 ---
 
-## Quick reference
+## ◇ Quick reference
 
 | Action | What it does | Returns data? |
 | ------ | ------------ | :-----------: |
@@ -39,7 +39,7 @@ filter by `sofabaton_x1s`.
 
 ---
 
-## `sofabaton_x1s.fetch_device_commands`
+## ◇ `sofabaton_x1s.fetch_device_commands`
 
 Fetches the command list for a single device or activity and stores the result
 in `sensor.<hub>_index`.
@@ -64,7 +64,7 @@ command, macro, and favorites lists.
 
 ---
 
-## `sofabaton_x1s.dump_ir_commands`
+## ◇ `sofabaton_x1s.dump_ir_commands`
 
 Requests the raw `0x020C [device_id, command_id]` dump flow and returns the
 parsed page structure for the selected device.
@@ -103,7 +103,7 @@ response_variable: dump
 
 ---
 
-## `sofabaton_x1s.fetch_blob`
+## ◇ `sofabaton_x1s.fetch_blob`
 
 Fetches normalized command blob records suitable for later use with
 `play_ir_blob` or `persist_ir_blob`.
@@ -158,7 +158,7 @@ Tip: the returned `command_blob` value is the canonical input for
 
 ---
 
-## `sofabaton_x1s.play_ir_blob`
+## ◇ `sofabaton_x1s.play_ir_blob`
 
 Streams one canonical IR blob body to the hub for one-shot playback.
 Nothing is persisted on the hub.
@@ -192,7 +192,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.persist_ir_blob`
+## ◇ `sofabaton_x1s.persist_ir_blob`
 
 Adds a new command to an existing **IR** device by uploading a canonical blob
 body and saving it on the hub.
@@ -237,7 +237,7 @@ response_variable: saved_blob
 
 ---
 
-## `sofabaton_x1s.get_favorites`
+## ◇ `sofabaton_x1s.get_favorites`
 
 Reads the current ordered favorites list for an activity directly from the hub.
 This action returns data and can be used inline in scripts and automations.
@@ -269,7 +269,7 @@ Use the returned `fav_id` values as input to `reorder_favorites` and
 
 ---
 
-## `sofabaton_x1s.command_to_button`
+## ◇ `sofabaton_x1s.command_to_button`
 
 Maps a command to a physical button for a given activity.
 Optionally a second command can be assigned to a long-press on the same button.
@@ -278,7 +278,7 @@ Optionally a second command can be assigned to a long-press on the same button.
 | --------- | ---- | :------: | ----------- |
 | `device` | HA Device | Yes | Your Sofabaton hub. |
 | `activity_id` | int (101-255) | Yes | Activity id the mapping is created in. |
-| `button_id` | int (1-255) | Yes | Physical button code. See [Button ID reference](#button-id-reference). |
+| `button_id` | int (1-255) | Yes | Physical button code. See [Button ID reference](#-button-id-reference). |
 | `device_id` | int (1-99) | Yes | Device id the command belongs to. |
 | `command_id` | int (1-255) | Yes | Command id within that device. |
 | `long_press_device_id` | int (1-99) | No | Device id for the long-press command. Must be used together with `long_press_command_id`. |
@@ -298,7 +298,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.command_to_favorite`
+## ◇ `sofabaton_x1s.command_to_favorite`
 
 Adds a command as a quick-access favorite for an activity.
 
@@ -321,7 +321,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.reorder_favorites`
+## ◇ `sofabaton_x1s.reorder_favorites`
 
 Changes the display order of favorites within an activity.
 Use `get_favorites` first to retrieve the `fav_id` values, then supply them in
@@ -343,7 +343,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.delete_favorite`
+## ◇ `sofabaton_x1s.delete_favorite`
 
 Removes a single favorite from an activity.
 Use `get_favorites` first to find the correct `fav_id`.
@@ -364,7 +364,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.create_wifi_device`
+## ◇ `sofabaton_x1s.create_wifi_device`
 
 Low-level action that creates a Wifi Device on the hub with a set of named
 command slots.
@@ -403,7 +403,7 @@ Wifi Commands guide.
 
 ---
 
-## `sofabaton_x1s.sync_command_config`
+## ◇ `sofabaton_x1s.sync_command_config`
 
 Deploys the saved Wifi Commands configuration to the hub.
 This recreates the managed Wifi Device with the current command-slot settings
@@ -429,7 +429,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.device_to_activity`
+## ◇ `sofabaton_x1s.device_to_activity`
 
 Adds a device to an activity on the hub, so the activity can use that device's
 commands.
@@ -452,7 +452,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.delete_device`
+## ◇ `sofabaton_x1s.delete_device`
 
 Deletes a device from the hub and confirms all impacted activities.
 
@@ -472,7 +472,7 @@ data:
 
 ---
 
-## `sofabaton_x1s.export_snapshot`
+## ◇ `sofabaton_x1s.export_snapshot`
 
 Returns the cached structural `hub_bundle` used by the Control Panel's live Activity and Device editors. This is a cache-only read: it does not contact the hub and does not download command payload blobs.
 
@@ -498,7 +498,7 @@ response_variable: snapshot
 
 ---
 
-## `sofabaton_x1s.sync_from_snapshot`
+## ◇ `sofabaton_x1s.sync_from_snapshot`
 
 Applies one targeted Activity or Device edit using the same validation, locking, diff planning, paging, acknowledgement handling, and cache refresh path as the Control Panel's live editor.
 
@@ -533,7 +533,7 @@ response_variable: sync_result
 
 ---
 
-## `sofabaton_x1s.backup_bundle`
+## ◇ `sofabaton_x1s.backup_bundle`
 
 Builds a single `hub_bundle` JSON payload covering either a subset of
 devices or the entire hub (every device plus every activity). The bundle
@@ -567,7 +567,7 @@ response_variable: bundle
 
 ---
 
-## `sofabaton_x1s.restore_backup`
+## ◇ `sofabaton_x1s.restore_backup`
 
 Restores a `hub_bundle` payload (schema_version 5) onto the live hub.
 Devices are restored first; the action auto-builds the
@@ -618,7 +618,7 @@ response_variable: result
 
 ---
 
-## Button ID reference
+## ◇ Button ID reference
 
 Used by `command_to_button`.
 Buttons marked **X2 only** are not present on X1 or X1S remotes.
@@ -657,7 +657,7 @@ Buttons marked **X2 only** are not present on X1 or X1S remotes.
 
 ---
 
-## Workflows
+## ◇ Workflows
 
 ### Build a custom button layout for an activity
 

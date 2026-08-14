@@ -3,7 +3,7 @@
 This note is for future debugging sessions that need to validate a wire-level
 idea against a real hub without first wiring it into Home Assistant.
 
-## Setup
+## ◇ Setup
 
 Use a hub IP on the local network and run experiments from the repository root.
 Keep Home Assistant actions, backups, and command syncs idle while testing so
@@ -76,7 +76,7 @@ proxy's own decode (opcode name + family). Detach the app before any
 proxy-issued read/write — `can_issue_commands()` is false while the app
 owns the session.
 
-## X2 Remote Status Row (battery)
+## ◇ X2 Remote Status Row (battery)
 
 X2 hubs expose a remote status row through `OP_REQ_REMOTE_STATUS` with payload
 `00`; byte 9 of the reply is a battery percentage. A remote-battery sensor
@@ -88,7 +88,7 @@ X1 and X1S hubs do not expose a confirmed live remote battery value through
 the same request path. Do not surface a battery sensor for any model unless a
 separate live network behavior is verified.
 
-## Logging Checklist
+## ◇ Logging Checklist
 
 - Capture request opcode, payload, and raw reply hex.
 - Record hub model, hub firmware version when known, and whether a mobile app
@@ -98,7 +98,7 @@ separate live network behavior is verified.
 - Prefer neutral field names in notes and code until the field meaning is
   validated by behavior.
 
-## Validated: activity-edit write flows (X1, 2026-07-07)
+## ◇ Validated: activity-edit write flows (X1, 2026-07-07)
 
 Captured by attaching the official app through the proxy (method above)
 and performing each edit on a sacrificial activity, then reading state
@@ -215,7 +215,7 @@ command/favorite-rename affordance; offline backup editing keeps it
 (restore rewrites the whole family-0x0E command record). (Item V6 —
 resolved as "not offered live".)
 
-## Validated: device-edit write flows (X1 + X1S, 2026-07-11)
+## ◇ Validated: device-edit write flows (X1 + X1S, 2026-07-11)
 
 Bench-validated the live *device* sync engine (`sync_device`,
 `build_device_sync_plan`) end-to-end against both hub models by issuing
@@ -263,7 +263,7 @@ Notes:
   (`captured_at`, `fetched_at`, `complete`, `payload_profile`,
   `key_sort`) — two captures of identical hub state differ in those.
 
-## Validated: activity-edit engine emissions (X1 + X1S, 2026-07-11)
+## ◇ Validated: activity-edit engine emissions (X1 + X1S, 2026-07-11)
 
 Bench-validated the live *activity* sync engine (`sync_activity`,
 `build_activity_sync_plan`) end-to-end against both hub models — the
@@ -337,7 +337,7 @@ Engine bugs the bench caught (all fixed 2026-07-11):
 3. `_send_paged_macro_save` pinned the final-page 0x0112 ack payload to
    the macro key, failing successful cascade-removal saves (above).
 
-## Validated: backup/restore write flows (X1 + X1S, 2026-07-11/12)
+## ◇ Validated: backup/restore write flows (X1 + X1S, 2026-07-11/12)
 
 Bench-validated the whole backup → restore pipeline live on both hub
 models (`restore_device` for every present device class,
@@ -444,7 +444,7 @@ Engine bugs the program caught (all fixed, regression-tested):
    (favorite 0x3E map writes a keymap row at the slot's key; slots now
    skip occupied keys).
 
-## Validated: Wifi Commands deploy pipeline (X1 + X1S, 2026-07-12)
+## ◇ Validated: Wifi Commands deploy pipeline (X1 + X1S, 2026-07-12)
 
 Bench-validated the whole Wifi Commands hub-facing pipeline live on
 both hub models: per-variant `create_wifi_device` (X1 Roku-replay,
@@ -539,7 +539,7 @@ Engine bug the program caught (fixed, regression-tested):
    object cannot be re-sized`. Now sends from a snapshot copy
    (`transport_bridge._flush_buffer`).
 
-## Validated: live-editor rename executors (X1 + X1S, 2026-07-13)
+## ◇ Validated: live-editor rename executors (X1 + X1S, 2026-07-13)
 
 The Activities-tab live editor grew in-place rename of an activity or
 device (deployed through the normal Sync) and immediate delete of either
@@ -574,7 +574,7 @@ byte-patch of the read-row body is rejected (wrong length → wrong opcode);
 the parser/builder round-trip is the fix. (Resolves the open device-rename
 opcode item.)
 
-## Validated: in-place command-payload overwrite (X1 + X1S, 2026-07-13)
+## ◇ Validated: in-place command-payload overwrite (X1 + X1S, 2026-07-13)
 
 Re-issuing a family-`0x0E` command-record write to an **already-occupied**
 `(device_id, command_id)` **overwrites that command's payload in place** — it
@@ -657,7 +657,7 @@ payload / code / type / id-set / other commands are untouched. A command with
 *both* a rename and a payload edit is written once — the `command_payload` step
 carries the new label — so no double write.
 
-## Validated: command_add — new command via device Sync (X1 + X1S, 2026-07-13)
+## ◇ Validated: command_add — new command via device Sync (X1 + X1S, 2026-07-13)
 
 Persisting a **brand-new command record** from the live device editor's
 "Add command" dialog is validated end-to-end through the production
@@ -704,7 +704,7 @@ wifi_roku clone + X1S `Lights`/`0x0A` wifi_ip clone; 50/50 checks OK):
   ("outside the live-editable fields"), on the hub, before any write.
   Command deletes still trip the guard (deleting stays in Backup → Edit).
 
-## Validated: device head IP edit via device Sync (X1 + X1S, 2026-07-14)
+## ◇ Validated: device head IP edit via device Sync (X1 + X1S, 2026-07-14)
 
 The live device editor's Network-section IP edit is validated end-to-end
 through the production `sync_device` chain (`build_device_sync_plan` →
@@ -726,7 +726,7 @@ scope guard → stale pre-flight → `_sync_step_device_ip`) with
 - **Round-trip restore** — syncing the original IP (and name) back leaves
   the record body byte-identical to the pre-bench baseline.
 
-## Validated: activity display-order write — family 0x51 (X1 + X1S, 2026-07-14)
+## ◇ Validated: activity display-order write — family 0x51 (X1 + X1S, 2026-07-14)
 
 The activity list re-order (tools-card "Change order") is validated
 end-to-end with `bench_101_reorder_capture.py` (app capture through the
@@ -761,7 +761,7 @@ underlying family-0x37 create pipeline was already validated on X1 in
 the backup/restore program; the zero-member variant has only been
 exercised on X1S.
 
-## Validated: device display-order write — family 0x11 (X1 + X1S, 2026-07-16)
+## ◇ Validated: device display-order write — family 0x11 (X1 + X1S, 2026-07-16)
 
 The device list re-order (tools-card "Change order" under Hub → Devices)
 is validated with `bench_110_device_reorder_write.py` (our own write +
@@ -790,7 +790,7 @@ read-back on both hubs):
 - **Guards** — same as activities: partial orders and unknown ids are
   refused before any write.
 
-## Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
+## ◇ Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
 
 Investigation of UI-bench BUG #4 (activity 107, FWD `0xBD`, FireTV dev 4:
 slot flipped `(4,0)` → `(4,21)` → `(4,0)` over minutes, false-positiving
@@ -843,7 +843,7 @@ caught; a vendor-app edit that exactly reproduces a device-page mapping
 is indistinguishable from the hub's own derivation by construction and
 is deliberately tolerated.
 
-## Validated: UI end-to-end bench (X1S, 2026-07-14/15) — programs P0–P6
+## ◇ Validated: UI end-to-end bench (X1S, 2026-07-14/15) — programs P0–P6
 
 Browser-driven end-to-end bench against a live HA instance and the
 sacrificial X1S: every flow exercised through the tools card exactly as
@@ -929,7 +929,7 @@ both meaning "unpositioned"; non-erase device restore is additive
 (erase mode is the replace path); the wifi-commands sensor pulse resets
 after 0.3 s by design.
 
-## Validated: quick-access reorder with macro shortcuts (X1 + X1S, 2026-07-16)
+## ◇ Validated: quick-access reorder with macro shortcuts (X1 + X1S, 2026-07-16)
 
 The live Activities editor's quick-access list mixes command favorites and
 macro shortcuts, which share **one** fav-id/key-id namespace on the hub. The
@@ -978,7 +978,7 @@ Bench Test activity (`0x68`).
   `None` even though the write lands — verify favorite ops by re-read on X1,
   not by the return value.
 
-## Validated: in-place wifi-device edit primitives (X1 + X1S, 2026-07-16/17)
+## ◇ Validated: in-place wifi-device edit primitives (X1 + X1S, 2026-07-16/17)
 
 `bench_111_inplace_recon.py` plus follow-up probes `bench_111b`–`bench_111f`
 (in-place deploy program chunk 1, `docs/internal/wifi-inplace-deploy-plan.md`).
@@ -1050,7 +1050,7 @@ support continues unchanged for now. The X1 bench hub was subsequently
 restored from a different backup, so the chunk-1 deployment listed above no
 longer exists on the X1.
 
-## Validated: single-command delete from a device (X1 + X1S, 2026-07-17)
+## ◇ Validated: single-command delete from a device (X1 + X1S, 2026-07-17)
 
 `bench_112_command_delete.py` (in-place deploy program chunk 2; recovery
 `bench_112b_cleanup.py`). Deploys a fresh sacrificial managed wifi device
@@ -1092,7 +1092,7 @@ device-scoped reuse of the existing `_send_step(family=FAMILY_FAV_DELETE,
 payload=[dev, cmd])` sender, no commit. Both hubs left clean (no bench
 devices remain).
 
-## Validated: remove device from one activity — power-macro rewrite (X1 + X1S, 2026-07-17)
+## ◇ Validated: remove device from one activity — power-macro rewrite (X1 + X1S, 2026-07-17)
 
 `bench_113_membership_remove.py` (in-place deploy program chunk 3).
 Deploys a fresh managed wifi device T into TWO activities (ACT_A 0x65 with
@@ -1132,7 +1132,7 @@ the planner's guard.
 
 Both hubs left clean (bench device deleted, catalog back to baseline).
 
-## Validated: end-to-end in-place re-sync composition (X1 + X1S, 2026-07-17)
+## ◇ Validated: end-to-end in-place re-sync composition (X1 + X1S, 2026-07-17)
 
 `bench_114_inplace_resync.py` (in-place deploy program chunk 4). Replays
 the executor's planned step order at lib level against ONE deployed managed
@@ -1177,7 +1177,7 @@ this harness — a state-tracking quirk, not a hub fault); on X1 the roku
 callback-collapse blocks activity delivery, so power is checked by
 device-scope fire and the input target by direct fire. Both hubs left clean.
 
-## In-place wifi deploy — bench program COMPLETE (X1 + X1S, 2026-07-17)
+## ◇ In-place wifi deploy — bench program COMPLETE (X1 + X1S, 2026-07-17)
 
 All four discovery/validation chunks are closed (sections above): chunk 1
 in-place primitives (power-row, input-record, brand head), chunk 2
@@ -1196,7 +1196,7 @@ No lib/integration code was changed during the bench program (bench scripts
 + docs only); the last-member-removal GC guard is the one item deferred to
 the planner rather than live-tested. Both hubs left at baseline.
 
-## Validated: in-place re-sync end-to-end via Home Assistant (X1 + X1S, 2026-07-17)
+## ◇ Validated: in-place re-sync end-to-end via Home Assistant (X1 + X1S, 2026-07-17)
 
 `bench_116_ha_inplace_e2e.py` — drives the deployed dev HA instance's own
 APIs only (WS `command_config/set` + the `sync_command_config` service +
@@ -1248,7 +1248,7 @@ completed 200.
 P2 is now fully validated: planner + adapters + executors + hub branch +
 gates, live on both hub models through the real HA path.
 
-## Validated: exchange() sequencer consolidation (X1 + X1S, 2026-07-18)
+## ◇ Validated: exchange() sequencer consolidation (X1 + X1S, 2026-07-18)
 
 Post-refactor wire validation for the sequencer consolidation (all
 blocking request/response helpers now hold an `exchange()` scope —
@@ -1292,7 +1292,7 @@ regression test in `tests/lib/test_exchange_guard.py`.
 Both hubs left clean (bench devices deleted, catalogs at baseline;
 the X1 act-0x66 favorite set byte-restored).
 
-## Validated: Wifi Commands on the exchange() sequencer (X1 + X1S, 2026-07-18)
+## ◇ Validated: Wifi Commands on the exchange() sequencer (X1 + X1S, 2026-07-18)
 
 `bench_114_inplace_resync.py` re-run on the consolidated sequencer —
 X1S 32/32, X1 31/31 (`skipbundle` re-run). Covers the full Wifi Commands
@@ -1317,7 +1317,7 @@ step instead of a bench-local copy of the old timeout. Not a sequencer
 regression — the pre-refactor 2026-07-17 log shows the same sweep at
 4.2 s.
 
-## Validated: sequencer gap-closure benches (X1 + X1S, 2026-07-18)
+## ◇ Validated: sequencer gap-closure benches (X1 + X1S, 2026-07-18)
 
 Four follow-up programs covering the exchanges and behaviors the first
 validation pass had not touched:
@@ -1362,7 +1362,7 @@ found and fixed** (inputs-pending arming, 0x0210 delete-sweep timeout,
 catalog 0x07 misattribution) — all in the ack-attribution/timing class
 the consolidation targets, none in the exchange guard itself.
 
-## Validated: Control Panel card backend path on the sequencer (HA, X1 + X1S, 2026-07-18)
+## ◇ Validated: Control Panel card backend path on the sequencer (HA, X1 + X1S, 2026-07-18)
 
 Deployed the sequencer build to the HA dev instance (`deploy-ha.ps1
 -SkipBuild`) with both hubs re-enabled and drove the card's real WS
@@ -1391,7 +1391,7 @@ assessment is precluded for backups by the gate; for non-gated
 overlaps the lib-level stress bench (54 cycles / 88 polls, zero
 timeouts) covers the shape.
 
-## Validated: Wifi Events (X1S via live HA, 2026-07-22)
+## ◇ Validated: Wifi Events (X1S via live HA, 2026-07-22)
 
 W6 program (wifi-events-plan §9-W6) driven entirely through the
 DEPLOYED Home Assistant instance's WS API — the shipped card backend
@@ -1445,7 +1445,7 @@ Open findings (not Wifi-Events-specific machinery):
 
 Artifacts: scripts/hub-bench/out/evE2E-X1S*.json / evE2E-press-check.json.
 
-## Measured: MQTT vs HTTP callback latency (X2, 2026-08-10)
+## ◇ Measured: MQTT vs HTTP callback latency (X2, 2026-08-10)
 
 Reproduction tooling: [`bench_90_mqtt_vs_http_latency.py`](../../scripts/hub-bench/bench_90_mqtt_vs_http_latency.py)
 with the dependency-free subscriber in
@@ -1454,7 +1454,7 @@ X2 at .123, broker (Mosquitto) at
 .77, listener on the bench PC. Two scratch devices restored (a
 `wifi_ip` HA-action host aimed at the bench listener, and a `wifi_mqtt`
 device synthesized from the profile documented in
-[wifi-commands.md](wifi-commands.md#virtual-mqtt-devices-wifi_mqtt-class-0x20-x2-only)), 40 timed rounds per
+[wifi-commands.md](wifi-commands.md#-virtual-mqtt-devices-wifi_mqtt-class-0x20-x2-only)), 40 timed rounds per
 transport, both arms fired per round via `REQ_ACTIVATE`, arm order
 alternating per round. Cleanup deleted both devices; device and
 activity catalogs verified back at baseline.

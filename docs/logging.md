@@ -4,7 +4,7 @@ This guide shows how to enable detailed logging for the Home Assistant integrati
 
 These Home Assistant diagnostics do not apply to standalone `sofabaton-x` users. If you are opening an issue for `sofabaton-x`, include the command you ran, terminal output or traceback, package version, Python version, and a small reproduction snippet if possible.
 
-## Recommended way to gather Home Assistant logs
+## ◇ Recommended way to gather Home Assistant logs
 
 1. In Home Assistant, open **Settings -> Devices & services**.
 2. Select **Sofabaton X** and open the hub device.
@@ -16,6 +16,6 @@ These Home Assistant diagnostics do not apply to standalone `sofabaton-x` users.
 This workflow ensures the diagnostic download includes the hex logging details needed for troubleshooting.
 It also improves privacy as it exclusively contains log data from the integration and redacts IP and MAC addresses.
 
-## Attaching logs to an issue
+## ◇ Attaching logs to an issue
 
 [Create an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) and include the downloaded diagnostics JSON in your GitHub issue if you can.

@@ -5,7 +5,7 @@ protocol. It intentionally avoids implementation-specific parser details.
 
 ---
 
-## Entity ID space
+## ◇ Entity ID space
 
 The hub uses a shared 8-bit namespace for devices and activities.
 
@@ -25,7 +25,7 @@ REQ_ACTIVATE payload = [entity_lo, key_code]
 
 ---
 
-## Catalog rows
+## ◇ Catalog rows
 
 ### Device catalog row (`0xD50B` / `0x7B0B`)
 
@@ -117,7 +117,7 @@ assigned id returned by the create ack.
 
 ---
 
-## Command list records (`REQ_COMMANDS`, family `0x5D`)
+## ◇ Command list records (`REQ_COMMANDS`, family `0x5D`)
 
 Command-list bursts should be treated as one assembled command-record stream per
 request. Page boundaries are transport artifacts and are not guaranteed to align
@@ -242,7 +242,7 @@ Observed ack behavior:
 
 ---
 
-## Activity keymap and favorite rows (`REQ_BUTTONS`, family `0x3D`)
+## ◇ Activity keymap and favorite rows (`REQ_BUTTONS`, family `0x3D`)
 
 `REQ_BUTTONS` yields a stream of fixed 18-byte rows.
 
@@ -352,7 +352,7 @@ Observed ack:
 
 ---
 
-## Activity membership rows (`REQ_ACTIVITY_MAP`, family `0x6D`)
+## ◇ Activity membership rows (`REQ_ACTIVITY_MAP`, family `0x6D`)
 
 `REQ_ACTIVITY_MAP` returns one member row per frame.
 
@@ -374,7 +374,7 @@ best understood as an activity membership roster rather than a favorites table.
 
 ---
 
-## Macro records (`REQ_MACRO_LABELS`, family `0x13`)
+## ◇ Macro records (`REQ_MACRO_LABELS`, family `0x13`)
 
 Macro replies are multi-fragment bursts. Each fragment that starts a new record
 contains enough metadata to identify the activity and macro id.
@@ -515,7 +515,7 @@ Hub-owned bytes inside the record (bench-observed 2026-07-11):
 
 ---
 
-## Activity input candidate rows (`REQ_ACTIVITY_INPUTS`, family `0x47`)
+## ◇ Activity input candidate rows (`REQ_ACTIVITY_INPUTS`, family `0x47`)
 
 The request opcode is the same across observed hub lines (`0x0148`), but the
 response layout differs.
@@ -540,7 +540,7 @@ deriving order by record position alone.
 
 ---
 
-## IP-command synchronization rows (family `0x0D`)
+## ◇ IP-command synchronization rows (family `0x0D`)
 
 The `REQ_IPCMD_SYNC` reply uses multiple row opcodes in family `0x0D`.
 
@@ -564,7 +564,7 @@ Observed text encoding for the name fields in this family:
 
 ---
 
-## IR command dump pages (`REQ_BLOB`, families `0x0D` / `0x0E`)
+## ◇ IR command dump pages (`REQ_BLOB`, families `0x0D` / `0x0E`)
 
 `REQ_BLOB` (`0x020C`) is reused for two distinct flows:
 - WiFi/input-config label refresh for one `(device, slot)` pair
@@ -661,7 +661,7 @@ Observed assembly rules:
 
 ---
 
-## Favorite ordering response (family `0x63`)
+## ◇ Favorite ordering response (family `0x63`)
 
 Observed payload shape:
 
@@ -674,7 +674,7 @@ slot.
 
 ---
 
-## IR blob save pages (family `0x0E`, `A->H`)
+## ◇ IR blob save pages (family `0x0E`, `A->H`)
 
 Observed app-originated blob-save uploads use family `0x0E` pages whose payload
 shape mirrors the dump flow but carries a save-specific trailing checksum.
@@ -732,7 +732,7 @@ X1 `ir`/`wifi_roku` and X1S `wifi_ip` command records.
 
 ---
 
-## IR blob replay bodies (family `0x0F`)
+## ◇ IR blob replay bodies (family `0x0F`)
 
 The app's "Test" flow replays raw IR blobs through family `0x0F` frames. These
 blobs are not self-describing rows like `REQ_COMMANDS` or `REQ_BUTTONS`; they
@@ -876,7 +876,7 @@ Client guidance:
 
 ---
 
-## WiFi/IP command definition payload (`0x0ED3`)
+## ◇ WiFi/IP command definition payload (`0x0ED3`)
 
 Observed payload structure:
 
@@ -895,7 +895,7 @@ This is the structure used to define one HTTP-backed command on the hub.
 
 ---
 
-## Button code table
+## ◇ Button code table
 
 Known hardcoded remote button codes:
 

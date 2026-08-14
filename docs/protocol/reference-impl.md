@@ -3,7 +3,7 @@
 The Python implementation lives in `custom_components/sofabaton_x1s/lib/` inside the
 repository. A standalone CLI and publishable package are not yet implemented.
 
-## Source file map
+## ◇ Source file map
 
 All paths are relative to `custom_components/sofabaton_x1s/lib/`.
 
@@ -57,7 +57,7 @@ All paths are relative to `custom_components/sofabaton_x1s/lib/`.
 
 ---
 
-## Proxy module layout
+## ◇ Proxy module layout
 
 `X1Proxy` is composed from per-subsystem mixin modules. Each mixin
 covers one cohesive responsibility; `lib/x1_proxy.py` is the
@@ -82,7 +82,7 @@ Guards:
 
 ---
 
-## Unified create / restore orchestrator
+## ◇ Unified create / restore orchestrator
 
 The user-driven "create WiFi device" path and the backup-driven
 "restore device" / "restore activity" paths share one orchestrator.
@@ -137,7 +137,7 @@ layer expects.
 
 ---
 
-## Ack-outcome contract
+## ◇ Ack-outcome contract
 
 Wire-level reject signalling is described in
 [ack-handling.md](ack-handling.md). The integration's typed surface
@@ -185,7 +185,7 @@ multi-step paths. `tests/test_ack_handling.py` pins each branch.
 
 ---
 
-## State accessor
+## ◇ State accessor
 
 `ActivityCache.entities(kind)` in `state_helpers.py` is the
 read-side accessor for device / activity state maps. Callers should

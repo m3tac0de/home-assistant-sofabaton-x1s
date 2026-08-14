@@ -7,7 +7,7 @@ sync/opcode/checksum pattern.
 
 ---
 
-## Wire layout
+## ◇ Wire layout
 
 ```
  Offset  Size  Field
@@ -24,7 +24,7 @@ sync/opcode/checksum pattern.
 
 ---
 
-## Fields
+## ◇ Fields
 
 ### Sync bytes
 
@@ -98,7 +98,7 @@ byte up to (but not including) the checksum byte itself.
 
 ---
 
-## Frame construction example
+## ◇ Frame construction example
 
 Request hub to list activities (`OP_REQ_ACTIVITIES = 0x003A`, no payload):
 
@@ -129,7 +129,7 @@ A5 5A          ← sync
 
 ---
 
-## Direction notation
+## ◇ Direction notation
 
 Throughout this documentation frames are labelled:
 
@@ -140,7 +140,7 @@ The same notation is used in the [opcodes.md](opcodes.md) tables.
 
 ---
 
-## Byte order
+## ◇ Byte order
 
 All multi-byte integers are **big-endian** unless noted otherwise.
 

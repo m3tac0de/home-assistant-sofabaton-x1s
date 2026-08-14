@@ -13,7 +13,7 @@ This document describes observed wire behavior. Implementation notes belong in
 
 ---
 
-## A->H requests
+## ◇ A->H requests
 
 | Opcode   | Name | Payload shape | Hub versions | Purpose |
 |----------|------|---------------|--------------|---------|
@@ -130,7 +130,7 @@ Behavioral notes (bench-observed on X1 + X1S, 2026-07-11):
 
 ---
 
-## H->A responses
+## ◇ H->A responses
 
 ### Catalog rows
 
@@ -422,7 +422,7 @@ Observed `INFO_BANNER` (`0x112F`) semantics:
 
 ---
 
-## Family summary
+## ◇ Family summary
 
 | Low byte | Family | Examples |
 |----------|--------|----------|
@@ -447,7 +447,7 @@ Observed `INFO_BANNER` (`0x112F`) semantics:
 
 ---
 
-## Multi-frame burst pattern
+## ◇ Multi-frame burst pattern
 
 Many hub responses are bursts rather than single frames. The most common shape is:
 

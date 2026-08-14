@@ -8,7 +8,7 @@ adding commands, sharing codes, and correcting Wifi command details.
 > remains in the advanced Home Assistant Action names and their `blob` fields,
 > but the Control Panel and this documentation use **command payload**.
 
-## Edit an existing command
+## ◇ Edit an existing command
 
 In the **Sofabaton Control Panel**, open **Hub → Devices**, select a Device, and
 choose **Edit device**. Under **Commands**:
@@ -31,7 +31,7 @@ bytes.
 
 <img src="images/command-payload-editor.png" alt="Editing and testing a raw IR command payload" width="640" />
 
-## Add a command
+## ◇ Add a command
 
 Choose **Add command** in the Device editor, then enter a name and payload.
 The form depends on the Device class:
@@ -46,7 +46,7 @@ The form depends on the Device class:
 The new command is staged alongside the other Device edits and created during
 the next Sync.
 
-## Payload forms
+## ◇ Payload forms
 
 ### Raw payloads
 
@@ -77,7 +77,7 @@ The Control Panel can synthesize, Test, and save descriptive IR commands on X1,
 X1S, and X2 hubs. The raw IrScrutinizer exporter remains the most portable
 choice when you want timing-style payloads.
 
-## Obtain and share IR payloads
+## ◇ Obtain and share IR payloads
 
 You can use:
 
@@ -91,7 +91,7 @@ Sync the Device. When sharing a payload, include the Device brand and model,
 the command's purpose, and whether the payload was learned, generated, or taken
 from a database.
 
-## Payloads in backups
+## ◇ Payloads in backups
 
 Full backups contain command payloads and can be edited offline through
 **Backup → Edit**. Structural cache bundles do not contain payloads and cannot
@@ -105,7 +105,7 @@ false, restore uses the original `data_hex`.
 
 See the [backup and restore guide](backup.md) for the complete backup workflow.
 
-## Advanced Home Assistant Actions
+## ◇ Advanced Home Assistant Actions
 
 The legacy Action names still use *blob*:
 
@@ -119,7 +119,7 @@ These Actions are useful in scripts and automations, but the Control Panel is
 the simpler interactive workflow. See the [Action reference](actions.md) for
 fields, response data, and examples.
 
-## Important notes
+## ◇ Important notes
 
 - **Test is available only for IR Devices.** Payload editing and saving also
   support other Device classes.

@@ -8,7 +8,7 @@ If you just want to report a problem, please
 [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues)
 and include diagnostics as described in [docs/logging.md](docs/logging.md).
 
-## Repository layout
+## ◇ Repository layout
 
 One repository ships three things: a Home Assistant custom integration, a
 standalone PyPI library, and two Lovelace cards.
@@ -26,7 +26,7 @@ standalone PyPI library, and two Lovelace cards.
 
 The default branch is `main`; day-to-day development happens on `dev`. Target PRs at `dev`.
 
-## Prerequisites
+## ◇ Prerequisites
 
 - **Python 3.11+** (development and CI primarily use 3.13)
 - **Node 20+** (only needed for frontend work)
@@ -49,7 +49,7 @@ You do **not** need Home Assistant installed to run the Python tests —
 `tests/conftest.py` installs lightweight stubs for the `homeassistant` and
 `voluptuous` modules.
 
-## Building the frontend cards
+## ◇ Building the frontend cards
 
 The cards Home Assistant loads are single-file bundles built from the
 TypeScript sources:
@@ -66,7 +66,7 @@ commit **both** the source and the regenerated `.js` file — frontend CI
 fails on drift between the two. Run `npm run typecheck` too; all frontend
 code must pass strict type checking.
 
-## Running the tests
+## ◇ Running the tests
 
 There are three suites:
 
@@ -108,14 +108,14 @@ npm run test:playwright:update     # refresh snapshots after intended UI changes
 Snapshot diffs are expected whenever card rendering changes intentionally —
 review them, then update.
 
-## Documentation
+## ◇ Documentation
 
 - User docs live in `docs/`; keep links **relative** (they are read on GitHub).
 - Protocol findings go in `docs/protocol/` in this project's own terminology.
 - The library README shown on PyPI is `sofabaton-x/README.md`; links in it
   must be absolute GitHub URLs, since PyPI renders it outside the repo.
 
-## Versioning and releases
+## ◇ Versioning and releases
 
 The integration and the library are **versioned independently**:
 
@@ -137,7 +137,7 @@ frontend test/build files: typecheck, both card builds with a
 committed-bundle drift check, the node test suite, and Playwright on a
 Windows runner (the committed screenshot baselines are `*-win32.png`).
 
-## Pull requests
+## ◇ Pull requests
 
 - Keep generated artifacts in sync: card bundles (`www/*.js`) must match
   their sources (frontend CI enforces this).

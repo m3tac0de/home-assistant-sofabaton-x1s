@@ -17,7 +17,7 @@ from Sofabaton's catalog.
 The descriptive-format generator lives on Sofabaton's servers,
 not in any client we can inspect.
 
-## Implications for validation
+## ◇ Implications for validation
 
 Because the hub cannot itself convert a raw capture into the descriptive form,
 we have **no paired-capture path**. We cannot point an IR receiver at a
@@ -56,7 +56,7 @@ Two samples per protocol with deliberately different `D` and `F` values are
 usually enough to pin down 8-bit one's-complement checksums and packed-field
 shapes. Add a third if anything stays ambiguous.
 
-## General format observations
+## ◇ General format observations
 
 - Order of fields appears stable per protocol but varies between protocols.
 - `R:` is the carrier frequency in Hz (matches Girr's `@frequency`).
@@ -67,7 +67,7 @@ shapes. Add a third if anything stays ambiguous.
   `sofabaton-x.xml`). The descriptive format is preferred when the hub can
   decode the signal against a protocol it recognizes.
 
-## Per-protocol status
+## ◇ Per-protocol status
 
 Legend:
 
@@ -358,7 +358,7 @@ X2 (from anecdotal mentions) but unverified: Mitsubishi, Pioneer, Toshiba,
 Sharp{1}/Sharp{2} variants, NEC42 / NEC42ext, Apple. Treat each as untouched
 until a hub sample arrives.
 
-## Workflow for adding a new sample
+## ◇ Workflow for adding a new sample
 
 1. Capture or fetch the descriptive string from the hub. Note the
    device/button (helps disambiguate identical-looking strings).
@@ -371,7 +371,7 @@ until a hub sample arrives.
 4. If the new sample contradicts a 🟡 entry, downgrade to 🔴 and document the
    discrepancy. Update `sofabaton-x2.xml` only after 2+ confirming samples.
 
-## Things we know definitively
+## ◇ Things we know definitively
 
 - Token names use IrpTransmogrifier-style names with hyphens stripped (best
   evidence: `Samsung-SMT-G` → likely `SamsungSMTG`, `Denon-K` → likely
@@ -384,7 +384,7 @@ until a hub sample arrives.
 - The X2 also accepts the raw timing format from `sofabaton-x.xml` as a
   fallback for any signal that doesn't decode to a known protocol.
 
-## Things we explicitly do NOT know
+## ◇ Things we explicitly do NOT know
 
 - Whether the X2 hub validates field order or treats it as an unordered map.
 - Whether unknown/extra fields are tolerated or rejected.

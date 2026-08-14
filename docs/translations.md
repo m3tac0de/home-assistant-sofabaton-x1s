@@ -4,7 +4,7 @@ Both frontend cards follow the same localization rules: Home Assistant's UI
 language selects a translation overlay, regional codes fall back to their base
 language, and missing entries safely fall back to English.
 
-## Supported languages
+## ◇ Supported languages
 
 | Language | Control Panel | Virtual Remote |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ instead of shipping a large, unreviewed machine translation. Add `ar` to the
 Control Panel manifest only together with a complete, native-reviewed
 catalogue and RTL browser coverage.
 
-## Control Panel card
+## ◇ Control Panel card
 
 The Control Panel English reference and registry live in
 [`strings.ts`](../custom_components/sofabaton_x1s/www/src/strings.ts). All
@@ -75,7 +75,7 @@ Parameterized entries remain functions so each language controls word order
 and pluralization. The frontend test suite also rejects newly introduced
 literal UI text outside the English table.
 
-## Style and space constraints
+## ◇ Style and space constraints
 
 - Keep product and feature names unchanged: `Sofabaton`, `Home Assistant`,
   `Wifi Commands`, `Wifi Events`, and `MQTT Discovery`.
@@ -93,7 +93,7 @@ literal UI text outside the English table.
   harness exercises every supported Control Panel locale at narrow card widths
   and rejects horizontally overflowing controls.
 
-## Virtual Remote card
+## ◇ Virtual Remote card
 
 The Virtual Remote card renders every user-facing string through a central
 string table, keyed by Home Assistant's UI language (`hass.locale.language`).
@@ -101,7 +101,7 @@ English is the complete reference; translations are **partial overlays** — any
 key a language does not provide automatically falls back to English, so an
 incomplete translation is safe to ship and improves incrementally.
 
-## How it works
+## ◇ How it works
 
 - [`remote-card-strings.ts`](../custom_components/sofabaton_x1s/www/src/remote-card-strings.ts)
   holds the English reference table (`REMOTE_CARD_STRINGS_EN`) and the language
@@ -112,7 +112,7 @@ incomplete translation is safe to ship and improves incrementally.
 - Regional codes fall back to their base language (`de-CH` → `de`), and unknown
   languages fall back to English.
 
-## Contributing a language
+## ◇ Contributing a language
 
 1. Create `custom_components/sofabaton_x1s/www/src/remote-card-translations/<lang>.ts`
    that registers a table mirroring the shape of `REMOTE_CARD_STRINGS_EN`.
@@ -146,7 +146,7 @@ incomplete translation is safe to ship and improves incrementally.
 Entries with parameters are functions — translate the sentence around the
 placeholder, keep the parameter.
 
-## What is deliberately NOT translated
+## ◇ What is deliberately NOT translated
 
 - Names coming from your hub (activities, devices, commands, favorites, macros).
 - Generated YAML (keys/values consumed by Home Assistant) and MQTT discovery

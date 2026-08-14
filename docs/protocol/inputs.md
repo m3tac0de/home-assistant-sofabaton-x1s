@@ -9,7 +9,7 @@ belong in [reference-impl.md](reference-impl.md), not here.
 
 ---
 
-## Page layout
+## ◇ Page layout
 
 Total page size for a single-page write is
 
@@ -98,7 +98,7 @@ wrapper is excluded from the checksum.
 
 ---
 
-## Empty-page shape
+## ◇ Empty-page shape
 
 A write that means "no inputs configured for this device" uses
 `source_id_byte = 0x00`, `entry_count = 0`, an empty entry region,
@@ -108,7 +108,7 @@ creation.
 
 ---
 
-## Acks
+## ◇ Acks
 
 Inputs-page writes are acknowledged via the generic `STATUS_ACK`
 family (`0x0103`). See [ack-handling.md](ack-handling.md) for the

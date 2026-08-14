@@ -6,7 +6,7 @@ create, synchronize, and refresh those devices.
 
 ---
 
-## Concepts
+## ◇ Concepts
 
 - WiFi/IP device: a virtual device stored on the hub
 - WiFi/IP command: one command slot on that device
@@ -19,7 +19,7 @@ Observed uses include:
 
 ---
 
-## Device creation flow
+## ◇ Device creation flow
 
 Observed request sequence:
 
@@ -36,7 +36,7 @@ sequence itself is stable in observed traffic.
 
 ---
 
-## `DEFINE_IP_CMD` payload structure (`0x0ED3`)
+## ◇ `DEFINE_IP_CMD` payload structure (`0x0ED3`)
 
 Observed layout:
 
@@ -55,7 +55,7 @@ Observed HTTP methods include `POST` and `GET`.
 
 ---
 
-## Hub-assigned device id (`0x8D5D`)
+## ◇ Hub-assigned device id (`0x8D5D`)
 
 During save, the hub emits `DEVICE_SAVE_HEAD` (`0x8D5D`). The payload includes the
 hub-assigned device id for the newly created WiFi/IP device. Subsequent save and
@@ -63,7 +63,7 @@ refresh steps refer to that id.
 
 ---
 
-## IP-command synchronization (`0x0C02 -> family 0x0D`)
+## ◇ IP-command synchronization (`0x0C02 -> family 0x0D`)
 
 To enumerate the existing HTTP-backed commands on a device:
 
@@ -79,7 +79,7 @@ Observed text encoding:
 
 ---
 
-## Input-configuration save and refresh
+## ◇ Input-configuration save and refresh
 
 Some WiFi/IP devices expose a separate "input" configuration. After input-config
 entries are written, the hub can be asked to materialize one input label at a
@@ -113,7 +113,7 @@ slot, not as a normal `REQ_COMMANDS` reply.
 
 ---
 
-## Capacity and observed constraints
+## ◇ Capacity and observed constraints
 
 Observed constraints from field traffic:
 - up to about 10 commands per WiFi/IP device
@@ -124,7 +124,7 @@ Exact hard limits may vary by firmware.
 
 ---
 
-## Command id space (X1 vs X1S/X2)
+## ◇ Command id space (X1 vs X1S/X2)
 
 Live-validated 2026-07-12 (both hub models). The integration deploys
 each of the 10 user slots as two command records — a short-press and a
@@ -143,7 +143,7 @@ X1 hits nothing. Callback paths are
 `/launch/<hub_action_id>/<device_id>/<command_index>/<short|long>`,
 where `command_index` is the 0-based slot the user configured.
 
-## Callback delivery and activity macros
+## ◇ Callback delivery and activity macros
 
 - One `REQ_ACTIVATE` on a WiFi/IP command delivers exactly one HTTP
   callback, provided the listener returns a response the hub accepts;
@@ -159,7 +159,7 @@ Full deploy-pipeline validation (create → add-to-activity → favorites
 [live-hub-testing.md](live-hub-testing.md) under "Validated: Wifi
 Commands deploy pipeline".
 
-## Virtual MQTT devices (`wifi_mqtt`, class `0x20`, X2 only)
+## ◇ Virtual MQTT devices (`wifi_mqtt`, class `0x20`, X2 only)
 
 The X2 firmware supports a virtual device class whose command
 activations publish to the hub's MQTT broker instead of issuing an

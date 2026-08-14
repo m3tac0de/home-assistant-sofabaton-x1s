@@ -95,7 +95,7 @@ The integration enables `switch.<hub>_wifi_device` automatically while at least 
 > **Emulated Roku port conflict**
 > Emulated Roku commonly uses the same port. If both integrations try to bind `8060`, one listener will fail. The Sofabaton listener port can be changed in the integration's global options for X1S and X2, but changing it breaks X1 compatibility.
 
-The callback listener is intended for a trusted LAN or VLAN, not the public internet. It has no TLS or user authentication. See the [networking and listener security model](networking.md#security--listener-model) for its source-IP and request validation.
+The callback listener is intended for a trusted LAN or VLAN, not the public internet. It has no TLS or user authentication. See the [networking and listener security model](networking.md#-security--listener-model) for its source-IP and request validation.
 
 #### MQTT setup on X2
 
@@ -108,7 +108,7 @@ Configure the hub's broker host, port, and credentials in the **Sofabaton app**.
 
 MQTT avoids the Sofabaton HTTP listener and its port `8060`. It does **not** remove the need for broker connectivity: firewall or VLAN rules towards the broker, commonly on TCP `1883`, may still be required. If the broker runs on the Home Assistant host, allow the hub to reach the broker port on that host.
 
-On measured X2 hardware, MQTT reached Home Assistant about **130 ms sooner at the median** than HTTP. Detailed measurements and caveats are recorded in [live hub testing](protocol/live-hub-testing.md#measured-mqtt-vs-http-callback-latency-x2-2026-08-10).
+On measured X2 hardware, MQTT reached Home Assistant about **130 ms sooner at the median** than HTTP. Detailed measurements and caveats are recorded in [live hub testing](protocol/live-hub-testing.md#-measured-mqtt-vs-http-callback-latency-x2-2026-08-10).
 
 Broker security is the delivery boundary. Anyone allowed to publish to the hub's press topic can trigger the configured Action. Use broker authentication, give the hub account the narrowest practical ACL, and protect its credentials.
 
