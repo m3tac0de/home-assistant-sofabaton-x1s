@@ -2,7 +2,7 @@
 
 Each configured hub provides entities for controlling Sofabaton from Home Assistant, using remote and hub activity in automations, and managing the integration. Home Assistant generates default entity IDs from the hub name; the tables use `<hub>` as a placeholder. Entity IDs can be renamed in Home Assistant.
 
-## Control the hub from Home Assistant
+## ◇ Control the hub from Home Assistant
 
 Use these entities in dashboards or custom UIs, automations, and scripts.
 
@@ -14,7 +14,7 @@ Use these entities in dashboards or custom UIs, automations, and scripts.
 
 For `remote.send_command`, `remote.turn_on`, and `remote.turn_off` examples, see the [remote entity guide](remote_entity.md).
 
-## Use hub and remote activity in automations
+## ◇ Use hub and remote activity in automations
 
 These entities expose state changes and received commands to Home Assistant.
 
@@ -27,7 +27,7 @@ These entities expose state changes and received commands to Home Assistant.
 
 For Wifi Commands, Wifi Events, Hub Events, Activity Events, and a sensor automation example, see the [remote and hub trigger guide](wifi_commands.md).
 
-## Configuration, maintenance, and diagnostics
+## ◇ Configuration, maintenance, and diagnostics
 
 | Platform | Default entity                     | Purpose                                                                                                                                          |
 | -------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -39,7 +39,7 @@ For Wifi Commands, Wifi Events, Hub Events, Activity Events, and a sensor automa
 | Button   | `button.<hub>_resync_remote`       | Synchronize the physical remote                                                                                                                  |
 | Text     | `text.<hub>_ip_address`            | Override the stored hub IP; disabled by default                                                                                                  |
 
-## Availability while the Sofabaton app is connected
+## ◇ Availability while the Sofabaton app is connected
 
 Entities that write to the hub become unavailable while the official Sofabaton app is connected through the proxy. This prevents competing commands and configuration writes. Diagnostic and state-reporting entities remain available where possible.
 

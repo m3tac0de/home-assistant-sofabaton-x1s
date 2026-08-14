@@ -6,7 +6,7 @@ To go in the other direction and trigger Home Assistant from remote or hub activ
 
 For the `remote` entity and other available control, state, and diagnostic entities, see the [entity reference](entities.md).
 
-## Send a button in the current Activity
+## ◇ Send a button in the current Activity
 
 When no `device` is supplied, the command is resolved in the context of the currently active Activity:
 
@@ -32,7 +32,7 @@ POWER_ON, POWER_OFF
 
 The extended buttons `A`, `B`, `C`, `EXIT`, `DVR`, `PLAY`, and `GUIDE` are intended for X2 hubs. Button names are case-insensitive, but using the uppercase names above makes automations easier to read.
 
-## Send several buttons
+## ◇ Send several buttons
 
 Pass a list to send commands sequentially:
 
@@ -46,7 +46,7 @@ data:
     - MENU
 ```
 
-## Wait between commands
+## ◇ Wait between commands
 
 `delay_secs` inserts a pause between the commands of a single `remote.send_command` action. It is applied between commands only, so nothing is added before the first or after the last one:
 
@@ -64,7 +64,7 @@ data:
 
 When `delay_secs` is omitted the commands are sent back-to-back. Use it when a device needs time to react before it accepts the next command, for example when navigating a menu.
 
-## Send a command directly by ID
+## ◇ Send a command directly by ID
 
 Use this form when you know the numeric command ID and the Device or Activity that owns it:
 
@@ -98,7 +98,7 @@ data:
   device: 3
 ```
 
-## Start or switch Activity
+## ◇ Start or switch Activity
 
 ```yaml
 action: remote.turn_on
@@ -110,7 +110,7 @@ data:
 
 The Activity name must match the name on the hub.
 
-## Power off
+## ◇ Power off
 
 ```yaml
 action: remote.turn_off
@@ -118,7 +118,7 @@ target:
   entity_id: remote.<hub>_remote
 ```
 
-## Find Device, Activity, and command IDs
+## ◇ Find Device, Activity, and command IDs
 
 Choose whichever method best fits your workflow:
 

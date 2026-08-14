@@ -9,7 +9,7 @@ These features are configured in the **Automation** tab of the Sofabaton Control
 
 Actions run in Home Assistant. The Control Panel is only the configuration interface; it does not need to remain open.
 
-## Choose a trigger type
+## ◇ Choose a trigger type
 
 Choose the option that matches what should trigger Home Assistant:
 
@@ -25,7 +25,7 @@ Action changes apply immediately and never require a hub sync. Deploying Wifi Co
 
 <img height="220" alt="Automation tab, Wifi Commands sub-tab" src="images/wifi-commands-devices.png" /> <img height="220" alt="Automation tab, Events sub-tab" src="images/automation-events.png" />
 
-## Wifi Commands
+## ◇ Wifi Commands
 
 With Wifi Commands, you build your own Home Assistant device for the remote: a set of commands that each run any Action you like. Put them on favorites and physical buttons, and use them across Activities just like commands from a real device. You can create up to **5 user-managed Wifi Devices** per hub, each with **10 command slots**. The reserved Wifi Events device does not count towards this limit.
 
@@ -149,7 +149,7 @@ Create a hub backup before a large deployment, replacement, or removal.
 
 X1 firmware delivers only one power callback and one Activity-start callback for each Activity transition, regardless of how many Wifi-type devices participate. Power and Activity-start configuration is therefore hidden for X1 hubs. Regular commands, favorites, physical buttons, long presses, and Home Assistant Actions continue to work. X1S and X2 are unaffected.
 
-## Wifi Events
+## ◇ Wifi Events
 
 Wifi Events are named Home Assistant triggers placed inside an Activity as:
 
@@ -202,7 +202,7 @@ The Wifi Events section then offers two recovery paths:
 - Add one of the retained events to an Activity and sync that Activity. The integration redeploys the shared device and all retained events before writing the Activity reference.
 - Choose **remove this configuration from Home Assistant** to delete all retained Wifi Events and their Actions. This option is available only while the hub-side device is absent.
 
-## Hub and Activity Events
+## ◇ Hub and Activity Events
 
 Unlike Wifi Commands and Wifi Events, these triggers respond to hub state changes rather than remote commands. They live entirely in Home Assistant and need no Wifi Device, callback listener, or hub sync.
 
@@ -221,7 +221,7 @@ Each Activity has independent **start** and **stop** Actions. When switching dir
 
 Activity Event Actions are stored against the hub's numeric Activity ID. When an authoritative refresh shows that an Activity was deleted, the integration removes the stale Action configuration for that ID.
 
-## Wifi Commands sensor
+## ◇ Wifi Commands sensor
 
 `sensor.<hub>_wifi_commands` records the most recent Wifi Command or Wifi Event press, whether the deployed record was activated from the physical remote, the Sofabaton app, or a virtual remote. A configured per-command Action is optional; the sensor can instead be used as an automation trigger.
 
@@ -273,7 +273,7 @@ actions:
               entity_id: scene.gaming_mode
 ```
 
-## Related entities
+## ◇ Related entities
 
 The entities most directly related to remote and hub triggers are listed below. See the [entity reference](entities.md) for every entity provided by the integration.
 

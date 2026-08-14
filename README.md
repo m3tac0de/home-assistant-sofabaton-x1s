@@ -4,7 +4,7 @@
 
 Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from Home Assistant.
 
-[![HACS Default](https://img.shields.io/badge/HACS-Default-green.svg)](#installation)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-green.svg)](#-installation)
 [![Latest release](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s)](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/total)](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/releases)
 
@@ -13,17 +13,17 @@ Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from 
 > [!NOTE]
 > This is an unofficial community project and is not affiliated with or endorsed by Sofabaton.
 
-## Start here
+## ◇ Start here
 
-- [Install and add your hub](#installation)
-- [Understand the local proxy](#how-the-local-proxy-works)
-- [Add the dashboard cards](#dashboard-cards)
+- [Install and add your hub](#-installation)
+- [Understand the local proxy](#-how-the-local-proxy-works)
+- [Add the dashboard cards](#-dashboard-cards)
 - [Control the hub from dashboards, automations, and scripts](#control-the-hub-from-home-assistant)
 - [Trigger Home Assistant from the remote or hub](#trigger-home-assistant-from-the-remote-and-hub)
-- [Back up, restore, and edit your hub](#advanced-features)
-- [Solve discovery, VLAN, or connection problems](#troubleshooting)
+- [Back up, restore, and edit your hub](#-advanced-features)
+- [Solve discovery, VLAN, or connection problems](#-troubleshooting)
 
-## Compatibility
+## ◇ Compatibility
 
 | Capability                        | X1  | X1S | X2  |
 | --------------------------------- | :-: | :-: | :-: |
@@ -45,7 +45,7 @@ Requirements:
 
 For ports, firewall rules, containers, VLANs, and iOS discovery behavior, see the [networking guide](docs/networking.md).
 
-## Installation
+## ◇ Installation
 
 > [!IMPORTANT]
 > Disconnect or fully close the Sofabaton app before installing the integration and adding the hub.
@@ -85,7 +85,7 @@ sofabaton_x1s:
   enable_x2_discovery: false
 ```
 
-## How the local proxy works
+## ◇ How the local proxy works
 
 A Sofabaton hub normally accepts only one client connection at a time. Sofabaton X keeps that connection and presents a virtual hub to the official Sofabaton app:
 
@@ -97,7 +97,7 @@ While the app is connected to the proxy, entities that can write to the hub are 
 
 Use `binary_sensor.<hub>_app_connected` to check whether the app owns the connection and `binary_sensor.<hub>_hub_connected` to check the physical hub connection. The current activity sensor remains available in both states.
 
-## Dashboard cards
+## ◇ Dashboard cards
 
 The integration includes two dashboard cards and deploys them automatically.
 
@@ -136,7 +136,7 @@ Edits are reviewed before synchronization. The card also prevents conflicting wr
 
 <img height="250" alt="Control Panel Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png"> <img height="250" alt="Control Panel Automation tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/automation-events.png"> <img height="250" alt="Control Panel Backup tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-backup-tab.png">
 
-## Control and automation
+## ◇ Control and automation
 
 Sofabaton X works in both directions: Home Assistant can control the hub, and activity on the remote or hub can trigger Home Assistant.
 
@@ -184,13 +184,13 @@ These Actions run entirely in Home Assistant and are never synchronized to the h
 
 For configuration, delivery choices, limits, and automation examples, see the [remote and hub trigger guide](docs/wifi_commands.md).
 
-## Entities
+## ◇ Entities
 
 The integration provides entities for both automation directions: remotes, selects, and buttons control the hub, while sensors expose Activity changes, Wifi Command presses, and connection state as automation inputs. Additional entities manage the proxy, listener, diagnostics, and maintenance tasks.
 
 See the [entity reference](docs/entities.md) for default entity IDs, purposes, and availability behavior.
 
-## Advanced features
+## ◇ Advanced features
 
 | Feature                                                             | Documentation                                                                                                                                     |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -203,7 +203,7 @@ See the [entity reference](docs/entities.md) for default entity IDs, purposes, a
 | Diagnostic logging and issue-report information                     | [Logging guide](docs/logging.md)                                                                                                                  |
 | Standalone Python protocol library                                  | [`sofabaton-x`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x) and [PyPI](https://pypi.org/project/sofabaton-x/) |
 
-## Frequently asked questions
+## ◇ Frequently asked questions
 
 <details>
 <summary><strong>Can the integration detect every button pressed on the physical remote?</strong></summary>
@@ -248,7 +248,7 @@ Check `binary_sensor.<hub>_app_connected` and `binary_sensor.<hub>_hub_connected
 
 </details>
 
-## Troubleshooting
+## ◇ Troubleshooting
 
 - **Discovery, VLAN, firewall, container, or iOS proxy problem:** read the [networking guide](docs/networking.md).
 - **Need useful logs for an issue report:** follow the [logging guide](docs/logging.md).
@@ -256,10 +256,10 @@ Check `binary_sensor.<hub>_app_connected` and `binary_sensor.<hub>_hub_connected
 
 When reporting a problem, include your Home Assistant version, integration version, hub model and firmware, installation method, relevant diagnostics, and the smallest reproducible example.
 
-## Contributing
+## ◇ Contributing
 
 Development setup, repository structure, test commands, and release information are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## License
+## ◇ License
 
 [MIT](LICENSE) © 2026 m3tac0de
