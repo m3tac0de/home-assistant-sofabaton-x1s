@@ -331,6 +331,54 @@ def test_hub_dangling_command_refs_are_grandfathered_only_when_tolerated():
         )
 
 
+def test_unbound_zero_command_binding_rows_are_grandfathered_only_when_tolerated():
+    # The vendor app clears a hard-button slot by writing command_id 0 into
+    # the KeyToKey row instead of deleting it (observed on the FWD button of
+    # cloud-provisioned device pages). Captured hub truth must not block a
+    # sync, but a 0 row without baseline precedent stays invalid.
+    stale = valid_bundle()
+    stale["devices"][0]["button_bindings"] = [
+        {"button_id": 0xBD, "command_id": 0, "long_press_command_id": None},
+    ]
+
+    with pytest.raises(ValueError, match="missing command 0 on device 1"):
+        validate_hub_bundle_for_model(
+            stale,
+            hub_version="X1S",
+            payload_name="baseline",
+            enforce_editor_invariants=False,
+        )
+
+    tolerated = collect_missing_command_refs(stale)
+    assert tolerated == {1: {0}}
+
+    validate_hub_bundle_for_model(
+        stale,
+        hub_version="X1S",
+        payload_name="baseline",
+        enforce_editor_invariants=False,
+        tolerated_missing_commands=tolerated,
+    )
+    validate_hub_bundle_for_model(
+        stale, hub_version="X1S", tolerated_missing_commands=tolerated
+    )
+
+    # The same sentinel in the long-press slot is grandfathered too.
+    long_press = valid_bundle()
+    long_press["devices"][0]["button_bindings"] = [
+        {"button_id": 0xBD, "command_id": 10, "long_press_command_id": 0},
+    ]
+    validate_hub_bundle_for_model(
+        long_press,
+        hub_version="X1S",
+        tolerated_missing_commands=collect_missing_command_refs(long_press),
+    )
+
+    # Without a baseline precedent the 0 sentinel is still rejected.
+    with pytest.raises(ValueError, match="missing command 0 on device 1"):
+        validate_hub_bundle_for_model(stale, hub_version="X1S")
+
+
 def test_collect_missing_command_refs_covers_all_reference_sites():
     bundle = valid_bundle()
     device = bundle["devices"][0]

@@ -307,7 +307,12 @@ def _validate_bindings(
 
         device_id = binding.get("device_id", owner_id if owner_kind == "device" else None)
         device_id = _integer(device_id, f"{binding_path}.device_id", minimum=1, maximum=0xFF)
-        command_id = _integer(binding.get("command_id"), f"{binding_path}.command_id", minimum=1, maximum=0xFE)
+        # The vendor app clears a hard-button slot by writing command_id 0
+        # into the KeyToKey row instead of deleting it, so captured hub truth
+        # can carry unbound rows. Accept the 0 sentinel structurally; the
+        # reference check below still rejects it unless the baseline scan
+        # grandfathered it (a command list can never contain id 0).
+        command_id = _integer(binding.get("command_id"), f"{binding_path}.command_id", minimum=0, maximum=0xFE)
         if owner_kind == "activity" and device_id == owner_id:
             if command_id not in macros or command_id in _POWER_MACRO_IDS:
                 raise _error(binding_path, f"references missing editable macro {command_id}")
@@ -331,8 +336,9 @@ def _validate_bindings(
         if has_long_command:
             long_device = binding.get("long_press_device_id", owner_id)
             long_device = _integer(long_device, f"{binding_path}.long_press_device_id", minimum=1, maximum=0xFF)
+            # Same vendor 0-sentinel tolerance as the short-press slot above.
             long_command = _integer(
-                binding["long_press_command_id"], f"{binding_path}.long_press_command_id", minimum=1, maximum=0xFE
+                binding["long_press_command_id"], f"{binding_path}.long_press_command_id", minimum=0, maximum=0xFE
             )
             if owner_kind == "activity" and long_device == owner_id:
                 if long_command not in macros or long_command in _POWER_MACRO_IDS:
@@ -495,6 +501,11 @@ def collect_missing_command_refs(bundle: Any) -> dict[int, set[int]]:
     contain button bindings (or macro steps, favorites, input records) that
     reference command ids absent from the owning device's command list — the
     hub tolerates those rows and simply does nothing when the key is pressed.
+
+    The vendor app also clears a hard-button binding by writing command_id 0
+    into the KeyToKey row instead of deleting it. Command lists can never
+    contain id 0, so such unbound rows surface here as a missing reference to
+    command 0 and are grandfathered through the same mechanism.
 
     Returns ``{device_id: {command_id, ...}}`` for every such dangling
     reference found in ``bundle``. Feed the result of scanning the *baseline*
