@@ -181,6 +181,16 @@ from .proxy_ir_blob import IrBlobMixin
 log = logging.getLogger("x1proxy")
 
 ACTIVITY_INCOMPLETE_RETRY_DELAY_S = 0.75
+# How long user commands may be held after an externally-applied activity
+# change (MQTT push) before we stop waiting for the hub's ACK_READY.
+# Deliberately generous: a command reaching the hub mid-power-macro is
+# certain to fail, and overlapping in-flight requests kill the first
+# request outright (bench 2026-08-17) — so releasing early risks losing
+# hub work, while releasing late only delays a command in the rare case
+# the ACK_READY was lost on a healthy link (disconnects release the gate
+# immediately). This is a lost-ACK_READY escape hatch, not a
+# macro-duration estimate.
+EXTERNAL_SETTLE_TIMEOUT = 60.0
 _HUB_MODEL_BY_CODE = {
     0x01: HUB_VERSION_X1,
     0x02: HUB_VERSION_X1S,
@@ -535,6 +545,15 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._idle_behavior_lock = threading.Lock()
         self._idle_behavior_events: dict[int, threading.Event] = {}
         self._idle_behavior_values: dict[int, int] = {}
+        # Settling gate for externally-learned activity changes (MQTT
+        # push on X2): armed by apply_external_activity_state, released
+        # by the ACK_READY that accompanies the same hub transition (or
+        # hub disconnect / timeout). While armed, send_command holds
+        # user commands so the hub never receives them earlier relative
+        # to its power macro than it would on the TCP-only path.
+        self._external_settle_event = threading.Event()
+        self._external_settle_event.set()
+        self._external_settle_deadline = 0.0
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -665,6 +684,95 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         """
 
         self._pending_redundant_off_check = True
+
+    def apply_external_activity_state(self, activity_id: int | None) -> bool:
+        """Apply an activity change learned outside the TCP session.
+
+        The X2 publishes activity transitions over MQTT with the new id in
+        the payload; that push usually beats the ACK_READY →
+        REQ_ACTIVITIES round-trip. Feeding it through the hint pipeline
+        flips state (and fires listeners) immediately, while the untouched
+        ACK_READY path stays behind it as reconciliation: the follow-up
+        activities burst re-derives the hint from hub rows and corrects a
+        wrong or stale push on its own.
+
+        ``None`` means powered off. Ignored (returns ``False``) before the
+        first complete activities read and for ids missing from the
+        catalog — in both cases the regular TCP refresh is the safer
+        source. Also ``False`` when the push matches current state (the
+        ACK_READY beat the MQTT delivery).
+        """
+
+        if not self._activities_catalog_ready:
+            self._log.info(
+                "[EXT] ignoring external activity state: catalog not ready"
+            )
+            return False
+        act_lo: int | None = None
+        if activity_id is not None:
+            act_lo = activity_id & 0xFF
+            if act_lo not in self.state.activities:
+                # Stale local catalog (activity created outside HA):
+                # leave it to the ACK_READY refresh rather than flip to
+                # a nameless entry.
+                self._log.info(
+                    "[EXT] ignoring external activity state: id %s not in catalog",
+                    activity_id,
+                )
+                return False
+        if (
+            self.state.current_activity == act_lo
+            and self.state.current_activity_hint == act_lo
+        ):
+            return False
+        self._log.info("[EXT] applying external activity state: %s", act_lo)
+        self.state.set_hint(act_lo)
+        self._arm_external_settle()
+        self.handle_active_state("external")
+        return True
+
+    def _arm_external_settle(self) -> None:
+        self._external_settle_deadline = (
+            time.monotonic() + EXTERNAL_SETTLE_TIMEOUT
+        )
+        self._external_settle_event.clear()
+
+    def notify_hub_ready(self) -> bool:
+        """Release the external settling gate (ACK_READY observed).
+
+        Returns True when the gate was armed, i.e. this ACK_READY is the
+        companion of a transition that an external (MQTT) push already
+        applied. The AckReadyHandler uses that to skip the redundant-OFF
+        arming: the state being OFF then is the applied transition, not
+        an OFF press with nothing left to turn off.
+        """
+
+        if self._external_settle_event.is_set():
+            return False
+        self._log.debug("[EXT] settling gate released by ACK_READY")
+        self._external_settle_event.set()
+        return True
+
+    def _wait_external_settle(self) -> None:
+        """Hold an outbound user command while an external apply settles.
+
+        Bounded by EXTERNAL_SETTLE_TIMEOUT so a lost ACK_READY can only
+        delay, never wedge, a command. Runs on executor threads (every
+        send_command call site), never on the event loop.
+        """
+
+        if self._external_settle_event.is_set():
+            return
+        remaining = self._external_settle_deadline - time.monotonic()
+        if remaining <= 0:
+            self._external_settle_event.set()
+            return
+        self._log.info(
+            "[EXT] holding command up to %.1fs for hub to settle", remaining
+        )
+        if not self._external_settle_event.wait(remaining):
+            self._log.info("[EXT] settling gate timed out; releasing")
+            self._external_settle_event.set()
     
     def enable_proxy(self) -> None:
         self._proxy_enabled = True
@@ -1194,6 +1302,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             )
             return False
 
+        self._wait_external_settle()
+
         if key_code == ButtonName.POWER_ON:
             self.state.set_hint(ent_id)
 
@@ -1628,6 +1738,10 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
     
     def _notify_hub_state(self, connected: bool) -> None:
         self._hub_connected = connected
+        if not connected:
+            # No ACK_READY can arrive on a dead link; don't make queued
+            # commands sit out the settle timeout for nothing.
+            self._external_settle_event.set()
         for cb in self._hub_state_listeners:
             try:
                 cb(connected)

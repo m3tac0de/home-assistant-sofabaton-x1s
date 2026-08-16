@@ -6207,6 +6207,97 @@ def test_mqtt_ingress_handler_guards_and_dispatch(monkeypatch):
         loop.close()
 
 
+# ---------------------------------------------------------------------------
+# MQTT activity-state ingress (X2 fast path)
+# ---------------------------------------------------------------------------
+
+
+def _make_activity_ingress_fake(applied):
+    async def _executor(func, *args):
+        return func(*args)
+
+    def _apply(new_id):
+        applied.append(new_id)
+        return True
+
+    return SimpleNamespace(
+        _log=logging.getLogger("test-mqtt-activity"),
+        hass=SimpleNamespace(async_add_executor_job=_executor),
+        hub_connected=True,
+        activities_ready=True,
+        current_activity=0x68,
+        _proxy=SimpleNamespace(apply_external_activity_state=_apply),
+    )
+
+
+def test_mqtt_activity_ingress_handler():
+    applied = []
+    fake = _make_activity_ingress_fake(applied)
+    handler = SofabatonHub._async_handle_activity_state_message
+
+    loop = asyncio.new_event_loop()
+    try:
+        run = loop.run_until_complete
+
+        # Retained messages are dropped before anything else: a replayed
+        # transition must never flip state on restart.
+        run(handler(fake, _mqtt_msg('{"activity_id": 105, "state": "on"}', retain=True)))
+        assert applied == []
+
+        # Malformed payloads are dropped silently.
+        run(handler(fake, _mqtt_msg("not json")))
+        run(handler(fake, _mqtt_msg('"scalar"')))
+        run(handler(fake, _mqtt_msg('{"activity_id": "x", "state": "on"}')))
+        assert applied == []
+
+        # No TCP link, or no activities baseline yet: initial sync is the
+        # safer source, the push is ignored.
+        fake.hub_connected = False
+        run(handler(fake, _mqtt_msg('{"activity_id": 105, "state": "on"}')))
+        fake.hub_connected = True
+        fake.activities_ready = False
+        run(handler(fake, _mqtt_msg('{"activity_id": 105, "state": "on"}')))
+        fake.activities_ready = True
+        assert applied == []
+
+        # Switch push carries the new id.
+        run(handler(fake, _mqtt_msg('{"activity_id": 105, "state": "on"}')))
+        assert applied == [105]
+
+        # 255 = all off (OFF press), regardless of the state field.
+        run(handler(fake, _mqtt_msg('{"activity_id": 255, "state": "off"}')))
+        assert applied == [105, None]
+
+        # Individual off for the CURRENT activity powers off ...
+        run(handler(fake, _mqtt_msg('{"activity_id": 104, "state": "off"}')))
+        assert applied == [105, None, None]
+
+        # ... but an off for a non-current activity carries no state.
+        fake.current_activity = 0x69
+        run(handler(fake, _mqtt_msg('{"activity_id": 104, "state": "off"}')))
+        assert applied == [105, None, None]
+
+        # The request-side {"data": {...}} envelope is tolerated.
+        run(handler(fake, _mqtt_msg('{"data": {"activity_id": 106, "state": "on"}}')))
+        assert applied == [105, None, None, 106]
+
+        # Unknown state strings are ignored.
+        run(handler(fake, _mqtt_msg('{"activity_id": 106, "state": "toggling"}')))
+        assert applied == [105, None, None, 106]
+    finally:
+        loop.close()
+
+
+def test_activity_state_topic_uses_press_mac():
+    fake = SimpleNamespace(_wifi_mqtt_mac=lambda: "A1B2C3D4E5F6")
+    assert (
+        SofabatonHub._activity_state_topic(fake)
+        == "activity/A1B2C3D4E5F6/activity_control_up"
+    )
+    fake_none = SimpleNamespace(_wifi_mqtt_mac=lambda: None)
+    assert SofabatonHub._activity_state_topic(fake_none) is None
+
+
 def test_map_wifi_mqtt_key_law():
     from custom_components.sofabaton_x1s.command_config import map_wifi_mqtt_key
 

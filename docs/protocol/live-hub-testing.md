@@ -1502,3 +1502,29 @@ identical either way.
 The summary statistics and observed publish facts from the retained
 run are recorded above; the raw bench-network artifact is not part of
 the repository.
+
+## ◇ Validated: MQTT activity-state fast path (X2 via live HA, 2026-08-17)
+
+Design + implementation notes:
+[mqtt-activity-state.md](../internal/mqtt-activity-state.md). Deployed
+2026-08-16 to the live HA instance; validated on the production X2 by
+real activity switches from the remote.
+
+- **Works on real hardware**: the setup-time subscription on
+  `activity/FC012C39D390/activity_control_up` (persisted banner MAC,
+  established before the hub's first TCP connect) received every
+  transition; state flipped from the push with the TCP path
+  reconciling behind it. No issues observed.
+- **Id space**: the payload's `activity_id` matches the TCP catalog
+  ids directly (no mapping needed).
+- **Timing**: the hub publishes the MQTT event early in the power-on
+  sequence, while ACK_READY arrives only after the power macro has
+  completed. The gain scales with the macro; even small activities
+  gain an easily noticeable 1 to 1.5 s. This confirms the settling
+  gate (hold hub-bound commands until the companion ACK_READY) is
+  load-bearing: without it, automations firing on the early state
+  change would reach the hub mid-macro.
+- **Redundant OFF**: the hub does NOT publish on an OFF press while
+  already off; that signal exists only on TCP. The AckReadyHandler's
+  externally_applied guard (skip redundant-OFF arming when the settle
+  gate was armed) is consistent with either behavior.

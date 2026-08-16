@@ -4104,6 +4104,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # MQTT press ingress: subscribe now if the store has MQTT-deployed
     # records (safe no-op otherwise; the sync flow keeps it aligned).
     await hub.async_update_wifi_mqtt_ingress()
+    # MQTT activity-state ingress: on for any X2 with the MQTT
+    # integration loaded (the persisted banner MAC covers a restart
+    # before the hub's first TCP connect).
+    await hub.async_update_activity_state_ingress()
 
     # ← important: tell HA to call us when options change
     entry.async_on_unload(
@@ -4166,6 +4170,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if hub is not None:
             await _async_persist_hub_cache(hass, hub)
             await hub.async_stop_wifi_mqtt_ingress()
+            await hub.async_stop_activity_state_ingress()
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
