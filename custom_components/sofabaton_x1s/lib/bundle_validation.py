@@ -89,9 +89,23 @@ def _optional_byte(row: Mapping[str, Any], key: str, path: str) -> None:
         _integer(row[key], f"{path}.{key}", minimum=0, maximum=0xFF)
 
 
-def _validate_name(value: Any, path: str, model: str, *, allow_empty: bool = False) -> None:
+def _validate_name(
+    value: Any,
+    path: str,
+    model: str,
+    *,
+    allow_empty: bool = False,
+    grandfathered: Collection[str] = (),
+) -> None:
     if not isinstance(value, str):
         raise _error(path, "must be a string")
+    if value and value in grandfathered:
+        # Vendor apps and cloud templates write names outside our charset
+        # (curly quotes from mobile autocorrect, symbols like a trademark
+        # sign). A string already present somewhere in the captured baseline
+        # is hub truth and passes through unvalidated; only names the edit
+        # newly introduces are held to the rules below.
+        return
     if not value:
         if allow_empty:
             return
@@ -132,6 +146,8 @@ def _index_bundle(
     path: str,
     model: str,
     strict_for: Callable[[int], bool],
+    grandfathered_names: Collection[str] = (),
+    baseline_idle: Mapping[int, Any] | None = None,
 ) -> tuple[dict[int, Mapping[str, Any]], dict[int, Mapping[str, Any]], dict[int, set[int]]]:
     devices: dict[int, Mapping[str, Any]] = {}
     commands: dict[int, set[int]] = {}
@@ -147,10 +163,14 @@ def _index_bundle(
         devices[device_id] = device
         strict = strict_for(device_id)
         if strict:
-            _validate_name(block.get("name"), f"{item_path}.device.name", model)
+            _validate_name(block.get("name"), f"{item_path}.device.name", model, grandfathered=grandfathered_names)
             idle = block.get("idle_behavior", block.get("power_mode"))
             if idle is not None and idle not in {1, 2, 3, 4}:
-                raise _error(f"{item_path}.device.idle_behavior", "must be one of 1, 2, 3, or 4")
+                # Hubs report idle values outside the vendor-app range (0 on
+                # Wifi devices, observed in the wild); an unchanged value is
+                # hub truth.
+                if baseline_idle is None or idle != baseline_idle.get(device_id):
+                    raise _error(f"{item_path}.device.idle_behavior", "must be one of 1, 2, 3, or 4")
 
         command_ids: set[int] = set()
         for command_index, raw_command in enumerate(device.get("commands") or []):
@@ -163,7 +183,7 @@ def _index_bundle(
                 raise _error(f"{command_path}.command_id", f"duplicates command {command_id}")
             command_ids.add(command_id)
             if strict:
-                _validate_name(command.get("name"), f"{command_path}.name", model)
+                _validate_name(command.get("name"), f"{command_path}.name", model, grandfathered=grandfathered_names)
                 restore = command.get("restore_data")
                 if restore is not None:
                     restore_map = _mapping(restore, f"{command_path}.restore_data")
@@ -183,7 +203,7 @@ def _index_bundle(
             raise _error(f"{item_path}.device.device_id", f"duplicates activity {activity_id}")
         activities[activity_id] = activity
         if strict_for(activity_id):
-            _validate_name(block.get("name"), f"{item_path}.device.name", model)
+            _validate_name(block.get("name"), f"{item_path}.device.name", model, grandfathered=grandfathered_names)
 
     return devices, activities, commands
 
@@ -197,21 +217,29 @@ def _validate_target(
     activities: Mapping[int, Mapping[str, Any]],
     commands: Mapping[int, set[int]],
     allow_activity: bool,
+    tolerated: Mapping[int, Collection[int]],
 ) -> None:
+    grandfathered = command_id in tolerated.get(device_id, ())
     if device_id >= ACTIVITY_ID_BASE:
-        if not allow_activity or device_id not in activities:
+        if not allow_activity:
+            raise _error(path, f"references unknown activity {device_id}")
+        if device_id not in activities:
+            if grandfathered:
+                return
             raise _error(path, f"references unknown activity {device_id}")
         macro_ids = {
             int(row.get("button_id", 0))
             for row in activities[device_id].get("macros") or []
             if isinstance(row, Mapping)
         }
-        if command_id not in macro_ids:
+        if command_id not in macro_ids and not grandfathered:
             raise _error(path, f"references missing macro {command_id} on activity {device_id}")
         return
     if device_id not in devices:
+        if grandfathered:
+            return
         raise _error(path, f"references unknown device {device_id}")
-    if command_id not in commands.get(device_id, set()):
+    if command_id not in commands.get(device_id, set()) and not grandfathered:
         raise _error(path, f"references missing command {command_id} on device {device_id}")
 
 
@@ -226,6 +254,9 @@ def _validate_macros(
     devices: Mapping[int, Mapping[str, Any]],
     activities: Mapping[int, Mapping[str, Any]],
     commands: Mapping[int, set[int]],
+    tolerated: Mapping[int, Collection[int]],
+    grandfathered_names: Collection[str],
+    baseline_macros: Mapping[tuple[int, int], Mapping[str, Any]],
 ) -> dict[int, Mapping[str, Any]]:
     macros: dict[int, Mapping[str, Any]] = {}
     for index, raw in enumerate(owner.get("macros") or []):
@@ -235,14 +266,21 @@ def _validate_macros(
         if button_id in macros:
             raise _error(f"{macro_path}.button_id", f"duplicates macro slot {button_id}")
         macros[button_id] = macro
-        if strict and button_id not in _POWER_MACRO_IDS:
-            _validate_name(macro.get("name"), f"{macro_path}.name", model)
+        # A macro identical to the captured baseline's is hub truth passing
+        # through; the editor invariants below apply only to macros the edit
+        # actually changed.
+        macro_strict = strict and macro != baseline_macros.get((owner_id, button_id))
+        if macro_strict and button_id not in _POWER_MACRO_IDS:
+            _validate_name(macro.get("name"), f"{macro_path}.name", model, grandfathered=grandfathered_names)
 
         previous_was_delay = False
         for step_index, raw_step in enumerate(macro.get("steps") or []):
             step_path = f"{macro_path}.steps[{step_index}]"
             step = _mapping(raw_step, step_path)
-            command_id = _integer(step.get("command_id"), f"{step_path}.command_id", minimum=1, maximum=0xFF)
+            # 0 tolerates the vendor's cleared-slot sentinel, same as in
+            # button bindings; the reference check rejects it unless the
+            # baseline scan grandfathered it.
+            command_id = _integer(step.get("command_id"), f"{step_path}.command_id", minimum=0, maximum=0xFF)
             raw_device_id = step.get("device_id")
             if raw_device_id is None and owner_kind == "device":
                 device_id = owner_id
@@ -259,14 +297,14 @@ def _validate_macros(
                     raise _error(step_path, "delay rows must use command_id 255")
                 if owner_kind == "activity" and device_id != MACRO_DELAY_SENTINEL:
                     raise _error(step_path, "activity delay rows must use device_id 255")
-                if strict and (step_index == 0 or previous_was_delay):
+                if macro_strict and (step_index == 0 or previous_was_delay):
                     raise _error(step_path, "delay row must immediately follow a command step")
                 previous_was_delay = True
                 continue
 
             previous_was_delay = False
             if command_id in _POWER_REF_COMMANDS:
-                if device_id not in devices:
+                if device_id not in devices and command_id not in tolerated.get(device_id, ()):
                     raise _error(step_path, f"power row references unknown device {device_id}")
                 continue
             _validate_target(
@@ -277,6 +315,7 @@ def _validate_macros(
                 activities=activities,
                 commands=commands,
                 allow_activity=owner_kind == "activity",
+                tolerated=tolerated,
             )
     return macros
 
@@ -292,6 +331,8 @@ def _validate_bindings(
     devices: Mapping[int, Mapping[str, Any]],
     activities: Mapping[int, Mapping[str, Any]],
     commands: Mapping[int, set[int]],
+    tolerated: Mapping[int, Collection[int]],
+    tolerated_buttons: Mapping[int, Collection[int]],
 ) -> None:
     seen: set[int] = set()
     allowed_buttons = _button_catalog(model)
@@ -299,7 +340,11 @@ def _validate_bindings(
         binding_path = f"{path}.button_bindings[{index}]"
         binding = _mapping(raw, binding_path)
         button_id = _integer(binding.get("button_id"), f"{binding_path}.button_id", minimum=1, maximum=0xFF)
-        if button_id not in allowed_buttons:
+        if button_id not in allowed_buttons and button_id not in tolerated_buttons.get(owner_id, ()):
+            # The catalog is our knowledge of the remote, not the hub's: a
+            # vendor firmware update can add buttons before we map them.
+            # Rows already on the hub pass through; an edit cannot introduce
+            # rows on buttons we do not know.
             raise _error(f"{binding_path}.button_id", f"button 0x{button_id:02X} is unsupported on {model}")
         if button_id in seen:
             raise _error(f"{binding_path}.button_id", f"duplicates button 0x{button_id:02X}")
@@ -314,7 +359,9 @@ def _validate_bindings(
         # grandfathered it (a command list can never contain id 0).
         command_id = _integer(binding.get("command_id"), f"{binding_path}.command_id", minimum=0, maximum=0xFE)
         if owner_kind == "activity" and device_id == owner_id:
-            if command_id not in macros or command_id in _POWER_MACRO_IDS:
+            if (command_id not in macros or command_id in _POWER_MACRO_IDS) and command_id not in tolerated.get(
+                owner_id, ()
+            ):
                 raise _error(binding_path, f"references missing editable macro {command_id}")
         else:
             if owner_kind == "device" and device_id != owner_id:
@@ -327,6 +374,7 @@ def _validate_bindings(
                 activities=activities,
                 commands=commands,
                 allow_activity=False,
+                tolerated=tolerated,
             )
 
         has_long_device = binding.get("long_press_device_id") is not None
@@ -341,7 +389,9 @@ def _validate_bindings(
                 binding["long_press_command_id"], f"{binding_path}.long_press_command_id", minimum=0, maximum=0xFE
             )
             if owner_kind == "activity" and long_device == owner_id:
-                if long_command not in macros or long_command in _POWER_MACRO_IDS:
+                if (
+                    long_command not in macros or long_command in _POWER_MACRO_IDS
+                ) and long_command not in tolerated.get(owner_id, ()):
                     raise _error(binding_path, f"long press references missing editable macro {long_command}")
             else:
                 if owner_kind == "device" and long_device != owner_id:
@@ -354,6 +404,7 @@ def _validate_bindings(
                     activities=activities,
                     commands=commands,
                     allow_activity=False,
+                    tolerated=tolerated,
                 )
 
 
@@ -368,6 +419,10 @@ def _validate_activity(
     devices: Mapping[int, Mapping[str, Any]],
     activities: Mapping[int, Mapping[str, Any]],
     commands: Mapping[int, set[int]],
+    tolerated: Mapping[int, Collection[int]],
+    grandfathered_names: Collection[str],
+    baseline_macros: Mapping[tuple[int, int], Mapping[str, Any]],
+    baseline_activity: Mapping[str, Any] | None,
 ) -> None:
     favorite_slots: set[int] = set()
     direct_refs: set[int] = set()
@@ -381,7 +436,8 @@ def _validate_activity(
             raise _error(f"{favorite_path}.button_id", f"collides with macro slot {button_id}")
         favorite_slots.add(button_id)
         device_id = _integer(favorite.get("device_id"), f"{favorite_path}.device_id", minimum=1, maximum=ACTIVITY_ID_BASE - 1)
-        command_id = _integer(favorite.get("command_id"), f"{favorite_path}.command_id", minimum=1, maximum=0xFE)
+        # 0 tolerates the vendor's cleared-slot sentinel (see button bindings).
+        command_id = _integer(favorite.get("command_id"), f"{favorite_path}.command_id", minimum=0, maximum=0xFE)
         _validate_target(
             device_id=device_id,
             command_id=command_id,
@@ -390,10 +446,13 @@ def _validate_activity(
             activities=activities,
             commands=commands,
             allow_activity=False,
+            tolerated=tolerated,
         )
         direct_refs.add(device_id)
         if strict and favorite.get("name") not in {None, ""}:
-            _validate_name(favorite.get("name"), f"{favorite_path}.name", model, allow_empty=True)
+            _validate_name(
+                favorite.get("name"), f"{favorite_path}.name", model, allow_empty=True, grandfathered=grandfathered_names
+            )
 
     for binding in activity.get("button_bindings") or []:
         if not isinstance(binding, Mapping):
@@ -416,7 +475,7 @@ def _validate_activity(
             if 0 < device_id < ACTIVITY_ID_BASE:
                 direct_refs.add(device_id)
 
-        if strict:
+        if strict and macro != baseline_macros.get((activity_id, macro_id)):
             for step in macro.get("steps") or []:
                 if not isinstance(step, Mapping) or step.get("command_id") not in _POWER_REF_COMMANDS:
                     continue
@@ -444,8 +503,15 @@ def _validate_activity(
     linked = [device_id for device_id in linked if device_id < ACTIVITY_ID_BASE]
     if len(linked) != len(set(linked)):
         raise _error(f"{path}.referenced_source_device_ids", "must not contain duplicates")
+    baseline_linked: set[int] = set()
+    if isinstance(baseline_activity, Mapping):
+        baseline_linked = {
+            value
+            for value in baseline_activity.get("referenced_source_device_ids") or []
+            if isinstance(value, int)
+        }
     for device_id in linked:
-        if device_id not in devices:
+        if device_id not in devices and device_id not in baseline_linked:
             raise _error(f"{path}.referenced_source_device_ids", f"references unknown device {device_id}")
     if not strict:
         return
@@ -467,14 +533,33 @@ def _validate_activity(
     )
     off_counts = _power_counts(POWER_OFF_MACRO_BUTTON_ID, {DEVICE_POWER_OFF_REF_COMMAND})
     power_members = {device_id for device_id, _command_id in [*on_counts, *off_counts]}
-    if linked != sorted(power_members):
+    # A power structure identical to the captured baseline's is hub truth:
+    # the vendor's own writes do not always satisfy our reconstruction of
+    # these invariants, and a plan only writes power rows the edit changed.
+    # In that case only newly introduced direct references must be linked;
+    # any edit that touches the power macros or the mirror re-enables the
+    # full invariant.
+    power_unchanged = (
+        baseline_activity is not None
+        and all(
+            macros.get(macro_id) == baseline_macros.get((activity_id, macro_id))
+            for macro_id in _POWER_MACRO_IDS
+        )
+        and (activity.get("referenced_source_device_ids") or [])
+        == (baseline_activity.get("referenced_source_device_ids") or [])
+    )
+    if not power_unchanged and linked != sorted(power_members):
         raise _error(
             f"{path}.referenced_source_device_ids",
             "must be the sorted device set represented in the power macros",
         )
-    missing_direct = sorted(direct_refs - power_members)
-    if missing_direct:
-        raise _error(path, f"referenced devices are missing power linkage: {missing_direct}")
+    unlinked_direct = direct_refs - power_members
+    if power_unchanged:
+        unlinked_direct -= _activity_direct_refs(baseline_activity)
+    if unlinked_direct:
+        raise _error(path, f"referenced devices are missing power linkage: {sorted(unlinked_direct)}")
+    if power_unchanged:
+        return
     for device_id in sorted(power_members):
         required = (
             on_counts[(device_id, DEVICE_POWER_ON_REF_COMMAND)],
@@ -507,12 +592,15 @@ def collect_missing_command_refs(bundle: Any) -> dict[int, set[int]]:
     contain id 0, so such unbound rows surface here as a missing reference to
     command 0 and are grandfathered through the same mechanism.
 
-    Returns ``{device_id: {command_id, ...}}`` for every such dangling
-    reference found in ``bundle``. Feed the result of scanning the *baseline*
-    into ``validate_hub_bundle_for_model(tolerated_missing_commands=...)`` so
-    hub truth is grandfathered while a reference newly introduced by an edit
-    is still rejected. Malformed entries are skipped here; full validation
-    reports those.
+    Returns ``{owner_id: {ref_id, ...}}`` for every such dangling reference
+    found in ``bundle``: for device-range owners the refs are command ids
+    (including refs into devices absent from the bundle and power-ref rows on
+    unknown devices), for activity-range owners they are macro slot ids
+    (chain steps into missing macros, stale macro-target bindings). Passed a
+    captured baseline via ``validate_hub_bundle_for_model(
+    grandfather_baseline=...)``, this grandfathers hub truth while a
+    reference newly introduced by an edit is still rejected. Malformed
+    entries are skipped here; full validation reports those.
     """
 
     if not isinstance(bundle, Mapping):
@@ -531,17 +619,36 @@ def collect_missing_command_refs(bundle: Any) -> dict[int, set[int]]:
             if isinstance(command, Mapping) and isinstance(command.get("command_id"), int)
         }
 
+    known_activity_macros: dict[int, set[int]] = {}
+    for entry in bundle.get("activities") or []:
+        if not isinstance(entry, Mapping) or not isinstance(entry.get("device"), Mapping):
+            continue
+        activity_id = entry["device"].get("device_id")
+        if not isinstance(activity_id, int):
+            continue
+        known_activity_macros[activity_id] = {
+            macro["button_id"]
+            for macro in entry.get("macros") or []
+            if isinstance(macro, Mapping) and isinstance(macro.get("button_id"), int)
+        }
+
     missing: dict[int, set[int]] = {}
 
     def _note(device_id: Any, command_id: Any) -> None:
         if not isinstance(device_id, int) or not isinstance(command_id, int):
             return
+        if device_id == MACRO_DELAY_SENTINEL or command_id == MACRO_DELAY_SENTINEL:
+            return
         if device_id >= ACTIVITY_ID_BASE:
+            macro_ids = known_activity_macros.get(device_id)
+            if macro_ids is None or command_id not in macro_ids:
+                missing.setdefault(device_id, set()).add(command_id)
             return
-        if command_id in _POWER_REF_COMMANDS or command_id == MACRO_DELAY_SENTINEL:
+        if command_id in _POWER_REF_COMMANDS:
+            if device_id not in known:
+                missing.setdefault(device_id, set()).add(command_id)
             return
-        commands = known.get(device_id)
-        if commands is not None and command_id not in commands:
+        if command_id not in known.get(device_id, set()):
             missing.setdefault(device_id, set()).add(command_id)
 
     def _scan_key_rows(owner: Mapping[str, Any], default_device_id: int | None) -> None:
@@ -585,6 +692,159 @@ def collect_missing_command_refs(bundle: Any) -> dict[int, set[int]]:
     return missing
 
 
+def collect_unknown_button_rows(bundle: Any) -> dict[int, set[int]]:
+    """Best-effort scan for binding rows on buttons outside our catalog.
+
+    The button catalog encodes our knowledge of the remote, not the hub's: a
+    vendor firmware or app update can start writing KeyToKey rows for a
+    button id we have not mapped yet. Returns ``{owner_id: {button_id, ...}}``
+    for every binding row in ``bundle`` whose button id falls outside the
+    catalog of the bundle's declared model, so a captured baseline can
+    grandfather those rows while an edit cannot introduce new ones.
+    """
+
+    if not isinstance(bundle, Mapping):
+        return {}
+    hub = bundle.get("hub")
+    model = str(hub.get("version") or "").upper() if isinstance(hub, Mapping) else ""
+    if model not in _KNOWN_MODELS:
+        return {}
+    catalog = _button_catalog(model)
+
+    unknown: dict[int, set[int]] = {}
+    for key in ("devices", "activities"):
+        for entry in bundle.get(key) or []:
+            if not isinstance(entry, Mapping) or not isinstance(entry.get("device"), Mapping):
+                continue
+            owner_id = entry["device"].get("device_id")
+            if not isinstance(owner_id, int):
+                continue
+            for binding in entry.get("button_bindings") or []:
+                if not isinstance(binding, Mapping):
+                    continue
+                button_id = binding.get("button_id")
+                if isinstance(button_id, int) and 1 <= button_id <= 0xFF and button_id not in catalog:
+                    unknown.setdefault(owner_id, set()).add(button_id)
+    return unknown
+
+
+def _collect_grandfathered_names(bundle: Any) -> set[str]:
+    """Every non-empty name string appearing anywhere in ``bundle``."""
+
+    names: set[str] = set()
+
+    def _add(value: Any) -> None:
+        if isinstance(value, str) and value:
+            names.add(value)
+
+    if not isinstance(bundle, Mapping):
+        return names
+    hub = bundle.get("hub")
+    if isinstance(hub, Mapping):
+        _add(hub.get("name"))
+    for key in ("devices", "activities"):
+        for entry in bundle.get(key) or []:
+            if not isinstance(entry, Mapping):
+                continue
+            block = entry.get("device")
+            if isinstance(block, Mapping):
+                _add(block.get("name"))
+            for command in entry.get("commands") or []:
+                if isinstance(command, Mapping):
+                    _add(command.get("name"))
+            for macro in entry.get("macros") or []:
+                if isinstance(macro, Mapping):
+                    _add(macro.get("name"))
+            for favorite in entry.get("favorite_slots") or []:
+                if isinstance(favorite, Mapping):
+                    _add(favorite.get("name"))
+    return names
+
+
+def _collect_baseline_macros(bundle: Any) -> dict[tuple[int, int], Mapping[str, Any]]:
+    """``{(owner_id, button_id): macro_row}`` for every macro in ``bundle``."""
+
+    out: dict[tuple[int, int], Mapping[str, Any]] = {}
+    if not isinstance(bundle, Mapping):
+        return out
+    for key in ("devices", "activities"):
+        for entry in bundle.get(key) or []:
+            if not isinstance(entry, Mapping) or not isinstance(entry.get("device"), Mapping):
+                continue
+            owner_id = entry["device"].get("device_id")
+            if not isinstance(owner_id, int):
+                continue
+            for macro in entry.get("macros") or []:
+                if isinstance(macro, Mapping) and isinstance(macro.get("button_id"), int):
+                    out[(owner_id, macro["button_id"])] = macro
+    return out
+
+
+def _collect_baseline_idle(bundle: Any) -> dict[int, Any]:
+    """``{device_id: idle value}`` as captured, however out-of-range."""
+
+    out: dict[int, Any] = {}
+    if not isinstance(bundle, Mapping):
+        return out
+    for entry in bundle.get("devices") or []:
+        if not isinstance(entry, Mapping) or not isinstance(entry.get("device"), Mapping):
+            continue
+        block = entry["device"]
+        device_id = block.get("device_id")
+        if isinstance(device_id, int):
+            out[device_id] = block.get("idle_behavior", block.get("power_mode"))
+    return out
+
+
+def _collect_baseline_activities(bundle: Any) -> dict[int, Mapping[str, Any]]:
+    out: dict[int, Mapping[str, Any]] = {}
+    if not isinstance(bundle, Mapping):
+        return out
+    for entry in bundle.get("activities") or []:
+        if not isinstance(entry, Mapping) or not isinstance(entry.get("device"), Mapping):
+            continue
+        activity_id = entry["device"].get("device_id")
+        if isinstance(activity_id, int):
+            out[activity_id] = entry
+    return out
+
+
+def _activity_direct_refs(activity: Any) -> set[int]:
+    """Device-range ids an activity references directly, mirroring the
+    accumulation in ``_validate_activity``."""
+
+    refs: set[int] = set()
+    if not isinstance(activity, Mapping):
+        return refs
+    for favorite in activity.get("favorite_slots") or []:
+        if isinstance(favorite, Mapping):
+            device_id = favorite.get("device_id")
+            if isinstance(device_id, int) and 0 < device_id < ACTIVITY_ID_BASE:
+                refs.add(device_id)
+    for binding in activity.get("button_bindings") or []:
+        if not isinstance(binding, Mapping):
+            continue
+        for key in ("device_id", "long_press_device_id"):
+            device_id = binding.get(key)
+            if isinstance(device_id, int) and 0 < device_id < ACTIVITY_ID_BASE:
+                refs.add(device_id)
+    for macro in activity.get("macros") or []:
+        if not isinstance(macro, Mapping):
+            continue
+        for step in macro.get("steps") or []:
+            if not isinstance(step, Mapping):
+                continue
+            device_id = step.get("device_id")
+            command_id = step.get("command_id")
+            if not isinstance(device_id, int) or not isinstance(command_id, int):
+                continue
+            if device_id == MACRO_DELAY_SENTINEL or command_id in _POWER_REF_COMMANDS | {MACRO_DELAY_SENTINEL}:
+                continue
+            if 0 < device_id < ACTIVITY_ID_BASE:
+                refs.add(device_id)
+    return refs
+
+
 def validate_hub_bundle_for_model(
     bundle: Any,
     *,
@@ -592,7 +852,7 @@ def validate_hub_bundle_for_model(
     payload_name: str = "bundle",
     enforce_editor_invariants: bool = True,
     strict_entity_ids: Collection[int] | None = None,
-    tolerated_missing_commands: Mapping[int, Collection[int]] | None = None,
+    grandfather_baseline: Any = None,
 ) -> str:
     """Validate one sync bundle and return its normalized hub model.
 
@@ -609,12 +869,20 @@ def validate_hub_bundle_for_model(
     (shape, duplicates, reference integrity) always cover the whole bundle.
     ``None`` applies the invariants to every entity.
 
-    ``tolerated_missing_commands`` grandfathers dangling command references
-    that are hub truth: cloud-provisioned device pages can reference
-    commands the deploy never wrote to the hub (see
-    ``collect_missing_command_refs``). Listed ``{device_id: command_ids}``
-    pairs are treated as present for reference-integrity checks; a reference
-    outside the set is still rejected.
+    ``grandfather_baseline`` is the captured baseline bundle; everything the
+    hub itself reported is tolerated, everything an edit newly introduces is
+    validated. Concretely: dangling references and vendor 0-sentinel rows
+    the baseline carries pass (``collect_missing_command_refs``), binding
+    rows on buttons outside our catalog pass
+    (``collect_unknown_button_rows``), name strings already present anywhere
+    in the baseline bypass the charset/length rules, out-of-range idle values
+    unchanged from the baseline pass, macros identical to the baseline's skip
+    per-macro editor invariants, and an activity whose power macros and
+    linked-device mirror are unchanged skips the power-linkage invariants
+    (only newly introduced direct references must be linked).
+    Validate the baseline itself with ``grandfather_baseline=<itself>``. The
+    sync engine never rewrites rows that match the baseline, so everything
+    grandfathered here is passthrough, not writes.
     """
 
     strict_ids = (
@@ -643,24 +911,23 @@ def validate_hub_bundle_for_model(
             f"{payload_name}.hub.version",
             f"declares {model} but the selected hub is {actual_model}",
         )
+    tolerated = collect_missing_command_refs(grandfather_baseline)
+    tolerated_buttons = collect_unknown_button_rows(grandfather_baseline)
+    grandfathered_names = _collect_grandfathered_names(grandfather_baseline)
+    baseline_macros = _collect_baseline_macros(grandfather_baseline)
+    baseline_activities = _collect_baseline_activities(grandfather_baseline)
+
     if enforce_editor_invariants and hub.get("name") is not None:
-        _validate_name(hub.get("name"), f"{payload_name}.hub.name", model)
+        _validate_name(hub.get("name"), f"{payload_name}.hub.name", model, grandfathered=grandfathered_names)
 
     devices, activities, commands = _index_bundle(
         root,
         path=payload_name,
         model=model,
         strict_for=_strict_for,
+        grandfathered_names=grandfathered_names,
+        baseline_idle=_collect_baseline_idle(grandfather_baseline),
     )
-    if tolerated_missing_commands:
-        # Grandfathered hub-truth references (see docstring): fold them into
-        # the per-device command index so every reference-integrity check
-        # accepts them, on strict and non-strict entities alike — the sync
-        # engine never rewrites rows that match the baseline.
-        for device_id, ids in tolerated_missing_commands.items():
-            index = commands.get(device_id)
-            if index is not None:
-                index.update(int(command_id) for command_id in ids)
     for device_id, device in devices.items():
         path = f"{payload_name}.devices[{device_id}]"
         macros = _validate_macros(
@@ -673,6 +940,9 @@ def validate_hub_bundle_for_model(
             devices=devices,
             activities=activities,
             commands=commands,
+            tolerated=tolerated,
+            grandfathered_names=grandfathered_names,
+            baseline_macros=baseline_macros,
         )
         _validate_bindings(
             device,
@@ -684,6 +954,8 @@ def validate_hub_bundle_for_model(
             devices=devices,
             activities=activities,
             commands=commands,
+            tolerated=tolerated,
+            tolerated_buttons=tolerated_buttons,
         )
         if _strict_for(device_id):
             record = device.get("input_record")
@@ -692,8 +964,10 @@ def validate_hub_bundle_for_model(
                 for index, raw_entry in enumerate(entries):
                     entry_path = f"{path}.input_record.entries[{index}]"
                     entry = _mapping(raw_entry, entry_path)
-                    command_id = _integer(entry.get("command_id"), f"{entry_path}.command_id", minimum=1, maximum=0xFE)
-                    if command_id not in commands[device_id]:
+                    # 0 tolerates the vendor's cleared-slot sentinel (see
+                    # button bindings).
+                    command_id = _integer(entry.get("command_id"), f"{entry_path}.command_id", minimum=0, maximum=0xFE)
+                    if command_id not in commands[device_id] and command_id not in tolerated.get(device_id, ()):
                         raise _error(entry_path, f"references missing command {command_id}")
                     _optional_byte(entry, "input_index", entry_path)
 
@@ -709,6 +983,9 @@ def validate_hub_bundle_for_model(
             devices=devices,
             activities=activities,
             commands=commands,
+            tolerated=tolerated,
+            grandfathered_names=grandfathered_names,
+            baseline_macros=baseline_macros,
         )
         _validate_bindings(
             activity,
@@ -720,6 +997,8 @@ def validate_hub_bundle_for_model(
             devices=devices,
             activities=activities,
             commands=commands,
+            tolerated=tolerated,
+            tolerated_buttons=tolerated_buttons,
         )
         _validate_activity(
             activity,
@@ -731,6 +1010,10 @@ def validate_hub_bundle_for_model(
             devices=devices,
             activities=activities,
             commands=commands,
+            tolerated=tolerated,
+            grandfathered_names=grandfathered_names,
+            baseline_macros=baseline_macros,
+            baseline_activity=baseline_activities.get(activity_id),
         )
     return model
 
