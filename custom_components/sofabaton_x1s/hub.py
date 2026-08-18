@@ -72,7 +72,7 @@ from .lib.blob_decoders import (
     is_decodable_class as is_blob_decodable_class,
     try_decode_blob as try_decode_command_blob,
 )
-from .lib.backup_export import PAYLOAD_PROFILE_FULL
+from .lib.backup_export import PAYLOAD_PROFILE_FULL, build_device_button_rows
 from .lib.commands import split_play_blob_tail
 from .lib.devices import DeviceConfig, parse_device_record
 from .lib.wifi_inplace_plan import (
@@ -2960,6 +2960,97 @@ class SofabatonHub:
             if ready and cmds:
                 result[ent_id] = cmds
         return result
+
+    def get_ui_device_list(self) -> list[dict[str, Any]]:
+        """Devices for frontend dropdowns (remote-card device mode).
+
+        Presentation-layer view: the hidden Wifi Events device is filtered
+        here, never in the command-config store's ``async_list_hub_devices``
+        (the listener guard, deploy reconciliation and diagnostics iterate
+        that). Ordered like the physical remote: record sort byte first,
+        rows without a stored sort fall back to id order at the end.
+        """
+
+        rows: list[dict[str, Any]] = []
+        state_devices = self._proxy.state.entities("device")
+        for dev_id, device in self.devices.items():
+            if not isinstance(device, dict):
+                continue
+            dev_lo = int(dev_id) & 0xFF
+            device_key, _brand_hash = _parse_managed_wifi_brand(
+                str(device.get("brand") or "")
+            )
+            if is_wifi_events_device_key(device_key):
+                continue
+            name = str(device.get("name") or "").strip()
+            sort_value = 0
+            state_device = state_devices.get(dev_lo)
+            raw_body = (
+                state_device.get("raw_body") if isinstance(state_device, dict) else None
+            )
+            if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6:
+                sort_value = int(raw_body[6])
+            row: dict[str, Any] = {
+                "id": dev_lo,
+                "name": name or f"Device {dev_lo}",
+                "sort": sort_value,
+            }
+            if device.get("device_class") is not None:
+                row["device_class"] = device.get("device_class")
+            rows.append(row)
+
+        rows.sort(key=lambda r: (0, r["sort"], r["id"]) if r["sort"] else (1, 0, r["id"]))
+        return rows
+
+    def get_device_keymap(self, device_id: int) -> dict[str, Any] | None:
+        """Project one device's cached keymap + command list (device mode).
+
+        Pure cache read: nothing is queued or fetched. Returns ``None``
+        until a structural fetch (whole-hub refresh, per-device refresh, or
+        a persistent-cache restore carrying the freshness stamp) has covered
+        the device; the card then points the user at a control-panel
+        refresh instead of waiting on hub I/O here.
+        """
+
+        dev_lo = int(device_id) & 0xFF
+        fetched_at = self._proxy.state.detail_fetched_at.get("device", {}).get(dev_lo)
+        if not fetched_at:
+            return None
+
+        commands, _commands_ready = self._proxy.get_commands_for_entity(
+            dev_lo, fetch_if_missing=False
+        )
+        buttons, _buttons_ready = self._proxy.get_buttons_for_entity(
+            dev_lo, fetch_if_missing=False
+        )
+        label_map = {
+            int(cmd_id) & 0xFF: str(name) for cmd_id, name in (commands or {}).items()
+        }
+        bindings = build_device_button_rows(
+            button_codes=sorted(int(code) & 0xFF for code in (buttons or [])),
+            button_details=dict(self._proxy.state.button_details.get(dev_lo, {})),
+            label_map=label_map,
+        )
+
+        device_row: dict[str, Any] = {"device_id": dev_lo}
+        device = self.devices.get(dev_lo)
+        if isinstance(device, dict):
+            name = str(device.get("name") or "").strip()
+            if name:
+                device_row["name"] = name
+            if device.get("device_class") is not None:
+                device_row["device_class"] = device.get("device_class")
+
+        return {
+            "device": device_row,
+            "buttons": sorted(int(code) & 0xFF for code in (buttons or [])),
+            "bindings": bindings,
+            "commands": [
+                {"command_id": cmd_id, "name": label_map[cmd_id]}
+                for cmd_id in sorted(label_map)
+            ],
+            "fetched_at": fetched_at,
+        }
 
     def get_all_cached_macros(self) -> dict[int, list[dict[str, int | str]]]:
         """Return cached macros in the physical remote's display order.

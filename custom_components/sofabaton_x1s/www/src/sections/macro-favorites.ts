@@ -161,7 +161,7 @@ function renderFavoritesItems(params: MacroFavoritesParams): TemplateResult {
 }
 
 function renderTab(
-  params: MacroFavoritesParams,
+  _params: MacroFavoritesParams | null,
   label: string,
   visible: boolean,
   active: boolean,
@@ -259,26 +259,33 @@ export function renderMacroFavorites(params: MacroFavoritesParams): TemplateResu
 }
 
 export interface InlineRowParams {
-  kind: "macros" | "favorites";
+  kind: "macros" | "favorites" | "commands";
   visible: boolean;
   visibleRows: number;
   /** Keyed rendered content; itemCount=0 shows the localized empty text. */
   items: unknown;
   itemCount: number;
   emptyText: string;
+  /** Device mode: filter input pinned above the scroller. */
+  filter?: CommandsFilterParams | null;
 }
 
 export function renderInlineDrawerRow(params: InlineRowParams): TemplateResult {
+  const gridClass =
+    params.kind === "commands"
+      ? "inline-drawer-row__grid mf-grid mf-grid--commands"
+      : "inline-drawer-row__grid mf-grid";
   return html`
     <div
       class="inline-drawer-row inline-drawer-row--${params.kind}"
       style=${params.visible ? "" : "display: none !important;"}
     >
+      ${params.filter ? renderCommandsFilter(params.filter) : nothing}
       <div
         class="inline-drawer-row__scroller"
         style="--inline-row-visible-rows: ${params.visibleRows};"
       >
-        <div class="inline-drawer-row__grid mf-grid">
+        <div class=${gridClass}>
           ${params.itemCount
             ? params.items
             : html`
@@ -287,6 +294,133 @@ export function renderInlineDrawerRow(params: InlineRowParams): TemplateResult {
                 </div>
               `}
         </div>
+      </div>
+    </div>
+  `;
+}
+
+// ---------- device mode: Commands drawer ----------
+//
+// The macro/favorites construct with a single tab: the device's full command
+// list (possibly 150+ entries), one command per row (names can be long),
+// with a pinned type-to-filter input. The overlay ignores the activity-mode
+// height cap — the card sizes it to the available viewport space.
+
+export interface CommandsFilterParams {
+  value: string;
+  placeholder: string;
+  onInput: (value: string) => void;
+}
+
+export interface CommandsItemsParams {
+  commands: Array<{ command_id: number; name: string }>;
+  onCommand: (command: { command_id: number; name: string }) => void;
+}
+
+export interface CommandsDrawerParams extends CommandsItemsParams {
+  visible: boolean;
+  open: boolean;
+  disabled: boolean;
+  drawerUp: boolean;
+  renderContent: boolean;
+  emptyText: string;
+  tabLabel: string;
+  filter: CommandsFilterParams;
+  onToggle: () => void;
+  containerRef?: Ref<HTMLElement>;
+  rowRef?: Ref<HTMLElement>;
+  overlayRef?: Ref<HTMLElement>;
+}
+
+function renderCommandsFilter(filter: CommandsFilterParams): TemplateResult {
+  return html`
+    <input
+      class="sb-commands-filter"
+      type="text"
+      .value=${filter.value}
+      placeholder=${filter.placeholder}
+      aria-label=${filter.placeholder}
+      @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        filter.onInput(String(target?.value ?? ""));
+      }}
+      @keydown=${(ev: Event) => ev.stopPropagation()}
+    />
+  `;
+}
+
+export function renderCommandButton(
+  params: CommandsItemsParams,
+  command: { command_id: number; name: string },
+): TemplateResult {
+  return html`
+    <ha-card
+      class="drawer-btn drawer-btn--command"
+      role="button"
+      tabindex="0"
+      ${primaryActionRef(() => {
+        if (!Number.isFinite(command.command_id)) return;
+        params.onCommand(command);
+      })}
+    >
+      <div class="drawer-btn__inner drawer-btn__inner--row">
+        <div class="name">${command.name}</div>
+      </div>
+    </ha-card>
+  `;
+}
+
+export function renderCommandsItems(params: CommandsItemsParams): TemplateResult {
+  return html`${repeat(
+    params.commands,
+    (command) => `${command.command_id}:${command.name}`,
+    (command) => renderCommandButton(params, command),
+  )}`;
+}
+
+export function renderCommandsDrawer(params: CommandsDrawerParams): TemplateResult {
+  const setRef = (r?: Ref<HTMLElement>) => (r ? ref(r) : nothing);
+
+  return html`
+    <div
+      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
+      style=${params.visible ? "" : "display: none !important;"}
+      ${setRef(params.containerRef)}
+    >
+      <div
+        class="macroFavorites"
+        style=${rowRadiusStyle(params.open, params.drawerUp)}
+        ${setRef(params.rowRef)}
+      >
+        <div class="macroFavoritesGrid single">
+          ${renderTab(
+            null,
+            params.tabLabel,
+            true,
+            params.open,
+            params.disabled,
+            params.onToggle,
+          )}
+        </div>
+      </div>
+      <div
+        class="mf-overlay mf-overlay--commands${params.open ? " open" : ""}"
+        ${setRef(params.overlayRef)}
+      >
+        ${params.renderContent
+          ? html`
+              ${renderCommandsFilter(params.filter)}
+              <div class="mf-grid mf-grid--commands">
+                ${params.commands.length
+                  ? renderCommandsItems(params)
+                  : html`
+                      <div class="inline-drawer-row__empty" style="grid-column: 1 / -1;">
+                        ${params.emptyText}
+                      </div>
+                    `}
+              </div>
+            `
+          : nothing}
       </div>
     </div>
   `;

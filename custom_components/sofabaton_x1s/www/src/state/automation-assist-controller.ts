@@ -255,11 +255,35 @@ export class AutomationAssistController {
     deviceId?: unknown;
     commandType?: string;
     icon?: unknown;
+    /** Device-mode presses: deviceId is a real hub device, not an activity. */
+    deviceMode?: boolean;
+    deviceName?: unknown;
   }): void {
     if (!this.ensureCaptureStarted()) return;
 
     const command = Number(params.commandId);
     if (!Number.isFinite(command)) return;
+
+    if (params.deviceMode) {
+      const device = Number(params.deviceId);
+      if (!Number.isFinite(device)) return;
+      this.capture = {
+        label: String(params.label ?? str().assist.buttonFallback),
+        commandId: command,
+        deviceId: device,
+        commandType: params.commandType ?? "assigned",
+        icon: params.icon ? String(params.icon) : null,
+        deviceMode: true,
+        deviceName: String(
+          params.deviceName || str().assist.deviceFallback(device),
+        ),
+        kind: "button",
+      };
+      this.resetCaptureSideState();
+      this.host.onChange();
+      this.notifyCapture();
+      return;
+    }
 
     const commandType = params.commandType ?? "assigned";
     const resolvedDevice =

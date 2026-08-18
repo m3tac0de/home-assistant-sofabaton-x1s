@@ -3398,6 +3398,44 @@ async def _ws_get_structural_bundle(hass: HomeAssistant, connection, msg: dict[s
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/device/keymap",
+        vol.Required("entry_id"): str,
+        vol.Required("device_id"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_device_keymap(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Remote-card device mode: one device's cached bindings + commands.
+
+    A pure projection of cached proxy state — no hub I/O, ever. Device
+    mode is gated on the persistent cache; a cold device returns a clean
+    cache_miss and the card points the user at a control-panel refresh
+    (docs/internal/device-mode-plan.md).
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        connection.send_result(msg["id"], {"keymap": None, "reason": "cache_disabled"})
+        return
+
+    keymap = hub.get_device_keymap(int(msg["device_id"]))
+    if keymap is None:
+        connection.send_result(msg["id"], {"keymap": None, "reason": "cache_miss"})
+        return
+
+    connection.send_result(
+        msg["id"],
+        {"keymap": keymap, "generation": hub.cache_generation},
+    )
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/logs/get",
         vol.Required("entry_id"): str,
         vol.Optional("limit", default=250): vol.All(int, vol.Range(min=1, max=1000)),
@@ -3762,6 +3800,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_activity_create)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)
+    websocket_api.async_register_command(hass, _ws_get_device_keymap)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_wifi_presses)

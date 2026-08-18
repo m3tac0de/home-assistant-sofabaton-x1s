@@ -1,15 +1,21 @@
 import {
+  DEVICE_DEFAULT_LAYOUT_KEY,
   GROUP_VISIBILITY_KEYS,
   channelGroupEnabled,
+  commandsButtonEnabled,
+  deviceToggleEnabled,
   dvrGroupEnabled,
   favoritesButtonEnabled,
+  isDeviceLayoutKey,
   layoutConfigForActivity,
+  layoutConfigForDevice,
   layoutDefaultConfig,
   macrosButtonEnabled,
   mediaGroupEnabled,
   mfAsRows,
   mfRowVisibleRows,
   normalizedGroupOrder,
+  parseDeviceLayoutKey,
   volumeGroupEnabled,
 } from "./remote-card-layout";
 import { str } from "./remote-card-strings";
@@ -34,9 +40,20 @@ export function layoutSelectionNote(
   if (selection === "default") {
     return str().editor.noteDefaultLayout;
   }
-  return layoutHasCustomOverride(config, selection)
-    ? str().editor.noteCustomLayout
-    : str().editor.noteUsingDefault;
+  if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
+    return str().editor.noteDeviceDefaultLayout;
+  }
+  // Name the scope in both notes: activity and device labels can be
+  // similar, and this line signals which of the two the user is editing.
+  const isDevice = isDeviceLayoutKey(selection);
+  if (layoutHasCustomOverride(config, selection)) {
+    return isDevice
+      ? str().editor.noteCustomDeviceLayout
+      : str().editor.noteCustomActivityLayout;
+  }
+  return isDevice
+    ? str().editor.noteUsingDeviceDefault
+    : str().editor.noteUsingActivityDefault;
 }
 
 export function editorActivitiesFromState(state: any) {
@@ -50,12 +67,29 @@ export function editorActivitiesFromState(state: any) {
     .filter((activity) => Number.isFinite(activity.id) && activity.name);
 }
 
+/** Mirror of editorActivitiesFromState for the `devices` attribute. */
+export function editorDevicesFromState(state: any) {
+  const list = state?.attributes?.devices;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((device) => ({
+      id: Number(device?.id),
+      name: String(device?.name ?? ""),
+    }))
+    .filter((device) => Number.isFinite(device.id) && device.name);
+}
+
 export function layoutConfigForSelection(
   config: Record<string, any> | null | undefined,
   selection: unknown,
 ) {
   if (selection === "default") {
     return layoutDefaultConfig(config);
+  }
+  if (isDeviceLayoutKey(selection)) {
+    // "device:default" resolves to the shared device layer; "device:<id>"
+    // stacks the per-device override on top.
+    return layoutConfigForDevice(config, parseDeviceLayoutKey(selection));
   }
   return layoutConfigForActivity(config, selection);
 }
@@ -175,6 +209,30 @@ export function favoritesTogglePatch(
     show_macros_button: !!macroEnabled(config, selection),
     show_favorites_button: !!enabled,
   };
+}
+
+// ---------- device mode (docs/internal/device-mode-plan.md §5) ----------
+
+export function commandsEnabled(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+) {
+  return commandsButtonEnabled(layoutConfigForSelection(config, selection));
+}
+
+export function commandsTogglePatch(enabled: boolean) {
+  return { show_commands_button: !!enabled };
+}
+
+export function deviceToggleEnabledForEditor(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+) {
+  return deviceToggleEnabled(layoutConfigForSelection(config, selection));
+}
+
+export function deviceTogglePatch(enabled: boolean) {
+  return { show_device_toggle: !!enabled };
 }
 
 export function mfAsRowsForEditor(

@@ -50,11 +50,98 @@ export const REMOTE_CARD_CSS = `
         --ha-color-form-background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
       }
 
-      .activityRow { 
-        display: grid; 
-        grid-template-columns: 1fr; 
+      .activityRow {
+        display: grid;
+        grid-template-columns: 1fr;
         position: relative;
         z-index: 3;
+      }
+      /* Long activity/device names ellipsize inside the select instead of
+         pushing the card wider (grid items default to min-width auto). */
+      .activityRow .sb-activity-select {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      /* Device mode: the toggle fuses to the select's left edge. */
+      .activityRow--with-toggle {
+        grid-template-columns: auto 1fr;
+      }
+      .activityRow--with-toggle .loadIndicator {
+        grid-column: 1 / -1;
+      }
+      .sb-mode-toggle {
+        width: 48px;
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        cursor: pointer;
+        color: var(--primary-text-color);
+        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        border: none;
+        border-right: 1px solid var(--divider-color);
+        border-bottom: 1px solid var(--mdc-select-idle-line-color, var(--divider-color));
+        border-top-left-radius: var(--mdc-shape-small, 4px);
+        border-top-right-radius: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .sb-mode-toggle:hover {
+        background: color-mix(in srgb, var(--primary-text-color) 8%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+      }
+      .sb-mode-toggle:active {
+        transform: scale(0.97);
+      }
+      .sb-mode-toggle[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .activityRow--with-toggle .sb-activity-select {
+        --mdc-shape-small: 0 4px 0 0;
+      }
+
+      /* Device mode: Commands drawer (one command per row + filter input).
+         Compound selector: the base .mf-grid two-column rule sits LATER in
+         this sheet and would win at equal specificity. Responsive columns:
+         one full-width command per row on narrow cards (~230px), two per
+         row once the card has the width for it (~300px+). */
+      .mf-grid.mf-grid--commands {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      }
+      .mf-grid--commands .drawer-btn .name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sb-commands-filter {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 8px;
+        padding: 8px 12px;
+        font: inherit;
+        font-size: 13px;
+        color: var(--primary-text-color);
+        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        border: 1px solid var(--divider-color);
+        border-radius: var(--sb-group-radius);
+        outline: none;
+      }
+      .sb-commands-filter:focus {
+        border-color: var(--primary-color, #03a9f4);
+      }
+      .sb-commands-filter::placeholder {
+        color: var(--secondary-text-color);
+        opacity: 0.8;
+      }
+      /* The card sets an inline max-height from the measured viewport space
+         (commandsOverlayMaxHeight); this only keeps the filter pinned. */
+      .mf-overlay--commands .sb-commands-filter {
+        position: sticky;
+        top: 0;
+        z-index: 1;
       }
 
       .automationAssist {
@@ -673,6 +760,27 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
           .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+          /* The two "Default ... layout" entries act as section heads in the
+             layout selector: a tinted background plus a colored bottom
+             border split the list into its activity and device sections.
+             The items are our own slotted children of ha-select, so this
+             document-level background overrides the component's :host hover
+             style — define hover/selected explicitly to keep them alive. */
+          .sb-option-default {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
+            background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+            border-bottom: 2px solid rgba(var(--rgb-primary-color, 3, 169, 244), 0.45);
+            border-bottom: 2px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
+          }
+          .sb-option-default:hover {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.14);
+            background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+          }
+          .sb-option-default[selected],
+          .sb-option-default[activated] {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18);
+            background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+          }
           .sb-layout-row + .sb-layout-row { border-top: 1px solid var(--divider-color); }
           .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
           .sb-layout-actions-full { flex: 1; }
@@ -685,6 +793,9 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
           .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
+          /* Device-mode master switch + "Opens with" under the entity picker. */
+          .sb-device-mode-config { display: grid; gap: 10px; padding: 0 0 12px 0; }
+          .sb-device-mode-config ha-select { width: 100%; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

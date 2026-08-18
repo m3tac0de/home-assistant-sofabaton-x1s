@@ -1,6 +1,42 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { moveVisibleGroup } from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-layout";
+import {
+  layoutSelectionNote,
+  moveVisibleGroup,
+} from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-layout";
+
+test("selection note names the scope of the applicable layout", () => {
+  const config = {
+    layouts: {
+      "101": { show_dpad: false },
+      "device:3": { show_nav: false },
+    },
+  };
+  assert.equal(
+    layoutSelectionNote(config, "default"),
+    "Used for activities without their own layout",
+  );
+  assert.equal(
+    layoutSelectionNote(config, "device:default"),
+    "Used for devices without their own layout",
+  );
+  assert.equal(
+    layoutSelectionNote(config, "101"),
+    "Using custom activity layout",
+  );
+  assert.equal(
+    layoutSelectionNote(config, "device:3"),
+    "Using custom device layout",
+  );
+  assert.equal(
+    layoutSelectionNote(config, "102"),
+    "Using default activity layout",
+  );
+  assert.equal(
+    layoutSelectionNote(config, "device:4"),
+    "Using default device layout",
+  );
+});
 
 const ORDER = ["activity", "macro_favorites", "dpad", "nav", "mid", "media", "colors", "abc"];
 

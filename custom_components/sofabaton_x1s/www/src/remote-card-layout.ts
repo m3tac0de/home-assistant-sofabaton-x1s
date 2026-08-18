@@ -31,9 +31,96 @@ export const LAYOUT_KEYS = [
   "show_abc",
   "show_macros_button",
   "show_favorites_button",
+  "show_commands_button",
+  "show_device_toggle",
   "mf_as_rows",
   "mf_row_visible_rows",
 ] as const;
+
+// ---------- device-mode layout keys ----------
+//
+// Device layouts live in the same `layouts` map as activity layouts but under
+// a "device:" namespace: hub device ids and activity ids collide in the 1-255
+// space the card keys by, so `layouts["8"]` must stay activity-only.
+// Resolution chain for device mode: built-in defaults ⊕
+// layouts["device:default"] ⊕ layouts["device:<id>"]. The activity side
+// (top-level keys and layouts.default — the "Default Activity layout") is
+// deliberately NOT inherited: "Default Device layout" plays the same role for
+// devices that "Default Activity layout" plays for activities
+// (docs/internal/device-mode-plan.md §5.1).
+
+export const DEVICE_LAYOUT_PREFIX = "device:";
+export const DEVICE_DEFAULT_LAYOUT_KEY = "device:default";
+
+export function deviceLayoutKey(deviceId: unknown): string {
+  return `${DEVICE_LAYOUT_PREFIX}${deviceId == null ? "default" : String(deviceId)}`;
+}
+
+export function isDeviceLayoutKey(selection: unknown): boolean {
+  return typeof selection === "string" && selection.startsWith(DEVICE_LAYOUT_PREFIX);
+}
+
+/** "device:8" -> 8; "device:default" and anything malformed -> null. */
+export function parseDeviceLayoutKey(selection: unknown): number | null {
+  if (!isDeviceLayoutKey(selection)) return null;
+  const rest = String(selection).slice(DEVICE_LAYOUT_PREFIX.length);
+  const id = Number(rest);
+  return Number.isFinite(id) ? id : null;
+}
+
+// Explicit seed for the device chain: the card reads several flags raw
+// (e.g. Boolean(layoutConfig.show_activity)), so decoupling from the
+// activity-side base requires spelling the defaults out here.
+const DEVICE_LAYOUT_DEFAULTS: Record<string, unknown> = Object.freeze({
+  show_activity: true,
+  show_dpad: true,
+  show_nav: true,
+  show_mid: true,
+  show_volume: true,
+  show_channel: true,
+  show_media: true,
+  show_dvr: true,
+  show_colors: true,
+  show_abc: true,
+  show_commands_button: true,
+  mf_as_rows: false,
+  mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice()),
+});
+
+export function layoutConfigForDevice(
+  config: Record<string, any> | null | undefined,
+  deviceId: unknown,
+) {
+  const layouts = config?.layouts;
+  const deviceDefault =
+    layouts && typeof layouts === "object" ? layouts[DEVICE_DEFAULT_LAYOUT_KEY] : null;
+  let merged: Record<string, unknown> =
+    deviceDefault && typeof deviceDefault === "object"
+      ? { ...DEVICE_LAYOUT_DEFAULTS, ...deviceDefault }
+      : { ...DEVICE_LAYOUT_DEFAULTS };
+  if (deviceId != null && layouts && typeof layouts === "object") {
+    const override = layouts[deviceLayoutKey(deviceId)];
+    if (override && typeof override === "object") {
+      merged = { ...merged, ...override };
+    }
+  }
+  return merged;
+}
+
+export function commandsButtonEnabled(layout: Record<string, any> | null | undefined) {
+  if (typeof layout?.show_commands_button === "boolean") {
+    return layout.show_commands_button;
+  }
+  return true;
+}
+
+export function deviceToggleEnabled(layout: Record<string, any> | null | undefined) {
+  if (typeof layout?.show_device_toggle === "boolean") {
+    return layout.show_device_toggle;
+  }
+  return true;
+}
 
 export function layoutBaseConfig(config: Record<string, unknown> | null | undefined) {
   const base: Record<string, unknown> = {};

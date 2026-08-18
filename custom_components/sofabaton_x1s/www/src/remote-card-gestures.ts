@@ -159,6 +159,36 @@ export function drawerDirection(input: DrawerDirectionInput): "up" | "down" {
   return overlapUp > overlapDown ? "up" : "down";
 }
 
+/**
+ * Device-mode Commands drawer: a device almost always has more commands than
+ * an activity has macros + favorites, so the overlay ignores the 350px cap
+ * and takes the space available in its opening direction — WITHIN the card:
+ * the drawer never extends beyond the card's own boundaries. Card bounds
+ * absent (unmeasurable) falls back to the viewport.
+ */
+export function commandsOverlayMaxHeight({
+  up,
+  rowTop,
+  rowBottom,
+  cardTop,
+  cardBottom,
+  viewportHeight,
+}: {
+  up: boolean;
+  rowTop: number;
+  rowBottom: number;
+  cardTop?: number | null;
+  cardBottom?: number | null;
+  viewportHeight: number;
+}): number {
+  const available = up
+    ? rowTop - (cardTop ?? 0)
+    : (cardBottom ?? viewportHeight) - rowBottom;
+  // Small floor so a cramped layout still shows a usable sliver, but never
+  // more than the in-card space itself.
+  return Math.max(Math.min(120, Math.floor(available)), Math.floor(available - 12));
+}
+
 // ---------- layering ----------
 
 /**

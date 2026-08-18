@@ -43,6 +43,33 @@ export function activitiesFromRemote(
   };
 }
 
+/**
+ * Normalize the remote entity's `devices` attribute (x1s integration only;
+ * published only while the persistent cache is enabled, which is also the
+ * device-mode capability signal).
+ */
+export function devicesFromRemote(remoteState: any) {
+  const list = remoteState?.attributes?.devices;
+  return (Array.isArray(list) ? list : [])
+    .map((device) => ({
+      id: Number(device?.id),
+      name: String(device?.name ?? ""),
+      device_class:
+        device?.device_class != null ? String(device.device_class) : undefined,
+    }))
+    .filter((device) => Number.isFinite(device.id) && device.name);
+}
+
+export function deviceNameForId(devices: any[], deviceId: unknown) {
+  if (deviceId == null) return "";
+  const id = Number(deviceId);
+  if (!Number.isFinite(id)) return "";
+  const match = Array.isArray(devices)
+    ? devices.find((device) => device.id === id)
+    : null;
+  return match?.name || "";
+}
+
 export function activityNameForId(activities: any[], activityId: unknown) {
   if (activityId == null) return "";
   const id = Number(activityId);
@@ -60,7 +87,20 @@ export function currentActivityLabelFromRemote(remoteState: any, activities: any
   return activityNameForId(activities, activityId);
 }
 
-export function previewSelection(editMode: boolean, previewActivity: any, activities: any[]) {
+export interface PreviewSelectionState {
+  activityId: number | null;
+  label: string;
+  poweredOff: boolean;
+  /** Editor previews a device layout ("device:<id>" / "device:default"). */
+  mode?: "activity" | "device";
+  deviceId?: number | null;
+}
+
+export function previewSelection(
+  editMode: boolean,
+  previewActivity: any,
+  activities: any[],
+): PreviewSelectionState | null {
   if (!editMode) return null;
   const selection = previewActivity;
   if (selection == null || selection === "") {
@@ -75,6 +115,27 @@ export function previewSelection(editMode: boolean, previewActivity: any, activi
       activityId: null,
       label: str().card.poweredOff,
       poweredOff: true,
+    };
+  }
+  if (typeof selection === "string" && selection.startsWith("device:")) {
+    const rest = selection.slice("device:".length);
+    if (rest === "default") {
+      return {
+        activityId: null,
+        label: str().card.allDevicesLayout,
+        poweredOff: false,
+        mode: "device",
+        deviceId: null,
+      };
+    }
+    const deviceId = Number(rest);
+    if (!Number.isFinite(deviceId)) return null;
+    return {
+      activityId: null,
+      label: "",
+      poweredOff: false,
+      mode: "device",
+      deviceId,
     };
   }
   const id = Number(selection);

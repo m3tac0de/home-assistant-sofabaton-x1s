@@ -97,19 +97,19 @@ test("Arabic and regional Arabic locales select right-to-left direction", () => 
 });
 
 test("layout reset buttons use compact, locally clear labels", () => {
+  // One shared "Reset layout" label: the layout selection scopes what resets.
   const cases = [
-    ["en", "Reset card layout", "Reset layout"],
-    ["nl", "Kaartindeling resetten", "Indeling resetten"],
-    ["de", "Kartenlayout zurücksetzen", "Layout zurücksetzen"],
-    ["fr", "Réinitialiser la carte", "Réinitialiser"],
-    ["es", "Restablecer tarjeta", "Restablecer diseño"],
-    ["ar", "إعادة ضبط البطاقة", "إعادة ضبط التخطيط"],
-    ["zh-Hans", "重置卡片布局", "重置布局"],
+    ["en", "Reset layout"],
+    ["nl", "Indeling resetten"],
+    ["de", "Layout zurücksetzen"],
+    ["fr", "Réinitialiser"],
+    ["es", "Restablecer diseño"],
+    ["ar", "إعادة ضبط التخطيط"],
+    ["zh-Hans", "重置布局"],
   ] as const;
 
-  for (const [locale, cardDefault, defaultLayout] of cases) {
+  for (const [locale, defaultLayout] of cases) {
     setRemoteCardLanguage(locale);
-    assert.equal(str().editor.resetCardDefault, cardDefault, locale);
     assert.equal(str().editor.resetDefaultLayout, defaultLayout, locale);
   }
 
@@ -226,7 +226,7 @@ test("bundled Simplified Chinese translation supports the zh-Hans locale", () =>
     str().assist.createdActivityTriggers(2),
     "已为 X2 → 活动创建 2 个活动触发器",
   );
-  assert.equal(str().editor.resetCardDefault, "重置卡片布局");
+  assert.equal(str().editor.resetDefaultLayout, "重置布局");
   assert.equal(isPoweredOffLabel("已关机"), true);
 
   setRemoteCardLanguage("en");

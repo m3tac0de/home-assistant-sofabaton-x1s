@@ -4,6 +4,7 @@
 // render via editor-sections/*.
 
 import { LitElement, html, nothing, unsafeCSS } from "lit";
+import { html as staticHtml, unsafeStatic } from "lit/static-html.js";
 import {
   DEFAULT_GROUP_ORDER,
   DEFAULT_ROW_VISIBLE_ROWS,
@@ -17,8 +18,13 @@ import {
 import {
   applyLayoutConfigPatch,
   channelTogglePatch,
+  commandsEnabled,
+  commandsTogglePatch,
+  deviceToggleEnabledForEditor,
+  deviceTogglePatch,
   dvrTogglePatch,
   editorActivitiesFromState,
+  editorDevicesFromState,
   favoritesTogglePatch,
   groupEnabledPatch,
   groupLabel,
@@ -34,7 +40,13 @@ import {
   moveVisibleGroup,
   volumeTogglePatch,
 } from "./remote-card-editor-layout";
-import { hubVersionFor, isX2Hub } from "./remote-card-compat";
+import { isDeviceLayoutKey } from "./remote-card-layout";
+import {
+  hubVersionFor,
+  isX2Hub,
+  selectItemTagName,
+  selectValueCompat,
+} from "./remote-card-compat";
 import {
   remoteCardDirection,
   remoteCardLanguage,
@@ -117,6 +129,52 @@ export class SofabatonRemoteCardEditor extends LitElement {
 
   private _isHubIntegrationForEditor(): boolean {
     return String(this._editorIntegrationDomain || "") === "sofabaton_hub";
+  }
+
+  /**
+   * Positive x1s check for every device-mode affordance: an unknown or
+   * undetected integration gets NO device UI (leakage prevention), not just
+   * the official hub integration.
+   */
+  private _isX1sIntegrationForEditor(): boolean {
+    return String(this._editorIntegrationDomain || "") === "sofabaton_x1s";
+  }
+
+  private _deviceModeEnabled(): boolean {
+    return this._config?.enable_device_mode !== false;
+  }
+
+  private _setDeviceModeEnabled(enabled: boolean): void {
+    const next = { ...this._config };
+    if (enabled) {
+      // Absent = enabled (the default): keep saved configs clean.
+      delete next.enable_device_mode;
+    } else {
+      next.enable_device_mode = false;
+      delete next.open_device;
+    }
+    this._config = next;
+    if (!enabled && isDeviceLayoutKey(this._layoutSelection)) {
+      this._layoutSelection = "default";
+      this._setPreviewActivityForSelection("default");
+    }
+    this._fireChanged();
+    this.requestUpdate();
+  }
+
+  private _setOpenDevice(value: string): void {
+    const next = { ...this._config };
+    if (value === "") {
+      delete next.open_device;
+    } else {
+      const id = Number(value);
+      if (!Number.isFinite(id)) return;
+      next.open_device = id;
+    }
+    if (JSON.stringify(next) === JSON.stringify(this._config)) return;
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
   }
 
   private _isEditorX2(): boolean {
@@ -309,7 +367,16 @@ export class SofabatonRemoteCardEditor extends LitElement {
 
   private _isEditorGroupVisible(key: string, isEditorX2: boolean): boolean {
     if (!isEditorX2 && key === "abc") return false;
-    const asRows = mfAsRowsForEditor(this._config, this._layoutSelectionKey());
+    const selection = this._layoutSelectionKey();
+    const asRows = mfAsRowsForEditor(this._config, selection);
+    if (isDeviceLayoutKey(selection)) {
+      // Device layouts render ONE commands construct: the drawer row when
+      // tabs, the macros_row slot when inline rows; favorites_row never.
+      if (key === "macro_favorites") return !asRows;
+      if (key === "macros_row") return asRows;
+      if (key === "favorites_row") return false;
+      return true;
+    }
     if (key === "macro_favorites") return !asRows;
     if (key === "macros_row" || key === "favorites_row") return asRows;
     return true;
@@ -386,6 +453,8 @@ export class SofabatonRemoteCardEditor extends LitElement {
       show_dvr: true,
       show_macros_button: true,
       show_favorites_button: true,
+      show_commands_button: true,
+      show_device_toggle: true,
       mf_as_rows: false,
       mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
       group_order: DEFAULT_GROUP_ORDER.slice(),
@@ -413,16 +482,62 @@ export class SofabatonRemoteCardEditor extends LitElement {
 
     const selection = this._layoutSelectionKey();
     const entityId = this._config?.entity;
-    const activities =
-      entityId && this._hass
-        ? editorActivitiesFromState(this._hass?.states?.[entityId])
-        : [];
+    const remoteState = entityId && this._hass ? this._hass?.states?.[entityId] : null;
+    const activities = remoteState ? editorActivitiesFromState(remoteState) : [];
+    // Devices join the same selector (device-mode-plan.md §5.2): x1s
+    // integration only, and only while the backend publishes the `devices`
+    // attribute (persistent cache enabled).
+    // Gating: positive x1s check, the devices attribute present (persistent
+    // cache on), and the enable_device_mode master switch (absent = on).
+    const deviceCapable =
+      Boolean(remoteState) &&
+      this._isX1sIntegrationForEditor() &&
+      editorDevicesFromState(remoteState).length > 0;
+    const deviceModeEnabled = this._deviceModeEnabled();
+    const devices =
+      deviceCapable && deviceModeEnabled ? editorDevicesFromState(remoteState) : [];
+
+    // "Opens with": current activity (default) or a specific device.
+    const openWithItemTag = unsafeStatic(selectItemTagName());
+    const openWithOptions = [
+      { value: "", label: str().editor.openOnCurrentActivity },
+      ...devices.map((device: { id: unknown; name: string }) => ({
+        value: String(device.id),
+        label: device.name,
+      })),
+    ];
+    const handleOpenWithSelect = (ev: Event) => {
+      ev.stopPropagation();
+      const detailValue = (ev as CustomEvent<{ value?: string }>).detail?.value;
+      const targetValue = (ev.target as HTMLElement & { value?: string })?.value;
+      this._setOpenDevice(String(detailValue ?? targetValue ?? ""));
+    };
+    // The two "Default ... layout" entries are styled as section heads; the
+    // sections themselves separate activities from devices, so device names
+    // carry no prefix.
     const selectionOptions = [
-      { value: "default", label: str().editor.defaultLayoutOption },
+      {
+        value: "default",
+        label: str().editor.defaultLayoutOption,
+        kind: "default" as const,
+      },
       ...activities.map((activity: { id: unknown; name: string }) => ({
         value: String(activity.id),
         label: activity.name,
       })),
+      ...(devices.length
+        ? [
+            {
+              value: "device:default",
+              label: str().editor.allDevicesOption,
+              kind: "default" as const,
+            },
+            ...devices.map((device: { id: unknown; name: string }) => ({
+              value: `device:${device.id}`,
+              label: device.name,
+            })),
+          ]
+        : []),
     ];
     if (!selectionOptions.some((option) => option.value === selection)) {
       this._layoutSelection = "default";
@@ -474,6 +589,49 @@ export class SofabatonRemoteCardEditor extends LitElement {
           }}
         ></ha-form>
       </div>
+      ${deviceCapable
+        ? html`
+            <div class="sb-device-mode-config">
+              <div class="sb-layout-switch-item">
+                <ha-switch
+                  .checked=${deviceModeEnabled}
+                  @change=${(ev: Event) => {
+                    ev.stopPropagation();
+                    const target = ev.target as HTMLElement & { checked?: boolean };
+                    this._setDeviceModeEnabled(!!target.checked);
+                  }}
+                ></ha-switch>
+                <div class="sb-layout-switch-label">
+                  ${str().editor.enableDeviceMode}
+                </div>
+              </div>
+              ${deviceModeEnabled
+                ? html`
+                    <ha-select
+                      class="sb-opens-with"
+                      .fixedMenuPosition=${true}
+                      .label=${str().editor.opensWith}
+                      .hass=${this._hass}
+                      .value=${selectValueCompat(
+                        this._config?.open_device != null
+                          ? String(this._config.open_device)
+                          : "",
+                        openWithOptions,
+                      )}
+                      @selected=${handleOpenWithSelect}
+                      @change=${handleOpenWithSelect}
+                    >
+                      ${openWithOptions.map(
+                        (option) => staticHtml`
+                          <${openWithItemTag} .value=${option.value}>${option.label}</${openWithItemTag}>
+                        `,
+                      )}
+                    </ha-select>
+                  `
+                : nothing}
+            </div>
+          `
+        : nothing}
       <div class="sb-styling-wrap" style="padding: 0 0 12px 0;">
         ${renderStylingOptionsSection({
           hass: this._hass,
@@ -504,6 +662,13 @@ export class SofabatonRemoteCardEditor extends LitElement {
           channelEnabled: channelGroupEnabled(layoutCfg),
           mediaEnabled: mediaGroupEnabled(layoutCfg),
           dvrEnabled: dvrGroupEnabled(layoutCfg),
+          isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
+          commandsEnabled: commandsEnabled(this._config, this._layoutSelectionKey()),
+          showDeviceModeSwitch: devices.length > 0,
+          deviceModeEnabled: deviceToggleEnabledForEditor(
+            this._config,
+            this._layoutSelectionKey(),
+          ),
           isGroupEnabled: (key) =>
             isGroupEnabled(this._config, this._layoutSelectionKey(), key),
           groupLabel: (key) => groupLabel(key),
@@ -520,6 +685,8 @@ export class SofabatonRemoteCardEditor extends LitElement {
             this._updateLayoutConfig(
               favoritesTogglePatch(this._config, this._layoutSelectionKey(), v),
             ),
+          onSetCommands: (v) => this._updateLayoutConfig(commandsTogglePatch(v)),
+          onSetDeviceMode: (v) => this._updateLayoutConfig(deviceTogglePatch(v)),
           onSetVolume: (v) =>
             this._updateLayoutConfig(
               volumeTogglePatch(this._config, this._layoutSelectionKey(), v),
