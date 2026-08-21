@@ -129,10 +129,10 @@ export const REMOTE_CARD_STRINGS_ES = {
     commands: "Comandos",
     modeToggle: "Botón de modo",
     deviceModeDescription:
-      "Cambia el mando a un único dispositivo del hub, con sus propias asignaciones de teclas y su lista completa de comandos.",
-    longPress: "Activar pulsación larga en los botones seleccionados",
+      "Controla un único dispositivo configurado en el hub mediante sus asignaciones de botones y su lista completa de comandos.",
+    longPress: "Activar la repetición al mantener pulsado un botón",
     longPressDescription:
-      "Mantén pulsado para repetir el comando, como en el mando físico.",
+      "Mantén pulsado un botón seleccionado para enviar su comando repetidamente, como en el mando físico.",
     longPressButtons: "Botones",
     enableDeviceMode: "Activar el modo de dispositivo",
     initialView: "Vista inicial",

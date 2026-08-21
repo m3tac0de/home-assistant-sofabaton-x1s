@@ -101,8 +101,9 @@ The integration includes two dashboard cards and deploys them automatically.
 
 ### Sofabaton Virtual Remote
 
-The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **Key capture** (General Options). Enable **long press** to let held Volume, Channel and D-pad buttons repeat their command, like on the physical remote.  
-In the card's **Device mode** the remote controls a single hub device, with that device's own key bindings and full searchable command list, independent of Activities ([documentation](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/device_mode.md)).
+The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **General Options → Key capture**. Enable **hold-to-repeat** to repeat commands while holding the Volume, Channel, or Direction Pad buttons, as on the physical remote.
+
+In the card's **Device mode** the remote controls one device configured on the hub, using that device's button bindings and complete, searchable command list, independent of Activities ([documentation](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/device_mode.md)).
 
 Add the card from the dashboard card picker or use YAML, replacing the entity with the `remote` entity created for your hub:
 

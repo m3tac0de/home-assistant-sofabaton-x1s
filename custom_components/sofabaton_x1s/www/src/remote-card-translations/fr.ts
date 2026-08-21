@@ -129,11 +129,11 @@ export const REMOTE_CARD_STRINGS_FR = {
     commands: "Commandes",
     modeToggle: "Bouton de mode",
     deviceModeDescription:
-      "Bascule la télécommande sur un seul appareil du hub, avec ses propres affectations de touches et sa liste complète de commandes.",
-    longPress: "Activer l’appui long sur les boutons sélectionnés",
+      "Contrôlez un seul appareil configuré sur le hub, avec ses propres affectations de touches et sa liste complète de commandes.",
+    longPress: "Activer la répétition par appui prolongé",
     longPressDescription:
-      "Maintenez le bouton enfoncé pour répéter la commande, comme sur la télécommande physique.",
-    longPressButtons: "Boutons",
+      "Maintenez une touche sélectionnée pour envoyer sa commande de façon répétée, comme sur la télécommande physique.",
+    longPressButtons: "Touches",
     enableDeviceMode: "Activer le mode appareil",
     initialView: "Vue initiale",
     initialViewHelper: "Ce que la carte affiche à l’ouverture",

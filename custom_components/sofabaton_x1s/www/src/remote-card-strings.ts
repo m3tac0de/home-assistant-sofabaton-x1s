@@ -127,10 +127,10 @@ export const REMOTE_CARD_STRINGS_EN = {
     commands: "Commands",
     modeToggle: "Mode switch",
     deviceModeDescription:
-      "Switch the remote to a single hub device, with its own key bindings and full command list.",
-    longPress: "Enable long press on selected buttons",
+      "Control one device configured on the hub, using that device's button bindings and complete command list.",
+    longPress: "Enable hold-to-repeat",
     longPressDescription:
-      "Press and hold to repeat the command, like on the physical remote.",
+      "Hold a selected button to send its command repeatedly, as on the physical remote.",
     longPressButtons: "Buttons",
     enableDeviceMode: "Enable device mode",
     initialView: "Initial view",

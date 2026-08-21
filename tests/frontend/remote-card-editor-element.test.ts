@@ -303,18 +303,18 @@ function generalOptionsParams(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test("general options section renders key capture and long press rows, in that order", () => {
+test("general options section renders key capture and hold-to-repeat rows, in that order", () => {
   const on = renderGeneralOptionsSection(generalOptionsParams());
   const text = templateText(on);
   assert.match(text, /General Options/);
   assert.match(text, /Key capture/);
-  assert.match(text, /Enable long press on selected buttons/);
-  assert.ok(text.indexOf("Key capture") < text.indexOf("Enable long press"));
+  assert.match(text, /Enable hold-to-repeat/);
+  assert.ok(text.indexOf("Key capture") < text.indexOf("Enable hold-to-repeat"));
   assert.equal(templateHasString(on, "sb-opt-key-capture"), true);
   assert.equal(templateHasString(on, "sb-opt-long-press"), true);
   // No device-mode row unless the shell offers one (x1s hub with devices).
   assert.equal(templateHasString(on, "sb-opt-device-mode"), false);
-  // Long press off: the button list stays hidden.
+  // Hold-to-repeat off: the button list stays hidden.
   assert.doesNotMatch(templateJson(on), /"name":"long_press_buttons"/);
 
   const collapsed = renderGeneralOptionsSection(generalOptionsParams({ expanded: false }));
@@ -335,7 +335,7 @@ test("general options section renders the device-mode row between the others and
   );
   const offText = templateText(off);
   assert.ok(offText.indexOf("Key capture") < offText.indexOf("Enable device mode"));
-  assert.ok(offText.indexOf("Enable device mode") < offText.indexOf("Enable long press"));
+  assert.ok(offText.indexOf("Enable device mode") < offText.indexOf("Enable hold-to-repeat"));
   assert.doesNotMatch(templateJson(off), /"name":"open_device"/);
 
   const on = renderGeneralOptionsSection(
@@ -355,7 +355,7 @@ test("general options section renders the device-mode row between the others and
   assert.match(templateJson(on), /"name":"open_device"/);
 });
 
-test("general options section lists the long-press button groups while enabled", () => {
+test("general options section lists the hold-to-repeat button groups while enabled", () => {
   const on = renderGeneralOptionsSection(
     generalOptionsParams({
       longPress: {

@@ -121,11 +121,11 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     commands: "命令",
     modeToggle: "模式切换",
     deviceModeDescription:
-      "将遥控器切换到单个 Hub 设备，使用该设备自己的按键绑定和完整命令列表。",
-    longPress: "为所选按钮启用长按",
+      "控制 Hub 中配置的单个设备，并使用该设备自己的按键分配和完整命令列表。",
+    longPress: "启用长按重复发送",
     longPressDescription:
-      "按住按钮可重复发送命令，与实体遥控器一致。",
-    longPressButtons: "按钮",
+      "按住所选按键可重复发送其命令，就像使用实体遥控器一样。",
+    longPressButtons: "按键",
     enableDeviceMode: "启用设备模式",
     initialView: "初始视图",
     initialViewHelper: "卡片打开时显示的内容",

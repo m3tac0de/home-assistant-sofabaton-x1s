@@ -128,10 +128,10 @@ const REMOTE_CARD_STRINGS_DE = {
     commands: "Befehle",
     modeToggle: "Modusschalter",
     deviceModeDescription:
-      "Schaltet die Fernbedienung auf ein einzelnes Hub-Gerät um, mit eigenen Tastenbelegungen und vollständiger Befehlsliste.",
-    longPress: "Langes Drücken für ausgewählte Tasten aktivieren",
+      "Steuere ein einzelnes, im Hub eingerichtetes Gerät mit dessen Tastenbelegungen und vollständiger Befehlsliste.",
+    longPress: "Wiederholen beim Gedrückthalten aktivieren",
     longPressDescription:
-      "Gedrückt halten wiederholt den Befehl, wie auf der physischen Fernbedienung.",
+      "Halte eine ausgewählte Taste gedrückt, um ihren Befehl wiederholt zu senden – wie bei der physischen Fernbedienung.",
     longPressButtons: "Tasten",
     enableDeviceMode: "Gerätemodus aktivieren",
     initialView: "Anfangsansicht",

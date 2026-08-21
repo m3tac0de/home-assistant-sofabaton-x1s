@@ -124,10 +124,10 @@ const REMOTE_CARD_STRINGS_NL = {
     commands: "Commando's",
     modeToggle: "Modusknop",
     deviceModeDescription:
-      "Schakelt de afstandsbediening naar één hub-apparaat, met eigen toetsbindingen en de volledige opdrachtenlijst.",
-    longPress: "Lang indrukken inschakelen voor geselecteerde knoppen",
+      "Bedien één apparaat dat op de hub is ingesteld met de knopkoppelingen en volledige lijst met commando's van dat apparaat.",
+    longPress: "Herhalen bij ingedrukt houden inschakelen",
     longPressDescription:
-      "Ingedrukt houden herhaalt de opdracht, zoals op de fysieke afstandsbediening.",
+      "Houd een geselecteerde knop ingedrukt om het bijbehorende commando te herhalen, net als op de fysieke afstandsbediening.",
     longPressButtons: "Knoppen",
     enableDeviceMode: "Apparaatmodus inschakelen",
     initialView: "Beginweergave",
