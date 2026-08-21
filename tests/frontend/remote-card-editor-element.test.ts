@@ -228,20 +228,20 @@ test("long press switch stores the minimal block and drops it when disabled", ()
   assert.equal(changes.length, 0);
 
   editor._setLongPressEnabled(true);
-  assert.deepEqual(changes.at(-1)?.long_press, { enabled: true });
+  assert.deepEqual(changes.at(-1)?.hold_repeat, { enabled: true });
 
   // Deselecting groups writes explicit false; re-selecting removes it.
   editor._setLongPressGroups(["volume", "dpad"]);
-  assert.deepEqual(changes.at(-1)?.long_press, { enabled: true, channel: false });
+  assert.deepEqual(changes.at(-1)?.hold_repeat, { enabled: true, channel: false });
   editor._setLongPressGroups(["volume", "dpad"]);
   assert.equal(changes.length, 2, "identical selection fires nothing");
   editor._setLongPressGroups(["volume", "channel", "dpad"]);
-  assert.deepEqual(changes.at(-1)?.long_press, { enabled: true });
+  assert.deepEqual(changes.at(-1)?.hold_repeat, { enabled: true });
 
   // Disabling drops the whole block (the group selection with it).
   editor._setLongPressGroups(["channel"]);
   editor._setLongPressEnabled(false);
-  assert.equal("long_press" in (changes.at(-1) ?? {}), false);
+  assert.equal("hold_repeat" in (changes.at(-1) ?? {}), false);
 });
 
 test("reset on a device selection drops only that device layer", () => {

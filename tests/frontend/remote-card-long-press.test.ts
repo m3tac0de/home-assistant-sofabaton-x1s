@@ -24,26 +24,26 @@ test("long press is off unless the block says enabled: true", () => {
     channel: false,
     dpad: false,
   });
-  assert.equal(longPressSettings({ long_press: {} }).enabled, false);
-  assert.equal(longPressSettings({ long_press: { volume: true } }).enabled, false);
-  assert.equal(longPressSettings({ long_press: { enabled: false } }).enabled, false);
+  assert.equal(longPressSettings({ hold_repeat: {} }).enabled, false);
+  assert.equal(longPressSettings({ hold_repeat: { volume: true } }).enabled, false);
+  assert.equal(longPressSettings({ hold_repeat: { enabled: false } }).enabled, false);
   // A disabled block never enables any group, whatever it says otherwise.
-  assert.deepEqual(longPressSelectedGroups({ long_press: { volume: true } }), []);
+  assert.deepEqual(longPressSelectedGroups({ hold_repeat: { volume: true } }), []);
 });
 
 test("enabling long press turns every group on; only explicit false opts out", () => {
-  assert.deepEqual(longPressSettings({ long_press: { enabled: true } }), {
+  assert.deepEqual(longPressSettings({ hold_repeat: { enabled: true } }), {
     enabled: true,
     volume: true,
     channel: true,
     dpad: true,
   });
   assert.deepEqual(
-    longPressSettings({ long_press: { enabled: true, channel: false } }),
+    longPressSettings({ hold_repeat: { enabled: true, channel: false } }),
     { enabled: true, volume: true, channel: false, dpad: true },
   );
   assert.deepEqual(
-    longPressSelectedGroups({ long_press: { enabled: true, volume: false, dpad: false } }),
+    longPressSelectedGroups({ hold_repeat: { enabled: true, volume: false, dpad: false } }),
     ["channel"],
   );
 });
@@ -60,7 +60,7 @@ test("key specs map to their long-press group; mute, OK and the rest never repea
     assert.equal(longPressGroupForKey(key), null, String(key));
   }
 
-  const config = { long_press: { enabled: true, dpad: false } };
+  const config = { hold_repeat: { enabled: true, dpad: false } };
   assert.equal(longPressEnabledForKey(config, "volup"), true);
   assert.equal(longPressEnabledForKey(config, "chdn"), true);
   assert.equal(longPressEnabledForKey(config, "left"), false);

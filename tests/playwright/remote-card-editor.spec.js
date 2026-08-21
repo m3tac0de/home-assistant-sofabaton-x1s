@@ -53,13 +53,13 @@ test.describe("remote card editor harness", () => {
   });
 
   test("captures general options with long press enabled (button list shown)", async ({ page }) => {
-    await mountEditor(page, "active", { long_press: { enabled: true, channel: false } });
+    await mountEditor(page, "active", { hold_repeat: { enabled: true, channel: false } });
     await page.locator(".sb-general-wrap .sb-exp-hdr").click();
     await expect(page.locator(".sb-general-wrap .sb-opt-long-press ha-form")).toBeVisible();
     await expect(page.locator(".sb-general-wrap")).toHaveScreenshot("remote-card-editor-general-options-long-press.png");
   });
 
-  test("toggling the long press switch fires config-changed with the long_press block", async ({ page }) => {
+  test("toggling the hold-to-repeat switch fires config-changed with the hold_repeat block", async ({ page }) => {
     await mountEditor(page, "active");
     await page.locator(".sb-general-wrap .sb-exp-hdr").click();
 
@@ -74,12 +74,12 @@ test.describe("remote card editor harness", () => {
 
     await page.locator(".sb-general-wrap .sb-opt-long-press ha-switch").click();
     await expect.poll(() => changes.length).toBeGreaterThan(0);
-    expect(changes[changes.length - 1]?.long_press).toEqual({ enabled: true });
+    expect(changes[changes.length - 1]?.hold_repeat).toEqual({ enabled: true });
     await expect(page.locator(".sb-general-wrap .sb-opt-long-press ha-form")).toBeVisible();
 
     await page.locator(".sb-general-wrap .sb-opt-long-press ha-switch").click();
     await expect.poll(() => changes.length).toBeGreaterThan(1);
-    expect("long_press" in (changes[changes.length - 1] ?? {})).toBe(false);
+    expect("hold_repeat" in (changes[changes.length - 1] ?? {})).toBe(false);
   });
 
   test("background override switch materializes a color and drops it again when off", async ({ page }) => {

@@ -602,7 +602,7 @@ test.describe("remote card playwright harness", () => {
   });
 
   test("long press on: holding volume repeats and the release adds nothing; a tap still sends once", async ({ page }) => {
-    await mountCard(page, "active", { long_press: { enabled: true } });
+    await mountCard(page, "active", { hold_repeat: { enabled: true } });
 
     // Hold ~1.2s: first repeat after the 400ms delay, then every 250ms
     // (400, 650, 900, 1150) = 4 sends; the release must not add a fifth.
@@ -620,7 +620,7 @@ test.describe("remote card playwright harness", () => {
   });
 
   test("long press only repeats the selected groups; other keys never repeat", async ({ page }) => {
-    await mountCard(page, "active", { long_press: { enabled: true, volume: false } });
+    await mountCard(page, "active", { hold_repeat: { enabled: true, volume: false } });
 
     // Volume deselected: one send on release.
     await holdKey(page, "sb-key-button.mid-btn-volup", 1000);

@@ -2375,7 +2375,7 @@ var LONG_PRESS_GROUP_FOR_KEY = {
   right: "dpad"
 };
 function longPressBlock(config) {
-  const block = config?.long_press;
+  const block = config?.hold_repeat;
   return block && typeof block === "object" ? block : {};
 }
 function longPressSettings(config) {
@@ -3234,15 +3234,15 @@ var SofabatonRemoteCardEditor = class extends i4 {
     );
   }
   // ---------- long press ----------
-  /** Write back the long_press block, dropping it entirely when disabled. */
+  /** Write back the hold_repeat block, dropping it entirely when disabled. */
   _setLongPressEnabled(enabled) {
     if (enabled === longPressSettings(this._config).enabled) return;
     const next = { ...this._config };
     const block = longPressEnabledPatch(enabled);
     if (block) {
-      next.long_press = block;
+      next.hold_repeat = block;
     } else {
-      delete next.long_press;
+      delete next.hold_repeat;
     }
     this._config = next;
     this._fireChanged();
@@ -3251,7 +3251,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
   _setLongPressGroups(selected) {
     const next = {
       ...this._config,
-      long_press: longPressGroupsPatch(longPressBlock(this._config), selected)
+      hold_repeat: longPressGroupsPatch(longPressBlock(this._config), selected)
     };
     if (JSON.stringify(next) === JSON.stringify(this._config)) return;
     this._config = next;

@@ -219,15 +219,15 @@ export class SofabatonRemoteCardEditor extends LitElement {
 
   // ---------- long press ----------
 
-  /** Write back the long_press block, dropping it entirely when disabled. */
+  /** Write back the hold_repeat block, dropping it entirely when disabled. */
   private _setLongPressEnabled(enabled: boolean): void {
     if (enabled === longPressSettings(this._config).enabled) return;
     const next = { ...this._config };
     const block = longPressEnabledPatch(enabled);
     if (block) {
-      next.long_press = block;
+      next.hold_repeat = block;
     } else {
-      delete next.long_press;
+      delete next.hold_repeat;
     }
     this._config = next;
     this._fireChanged();
@@ -237,7 +237,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
   private _setLongPressGroups(selected: string[]): void {
     const next = {
       ...this._config,
-      long_press: longPressGroupsPatch(longPressBlock(this._config), selected),
+      hold_repeat: longPressGroupsPatch(longPressBlock(this._config), selected),
     };
     if (JSON.stringify(next) === JSON.stringify(this._config)) return;
     this._config = next;
