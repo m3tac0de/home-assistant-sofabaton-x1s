@@ -69,7 +69,7 @@ Installing files directly from a source branch may give you unreleased code. Use
 After Home Assistant has restarted:
 
 1. Go to **Settings → Devices & services**.
-2. Select the discovered Sofabaton hub and follow the configuration flow.
+2. Home Assistant begins discovery only after it has **fully started**. Then, allow up to one minute for hubs to appear. Select the discovered Sofabaton hub and follow the configuration flow.
 3. If discovery does not find it, select **Add integration**, search for **Sofabaton X**, and enter the hub IP address manually.
 
 If the hub is on another VLAN or subnet, see the [networking guide](docs/networking.md).
@@ -101,7 +101,10 @@ The integration includes two dashboard cards and deploys them automatically.
 
 ### Sofabaton Virtual Remote
 
-The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **Automation Assist → Key capture**. Its **Device mode** flips the remote to a single hub device, with that device's own key bindings and full searchable command list, independent of Activities ([documentation](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/device_mode.md)). Add the card from the dashboard card picker or use YAML, replacing the entity with the `remote` entity created for your hub:
+The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **Automation Assist → Key capture**.  
+In the card's **Device mode** the remote controls a single hub device, with that device's own key bindings and full searchable command list, independent of Activities ([documentation](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/device_mode.md)).
+
+Add the card from the dashboard card picker or use YAML, replacing the entity with the `remote` entity created for your hub:
 
 ```yaml
 type: custom:sofabaton-virtual-remote
