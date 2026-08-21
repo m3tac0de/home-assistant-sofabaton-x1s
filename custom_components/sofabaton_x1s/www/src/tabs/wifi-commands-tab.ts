@@ -160,6 +160,16 @@ export function hubEventModalTitle(key: HubEventKey): string {
   return titles[key];
 }
 
+/** Event phrases interpolate a user-chosen label (Wifi Event name,
+ *  activity name) into a translated sentence, and translations may place
+ *  it anywhere (zh wraps it in quotes). Render via a sentinel split so
+ *  the label gets its own chip span without touching the translations. */
+const NAME_SENTINEL = "\u0000";
+function phraseWithName(phrase: (name: string) => string, name: string) {
+  const [before, after = ""] = phrase(NAME_SENTINEL).split(NAME_SENTINEL);
+  return html`${before}<span class="hub-event-name">${name}</span>${after}`;
+}
+
 interface WifiCommandAction {
   action: string;
   perform_action?: string;
@@ -272,6 +282,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     _wifiEventsStaleConfirm: { state: true },
     _wifiEventsStaleBusy: { state: true },
     _wifiEventsStaleError: { state: true },
+    _wifiEventsShowUnconfigured: { state: true },
+    _activityEventsShowUnconfigured: { state: true },
     selectedSection: { attribute: false },
     setSelectedSection: { attribute: false },
     _devicePowerPickerKind: { state: true },
@@ -472,6 +484,9 @@ class SofabatonWifiCommandsTab extends LitElement {
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
+    /* User-chosen label inside an event phrase: a subtle tinted chip marks
+       it as the user's own name rather than part of the sentence. */
+    .hub-event-name { background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent); border-radius: 4px; padding: 0 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
     .wifi-events-stale { color: var(--warning-color, #b58a00); }
     .wifi-events-stale .hub-event-action-link { display: inline; font-size: inherit; }
     .wifi-events-stale-actions { display: inline-flex; gap: 8px; margin-left: 8px; vertical-align: middle; }
@@ -578,6 +593,31 @@ class SofabatonWifiCommandsTab extends LitElement {
       color: var(--secondary-text-color);
     }
     .section-title-wrap { display: flex; align-items: center; gap: 8px; }
+    .section-pill {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-text-color) 12%, transparent);
+      border-radius: var(--tools-radius-pill);
+      padding: 2px 9px;
+    }
+    /* Expander under a section list revealing the hidden unconfigured rows. */
+    .show-unconfigured {
+      justify-self: start;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 3px;
+    }
+    .show-unconfigured:hover { color: var(--primary-color); }
     .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
     .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
@@ -867,6 +907,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _wifiEventsStaleConfirm = false;
   private _wifiEventsStaleBusy = false;
   private _wifiEventsStaleError = "";
+  // One-way expanders: unconfigured rows stay hidden until the user asks.
+  private _wifiEventsShowUnconfigured = false;
+  private _activityEventsShowUnconfigured = false;
   selectedSection: WifiSectionId = "wifi";
   setSelectedSection: (section: WifiSectionId) => void = () => {};
   private _devicePowerPickerKind: "on" | "off" | null = null;
@@ -1335,6 +1378,33 @@ class SofabatonWifiCommandsTab extends LitElement {
     };
   }
 
+  // "Configured" for the section pills and the unconfigured-row filter:
+  // any of the row's action hooks carries a custom action.
+  private _wifiEventConfigured(event: WifiEvent): boolean {
+    if (this._commandHasCustomAction(this._normalizeCommandAction(event.action))) return true;
+    return Boolean(event.long_press_enabled)
+      && this._commandHasCustomAction(this._normalizeCommandAction(event.long_press_action));
+  }
+
+  private _activityEventConfigured(activityId: string): boolean {
+    const entry = this._activityEventEntry(activityId);
+    return this._commandHasCustomAction(entry.start) || this._commandHasCustomAction(entry.stop);
+  }
+
+  private _renderConfiguredPill(configured: number, total: number) {
+    if (!total) return nothing;
+    return html`<span class="section-pill">${TOOLS_CARD_STRINGS.wifiCommands.eventsConfiguredPill(configured, total)}</span>`;
+  }
+
+  private _renderShowUnconfigured(hiddenCount: number, onShow: () => void) {
+    if (hiddenCount <= 0) return nothing;
+    return html`
+      <button class="show-unconfigured" @click=${onShow}>
+        ${TOOLS_CARD_STRINGS.wifiCommands.eventsShowUnconfigured(hiddenCount)}
+      </button>
+    `;
+  }
+
   // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
 
   private _wifiEventBySlot(slotIndex: number): WifiEvent | null {
@@ -1582,26 +1652,37 @@ class SofabatonWifiCommandsTab extends LitElement {
           ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}`;
     };
     const orphaned = this._wifiEventsOrphaned();
+    const configuredCount = events.filter((event) => this._wifiEventConfigured(event)).length;
+    const visible = this._wifiEventsShowUnconfigured
+      ? events
+      : events.filter((event) => this._wifiEventConfigured(event));
     return html`
       <div class="hub-events">
         <div class="section-title-wrap">
           <div class="acc-title">${W.wifiEventsTitle}</div>
+          ${this._renderConfiguredPill(configuredCount, events.length)}
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
         ${orphaned ? this._renderWifiEventsStaleNotice() : nothing}
         ${events.length ? html`
-          <ul class="hub-event-lines">
-            ${events.map((event) => html`
-              <li class="hub-event-line">
-                <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
-                <span class="hub-event-text">
-                  ${W.wifiEventRowPress(event.name)}${event.deployed || orphaned ? nothing : html` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
-                  ${renderAction(event, "short")}${event.long_press_enabled ? html`, ${W.wifiEventRowLongPress}
-                  ${renderAction(event, "long")}` : nothing}.
-                </span>
-              </li>
-            `)}
-          </ul>
+          ${visible.length ? html`
+            <ul class="hub-event-lines">
+              ${visible.map((event) => html`
+                <li class="hub-event-line">
+                  <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
+                  <span class="hub-event-text">
+                    ${phraseWithName(W.wifiEventRowPress, event.name)}${event.deployed || orphaned ? nothing : html` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
+                    ${renderAction(event, "short")}${event.long_press_enabled ? html`, ${W.wifiEventRowLongPress}
+                    ${renderAction(event, "long")}` : nothing}.
+                  </span>
+                </li>
+              `)}
+            </ul>
+          ` : nothing}
+          ${this._renderShowUnconfigured(
+            this._wifiEventsShowUnconfigured ? 0 : events.length - configuredCount,
+            () => { this._wifiEventsShowUnconfigured = true; },
+          )}
         ` : html`<div class="empty-hint">${W.wifiEventsEmpty}</div>`}
       </div>
     `;
@@ -1646,6 +1727,8 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _renderHubEventsView() {
     const flash = this._activeHubEventFlash();
     const activities = this._editorActivities();
+    const configuredActivities = activities.filter((activity) => this._activityEventConfigured(String(activity.id)));
+    const visibleActivities = this._activityEventsShowUnconfigured ? activities : configuredActivities;
     const renderHubAction = (key: HubEventKey) => {
       const action = this._hubEventActions[key];
       const configured = this._commandHasCustomAction(action);
@@ -1689,12 +1772,19 @@ class SofabatonWifiCommandsTab extends LitElement {
         <div class="hub-events">
           <div class="section-title-wrap">
             <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
+            ${this._renderConfiguredPill(configuredActivities.length, activities.length)}
           </div>
           <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsSubtitle}</div>
           ${activities.length ? html`
-            <ul class="hub-event-lines">
-              ${activities.map((activity) => this._renderActivityEventLine(activity, flash))}
-            </ul>
+            ${visibleActivities.length ? html`
+              <ul class="hub-event-lines">
+                ${visibleActivities.map((activity) => this._renderActivityEventLine(activity, flash))}
+              </ul>
+            ` : nothing}
+            ${this._renderShowUnconfigured(
+              this._activityEventsShowUnconfigured ? 0 : activities.length - configuredActivities.length,
+              () => { this._activityEventsShowUnconfigured = true; },
+            )}
           ` : html`<div class="empty-hint">${TOOLS_CARD_STRINGS.wifiCommands.noActivitiesForEvents}</div>`}
         </div>
       </div>
@@ -1719,7 +1809,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       <li class="hub-event-line">
         <span class="hub-event-icon"><ha-icon icon="mdi:television-play"></ha-icon></span>
         <span class="hub-event-text">
-          ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStarts(activity.name)},
+          ${phraseWithName(TOOLS_CARD_STRINGS.wifiCommands.activityEventStarts, activity.name)},
           ${renderPhase("start")},
           ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStops},
           ${renderPhase("stop")}.

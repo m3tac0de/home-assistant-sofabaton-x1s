@@ -19,6 +19,7 @@ from .const import (
     signal_client,
     signal_buttons,
     signal_commands,
+    signal_devices,
     signal_macros,
 )
 from .hub import get_hub_display_name, get_hub_model
@@ -121,11 +122,23 @@ class SofabatonRemote(RemoteEntity):
                 for fav in favorites
                 if fav.get("command_id") is not None
             ]
+        # Device mode (remote card): the dropdown catalog. Published only
+        # while the persistent cache is enabled — device mode is gated on it
+        # (docs/internal/device-mode-plan.md), so its absence doubles as the
+        # card's capability signal. Wifi Events is filtered inside
+        # get_ui_device_list (presentation layer only).
+        devices: list[dict[str, Any]] | None = None
+        hass = getattr(self, "hass", None)
+        if hass is not None:
+            cache_store = hass.data.get(DOMAIN, {}).get("persistent_cache_store")
+            if bool(getattr(cache_store, "enabled", False)):
+                devices = self._hub.get_ui_device_list()
+
         mdns_txt = self._entry.data.get("mdns_txt", {})
         hub_version_confident = (
             isinstance(mdns_txt, dict) and mdns_txt.get("HVER") is not None
         )
-        return {
+        attrs = {
             "proxy_client_connected": self._hub.client_connected,
             "cache_generation": self._hub.cache_generation,
             "hub_version": get_hub_model(self._entry),
@@ -139,6 +152,9 @@ class SofabatonRemote(RemoteEntity):
             "load_state": self._hub.get_index_state(),
             "entry_id": self._entry.entry_id,
         }
+        if devices is not None:
+            attrs["devices"] = devices
+        return attrs
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -191,6 +207,13 @@ class SofabatonRemote(RemoteEntity):
             async_dispatcher_connect(
                 self.hass,
                 signal_macros(self._hub.entry_id),
+                self._schedule_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_devices(self._hub.entry_id),
                 self._schedule_update,
             )
         )

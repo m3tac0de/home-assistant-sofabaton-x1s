@@ -1502,3 +1502,85 @@ identical either way.
 The summary statistics and observed publish facts from the retained
 run are recorded above; the raw bench-network artifact is not part of
 the repository.
+
+## ◇ Validated: MQTT activity-state fast path (X2 via live HA, 2026-08-17)
+
+Design + implementation notes:
+[mqtt-activity-state.md](../internal/mqtt-activity-state.md). Deployed
+2026-08-16 to the live HA instance; validated on the production X2 by
+real activity switches from the remote.
+
+- **Works on real hardware**: the setup-time subscription on
+  `activity/FC012C39D390/activity_control_up` (persisted banner MAC,
+  established before the hub's first TCP connect) received every
+  transition; state flipped from the push with the TCP path
+  reconciling behind it. No issues observed.
+- **Id space**: the payload's `activity_id` matches the TCP catalog
+  ids directly (no mapping needed).
+- **Timing**: the hub publishes the MQTT event early in the power-on
+  sequence, while ACK_READY arrives only after the power macro has
+  completed. The gain scales with the macro; even small activities
+  gain an easily noticeable 1 to 1.5 s. This confirms the settling
+  gate (hold hub-bound commands until the companion ACK_READY) is
+  load-bearing: without it, automations firing on the early state
+  change would reach the hub mid-macro.
+- **Redundant OFF**: the hub does NOT publish on an OFF press while
+  already off; that signal exists only on TCP. The AckReadyHandler's
+  externally_applied guard (skip redundant-OFF arming when the settle
+  gate was armed) is consistent with either behavior.
+
+## ◇ Measured: MQTT vs TCP command-send latency (X2, 2026-08-17)
+
+Reproduction tooling:
+[`bench_150_mqtt_vs_tcp_send_latency.py`](../../scripts/hub-bench/bench_150_mqtt_vs_tcp_send_latency.py)
+(the send-side companion to bench_90, which measured the delivery
+side). X2 at .123, broker at .77. One scratch `wifi_mqtt` device
+restored (no activity membership, no bindings); its command activated
+40 rounds per arm, arm order alternating per round, both arms timed to
+the same `FC012C39D390/up` echo so the shared delivery tail cancels:
+
+- **TCP arm**: `REQ_ACTIVATE` (`0x023F`) through the sequencer, as HA
+  sends today.
+- **MQTT arm**: publish to `device/FC012C39D390/keys_control` with the
+  vendor payload shape `{"data": {"device_id": N, "key_id": M}}`.
+
+Cleanup deleted the scratch device; device and activity catalogs
+verified back at baseline.
+
+**M0.9 device-scope answer (headline finding): the hub DOES honor
+`device/<MAC>/keys_control`** — first probe variant (uppercase MAC,
+vendor payload shape) executed immediately, every round, zero misses.
+The vendor integration ships this topic disabled
+(`DEVICE_DISABLED` in their api.py), but the firmware itself accepts
+it. Lowercase/bare-payload variants were not reached (probe stops at
+the first working variant).
+
+Results (ms, send to `/up` echo, n=40 each, zero misses):
+
+| arm | min | p50 | mean | p95 | max | stdev |
+| --- | --- | --- | --- | --- | --- | --- |
+| TCP | 38.3 | 178.7 | 203.8 | 341.5 | 348.0 | 103.6 |
+| MQTT | 149.6 | 343.3 | 336.7 | 354.9 | 372.4 | 36.7 |
+
+Paired per-round diff (mqtt - tcp): p50 **+168 ms**, mean +133 ms.
+**TCP send is clearly faster at the median.** The MQTT arm is tightly
+clustered at ~343 ms (stdev 37) — consistent with the same firmware
+service-tick quantization bench_90 observed, plus the extra broker hop
+on the inbound leg (bench -> broker -> hub before the hub even starts).
+The TCP arm is bimodal (~180 / ~340 ms with dips to 38 ms), matching
+bench_90's tick-alignment picture.
+
+Interpretation for the v2 outbound-over-MQTT question
+([mqtt-transport-plan.md](../internal/mqtt-transport-plan.md) §6b):
+speed is NOT an argument for sending over MQTT — TCP wins the send leg
+by ~170 ms at the median on top of carrying acks and error reporting.
+The remaining case for outbound MQTT is availability only (sending
+while the Sofabaton app owns the TCP session), now with the
+device-scope coverage gap closed by this bench's probe finding.
+
+Caveats: the MQTT arm's echo transits the broker twice (control in,
+`/up` out) but the echo tail is shared, so only the inbound broker leg
+is charged to the arm — which is exactly the leg a real send would
+pay. Both arms ran while this bench held the hub's TCP session, i.e.
+the MQTT dispatch was measured on an otherwise-idle hub; contention
+behavior during an app session was not measured.

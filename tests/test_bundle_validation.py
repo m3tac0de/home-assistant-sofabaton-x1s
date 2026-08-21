@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.sofabaton_x1s.lib.bundle_validation import (
     collect_missing_command_refs,
+    collect_unknown_button_rows,
     validate_hub_bundle_for_model,
 )
 
@@ -306,8 +307,7 @@ def test_hub_dangling_command_refs_are_grandfathered_only_when_tolerated():
             enforce_editor_invariants=False,
         )
 
-    tolerated = collect_missing_command_refs(stale)
-    assert tolerated == {1: {99}}
+    assert collect_missing_command_refs(stale) == {1: {99}}
 
     # The captured baseline passes with its own quirks grandfathered, and the
     # edited bundle passes them through even on a strict entity.
@@ -316,19 +316,254 @@ def test_hub_dangling_command_refs_are_grandfathered_only_when_tolerated():
         hub_version="X1S",
         payload_name="baseline",
         enforce_editor_invariants=False,
-        tolerated_missing_commands=tolerated,
+        grandfather_baseline=stale,
     )
-    validate_hub_bundle_for_model(
-        stale, hub_version="X1S", tolerated_missing_commands=tolerated
-    )
+    validate_hub_bundle_for_model(stale, hub_version="X1S", grandfather_baseline=stale)
 
     # A dangling reference outside the grandfathered set is still rejected.
     worse = copy.deepcopy(stale)
     worse["devices"][0]["button_bindings"].append({"button_id": 0xAF, "command_id": 98})
     with pytest.raises(ValueError, match="missing command 98 on device 1"):
         validate_hub_bundle_for_model(
-            worse, hub_version="X1S", tolerated_missing_commands=tolerated
+            worse, hub_version="X1S", grandfather_baseline=stale
         )
+
+
+def test_unbound_zero_command_binding_rows_are_grandfathered_only_when_tolerated():
+    # The vendor app clears a hard-button slot by writing command_id 0 into
+    # the KeyToKey row instead of deleting it (observed on the FWD button of
+    # cloud-provisioned device pages). Captured hub truth must not block a
+    # sync, but a 0 row without baseline precedent stays invalid.
+    stale = valid_bundle()
+    stale["devices"][0]["button_bindings"] = [
+        {"button_id": 0xBD, "command_id": 0, "long_press_command_id": None},
+    ]
+
+    with pytest.raises(ValueError, match="missing command 0 on device 1"):
+        validate_hub_bundle_for_model(
+            stale,
+            hub_version="X1S",
+            payload_name="baseline",
+            enforce_editor_invariants=False,
+        )
+
+    assert collect_missing_command_refs(stale) == {1: {0}}
+
+    validate_hub_bundle_for_model(
+        stale,
+        hub_version="X1S",
+        payload_name="baseline",
+        enforce_editor_invariants=False,
+        grandfather_baseline=stale,
+    )
+    validate_hub_bundle_for_model(stale, hub_version="X1S", grandfather_baseline=stale)
+
+    # The same sentinel in the long-press slot is grandfathered too.
+    long_press = valid_bundle()
+    long_press["devices"][0]["button_bindings"] = [
+        {"button_id": 0xBD, "command_id": 10, "long_press_command_id": 0},
+    ]
+    validate_hub_bundle_for_model(
+        long_press, hub_version="X1S", grandfather_baseline=long_press
+    )
+
+    # Without a baseline precedent the 0 sentinel is still rejected.
+    with pytest.raises(ValueError, match="missing command 0 on device 1"):
+        validate_hub_bundle_for_model(stale, hub_version="X1S")
+
+
+def test_unknown_owner_refs_are_grandfathered_from_baseline():
+    # Hub truth can reference devices or activities absent from the bundle
+    # (orphaned rows after deletions, partial cloud deploys).
+    stale = valid_bundle()
+    stale["activities"][0]["button_bindings"].append(
+        {"button_id": 0xAF, "device_id": 9, "command_id": 5}
+    )
+    with pytest.raises(ValueError, match="references unknown device 9"):
+        validate_hub_bundle_for_model(
+            stale,
+            hub_version="X1S",
+            payload_name="baseline",
+            enforce_editor_invariants=False,
+        )
+    validate_hub_bundle_for_model(stale, hub_version="X1S", grandfather_baseline=stale)
+
+    chain = valid_bundle()
+    chain["activities"][0]["macros"][0]["steps"].append(
+        {"device_id": 102, "command_id": 7, "duration": 0, "delay": 0xFF}
+    )
+    with pytest.raises(ValueError, match="references unknown activity 102"):
+        validate_hub_bundle_for_model(chain, hub_version="X1S")
+    validate_hub_bundle_for_model(chain, hub_version="X1S", grandfather_baseline=chain)
+
+    power = valid_bundle()
+    power["activities"][0]["macros"][1]["steps"].append(
+        {"device_id": 9, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF}
+    )
+    with pytest.raises(ValueError, match="power row references unknown device 9"):
+        validate_hub_bundle_for_model(
+            power,
+            hub_version="X1S",
+            payload_name="baseline",
+            enforce_editor_invariants=False,
+        )
+    validate_hub_bundle_for_model(power, hub_version="X1S", grandfather_baseline=power)
+
+    # A reference the baseline does not carry is still rejected.
+    worse = copy.deepcopy(stale)
+    worse["activities"][0]["button_bindings"].append(
+        {"button_id": 0xB6, "device_id": 8, "command_id": 5}
+    )
+    with pytest.raises(ValueError, match="references unknown device 8"):
+        validate_hub_bundle_for_model(worse, hub_version="X1S", grandfather_baseline=stale)
+
+
+def test_unknown_button_rows_are_grandfathered_from_baseline():
+    # The button catalog is our knowledge of the remote, not the hub's; a
+    # vendor firmware update can write rows for buttons we have not mapped.
+    stale = valid_bundle()
+    stale["devices"][0]["button_bindings"] = [
+        {"button_id": 0xF0, "command_id": 10, "long_press_command_id": None},
+    ]
+    with pytest.raises(ValueError, match="button 0xF0 is unsupported on X1S"):
+        validate_hub_bundle_for_model(
+            stale,
+            hub_version="X1S",
+            payload_name="baseline",
+            enforce_editor_invariants=False,
+        )
+
+    assert collect_unknown_button_rows(stale) == {1: {0xF0}}
+    validate_hub_bundle_for_model(
+        stale,
+        hub_version="X1S",
+        payload_name="baseline",
+        enforce_editor_invariants=False,
+        grandfather_baseline=stale,
+    )
+    validate_hub_bundle_for_model(stale, hub_version="X1S", grandfather_baseline=stale)
+
+    worse = copy.deepcopy(stale)
+    worse["devices"][0]["button_bindings"].append({"button_id": 0xF1, "command_id": 10})
+    with pytest.raises(ValueError, match="button 0xF1 is unsupported on X1S"):
+        validate_hub_bundle_for_model(worse, hub_version="X1S", grandfather_baseline=stale)
+
+
+def test_baseline_names_bypass_charset_rules():
+    # Vendor apps write names our charset rejects (curly quotes from mobile
+    # autocorrect, symbols). Unchanged hub truth passes; new names are held
+    # to the rules.
+    quirky = valid_bundle()
+    quirky["devices"][0]["device"]["name"] = "Marcel’s TV"
+    with pytest.raises(ValueError, match="unsupported character"):
+        validate_hub_bundle_for_model(quirky, hub_version="X1S")
+    validate_hub_bundle_for_model(quirky, hub_version="X1S", grandfather_baseline=quirky)
+
+    renamed = copy.deepcopy(quirky)
+    renamed["devices"][0]["device"]["name"] = "Séjour™"
+    with pytest.raises(ValueError, match="unsupported character"):
+        validate_hub_bundle_for_model(renamed, hub_version="X1S", grandfather_baseline=quirky)
+
+    # hub.name is checked on every edited bundle, so a quirky hub name would
+    # otherwise block all syncs of everything.
+    hub_named = valid_bundle()
+    hub_named["hub"]["name"] = "Marcel’s hub"
+    with pytest.raises(ValueError, match="unsupported character"):
+        validate_hub_bundle_for_model(hub_named, hub_version="X1S")
+    validate_hub_bundle_for_model(
+        hub_named, hub_version="X1S", grandfather_baseline=hub_named
+    )
+
+
+def test_out_of_range_idle_behavior_is_grandfathered_from_baseline():
+    # Hubs report idle values outside the vendor-app range {1..4} (0 observed
+    # on a Wifi device in the wild).
+    quirky = valid_bundle()
+    quirky["devices"][0]["device"]["idle_behavior"] = 0
+    with pytest.raises(ValueError, match="must be one of 1, 2, 3, or 4"):
+        validate_hub_bundle_for_model(quirky, hub_version="X1S")
+    validate_hub_bundle_for_model(quirky, hub_version="X1S", grandfather_baseline=quirky)
+
+    # A newly written out-of-range value is still rejected.
+    changed = copy.deepcopy(quirky)
+    changed["devices"][0]["device"]["idle_behavior"] = 9
+    with pytest.raises(ValueError, match="must be one of 1, 2, 3, or 4"):
+        validate_hub_bundle_for_model(changed, hub_version="X1S", grandfather_baseline=quirky)
+
+
+def test_unchanged_macros_skip_delay_placement_invariant():
+    baseline = valid_bundle()
+    baseline["activities"][0]["macros"][0]["steps"].insert(
+        0, {"device_id": 0xFF, "command_id": 0xFF, "duration": 0, "delay": 0}
+    )
+    with pytest.raises(ValueError, match="must immediately follow"):
+        validate_hub_bundle_for_model(baseline, hub_version="X1S")
+    validate_hub_bundle_for_model(
+        baseline, hub_version="X1S", grandfather_baseline=baseline
+    )
+
+    # Touching the macro re-enables the invariant.
+    edited = copy.deepcopy(baseline)
+    edited["activities"][0]["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 11, "button_code": 0, "duration": 0, "delay": 0xFF}
+    )
+    with pytest.raises(ValueError, match="must immediately follow"):
+        validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=baseline)
+
+
+def test_unchanged_power_structure_skips_linkage_invariants():
+    baseline = valid_bundle()
+    del baseline["activities"][0]["macros"][1]["steps"][1]  # drop the input row
+    with pytest.raises(ValueError, match="exactly one power-on, input, and power-off"):
+        validate_hub_bundle_for_model(baseline, hub_version="X1S")
+    validate_hub_bundle_for_model(
+        baseline, hub_version="X1S", grandfather_baseline=baseline
+    )
+
+    # Touching a power macro re-enables the full invariant.
+    edited = copy.deepcopy(baseline)
+    edited["activities"][0]["macros"][1]["steps"].append(
+        {"device_id": 1, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF}
+    )
+    with pytest.raises(ValueError, match="exactly one power-on, input, and power-off"):
+        validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=baseline)
+
+
+def test_only_new_direct_refs_require_power_linkage_when_power_unchanged():
+    def _with_device(bundle: dict, device_id: int, command_id: int) -> None:
+        bundle["devices"].append(
+            {
+                "device": {
+                    "device_id": device_id,
+                    "name": f"Extra {device_id}",
+                    "device_class": "ir",
+                    "idle_behavior": 3,
+                },
+                "commands": [{"command_id": command_id, "name": "Mute"}],
+                "macros": [],
+                "button_bindings": [],
+            }
+        )
+
+    baseline = valid_bundle()
+    _with_device(baseline, 2, 20)
+    _with_device(baseline, 3, 30)
+    baseline["activities"][0]["favorite_slots"].append(
+        {"button_id": 5, "device_id": 2, "command_id": 20, "name": "Mute"}
+    )
+    with pytest.raises(ValueError, match=r"missing power linkage: \[2\]"):
+        validate_hub_bundle_for_model(baseline, hub_version="X1S")
+    validate_hub_bundle_for_model(
+        baseline, hub_version="X1S", grandfather_baseline=baseline
+    )
+
+    # A newly added reference to another unlinked device is still rejected.
+    edited = copy.deepcopy(baseline)
+    edited["activities"][0]["favorite_slots"].append(
+        {"button_id": 6, "device_id": 3, "command_id": 30, "name": "Mute"}
+    )
+    with pytest.raises(ValueError, match=r"missing power linkage: \[3\]"):
+        validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=baseline)
 
 
 def test_collect_missing_command_refs_covers_all_reference_sites():
@@ -350,9 +585,25 @@ def test_collect_missing_command_refs_covers_all_reference_sites():
         {"device_id": 1, "command_id": 97, "duration": 0, "delay": 0xFF}
     )
     assert collect_missing_command_refs(bundle) == {1: {91, 92, 93, 94, 95, 96, 97}}
-    # Power-ref sentinels, delay rows, valid references, and unknown devices
+    # Power-ref sentinels on known devices, delay rows, and valid references
     # are not reported.
     assert collect_missing_command_refs(valid_bundle()) == {}
+
+
+def test_collect_missing_command_refs_covers_unknown_owners_and_chain_targets():
+    bundle = valid_bundle()
+    activity = bundle["activities"][0]
+    # Reference into a device absent from the bundle, a chain step into a
+    # missing macro on another (absent) activity, and a power row on an
+    # unknown device.
+    activity["button_bindings"].append({"button_id": 0xAF, "device_id": 9, "command_id": 5})
+    activity["macros"][0]["steps"].append(
+        {"device_id": 102, "command_id": 7, "duration": 0, "delay": 0xFF}
+    )
+    activity["macros"][1]["steps"].append(
+        {"device_id": 9, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF}
+    )
+    assert collect_missing_command_refs(bundle) == {9: {5, 0xC6}, 102: {7}}
 
 
 def test_invalid_hex_and_byte_overflow_are_rejected():

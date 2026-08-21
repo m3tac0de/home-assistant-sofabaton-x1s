@@ -868,6 +868,8 @@ var TOOLS_CARD_STRINGS_DE = {
     wifiEventsTitle: "Wifi-Events",
     wifiEventsSubtitle: "Ereignisse, die im Aktivit\xE4ten-Editor erstellt wurden. Wird eines davon auf der Fernbedienung gedr\xFCckt, l\xF6st es hier seine Home-Assistant-Aktion aus (aktualisiert auch den Wifi-Commands-Sensor).",
     wifiEventsEmpty: "Noch keine Wifi-Events. Erstelle sie in den Hinzuf\xFCgen-Dialogen des Aktivit\xE4ten-Editors (Verkn\xFCpfungen, Tasten und Makroschritte).",
+    eventsConfiguredPill: (configured, total) => `${configured} von ${total} konfiguriert`,
+    eventsShowUnconfigured: (count) => `${count} nicht konfigurierte${count === 1 ? "s" : ""} anzeigen\u2026`,
     wifiEventRowPress: (name) => `Wenn ${name} gedr\xFCckt wird`,
     wifiEventRowLongPress: "und bei langem Dr\xFCcken",
     wifiEventModalTitle: (name) => `Wenn ${name} gedr\xFCckt wird`,

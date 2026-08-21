@@ -9,11 +9,11 @@ import { LitElement, html, nothing, css, unsafeCSS, type PropertyValues } from "
 import { repeat } from "lit/directives/repeat.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import {
-  DEFAULT_GROUP_ORDER,
   favoritesButtonEnabled,
   macrosButtonEnabled,
   mfAsRows,
   mfRowVisibleRows,
+  normalizedGroupOrder,
 } from "./remote-card-layout";
 import { ensureHaElements } from "./remote-card-compat";
 import {
@@ -26,10 +26,13 @@ import { REMOTE_CARD_CSS } from "./remote-card-styles";
 import { rgbToCss, automationAssistLabelForKey } from "./remote-card-ui-helpers";
 import { runtimeButtonVisibility } from "./remote-card-runtime-display";
 import { drawerVisibilityState } from "./remote-card-drawer-display";
+import { longPressEnabledForKey } from "./remote-card-long-press";
 import {
   DRAWER_DIRECTION_RESET_MS,
+  commandsOverlayMaxHeight,
   drawerDesiredHeight,
   drawerDirection,
+  holdRepeatIndexOf,
   layeringZIndexes,
 } from "./remote-card-gestures";
 import { RemoteCardStore } from "./state/remote-card-store";
@@ -48,10 +51,13 @@ import {
   type KeySpec,
 } from "./sections/key-groups";
 import {
+  renderCommandsDrawer,
+  renderCommandsItems,
   renderDrawerItems,
   renderFavoritesItems,
   renderInlineDrawerRow,
   renderMacroFavorites,
+  type CommandsFilterParams,
   type MacroFavoritesParams,
 } from "./sections/macro-favorites";
 import { renderAssistModal, renderAssistRow } from "./sections/assist";
@@ -78,7 +84,7 @@ export class SofabatonRemoteCard extends LitElement {
   private _drawerUp = false;
   private _drawerResetTimer: ReturnType<typeof setTimeout> | null = null;
   private _drawerContentResetTimer: ReturnType<typeof setTimeout> | null = null;
-  private _closingDrawer: "macros" | "favorites" | null = null;
+  private _closingDrawer: "macros" | "favorites" | "commands" | null = null;
   private _drawerMeasureSignature: string | null = null;
   private _drawerMeasurePending = false;
   private _appliedThemeVars: string[] = [];
@@ -90,6 +96,7 @@ export class SofabatonRemoteCard extends LitElement {
   private _layoutSignatureCache: string | null = null;
   private _layoutOverlayEl: HTMLElement | null = null;
   private _lastLayoutSignature: string | null = null;
+  private _keymapLoading = false;
 
   // Activity select dedupe (legacy handleActivitySelect closure state)
   private _lastSelectedActivityValue: string | null = null;
@@ -107,6 +114,7 @@ export class SofabatonRemoteCard extends LitElement {
   private readonly _mfContainerRef: Ref<HTMLElement> = createRef();
   private readonly _macrosOverlayRef: Ref<HTMLElement> = createRef();
   private readonly _favoritesOverlayRef: Ref<HTMLElement> = createRef();
+  private readonly _commandsOverlayRef: Ref<HTMLElement> = createRef();
   private readonly _macroFavoritesRowRef: Ref<HTMLElement> = createRef();
 
   constructor() {
@@ -200,28 +208,10 @@ export class SofabatonRemoteCard extends LitElement {
   }
 
   static getStubConfig(): RemoteCardConfig {
-    return {
-      entity: "",
-      theme: "",
-      background_override: null,
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_dvr: true,
-      show_colors: true,
-      show_abc: true,
-      show_automation_assist: false,
-      show_macros_button: null,
-      show_favorites_button: null,
-      custom_favorites: [],
-      max_width: 360,
-      shrink: 0,
-      group_order: DEFAULT_GROUP_ORDER.slice() as unknown as string[],
-    };
+    // Minimal on purpose: absent keys mean their defaults everywhere, so the
+    // YAML a fresh card starts with is just the entity. setConfig() layers
+    // the runtime defaults (normalizeRemoteCardConfig) either way.
+    return { entity: "" };
   }
 
   // ---------- lifecycle ----------
@@ -288,7 +278,8 @@ export class SofabatonRemoteCard extends LitElement {
       if (this._store.activeDrawer) {
         const clickedInOverlay =
           (this._macrosOverlayRef.value && path.includes(this._macrosOverlayRef.value)) ||
-          (this._favoritesOverlayRef.value && path.includes(this._favoritesOverlayRef.value));
+          (this._favoritesOverlayRef.value && path.includes(this._favoritesOverlayRef.value)) ||
+          (this._commandsOverlayRef.value && path.includes(this._commandsOverlayRef.value));
         const clickedInToggleRow =
           this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
 
@@ -318,11 +309,11 @@ export class SofabatonRemoteCard extends LitElement {
 
   // ---------- drawers ----------
 
-  private _toggleDrawer(type: "macros" | "favorites"): void {
+  private _toggleDrawer(type: "macros" | "favorites" | "commands"): void {
     this._setActiveDrawer(this._store.activeDrawer === type ? null : type);
   }
 
-  private _retainClosingDrawer(type: "macros" | "favorites"): void {
+  private _retainClosingDrawer(type: "macros" | "favorites" | "commands"): void {
     this._closingDrawer = type;
     if (this._drawerContentResetTimer) clearTimeout(this._drawerContentResetTimer);
     this._drawerContentResetTimer = setTimeout(() => {
@@ -333,7 +324,7 @@ export class SofabatonRemoteCard extends LitElement {
     }, DRAWER_DIRECTION_RESET_MS);
   }
 
-  private _setActiveDrawer(type: "macros" | "favorites" | null): void {
+  private _setActiveDrawer(type: "macros" | "favorites" | "commands" | null): void {
     const previous = this._store.activeDrawer;
     if (previous === type) return;
 
@@ -354,8 +345,10 @@ export class SofabatonRemoteCard extends LitElement {
   private _updateDrawerDirection(): void {
     if (!this._store.activeDrawer) return;
     const row = this._macroFavoritesRowRef.value;
-    const overlay =
-      this._store.activeDrawer === "favorites"
+    const isCommands = this._store.activeDrawer === "commands";
+    const overlay = isCommands
+      ? this._commandsOverlayRef.value
+      : this._store.activeDrawer === "favorites"
         ? this._favoritesOverlayRef.value
         : this._macrosOverlayRef.value;
     if (!row || !overlay) return;
@@ -369,13 +362,29 @@ export class SofabatonRemoteCard extends LitElement {
 
     const nextUp =
       drawerDirection({
-        desired: drawerDesiredHeight(overlay.scrollHeight || 0),
+        // The commands drawer ignores the 350px cap and takes what the
+        // viewport gives it (device-mode-plan.md §4.2).
+        desired: drawerDesiredHeight(
+          overlay.scrollHeight || 0,
+          isCommands ? window.innerHeight : undefined,
+        ),
         rowTop: rowRect.top,
         rowBottom: rowRect.bottom,
         cardTop: cardRect?.top ?? null,
         cardBottom: cardRect?.bottom ?? null,
         viewportHeight: window.innerHeight,
       }) === "up";
+
+    if (isCommands) {
+      overlay.style.maxHeight = `${commandsOverlayMaxHeight({
+        up: nextUp,
+        rowTop: rowRect.top,
+        rowBottom: rowRect.bottom,
+        cardTop: cardRect?.top ?? null,
+        cardBottom: cardRect?.bottom ?? null,
+        viewportHeight: window.innerHeight,
+      })}px`;
+    }
 
     if (nextUp !== this._drawerUp) {
       this._drawerUp = nextUp;
@@ -446,10 +455,58 @@ export class SofabatonRemoteCard extends LitElement {
     });
   }
 
+  /**
+   * Single stable entry point for the activity/device dropdown. The select's
+   * listeners are wired ONCE per node (listenersRef), so the closure they
+   * capture must not bake in the render-time mode — this delegate reads the
+   * mode at event time instead.
+   */
+  private _handleSelect(ev: Event): void {
+    // Mirror deriveRuntimeState's fallback: when the capability drops away
+    // the card renders the activity dropdown even while _mode is "device".
+    const deviceMode =
+      this._store.mode() === "device" && this._store.deviceModeAvailable();
+    if (deviceMode) {
+      this._handleDeviceSelect(ev);
+    } else {
+      this._handleActivitySelect(ev);
+    }
+  }
+
+  private _handleDeviceSelect(ev: Event): void {
+    if (this._editMode) return;
+    const select = ev.target as HTMLElement & { value?: string };
+    const value =
+      (ev as CustomEvent<{ value?: string }>)?.detail?.value ?? select?.value;
+    if (value == null) return;
+
+    // Same 250ms dedupe as the activity select (shared closure state is fine:
+    // only one dropdown is rendered at a time).
+    const now = Date.now();
+    if (
+      String(value) === this._lastSelectedActivityValue &&
+      now - this._lastSelectedActivityAt < 250
+    ) {
+      return;
+    }
+    this._lastSelectedActivityValue = String(value);
+    this._lastSelectedActivityAt = now;
+    this._fireEvent("haptic", "light");
+    const deviceId = String(value) === "" ? null : Number(value);
+    this._store.setDevice(Number.isFinite(deviceId as number) ? deviceId : null);
+  }
+
+  private _handleModeToggle(): void {
+    if (this._editMode) return;
+    this._fireEvent("haptic", "light");
+    this._setActiveDrawer(null);
+    this._store.toggleMode();
+  }
+
   private _syncLoadIndicator(): void {
     this._loadIndicatorRef.value?.classList.toggle(
       "is-loading",
-      this._store.isLoadingActive(),
+      this._store.isLoadingActive() || this._keymapLoading,
     );
   }
 
@@ -664,9 +721,16 @@ export class SofabatonRemoteCard extends LitElement {
     const layoutConfig = derived.layoutConfig as Record<string, unknown>;
     this._lastLayoutSignature = derived.layoutSignature;
 
+    const deviceMode = derived.mode === "device";
+    this._keymapLoading = Boolean(derived.keymapLoading);
+
     // ----- side effects the legacy _update ran on every pass -----
+    // Assist always observes the REAL activity state: in device mode the
+    // derived label is a device name and must not fake activity changes.
     this._assist.observeActivityState({
-      currentLabel: derived.currentLabel,
+      currentLabel: deviceMode
+        ? this._store.currentActivityLabel()
+        : derived.currentLabel,
       activityId: derived.activityId != null ? Number(derived.activityId) : null,
       unavailable: derived.isUnavailable,
     });
@@ -676,48 +740,76 @@ export class SofabatonRemoteCard extends LitElement {
     this._assist.syncMqtt();
 
     const asRows = mfAsRows(layoutConfig);
-    const macrosVisible = macrosButtonEnabled(layoutConfig);
-    const favoritesVisible = favoritesButtonEnabled(layoutConfig);
+    const macrosVisible = !deviceMode && macrosButtonEnabled(layoutConfig);
+    const favoritesVisible = !deviceMode && favoritesButtonEnabled(layoutConfig);
     const macrosRowOn = asRows && macrosVisible;
     const favoritesRowOn = asRows && favoritesVisible;
     const showMacrosBtn = !asRows && macrosVisible;
     const showFavoritesBtn = !asRows && favoritesVisible;
 
-    // Match the legacy disable expression exactly (activity loading, not the
-    // command pulse).
-    const disableAll =
-      derived.isUnavailable ||
-      store.activityLoadingActive() ||
-      (!this._editMode && derived.isPoweredOff);
+    // Device mode: the macro/favorites construct becomes the Commands drawer.
+    const commandsVisible = deviceMode && derived.showCommandsButton;
+    const showCommandsDrawer = commandsVisible && !asRows;
+    const commandsAsRow = commandsVisible && asRows;
 
-    const drawerDisplayState = drawerVisibilityState({
-      activeDrawer: store.activeDrawer,
-      showMacrosButton: showMacrosBtn,
-      showFavoritesButton: showFavoritesBtn,
-      editMode: this._editMode,
-      macros: derived.macros,
-      favorites: derived.favorites,
-      customFavorites: derived.customFavorites,
-      disableAllButtons: disableAll,
-    });
+    // Match the legacy disable expression exactly in activity mode (activity
+    // loading, not the command pulse). Device mode disables only while the
+    // entity is unavailable or no device is selected — device sends are safe
+    // regardless of the hub's activity state.
+    const disableAll = deviceMode
+      ? derived.isUnavailable || (!this._editMode && derived.deviceId == null)
+      : derived.isUnavailable ||
+        store.activityLoadingActive() ||
+        (!this._editMode && derived.isPoweredOff);
 
-    // Drawer forced closed by visibility changes
-    if (drawerDisplayState.closedByVisibility) {
-      if (store.activeDrawer) this._retainClosingDrawer(store.activeDrawer);
+    // Mode switches close any drawer belonging to the other mode.
+    if (
+      (deviceMode &&
+        (store.activeDrawer === "macros" || store.activeDrawer === "favorites")) ||
+      (!deviceMode && store.activeDrawer === "commands")
+    ) {
+      this._retainClosingDrawer(store.activeDrawer!);
       this._scheduleDrawerDirectionReset();
+      store.activeDrawer = null;
     }
-    store.activeDrawer = drawerDisplayState.nextActiveDrawer as
-      | "macros"
-      | "favorites"
-      | null;
+
+    let drawerDisplayState: ReturnType<typeof drawerVisibilityState> | null = null;
+    if (!deviceMode) {
+      drawerDisplayState = drawerVisibilityState({
+        activeDrawer: store.activeDrawer,
+        showMacrosButton: showMacrosBtn,
+        showFavoritesButton: showFavoritesBtn,
+        editMode: this._editMode,
+        macros: derived.macros,
+        favorites: derived.favorites,
+        customFavorites: derived.customFavorites,
+        disableAllButtons: disableAll,
+      });
+
+      // Drawer forced closed by visibility changes
+      if (drawerDisplayState.closedByVisibility) {
+        if (store.activeDrawer) this._retainClosingDrawer(store.activeDrawer);
+        this._scheduleDrawerDirectionReset();
+      }
+      store.activeDrawer = drawerDisplayState.nextActiveDrawer as
+        | "macros"
+        | "favorites"
+        | null;
+    } else if (store.activeDrawer === "commands" && !showCommandsDrawer) {
+      this._retainClosingDrawer("commands");
+      this._scheduleDrawerDirectionReset();
+      store.activeDrawer = null;
+    }
 
     const activeDrawerCount =
       store.activeDrawer === "macros"
         ? derived.macros.length
         : store.activeDrawer === "favorites"
           ? derived.favorites.length + derived.customFavorites.length
-          : 0;
-    const drawerMeasureSignature = `${store.activeDrawer || ""}:${activeDrawerCount}:${derived.layoutSignature}`;
+          : store.activeDrawer === "commands"
+            ? derived.commands.length
+            : 0;
+    const drawerMeasureSignature = `${store.activeDrawer || ""}:${activeDrawerCount}:${derived.commandFilter}:${derived.layoutSignature}`;
     if (this._drawerMeasureSignature !== drawerMeasureSignature) {
       this._drawerMeasureSignature = drawerMeasureSignature;
       this._drawerMeasurePending = Boolean(store.activeDrawer);
@@ -735,21 +827,28 @@ export class SofabatonRemoteCard extends LitElement {
       disableAll,
       editMode: this._editMode,
       isEnabled: (id) => store.isEnabled(id),
-      onKeyPress: (spec) => this._onKeyPress(spec),
+      onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
+      holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,
       showDvr: derived.showDvr,
     };
 
+    const commandsFilter: CommandsFilterParams = {
+      value: derived.commandFilter,
+      placeholder: str().card.filterCommands,
+      onInput: (value) => store.setCommandFilter(value),
+    };
+
     const mfParams: MacroFavoritesParams = {
-      visible: drawerDisplayState.showMF,
+      visible: Boolean(drawerDisplayState?.showMF),
       showMacrosButton: showMacrosBtn,
       showFavoritesButton: showFavoritesBtn,
-      single: drawerDisplayState.visibleCount === 1,
-      macrosDisabled: drawerDisplayState.macrosDisabled,
-      favoritesDisabled: drawerDisplayState.favoritesDisabled,
-      activeDrawer: store.activeDrawer,
+      single: drawerDisplayState?.visibleCount === 1,
+      macrosDisabled: Boolean(drawerDisplayState?.macrosDisabled),
+      favoritesDisabled: Boolean(drawerDisplayState?.favoritesDisabled),
+      activeDrawer: store.activeDrawer === "commands" ? null : store.activeDrawer,
       drawerUp: this._drawerUp,
       macros: derived.macros,
       favorites: derived.favorites,
@@ -792,26 +891,70 @@ export class SofabatonRemoteCard extends LitElement {
       },
     };
 
+    const commandsParams = {
+      visible: showCommandsDrawer,
+      open: store.activeDrawer === "commands",
+      disabled: disableAll,
+      drawerUp: this._drawerUp,
+      commands: derived.commands,
+      renderContent:
+        store.activeDrawer === "commands" || this._closingDrawer === "commands",
+      emptyText: str().card.noCommands,
+      tabLabel: str().card.commandsTab,
+      filter: commandsFilter,
+      onToggle: () => this._toggleDrawer("commands"),
+      onCommand: (command: { command_id: number; name: string }) =>
+        this._onCommandItem(command),
+      containerRef: this._mfContainerRef,
+      rowRef: this._macroFavoritesRowRef,
+      overlayRef: this._commandsOverlayRef,
+    };
+
     const sharedRows = mfRowVisibleRows(layoutConfig);
-    const midEnabled =
-      ((layoutConfig.show_mid as boolean | undefined) ?? true) &&
-      (derived.showVolume || derived.showChannel);
+    // Volume/channel resolve show_mid as their legacy fallback themselves;
+    // the mid row shows whenever either half is visible.
+    const midEnabled = derived.showVolume || derived.showChannel;
     const mediaEnabled = derived.isX2
       ? derived.showMedia || derived.showDvr
       : derived.showMedia;
 
-    const order = store.groupOrderList(derived.activityId);
+    // Order from the resolved layout itself — in device mode the layout came
+    // through the device chain, which store.groupOrderList (activity-keyed)
+    // must not re-resolve.
+    const order = normalizedGroupOrder(layoutConfig.group_order);
     const groupTemplates: Record<string, () => unknown> = {
       activity: () =>
         Boolean(layoutConfig.show_activity) ? renderActivityRow({
           hass: store.hass,
           visible: true,
           unavailable: derived.isUnavailable,
-          options: derived.selectState?.options ?? [],
-          resolvedValue: derived.selectState?.resolvedValue ?? "",
-          disabled: Boolean(derived.selectState?.disabled),
-          loading: store.isLoadingActive(),
-          onSelect: (ev) => this._handleActivitySelect(ev),
+          options: deviceMode
+            ? (derived.deviceSelectState?.options ?? [])
+            : (derived.selectState?.options ?? []),
+          selectLabel: deviceMode
+            ? str().card.deviceSelectLabel
+            : str().card.activitySelectLabel,
+          resolvedValue: deviceMode
+            ? (derived.deviceSelectState?.resolvedValue ?? "")
+            : (derived.selectState?.resolvedValue ?? ""),
+          disabled: deviceMode
+            ? Boolean(derived.deviceSelectState?.disabled)
+            : Boolean(derived.selectState?.disabled),
+          loading: store.isLoadingActive() || Boolean(derived.keymapLoading),
+          modeToggle: derived.deviceModeAvailable
+            ? {
+                // Same icon pair as the control panel's Hub-tab subtabs.
+                icon: deviceMode ? "mdi:audio-video" : "mdi:play-circle-outline",
+                ariaLabel: deviceMode
+                  ? str().card.switchToActivityMode
+                  : str().card.switchToDeviceMode,
+                // Inert in edit mode (the editor's layout selection drives
+                // the previewed mode); rendered so the editor's Device mode
+                // switch is visualized in the preview.
+                onToggle: () => this._handleModeToggle(),
+              }
+            : null,
+          onSelect: (ev) => this._handleSelect(ev),
           onMenuOpened: () => {
             store.activityMenuOpen = true;
             this._syncLayering();
@@ -824,18 +967,41 @@ export class SofabatonRemoteCard extends LitElement {
           loadIndicatorRef: this._loadIndicatorRef,
         }) : nothing,
       macro_favorites: () =>
-        drawerDisplayState.showMF ? renderMacroFavorites(mfParams) : nothing,
+        deviceMode
+          ? showCommandsDrawer
+            ? renderCommandsDrawer(commandsParams)
+            : nothing
+          : drawerDisplayState?.showMF
+            ? renderMacroFavorites(mfParams)
+            : nothing,
       macros_row: () =>
-        macrosRowOn ? renderInlineDrawerRow({
-          kind: "macros",
-          visible: true,
-          visibleRows: sharedRows,
-          items: renderDrawerItems(mfParams, derived.macros, "macros"),
-          itemCount: derived.macros.length,
-          emptyText: str().card.noMacros,
-        }) : nothing,
+        deviceMode
+          ? commandsAsRow
+            ? renderInlineDrawerRow({
+                kind: "commands",
+                visible: true,
+                visibleRows: sharedRows,
+                items: renderCommandsItems({
+                  commands: derived.commands,
+                  onCommand: (command) => this._onCommandItem(command),
+                }),
+                itemCount: derived.commands.length,
+                emptyText: str().card.noCommands,
+                filter: commandsFilter,
+              })
+            : nothing
+          : macrosRowOn
+            ? renderInlineDrawerRow({
+                kind: "macros",
+                visible: true,
+                visibleRows: sharedRows,
+                items: renderDrawerItems(mfParams, derived.macros, "macros"),
+                itemCount: derived.macros.length,
+                emptyText: str().card.noMacros,
+              })
+            : nothing,
       favorites_row: () =>
-        favoritesRowOn ? renderInlineDrawerRow({
+        !deviceMode && favoritesRowOn ? renderInlineDrawerRow({
           kind: "favorites",
           visible: true,
           visibleRows: sharedRows,
@@ -880,20 +1046,47 @@ export class SofabatonRemoteCard extends LitElement {
     `;
   }
 
-  private _onKeyPress(spec: KeySpec): void {
+  private _onKeyPress(spec: KeySpec, ev?: Event): void {
+    const deviceMode = this._store.mode() === "device";
+    const targetDeviceId = deviceMode
+      ? this._store.currentDeviceId()
+      : (this._store.commandTarget(spec.id)?.activity_id ??
+        this._store.currentActivityId());
+    // A hold is one press for Key capture: record it on the first repeat
+    // (the release tap of a hold that repeated is suppressed) and let the
+    // later repeats only send, or every tick would create another
+    // persistent notification.
+    if (holdRepeatIndexOf(ev) <= 1) {
+      this._assist.recordClick({
+        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        commandId: spec.cmd,
+        deviceId: targetDeviceId ?? null,
+        commandType: "assigned",
+        icon: spec.color ? null : spec.icon || null,
+        deviceMode,
+        deviceName: deviceMode
+          ? this._store.deviceNameForId(targetDeviceId)
+          : null,
+      });
+    }
+    this._store.triggerCommandPulse();
+    void this._store.sendCommand(spec.cmd, targetDeviceId);
+  }
+
+  private _onCommandItem(command: { command_id: number; name: string }): void {
+    const deviceId = this._store.currentDeviceId();
+    if (deviceId == null) return;
     this._assist.recordClick({
-      label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
-      commandId: spec.cmd,
-      deviceId: this._store.commandTarget(spec.id)?.activity_id ?? null,
-      commandType: "assigned",
-      icon: spec.color ? null : spec.icon || null,
+      label: command.name,
+      commandId: command.command_id,
+      deviceId,
+      commandType: "favorite",
+      icon: null,
+      deviceMode: true,
+      deviceName: this._store.deviceNameForId(deviceId),
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(
-      spec.cmd,
-      this._store.commandTarget(spec.id)?.activity_id ??
-        this._store.currentActivityId(),
-    );
+    void this._store.sendCommand(command.command_id, deviceId);
   }
 
   protected updated(_changed: PropertyValues): void {

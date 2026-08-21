@@ -16,6 +16,10 @@ export interface AutomationAssistCapture {
   commandType?: string;
   activityId?: number | string | null;
   activityName?: string;
+  /** Captured in the card's device mode: the notification header names the
+   * device and calls the press a Command instead of a Button. */
+  deviceMode?: boolean;
+  deviceName?: string;
 }
 
 export function automationAssistRemoteYaml(
@@ -156,7 +160,9 @@ export function automationAssistNotificationBody(
   const label = capture.label ?? "";
   const eventLabel =
     kind === "button"
-      ? notify.eventButton(label)
+      ? capture.deviceMode
+        ? notify.eventCommand(label)
+        : notify.eventButton(label)
       : kind === "activity"
         ? notify.eventActivity(label)
         : notify.eventOther(label);
@@ -166,7 +172,12 @@ export function automationAssistNotificationBody(
   return [
     "---",
     "",
-    notify.header(activityName, eventLabel),
+    capture.deviceMode
+      ? notify.headerDevice(
+          capture.deviceName || str().assist.unknownDevice,
+          eventLabel,
+        )
+      : notify.header(activityName, eventLabel),
     "",
     "---",
     notify.lovelaceHeading,

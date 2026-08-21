@@ -10,6 +10,12 @@ import {
   str,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../custom_components/sofabaton_x1s/www/src/remote-card-state";
+import { TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import TOOLS_CARD_STRINGS_DE from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
+import TOOLS_CARD_STRINGS_ES from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
+import TOOLS_CARD_STRINGS_FR from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/fr";
+import TOOLS_CARD_STRINGS_NL from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/nl";
+import TOOLS_CARD_STRINGS_ZH_HANS from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/zh-hans";
 import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/ar";
 import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/de";
 import "../../custom_components/sofabaton_x1s/www/src/remote-card-translations/en-gb";
@@ -65,6 +71,59 @@ test("regional codes fall back to the base language", () => {
   setRemoteCardLanguage("en");
 });
 
+test("device cache recovery names the localized Control Panel card and Hub tab", () => {
+  const cases = [
+    ["en", TOOLS_CARD_STRINGS],
+    // The Control Panel has no Arabic overlay, so its visible names fall back to English.
+    ["ar", TOOLS_CARD_STRINGS],
+    ["de", TOOLS_CARD_STRINGS_DE],
+    ["es", TOOLS_CARD_STRINGS_ES],
+    ["fr", TOOLS_CARD_STRINGS_FR],
+    ["nl", TOOLS_CARD_STRINGS_NL],
+    ["zh-Hans", TOOLS_CARD_STRINGS_ZH_HANS],
+  ] as const;
+
+  for (const [locale, panelStrings] of cases) {
+    setRemoteCardLanguage(locale);
+    const message = str().card.deviceKeymapMissing;
+    assert.equal(message.includes(panelStrings.card.pickerName), true, `${locale}: card name`);
+    assert.equal(message.includes(panelStrings.tabs.cache), true, `${locale}: tab name`);
+  }
+
+  setRemoteCardLanguage("en");
+});
+
+test("layout row uses compact activity/device and mode labels", () => {
+  const cases = [
+    ["en", "Activity/device", "Mode switch", "Activity/device selector"],
+    ["ar", "النشاط/الجهاز", "زر تبديل الوضع", "محدِّد النشاط/الجهاز"],
+    ["de", "Aktivität/Gerät", "Modusschalter", "Aktivitäts-/Geräteauswahl"],
+    ["es", "Actividad/dispositivo", "Botón de modo", "Selector de actividad/dispositivo"],
+    ["fr", "Activité/appareil", "Bouton de mode", "Sélecteur d’activité/appareil"],
+    ["nl", "Activiteit/apparaat", "Modusknop", "Activiteits-/apparaatkiezer"],
+    ["zh-Hans", "活动/设备", "模式切换", "活动/设备选择器"],
+  ] as const;
+
+  for (const [locale, selector, modeSwitch, selectorField] of cases) {
+    setRemoteCardLanguage(locale);
+    assert.equal(str().groups.activity, selector, `${locale}: selector`);
+    assert.equal(str().editor.modeToggle, modeSwitch, `${locale}: mode switch`);
+    assert.equal(str().editor.fieldLabels.show_activity, selectorField, `${locale}: selector field`);
+  }
+
+  setRemoteCardLanguage("en");
+});
+
+test("English device-mode labels use Control Panel sentence case", () => {
+  setRemoteCardLanguage("en");
+  assert.equal(str().card.defaultLayout, "Default activity layout");
+  assert.equal(str().card.allDevicesLayout, "Default device layout");
+  assert.equal(str().editor.defaultLayoutOption, "Default activity layout");
+  assert.equal(str().editor.allDevicesOption, "Default device layout");
+  assert.equal(str().editor.enableDeviceMode, "Enable device mode");
+  assert.equal(str().editor.openOnCurrentActivity, "Current activity");
+});
+
 test("MQTT detection modal copy preserves the Sofabaton device meaning in every locale", () => {
   const cases = [
     ["en", "Sofabaton MQTT device detected.", "Don't show this again for this device during this session."],
@@ -97,19 +156,19 @@ test("Arabic and regional Arabic locales select right-to-left direction", () => 
 });
 
 test("layout reset buttons use compact, locally clear labels", () => {
+  // One shared "Reset layout" label: the layout selection scopes what resets.
   const cases = [
-    ["en", "Reset card layout", "Reset layout"],
-    ["nl", "Kaartindeling resetten", "Indeling resetten"],
-    ["de", "Kartenlayout zurücksetzen", "Layout zurücksetzen"],
-    ["fr", "Réinitialiser la carte", "Réinitialiser"],
-    ["es", "Restablecer tarjeta", "Restablecer diseño"],
-    ["ar", "إعادة ضبط البطاقة", "إعادة ضبط التخطيط"],
-    ["zh-Hans", "重置卡片布局", "重置布局"],
+    ["en", "Reset layout"],
+    ["nl", "Indeling resetten"],
+    ["de", "Layout zurücksetzen"],
+    ["fr", "Réinitialiser"],
+    ["es", "Restablecer diseño"],
+    ["ar", "إعادة ضبط التخطيط"],
+    ["zh-Hans", "重置布局"],
   ] as const;
 
-  for (const [locale, cardDefault, defaultLayout] of cases) {
+  for (const [locale, defaultLayout] of cases) {
     setRemoteCardLanguage(locale);
-    assert.equal(str().editor.resetCardDefault, cardDefault, locale);
     assert.equal(str().editor.resetDefaultLayout, defaultLayout, locale);
   }
 
@@ -226,7 +285,7 @@ test("bundled Simplified Chinese translation supports the zh-Hans locale", () =>
     str().assist.createdActivityTriggers(2),
     "已为 X2 → 活动创建 2 个活动触发器",
   );
-  assert.equal(str().editor.resetCardDefault, "重置卡片布局");
+  assert.equal(str().editor.resetDefaultLayout, "重置布局");
   assert.equal(isPoweredOffLabel("已关机"), true);
 
   setRemoteCardLanguage("en");

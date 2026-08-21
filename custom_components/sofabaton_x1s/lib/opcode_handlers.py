@@ -674,14 +674,28 @@ class AckReadyHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         proxy._log.info("[HINT] ACK_READY from hub")
+        # The hub is ready for commands again: release any user commands
+        # held since an externally-applied (MQTT) activity change. When the
+        # gate WAS armed, this ACK_READY belongs to that already-applied
+        # transition, so a powered-off state here is the transition's
+        # result rather than a redundant OFF press.
+        externally_applied = proxy.notify_hub_ready()
         if proxy.can_issue_commands():
             proxy._log.info("[HINT] no proxy client; auto-REQ_ACTIVITIES")
-            if proxy.state.current_activity is None and proxy._activities_catalog_ready:
+            if (
+                proxy.state.current_activity is None
+                and proxy._activities_catalog_ready
+                and not externally_applied
+            ):
                 # Known powered off (not merely state-not-yet-fetched). If the
                 # refreshed state stays off, this ACK_READY was an OFF press
                 # with nothing left to turn off.
                 proxy.flag_pending_redundant_off_check()
-            proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+            if proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities"):
+                # An MQTT push for this same transition may still be on
+                # its way; until the burst lands it must not arm a settle
+                # gate that no later ACK_READY would release.
+                proxy.note_ack_ready_refresh()
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
 
@@ -700,7 +714,11 @@ class AckReadyHandler(BaseFrameHandler):
                     new_id & 0xFF if new_id is not None else None,
                     old_id & 0xFF if old_id is not None else None,
                 )
-            elif new_id is None and proxy._activities_catalog_ready:
+            elif (
+                new_id is None
+                and proxy._activities_catalog_ready
+                and not externally_applied
+            ):
                 # Known powered off and the hint agrees: treat this ACK_READY
                 # as an OFF press with nothing left to turn off.
                 proxy._log.info("[HINT] OFF pressed while hub already powered off")

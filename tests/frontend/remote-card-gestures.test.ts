@@ -1,12 +1,83 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  HOLD_REPEAT_EVENT_TYPE,
+  commandsOverlayMaxHeight,
   createPrimaryActionGate,
   drawerDesiredHeight,
   drawerDirection,
+  holdRepeatIndexOf,
   layeringZIndexes,
   primaryActionGateAllows,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-gestures";
+
+test("holdRepeatIndexOf reads the repeat index only from hold-repeat events", () => {
+  // Node has no CustomEvent constructor with detail in every version; the
+  // helper only looks at type + detail, so a plain object-shaped event works.
+  const repeat = (detail: unknown) =>
+    ({ type: HOLD_REPEAT_EVENT_TYPE, detail }) as unknown as Event;
+  assert.equal(holdRepeatIndexOf(repeat(1)), 1);
+  assert.equal(holdRepeatIndexOf(repeat(4)), 4);
+  assert.equal(holdRepeatIndexOf(repeat("3")), 3);
+  assert.equal(holdRepeatIndexOf(repeat(0)), 0);
+  assert.equal(holdRepeatIndexOf(repeat(undefined)), 0);
+  // Taps, keyboard activations and ha-click are never repeats.
+  assert.equal(holdRepeatIndexOf({ type: "pointerup" } as Event), 0);
+  assert.equal(holdRepeatIndexOf({ type: "click", detail: 2 } as unknown as Event), 0);
+  assert.equal(holdRepeatIndexOf(null), 0);
+  assert.equal(holdRepeatIndexOf(undefined), 0);
+});
+
+test("commands overlay height clamps to the card, never beyond it", () => {
+  // Opening down: space is card bottom minus the row bottom.
+  assert.equal(
+    commandsOverlayMaxHeight({
+      up: false,
+      rowTop: 100,
+      rowBottom: 150,
+      cardTop: 80,
+      cardBottom: 700,
+      viewportHeight: 2000,
+    }),
+    538, // (700 - 150) - 12 — viewport space is irrelevant
+  );
+  // Opening up: space is row top minus the card top.
+  assert.equal(
+    commandsOverlayMaxHeight({
+      up: true,
+      rowTop: 600,
+      rowBottom: 650,
+      cardTop: 100,
+      cardBottom: 700,
+      viewportHeight: 2000,
+    }),
+    488, // (600 - 100) - 12
+  );
+  // The usability floor never exceeds the in-card space itself.
+  assert.equal(
+    commandsOverlayMaxHeight({
+      up: false,
+      rowTop: 100,
+      rowBottom: 150,
+      cardTop: 80,
+      cardBottom: 210,
+      viewportHeight: 2000,
+    }),
+    60, // only 60px of card left below the row: use it all, no 120px floor
+  );
+  // No card bounds: fall back to viewport space.
+  assert.equal(
+    commandsOverlayMaxHeight({
+      up: false,
+      rowTop: 100,
+      rowBottom: 150,
+      cardTop: null,
+      cardBottom: null,
+      viewportHeight: 800,
+    }),
+    638, // (800 - 150) - 12
+  );
+});
 
 test("gate allows the first event and blocks anything within 450ms", () => {
   const gate = createPrimaryActionGate();

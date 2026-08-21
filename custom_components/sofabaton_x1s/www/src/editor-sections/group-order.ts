@@ -17,9 +17,10 @@ import { renderEditorExpander } from "./expander";
 export interface GroupOrderSectionParams {
   hass: HassLike | null;
   expanded: boolean;
-  /** Current layout selection key ("default" or an activity id). */
+  /** Current layout selection key ("default", an activity id, or "device:*"). */
   selection: string;
-  selectionOptions: Array<{ value: string; label: string }>;
+  /** kind "default" styles the two Default entries as section heads. */
+  selectionOptions: Array<{ value: string; label: string; kind?: "default" }>;
   selectionNote: string;
   /** Visible rows of the group-order list, in order. */
   visibleOrder: string[];
@@ -34,12 +35,20 @@ export interface GroupOrderSectionParams {
   channelEnabled: boolean;
   mediaEnabled: boolean;
   dvrEnabled: boolean;
+  /** A device layout ("device:*") is selected: mf rows become Commands. */
+  isDeviceSelection: boolean;
+  commandsEnabled: boolean;
+  /** x1s integration only: the Device mode switch on the activity row. */
+  showDeviceModeSwitch: boolean;
+  deviceModeEnabled: boolean;
   isGroupEnabled: (key: string) => boolean;
   groupLabel: (key: string) => string;
   onToggleExpanded: () => void;
   onSelectLayout: (value: string) => void;
   onSetMacro: (enabled: boolean) => void;
   onSetFavorites: (enabled: boolean) => void;
+  onSetCommands: (enabled: boolean) => void;
+  onSetDeviceMode: (enabled: boolean) => void;
   onSetVolume: (enabled: boolean) => void;
   onSetChannel: (enabled: boolean) => void;
   onSetMedia: (enabled: boolean) => void;
@@ -150,7 +159,10 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
     >
       ${params.selectionOptions.map(
         (option) => staticHtml`
-          <${itemTag} .value=${option.value}>${option.label}</${itemTag}>
+          <${itemTag}
+            class=${option.kind === "default" ? "sb-option-default" : ""}
+            .value=${option.value}
+          >${option.label}</${itemTag}>
         `,
       )}
     </ha-select>
@@ -193,7 +205,11 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
             params.onSetMfAsRows(!!target.checked);
           }}
         ></ha-switch>
-        <div class="sb-layout-switch-label">${str().editor.macrosFavoritesAsRows}</div>
+        <div class="sb-layout-switch-label">
+          ${params.isDeviceSelection
+            ? str().editor.commandsAsRows
+            : str().editor.macrosFavoritesAsRows}
+        </div>
       </div>
       <div
         class="sb-layout-switch-item sb-mf-rows-stepper-item${params.asRows ? "" : " is-disabled"}"
@@ -236,8 +252,28 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
 
   const orderRow = (key: string, index: number): TemplateResult => {
     let cells: TemplateResult | typeof nothing = nothing;
-    if (key === "macro_favorites") {
-      // Keep independent toggles, but one shared move control.
+    if (key === "activity" && params.showDeviceModeSwitch) {
+      // The mode toggle rides on the activity group's row (same pattern as
+      // volume/channel on mid).
+      cells = html`
+        ${renderSwitchItem(params.groupLabel(key), params.isGroupEnabled(key), (val) =>
+          params.onSetGroupEnabled(key, val),
+        )}
+        ${renderSwitchItem(str().editor.modeToggle, params.deviceModeEnabled, params.onSetDeviceMode)}
+      `;
+    } else if (
+      params.isDeviceSelection &&
+      (key === "macro_favorites" || key === "macros_row")
+    ) {
+      // Device layouts: the macro/favorites construct IS the Commands drawer.
+      cells = html`
+        ${renderSwitchItem(str().editor.commands, params.commandsEnabled, params.onSetCommands)}
+        ${emptySlot}
+      `;
+    } else if (key === "macro_favorites") {
+      // Keep independent toggles, but one shared move control. (The layout
+      // selector doubles as the editor's own activity/device mode: activity
+      // selections show Macros/Favorites, device selections show Commands.)
       cells = html`
         ${renderSwitchItem(str().editor.macros, params.macroEnabled, params.onSetMacro)}
         ${renderSwitchItem(str().editor.favorites, params.favoritesEnabled, params.onSetFavorites)}
@@ -321,9 +357,7 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
             params.onResetGroupOrder();
           }}
         >
-          ${params.selection === "default"
-            ? str().editor.resetCardDefault
-            : str().editor.resetDefaultLayout}
+          ${str().editor.resetDefaultLayout}
         </button>
       </div>
     </div>

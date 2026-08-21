@@ -83,6 +83,8 @@ When using this integration's [Wifi Commands or Wifi Events](wifi_commands.md), 
 
 Wifi Devices deployed over [MQTT](wifi_commands.md#mqtt-setup-on-x2) do not use the integration's HTTP listener on port `8060`. The path is hub → MQTT broker → Home Assistant's MQTT integration. The network must allow both the hub and Home Assistant to reach the broker (default TCP `1883`); when the broker runs on the Home Assistant host, this usually means allowing inbound broker traffic from the hub. Cross-subnet setups therefore still need the appropriate firewall or VLAN rule towards the broker. The hub's broker settings are configured in the Sofabaton app; the integration subscribes through the Home Assistant MQTT integration. Security-wise the broker's own authentication and ACLs are the boundary: anyone who can publish to the hub's press topic can trigger the configured Actions.
 
+On X2, whenever Home Assistant's MQTT integration is loaded, the integration also subscribes to the hub's Activity state topic (`activity/<MAC>/activity_control_up`) through the same broker. Activity changes made on the remote then reach Home Assistant over MQTT before the direct connection confirms them, and the integration holds commands it sends right after such a change until the hub reports ready (at most 60 seconds). The same trust note applies: a client that can publish to that topic can change the integration's Activity state and fire Activity-based automations until the direct connection corrects it.
+
 ### Firewall rules to allow
 
 - mDNS/Bonjour from hub → Home Assistant (or mDNS forwarded across VLANs).

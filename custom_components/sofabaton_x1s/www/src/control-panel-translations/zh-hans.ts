@@ -417,6 +417,8 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiEventsTitle: "Wifi 事件",
     wifiEventsSubtitle: "在活动编辑器中创建的事件。按下遥控器按键会在此触发 Home Assistant 动作，并更新 Wifi Commands 传感器。",
     wifiEventsEmpty: "暂无 Wifi 事件。请在活动编辑器的添加对话框中创建（快捷项、按键或宏步骤）。",
+    eventsConfiguredPill: (configured: number, total: number) => `已配置 ${configured}/${total}`,
+    eventsShowUnconfigured: (count: number) => `显示 ${count} 个未配置项…`,
     wifiEventRowPress: (name: string) => `按下“${name}”时`,
     wifiEventRowLongPress: "以及长按时",
     wifiEventModalTitle: (name: string) => `按下“${name}”时`,

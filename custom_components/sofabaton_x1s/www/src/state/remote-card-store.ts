@@ -12,10 +12,16 @@ import {
   DEFAULT_GROUP_ORDER,
   LAYOUT_KEYS,
   channelGroupEnabled,
+  commandsButtonEnabled,
+  deviceLayoutKey,
+  deviceModeEnabledInConfig,
+  deviceToggleEnabled,
   dvrGroupEnabled,
   favoritesButtonEnabled,
   layoutConfigForActivity,
+  layoutConfigForDevice,
   macrosButtonEnabled,
+  openDeviceFromConfig,
   mediaGroupEnabled,
   normalizedGroupOrder,
   volumeGroupEnabled,
@@ -25,13 +31,19 @@ import {
   activityNameForId,
   currentActivityIdFromRemote,
   currentActivityLabelFromRemote,
+  deviceNameForId,
+  devicesFromRemote,
   enabledButtonsSignature,
   isActivityOn,
   isPoweredOffLabel,
   previewSelection,
   resolveHubActivityData,
 } from "../remote-card-state";
-import { buildActivitySelectState, noActivitiesWarning } from "../remote-card-activity-state";
+import {
+  buildActivitySelectState,
+  buildDeviceSelectState,
+  noActivitiesWarning,
+} from "../remote-card-activity-state";
 import {
   basicDataRequestKey,
   enqueueHubCommand,
@@ -64,7 +76,11 @@ import {
   stableJsonSignature,
   writePreviewActivity,
 } from "../remote-card-shared";
-import type { HassLike, RemoteCardConfig } from "../remote-card-types";
+import type {
+  DeviceKeymapResponse,
+  HassLike,
+  RemoteCardConfig,
+} from "../remote-card-types";
 
 export interface RemoteCardStoreHost {
   /** DOM event dispatch for haptic / hass-more-info / ll-custom / location events. */
@@ -85,6 +101,22 @@ export interface EnabledButtonEntry {
   activity_id: unknown;
 }
 
+export type RemoteCardMode = "activity" | "device";
+
+/**
+ * Per-device keymap cache entry. The remote card never invalidates cache
+ * (that is the control panel's job) — entries live for the card element's
+ * lifetime and a stale keymap resolves on the next card load.
+ */
+export interface DeviceKeymapEntry {
+  status: "loading" | "ready" | "cache_miss" | "error";
+  /** Enabled button codes (bindings ∪ REQ_BUTTONS list). */
+  buttons: number[];
+  commands: Array<{ command_id: number; name: string }>;
+}
+
+const LAST_DEVICE_STORAGE_PREFIX = "sofabaton-remote:last-device:";
+
 export function normalizeRemoteCardConfig(
   config: RemoteCardConfig,
 ): RemoteCardConfig {
@@ -94,8 +126,9 @@ export function normalizeRemoteCardConfig(
     show_dpad: true,
     show_nav: true,
     show_mid: true,
-    show_volume: true,
-    show_channel: true,
+    // Do not materialize the split volume/channel defaults here. Their
+    // resolvers already default to true, and absence is what lets released
+    // `show_mid` configs remain a read-side fallback.
     show_media: true,
     show_dvr: true,
     show_colors: true,
@@ -159,8 +192,16 @@ export class RemoteCardStore {
   private previewState: { activityId: number | null; poweredOff?: boolean } | null =
     null;
 
+  // Device mode (docs/internal/device-mode-plan.md) — transient UI state,
+  // never card config; the card always starts in activity mode.
+  private _mode: RemoteCardMode = "activity";
+  private _deviceId: number | null = null;
+  private deviceKeymaps: Record<string, DeviceKeymapEntry> = {};
+  private initialViewApplied = false;
+  commandFilter = "";
+
   // Drawer / menu UI state (direction math stays in the element)
-  activeDrawer: "macros" | "favorites" | null = null;
+  activeDrawer: "macros" | "favorites" | "commands" | null = null;
   activityMenuOpen = false;
 
   // Update gating
@@ -202,6 +243,8 @@ export class RemoteCardStore {
 
     this.activeDrawer = null;
     this.activityMenuOpen = false;
+    // Re-evaluate the configured opening view whenever config changes.
+    this.initialViewApplied = false;
     this.invalidateFingerprint();
     this.onChange();
   }
@@ -260,6 +303,9 @@ export class RemoteCardStore {
     const themeDef = themeName ? themes?.themes?.[themeName] : null;
     const themeMode = themes?.darkMode ? "dark" : "light";
 
+    const keymapEntry =
+      this._deviceId != null ? this.deviceKeymaps[String(this._deviceId)] : null;
+
     return [
       entityId,
       String(remote?.state ?? ""),
@@ -268,6 +314,7 @@ export class RemoteCardStore {
       String(attrs?.load_state ?? ""),
       String(attrs?.hub_version ?? ""),
       stableJsonSignature(attrs?.activities),
+      stableJsonSignature(attrs?.devices),
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
@@ -278,6 +325,11 @@ export class RemoteCardStore {
       this._editMode ? "1" : "0",
       String(this.previewActivity ?? ""),
       this.integrationDomain || "",
+      this._mode,
+      String(this._deviceId ?? ""),
+      keymapEntry
+        ? `${keymapEntry.status}:${keymapEntry.buttons.length}:${keymapEntry.commands.length}`
+        : "",
     ].join("|");
   }
 
@@ -299,6 +351,11 @@ export class RemoteCardStore {
       this.hubMacrosCache = null;
       this.hubFavoritesCache = null;
       this.x2LastFetchedActivityId = null;
+      this._mode = "activity";
+      this._deviceId = null;
+      this.deviceKeymaps = {};
+      this.commandFilter = "";
+      this.initialViewApplied = false;
     }
 
     if (this.integrationEntityId === entityId && this.integrationDomain) return;
@@ -336,6 +393,203 @@ export class RemoteCardStore {
 
   supportsUnicodeCommandNames(): boolean {
     return supportsUnicodeCommandNames(this.hubVersion(), this.isHubIntegration());
+  }
+
+  // ---------- device mode ----------
+
+  mode(): RemoteCardMode {
+    return this._mode;
+  }
+
+  currentDeviceId(): number | null {
+    return this._deviceId;
+  }
+
+  devices(): Array<{ id: number; name: string; device_class?: string }> {
+    return devicesFromRemote(this.remoteState());
+  }
+
+  deviceNameForId(deviceId: unknown): string | null {
+    return deviceNameForId(this.devices(), deviceId) || null;
+  }
+
+  /**
+   * Device mode capability: x1s integration only (the official
+   * sofabaton_hub integration has no device keymap path), the
+   * device_mode.enabled master switch (absent = on), and a non-empty
+   * `devices` attribute (published only while the persistent cache is
+   * enabled). The show_device_toggle layout switch is deliberately NOT
+   * part of this: it only hides the toggle BUTTON (which may strand the
+   * user in one mode by design), never the mode itself.
+   */
+  deviceModeAvailable(): boolean {
+    if (String(this.integrationDomain || "") !== "sofabaton_x1s") return false;
+    if (!deviceModeEnabledInConfig(this._config)) return false;
+    return this.devices().length > 0;
+  }
+
+  /**
+   * Apply the configured opening view once per config: device_mode
+   * .open_device puts the card in device mode on that device. Retries until
+   * the capability resolves (integration probe + devices attribute are
+   * async).
+   */
+  private maybeApplyInitialView(): void {
+    if (this.initialViewApplied) return;
+    const openDevice = openDeviceFromConfig(this._config);
+    if (openDevice == null) {
+      this.initialViewApplied = true;
+      return;
+    }
+    if (!this.deviceModeAvailable()) return;
+    this.initialViewApplied = true;
+    const id = Number(openDevice);
+    if (!this.devices().some((device) => device.id === id)) return;
+    this._mode = "device";
+    this._deviceId = id;
+    void this.ensureDeviceKeymap(id);
+  }
+
+  setMode(next: RemoteCardMode): void {
+    if (this._mode === next) return;
+    this._mode = next;
+    this.activeDrawer = null;
+    this.commandFilter = "";
+    if (next === "device") {
+      // Typical use: returning to the same device to find a command not yet
+      // in an activity — restore the last opened device when it still exists.
+      const remembered = this.readLastDevice();
+      const devices = this.devices();
+      this._deviceId =
+        remembered != null && devices.some((device) => device.id === remembered)
+          ? remembered
+          : null;
+      if (this._deviceId != null) void this.ensureDeviceKeymap(this._deviceId);
+    }
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+
+  toggleMode(): void {
+    this.setMode(this._mode === "device" ? "activity" : "device");
+  }
+
+  setDevice(deviceId: number | null): void {
+    const next =
+      deviceId != null && Number.isFinite(Number(deviceId)) ? Number(deviceId) : null;
+    if (this._deviceId === next) return;
+    this._deviceId = next;
+    this.commandFilter = "";
+    this.writeLastDevice(next);
+    if (next != null) void this.ensureDeviceKeymap(next);
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+
+  setCommandFilter(value: string): void {
+    this.commandFilter = String(value ?? "");
+    this.onChange();
+  }
+
+  deviceKeymapState(deviceId: number | null = this._deviceId): DeviceKeymapEntry | null {
+    if (deviceId == null) return null;
+    return this.deviceKeymaps[String(deviceId)] ?? null;
+  }
+
+  /** Commands for the current device, filtered and alphabetically sorted. */
+  filteredCommands(): Array<{ command_id: number; name: string }> {
+    const entry = this.deviceKeymapState();
+    if (!entry || entry.status !== "ready") return [];
+    return this.filterAndSortCommands(entry.commands);
+  }
+
+  /**
+   * Fetch one device's keymap from the backend cache projection. Single
+   * fetch per device per card lifetime — the remote card never invalidates
+   * cache (control panel owns cache management).
+   */
+  async ensureDeviceKeymap(deviceId: number): Promise<void> {
+    const key = String(deviceId);
+    if (this.deviceKeymaps[key]) return;
+    if (!this._hass?.callWS) return;
+    const entryId = String(
+      (this.remoteState()?.attributes as Record<string, unknown> | undefined)
+        ?.entry_id ?? "",
+    );
+    if (!entryId) return;
+
+    this.deviceKeymaps[key] = { status: "loading", buttons: [], commands: [] };
+    try {
+      const response = await this._hass.callWS<DeviceKeymapResponse>({
+        type: "sofabaton_x1s/device/keymap",
+        entry_id: entryId,
+        device_id: deviceId,
+      });
+      const keymap = response?.keymap;
+      if (!keymap) {
+        this.deviceKeymaps[key] = {
+          status: "cache_miss",
+          buttons: [],
+          commands: [],
+        };
+      } else {
+        // REQ_BUTTONS is authoritative for the enabled set; bindings add any
+        // button that carries a real command target.
+        const buttons = new Set<number>(
+          (Array.isArray(keymap.buttons) ? keymap.buttons : []).map((code) =>
+            Number(code),
+          ),
+        );
+        for (const binding of Array.isArray(keymap.bindings) ? keymap.bindings : []) {
+          if (Number(binding?.command_id)) buttons.add(Number(binding.button_id));
+        }
+        this.deviceKeymaps[key] = {
+          status: "ready",
+          buttons: [...buttons].filter((code) => Number.isFinite(code)),
+          commands: (Array.isArray(keymap.commands) ? keymap.commands : [])
+            .map((command) => ({
+              command_id: Number(command?.command_id),
+              name: String(command?.name ?? ""),
+            }))
+            .filter((command) => Number.isFinite(command.command_id) && command.name),
+        };
+      }
+    } catch (_err) {
+      this.deviceKeymaps[key] = { status: "error", buttons: [], commands: [] };
+    }
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+
+  private lastDeviceStorageKey(): string | null {
+    const entity = String(this._config?.entity || "");
+    return entity ? `${LAST_DEVICE_STORAGE_PREFIX}${entity}` : null;
+  }
+
+  private readLastDevice(): number | null {
+    const key = this.lastDeviceStorageKey();
+    if (!key || typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage?.getItem(key);
+      const id = raw == null ? NaN : Number(raw);
+      return Number.isFinite(id) ? id : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  private writeLastDevice(deviceId: number | null): void {
+    const key = this.lastDeviceStorageKey();
+    if (!key || typeof window === "undefined") return;
+    try {
+      if (deviceId == null) {
+        window.localStorage?.removeItem(key);
+      } else {
+        window.localStorage?.setItem(key, String(deviceId));
+      }
+    } catch (_err) {
+      /* storage unavailable — the placeholder is the fallback */
+    }
   }
 
   // ---------- basic state helpers ----------
@@ -401,10 +655,13 @@ export class RemoteCardStore {
     return normalizedGroupOrder(layout?.group_order);
   }
 
-  layoutSignature(activityId: unknown, layoutConfig: Record<string, unknown>): string {
-    const order = this.groupOrderList(activityId);
+  layoutSignature(layoutKey: unknown, layoutConfig: Record<string, unknown>): string {
+    // Order comes from the resolved layout itself: layoutKey may be an
+    // activity id OR a namespaced device key ("device:8"), which must not be
+    // routed through the activity resolution chain.
+    const order = normalizedGroupOrder(layoutConfig?.group_order);
     const parts = [
-      `activity:${activityId ?? "off"}`,
+      `activity:${layoutKey ?? "off"}`,
       `order:${order.join(",")}`,
     ];
     for (const key of LAYOUT_KEYS) {
@@ -448,6 +705,13 @@ export class RemoteCardStore {
   }
 
   isEnabled(id: unknown): boolean {
+    if (this._mode === "device") {
+      const entry = this.deviceKeymapState();
+      // Fail open only while no fetch has ever succeeded; an empty button
+      // list on real data genuinely means "nothing bound" (fail closed).
+      if (!entry || entry.status !== "ready") return true;
+      return entry.buttons.includes(Number(id));
+    }
     const enabled = this.enabledButtons();
     if (this.enabledButtonsInvalid) return true;
     if (!enabled.length) return true; // fail-open
@@ -754,8 +1018,16 @@ export class RemoteCardStore {
     if (this._editMode) return;
     if (!this._hass || !this._config?.entity) return;
 
-    // If deviceId isn't provided, fall back to enabled_buttons override (activity_id) or current_activity_id
-    const resolvedDevice = this.resolveCommandDeviceId(commandId, deviceId);
+    // Device mode scopes every send to the selected device; activity mode
+    // falls back to the enabled_buttons override (activity_id) or
+    // current_activity_id.
+    const resolvedDevice =
+      this._mode === "device"
+        ? deviceId != null && Number.isFinite(Number(deviceId))
+          ? Number(deviceId)
+          : this._deviceId
+        : this.resolveCommandDeviceId(commandId, deviceId);
+    if (this._mode === "device" && resolvedDevice == null) return;
 
     // Hub uses a different command payload
     if (this.isHubIntegration()) {
@@ -887,8 +1159,34 @@ export class RemoteCardStore {
     const activities = this.activities();
     const preview = this.previewSelectionState(activities);
     this.previewState = preview;
+    this.maybeApplyInitialView();
+
+    // Mode: edit previews force it (the editor's layout selection decides);
+    // live mode follows the toggle, falling back to activity mode when the
+    // capability disappears (device mode disabled, cache off, entity swap).
+    let mode: RemoteCardMode = preview
+      ? preview.mode === "device"
+        ? "device"
+        : "activity"
+      : this._mode;
+    if (mode === "device" && !preview && !this.deviceModeAvailable()) {
+      mode = "activity";
+    }
+
     const activityId = preview ? preview.activityId : this.currentActivityId();
-    const layoutConfig = layoutConfigForActivity(this._config, activityId);
+    const deviceId =
+      mode === "device" ? (preview ? (preview.deviceId ?? null) : this._deviceId) : null;
+    const layoutConfig =
+      mode === "device"
+        ? layoutConfigForDevice(this._config, deviceId)
+        : layoutConfigForActivity(this._config, activityId);
+
+    // Device keymap: single fetch per device per card lifetime (cache-first
+    // backend projection; the card never invalidates).
+    if (mode === "device" && deviceId != null && !this.deviceKeymapState(deviceId)) {
+      void this.ensureDeviceKeymap(deviceId);
+    }
+    const keymapEntry = mode === "device" ? this.deviceKeymapState(deviceId) : null;
 
     const isUnavailable = remote?.state === "unavailable";
     const attrs = (remote?.attributes ?? {}) as Record<string, unknown>;
@@ -956,10 +1254,22 @@ export class RemoteCardStore {
     const pendingExpired = pendingAge != null && pendingAge > 15000;
 
     let selectState: ReturnType<typeof buildActivitySelectState> | null = null;
+    let deviceSelectState: ReturnType<typeof buildDeviceSelectState> | null = null;
     let isPoweredOff = false;
     let currentLabel = "";
     if (isUnavailable) {
       this.stopActivityLoading(false);
+    } else if (mode === "device") {
+      deviceSelectState = buildDeviceSelectState({
+        editMode: this._editMode,
+        preview,
+        devices: this.devices(),
+        currentDeviceId: deviceId,
+      });
+      currentLabel = deviceId != null ? (this.deviceNameForId(deviceId) ?? "") : "";
+      // Powered-off is an activity concept: device mode works regardless of
+      // the hub's activity state (that is its point).
+      isPoweredOff = false;
     } else {
       selectState = buildActivitySelectState({
         editMode: this._editMode,
@@ -992,6 +1302,27 @@ export class RemoteCardStore {
     const showMedia = mediaGroupEnabled(layoutConfig);
     const showDvr = dvrGroupEnabled(layoutConfig);
 
+    // Toggle visibility: capability plus the show_device_toggle flag read
+    // from the layout being RENDERED. In device mode that is the device
+    // layout — hiding the toggle there strands the user in device mode by
+    // design (the Mode toggle switch is per-layout and honest about it).
+    const deviceModeAvailable =
+      this.deviceModeAvailable() && deviceToggleEnabled(layoutConfig);
+
+    const layoutKey = mode === "device" ? deviceLayoutKey(deviceId) : activityId;
+    const commands =
+      keymapEntry?.status === "ready"
+        ? this.filterAndSortCommands(keymapEntry.commands)
+        : [];
+    const deviceNotice =
+      mode !== "device"
+        ? ""
+        : keymapEntry?.status === "cache_miss"
+          ? str().card.deviceKeymapMissing
+          : keymapEntry?.status === "error"
+            ? str().card.deviceKeymapError
+            : "";
+
     return {
       remote,
       isUnavailable,
@@ -999,13 +1330,22 @@ export class RemoteCardStore {
       activities,
       preview,
       activityId,
+      mode,
+      deviceId,
+      keymapEntry,
+      keymapLoading: keymapEntry?.status === "loading",
+      commands,
+      commandFilter: this.commandFilter,
+      showCommandsButton: commandsButtonEnabled(layoutConfig),
+      deviceModeAvailable,
       layoutConfig,
-      layoutSignature: this.layoutSignature(activityId, layoutConfig as Record<string, unknown>),
+      layoutSignature: this.layoutSignature(layoutKey, layoutConfig as Record<string, unknown>),
       macros: resolvedHubData.macros,
       favorites: resolvedHubData.favorites,
       customFavorites: this.customFavorites(),
       rawAssignedKeys,
       selectState,
+      deviceSelectState,
       currentLabel,
       isPoweredOff,
       isX2: this.isX2(),
@@ -1013,7 +1353,22 @@ export class RemoteCardStore {
       showChannel,
       showMedia,
       showDvr,
-      noActivitiesMessage: noActivitiesWarning(isUnavailable, activities.length, loadState),
+      noActivitiesMessage:
+        mode === "device"
+          ? deviceNotice
+          : noActivitiesWarning(isUnavailable, activities.length, loadState),
     };
+  }
+
+  private filterAndSortCommands(
+    commands: Array<{ command_id: number; name: string }>,
+  ): Array<{ command_id: number; name: string }> {
+    const needle = this.commandFilter.trim().toLowerCase();
+    const filtered = needle
+      ? commands.filter((command) => command.name.toLowerCase().includes(needle))
+      : commands;
+    return [...filtered].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
   }
 }

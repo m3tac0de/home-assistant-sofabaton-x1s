@@ -581,9 +581,124 @@ var LAYOUT_KEYS = [
   "show_abc",
   "show_macros_button",
   "show_favorites_button",
+  "show_device_toggle",
   "mf_as_rows",
   "mf_row_visible_rows"
 ];
+var DEVICE_LAYOUT_PREFIX = "device:";
+var DEVICE_DEFAULT_LAYOUT_KEY = "device:default";
+function deviceLayoutKey(deviceId) {
+  return `${DEVICE_LAYOUT_PREFIX}${deviceId == null ? "default" : String(deviceId)}`;
+}
+function isDeviceLayoutKey(selection) {
+  return typeof selection === "string" && selection.startsWith(DEVICE_LAYOUT_PREFIX);
+}
+function parseDeviceLayoutKey(selection) {
+  if (!isDeviceLayoutKey(selection)) return null;
+  const rest = String(selection).slice(DEVICE_LAYOUT_PREFIX.length);
+  const id = Number(rest);
+  return Number.isFinite(id) ? id : null;
+}
+var DEVICE_LAYOUT_KEYS = [
+  "group_order",
+  "show_activity",
+  "show_dpad",
+  "show_nav",
+  "show_volume",
+  "show_channel",
+  "show_media",
+  "show_dvr",
+  "show_colors",
+  "show_abc",
+  "show_commands_button",
+  "show_device_toggle",
+  "c_as_rows",
+  "c_row_visible_rows"
+];
+var DEVICE_STORED_KEY_FOR = {
+  mf_as_rows: "c_as_rows",
+  mf_row_visible_rows: "c_row_visible_rows"
+};
+var DEVICE_INTERNAL_KEY_FOR = Object.fromEntries(
+  Object.entries(DEVICE_STORED_KEY_FOR).map(([internal, stored]) => [stored, internal])
+);
+var DEVICE_LAYOUT_KEY_SET = new Set(DEVICE_LAYOUT_KEYS);
+function deviceModeBlock(config) {
+  const block = config?.device_mode;
+  return block && typeof block === "object" ? block : null;
+}
+function deviceModeEnabledInConfig(config) {
+  return deviceModeBlock(config)?.enabled !== false;
+}
+function openDeviceFromConfig(config) {
+  const value = deviceModeBlock(config)?.open_device;
+  if (value == null) return null;
+  const id = Number(value);
+  return Number.isFinite(id) ? id : null;
+}
+function storedDeviceLayer(config, layerKey) {
+  const layouts = deviceModeBlock(config)?.layouts;
+  const layer = layouts && typeof layouts === "object" ? layouts[layerKey] : null;
+  return layer && typeof layer === "object" ? layer : null;
+}
+function resolveStoredDeviceLayer(layer) {
+  const resolved = {};
+  if (!layer || typeof layer !== "object") return resolved;
+  for (const [key, value] of Object.entries(layer)) {
+    if (!DEVICE_LAYOUT_KEY_SET.has(key)) continue;
+    resolved[DEVICE_INTERNAL_KEY_FOR[key] ?? key] = value;
+  }
+  return resolved;
+}
+function toStoredDeviceLayer(layer) {
+  const stored = {};
+  for (const [key, value] of Object.entries(layer)) {
+    stored[DEVICE_STORED_KEY_FOR[key] ?? key] = value;
+  }
+  return stored;
+}
+var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
+  show_activity: true,
+  show_dpad: true,
+  show_nav: true,
+  show_mid: true,
+  show_volume: true,
+  show_channel: true,
+  show_media: true,
+  show_dvr: true,
+  show_colors: true,
+  show_abc: true,
+  show_commands_button: true,
+  show_device_toggle: true,
+  mf_as_rows: false,
+  mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
+});
+function layoutConfigForDevice(config, deviceId) {
+  let merged = {
+    ...DEVICE_LAYOUT_DEFAULTS,
+    ...resolveStoredDeviceLayer(storedDeviceLayer(config, "default"))
+  };
+  if (deviceId != null) {
+    merged = {
+      ...merged,
+      ...resolveStoredDeviceLayer(storedDeviceLayer(config, String(deviceId)))
+    };
+  }
+  return merged;
+}
+function commandsButtonEnabled(layout) {
+  if (typeof layout?.show_commands_button === "boolean") {
+    return layout.show_commands_button;
+  }
+  return true;
+}
+function deviceToggleEnabled(layout) {
+  if (typeof layout?.show_device_toggle === "boolean") {
+    return layout.show_device_toggle;
+  }
+  return true;
+}
 function layoutBaseConfig(config) {
   const base = {};
   if (!config || typeof config !== "object") return base;
@@ -760,12 +875,23 @@ var REMOTE_CARD_STRINGS_EN = {
     noActivitiesWarning: "No activities found in remote attributes.",
     noMacros: "No macros available",
     noFavorites: "No favorites available",
+    noCommands: "No commands available",
     macrosTab: "Macros >",
     favoritesTab: "Favorites >",
+    commandsTab: "Commands >",
     activitySelectLabel: "Activity",
+    deviceSelectLabel: "Device",
+    selectDevice: "Select device",
+    allDevicesLayout: "Default device layout",
+    filterCommands: "Filter commands",
+    switchToDeviceMode: "Switch to device mode",
+    switchToActivityMode: "Switch to activity mode",
+    deviceKeymapMissing: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    deviceKeymapError: "Could not load this device's commands.",
     poweredOff: "Powered Off",
-    defaultLayout: "Default Layout",
+    defaultLayout: "Default activity layout",
     activityFallback: (id) => `Activity ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
     pickerName: "Sofabaton Virtual Remote",
     pickerDescription: "A configurable remote for the Sofabaton X1, X1S and X2 integration."
   },
@@ -803,9 +929,11 @@ var REMOTE_CARD_STRINGS_EN = {
     notification: {
       title: "\u{1F6E0}\uFE0F Automation Assist",
       eventButton: (label) => `Button: ${label}`,
+      eventCommand: (label) => `Command: ${label}`,
       eventActivity: (label) => `Activity Change: ${label}`,
       eventOther: (label) => `Event: ${label}`,
       header: (activityName, eventLabel) => `**Activity: ${activityName} | ${eventLabel}**`,
+      headerDevice: (deviceName, eventLabel) => `**Device: ${deviceName} | ${eventLabel}**`,
       lovelaceHeading: "\u{1F4CB} **Lovelace Button Code**",
       lovelaceCopy: "*Copy this to your Dashboard YAML:*",
       serviceHeading: "\u2699\uFE0F **Service Call (Automation)**",
@@ -818,7 +946,7 @@ var REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select Background Color",
-      show_activity: "Activity Selector",
+      show_activity: "Activity/device selector",
       show_dpad: "Direction Pad",
       show_nav: "Back/Home/Menu Keys",
       show_mid: "Volume/Channel Rockers",
@@ -830,7 +958,7 @@ var REMOTE_CARD_STRINGS_EN = {
       max_width: "Maximum Card Width (px)",
       group_order: "Group Order"
     },
-    automationAssistTitle: "Automation Assist",
+    generalOptionsTitle: "General Options",
     keyCapture: "Key capture",
     keyCaptureDescription: "Send button presses to the hub: capture them to generate ready-to-use YAML for dashboard buttons and automations.",
     keyCaptureLearnMore: "Learn more about Key capture",
@@ -838,8 +966,20 @@ var REMOTE_CARD_STRINGS_EN = {
     stylingOptions: "Styling Options",
     layoutOptions: "Layout Options",
     layoutSelectLabel: "Layout",
-    defaultLayoutOption: "Default layout",
+    defaultLayoutOption: "Default activity layout",
+    allDevicesOption: "Default device layout",
+    commands: "Commands",
+    modeToggle: "Mode switch",
+    deviceModeDescription: "Control one device configured on the hub, using that device's button bindings and complete command list.",
+    longPress: "Enable hold-to-repeat",
+    longPressDescription: "Hold a selected button to send its command repeatedly, as on the physical remote.",
+    longPressButtons: "Buttons",
+    enableDeviceMode: "Enable device mode",
+    initialView: "Initial view",
+    initialViewHelper: "What the card shows when it loads",
+    openOnCurrentActivity: "Current activity",
     macrosFavoritesAsRows: "Macros/Favorites as rows",
+    commandsAsRows: "Commands as rows",
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
     moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
@@ -849,14 +989,16 @@ var REMOTE_CARD_STRINGS_EN = {
     channel: "Channel",
     mediaControls: "Media Controls",
     dvr: "DVR",
-    resetCardDefault: "Reset card layout",
     resetDefaultLayout: "Reset layout",
     noteDefaultLayout: "Used for activities without their own layout",
-    noteCustomLayout: "Using custom layout",
-    noteUsingDefault: "Using default layout"
+    noteDeviceDefaultLayout: "Used for devices without their own layout",
+    noteCustomActivityLayout: "Using custom activity layout",
+    noteCustomDeviceLayout: "Using custom device layout",
+    noteUsingActivityDefault: "Using default activity layout",
+    noteUsingDeviceDefault: "Using default device layout"
   },
   groups: {
-    activity: "Activity Selector",
+    activity: "Activity/device",
     macro_favorites: "Macros/Favorites",
     macros_row: "Macros Row",
     favorites_row: "Favorites Row",
@@ -959,7 +1101,14 @@ function isLocalizedPoweredOffLabel(label) {
 }
 
 // custom_components/sofabaton_x1s/www/src/remote-card-editor-layout.ts
+function deviceStoredLayerKey(selection) {
+  const id = parseDeviceLayoutKey(selection);
+  return id == null ? "default" : String(id);
+}
 function layoutHasCustomOverride(config, selection) {
+  if (isDeviceLayoutKey(selection)) {
+    return Boolean(storedDeviceLayer(config, deviceStoredLayerKey(selection)));
+  }
   const layouts = config?.layouts;
   if (!layouts || typeof layouts !== "object") return false;
   const key = String(selection ?? "");
@@ -970,7 +1119,14 @@ function layoutSelectionNote(config, selection) {
   if (selection === "default") {
     return str().editor.noteDefaultLayout;
   }
-  return layoutHasCustomOverride(config, selection) ? str().editor.noteCustomLayout : str().editor.noteUsingDefault;
+  if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
+    return str().editor.noteDeviceDefaultLayout;
+  }
+  const isDevice = isDeviceLayoutKey(selection);
+  if (layoutHasCustomOverride(config, selection)) {
+    return isDevice ? str().editor.noteCustomDeviceLayout : str().editor.noteCustomActivityLayout;
+  }
+  return isDevice ? str().editor.noteUsingDeviceDefault : str().editor.noteUsingActivityDefault;
 }
 function editorActivitiesFromState(state) {
   const list = state?.attributes?.activities;
@@ -980,32 +1136,126 @@ function editorActivitiesFromState(state) {
     name: String(activity?.name ?? "")
   })).filter((activity) => Number.isFinite(activity.id) && activity.name);
 }
+function editorDevicesFromState(state) {
+  const list = state?.attributes?.devices;
+  if (!Array.isArray(list)) return [];
+  return list.map((device) => ({
+    id: Number(device?.id),
+    name: String(device?.name ?? "")
+  })).filter((device) => Number.isFinite(device.id) && device.name);
+}
 function layoutConfigForSelection(config, selection) {
   if (selection === "default") {
     return layoutDefaultConfig(config);
   }
+  if (isDeviceLayoutKey(selection)) {
+    return layoutConfigForDevice(config, parseDeviceLayoutKey(selection));
+  }
   return layoutConfigForActivity(config, selection);
+}
+var ACTIVITY_LAYOUT_DEFAULTS = Object.freeze({
+  show_activity: true,
+  show_dpad: true,
+  show_nav: true,
+  show_mid: true,
+  show_volume: true,
+  show_channel: true,
+  show_media: true,
+  show_dvr: true,
+  show_colors: true,
+  show_abc: true,
+  show_macros_button: true,
+  show_favorites_button: true,
+  show_device_toggle: true,
+  mf_as_rows: false,
+  mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
+});
+var sameLayoutValue = (a4, b3) => JSON.stringify(a4) === JSON.stringify(b3);
+function effectiveValueFor(key, raw, defaults) {
+  switch (key) {
+    case "show_volume":
+      return volumeGroupEnabled(raw);
+    case "show_channel":
+      return channelGroupEnabled(raw);
+    case "show_macros_button":
+      return macrosButtonEnabled(raw);
+    case "show_favorites_button":
+      return favoritesButtonEnabled(raw);
+    case "group_order":
+      return normalizedGroupOrder(raw.group_order);
+    default:
+      return raw[key] !== void 0 ? raw[key] : defaults[key];
+  }
+}
+function pruneLayoutLayer(layer, rawBase, defaults) {
+  const pruned = {};
+  const withLayer = { ...rawBase, ...layer };
+  for (const [key, value] of Object.entries(layer)) {
+    if (value === void 0) continue;
+    const without = { ...withLayer };
+    if (rawBase[key] !== void 0) {
+      without[key] = rawBase[key];
+    } else {
+      delete without[key];
+    }
+    const kept = effectiveValueFor(key, withLayer, defaults);
+    const dropped = effectiveValueFor(key, without, defaults);
+    if (dropped !== void 0 && sameLayoutValue(kept, dropped)) continue;
+    pruned[key] = value;
+  }
+  return pruned;
+}
+function setOrDelete(target, key, value) {
+  if (Object.keys(value).length) {
+    target[key] = value;
+  } else {
+    delete target[key];
+  }
 }
 function applyLayoutConfigPatch(config, selection, patch) {
   const next = { ...config || {} };
+  if (isDeviceLayoutKey(selection)) {
+    const layerKey = deviceStoredLayerKey(selection);
+    const block = { ...next.device_mode || {} };
+    const layouts2 = { ...block.layouts || {} };
+    const current = resolveStoredDeviceLayer(storedDeviceLayer(next, layerKey));
+    const rawBase = layerKey === "default" ? {} : resolveStoredDeviceLayer(storedDeviceLayer(next, "default"));
+    const merged2 = pruneLayoutLayer(
+      { ...current, ...patch },
+      rawBase,
+      DEVICE_LAYOUT_DEFAULTS
+    );
+    setOrDelete(layouts2, layerKey, toStoredDeviceLayer(merged2));
+    setOrDelete(block, "layouts", layouts2);
+    setOrDelete(next, "device_mode", block);
+    return { nextConfig: next };
+  }
   if (selection === "default") {
     const defaultLayout = next.layouts?.default;
-    if (defaultLayout && typeof defaultLayout === "object") {
-      next.layouts = {
-        ...next.layouts || {},
-        default: { ...defaultLayout, ...patch }
-      };
-      return { nextConfig: next, syncFormPatch: null };
-    }
-    Object.assign(next, patch);
-    return { nextConfig: next, syncFormPatch: patch };
+    const existing2 = defaultLayout && typeof defaultLayout === "object" ? defaultLayout : {};
+    const merged2 = pruneLayoutLayer(
+      { ...layoutBaseConfig(next), ...existing2, ...patch },
+      {},
+      ACTIVITY_LAYOUT_DEFAULTS
+    );
+    for (const key of LAYOUT_KEYS) delete next[key];
+    const layouts2 = { ...next.layouts || {} };
+    setOrDelete(layouts2, "default", merged2);
+    setOrDelete(next, "layouts", layouts2);
+    return { nextConfig: next };
   }
   const layouts = { ...next.layouts || {} };
   const selectionKey = String(selection);
   const existing = layouts[selectionKey] && typeof layouts[selectionKey] === "object" ? layouts[selectionKey] : {};
-  layouts[selectionKey] = { ...existing, ...patch };
-  next.layouts = layouts;
-  return { nextConfig: next, syncFormPatch: null };
+  const merged = pruneLayoutLayer(
+    { ...existing, ...patch },
+    layoutDefaultConfig(next),
+    ACTIVITY_LAYOUT_DEFAULTS
+  );
+  setOrDelete(layouts, selectionKey, merged);
+  setOrDelete(next, "layouts", layouts);
+  return { nextConfig: next };
 }
 function groupOrderListForEditor(config, selection) {
   const layout = layoutConfigForSelection(config, selection);
@@ -1020,29 +1270,23 @@ function isGroupEnabled(config, selection, key) {
   const layout = layoutConfigForSelection(config, selection);
   return layout?.[prop] ?? true;
 }
-function macroEnabled(config, selection) {
-  return macrosButtonEnabled(layoutConfigForSelection(config, selection));
+function macroTogglePatch(enabled) {
+  return { show_macros_button: !!enabled };
 }
-function favoritesEnabled(config, selection) {
-  return favoritesButtonEnabled(layoutConfigForSelection(config, selection));
+function favoritesTogglePatch(enabled) {
+  return { show_favorites_button: !!enabled };
 }
-function volumeEnabled(config, selection) {
-  return volumeGroupEnabled(layoutConfigForSelection(config, selection));
+function commandsEnabled(config, selection) {
+  return commandsButtonEnabled(layoutConfigForSelection(config, selection));
 }
-function channelEnabled(config, selection) {
-  return channelGroupEnabled(layoutConfigForSelection(config, selection));
+function commandsTogglePatch(enabled) {
+  return { show_commands_button: !!enabled };
 }
-function macroTogglePatch(config, selection, enabled) {
-  return {
-    show_macros_button: !!enabled,
-    show_favorites_button: !!favoritesEnabled(config, selection)
-  };
+function deviceToggleEnabledForEditor(config, selection) {
+  return deviceToggleEnabled(layoutConfigForSelection(config, selection));
 }
-function favoritesTogglePatch(config, selection, enabled) {
-  return {
-    show_macros_button: !!macroEnabled(config, selection),
-    show_favorites_button: !!enabled
-  };
+function deviceTogglePatch(enabled) {
+  return { show_device_toggle: !!enabled };
 }
 function mfAsRowsForEditor(config, selection) {
   return mfAsRows(layoutConfigForSelection(config, selection));
@@ -1056,19 +1300,11 @@ function mfAsRowsPatch(enabled) {
 function mfRowVisibleRowsPatch(value) {
   return { mf_row_visible_rows: value };
 }
-function volumeTogglePatch(config, selection, enabled) {
-  const channel = channelEnabled(config, selection);
-  return {
-    show_volume: !!enabled,
-    show_mid: !!enabled || !!channel
-  };
+function volumeTogglePatch(enabled) {
+  return { show_volume: !!enabled };
 }
-function channelTogglePatch(config, selection, enabled) {
-  const volume = volumeEnabled(config, selection);
-  return {
-    show_channel: !!enabled,
-    show_mid: !!enabled || !!volume
-  };
+function channelTogglePatch(enabled) {
+  return { show_channel: !!enabled };
 }
 function dvrTogglePatch(enabled) {
   return {
@@ -1183,11 +1419,98 @@ var REMOTE_CARD_CSS = `
         --ha-color-form-background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
       }
 
-      .activityRow { 
-        display: grid; 
-        grid-template-columns: 1fr; 
+      .activityRow {
+        display: grid;
+        grid-template-columns: 1fr;
         position: relative;
         z-index: 3;
+      }
+      /* Long activity/device names ellipsize inside the select instead of
+         pushing the card wider (grid items default to min-width auto). */
+      .activityRow .sb-activity-select {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      /* Device mode: the toggle fuses to the select's left edge. */
+      .activityRow--with-toggle {
+        grid-template-columns: auto 1fr;
+      }
+      .activityRow--with-toggle .loadIndicator {
+        grid-column: 1 / -1;
+      }
+      .sb-mode-toggle {
+        width: 48px;
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        cursor: pointer;
+        color: var(--primary-text-color);
+        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        border: none;
+        border-right: 1px solid var(--divider-color);
+        border-bottom: 1px solid var(--mdc-select-idle-line-color, var(--divider-color));
+        border-top-left-radius: var(--mdc-shape-small, 4px);
+        border-top-right-radius: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .sb-mode-toggle:hover {
+        background: color-mix(in srgb, var(--primary-text-color) 8%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+      }
+      .sb-mode-toggle:active {
+        transform: scale(0.97);
+      }
+      .sb-mode-toggle[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .activityRow--with-toggle .sb-activity-select {
+        --mdc-shape-small: 0 4px 0 0;
+      }
+
+      /* Device mode: Commands drawer (one command per row + filter input).
+         Compound selector: the base .mf-grid two-column rule sits LATER in
+         this sheet and would win at equal specificity. Responsive columns:
+         one full-width command per row on narrow cards (~230px), two per
+         row once the card has the width for it (~300px+). */
+      .mf-grid.mf-grid--commands {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      }
+      .mf-grid--commands .drawer-btn .name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sb-commands-filter {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 8px;
+        padding: 8px 12px;
+        font: inherit;
+        font-size: 13px;
+        color: var(--primary-text-color);
+        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        border: 1px solid var(--divider-color);
+        border-radius: var(--sb-group-radius);
+        outline: none;
+      }
+      .sb-commands-filter:focus {
+        border-color: var(--primary-color, #03a9f4);
+      }
+      .sb-commands-filter::placeholder {
+        color: var(--secondary-text-color);
+        opacity: 0.8;
+      }
+      /* The card sets an inline max-height from the measured viewport space
+         (commandsOverlayMaxHeight); this only keeps the filter pinned. */
+      .mf-overlay--commands .sb-commands-filter {
+        position: sticky;
+        top: 0;
+        z-index: 1;
       }
 
       .automationAssist {
@@ -1805,6 +2128,27 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
           .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+          /* The two "Default ... layout" entries act as section heads in the
+             layout selector: a tinted background plus a colored bottom
+             border split the list into its activity and device sections.
+             The items are our own slotted children of ha-select, so this
+             document-level background overrides the component's :host hover
+             style \u2014 define hover/selected explicitly to keep them alive. */
+          .sb-option-default {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
+            background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+            border-bottom: 2px solid rgba(var(--rgb-primary-color, 3, 169, 244), 0.45);
+            border-bottom: 2px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
+          }
+          .sb-option-default:hover {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.14);
+            background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+          }
+          .sb-option-default[selected],
+          .sb-option-default[activated] {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18);
+            background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+          }
           .sb-layout-row + .sb-layout-row { border-top: 1px solid var(--divider-color); }
           .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
           .sb-layout-actions-full { flex: 1; }
@@ -1816,7 +2160,6 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
-          .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1835,18 +2178,39 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
-          .sb-commands-wrap { padding: 0 0 12px 0; }
-          .sb-commands-meta { margin-bottom: 12px; }
-          .sb-yaml-helper-row { display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; margin-bottom: 10px; }
-          .sb-yaml-helper-drag { color: var(--secondary-text-color); opacity: 0.75; padding-top: 2px; }
-          .sb-yaml-helper-drag ha-icon { --mdc-icon-size: 20px; }
-          .sb-yaml-helper-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
-          .sb-yaml-helper-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
-          .sb-yaml-helper-label { line-height: 1.2; }
-          .sb-yaml-helper-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
-          .sb-yaml-helper-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
-          .sb-yaml-helper-link:hover { color: var(--primary-color); opacity: 1; }
-          .sb-yaml-helper-link ha-icon { --mdc-icon-size: 16px; }
+          /* General Options rows: label + description with the switch at the
+             end; a row's sub-controls (ha-form) sit below, indented to the
+             label column. Rows are separated by the divider line. */
+          .sb-opt-list { display: flex; flex-direction: column; }
+          .sb-opt-row { padding: 8px 0; }
+          .sb-opt-row + .sb-opt-row { border-top: 1px solid var(--divider-color); }
+          .sb-opt-head { display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; }
+          .sb-opt-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
+          .sb-opt-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+          .sb-opt-label { line-height: 1.2; }
+          .sb-opt-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
+          .sb-opt-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-opt-link:hover { color: var(--primary-color); opacity: 1; }
+          .sb-opt-link ha-icon { --mdc-icon-size: 16px; }
+          .sb-opt-row--form ha-form { display: block; }
+          .sb-opt-sub { padding: 10px 0 2px; }
+          .sb-opt-sub ha-form { display: block; }
+          /* Sub-option label + checkbox list (long press buttons): the label
+             sits in the row's label column at description size, the
+             checkboxes are indented beneath it. The checkbox labels take
+             their size from HA's component vars, not from inherited
+             font-size: web-awesome ha-checkbox reads --wa-font-size-m (HA
+             2026.x), the older MDC ha-formfield reads the typography var,
+             so pin all of them to the description size. */
+          .sb-opt-sub-label { font-size: 13px; font-weight: 500; line-height: 1.3; }
+          .sb-opt-sub--list ha-form {
+            padding-inline-start: 12px;
+            font-size: 13px;
+            --wa-font-size-m: 13px;
+            --mdc-typography-body2-font-size: 13px;
+            --mdc-typography-body2-line-height: 1.3;
+            --ha-font-size-m: 13px;
+          }
           .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
           .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
           .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
@@ -1944,7 +2308,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.0";
+var CARD_VERSION = "0.2.1";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -1998,6 +2362,64 @@ function stableJsonSignature(value) {
   }
 }
 
+// custom_components/sofabaton_x1s/www/src/remote-card-long-press.ts
+var LONG_PRESS_GROUPS = ["volume", "channel", "dpad"];
+var LONG_PRESS_GROUP_FOR_KEY = {
+  volup: "volume",
+  voldn: "volume",
+  chup: "channel",
+  chdn: "channel",
+  up: "dpad",
+  down: "dpad",
+  left: "dpad",
+  right: "dpad"
+};
+function longPressBlock(config) {
+  const block = config?.hold_repeat;
+  return block && typeof block === "object" ? block : {};
+}
+function longPressSettings(config) {
+  const block = longPressBlock(config);
+  const enabled = block.enabled === true;
+  return {
+    enabled,
+    volume: enabled && block.volume !== false,
+    channel: enabled && block.channel !== false,
+    dpad: enabled && block.dpad !== false
+  };
+}
+function longPressGroupForKey(key) {
+  return LONG_PRESS_GROUP_FOR_KEY[String(key ?? "")] ?? null;
+}
+function longPressEnabledForKey(config, key) {
+  const group = longPressGroupForKey(key);
+  if (!group) return false;
+  return longPressSettings(config)[group];
+}
+function longPressSelectedGroups(config) {
+  const settings = longPressSettings(config);
+  return LONG_PRESS_GROUPS.filter((group) => settings[group]);
+}
+function longPressEnabledPatch(enabled) {
+  return enabled ? { enabled: true } : void 0;
+}
+function longPressGroupsPatch(current, selected) {
+  const wanted = new Set(
+    (Array.isArray(selected) ? selected : []).map((value) => String(value)).filter(
+      (value) => LONG_PRESS_GROUPS.includes(value)
+    )
+  );
+  const next = { ...current, enabled: true };
+  for (const group of LONG_PRESS_GROUPS) {
+    if (wanted.has(group)) {
+      delete next[group];
+    } else {
+      next[group] = false;
+    }
+  }
+  return next;
+}
+
 // custom_components/sofabaton_x1s/www/src/editor-sections/expander.ts
 function renderEditorExpander(params) {
   const toggle = (ev) => {
@@ -2027,53 +2449,159 @@ function renderEditorExpander(params) {
   `;
 }
 
-// custom_components/sofabaton_x1s/www/src/editor-sections/commands-editor.ts
-function renderCommandsEditorSection(params) {
+// custom_components/sofabaton_x1s/www/src/editor-sections/option-row.ts
+function renderOptionRow(params) {
   const onSwitchChange = (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
     const target = ev.target;
-    params.onSetAutomationAssist(!!target.checked);
+    params.onSet(!!target.checked);
   };
   const onLabelClick = (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
-    params.onSetAutomationAssist(!params.automationAssistEnabled);
+    params.onSet(!params.checked);
   };
-  const body = b2`
-    <div class="sb-commands-meta">
-      <label class="sb-yaml-helper-row">
-        <div class="sb-yaml-helper-drag">
-          <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
-        </div>
-        <div class="sb-yaml-helper-main">
-          <div class="sb-yaml-helper-label-wrap" @click=${onLabelClick}>
-            <span class="sb-yaml-helper-label">${str().editor.keyCapture}</span>
-            <a
-              class="sb-yaml-helper-link"
-              href=${KEY_CAPTURE_HELP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              title=${str().editor.keyCaptureLearnMore}
-              aria-label=${str().editor.keyCaptureDocsAria}
-              @click=${(ev) => ev.stopPropagation()}
-            >
-              <ha-icon icon="mdi:help-circle-outline"></ha-icon>
-            </a>
+  return b2`
+    <div class="sb-opt-row ${params.className ?? ""}">
+      <label class="sb-opt-head">
+        <div class="sb-opt-main">
+          <div class="sb-opt-label-wrap" @click=${onLabelClick}>
+            <span class="sb-opt-label">${params.label}</span>
+            ${params.link ? b2`
+                  <a
+                    class="sb-opt-link"
+                    href=${params.link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title=${params.link.title}
+                    aria-label=${params.link.ariaLabel}
+                    @click=${(ev) => ev.stopPropagation()}
+                  >
+                    <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+                  </a>
+                ` : A}
           </div>
-          <div class="sb-yaml-helper-desc">${str().editor.keyCaptureDescription}</div>
+          ${params.description ? b2`<div class="sb-opt-desc">${params.description}</div>` : A}
         </div>
-        <ha-switch
-          .checked=${params.automationAssistEnabled}
-          @change=${onSwitchChange}
-        ></ha-switch>
+        <ha-switch .checked=${params.checked} @change=${onSwitchChange}></ha-switch>
       </label>
+      ${params.sub ?? A}
     </div>
+  `;
+}
+function renderFormRow(form, className = "") {
+  return b2`<div class="sb-opt-row sb-opt-row--form ${className}">${form}</div>`;
+}
+
+// custom_components/sofabaton_x1s/www/src/editor-sections/general-options.ts
+var INITIAL_VIEW_FIELD = "open_device";
+var LONG_PRESS_BUTTONS_FIELD = "long_press_buttons";
+var computeSubFormLabel = (schema) => {
+  if (schema.name === INITIAL_VIEW_FIELD) return str().editor.initialView;
+  if (schema.name === LONG_PRESS_BUTTONS_FIELD) return "";
+  return schema.name;
+};
+var computeSubFormHelper = (schema) => schema.name === INITIAL_VIEW_FIELD ? str().editor.initialViewHelper : void 0;
+function longPressGroupLabel(group) {
+  if (group === "volume") return str().editor.volume;
+  if (group === "channel") return str().editor.channel;
+  if (group === "dpad") return str().groups.dpad || group;
+  return group;
+}
+function renderGeneralOptionsSection(params) {
+  const keyCaptureRow = renderOptionRow({
+    className: "sb-opt-key-capture",
+    label: str().editor.keyCapture,
+    description: str().editor.keyCaptureDescription,
+    checked: params.automationAssistEnabled,
+    onSet: params.onSetAutomationAssist,
+    link: {
+      href: KEY_CAPTURE_HELP_URL,
+      title: str().editor.keyCaptureLearnMore,
+      ariaLabel: str().editor.keyCaptureDocsAria
+    }
+  });
+  const deviceMode = params.deviceMode;
+  const deviceModeRow = deviceMode ? renderOptionRow({
+    className: "sb-opt-device-mode",
+    label: str().editor.enableDeviceMode,
+    description: str().editor.deviceModeDescription,
+    checked: deviceMode.enabled,
+    onSet: deviceMode.onSetEnabled,
+    sub: deviceMode.enabled ? b2`
+              <div class="sb-opt-sub">
+                <ha-form
+                  .hass=${params.hass}
+                  .schema=${[
+      {
+        name: INITIAL_VIEW_FIELD,
+        required: true,
+        selector: {
+          select: { mode: "dropdown", options: deviceMode.options }
+        }
+      }
+    ]}
+                  .data=${{ [INITIAL_VIEW_FIELD]: deviceMode.openDevice }}
+                  .computeLabel=${computeSubFormLabel}
+                  .computeHelper=${computeSubFormHelper}
+                  @value-changed=${(ev) => {
+      ev.stopPropagation();
+      deviceMode.onSetOpenDevice(
+        String(ev.detail?.value?.[INITIAL_VIEW_FIELD] ?? "")
+      );
+    }}
+                ></ha-form>
+              </div>
+            ` : A
+  }) : A;
+  const longPress = params.longPress;
+  const longPressRow = renderOptionRow({
+    className: "sb-opt-long-press",
+    label: str().editor.longPress,
+    description: str().editor.longPressDescription,
+    checked: longPress.enabled,
+    onSet: longPress.onSetEnabled,
+    sub: longPress.enabled ? b2`
+          <div class="sb-opt-sub sb-opt-sub--list">
+            <div class="sb-opt-sub-label">${str().editor.longPressButtons}</div>
+            <ha-form
+              .hass=${params.hass}
+              .schema=${[
+      {
+        name: LONG_PRESS_BUTTONS_FIELD,
+        selector: {
+          select: {
+            multiple: true,
+            mode: "list",
+            options: LONG_PRESS_GROUPS.map((group) => ({
+              value: group,
+              label: longPressGroupLabel(group)
+            }))
+          }
+        }
+      }
+    ]}
+              .data=${{ [LONG_PRESS_BUTTONS_FIELD]: longPress.selected }}
+              .computeLabel=${computeSubFormLabel}
+              @value-changed=${(ev) => {
+      ev.stopPropagation();
+      const raw = ev.detail?.value?.[LONG_PRESS_BUTTONS_FIELD];
+      longPress.onSetSelected(
+        Array.isArray(raw) ? raw.map((value) => String(value)) : []
+      );
+    }}
+            ></ha-form>
+          </div>
+        ` : A
+  });
+  const body = b2`
+    <div class="sb-opt-list">${keyCaptureRow}${deviceModeRow}${longPressRow}</div>
   `;
   return renderEditorExpander({
     expanded: params.expanded,
-    icon: "mdi:play-box-multiple-outline",
-    title: str().editor.automationAssistTitle,
+    icon: "mdi:tune",
+    title: str().editor.generalOptionsTitle,
     onToggle: params.onToggleExpanded,
     body
   });
@@ -2081,46 +2609,61 @@ function renderCommandsEditorSection(params) {
 
 // custom_components/sofabaton_x1s/www/src/editor-sections/styling-options.ts
 var computeEditorFieldLabel = (schema) => str().editor.fieldLabels[schema.name] || schema.name;
+var DEFAULT_BACKGROUND_OVERRIDE = [255, 255, 255];
 function renderStylingOptionsSection(params) {
   const config = params.config;
-  const showColorPicker = params.config.use_background_override || !!params.config.background_override;
-  const schema = [
-    { name: "theme", selector: { theme: {} } },
-    {
-      name: "max_width",
-      selector: {
-        number: {
-          min: 230,
-          max: 1200,
-          step: 5,
-          unit_of_measurement: "px"
-        }
-      }
-    },
-    { name: "use_background_override", selector: { boolean: {} } },
-    ...showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []
-  ];
-  const data = {
-    theme: config.theme || "",
-    max_width: config.max_width ?? 360,
-    use_background_override: config.use_background_override ?? !!config.background_override,
-    background_override: config.background_override ?? [255, 255, 255]
-  };
-  const onValueChanged = (ev) => {
+  const overrideOn = !!params.config.use_background_override || !!params.config.background_override;
+  const onFormValueChanged = (ev) => {
     ev.stopPropagation();
     params.onValueChanged(ev.detail.value);
   };
-  const body = b2`
-    <div class="sb-styling-card">
-      <ha-form
-        .hass=${params.hass}
-        .schema=${schema}
-        .data=${data}
-        .computeLabel=${computeEditorFieldLabel}
-        @value-changed=${onValueChanged}
-      ></ha-form>
-    </div>
+  const fieldForm = (schema, data) => b2`
+    <ha-form
+      .hass=${params.hass}
+      .schema=${[schema]}
+      .data=${data}
+      .computeLabel=${computeEditorFieldLabel}
+      @value-changed=${onFormValueChanged}
+    ></ha-form>
   `;
+  const themeRow = renderFormRow(
+    fieldForm({ name: "theme", selector: { theme: {} } }, { theme: config.theme || "" }),
+    "sb-opt-theme"
+  );
+  const maxWidthRow = renderFormRow(
+    fieldForm(
+      {
+        name: "max_width",
+        selector: {
+          number: { min: 230, max: 1200, step: 5, unit_of_measurement: "px" }
+        }
+      },
+      { max_width: config.max_width ?? 360 }
+    ),
+    "sb-opt-max-width"
+  );
+  const backgroundRow = renderOptionRow({
+    className: "sb-opt-background",
+    label: str().editor.fieldLabels.use_background_override,
+    checked: overrideOn,
+    onSet: (enabled) => {
+      params.onValueChanged(
+        enabled ? {
+          use_background_override: true,
+          background_override: config.background_override ?? DEFAULT_BACKGROUND_OVERRIDE
+        } : { use_background_override: false }
+      );
+    },
+    sub: overrideOn ? b2`
+          <div class="sb-opt-sub">
+            ${fieldForm(
+      { name: "background_override", selector: { color_rgb: {} } },
+      { background_override: config.background_override ?? DEFAULT_BACKGROUND_OVERRIDE }
+    )}
+          </div>
+        ` : A
+  });
+  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${backgroundRow}</div>`;
   return renderEditorExpander({
     expanded: params.expanded,
     icon: "mdi:palette",
@@ -2375,7 +2918,10 @@ function renderGroupOrderSection(params) {
     >
       ${params.selectionOptions.map(
     (option) => u3`
-          <${itemTag} .value=${option.value}>${option.label}</${itemTag}>
+          <${itemTag}
+            class=${option.kind === "default" ? "sb-option-default" : ""}
+            .value=${option.value}
+          >${option.label}</${itemTag}>
         `
   )}
     </ha-select>
@@ -2413,7 +2959,9 @@ function renderGroupOrderSection(params) {
     params.onSetMfAsRows(!!target.checked);
   }}
         ></ha-switch>
-        <div class="sb-layout-switch-label">${str().editor.macrosFavoritesAsRows}</div>
+        <div class="sb-layout-switch-label">
+          ${params.isDeviceSelection ? str().editor.commandsAsRows : str().editor.macrosFavoritesAsRows}
+        </div>
       </div>
       <div
         class="sb-layout-switch-item sb-mf-rows-stepper-item${params.asRows ? "" : " is-disabled"}"
@@ -2454,7 +3002,21 @@ function renderGroupOrderSection(params) {
   };
   const orderRow = (key, index) => {
     let cells = A;
-    if (key === "macro_favorites") {
+    if (key === "activity" && params.showDeviceModeSwitch) {
+      cells = b2`
+        ${renderSwitchItem(
+        params.groupLabel(key),
+        params.isGroupEnabled(key),
+        (val) => params.onSetGroupEnabled(key, val)
+      )}
+        ${renderSwitchItem(str().editor.modeToggle, params.deviceModeEnabled, params.onSetDeviceMode)}
+      `;
+    } else if (params.isDeviceSelection && (key === "macro_favorites" || key === "macros_row")) {
+      cells = b2`
+        ${renderSwitchItem(str().editor.commands, params.commandsEnabled, params.onSetCommands)}
+        ${emptySlot}
+      `;
+    } else if (key === "macro_favorites") {
       cells = b2`
         ${renderSwitchItem(str().editor.macros, params.macroEnabled, params.onSetMacro)}
         ${renderSwitchItem(str().editor.favorites, params.favoritesEnabled, params.onSetFavorites)}
@@ -2533,7 +3095,7 @@ function renderGroupOrderSection(params) {
     params.onResetGroupOrder();
   }}
         >
-          ${params.selection === "default" ? str().editor.resetCardDefault : str().editor.resetDefaultLayout}
+          ${str().editor.resetDefaultLayout}
         </button>
       </div>
     </div>
@@ -2548,6 +3110,13 @@ function renderGroupOrderSection(params) {
 }
 
 // custom_components/sofabaton_x1s/www/src/remote-card-editor-element.ts
+var CARD_SETTING_DEFAULTS = {
+  theme: "",
+  max_width: 360,
+  shrink: 0,
+  show_automation_assist: false,
+  background_override: null
+};
 var ENTITY_FORM_SCHEMA = [
   {
     name: "entity",
@@ -2562,6 +3131,7 @@ var ENTITY_FORM_SCHEMA = [
     required: true
   }
 ];
+var OPEN_WITH_CURRENT = "current";
 var SofabatonRemoteCardEditor = class extends i4 {
   constructor() {
     super(...arguments);
@@ -2570,9 +3140,9 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this._configInitialized = false;
     this._previewActivity = null;
     this._layoutSelection = "default";
+    this._generalExpanded = false;
     this._stylingExpanded = false;
     this._layoutExpanded = false;
-    this._commandsExpanded = false;
     this._editorIntegrationDomain = null;
     this._editorIntegrationEntityId = null;
     this._editorIntegrationDetectingFor = null;
@@ -2603,6 +3173,90 @@ var SofabatonRemoteCardEditor = class extends i4 {
   }
   _isHubIntegrationForEditor() {
     return String(this._editorIntegrationDomain || "") === "sofabaton_hub";
+  }
+  /**
+   * Positive x1s check for every device-mode affordance: an unknown or
+   * undetected integration gets NO device UI (leakage prevention), not just
+   * the official hub integration.
+   */
+  _isX1sIntegrationForEditor() {
+    return String(this._editorIntegrationDomain || "") === "sofabaton_x1s";
+  }
+  _deviceModeEnabled() {
+    return deviceModeEnabledInConfig(this._config);
+  }
+  /** Write back the device_mode block, dropping it entirely when empty. */
+  _withDeviceModeBlock(mutate) {
+    const next = { ...this._config };
+    const block = { ...next.device_mode || {} };
+    mutate(block);
+    if (Object.keys(block).length) {
+      next.device_mode = block;
+    } else {
+      delete next.device_mode;
+    }
+    return next;
+  }
+  _setDeviceModeEnabled(enabled) {
+    this._config = this._withDeviceModeBlock((block) => {
+      if (enabled) {
+        delete block.enabled;
+      } else {
+        block.enabled = false;
+        delete block.open_device;
+      }
+    });
+    if (!enabled && isDeviceLayoutKey(this._layoutSelection)) {
+      this._layoutSelection = "default";
+      this._setPreviewActivityForSelection("default");
+    }
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  _setOpenDevice(value) {
+    if (value !== "" && !Number.isFinite(Number(value))) return;
+    const next = this._withDeviceModeBlock((block) => {
+      if (value === "") {
+        delete block.open_device;
+      } else {
+        block.open_device = Number(value);
+      }
+    });
+    if (JSON.stringify(next) === JSON.stringify(this._config)) return;
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  /** Initial-view select (General Options): the sentinel clears open_device. */
+  _onInitialViewChanged(raw) {
+    this._setOpenDevice(
+      raw == null || raw === "" || raw === OPEN_WITH_CURRENT ? "" : String(raw)
+    );
+  }
+  // ---------- long press ----------
+  /** Write back the hold_repeat block, dropping it entirely when disabled. */
+  _setLongPressEnabled(enabled) {
+    if (enabled === longPressSettings(this._config).enabled) return;
+    const next = { ...this._config };
+    const block = longPressEnabledPatch(enabled);
+    if (block) {
+      next.hold_repeat = block;
+    } else {
+      delete next.hold_repeat;
+    }
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  _setLongPressGroups(selected) {
+    const next = {
+      ...this._config,
+      hold_repeat: longPressGroupsPatch(longPressBlock(this._config), selected)
+    };
+    if (JSON.stringify(next) === JSON.stringify(this._config)) return;
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
   }
   _isEditorX2() {
     return isX2Hub(
@@ -2688,6 +3342,9 @@ var SofabatonRemoteCardEditor = class extends i4 {
     if (newValue.use_background_override === false) {
       delete newValue.background_override;
     }
+    for (const [key, defaultValue] of Object.entries(CARD_SETTING_DEFAULTS)) {
+      if (newValue[key] === defaultValue) delete newValue[key];
+    }
     if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
     if (entityChanged) {
       const prevConfig = this._config;
@@ -2716,7 +3373,13 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this.requestUpdate();
   }
   _setAutomationAssistEnabled(enabled) {
-    this._config = { ...this._config, show_automation_assist: !!enabled };
+    const next = { ...this._config };
+    if (enabled) {
+      next.show_automation_assist = true;
+    } else {
+      delete next.show_automation_assist;
+    }
+    this._config = next;
     this._fireChanged();
     this.requestUpdate();
   }
@@ -2752,7 +3415,14 @@ var SofabatonRemoteCardEditor = class extends i4 {
   // ---------- group order ----------
   _isEditorGroupVisible(key, isEditorX2) {
     if (!isEditorX2 && key === "abc") return false;
-    const asRows = mfAsRowsForEditor(this._config, this._layoutSelectionKey());
+    const selection = this._layoutSelectionKey();
+    const asRows = mfAsRowsForEditor(this._config, selection);
+    if (isDeviceLayoutKey(selection)) {
+      if (key === "macro_favorites") return !asRows;
+      if (key === "macros_row") return asRows;
+      if (key === "favorites_row") return false;
+      return true;
+    }
     if (key === "macro_favorites") return !asRows;
     if (key === "macros_row" || key === "favorites_row") return asRows;
     return true;
@@ -2789,49 +3459,45 @@ var SofabatonRemoteCardEditor = class extends i4 {
   }
   _resetGroupOrder() {
     const selection = this._layoutSelectionKey();
-    if (selection !== "default") {
-      const next2 = { ...this._config };
-      const layouts = { ...next2.layouts || {} };
+    let next;
+    if (isDeviceLayoutKey(selection)) {
+      next = this._withDeviceModeBlock((block) => {
+        const layouts = {
+          ...block.layouts || {}
+        };
+        delete layouts[deviceStoredLayerKey(selection)];
+        if (Object.keys(layouts).length) {
+          block.layouts = layouts;
+        } else {
+          delete block.layouts;
+        }
+      });
+    } else if (selection !== "default") {
+      next = { ...this._config };
+      const layouts = { ...next.layouts || {} };
       delete layouts[selection];
       if (Number.isFinite(Number(selection))) {
         delete layouts[String(Number(selection))];
       }
       if (Object.keys(layouts).length) {
-        next2.layouts = layouts;
+        next.layouts = layouts;
       } else {
-        delete next2.layouts;
+        delete next.layouts;
       }
-      this._config = next2;
-      this._fireChanged();
-      this.requestUpdate();
-      return;
-    }
-    const enabledDefaults = {
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_colors: true,
-      show_abc: true,
-      show_dvr: true,
-      show_macros_button: true,
-      show_favorites_button: true,
-      mf_as_rows: false,
-      mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
-      group_order: DEFAULT_GROUP_ORDER.slice()
-    };
-    const next = { ...this._config };
-    const defaultLayout = next.layouts?.default;
-    if (defaultLayout && typeof defaultLayout === "object") {
-      next.layouts = {
-        ...next.layouts || {},
-        default: { ...defaultLayout, ...enabledDefaults }
-      };
     } else {
-      Object.assign(next, enabledDefaults);
+      next = { ...this._config };
+      for (const key of LAYOUT_KEYS) {
+        delete next[key];
+      }
+      if (next.layouts && typeof next.layouts === "object") {
+        const layouts = { ...next.layouts };
+        delete layouts.default;
+        if (Object.keys(layouts).length) {
+          next.layouts = layouts;
+        } else {
+          delete next.layouts;
+        }
+      }
     }
     this._config = next;
     this._fireChanged();
@@ -2842,13 +3508,41 @@ var SofabatonRemoteCardEditor = class extends i4 {
     if (!this._hass) return A;
     const selection = this._layoutSelectionKey();
     const entityId = this._config?.entity;
-    const activities = entityId && this._hass ? editorActivitiesFromState(this._hass?.states?.[entityId]) : [];
+    const remoteState = entityId && this._hass ? this._hass?.states?.[entityId] : null;
+    const activities = remoteState ? editorActivitiesFromState(remoteState) : [];
+    const deviceCapable = Boolean(remoteState) && this._isX1sIntegrationForEditor() && editorDevicesFromState(remoteState).length > 0;
+    const deviceModeEnabled = this._deviceModeEnabled();
+    const devices = deviceCapable && deviceModeEnabled ? editorDevicesFromState(remoteState) : [];
+    const openDevice = openDeviceFromConfig(this._config);
+    const initialViewOptions = [
+      { value: OPEN_WITH_CURRENT, label: str().editor.openOnCurrentActivity },
+      ...devices.map((device) => ({
+        value: String(device.id),
+        label: device.name
+      }))
+    ];
+    const longPress = longPressSettings(this._config);
     const selectionOptions = [
-      { value: "default", label: str().editor.defaultLayoutOption },
+      {
+        value: "default",
+        label: str().editor.defaultLayoutOption,
+        kind: "default"
+      },
       ...activities.map((activity) => ({
         value: String(activity.id),
         label: activity.name
-      }))
+      })),
+      ...devices.length ? [
+        {
+          value: "device:default",
+          label: str().editor.allDevicesOption,
+          kind: "default"
+        },
+        ...devices.map((device) => ({
+          value: `device:${device.id}`,
+          label: device.name
+        }))
+      ] : []
     ];
     if (!selectionOptions.some((option) => option.value === selection)) {
       this._layoutSelection = "default";
@@ -2868,15 +3562,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
       });
     }
     const entityFormData = {
-      ...this._config,
-      entity: this._config.entity || "",
-      theme: this._config.theme || "",
-      // Maintain the toggle state correctly
-      use_background_override: this._config.use_background_override ?? !!this._config.background_override,
-      background_override: this._config.background_override ?? [255, 255, 255],
-      max_width: this._config.max_width ?? 360,
-      group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
-      show_automation_assist: this._config.show_automation_assist ?? false
+      entity: this._config.entity || ""
     };
     return b2`
       <div style="padding: 12px 0;">
@@ -2890,6 +3576,31 @@ var SofabatonRemoteCardEditor = class extends i4 {
       this._mergeFormValue(ev.detail.value);
     }}
         ></ha-form>
+      </div>
+      <div class="sb-general-wrap" style="padding: 0 0 12px 0;">
+        ${renderGeneralOptionsSection({
+      hass: this._hass,
+      expanded: this._generalExpanded,
+      onToggleExpanded: () => {
+        this._generalExpanded = !this._generalExpanded;
+        this.requestUpdate();
+      },
+      automationAssistEnabled: !!this._config.show_automation_assist,
+      onSetAutomationAssist: (enabled) => this._setAutomationAssistEnabled(enabled),
+      deviceMode: deviceCapable ? {
+        enabled: deviceModeEnabled,
+        openDevice: openDevice != null ? String(openDevice) : OPEN_WITH_CURRENT,
+        options: initialViewOptions,
+        onSetEnabled: (enabled) => this._setDeviceModeEnabled(enabled),
+        onSetOpenDevice: (value) => this._onInitialViewChanged(value)
+      } : null,
+      longPress: {
+        enabled: longPress.enabled,
+        selected: longPressSelectedGroups(this._config),
+        onSetEnabled: (enabled) => this._setLongPressEnabled(enabled),
+        onSetSelected: (selected) => this._setLongPressGroups(selected)
+      }
+    })}
       </div>
       <div class="sb-styling-wrap" style="padding: 0 0 12px 0;">
         ${renderStylingOptionsSection({
@@ -2921,6 +3632,13 @@ var SofabatonRemoteCardEditor = class extends i4 {
       channelEnabled: channelGroupEnabled(layoutCfg),
       mediaEnabled: mediaGroupEnabled(layoutCfg),
       dvrEnabled: dvrGroupEnabled(layoutCfg),
+      isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
+      commandsEnabled: commandsEnabled(this._config, this._layoutSelectionKey()),
+      showDeviceModeSwitch: devices.length > 0,
+      deviceModeEnabled: deviceToggleEnabledForEditor(
+        this._config,
+        this._layoutSelectionKey()
+      ),
       isGroupEnabled: (key) => isGroupEnabled(this._config, this._layoutSelectionKey(), key),
       groupLabel: (key) => groupLabel(key),
       onToggleExpanded: () => {
@@ -2928,18 +3646,12 @@ var SofabatonRemoteCardEditor = class extends i4 {
         this.requestUpdate();
       },
       onSelectLayout: (value) => this._onSelectLayout(value),
-      onSetMacro: (v3) => this._updateLayoutConfig(
-        macroTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
-      onSetFavorites: (v3) => this._updateLayoutConfig(
-        favoritesTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
-      onSetVolume: (v3) => this._updateLayoutConfig(
-        volumeTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
-      onSetChannel: (v3) => this._updateLayoutConfig(
-        channelTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
+      onSetMacro: (v3) => this._updateLayoutConfig(macroTogglePatch(v3)),
+      onSetFavorites: (v3) => this._updateLayoutConfig(favoritesTogglePatch(v3)),
+      onSetCommands: (v3) => this._updateLayoutConfig(commandsTogglePatch(v3)),
+      onSetDeviceMode: (v3) => this._updateLayoutConfig(deviceTogglePatch(v3)),
+      onSetVolume: (v3) => this._updateLayoutConfig(volumeTogglePatch(v3)),
+      onSetChannel: (v3) => this._updateLayoutConfig(channelTogglePatch(v3)),
       onSetMedia: (v3) => {
         const patch = groupEnabledPatch("media", v3);
         if (patch) this._updateLayoutConfig(patch);
@@ -2954,17 +3666,6 @@ var SofabatonRemoteCardEditor = class extends i4 {
       onMoveGroupByKey: (key, delta) => this._moveGroupByKey(key, delta),
       onMoveGroupByVisibleIndex: (from, to) => this._moveGroupByVisibleIndex(from, to),
       onResetGroupOrder: () => this._resetGroupOrder()
-    })}
-      </div>
-      <div class="sb-commands-wrap">
-        ${renderCommandsEditorSection({
-      expanded: this._commandsExpanded,
-      automationAssistEnabled: !!this._config.show_automation_assist,
-      onToggleExpanded: () => {
-        this._commandsExpanded = !this._commandsExpanded;
-        this.requestUpdate();
-      },
-      onSetAutomationAssist: (enabled) => this._setAutomationAssistEnabled(enabled)
     })}
       </div>
     `;
@@ -3122,12 +3823,12 @@ function macroFavoriteDisplayState({
   const showMF = showMacrosButton || showFavoritesButton;
   const visibleCount = (showMacrosButton ? 1 : 0) + (showFavoritesButton ? 1 : 0);
   const macrosEnabled = editMode ? true : macros.length > 0;
-  const favoritesEnabled2 = editMode ? true : favorites.length + customFavorites.length > 0;
+  const favoritesEnabled = editMode ? true : favorites.length + customFavorites.length > 0;
   return {
     showMF,
     visibleCount,
     macrosDisabled: disableAllButtons || !macrosEnabled,
-    favoritesDisabled: disableAllButtons || !favoritesEnabled2
+    favoritesDisabled: disableAllButtons || !favoritesEnabled
   };
 }
 
@@ -3234,6 +3935,17 @@ function drawerDirection(input) {
   const overlapUp = Math.max(0, Math.min(desired, spaceAboveInCard));
   return overlapUp > overlapDown ? "up" : "down";
 }
+function commandsOverlayMaxHeight({
+  up,
+  rowTop,
+  rowBottom,
+  cardTop,
+  cardBottom,
+  viewportHeight
+}) {
+  const available = up ? rowTop - (cardTop ?? 0) : (cardBottom ?? viewportHeight) - rowBottom;
+  return Math.max(Math.min(120, Math.floor(available)), Math.floor(available - 12));
+}
 function layeringZIndexes(menuOpen, drawerOpen) {
   if (menuOpen) {
     return { activity: "10", drawer: drawerOpen ? "9" : "2" };
@@ -3243,6 +3955,82 @@ function layeringZIndexes(menuOpen, drawerOpen) {
   }
   return { activity: "3", drawer: "2" };
 }
+var HOLD_REPEAT_DELAY_MS = 400;
+var HOLD_REPEAT_INTERVAL_MS = 250;
+var HOLD_REPEAT_EVENT_TYPE = "sb-hold-repeat";
+function holdRepeatIndexOf(ev) {
+  if (!ev || ev.type !== HOLD_REPEAT_EVENT_TYPE) return 0;
+  const detail = ev.detail;
+  const index = typeof detail === "number" ? detail : Number(detail);
+  return Number.isFinite(index) && index > 0 ? index : 0;
+}
+var HoldRepeatTimer = class {
+  constructor(fire, options = {}) {
+    this.delayHandle = null;
+    this.intervalHandle = null;
+    this.repeats = 0;
+    this.fired = false;
+    this.fire = fire;
+    this.delayMs = options.delayMs ?? HOLD_REPEAT_DELAY_MS;
+    this.intervalMs = options.intervalMs ?? HOLD_REPEAT_INTERVAL_MS;
+    this.timers = {
+      setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
+      clearTimeout: options.clearTimeout ?? ((h6) => clearTimeout(h6)),
+      setInterval: options.setInterval ?? ((fn, ms) => setInterval(fn, ms)),
+      clearInterval: options.clearInterval ?? ((h6) => clearInterval(h6))
+    };
+  }
+  /** True while a hold is armed or repeating. */
+  get active() {
+    return this.delayHandle != null || this.intervalHandle != null;
+  }
+  /** Repeats fired during the current/last hold. */
+  get repeatCount() {
+    return this.repeats;
+  }
+  start() {
+    this.clearTimers();
+    this.fired = false;
+    this.repeats = 0;
+    this.delayHandle = this.timers.setTimeout(() => {
+      this.delayHandle = null;
+      this.tick();
+      this.intervalHandle = this.timers.setInterval(() => this.tick(), this.intervalMs);
+    }, this.delayMs);
+  }
+  /** Stop repeating. Returns whether this hold fired at least once. */
+  stop() {
+    this.clearTimers();
+    return this.fired;
+  }
+  /**
+   * Read-and-clear the "a repeat fired" memory. The release tap that follows
+   * a hold calls this and skips its own send when it returns true.
+   */
+  consumeFired() {
+    const fired = this.fired;
+    this.fired = false;
+    return fired;
+  }
+  tick() {
+    this.fired = true;
+    this.repeats += 1;
+    try {
+      this.fire(this.repeats);
+    } catch (e6) {
+    }
+  }
+  clearTimers() {
+    if (this.delayHandle != null) {
+      this.timers.clearTimeout(this.delayHandle);
+      this.delayHandle = null;
+    }
+    if (this.intervalHandle != null) {
+      this.timers.clearInterval(this.intervalHandle);
+      this.intervalHandle = null;
+    }
+  }
+};
 
 // custom_components/sofabaton_x1s/www/src/remote-card-state.ts
 function hasOwn(obj, key) {
@@ -3267,6 +4055,21 @@ function activitiesFromRemote(remoteState, isHubIntegration, hubActivitiesCache)
     activities: normalizeActivities(source),
     nextHubActivitiesCache: isHubIntegration && Array.isArray(list) && list.length ? list : hubActivitiesCache
   };
+}
+function devicesFromRemote(remoteState) {
+  const list = remoteState?.attributes?.devices;
+  return (Array.isArray(list) ? list : []).map((device) => ({
+    id: Number(device?.id),
+    name: String(device?.name ?? ""),
+    device_class: device?.device_class != null ? String(device.device_class) : void 0
+  })).filter((device) => Number.isFinite(device.id) && device.name);
+}
+function deviceNameForId(devices, deviceId) {
+  if (deviceId == null) return "";
+  const id = Number(deviceId);
+  if (!Number.isFinite(id)) return "";
+  const match = Array.isArray(devices) ? devices.find((device) => device.id === id) : null;
+  return match?.name || "";
 }
 function activityNameForId(activities, activityId) {
   if (activityId == null) return "";
@@ -3296,6 +4099,27 @@ function previewSelection(editMode, previewActivity, activities) {
       activityId: null,
       label: str().card.poweredOff,
       poweredOff: true
+    };
+  }
+  if (typeof selection === "string" && selection.startsWith("device:")) {
+    const rest = selection.slice("device:".length);
+    if (rest === "default") {
+      return {
+        activityId: null,
+        label: str().card.allDevicesLayout,
+        poweredOff: false,
+        mode: "device",
+        deviceId: null
+      };
+    }
+    const deviceId = Number(rest);
+    if (!Number.isFinite(deviceId)) return null;
+    return {
+      activityId: null,
+      label: "",
+      poweredOff: false,
+      mode: "device",
+      deviceId
     };
   }
   const id = Number(selection);
@@ -3403,6 +4227,40 @@ function buildActivitySelectState({
     resolvedValue,
     disabled,
     clearPending: Boolean(pendingActivity && (pendingExpired || current === pendingActivity))
+  };
+}
+function buildDeviceSelectState({
+  editMode,
+  preview,
+  devices,
+  currentDeviceId
+}) {
+  const options = [
+    { value: "", label: str().card.selectDevice },
+    ...devices.map((device) => ({
+      value: String(device.id),
+      label: device.name
+    }))
+  ];
+  let resolvedValue = currentDeviceId != null ? String(currentDeviceId) : "";
+  if (editMode && preview?.mode === "device") {
+    if (preview.deviceId == null) {
+      options.push({ value: "device:default", label: str().card.allDevicesLayout });
+      resolvedValue = "device:default";
+    } else {
+      resolvedValue = String(preview.deviceId);
+      if (!options.some((option) => option.value === resolvedValue)) {
+        options.push({
+          value: resolvedValue,
+          label: str().card.deviceFallback(preview.deviceId)
+        });
+      }
+    }
+  }
+  return {
+    options,
+    resolvedValue,
+    disabled: editMode
   };
 }
 function noActivitiesWarning(isUnavailable, activitiesLength, loadState) {
@@ -3558,14 +4416,16 @@ function customFavoritesSignature(items) {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/remote-card-store.ts
+var LAST_DEVICE_STORAGE_PREFIX = "sofabaton-remote:last-device:";
 function normalizeRemoteCardConfig(config) {
   return {
     show_activity: true,
     show_dpad: true,
     show_nav: true,
     show_mid: true,
-    show_volume: true,
-    show_channel: true,
+    // Do not materialize the split volume/channel defaults here. Their
+    // resolvers already default to true, and absence is what lets released
+    // `show_mid` configs remain a read-side fallback.
     show_media: true,
     show_dvr: true,
     show_colors: true,
@@ -3618,6 +4478,13 @@ var RemoteCardStore = class {
     this.commandPulseTimeout = null;
     // Preview state resolved during the last derivation
     this.previewState = null;
+    // Device mode (docs/internal/device-mode-plan.md) — transient UI state,
+    // never card config; the card always starts in activity mode.
+    this._mode = "activity";
+    this._deviceId = null;
+    this.deviceKeymaps = {};
+    this.initialViewApplied = false;
+    this.commandFilter = "";
     // Drawer / menu UI state (direction math stays in the element)
     this.activeDrawer = null;
     this.activityMenuOpen = false;
@@ -3650,6 +4517,7 @@ var RemoteCardStore = class {
     this._config = normalizeRemoteCardConfig(config);
     this.activeDrawer = null;
     this.activityMenuOpen = false;
+    this.initialViewApplied = false;
     this.invalidateFingerprint();
     this.onChange();
   }
@@ -3696,6 +4564,7 @@ var RemoteCardStore = class {
     const themes = hass?.themes;
     const themeDef = themeName ? themes?.themes?.[themeName] : null;
     const themeMode = themes?.darkMode ? "dark" : "light";
+    const keymapEntry = this._deviceId != null ? this.deviceKeymaps[String(this._deviceId)] : null;
     return [
       entityId,
       String(remote?.state ?? ""),
@@ -3704,6 +4573,7 @@ var RemoteCardStore = class {
       String(attrs?.load_state ?? ""),
       String(attrs?.hub_version ?? ""),
       stableJsonSignature(attrs?.activities),
+      stableJsonSignature(attrs?.devices),
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
@@ -3713,7 +4583,10 @@ var RemoteCardStore = class {
       stableJsonSignature(themeDef),
       this._editMode ? "1" : "0",
       String(this.previewActivity ?? ""),
-      this.integrationDomain || ""
+      this.integrationDomain || "",
+      this._mode,
+      String(this._deviceId ?? ""),
+      keymapEntry ? `${keymapEntry.status}:${keymapEntry.buttons.length}:${keymapEntry.commands.length}` : ""
     ].join("|");
   }
   // ---------- integration detection ----------
@@ -3730,6 +4603,11 @@ var RemoteCardStore = class {
       this.hubMacrosCache = null;
       this.hubFavoritesCache = null;
       this.x2LastFetchedActivityId = null;
+      this._mode = "activity";
+      this._deviceId = null;
+      this.deviceKeymaps = {};
+      this.commandFilter = "";
+      this.initialViewApplied = false;
     }
     if (this.integrationEntityId === entityId && this.integrationDomain) return;
     if (this.integrationDetectingFor === entityId) return;
@@ -3760,6 +4638,173 @@ var RemoteCardStore = class {
   }
   supportsUnicodeCommandNames() {
     return supportsUnicodeCommandNames(this.hubVersion(), this.isHubIntegration());
+  }
+  // ---------- device mode ----------
+  mode() {
+    return this._mode;
+  }
+  currentDeviceId() {
+    return this._deviceId;
+  }
+  devices() {
+    return devicesFromRemote(this.remoteState());
+  }
+  deviceNameForId(deviceId) {
+    return deviceNameForId(this.devices(), deviceId) || null;
+  }
+  /**
+   * Device mode capability: x1s integration only (the official
+   * sofabaton_hub integration has no device keymap path), the
+   * device_mode.enabled master switch (absent = on), and a non-empty
+   * `devices` attribute (published only while the persistent cache is
+   * enabled). The show_device_toggle layout switch is deliberately NOT
+   * part of this: it only hides the toggle BUTTON (which may strand the
+   * user in one mode by design), never the mode itself.
+   */
+  deviceModeAvailable() {
+    if (String(this.integrationDomain || "") !== "sofabaton_x1s") return false;
+    if (!deviceModeEnabledInConfig(this._config)) return false;
+    return this.devices().length > 0;
+  }
+  /**
+   * Apply the configured opening view once per config: device_mode
+   * .open_device puts the card in device mode on that device. Retries until
+   * the capability resolves (integration probe + devices attribute are
+   * async).
+   */
+  maybeApplyInitialView() {
+    if (this.initialViewApplied) return;
+    const openDevice = openDeviceFromConfig(this._config);
+    if (openDevice == null) {
+      this.initialViewApplied = true;
+      return;
+    }
+    if (!this.deviceModeAvailable()) return;
+    this.initialViewApplied = true;
+    const id = Number(openDevice);
+    if (!this.devices().some((device) => device.id === id)) return;
+    this._mode = "device";
+    this._deviceId = id;
+    void this.ensureDeviceKeymap(id);
+  }
+  setMode(next) {
+    if (this._mode === next) return;
+    this._mode = next;
+    this.activeDrawer = null;
+    this.commandFilter = "";
+    if (next === "device") {
+      const remembered = this.readLastDevice();
+      const devices = this.devices();
+      this._deviceId = remembered != null && devices.some((device) => device.id === remembered) ? remembered : null;
+      if (this._deviceId != null) void this.ensureDeviceKeymap(this._deviceId);
+    }
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+  toggleMode() {
+    this.setMode(this._mode === "device" ? "activity" : "device");
+  }
+  setDevice(deviceId) {
+    const next = deviceId != null && Number.isFinite(Number(deviceId)) ? Number(deviceId) : null;
+    if (this._deviceId === next) return;
+    this._deviceId = next;
+    this.commandFilter = "";
+    this.writeLastDevice(next);
+    if (next != null) void this.ensureDeviceKeymap(next);
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+  setCommandFilter(value) {
+    this.commandFilter = String(value ?? "");
+    this.onChange();
+  }
+  deviceKeymapState(deviceId = this._deviceId) {
+    if (deviceId == null) return null;
+    return this.deviceKeymaps[String(deviceId)] ?? null;
+  }
+  /** Commands for the current device, filtered and alphabetically sorted. */
+  filteredCommands() {
+    const entry = this.deviceKeymapState();
+    if (!entry || entry.status !== "ready") return [];
+    return this.filterAndSortCommands(entry.commands);
+  }
+  /**
+   * Fetch one device's keymap from the backend cache projection. Single
+   * fetch per device per card lifetime — the remote card never invalidates
+   * cache (control panel owns cache management).
+   */
+  async ensureDeviceKeymap(deviceId) {
+    const key = String(deviceId);
+    if (this.deviceKeymaps[key]) return;
+    if (!this._hass?.callWS) return;
+    const entryId = String(
+      this.remoteState()?.attributes?.entry_id ?? ""
+    );
+    if (!entryId) return;
+    this.deviceKeymaps[key] = { status: "loading", buttons: [], commands: [] };
+    try {
+      const response = await this._hass.callWS({
+        type: "sofabaton_x1s/device/keymap",
+        entry_id: entryId,
+        device_id: deviceId
+      });
+      const keymap = response?.keymap;
+      if (!keymap) {
+        this.deviceKeymaps[key] = {
+          status: "cache_miss",
+          buttons: [],
+          commands: []
+        };
+      } else {
+        const buttons = new Set(
+          (Array.isArray(keymap.buttons) ? keymap.buttons : []).map(
+            (code) => Number(code)
+          )
+        );
+        for (const binding of Array.isArray(keymap.bindings) ? keymap.bindings : []) {
+          if (Number(binding?.command_id)) buttons.add(Number(binding.button_id));
+        }
+        this.deviceKeymaps[key] = {
+          status: "ready",
+          buttons: [...buttons].filter((code) => Number.isFinite(code)),
+          commands: (Array.isArray(keymap.commands) ? keymap.commands : []).map((command) => ({
+            command_id: Number(command?.command_id),
+            name: String(command?.name ?? "")
+          })).filter((command) => Number.isFinite(command.command_id) && command.name)
+        };
+      }
+    } catch (_err) {
+      this.deviceKeymaps[key] = { status: "error", buttons: [], commands: [] };
+    }
+    this.invalidateFingerprint();
+    this.onChange();
+  }
+  lastDeviceStorageKey() {
+    const entity = String(this._config?.entity || "");
+    return entity ? `${LAST_DEVICE_STORAGE_PREFIX}${entity}` : null;
+  }
+  readLastDevice() {
+    const key = this.lastDeviceStorageKey();
+    if (!key || typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage?.getItem(key);
+      const id = raw == null ? NaN : Number(raw);
+      return Number.isFinite(id) ? id : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  writeLastDevice(deviceId) {
+    const key = this.lastDeviceStorageKey();
+    if (!key || typeof window === "undefined") return;
+    try {
+      if (deviceId == null) {
+        window.localStorage?.removeItem(key);
+      } else {
+        window.localStorage?.setItem(key, String(deviceId));
+      }
+    } catch (_err) {
+    }
   }
   // ---------- basic state helpers ----------
   remoteState() {
@@ -3812,10 +4857,10 @@ var RemoteCardStore = class {
     );
     return normalizedGroupOrder(layout?.group_order);
   }
-  layoutSignature(activityId, layoutConfig) {
-    const order = this.groupOrderList(activityId);
+  layoutSignature(layoutKey, layoutConfig) {
+    const order = normalizedGroupOrder(layoutConfig?.group_order);
     const parts = [
-      `activity:${activityId ?? "off"}`,
+      `activity:${layoutKey ?? "off"}`,
       `order:${order.join(",")}`
     ];
     for (const key of LAYOUT_KEYS) {
@@ -3851,6 +4896,11 @@ var RemoteCardStore = class {
     return this.enabledButtonsCache || [];
   }
   isEnabled(id) {
+    if (this._mode === "device") {
+      const entry = this.deviceKeymapState();
+      if (!entry || entry.status !== "ready") return true;
+      return entry.buttons.includes(Number(id));
+    }
     const enabled = this.enabledButtons();
     if (this.enabledButtonsInvalid) return true;
     if (!enabled.length) return true;
@@ -4062,7 +5112,8 @@ var RemoteCardStore = class {
   async sendCommand(commandId, deviceId = null) {
     if (this._editMode) return;
     if (!this._hass || !this._config?.entity) return;
-    const resolvedDevice = this.resolveCommandDeviceId(commandId, deviceId);
+    const resolvedDevice = this._mode === "device" ? deviceId != null && Number.isFinite(Number(deviceId)) ? Number(deviceId) : this._deviceId : this.resolveCommandDeviceId(commandId, deviceId);
+    if (this._mode === "device" && resolvedDevice == null) return;
     if (this.isHubIntegration()) {
       const command = hubAssignedKeyCommand(resolvedDevice, commandId);
       if (!command) return;
@@ -4159,8 +5210,18 @@ var RemoteCardStore = class {
     const activities = this.activities();
     const preview = this.previewSelectionState(activities);
     this.previewState = preview;
+    this.maybeApplyInitialView();
+    let mode = preview ? preview.mode === "device" ? "device" : "activity" : this._mode;
+    if (mode === "device" && !preview && !this.deviceModeAvailable()) {
+      mode = "activity";
+    }
     const activityId = preview ? preview.activityId : this.currentActivityId();
-    const layoutConfig = layoutConfigForActivity(this._config, activityId);
+    const deviceId = mode === "device" ? preview ? preview.deviceId ?? null : this._deviceId : null;
+    const layoutConfig = mode === "device" ? layoutConfigForDevice(this._config, deviceId) : layoutConfigForActivity(this._config, activityId);
+    if (mode === "device" && deviceId != null && !this.deviceKeymapState(deviceId)) {
+      void this.ensureDeviceKeymap(deviceId);
+    }
+    const keymapEntry = mode === "device" ? this.deviceKeymapState(deviceId) : null;
     const isUnavailable = remote?.state === "unavailable";
     const attrs = remote?.attributes ?? {};
     const loadState = attrs?.load_state;
@@ -4210,10 +5271,20 @@ var RemoteCardStore = class {
     const pendingAge = this.pendingActivityAt ? Date.now() - this.pendingActivityAt : null;
     const pendingExpired = pendingAge != null && pendingAge > 15e3;
     let selectState = null;
+    let deviceSelectState = null;
     let isPoweredOff = false;
     let currentLabel = "";
     if (isUnavailable) {
       this.stopActivityLoading(false);
+    } else if (mode === "device") {
+      deviceSelectState = buildDeviceSelectState({
+        editMode: this._editMode,
+        preview,
+        devices: this.devices(),
+        currentDeviceId: deviceId
+      });
+      currentLabel = deviceId != null ? this.deviceNameForId(deviceId) ?? "" : "";
+      isPoweredOff = false;
     } else {
       selectState = buildActivitySelectState({
         editMode: this._editMode,
@@ -4241,6 +5312,10 @@ var RemoteCardStore = class {
     const showChannel = channelGroupEnabled(layoutConfig);
     const showMedia = mediaGroupEnabled(layoutConfig);
     const showDvr = dvrGroupEnabled(layoutConfig);
+    const deviceModeAvailable = this.deviceModeAvailable() && deviceToggleEnabled(layoutConfig);
+    const layoutKey = mode === "device" ? deviceLayoutKey(deviceId) : activityId;
+    const commands = keymapEntry?.status === "ready" ? this.filterAndSortCommands(keymapEntry.commands) : [];
+    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
     return {
       remote,
       isUnavailable,
@@ -4248,13 +5323,22 @@ var RemoteCardStore = class {
       activities,
       preview,
       activityId,
+      mode,
+      deviceId,
+      keymapEntry,
+      keymapLoading: keymapEntry?.status === "loading",
+      commands,
+      commandFilter: this.commandFilter,
+      showCommandsButton: commandsButtonEnabled(layoutConfig),
+      deviceModeAvailable,
       layoutConfig,
-      layoutSignature: this.layoutSignature(activityId, layoutConfig),
+      layoutSignature: this.layoutSignature(layoutKey, layoutConfig),
       macros: resolvedHubData.macros,
       favorites: resolvedHubData.favorites,
       customFavorites: this.customFavorites(),
       rawAssignedKeys,
       selectState,
+      deviceSelectState,
       currentLabel,
       isPoweredOff,
       isX2: this.isX2(),
@@ -4262,8 +5346,15 @@ var RemoteCardStore = class {
       showChannel,
       showMedia,
       showDvr,
-      noActivitiesMessage: noActivitiesWarning(isUnavailable, activities.length, loadState)
+      noActivitiesMessage: mode === "device" ? deviceNotice : noActivitiesWarning(isUnavailable, activities.length, loadState)
     };
+  }
+  filterAndSortCommands(commands) {
+    const needle = this.commandFilter.trim().toLowerCase();
+    const filtered = needle ? commands.filter((command) => command.name.toLowerCase().includes(needle)) : commands;
+    return [...filtered].sort(
+      (a4, b3) => a4.name.localeCompare(b3.name, void 0, { sensitivity: "base" })
+    );
   }
 };
 
@@ -4357,13 +5448,16 @@ function automationAssistNotificationBody(capture, entityId, hubIntegration, fal
   const notify = str().assist.notification;
   const activityName = capture.activityName || fallbackActivityName || str().assist.unknown;
   const label = capture.label ?? "";
-  const eventLabel = kind === "button" ? notify.eventButton(label) : kind === "activity" ? notify.eventActivity(label) : notify.eventOther(label);
+  const eventLabel = kind === "button" ? capture.deviceMode ? notify.eventCommand(label) : notify.eventButton(label) : kind === "activity" ? notify.eventActivity(label) : notify.eventOther(label);
   const buttonYaml = automationAssistButtonYaml(capture, entityId, hubIntegration);
   const remoteYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration);
   return [
     "---",
     "",
-    notify.header(activityName, eventLabel),
+    capture.deviceMode ? notify.headerDevice(
+      capture.deviceName || str().assist.unknownDevice,
+      eventLabel
+    ) : notify.header(activityName, eventLabel),
     "",
     "---",
     notify.lovelaceHeading,
@@ -4522,6 +5616,26 @@ var AutomationAssistController = class {
     if (!this.ensureCaptureStarted()) return;
     const command = Number(params.commandId);
     if (!Number.isFinite(command)) return;
+    if (params.deviceMode) {
+      const device = Number(params.deviceId);
+      if (!Number.isFinite(device)) return;
+      this.capture = {
+        label: String(params.label ?? str().assist.buttonFallback),
+        commandId: command,
+        deviceId: device,
+        commandType: params.commandType ?? "assigned",
+        icon: params.icon ? String(params.icon) : null,
+        deviceMode: true,
+        deviceName: String(
+          params.deviceName || str().assist.deviceFallback(device)
+        ),
+        kind: "button"
+      };
+      this.resetCaptureSideState();
+      this.host.onChange();
+      this.notifyCapture();
+      return;
+    }
     const commandType = params.commandType ?? "assigned";
     const resolvedDevice = commandType === "favorite" || commandType === "macro" ? params.deviceId != null ? Number(params.deviceId) : this.host.currentActivityId() : this.host.resolveCommandDeviceId(command, params.deviceId ?? null);
     if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) {
@@ -5107,7 +6221,9 @@ function listenersRef(wire) {
 function renderActivityRow(params) {
   const itemTag = s4(selectItemTagName());
   const options = params.unavailable ? [] : params.options;
-  const optionObjects = options.map((opt) => ({ value: opt, label: opt }));
+  const optionObjects = options.map(
+    (opt) => typeof opt === "string" ? { value: opt, label: opt } : opt
+  );
   const wireSelectEvents = listenersRef((el) => {
     el.addEventListener("selected", params.onSelect);
     el.addEventListener("change", params.onSelect);
@@ -5120,15 +6236,32 @@ function renderActivityRow(params) {
     el.addEventListener("change", () => params.onMenuClosed(), true);
     el.addEventListener("blur", () => params.onMenuClosed(), true);
   });
+  const toggle = params.modeToggle ? b2`
+        <button
+          type="button"
+          class="sb-mode-toggle"
+          aria-label=${params.modeToggle.ariaLabel}
+          title=${params.modeToggle.ariaLabel}
+          .disabled=${params.unavailable}
+          @click=${(ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    params.modeToggle.onToggle();
+  }}
+        >
+          <ha-icon icon=${params.modeToggle.icon}></ha-icon>
+        </button>
+      ` : A;
   return b2`
     <div
-      class="activityRow"
+      class="activityRow${params.modeToggle ? " activityRow--with-toggle" : ""}"
       style=${params.visible ? "" : "display: none !important;"}
       ${params.rowRef ? n6(params.rowRef) : A}
     >
+      ${toggle}
       <ha-select
         class="sb-activity-select"
-        .label=${str().card.activitySelectLabel}
+        .label=${params.selectLabel}
         .hass=${params.hass}
         .value=${params.unavailable ? "" : selectValueCompat(params.resolvedValue, optionObjects)}
         .disabled=${params.unavailable || params.disabled}
@@ -5189,6 +6322,11 @@ var CONTROL_CSS = `
     z-index: 1;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
+    /* Holding a button (long press) must not open the iOS callout or
+       start a text selection. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   .sb-key-control::before {
@@ -5276,7 +6414,15 @@ var SbKeyButton = class extends HTMLElement {
     this._sizeVar = null;
     this._disabled = false;
     this._wired = false;
-    /** Called on a primary pointer action or keyboard activation. */
+    this._holdRepeat = false;
+    /**
+     * Long press: while holdRepeat is on, pressing and holding repeats the
+     * trigger (first after HOLD_REPEAT_DELAY_MS, then every
+     * HOLD_REPEAT_INTERVAL_MS). The release tap of a hold that repeated is
+     * suppressed so letting go never sends one more command.
+     */
+    this._hold = new HoldRepeatTimer((repeatIndex) => this.repeatTrigger(repeatIndex));
+    /** Called on a primary pointer action, keyboard activation, or hold repeat. */
     this.onTrigger = null;
   }
   set label(value) {
@@ -5313,6 +6459,15 @@ var SbKeyButton = class extends HTMLElement {
   set disabled(value) {
     this._disabled = Boolean(value);
     if (this._control) this._control.disabled = this._disabled;
+    if (this._disabled) this._hold.stop();
+  }
+  /** Enable long press (hold-to-repeat) on this control. */
+  set holdRepeat(value) {
+    this._holdRepeat = Boolean(value);
+    if (!this._holdRepeat) this._hold.stop();
+  }
+  get holdRepeat() {
+    return this._holdRepeat;
   }
   get disabled() {
     return this._disabled;
@@ -5328,7 +6483,25 @@ var SbKeyButton = class extends HTMLElement {
   }
   trigger(ev) {
     if (this._disabled || this.classList.contains("disabled")) return;
+    if (this._hold.consumeFired()) return;
     this.onTrigger?.(ev);
+  }
+  repeatTrigger(repeatIndex) {
+    if (this._disabled || this.classList.contains("disabled")) {
+      this._hold.stop();
+      return;
+    }
+    if (repeatIndex === 1) this.fireHaptic();
+    this.onTrigger?.(new CustomEvent(HOLD_REPEAT_EVENT_TYPE, { detail: repeatIndex }));
+  }
+  onHoldPointerDown(ev) {
+    if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
+    if (ev.isPrimary === false || typeof ev.button === "number" && ev.button !== 0) return;
+    this._hold.start();
+  }
+  onHoldPointerEnd(ev) {
+    this._hold.stop();
+    if (ev.type !== "pointerup") this._hold.consumeFired();
   }
   syncContent() {
     if (!this._control || !this._iconEl || !this._labelEl) return;
@@ -5365,6 +6538,15 @@ var SbKeyButton = class extends HTMLElement {
     this._iconEl = icon;
     this._labelEl = label;
     this.syncContent();
+    this.addEventListener("pointerdown", (ev) => this.onHoldPointerDown(ev), {
+      capture: true
+    });
+    for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+      this.addEventListener(type, (ev) => this.onHoldPointerEnd(ev), { capture: true });
+    }
+    control.addEventListener("contextmenu", (ev) => {
+      if (this._holdRepeat) ev.preventDefault();
+    });
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
@@ -5373,6 +6555,9 @@ var SbKeyButton = class extends HTMLElement {
       this.fireHaptic();
       this.trigger(ev);
     });
+  }
+  disconnectedCallback() {
+    this._hold.stop();
   }
 };
 if (!customElements.get("sb-key-button")) {
@@ -5450,7 +6635,8 @@ function renderKey(params, spec) {
       .color=${spec.color ?? null}
       .sizeVar=${spec.color ? null : "--sb-key-font-size"}
       .disabled=${!enabled}
-      .onTrigger=${() => params.onKeyPress(spec)}
+      .holdRepeat=${params.holdRepeatForKey(spec.key)}
+      .onTrigger=${(ev) => params.onKeyPress(spec, ev)}
     ></sb-key-button>
   `;
 }
@@ -5605,7 +6791,7 @@ function renderFavoritesItems(params) {
     (entry) => entry.kind === "custom" ? renderCustomFavoriteButton(params, entry.item) : renderDrawerButton(params, entry.item, "favorites")
   )}`;
 }
-function renderTab(params, label, visible, active, disabled, onClick) {
+function renderTab(_params, label, visible, active, disabled, onClick) {
   if (!visible) return A;
   const classes = [
     "macroFavoritesButton",
@@ -5689,22 +6875,106 @@ function renderMacroFavorites(params) {
   `;
 }
 function renderInlineDrawerRow(params) {
+  const gridClass = params.kind === "commands" ? "inline-drawer-row__grid mf-grid mf-grid--commands" : "inline-drawer-row__grid mf-grid";
   return b2`
     <div
       class="inline-drawer-row inline-drawer-row--${params.kind}"
       style=${params.visible ? "" : "display: none !important;"}
     >
+      ${params.filter ? renderCommandsFilter(params.filter) : A}
       <div
         class="inline-drawer-row__scroller"
         style="--inline-row-visible-rows: ${params.visibleRows};"
       >
-        <div class="inline-drawer-row__grid mf-grid">
+        <div class=${gridClass}>
           ${params.itemCount ? params.items : b2`
                 <div class="inline-drawer-row__empty" style="grid-column: 1 / -1;">
                   ${params.emptyText}
                 </div>
               `}
         </div>
+      </div>
+    </div>
+  `;
+}
+function renderCommandsFilter(filter) {
+  return b2`
+    <input
+      class="sb-commands-filter"
+      type="text"
+      .value=${filter.value}
+      placeholder=${filter.placeholder}
+      aria-label=${filter.placeholder}
+      @input=${(ev) => {
+    const target = ev.target;
+    filter.onInput(String(target?.value ?? ""));
+  }}
+      @keydown=${(ev) => ev.stopPropagation()}
+    />
+  `;
+}
+function renderCommandButton(params, command) {
+  return b2`
+    <ha-card
+      class="drawer-btn drawer-btn--command"
+      role="button"
+      tabindex="0"
+      ${primaryActionRef(() => {
+    if (!Number.isFinite(command.command_id)) return;
+    params.onCommand(command);
+  })}
+    >
+      <div class="drawer-btn__inner drawer-btn__inner--row">
+        <div class="name">${command.name}</div>
+      </div>
+    </ha-card>
+  `;
+}
+function renderCommandsItems(params) {
+  return b2`${c6(
+    params.commands,
+    (command) => `${command.command_id}:${command.name}`,
+    (command) => renderCommandButton(params, command)
+  )}`;
+}
+function renderCommandsDrawer(params) {
+  const setRef = (r6) => r6 ? n6(r6) : A;
+  return b2`
+    <div
+      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
+      style=${params.visible ? "" : "display: none !important;"}
+      ${setRef(params.containerRef)}
+    >
+      <div
+        class="macroFavorites"
+        style=${rowRadiusStyle(params.open, params.drawerUp)}
+        ${setRef(params.rowRef)}
+      >
+        <div class="macroFavoritesGrid single">
+          ${renderTab(
+    null,
+    params.tabLabel,
+    true,
+    params.open,
+    params.disabled,
+    params.onToggle
+  )}
+        </div>
+      </div>
+      <div
+        class="mf-overlay mf-overlay--commands${params.open ? " open" : ""}"
+        ${setRef(params.overlayRef)}
+      >
+        ${params.renderContent ? b2`
+              ${renderCommandsFilter(params.filter)}
+              <div class="mf-grid mf-grid--commands">
+                ${params.commands.length ? renderCommandsItems(params) : b2`
+                      <div class="inline-drawer-row__empty" style="grid-column: 1 / -1;">
+                        ${params.emptyText}
+                      </div>
+                    `}
+              </div>
+            ` : A}
       </div>
     </div>
   `;
@@ -5830,6 +7100,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._layoutSignatureCache = null;
     this._layoutOverlayEl = null;
     this._lastLayoutSignature = null;
+    this._keymapLoading = false;
     // Activity select dedupe (legacy handleActivitySelect closure state)
     this._lastSelectedActivityValue = null;
     this._lastSelectedActivityAt = 0;
@@ -5844,6 +7115,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._mfContainerRef = e5();
     this._macrosOverlayRef = e5();
     this._favoritesOverlayRef = e5();
+    this._commandsOverlayRef = e5();
     this._macroFavoritesRowRef = e5();
     this._store = new RemoteCardStore(
       () => this.requestUpdate(),
@@ -5918,28 +7190,7 @@ var SofabatonRemoteCard = class extends i4 {
     return document.createElement(EDITOR);
   }
   static getStubConfig() {
-    return {
-      entity: "",
-      theme: "",
-      background_override: null,
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_dvr: true,
-      show_colors: true,
-      show_abc: true,
-      show_automation_assist: false,
-      show_macros_button: null,
-      show_favorites_button: null,
-      custom_favorites: [],
-      max_width: 360,
-      shrink: 0,
-      group_order: DEFAULT_GROUP_ORDER.slice()
-    };
+    return { entity: "" };
   }
   // ---------- lifecycle ----------
   connectedCallback() {
@@ -5993,7 +7244,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._onOutsidePointerDown = (e6) => {
       const path = typeof e6.composedPath === "function" ? e6.composedPath() : [];
       if (this._store.activeDrawer) {
-        const clickedInOverlay = this._macrosOverlayRef.value && path.includes(this._macrosOverlayRef.value) || this._favoritesOverlayRef.value && path.includes(this._favoritesOverlayRef.value);
+        const clickedInOverlay = this._macrosOverlayRef.value && path.includes(this._macrosOverlayRef.value) || this._favoritesOverlayRef.value && path.includes(this._favoritesOverlayRef.value) || this._commandsOverlayRef.value && path.includes(this._commandsOverlayRef.value);
         const clickedInToggleRow = this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
         if (!(clickedInOverlay || clickedInToggleRow)) {
           this._setActiveDrawer(null);
@@ -6046,18 +7297,34 @@ var SofabatonRemoteCard = class extends i4 {
   _updateDrawerDirection() {
     if (!this._store.activeDrawer) return;
     const row = this._macroFavoritesRowRef.value;
-    const overlay = this._store.activeDrawer === "favorites" ? this._favoritesOverlayRef.value : this._macrosOverlayRef.value;
+    const isCommands = this._store.activeDrawer === "commands";
+    const overlay = isCommands ? this._commandsOverlayRef.value : this._store.activeDrawer === "favorites" ? this._favoritesOverlayRef.value : this._macrosOverlayRef.value;
     if (!row || !overlay) return;
     const rowRect = row.getBoundingClientRect();
     const cardRect = this._cardRef.value && typeof this._cardRef.value.getBoundingClientRect === "function" ? this._cardRef.value.getBoundingClientRect() : null;
     const nextUp = drawerDirection({
-      desired: drawerDesiredHeight(overlay.scrollHeight || 0),
+      // The commands drawer ignores the 350px cap and takes what the
+      // viewport gives it (device-mode-plan.md §4.2).
+      desired: drawerDesiredHeight(
+        overlay.scrollHeight || 0,
+        isCommands ? window.innerHeight : void 0
+      ),
       rowTop: rowRect.top,
       rowBottom: rowRect.bottom,
       cardTop: cardRect?.top ?? null,
       cardBottom: cardRect?.bottom ?? null,
       viewportHeight: window.innerHeight
     }) === "up";
+    if (isCommands) {
+      overlay.style.maxHeight = `${commandsOverlayMaxHeight({
+        up: nextUp,
+        rowTop: rowRect.top,
+        rowBottom: rowRect.bottom,
+        cardTop: cardRect?.top ?? null,
+        cardBottom: cardRect?.bottom ?? null,
+        viewportHeight: window.innerHeight
+      })}px`;
+    }
     if (nextUp !== this._drawerUp) {
       this._drawerUp = nextUp;
       this.requestUpdate();
@@ -6108,10 +7375,45 @@ var SofabatonRemoteCard = class extends i4 {
       console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
     });
   }
+  /**
+   * Single stable entry point for the activity/device dropdown. The select's
+   * listeners are wired ONCE per node (listenersRef), so the closure they
+   * capture must not bake in the render-time mode — this delegate reads the
+   * mode at event time instead.
+   */
+  _handleSelect(ev) {
+    const deviceMode = this._store.mode() === "device" && this._store.deviceModeAvailable();
+    if (deviceMode) {
+      this._handleDeviceSelect(ev);
+    } else {
+      this._handleActivitySelect(ev);
+    }
+  }
+  _handleDeviceSelect(ev) {
+    if (this._editMode) return;
+    const select = ev.target;
+    const value = ev?.detail?.value ?? select?.value;
+    if (value == null) return;
+    const now = Date.now();
+    if (String(value) === this._lastSelectedActivityValue && now - this._lastSelectedActivityAt < 250) {
+      return;
+    }
+    this._lastSelectedActivityValue = String(value);
+    this._lastSelectedActivityAt = now;
+    this._fireEvent("haptic", "light");
+    const deviceId = String(value) === "" ? null : Number(value);
+    this._store.setDevice(Number.isFinite(deviceId) ? deviceId : null);
+  }
+  _handleModeToggle() {
+    if (this._editMode) return;
+    this._fireEvent("haptic", "light");
+    this._setActiveDrawer(null);
+    this._store.toggleMode();
+  }
   _syncLoadIndicator() {
     this._loadIndicatorRef.value?.classList.toggle(
       "is-loading",
-      this._store.isLoadingActive()
+      this._store.isLoadingActive() || this._keymapLoading
     );
   }
   // ---------- theming (imperative, on the ha-card like the legacy) ----------
@@ -6283,8 +7585,10 @@ var SofabatonRemoteCard = class extends i4 {
     const derived = store.deriveRuntimeState();
     const layoutConfig = derived.layoutConfig;
     this._lastLayoutSignature = derived.layoutSignature;
+    const deviceMode = derived.mode === "device";
+    this._keymapLoading = Boolean(derived.keymapLoading);
     this._assist.observeActivityState({
-      currentLabel: derived.currentLabel,
+      currentLabel: deviceMode ? this._store.currentActivityLabel() : derived.currentLabel,
       activityId: derived.activityId != null ? Number(derived.activityId) : null,
       unavailable: derived.isUnavailable
     });
@@ -6293,30 +7597,45 @@ var SofabatonRemoteCard = class extends i4 {
     }
     this._assist.syncMqtt();
     const asRows = mfAsRows(layoutConfig);
-    const macrosVisible = macrosButtonEnabled(layoutConfig);
-    const favoritesVisible = favoritesButtonEnabled(layoutConfig);
+    const macrosVisible = !deviceMode && macrosButtonEnabled(layoutConfig);
+    const favoritesVisible = !deviceMode && favoritesButtonEnabled(layoutConfig);
     const macrosRowOn = asRows && macrosVisible;
     const favoritesRowOn = asRows && favoritesVisible;
     const showMacrosBtn = !asRows && macrosVisible;
     const showFavoritesBtn = !asRows && favoritesVisible;
-    const disableAll = derived.isUnavailable || store.activityLoadingActive() || !this._editMode && derived.isPoweredOff;
-    const drawerDisplayState = drawerVisibilityState({
-      activeDrawer: store.activeDrawer,
-      showMacrosButton: showMacrosBtn,
-      showFavoritesButton: showFavoritesBtn,
-      editMode: this._editMode,
-      macros: derived.macros,
-      favorites: derived.favorites,
-      customFavorites: derived.customFavorites,
-      disableAllButtons: disableAll
-    });
-    if (drawerDisplayState.closedByVisibility) {
-      if (store.activeDrawer) this._retainClosingDrawer(store.activeDrawer);
+    const commandsVisible = deviceMode && derived.showCommandsButton;
+    const showCommandsDrawer = commandsVisible && !asRows;
+    const commandsAsRow = commandsVisible && asRows;
+    const disableAll = deviceMode ? derived.isUnavailable || !this._editMode && derived.deviceId == null : derived.isUnavailable || store.activityLoadingActive() || !this._editMode && derived.isPoweredOff;
+    if (deviceMode && (store.activeDrawer === "macros" || store.activeDrawer === "favorites") || !deviceMode && store.activeDrawer === "commands") {
+      this._retainClosingDrawer(store.activeDrawer);
       this._scheduleDrawerDirectionReset();
+      store.activeDrawer = null;
     }
-    store.activeDrawer = drawerDisplayState.nextActiveDrawer;
-    const activeDrawerCount = store.activeDrawer === "macros" ? derived.macros.length : store.activeDrawer === "favorites" ? derived.favorites.length + derived.customFavorites.length : 0;
-    const drawerMeasureSignature = `${store.activeDrawer || ""}:${activeDrawerCount}:${derived.layoutSignature}`;
+    let drawerDisplayState = null;
+    if (!deviceMode) {
+      drawerDisplayState = drawerVisibilityState({
+        activeDrawer: store.activeDrawer,
+        showMacrosButton: showMacrosBtn,
+        showFavoritesButton: showFavoritesBtn,
+        editMode: this._editMode,
+        macros: derived.macros,
+        favorites: derived.favorites,
+        customFavorites: derived.customFavorites,
+        disableAllButtons: disableAll
+      });
+      if (drawerDisplayState.closedByVisibility) {
+        if (store.activeDrawer) this._retainClosingDrawer(store.activeDrawer);
+        this._scheduleDrawerDirectionReset();
+      }
+      store.activeDrawer = drawerDisplayState.nextActiveDrawer;
+    } else if (store.activeDrawer === "commands" && !showCommandsDrawer) {
+      this._retainClosingDrawer("commands");
+      this._scheduleDrawerDirectionReset();
+      store.activeDrawer = null;
+    }
+    const activeDrawerCount = store.activeDrawer === "macros" ? derived.macros.length : store.activeDrawer === "favorites" ? derived.favorites.length + derived.customFavorites.length : store.activeDrawer === "commands" ? derived.commands.length : 0;
+    const drawerMeasureSignature = `${store.activeDrawer || ""}:${activeDrawerCount}:${derived.commandFilter}:${derived.layoutSignature}`;
     if (this._drawerMeasureSignature !== drawerMeasureSignature) {
       this._drawerMeasureSignature = drawerMeasureSignature;
       this._drawerMeasurePending = Boolean(store.activeDrawer);
@@ -6333,20 +7652,26 @@ var SofabatonRemoteCard = class extends i4 {
       disableAll,
       editMode: this._editMode,
       isEnabled: (id) => store.isEnabled(id),
-      onKeyPress: (spec) => this._onKeyPress(spec),
+      onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
+      holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,
       showDvr: derived.showDvr
     };
+    const commandsFilter = {
+      value: derived.commandFilter,
+      placeholder: str().card.filterCommands,
+      onInput: (value) => store.setCommandFilter(value)
+    };
     const mfParams = {
-      visible: drawerDisplayState.showMF,
+      visible: Boolean(drawerDisplayState?.showMF),
       showMacrosButton: showMacrosBtn,
       showFavoritesButton: showFavoritesBtn,
-      single: drawerDisplayState.visibleCount === 1,
-      macrosDisabled: drawerDisplayState.macrosDisabled,
-      favoritesDisabled: drawerDisplayState.favoritesDisabled,
-      activeDrawer: store.activeDrawer,
+      single: drawerDisplayState?.visibleCount === 1,
+      macrosDisabled: Boolean(drawerDisplayState?.macrosDisabled),
+      favoritesDisabled: Boolean(drawerDisplayState?.favoritesDisabled),
+      activeDrawer: store.activeDrawer === "commands" ? null : store.activeDrawer,
       drawerUp: this._drawerUp,
       macros: derived.macros,
       favorites: derived.favorites,
@@ -6386,20 +7711,46 @@ var SofabatonRemoteCard = class extends i4 {
         void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
       }
     };
+    const commandsParams = {
+      visible: showCommandsDrawer,
+      open: store.activeDrawer === "commands",
+      disabled: disableAll,
+      drawerUp: this._drawerUp,
+      commands: derived.commands,
+      renderContent: store.activeDrawer === "commands" || this._closingDrawer === "commands",
+      emptyText: str().card.noCommands,
+      tabLabel: str().card.commandsTab,
+      filter: commandsFilter,
+      onToggle: () => this._toggleDrawer("commands"),
+      onCommand: (command) => this._onCommandItem(command),
+      containerRef: this._mfContainerRef,
+      rowRef: this._macroFavoritesRowRef,
+      overlayRef: this._commandsOverlayRef
+    };
     const sharedRows = mfRowVisibleRows(layoutConfig);
-    const midEnabled = (layoutConfig.show_mid ?? true) && (derived.showVolume || derived.showChannel);
+    const midEnabled = derived.showVolume || derived.showChannel;
     const mediaEnabled = derived.isX2 ? derived.showMedia || derived.showDvr : derived.showMedia;
-    const order = store.groupOrderList(derived.activityId);
+    const order = normalizedGroupOrder(layoutConfig.group_order);
     const groupTemplates = {
       activity: () => Boolean(layoutConfig.show_activity) ? renderActivityRow({
         hass: store.hass,
         visible: true,
         unavailable: derived.isUnavailable,
-        options: derived.selectState?.options ?? [],
-        resolvedValue: derived.selectState?.resolvedValue ?? "",
-        disabled: Boolean(derived.selectState?.disabled),
-        loading: store.isLoadingActive(),
-        onSelect: (ev) => this._handleActivitySelect(ev),
+        options: deviceMode ? derived.deviceSelectState?.options ?? [] : derived.selectState?.options ?? [],
+        selectLabel: deviceMode ? str().card.deviceSelectLabel : str().card.activitySelectLabel,
+        resolvedValue: deviceMode ? derived.deviceSelectState?.resolvedValue ?? "" : derived.selectState?.resolvedValue ?? "",
+        disabled: deviceMode ? Boolean(derived.deviceSelectState?.disabled) : Boolean(derived.selectState?.disabled),
+        loading: store.isLoadingActive() || Boolean(derived.keymapLoading),
+        modeToggle: derived.deviceModeAvailable ? {
+          // Same icon pair as the control panel's Hub-tab subtabs.
+          icon: deviceMode ? "mdi:audio-video" : "mdi:play-circle-outline",
+          ariaLabel: deviceMode ? str().card.switchToActivityMode : str().card.switchToDeviceMode,
+          // Inert in edit mode (the editor's layout selection drives
+          // the previewed mode); rendered so the editor's Device mode
+          // switch is visualized in the preview.
+          onToggle: () => this._handleModeToggle()
+        } : null,
+        onSelect: (ev) => this._handleSelect(ev),
         onMenuOpened: () => {
           store.activityMenuOpen = true;
           this._syncLayering();
@@ -6411,8 +7762,19 @@ var SofabatonRemoteCard = class extends i4 {
         rowRef: this._activityRowRef,
         loadIndicatorRef: this._loadIndicatorRef
       }) : A,
-      macro_favorites: () => drawerDisplayState.showMF ? renderMacroFavorites(mfParams) : A,
-      macros_row: () => macrosRowOn ? renderInlineDrawerRow({
+      macro_favorites: () => deviceMode ? showCommandsDrawer ? renderCommandsDrawer(commandsParams) : A : drawerDisplayState?.showMF ? renderMacroFavorites(mfParams) : A,
+      macros_row: () => deviceMode ? commandsAsRow ? renderInlineDrawerRow({
+        kind: "commands",
+        visible: true,
+        visibleRows: sharedRows,
+        items: renderCommandsItems({
+          commands: derived.commands,
+          onCommand: (command) => this._onCommandItem(command)
+        }),
+        itemCount: derived.commands.length,
+        emptyText: str().card.noCommands,
+        filter: commandsFilter
+      }) : A : macrosRowOn ? renderInlineDrawerRow({
         kind: "macros",
         visible: true,
         visibleRows: sharedRows,
@@ -6420,7 +7782,7 @@ var SofabatonRemoteCard = class extends i4 {
         itemCount: derived.macros.length,
         emptyText: str().card.noMacros
       }) : A,
-      favorites_row: () => favoritesRowOn ? renderInlineDrawerRow({
+      favorites_row: () => !deviceMode && favoritesRowOn ? renderInlineDrawerRow({
         kind: "favorites",
         visible: true,
         visibleRows: sharedRows,
@@ -6456,19 +7818,37 @@ var SofabatonRemoteCard = class extends i4 {
       </ha-card>
     `;
   }
-  _onKeyPress(spec) {
+  _onKeyPress(spec, ev) {
+    const deviceMode = this._store.mode() === "device";
+    const targetDeviceId = deviceMode ? this._store.currentDeviceId() : this._store.commandTarget(spec.id)?.activity_id ?? this._store.currentActivityId();
+    if (holdRepeatIndexOf(ev) <= 1) {
+      this._assist.recordClick({
+        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        commandId: spec.cmd,
+        deviceId: targetDeviceId ?? null,
+        commandType: "assigned",
+        icon: spec.color ? null : spec.icon || null,
+        deviceMode,
+        deviceName: deviceMode ? this._store.deviceNameForId(targetDeviceId) : null
+      });
+    }
+    this._store.triggerCommandPulse();
+    void this._store.sendCommand(spec.cmd, targetDeviceId);
+  }
+  _onCommandItem(command) {
+    const deviceId = this._store.currentDeviceId();
+    if (deviceId == null) return;
     this._assist.recordClick({
-      label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
-      commandId: spec.cmd,
-      deviceId: this._store.commandTarget(spec.id)?.activity_id ?? null,
-      commandType: "assigned",
-      icon: spec.color ? null : spec.icon || null
+      label: command.name,
+      commandId: command.command_id,
+      deviceId,
+      commandType: "favorite",
+      icon: null,
+      deviceMode: true,
+      deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(
-      spec.cmd,
-      this._store.commandTarget(spec.id)?.activity_id ?? this._store.currentActivityId()
-    );
+    void this._store.sendCommand(command.command_id, deviceId);
   }
   updated(_changed) {
     const themeChanged = this._applyLocalTheme(String(this._store.config?.theme ?? ""));
@@ -6512,12 +7892,23 @@ var REMOTE_CARD_STRINGS_AR = {
     noActivitiesWarning: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0623\u064A \u0623\u0646\u0634\u0637\u0629 \u0641\u064A \u0633\u0645\u0627\u062A \u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F.",
     noMacros: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0648\u062D\u062F\u0627\u062A \u0645\u0627\u0643\u0631\u0648",
     noFavorites: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0645\u0641\u0636\u0644\u0627\u062A",
+    noCommands: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0623\u0648\u0627\u0645\u0631",
     macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u2039",
     favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u2039",
+    commandsTab: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u2039",
     activitySelectLabel: "\u0627\u0644\u0646\u0634\u0627\u0637",
+    deviceSelectLabel: "\u0627\u0644\u062C\u0647\u0627\u0632",
+    selectDevice: "\u0627\u062E\u062A\u0631 \u062C\u0647\u0627\u0632\u064B\u0627",
+    allDevicesLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629",
+    filterCommands: "\u062A\u0635\u0641\u064A\u0629 \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
+    switchToDeviceMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    switchToActivityMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u0646\u0634\u0637\u0629",
+    deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
+    deviceKeymapError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
     poweredOff: "\u0645\u064F\u0637\u0641\u0623",
-    defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A",
+    defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     activityFallback: (id) => `\u0627\u0644\u0646\u0634\u0627\u0637 ${isolate(id)}`,
+    deviceFallback: (id) => `\u0627\u0644\u062C\u0647\u0627\u0632 ${isolate(id)}`,
     pickerName: `\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0645\u0646 ${SOFABATON}`,
     pickerDescription: `\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0642\u0627\u0628\u0644 \u0644\u0644\u062A\u062E\u0635\u064A\u0635 \u0644\u062A\u0643\u0627\u0645\u0644 ${isolate("Sofabaton X1 / X1S / X2")}.`
   },
@@ -6555,9 +7946,11 @@ var REMOTE_CARD_STRINGS_AR = {
     notification: {
       title: "\u{1F6E0}\uFE0F \u0645\u0633\u0627\u0639\u062F \u0627\u0644\u0623\u062A\u0645\u062A\u0629",
       eventButton: (label) => `\u0627\u0644\u0632\u0631: ${isolate(label)}`,
+      eventCommand: (label) => `\u0627\u0644\u0623\u0645\u0631: ${isolate(label)}`,
       eventActivity: (label) => `\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u0646\u0634\u0627\u0637: ${isolate(label)}`,
       eventOther: (label) => `\u0627\u0644\u062D\u062F\u062B: ${isolate(label)}`,
       header: (activityName, eventLabel) => `**\u0627\u0644\u0646\u0634\u0627\u0637: ${isolate(activityName)} \u2022 ${isolate(eventLabel)}**`,
+      headerDevice: (deviceName, eventLabel) => `**\u0627\u0644\u062C\u0647\u0627\u0632: ${isolate(deviceName)} \u2022 ${isolate(eventLabel)}**`,
       lovelaceHeading: `\u{1F4CB} **\u0643\u0648\u062F \u0632\u0631 ${LOVELACE}**`,
       lovelaceCopy: `*\u0627\u0646\u0633\u062E \u0647\u0630\u0627 \u0625\u0644\u0649 ${YAML} \u0627\u0644\u062E\u0627\u0635 \u0628\u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A:*`,
       serviceHeading: "\u2699\uFE0F **\u0627\u0633\u062A\u062F\u0639\u0627\u0621 \u062E\u062F\u0645\u0629 (\u0623\u062A\u0645\u062A\u0629)**",
@@ -6570,7 +7963,7 @@ var REMOTE_CARD_STRINGS_AR = {
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0646\u0634\u0627\u0637",
+      show_activity: "\u0645\u062D\u062F\u0650\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
       show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
       show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
       show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
@@ -6582,7 +7975,7 @@ var REMOTE_CARD_STRINGS_AR = {
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
       group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
     },
-    automationAssistTitle: "\u0645\u0633\u0627\u0639\u062F \u0627\u0644\u0623\u062A\u0645\u062A\u0629",
+    generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
     keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     keyCaptureDescription: `\u0623\u0631\u0633\u0644 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0625\u0644\u0649 \u062C\u0647\u0627\u0632 ${isolate("Hub")} \u0644\u0625\u0646\u0634\u0627\u0621 ${YAML} \u062C\u0627\u0647\u0632 \u0644\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0641\u064A \u0623\u0632\u0631\u0627\u0631 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A \u0648\u0639\u0645\u0644\u064A\u0627\u062A \u0627\u0644\u0623\u062A\u0645\u062A\u0629.`,
     keyCaptureLearnMore: "\u062A\u0639\u0631\u0651\u0641 \u0639\u0644\u0649 \u0627\u0644\u0645\u0632\u064A\u062F \u062D\u0648\u0644 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
@@ -6590,8 +7983,20 @@ var REMOTE_CARD_STRINGS_AR = {
     stylingOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0645\u0638\u0647\u0631",
     layoutOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     layoutSelectLabel: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637",
-    defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A",
+    defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
+    allDevicesOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629",
+    commands: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
+    modeToggle: "\u0632\u0631 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0648\u0636\u0639",
+    deviceModeDescription: `\u062A\u062D\u0643\u0651\u0645 \u0641\u064A \u062C\u0647\u0627\u0632 \u0648\u0627\u062D\u062F \u062A\u0645 \u0625\u0639\u062F\u0627\u062F\u0647 \u0639\u0644\u0649 \u062C\u0647\u0627\u0632 ${isolate("Hub")}\u060C \u0628\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u062A\u0639\u064A\u064A\u0646\u0627\u062A \u0623\u0632\u0631\u0627\u0631\u0647 \u0648\u0642\u0627\u0626\u0645\u0629 \u0623\u0648\u0627\u0645\u0631\u0647 \u0627\u0644\u0643\u0627\u0645\u0644\u0629.`,
+    longPress: "\u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u062A\u0643\u0631\u0627\u0631 \u0639\u0646\u062F \u0627\u0644\u0636\u063A\u0637 \u0627\u0644\u0645\u0637\u0648\u0651\u0644",
+    longPressDescription: "\u0627\u0636\u063A\u0637 \u0645\u0637\u0648\u0651\u0644\u064B\u0627 \u0639\u0644\u0649 \u0623\u062D\u062F \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0645\u062D\u062F\u062F\u0629 \u0644\u0625\u0631\u0633\u0627\u0644 \u0623\u0645\u0631\u0647 \u0628\u0634\u0643\u0644 \u0645\u062A\u0643\u0631\u0631\u060C \u0643\u0645\u0627 \u0641\u064A \u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0627\u0644\u0641\u0639\u0644\u064A.",
+    longPressButtons: "\u0627\u0644\u0623\u0632\u0631\u0627\u0631",
+    enableDeviceMode: "\u062A\u0641\u0639\u064A\u0644 \u0648\u0636\u0639 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    initialView: "\u0627\u0644\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0644\u064A",
+    initialViewHelper: "\u0645\u0627 \u062A\u0639\u0631\u0636\u0647 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0639\u0646\u062F \u0641\u062A\u062D\u0647\u0627",
+    openOnCurrentActivity: "\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u062D\u0627\u0644\u064A",
     macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
+    commandsAsRows: "\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0641\u064A \u0635\u0641\u0648\u0641",
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
@@ -6601,14 +8006,16 @@ var REMOTE_CARD_STRINGS_AR = {
     channel: "\u0627\u0644\u0642\u0646\u0627\u0629",
     mediaControls: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
     dvr: DVR,
-    resetCardDefault: "\u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
     resetDefaultLayout: "\u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     noteDefaultLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0644\u0644\u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u062A\u064A \u0644\u064A\u0633 \u0644\u0647\u0627 \u062A\u062E\u0637\u064A\u0637 \u062E\u0627\u0635",
-    noteCustomLayout: "\u062A\u062E\u0637\u064A\u0637 \u0645\u062E\u0635\u0651\u0635 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
-    noteUsingDefault: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645"
+    noteDeviceDefaultLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0644\u0644\u0623\u062C\u0647\u0632\u0629 \u0627\u0644\u062A\u064A \u0644\u064A\u0633 \u0644\u0647\u0627 \u062A\u062E\u0637\u064A\u0637 \u062E\u0627\u0635",
+    noteCustomActivityLayout: "\u062A\u062E\u0637\u064A\u0637 \u0623\u0646\u0634\u0637\u0629 \u0645\u062E\u0635\u0651\u0635 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
+    noteCustomDeviceLayout: "\u062A\u062E\u0637\u064A\u0637 \u0623\u062C\u0647\u0632\u0629 \u0645\u062E\u0635\u0651\u0635 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
+    noteUsingActivityDefault: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
+    noteUsingDeviceDefault: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645"
   },
   groups: {
-    activity: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0646\u0634\u0627\u0637",
+    activity: "\u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
     macro_favorites: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     macros_row: "\u0635\u0641 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites_row: "\u0635\u0641 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
@@ -6681,12 +8088,23 @@ var REMOTE_CARD_STRINGS_DE = {
     noActivitiesWarning: "Keine Aktivit\xE4ten in den Attributen der Fernbedienung gefunden.",
     noMacros: "Keine Makros verf\xFCgbar",
     noFavorites: "Keine Favoriten verf\xFCgbar",
+    noCommands: "Keine Befehle verf\xFCgbar",
     macrosTab: "Makros >",
     favoritesTab: "Favoriten >",
+    commandsTab: "Befehle >",
     activitySelectLabel: "Aktivit\xE4t",
+    deviceSelectLabel: "Ger\xE4t",
+    selectDevice: "Ger\xE4t ausw\xE4hlen",
+    allDevicesLayout: "Standard-Ger\xE4telayout",
+    filterCommands: "Befehle filtern",
+    switchToDeviceMode: "In den Ger\xE4temodus wechseln",
+    switchToActivityMode: "In den Aktivit\xE4tsmodus wechseln",
+    deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
+    deviceKeymapError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden.",
     poweredOff: "Ausgeschaltet",
-    defaultLayout: "Standardlayout",
+    defaultLayout: "Standard-Aktivit\xE4tslayout",
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
+    deviceFallback: (id) => `Ger\xE4t ${id}`,
     pickerName: "Virtuelle Sofabaton-Fernbedienung",
     pickerDescription: "Eine konfigurierbare Fernbedienung f\xFCr die Sofabaton-X1-, X1S- und X2-Integration."
   },
@@ -6724,9 +8142,11 @@ var REMOTE_CARD_STRINGS_DE = {
     notification: {
       title: "\u{1F6E0}\uFE0F Automatisierungsassistent",
       eventButton: (label) => `Taste: ${label}`,
+      eventCommand: (label) => `Befehl: ${label}`,
       eventActivity: (label) => `Aktivit\xE4tswechsel: ${label}`,
       eventOther: (label) => `Ereignis: ${label}`,
       header: (activityName, eventLabel) => `**Aktivit\xE4t: ${activityName} | ${eventLabel}**`,
+      headerDevice: (deviceName, eventLabel) => `**Ger\xE4t: ${deviceName} | ${eventLabel}**`,
       lovelaceHeading: "\u{1F4CB} **Lovelace-Schaltfl\xE4chencode**",
       lovelaceCopy: "*In das Dashboard-YAML kopieren:*",
       serviceHeading: "\u2699\uFE0F **Dienstaufruf (Automatisierung)**",
@@ -6739,7 +8159,7 @@ var REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
-      show_activity: "Aktivit\xE4tsauswahl",
+      show_activity: "Aktivit\xE4ts-/Ger\xE4teauswahl",
       show_dpad: "Steuerkreuz",
       show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
       show_mid: "Lautst\xE4rke- und Kanalwippen",
@@ -6751,7 +8171,7 @@ var REMOTE_CARD_STRINGS_DE = {
       max_width: "Maximale Kartenbreite (px)",
       group_order: "Gruppenreihenfolge"
     },
-    automationAssistTitle: "Automatisierungsassistent",
+    generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendr\xFCcke erfassen",
     keyCaptureDescription: "Sende Tastendr\xFCcke an den Hub, um sofort einsatzbereites YAML f\xFCr Dashboard-Schaltfl\xE4chen und Automatisierungen zu erzeugen.",
     keyCaptureLearnMore: "Mehr \xFCber die Tastenerfassung erfahren",
@@ -6759,8 +8179,20 @@ var REMOTE_CARD_STRINGS_DE = {
     stylingOptions: "Stiloptionen",
     layoutOptions: "Layoutoptionen",
     layoutSelectLabel: "Layout",
-    defaultLayoutOption: "Standardlayout",
+    defaultLayoutOption: "Standard-Aktivit\xE4tslayout",
+    allDevicesOption: "Standard-Ger\xE4telayout",
+    commands: "Befehle",
+    modeToggle: "Modusschalter",
+    deviceModeDescription: "Steuere ein einzelnes, im Hub eingerichtetes Ger\xE4t mit dessen Tastenbelegungen und vollst\xE4ndiger Befehlsliste.",
+    longPress: "Wiederholen beim Gedr\xFCckthalten aktivieren",
+    longPressDescription: "Halte eine ausgew\xE4hlte Taste gedr\xFCckt, um ihren Befehl wiederholt zu senden \u2013 wie bei der physischen Fernbedienung.",
+    longPressButtons: "Tasten",
+    enableDeviceMode: "Ger\xE4temodus aktivieren",
+    initialView: "Anfangsansicht",
+    initialViewHelper: "Was die Karte beim \xD6ffnen anzeigt",
+    openOnCurrentActivity: "Aktuelle Aktivit\xE4t",
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
+    commandsAsRows: "Befehle als Zeilen",
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
     moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
@@ -6770,14 +8202,16 @@ var REMOTE_CARD_STRINGS_DE = {
     channel: "Kanal",
     mediaControls: "Mediensteuerung",
     dvr: "DVR",
-    resetCardDefault: "Kartenlayout zur\xFCcksetzen",
     resetDefaultLayout: "Layout zur\xFCcksetzen",
     noteDefaultLayout: "F\xFCr Aktivit\xE4ten ohne eigenes Layout",
-    noteCustomLayout: "Benutzerdefiniertes Layout aktiv",
-    noteUsingDefault: "Standardlayout aktiv"
+    noteDeviceDefaultLayout: "F\xFCr Ger\xE4te ohne eigenes Layout",
+    noteCustomActivityLayout: "Benutzerdefiniertes Aktivit\xE4tslayout aktiv",
+    noteCustomDeviceLayout: "Benutzerdefiniertes Ger\xE4telayout aktiv",
+    noteUsingActivityDefault: "Standard-Aktivit\xE4tslayout aktiv",
+    noteUsingDeviceDefault: "Standard-Ger\xE4telayout aktiv"
   },
   groups: {
-    activity: "Aktivit\xE4tsauswahl",
+    activity: "Aktivit\xE4t/Ger\xE4t",
     macro_favorites: "Makros/Favoriten",
     macros_row: "Makrozeile",
     favorites_row: "Favoritenzeile",
@@ -6829,12 +8263,23 @@ var REMOTE_CARD_STRINGS_ES = {
     noActivitiesWarning: "No se encontraron actividades en los atributos del control remoto.",
     noMacros: "No hay macros disponibles",
     noFavorites: "No hay favoritos disponibles",
+    noCommands: "No hay comandos disponibles",
     macrosTab: "Macros >",
     favoritesTab: "Favoritos >",
+    commandsTab: "Comandos >",
     activitySelectLabel: "Actividad",
+    deviceSelectLabel: "Dispositivo",
+    selectDevice: "Seleccionar dispositivo",
+    allDevicesLayout: "Dise\xF1o predeterminado de dispositivos",
+    filterCommands: "Filtrar comandos",
+    switchToDeviceMode: "Cambiar al modo de dispositivo",
+    switchToActivityMode: "Cambiar al modo de actividad",
+    deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
+    deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
     poweredOff: "Apagado",
-    defaultLayout: "Dise\xF1o predeterminado",
+    defaultLayout: "Dise\xF1o predeterminado de actividades",
     activityFallback: (id) => `Actividad ${id}`,
+    deviceFallback: (id) => `Dispositivo ${id}`,
     pickerName: "Control remoto virtual Sofabaton",
     pickerDescription: "Un control remoto configurable para la integraci\xF3n Sofabaton X1, X1S y X2."
   },
@@ -6872,9 +8317,11 @@ var REMOTE_CARD_STRINGS_ES = {
     notification: {
       title: "\u{1F6E0}\uFE0F Asistente de automatizaci\xF3n",
       eventButton: (label) => `Bot\xF3n: ${label}`,
+      eventCommand: (label) => `Comando: ${label}`,
       eventActivity: (label) => `Cambio de actividad: ${label}`,
       eventOther: (label) => `Evento: ${label}`,
       header: (activityName, eventLabel) => `**Actividad: ${activityName} | ${eventLabel}**`,
+      headerDevice: (deviceName, eventLabel) => `**Dispositivo: ${deviceName} | ${eventLabel}**`,
       lovelaceHeading: "\u{1F4CB} **C\xF3digo de bot\xF3n Lovelace**",
       lovelaceCopy: "*Copia esto en el YAML de tu panel:*",
       serviceHeading: "\u2699\uFE0F **Llamada de servicio (automatizaci\xF3n)**",
@@ -6887,7 +8334,7 @@ var REMOTE_CARD_STRINGS_ES = {
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
-      show_activity: "Selector de actividad",
+      show_activity: "Selector de actividad/dispositivo",
       show_dpad: "Control direccional",
       show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
       show_mid: "Controles de volumen y canal",
@@ -6899,7 +8346,7 @@ var REMOTE_CARD_STRINGS_ES = {
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
       group_order: "Orden de los grupos"
     },
-    automationAssistTitle: "Asistente de automatizaci\xF3n",
+    generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
     keyCaptureDescription: "Env\xEDa pulsaciones de botones al hub para generar YAML listo para usar en botones del panel y automatizaciones.",
     keyCaptureLearnMore: "M\xE1s informaci\xF3n sobre la captura de botones",
@@ -6907,8 +8354,20 @@ var REMOTE_CARD_STRINGS_ES = {
     stylingOptions: "Opciones de estilo",
     layoutOptions: "Opciones de dise\xF1o",
     layoutSelectLabel: "Dise\xF1o",
-    defaultLayoutOption: "Dise\xF1o predeterminado",
+    defaultLayoutOption: "Dise\xF1o predeterminado de actividades",
+    allDevicesOption: "Dise\xF1o predeterminado de dispositivos",
+    commands: "Comandos",
+    modeToggle: "Bot\xF3n de modo",
+    deviceModeDescription: "Controla un \xFAnico dispositivo configurado en el hub mediante sus asignaciones de botones y su lista completa de comandos.",
+    longPress: "Activar la repetici\xF3n al mantener pulsado un bot\xF3n",
+    longPressDescription: "Mant\xE9n pulsado un bot\xF3n seleccionado para enviar su comando repetidamente, como en el mando f\xEDsico.",
+    longPressButtons: "Botones",
+    enableDeviceMode: "Activar el modo de dispositivo",
+    initialView: "Vista inicial",
+    initialViewHelper: "Lo que muestra la tarjeta al abrirse",
+    openOnCurrentActivity: "Actividad actual",
     macrosFavoritesAsRows: "Macros/favoritos como filas",
+    commandsAsRows: "Comandos como filas",
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
     moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
@@ -6918,14 +8377,16 @@ var REMOTE_CARD_STRINGS_ES = {
     channel: "Canal",
     mediaControls: "Controles multimedia",
     dvr: "DVR",
-    resetCardDefault: "Restablecer tarjeta",
     resetDefaultLayout: "Restablecer dise\xF1o",
     noteDefaultLayout: "Se usa para actividades sin un dise\xF1o propio",
-    noteCustomLayout: "Se est\xE1 usando un dise\xF1o personalizado",
-    noteUsingDefault: "Se est\xE1 usando el dise\xF1o predeterminado"
+    noteDeviceDefaultLayout: "Se usa para dispositivos sin un dise\xF1o propio",
+    noteCustomActivityLayout: "Se est\xE1 usando un dise\xF1o de actividad personalizado",
+    noteCustomDeviceLayout: "Se est\xE1 usando un dise\xF1o de dispositivo personalizado",
+    noteUsingActivityDefault: "Se est\xE1 usando el dise\xF1o predeterminado de actividades",
+    noteUsingDeviceDefault: "Se est\xE1 usando el dise\xF1o predeterminado de dispositivos"
   },
   groups: {
-    activity: "Selector de actividad",
+    activity: "Actividad/dispositivo",
     macro_favorites: "Macros/favoritos",
     macros_row: "Fila de macros",
     favorites_row: "Fila de favoritos",
@@ -6977,12 +8438,23 @@ var REMOTE_CARD_STRINGS_FR = {
     noActivitiesWarning: "Aucune activit\xE9 trouv\xE9e dans les attributs de la t\xE9l\xE9commande.",
     noMacros: "Aucune macro disponible",
     noFavorites: "Aucun favori disponible",
+    noCommands: "Aucune commande disponible",
     macrosTab: "Macros >",
     favoritesTab: "Favoris >",
+    commandsTab: "Commandes >",
     activitySelectLabel: "Activit\xE9",
+    deviceSelectLabel: "Appareil",
+    selectDevice: "S\xE9lectionner un appareil",
+    allDevicesLayout: "Disposition par d\xE9faut des appareils",
+    filterCommands: "Filtrer les commandes",
+    switchToDeviceMode: "Passer en mode appareil",
+    switchToActivityMode: "Passer en mode activit\xE9",
+    deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
+    deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
     poweredOff: "\xC9teinte",
-    defaultLayout: "Disposition par d\xE9faut",
+    defaultLayout: "Disposition par d\xE9faut des activit\xE9s",
     activityFallback: (id) => `Activit\xE9 ${id}`,
+    deviceFallback: (id) => `Appareil ${id}`,
     pickerName: "T\xE9l\xE9commande virtuelle Sofabaton",
     pickerDescription: "Une t\xE9l\xE9commande configurable pour l\u2019int\xE9gration Sofabaton X1, X1S et X2."
   },
@@ -7020,9 +8492,11 @@ var REMOTE_CARD_STRINGS_FR = {
     notification: {
       title: "\u{1F6E0}\uFE0F Assistant d\u2019automatisation",
       eventButton: (label) => `Touche\xA0: ${label}`,
+      eventCommand: (label) => `Commande\xA0: ${label}`,
       eventActivity: (label) => `Changement d\u2019activit\xE9\xA0: ${label}`,
       eventOther: (label) => `\xC9v\xE9nement\xA0: ${label}`,
       header: (activityName, eventLabel) => `**Activit\xE9\xA0: ${activityName} | ${eventLabel}**`,
+      headerDevice: (deviceName, eventLabel) => `**Appareil\xA0: ${deviceName} | ${eventLabel}**`,
       lovelaceHeading: "\u{1F4CB} **Code de bouton Lovelace**",
       lovelaceCopy: "*Copiez ceci dans le YAML de votre tableau de bord\xA0:*",
       serviceHeading: "\u2699\uFE0F **Appel de service (automatisation)**",
@@ -7035,7 +8509,7 @@ var REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un th\xE8me \xE0 la carte",
       use_background_override: "Personnaliser la couleur d\u2019arri\xE8re-plan",
       background_override: "S\xE9lectionner la couleur d\u2019arri\xE8re-plan",
-      show_activity: "S\xE9lecteur d\u2019activit\xE9",
+      show_activity: "S\xE9lecteur d\u2019activit\xE9/appareil",
       show_dpad: "Pav\xE9 directionnel",
       show_nav: "Touches Retour/Accueil/Menu",
       show_mid: "Touches de volume et de cha\xEEne",
@@ -7047,7 +8521,7 @@ var REMOTE_CARD_STRINGS_FR = {
       max_width: "Largeur maximale de la carte (px)",
       group_order: "Ordre des groupes"
     },
-    automationAssistTitle: "Assistant d\u2019automatisation",
+    generalOptionsTitle: "Options g\xE9n\xE9rales",
     keyCapture: "Capture de touches",
     keyCaptureDescription: "Envoyez les pressions sur les touches au hub afin de g\xE9n\xE9rer du YAML pr\xEAt \xE0 l\u2019emploi pour les boutons du tableau de bord et les automatisations.",
     keyCaptureLearnMore: "En savoir plus sur la capture de touches",
@@ -7055,8 +8529,20 @@ var REMOTE_CARD_STRINGS_FR = {
     stylingOptions: "Options de style",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
-    defaultLayoutOption: "Disposition par d\xE9faut",
+    defaultLayoutOption: "Disposition par d\xE9faut des activit\xE9s",
+    allDevicesOption: "Disposition par d\xE9faut des appareils",
+    commands: "Commandes",
+    modeToggle: "Bouton de mode",
+    deviceModeDescription: "Contr\xF4lez un seul appareil configur\xE9 sur le hub, avec ses propres affectations de touches et sa liste compl\xE8te de commandes.",
+    longPress: "Activer la r\xE9p\xE9tition par appui prolong\xE9",
+    longPressDescription: "Maintenez une touche s\xE9lectionn\xE9e pour envoyer sa commande de fa\xE7on r\xE9p\xE9t\xE9e, comme sur la t\xE9l\xE9commande physique.",
+    longPressButtons: "Touches",
+    enableDeviceMode: "Activer le mode appareil",
+    initialView: "Vue initiale",
+    initialViewHelper: "Ce que la carte affiche \xE0 l\u2019ouverture",
+    openOnCurrentActivity: "Activit\xE9 en cours",
     macrosFavoritesAsRows: "Macros/favoris sous forme de lignes",
+    commandsAsRows: "Commandes sous forme de lignes",
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
     moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
@@ -7066,14 +8552,16 @@ var REMOTE_CARD_STRINGS_FR = {
     channel: "Cha\xEEne",
     mediaControls: "Commandes multim\xE9dias",
     dvr: "DVR",
-    resetCardDefault: "R\xE9initialiser la carte",
     resetDefaultLayout: "R\xE9initialiser",
     noteDefaultLayout: "Utilis\xE9e pour les activit\xE9s sans disposition propre",
-    noteCustomLayout: "Disposition personnalis\xE9e utilis\xE9e",
-    noteUsingDefault: "Disposition par d\xE9faut utilis\xE9e"
+    noteDeviceDefaultLayout: "Utilis\xE9e pour les appareils sans disposition propre",
+    noteCustomActivityLayout: "Disposition d\u2019activit\xE9 personnalis\xE9e utilis\xE9e",
+    noteCustomDeviceLayout: "Disposition d\u2019appareil personnalis\xE9e utilis\xE9e",
+    noteUsingActivityDefault: "Disposition par d\xE9faut des activit\xE9s utilis\xE9e",
+    noteUsingDeviceDefault: "Disposition par d\xE9faut des appareils utilis\xE9e"
   },
   groups: {
-    activity: "S\xE9lecteur d\u2019activit\xE9",
+    activity: "Activit\xE9/appareil",
     macro_favorites: "Macros/favoris",
     macros_row: "Ligne des macros",
     favorites_row: "Ligne des favoris",
@@ -7124,12 +8612,23 @@ var REMOTE_CARD_STRINGS_NL = {
     noActivitiesWarning: "Geen activiteiten gevonden in de remote-attributen.",
     noMacros: "Geen macro's beschikbaar",
     noFavorites: "Geen favorieten beschikbaar",
+    noCommands: "Geen commando's beschikbaar",
     macrosTab: "Macro's >",
     favoritesTab: "Favorieten >",
+    commandsTab: "Commando's >",
     activitySelectLabel: "Activiteit",
+    deviceSelectLabel: "Apparaat",
+    selectDevice: "Selecteer apparaat",
+    allDevicesLayout: "Standaard voor apparaten",
+    filterCommands: "Commando's filteren",
+    switchToDeviceMode: "Naar apparaatmodus schakelen",
+    switchToActivityMode: "Naar activiteitsmodus schakelen",
+    deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
+    deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
     poweredOff: "Uitgeschakeld",
-    defaultLayout: "Standaardindeling",
+    defaultLayout: "Standaard voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
+    deviceFallback: (id) => `Apparaat ${id}`,
     pickerName: "Sofabaton virtuele afstandsbediening",
     pickerDescription: "Een configureerbare afstandsbediening voor de Sofabaton X1-, X1S- en X2-integratie."
   },
@@ -7167,9 +8666,11 @@ var REMOTE_CARD_STRINGS_NL = {
     notification: {
       title: "\u{1F6E0}\uFE0F Automatiseringshulp",
       eventButton: (label) => `Knop: ${label}`,
+      eventCommand: (label) => `Commando: ${label}`,
       eventActivity: (label) => `Activiteitswissel: ${label}`,
       eventOther: (label) => `Gebeurtenis: ${label}`,
       header: (activityName, eventLabel) => `**Activiteit: ${activityName} | ${eventLabel}**`,
+      headerDevice: (deviceName, eventLabel) => `**Apparaat: ${deviceName} | ${eventLabel}**`,
       lovelaceHeading: "\u{1F4CB} **Lovelace-knopcode**",
       lovelaceCopy: "*Kopieer dit naar je dashboard-YAML:*",
       serviceHeading: "\u2699\uFE0F **Service-aanroep (automatisering)**",
@@ -7182,7 +8683,7 @@ var REMOTE_CARD_STRINGS_NL = {
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
-      show_activity: "Activiteitenkiezer",
+      show_activity: "Activiteits-/apparaatkiezer",
       show_dpad: "Richtingsknoppen",
       show_nav: "Terug/Home/Menu-knoppen",
       show_mid: "Volume-/kanaalknoppen",
@@ -7194,7 +8695,7 @@ var REMOTE_CARD_STRINGS_NL = {
       max_width: "Maximale kaartbreedte (px)",
       group_order: "Groepsvolgorde"
     },
-    automationAssistTitle: "Automatiseringshulp",
+    generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
     keyCaptureDescription: "Stuur knopdrukken naar de hub: leg knopdrukken vast om direct bruikbare YAML te genereren voor dashboardknoppen en automatiseringen.",
     keyCaptureLearnMore: "Meer informatie over Knopdrukken registreren",
@@ -7202,8 +8703,20 @@ var REMOTE_CARD_STRINGS_NL = {
     stylingOptions: "Stijlopties",
     layoutOptions: "Indelingsopties",
     layoutSelectLabel: "Indeling",
-    defaultLayoutOption: "Standaardindeling",
+    defaultLayoutOption: "Standaard voor activiteiten",
+    allDevicesOption: "Standaard voor apparaten",
+    commands: "Commando's",
+    modeToggle: "Modusknop",
+    deviceModeDescription: "Bedien \xE9\xE9n apparaat dat op de hub is ingesteld met de knopkoppelingen en volledige lijst met commando's van dat apparaat.",
+    longPress: "Herhalen bij ingedrukt houden inschakelen",
+    longPressDescription: "Houd een geselecteerde knop ingedrukt om het bijbehorende commando te herhalen, net als op de fysieke afstandsbediening.",
+    longPressButtons: "Knoppen",
+    enableDeviceMode: "Apparaatmodus inschakelen",
+    initialView: "Beginweergave",
+    initialViewHelper: "Wat de kaart toont bij het openen",
+    openOnCurrentActivity: "Huidige activiteit",
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
+    commandsAsRows: "Commando's als rijen",
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
     moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
@@ -7213,14 +8726,16 @@ var REMOTE_CARD_STRINGS_NL = {
     channel: "Kanaal",
     mediaControls: "Mediabediening",
     dvr: "DVR",
-    resetCardDefault: "Kaartindeling resetten",
     resetDefaultLayout: "Indeling resetten",
     noteDefaultLayout: "Gebruikt voor activiteiten zonder eigen indeling",
-    noteCustomLayout: "Aangepaste indeling in gebruik",
-    noteUsingDefault: "Standaardindeling in gebruik"
+    noteDeviceDefaultLayout: "Gebruikt voor apparaten zonder eigen indeling",
+    noteCustomActivityLayout: "Aangepaste activiteitenindeling in gebruik",
+    noteCustomDeviceLayout: "Aangepaste apparaatindeling in gebruik",
+    noteUsingActivityDefault: "Standaard activiteitenindeling in gebruik",
+    noteUsingDeviceDefault: "Standaard apparaatindeling in gebruik"
   },
   groups: {
-    activity: "Activiteitenkiezer",
+    activity: "Activiteit/apparaat",
     macro_favorites: "Macro's/favorieten",
     macros_row: "Macrorij",
     favorites_row: "Favorietenrij",
@@ -7271,12 +8786,23 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     noActivitiesWarning: "\u5728\u9065\u63A7\u5668\u5C5E\u6027\u4E2D\u672A\u627E\u5230\u6D3B\u52A8\u3002",
     noMacros: "\u6CA1\u6709\u53EF\u7528\u7684\u5B8F",
     noFavorites: "\u6CA1\u6709\u53EF\u7528\u7684\u6536\u85CF",
+    noCommands: "\u6CA1\u6709\u53EF\u7528\u547D\u4EE4",
     macrosTab: "\u5B8F >",
     favoritesTab: "\u6536\u85CF >",
+    commandsTab: "\u547D\u4EE4 >",
     activitySelectLabel: "\u6D3B\u52A8",
+    deviceSelectLabel: "\u8BBE\u5907",
+    selectDevice: "\u9009\u62E9\u8BBE\u5907",
+    allDevicesLayout: "\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40",
+    filterCommands: "\u7B5B\u9009\u547D\u4EE4",
+    switchToDeviceMode: "\u5207\u6362\u5230\u8BBE\u5907\u6A21\u5F0F",
+    switchToActivityMode: "\u5207\u6362\u5230\u6D3B\u52A8\u6A21\u5F0F",
+    deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
+    deviceKeymapError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002",
     poweredOff: "\u5DF2\u5173\u673A",
-    defaultLayout: "\u9ED8\u8BA4\u5E03\u5C40",
+    defaultLayout: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     activityFallback: (id) => `\u6D3B\u52A8 ${id}`,
+    deviceFallback: (id) => `\u8BBE\u5907 ${id}`,
     pickerName: "Sofabaton \u865A\u62DF\u9065\u63A7\u5668",
     pickerDescription: "\u9002\u7528\u4E8E Sofabaton X1\u3001X1S \u548C X2 \u96C6\u6210\u7684\u53EF\u914D\u7F6E\u9065\u63A7\u5668\u3002"
   },
@@ -7314,9 +8840,11 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     notification: {
       title: "\u{1F6E0}\uFE0F \u81EA\u52A8\u5316\u52A9\u624B",
       eventButton: (label) => `\u6309\u952E\uFF1A${label}`,
+      eventCommand: (label) => `\u547D\u4EE4\uFF1A${label}`,
       eventActivity: (label) => `\u6D3B\u52A8\u53D8\u66F4\uFF1A${label}`,
       eventOther: (label) => `\u4E8B\u4EF6\uFF1A${label}`,
       header: (activityName, eventLabel) => `**\u6D3B\u52A8\uFF1A${activityName} | ${eventLabel}**`,
+      headerDevice: (deviceName, eventLabel) => `**\u8BBE\u5907\uFF1A${deviceName} | ${eventLabel}**`,
       lovelaceHeading: "\u{1F4CB} **Lovelace \u6309\u94AE\u4EE3\u7801**",
       lovelaceCopy: "*\u5C06\u5176\u590D\u5236\u5230\u4EEA\u8868\u677F YAML \u4E2D\uFF1A*",
       serviceHeading: "\u2699\uFE0F **\u670D\u52A1\u8C03\u7528\uFF08\u81EA\u52A8\u5316\uFF09**",
@@ -7329,7 +8857,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
-      show_activity: "\u6D3B\u52A8\u9009\u62E9\u5668",
+      show_activity: "\u6D3B\u52A8/\u8BBE\u5907\u9009\u62E9\u5668",
       show_dpad: "\u65B9\u5411\u952E",
       show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
       show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
@@ -7341,7 +8869,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
       group_order: "\u5206\u7EC4\u987A\u5E8F"
     },
-    automationAssistTitle: "\u81EA\u52A8\u5316\u52A9\u624B",
+    generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
     keyCapture: "\u6309\u952E\u6355\u83B7",
     keyCaptureDescription: "\u5C06\u6309\u952E\u64CD\u4F5C\u53D1\u9001\u5230 Hub\uFF0C\u4EE5\u751F\u6210\u53EF\u76F4\u63A5\u7528\u4E8E\u4EEA\u8868\u677F\u6309\u94AE\u548C\u81EA\u52A8\u5316\u7684 YAML\u3002",
     keyCaptureLearnMore: "\u8BE6\u7EC6\u4E86\u89E3\u6309\u952E\u6355\u83B7",
@@ -7349,8 +8877,20 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     stylingOptions: "\u6837\u5F0F\u9009\u9879",
     layoutOptions: "\u5E03\u5C40\u9009\u9879",
     layoutSelectLabel: "\u5E03\u5C40",
-    defaultLayoutOption: "\u9ED8\u8BA4\u5E03\u5C40",
+    defaultLayoutOption: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
+    allDevicesOption: "\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40",
+    commands: "\u547D\u4EE4",
+    modeToggle: "\u6A21\u5F0F\u5207\u6362",
+    deviceModeDescription: "\u63A7\u5236 Hub \u4E2D\u914D\u7F6E\u7684\u5355\u4E2A\u8BBE\u5907\uFF0C\u5E76\u4F7F\u7528\u8BE5\u8BBE\u5907\u81EA\u5DF1\u7684\u6309\u952E\u5206\u914D\u548C\u5B8C\u6574\u547D\u4EE4\u5217\u8868\u3002",
+    longPress: "\u542F\u7528\u957F\u6309\u91CD\u590D\u53D1\u9001",
+    longPressDescription: "\u6309\u4F4F\u6240\u9009\u6309\u952E\u53EF\u91CD\u590D\u53D1\u9001\u5176\u547D\u4EE4\uFF0C\u5C31\u50CF\u4F7F\u7528\u5B9E\u4F53\u9065\u63A7\u5668\u4E00\u6837\u3002",
+    longPressButtons: "\u6309\u952E",
+    enableDeviceMode: "\u542F\u7528\u8BBE\u5907\u6A21\u5F0F",
+    initialView: "\u521D\u59CB\u89C6\u56FE",
+    initialViewHelper: "\u5361\u7247\u6253\u5F00\u65F6\u663E\u793A\u7684\u5185\u5BB9",
+    openOnCurrentActivity: "\u5F53\u524D\u6D3B\u52A8",
     macrosFavoritesAsRows: "\u5C06\u5B8F/\u6536\u85CF\u663E\u793A\u4E3A\u884C",
+    commandsAsRows: "\u5C06\u547D\u4EE4\u663E\u793A\u4E3A\u884C",
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
@@ -7360,14 +8900,16 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     channel: "\u9891\u9053",
     mediaControls: "\u5A92\u4F53\u63A7\u4EF6",
     dvr: "DVR",
-    resetCardDefault: "\u91CD\u7F6E\u5361\u7247\u5E03\u5C40",
     resetDefaultLayout: "\u91CD\u7F6E\u5E03\u5C40",
     noteDefaultLayout: "\u7528\u4E8E\u6CA1\u6709\u5355\u72EC\u5E03\u5C40\u7684\u6D3B\u52A8",
-    noteCustomLayout: "\u6B63\u5728\u4F7F\u7528\u81EA\u5B9A\u4E49\u5E03\u5C40",
-    noteUsingDefault: "\u6B63\u5728\u4F7F\u7528\u9ED8\u8BA4\u5E03\u5C40"
+    noteDeviceDefaultLayout: "\u7528\u4E8E\u6CA1\u6709\u5355\u72EC\u5E03\u5C40\u7684\u8BBE\u5907",
+    noteCustomActivityLayout: "\u6B63\u5728\u4F7F\u7528\u81EA\u5B9A\u4E49\u6D3B\u52A8\u5E03\u5C40",
+    noteCustomDeviceLayout: "\u6B63\u5728\u4F7F\u7528\u81EA\u5B9A\u4E49\u8BBE\u5907\u5E03\u5C40",
+    noteUsingActivityDefault: "\u6B63\u5728\u4F7F\u7528\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
+    noteUsingDeviceDefault: "\u6B63\u5728\u4F7F\u7528\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40"
   },
   groups: {
-    activity: "\u6D3B\u52A8\u9009\u62E9\u5668",
+    activity: "\u6D3B\u52A8/\u8BBE\u5907",
     macro_favorites: "\u5B8F/\u6536\u85CF",
     macros_row: "\u5B8F\u884C",
     favorites_row: "\u6536\u85CF\u884C",

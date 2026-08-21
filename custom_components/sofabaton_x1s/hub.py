@@ -72,7 +72,7 @@ from .lib.blob_decoders import (
     is_decodable_class as is_blob_decodable_class,
     try_decode_blob as try_decode_command_blob,
 )
-from .lib.backup_export import PAYLOAD_PROFILE_FULL
+from .lib.backup_export import PAYLOAD_PROFILE_FULL, build_device_button_rows
 from .lib.commands import split_play_blob_tail
 from .lib.devices import DeviceConfig, parse_device_record
 from .lib.wifi_inplace_plan import (
@@ -280,6 +280,11 @@ class SofabatonHub:
         self._mqtt_press_unsub: Any = None
         self._mqtt_press_topic: str | None = None
         self._last_wifi_mqtt_press_at: float | None = None
+        # MQTT activity-state ingress: one subscription on
+        # activity/<MAC>/activity_control_up, on whenever the hub is an
+        # X2 with the MQTT integration loaded (no store refcount).
+        self._mqtt_activity_unsub: Any = None
+        self._mqtt_activity_topic: str | None = None
         self._last_hub_event: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
@@ -462,9 +467,10 @@ class SofabatonHub:
         if not next_name or not next_version or next_firmware is None:
             if banner_changed:
                 # The banner MAC may have just arrived even when the rest
-                # of the identity is incomplete; the press subscription
-                # depends on it.
+                # of the identity is incomplete; both MQTT subscriptions
+                # depend on it.
                 await self.async_update_wifi_mqtt_ingress()
+                await self.async_update_activity_state_ingress()
             await self._async_update_firmware_state()
             return banner_changed
 
@@ -495,8 +501,9 @@ class SofabatonHub:
             )
         )
         # A manually-added hub that mDNS just identified gains its REAL
-        # MAC here; re-point (or first-establish) the press subscription.
+        # MAC here; re-point (or first-establish) the MQTT subscriptions.
         await self.async_update_wifi_mqtt_ingress()
+        await self.async_update_activity_state_ingress()
 
         config_entries = getattr(self.hass, "config_entries", None)
         entry = (
@@ -967,6 +974,12 @@ class SofabatonHub:
                     )
                 self._log.debug("[%s] Hub connected, doing initial sync", self.entry_id)
                 self.hass.async_create_task(self._async_initial_sync())
+                # Re-align the activity-state subscription on every
+                # connect: covers the MQTT integration loading after our
+                # setup (no-op when nothing changed).
+                self.hass.async_create_task(
+                    self.async_update_activity_state_ingress()
+                )
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_ota_update(self) -> None:
@@ -2948,6 +2961,97 @@ class SofabatonHub:
                 result[ent_id] = cmds
         return result
 
+    def get_ui_device_list(self) -> list[dict[str, Any]]:
+        """Devices for frontend dropdowns (remote-card device mode).
+
+        Presentation-layer view: the hidden Wifi Events device is filtered
+        here, never in the command-config store's ``async_list_hub_devices``
+        (the listener guard, deploy reconciliation and diagnostics iterate
+        that). Ordered like the physical remote: record sort byte first,
+        rows without a stored sort fall back to id order at the end.
+        """
+
+        rows: list[dict[str, Any]] = []
+        state_devices = self._proxy.state.entities("device")
+        for dev_id, device in self.devices.items():
+            if not isinstance(device, dict):
+                continue
+            dev_lo = int(dev_id) & 0xFF
+            device_key, _brand_hash = _parse_managed_wifi_brand(
+                str(device.get("brand") or "")
+            )
+            if is_wifi_events_device_key(device_key):
+                continue
+            name = str(device.get("name") or "").strip()
+            sort_value = 0
+            state_device = state_devices.get(dev_lo)
+            raw_body = (
+                state_device.get("raw_body") if isinstance(state_device, dict) else None
+            )
+            if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6:
+                sort_value = int(raw_body[6])
+            row: dict[str, Any] = {
+                "id": dev_lo,
+                "name": name or f"Device {dev_lo}",
+                "sort": sort_value,
+            }
+            if device.get("device_class") is not None:
+                row["device_class"] = device.get("device_class")
+            rows.append(row)
+
+        rows.sort(key=lambda r: (0, r["sort"], r["id"]) if r["sort"] else (1, 0, r["id"]))
+        return rows
+
+    def get_device_keymap(self, device_id: int) -> dict[str, Any] | None:
+        """Project one device's cached keymap + command list (device mode).
+
+        Pure cache read: nothing is queued or fetched. Returns ``None``
+        until a structural fetch (whole-hub refresh, per-device refresh, or
+        a persistent-cache restore carrying the freshness stamp) has covered
+        the device; the card then points the user at a control-panel
+        refresh instead of waiting on hub I/O here.
+        """
+
+        dev_lo = int(device_id) & 0xFF
+        fetched_at = self._proxy.state.detail_fetched_at.get("device", {}).get(dev_lo)
+        if not fetched_at:
+            return None
+
+        commands, _commands_ready = self._proxy.get_commands_for_entity(
+            dev_lo, fetch_if_missing=False
+        )
+        buttons, _buttons_ready = self._proxy.get_buttons_for_entity(
+            dev_lo, fetch_if_missing=False
+        )
+        label_map = {
+            int(cmd_id) & 0xFF: str(name) for cmd_id, name in (commands or {}).items()
+        }
+        bindings = build_device_button_rows(
+            button_codes=sorted(int(code) & 0xFF for code in (buttons or [])),
+            button_details=dict(self._proxy.state.button_details.get(dev_lo, {})),
+            label_map=label_map,
+        )
+
+        device_row: dict[str, Any] = {"device_id": dev_lo}
+        device = self.devices.get(dev_lo)
+        if isinstance(device, dict):
+            name = str(device.get("name") or "").strip()
+            if name:
+                device_row["name"] = name
+            if device.get("device_class") is not None:
+                device_row["device_class"] = device.get("device_class")
+
+        return {
+            "device": device_row,
+            "buttons": sorted(int(code) & 0xFF for code in (buttons or [])),
+            "bindings": bindings,
+            "commands": [
+                {"command_id": cmd_id, "name": label_map[cmd_id]}
+                for cmd_id in sorted(label_map)
+            ],
+            "fetched_at": fetched_at,
+        }
+
     def get_all_cached_macros(self) -> dict[int, list[dict[str, int | str]]]:
         """Return cached macros in the physical remote's display order.
 
@@ -3787,6 +3891,139 @@ class SofabatonHub:
             press_type=press_type,
         )
 
+    # ------------------------------------------------------------------
+    # MQTT activity-state ingress (X2 fast path)
+    # ------------------------------------------------------------------
+    #
+    # The X2 publishes every activity transition on
+    # activity/<MAC>/activity_control_up with the new id in the payload,
+    # which beats the TCP ACK_READY → REQ_ACTIVITIES round-trip (and, when
+    # ACK_READY lands after the power macro, can lead by seconds). The
+    # push is applied through the proxy's hint pipeline immediately; the
+    # TCP path stays untouched behind it as reconciliation, so a missed,
+    # stale, or unknown-id push degrades to today's behavior instead of
+    # failing. The proxy holds hub-bound user commands until that
+    # ACK_READY (bounded; see _wait_external_settle) so automations firing
+    # on the early state change cannot reach the hub mid-power-macro.
+
+    def _activity_state_topic(self) -> str | None:
+        """``activity/<MAC>/activity_control_up`` with the press-topic MAC.
+
+        Same MAC rendering as ``_wifi_mqtt_press_topic`` (uppercase bare
+        hex, hub self-report preferred); ``None`` when no credible MAC is
+        known.
+        """
+
+        normalized = self._wifi_mqtt_mac()
+        if normalized is None:
+            return None
+        return f"activity/{normalized}/activity_control_up"
+
+    async def async_update_activity_state_ingress(self) -> None:
+        """Align the activity-state subscription with the hub identity.
+
+        Unlike the press ingress there is no store refcount: the
+        subscription is on whenever MQTT transport is available for this
+        hub at all (X2, MQTT integration loaded, MAC known). Safe to call
+        at any time; a no-op when nothing changed.
+        """
+
+        try:
+            available = self.wifi_mqtt_available()
+        except Exception:  # noqa: BLE001 - never let ingress upkeep raise
+            self._log.debug(
+                "[MQTT_ACT] availability check failed", exc_info=True
+            )
+            available = False
+        topic = self._activity_state_topic() if available else None
+        if topic is None:
+            await self.async_stop_activity_state_ingress()
+            return
+        if self._mqtt_activity_unsub is not None and self._mqtt_activity_topic == topic:
+            return
+        await self.async_stop_activity_state_ingress()
+        try:
+            from homeassistant.components import mqtt as ha_mqtt
+
+            self._mqtt_activity_unsub = await ha_mqtt.async_subscribe(
+                self.hass, topic, self._async_handle_activity_state_message
+            )
+            self._mqtt_activity_topic = topic
+            self._log.info("[MQTT_ACT] subscribed to %s", topic)
+        except Exception as err:  # noqa: BLE001 - broker/integration not ready
+            self._mqtt_activity_unsub = None
+            self._mqtt_activity_topic = None
+            self._log.warning("[MQTT_ACT] subscribe to %s failed: %s", topic, err)
+
+    async def async_stop_activity_state_ingress(self) -> None:
+        unsub, self._mqtt_activity_unsub = self._mqtt_activity_unsub, None
+        self._mqtt_activity_topic = None
+        if unsub is not None:
+            try:
+                unsub()
+            except Exception:  # noqa: BLE001
+                self._log.debug("[MQTT_ACT] unsubscribe failed", exc_info=True)
+
+    async def _async_handle_activity_state_message(self, msg: Any) -> None:
+        # Retain drop, mirroring the press ingress: the hub itself never
+        # retains, but a broker/bridge can — a replayed transition must
+        # never flip state on restart.
+        if getattr(msg, "retain", False):
+            return
+        payload_raw = msg.payload
+        if isinstance(payload_raw, (bytes, bytearray)):
+            payload_raw = payload_raw.decode("utf-8", "replace")
+        try:
+            data = json.loads(payload_raw)
+        except (TypeError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        # The hub publishes flat {"activity_id", "state"}; tolerate the
+        # request-side {"data": {...}} envelope as well.
+        if "activity_id" not in data and isinstance(data.get("data"), dict):
+            data = data["data"]
+        try:
+            activity_id = int(data.get("activity_id"))
+        except (TypeError, ValueError):
+            return
+        state = str(data.get("state") or "").strip().lower()
+
+        if not self.hub_connected or not self.activities_ready:
+            # No TCP link to verify (or send commands) against, or the
+            # activities baseline is not read yet: the initial sync is
+            # the safer source in both cases.
+            return
+
+        if activity_id == 0xFF:
+            # 255 = all activities off (OFF press).
+            new_id: int | None = None
+        elif state == "on":
+            new_id = activity_id
+        elif state == "off":
+            if self.current_activity != (activity_id & 0xFF):
+                # An individual off for a non-current activity carries no
+                # state we track.
+                return
+            new_id = None
+        else:
+            self._log.debug(
+                "[MQTT_ACT] unhandled payload activity_id=%s state=%s",
+                activity_id,
+                state,
+            )
+            return
+
+        applied = await self.hass.async_add_executor_job(
+            self._proxy.apply_external_activity_state, new_id
+        )
+        if applied:
+            self._log.info(
+                "[MQTT_ACT] applied activity=%s (from activity_id=%s state=%s)",
+                new_id,
+                activity_id,
+                state or "<none>",
+            )
 
     async def async_delete_wifi_event_records(
         self,

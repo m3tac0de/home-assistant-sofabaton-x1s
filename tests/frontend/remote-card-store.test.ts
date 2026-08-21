@@ -90,6 +90,8 @@ test("config normalization fills legacy defaults and keeps user keys", () => {
   assert.equal(normalized.show_automation_assist, false);
   assert.equal(normalized.max_width, 360);
   assert.equal(normalized.shrink, 0);
+  assert.equal(normalized.show_volume, undefined);
+  assert.equal(normalized.show_channel, undefined);
   assert.deepEqual(normalized.custom_favorites, []);
   assert.equal(normalized.group_order?.[0], "activity");
 
@@ -105,6 +107,27 @@ test("config normalization fills legacy defaults and keeps user keys", () => {
   assert.equal(custom.max_width, "80%");
   assert.deepEqual(custom.layouts, { "101": { show_mid: false } });
   assert.equal(custom.some_future_key, 42);
+});
+
+test("legacy show_mid remains the fallback for split volume and channel controls", async () => {
+  const hass = createHass({ state: activeState() });
+  const { store: legacy } = createStore(hass, { show_mid: false });
+  await flush();
+
+  const legacyState = legacy.deriveRuntimeState();
+  assert.equal(legacyState.showVolume, false);
+  assert.equal(legacyState.showChannel, false);
+
+  // An explicitly configured child takes precedence over the legacy parent.
+  const { store: overridden } = createStore(hass, {
+    show_mid: false,
+    show_volume: true,
+  });
+  await flush();
+
+  const overriddenState = overridden.deriveRuntimeState();
+  assert.equal(overriddenState.showVolume, true);
+  assert.equal(overriddenState.showChannel, false);
 });
 
 test("setConfig requires an entity", () => {

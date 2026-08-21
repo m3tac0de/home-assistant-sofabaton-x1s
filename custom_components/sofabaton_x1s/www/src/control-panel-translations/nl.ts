@@ -419,6 +419,8 @@ export const TOOLS_CARD_STRINGS_NL = {
     wifiEventsTitle: "Wifi-events",
     wifiEventsSubtitle: "Gebeurtenissen uit de activiteiten-editor. Een druk op de afstandsbediening voert hier de Home Assistant-actie uit en werkt ook de Wifi Commands-sensor bij.",
     wifiEventsEmpty: "Nog geen Wifi-events. Maak ze in de toevoegen-dialogen van de activiteiten-editor (snelkoppelingen, knoppen en macrostappen).",
+    eventsConfiguredPill: (configured: number, total: number) => `${configured} van ${total} geconfigureerd`,
+    eventsShowUnconfigured: (count: number) => `Toon ${count} niet-geconfigureerde…`,
     wifiEventRowPress: (name: string) => `Wanneer ${name} wordt ingedrukt`,
     wifiEventRowLongPress: "en wanneer het lang wordt ingedrukt",
     wifiEventModalTitle: (name: string) => `Wanneer ${name} wordt ingedrukt`,

@@ -7,12 +7,18 @@ exactly what the latency bench needs:
 
 - CONNECT with optional username/password, clean session
 - SUBSCRIBE (QoS 0) to one or more topic filters
+- outbound PUBLISH (QoS 0, no retain) with a send timestamp, for the
+  send-latency bench's MQTT arm
 - inbound PUBLISH capture with per-message flags (qos/retain/dup) and a
   ``time.time()`` arrival stamp taken in the reader thread, before any
   polling caller notices the hit
 - PUBACK for any QoS 1 delivery a broker sends despite the QoS 0
   subscription (defensive; must not stall the session)
 - keepalive PINGREQ
+
+All socket writes go through one lock so a bench-thread publish cannot
+interleave with the keepalive thread's PINGREQ or a reader-thread
+PUBACK.
 
 Self-test (no broker needed, spins an in-process fake):
 
@@ -80,6 +86,10 @@ def build_puback(packet_id: int) -> bytes:
     return _packet(0x40, packet_id.to_bytes(2, "big"))
 
 
+def build_publish(topic: str, payload: bytes) -> bytes:
+    return _packet(0x30, _encode_str(topic) + payload)  # QoS 0, no retain
+
+
 def build_pingreq() -> bytes:
     return _packet(0xC0, b"")
 
@@ -140,6 +150,7 @@ class MiniMqttSubscriber:
         self.hits: list[dict] = []
         self.granted: list[int] | None = None
         self._lock = threading.Lock()
+        self._send_lock = threading.Lock()
         self._suback = threading.Event()
         self._sock: socket.socket | None = None
         self._reader: threading.Thread | None = None
@@ -166,12 +177,20 @@ class MiniMqttSubscriber:
         self._pinger.start()
         return self
 
+    def _send(self, data: bytes) -> None:
+        sock = self._sock
+        if sock is None:
+            raise MqttError("not connected")
+        with self._send_lock:
+            sock.sendall(data)
+
     def stop(self) -> None:
         self._stop.set()
         sock, self._sock = self._sock, None
         if sock is not None:
             try:
-                sock.sendall(build_disconnect())
+                with self._send_lock:
+                    sock.sendall(build_disconnect())
             except OSError:
                 pass
             try:
@@ -196,13 +215,22 @@ class MiniMqttSubscriber:
         self._suback.clear()
         packet_id = self._next_packet_id
         self._next_packet_id += 1
-        self._sock.sendall(build_subscribe(packet_id, topics))
+        self._send(build_subscribe(packet_id, topics))
         if not self._suback.wait(timeout):
             raise MqttError("SUBACK timeout")
         granted = self.granted or []
         if any(code == 0x80 for code in granted):
             raise MqttError(f"broker rejected subscription(s): granted={granted}")
         return granted
+
+    # ------------------------------------------------------------ publish
+    def publish(self, topic: str, payload: bytes | str) -> float:
+        """QoS-0 publish; returns the ``time.time()`` taken just before send."""
+        raw = payload.encode("utf-8") if isinstance(payload, str) else payload
+        data = build_publish(topic, raw)
+        t0 = time.time()
+        self._send(data)
+        return t0
 
     # ------------------------------------------------------------ capture
     def clear(self) -> None:
@@ -290,10 +318,10 @@ class MiniMqttSubscriber:
                     "dup": dup,
                     "at": at,
                 })
-            if packet_id is not None and self._sock is not None:
+            if packet_id is not None:
                 try:
-                    self._sock.sendall(build_puback(packet_id))
-                except OSError:
+                    self._send(build_puback(packet_id))
+                except (OSError, MqttError):
                     pass
         elif packet_type == 0x90:  # SUBACK
             self.granted = list(body[2:])
@@ -303,12 +331,9 @@ class MiniMqttSubscriber:
     def _ping_loop(self) -> None:
         interval = max(self.keepalive / 2.0, 5.0)
         while not self._stop.wait(interval):
-            sock = self._sock
-            if sock is None:
-                return
             try:
-                sock.sendall(build_pingreq())
-            except OSError:
+                self._send(build_pingreq())
+            except (OSError, MqttError):
                 return
 
 
@@ -360,6 +385,15 @@ def _fake_broker(server: socket.socket, log: dict) -> None:
     first, body = read_packet()
     log["puback"] = first & 0xF0 == 0x40 and int.from_bytes(body[:2], "big") == 5
     publish("aabbcc/up", b'{"device_id": 2, "key_id": 7}')
+    first, body = read_packet()
+    if first & 0xF0 == 0x30:
+        topic_len = int.from_bytes(body[:2], "big")
+        log["client_publish"] = {
+            "topic": body[2:2 + topic_len].decode(),
+            "payload": body[2 + topic_len:],
+            "qos": (first >> 1) & 0x03,
+            "retain": bool(first & 0x01),
+        }
     time.sleep(0.3)
     conn.close()
 
@@ -392,8 +426,16 @@ def _selftest() -> int:
         check("payload intact", '"key_id": 7' in hits[2]["payload"])
         check("topic case preserved", hits[2]["topic"] == "aabbcc/up")
         check("timestamps monotonic", hits[0]["at"] <= hits[1]["at"] <= hits[2]["at"])
+    t0 = client.publish("device/AABBCC/keys_control", '{"data": {"device_id": 2, "key_id": 1}}')
+    check("publish returned send stamp", isinstance(t0, float) and t0 <= time.time())
     broker.join(timeout=5.0)
     check("qos1 delivery PUBACKed", bool(log.get("puback")))
+    sent = log.get("client_publish") or {}
+    check("client publish reached broker",
+          sent.get("topic") == "device/AABBCC/keys_control"
+          and b'"key_id": 1' in sent.get("payload", b"")
+          and sent.get("qos") == 0 and not sent.get("retain"),
+          f"sent={sent}")
     client.stop()
     server.close()
 

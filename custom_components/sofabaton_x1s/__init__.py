@@ -80,10 +80,7 @@ from .command_config import (
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
-from .lib.bundle_validation import (
-    collect_missing_command_refs,
-    validate_hub_bundle_for_model,
-)
+from .lib.bundle_validation import validate_hub_bundle_for_model
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
@@ -2423,18 +2420,16 @@ def _validate_entity_sync_inputs(
             if baseline_entries.get(ent_id) != entry:
                 strict_entity_ids.add(ent_id)
 
-    # Dangling command references already present in the captured baseline
-    # are hub truth (cloud-provisioned device pages can reference commands
-    # the deploy never wrote to the hub) — grandfather them in both bundles
-    # so they cannot block a sync, while an edit that introduces a new
-    # dangling reference still fails validation.
-    tolerated_missing_commands = collect_missing_command_refs(baseline)
+    # Quirks already present in the captured baseline are hub truth (vendor
+    # apps and cloud deploys write rows our editor never would) — grandfather
+    # them in both bundles so they cannot block a sync, while an edit that
+    # newly introduces the same quirk still fails validation.
     baseline_model = validate_hub_bundle_for_model(
         baseline,
         hub_version=hub_version,
         payload_name="baseline",
         enforce_editor_invariants=False,
-        tolerated_missing_commands=tolerated_missing_commands,
+        grandfather_baseline=baseline,
     )
     edited_model = validate_hub_bundle_for_model(
         edited,
@@ -2442,7 +2437,7 @@ def _validate_entity_sync_inputs(
         payload_name="edited",
         enforce_editor_invariants=True,
         strict_entity_ids=strict_entity_ids,
-        tolerated_missing_commands=tolerated_missing_commands,
+        grandfather_baseline=baseline,
     )
     if baseline_model != edited_model:
         raise ValueError("baseline and edited bundles declare different hub models")
@@ -3403,6 +3398,44 @@ async def _ws_get_structural_bundle(hass: HomeAssistant, connection, msg: dict[s
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/device/keymap",
+        vol.Required("entry_id"): str,
+        vol.Required("device_id"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_device_keymap(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Remote-card device mode: one device's cached bindings + commands.
+
+    A pure projection of cached proxy state — no hub I/O, ever. Device
+    mode is gated on the persistent cache; a cold device returns a clean
+    cache_miss and the card points the user at a control-panel refresh
+    (docs/internal/device-mode-plan.md).
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        connection.send_result(msg["id"], {"keymap": None, "reason": "cache_disabled"})
+        return
+
+    keymap = hub.get_device_keymap(int(msg["device_id"]))
+    if keymap is None:
+        connection.send_result(msg["id"], {"keymap": None, "reason": "cache_miss"})
+        return
+
+    connection.send_result(
+        msg["id"],
+        {"keymap": keymap, "generation": hub.cache_generation},
+    )
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/logs/get",
         vol.Required("entry_id"): str,
         vol.Optional("limit", default=250): vol.All(int, vol.Range(min=1, max=1000)),
@@ -3767,6 +3800,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_activity_create)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)
+    websocket_api.async_register_command(hass, _ws_get_device_keymap)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_wifi_presses)
@@ -4104,6 +4138,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # MQTT press ingress: subscribe now if the store has MQTT-deployed
     # records (safe no-op otherwise; the sync flow keeps it aligned).
     await hub.async_update_wifi_mqtt_ingress()
+    # MQTT activity-state ingress: on for any X2 with the MQTT
+    # integration loaded (the persisted banner MAC covers a restart
+    # before the hub's first TCP connect).
+    await hub.async_update_activity_state_ingress()
 
     # ← important: tell HA to call us when options change
     entry.async_on_unload(
@@ -4166,6 +4204,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if hub is not None:
             await _async_persist_hub_cache(hass, hub)
             await hub.async_stop_wifi_mqtt_ingress()
+            await hub.async_stop_activity_state_ingress()
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-// Visual baselines for the hand-rolled config-editor sections (styling options,
-// group order, commands). ha-form is stubbed by the harness to render schema
+// Visual baselines for the hand-rolled config-editor sections (general options,
+// styling options, group order). ha-form is stubbed by the harness to render schema
 // field names + current values, so these shots also guard schema construction.
 // These baselines are the parity gate for the editor Lit port.
 
@@ -45,11 +45,66 @@ test.describe("remote card editor harness", () => {
     await expect(page.locator(".sb-layout-wrap")).toHaveScreenshot("remote-card-editor-group-order.png");
   });
 
-  test("captures expanded commands editor baseline", async ({ page }) => {
+  test("captures expanded general options baseline", async ({ page }) => {
     await mountEditor(page, "active");
-    await page.locator(".sb-commands-wrap .sb-exp-hdr").click();
-    await expect(page.locator(".sb-commands-wrap .sb-exp")).not.toHaveClass(/sb-exp-collapsed/);
-    await expect(page.locator(".sb-commands-wrap")).toHaveScreenshot("remote-card-editor-commands.png");
+    await page.locator(".sb-general-wrap .sb-exp-hdr").click();
+    await expect(page.locator(".sb-general-wrap .sb-exp")).not.toHaveClass(/sb-exp-collapsed/);
+    await expect(page.locator(".sb-general-wrap")).toHaveScreenshot("remote-card-editor-general-options.png");
+  });
+
+  test("captures general options with long press enabled (button list shown)", async ({ page }) => {
+    await mountEditor(page, "active", { hold_repeat: { enabled: true, channel: false } });
+    await page.locator(".sb-general-wrap .sb-exp-hdr").click();
+    await expect(page.locator(".sb-general-wrap .sb-opt-long-press ha-form")).toBeVisible();
+    await expect(page.locator(".sb-general-wrap")).toHaveScreenshot("remote-card-editor-general-options-long-press.png");
+  });
+
+  test("toggling the hold-to-repeat switch fires config-changed with the hold_repeat block", async ({ page }) => {
+    await mountEditor(page, "active");
+    await page.locator(".sb-general-wrap .sb-exp-hdr").click();
+
+    const changes = [];
+    await page.exposeFunction("__pushLongPressChange", (detail) => changes.push(detail));
+    await page.evaluate(() => {
+      document.querySelector("sofabaton-virtual-remote-editor").addEventListener(
+        "config-changed",
+        (event) => window.__pushLongPressChange(event.detail?.config ?? null),
+      );
+    });
+
+    await page.locator(".sb-general-wrap .sb-opt-long-press ha-switch").click();
+    await expect.poll(() => changes.length).toBeGreaterThan(0);
+    expect(changes[changes.length - 1]?.hold_repeat).toEqual({ enabled: true });
+    await expect(page.locator(".sb-general-wrap .sb-opt-long-press ha-form")).toBeVisible();
+
+    await page.locator(".sb-general-wrap .sb-opt-long-press ha-switch").click();
+    await expect.poll(() => changes.length).toBeGreaterThan(1);
+    expect("hold_repeat" in (changes[changes.length - 1] ?? {})).toBe(false);
+  });
+
+  test("background override switch materializes a color and drops it again when off", async ({ page }) => {
+    await mountEditor(page, "active");
+    await page.locator(".sb-styling-wrap .sb-exp-hdr").click();
+
+    const changes = [];
+    await page.exposeFunction("__pushStylingChange", (detail) => changes.push(detail));
+    await page.evaluate(() => {
+      document.querySelector("sofabaton-virtual-remote-editor").addEventListener(
+        "config-changed",
+        (event) => window.__pushStylingChange(event.detail?.config ?? null),
+      );
+    });
+
+    await page.locator(".sb-styling-wrap .sb-opt-background ha-switch").click();
+    await expect.poll(() => changes.length).toBeGreaterThan(0);
+    expect(changes[changes.length - 1]?.background_override).toEqual([255, 255, 255]);
+    expect("use_background_override" in (changes[changes.length - 1] ?? {})).toBe(false);
+    await expect(page.locator(".sb-styling-wrap .sb-opt-background ha-form")).toBeVisible();
+
+    await page.locator(".sb-styling-wrap .sb-opt-background ha-switch").click();
+    await expect.poll(() => changes.length).toBeGreaterThan(1);
+    expect("background_override" in (changes[changes.length - 1] ?? {})).toBe(false);
+    await expect(page.locator(".sb-styling-wrap .sb-opt-background ha-form")).toHaveCount(0);
   });
 
   test("moving a group down through the arrow controls fires config-changed", async ({ page }) => {

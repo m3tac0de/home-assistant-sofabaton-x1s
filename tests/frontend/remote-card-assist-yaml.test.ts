@@ -119,3 +119,24 @@ test("notification body falls back to the provided activity name", () => {
   assert.match(body, /Play Xbox/);
   assert.equal(automationAssistNotificationBody(null, ENTITY, false, "x"), "");
 });
+
+test("device-mode captures head the notification with Device/Command wording", () => {
+  const body = automationAssistNotificationBody(
+    {
+      kind: "button",
+      label: "Emulated App 2",
+      commandId: 12,
+      deviceId: 5,
+      commandType: "favorite",
+      deviceMode: true,
+      deviceName: "Marantz",
+    },
+    ENTITY,
+    false,
+    "play xbox", // the current activity must NOT be named in the header
+  );
+  assert.match(body, /\*\*Device: Marantz \| Command: Emulated App 2\*\*/);
+  assert.doesNotMatch(body, /Activity: play xbox/);
+  // The service YAML still targets the device scope.
+  assert.match(body, /device: 5/);
+});

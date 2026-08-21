@@ -53,6 +53,57 @@ export function buildActivitySelectState({
   };
 }
 
+/**
+ * Device-mode dropdown state. Unlike the activity select (which keys options
+ * by display name), device options carry explicit id values so duplicate
+ * device names never collide. The empty value is the "Select device"
+ * placeholder — devices have no equivalent of "current activity state" to
+ * open on.
+ */
+export function buildDeviceSelectState({
+  editMode,
+  preview,
+  devices,
+  currentDeviceId,
+}: {
+  editMode: boolean;
+  preview: { mode?: string; deviceId?: number | null; label?: string } | null;
+  devices: Array<{ id: number; name: string }>;
+  currentDeviceId: number | null;
+}) {
+  const options: Array<{ value: string; label: string }> = [
+    { value: "", label: str().card.selectDevice },
+    ...devices.map((device) => ({
+      value: String(device.id),
+      label: device.name,
+    })),
+  ];
+
+  let resolvedValue = currentDeviceId != null ? String(currentDeviceId) : "";
+  if (editMode && preview?.mode === "device") {
+    if (preview.deviceId == null) {
+      // "All devices (default)" preview: surface its label as a synthetic
+      // option so the select shows what is being edited.
+      options.push({ value: "device:default", label: str().card.allDevicesLayout });
+      resolvedValue = "device:default";
+    } else {
+      resolvedValue = String(preview.deviceId);
+      if (!options.some((option) => option.value === resolvedValue)) {
+        options.push({
+          value: resolvedValue,
+          label: str().card.deviceFallback(preview.deviceId),
+        });
+      }
+    }
+  }
+
+  return {
+    options,
+    resolvedValue,
+    disabled: editMode,
+  };
+}
+
 export function noActivitiesWarning(
   isUnavailable: boolean,
   activitiesLength: number,

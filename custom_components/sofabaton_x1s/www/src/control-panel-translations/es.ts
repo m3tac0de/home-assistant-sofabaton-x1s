@@ -349,6 +349,8 @@ export const TOOLS_CARD_STRINGS_ES = {
     wifiEventsTitle: "Eventos Wifi",
     wifiEventsSubtitle: "Eventos creados desde el editor de actividades. Pulsarlos en el control remoto dispara aquí su acción de Home Assistant (también actualizan el sensor de Wifi Commands).",
     wifiEventsEmpty: "Todavía no hay eventos Wifi. Créalos desde los diálogos de añadir del editor de actividades (accesos directos, botones y pasos de macro).",
+    eventsConfiguredPill: (configured: number, total: number) => `${configured} de ${total} configurado${configured === 1 ? "" : "s"}`,
+    eventsShowUnconfigured: (count: number) => `Mostrar ${count} sin configurar…`,
     wifiEventRowPress: (name: string) => `Cuando se pulsa ${name}`,
     wifiEventRowLongPress: "y cuando se mantiene pulsado",
     wifiEventModalTitle: (name: string) => `Cuando se pulsa ${name}`,

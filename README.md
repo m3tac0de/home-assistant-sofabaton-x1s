@@ -31,6 +31,7 @@ Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from 
 | Official-app proxy                | Yes | Yes | Yes |
 | HTTP-delivered Wifi Commands      | Yes | Yes | Yes |
 | MQTT-delivered Wifi Commands      | No  | No  | Yes |
+| Activity state over MQTT          | No  | No  | Yes |
 | Live editing, backup, and restore | Yes | Yes | Yes |
 
 Requirements:
@@ -69,7 +70,7 @@ Installing files directly from a source branch may give you unreleased code. Use
 After Home Assistant has restarted:
 
 1. Go to **Settings → Devices & services**.
-2. Select the discovered Sofabaton hub and follow the configuration flow.
+2. Home Assistant begins discovery only after it has **fully started**. Then, allow up to one minute for hubs to appear. Select the discovered Sofabaton hub and follow the configuration flow.
 3. If discovery does not find it, select **Add integration**, search for **Sofabaton X**, and enter the hub IP address manually.
 
 If the hub is on another VLAN or subnet, see the [networking guide](docs/networking.md).
@@ -101,14 +102,18 @@ The integration includes two dashboard cards and deploys them automatically.
 
 ### Sofabaton Virtual Remote
 
-The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **Automation Assist → Key capture**. Add it from the dashboard card picker or use YAML, replacing the entity with the `remote` entity created for your hub:
+The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **General Options → Key capture**. Enable **hold-to-repeat** to repeat commands while holding the Volume, Channel, or Direction Pad buttons, as on the physical remote.
+
+In the card's **Device mode** the remote controls one device configured on the hub, using that device's button bindings and complete, searchable command list, independent of Activities ([documentation](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/device_mode.md)). Device mode requires the integration's **Persistent Cache** (switch it on in the Control Panel card).
+
+Add the card from the dashboard card picker or use YAML, replacing the entity with the `remote` entity created for your hub:
 
 ```yaml
 type: custom:sofabaton-virtual-remote
 entity: remote.<hub>_remote
 ```
 
-[Virtual Remote documentation](https://github.com/m3tac0de/sofabaton-virtual-remote)
+[Virtual Remote documentation](https://github.com/m3tac0de/sofabaton-virtual-remote#-configuration)
 
 <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-01.png" width="220" alt="Sofabaton Virtual Remote showing Activity controls"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-02.png" width="220" alt="Sofabaton Virtual Remote showing remote buttons"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-03.png" width="220" alt="Sofabaton Virtual Remote configuration editor">
 
@@ -226,7 +231,7 @@ For more information about command payloads on Sofabaton hubs and how this integ
 
 The official [Sofabaton Hub integration](https://github.com/yomonpet/ha-sofabaton-hub) is X2-only and uses MQTT for hub entities and control.
 
-Sofabaton X supports X1, X1S, and X2 through a direct local connection. It also provides live hub editing, local backup and restore, Wifi Events, Automation Events, command-payload tools, and a proxy for the official Sofabaton app. On X2, MQTT is optionally available as the delivery path for Wifi Command presses.
+Sofabaton X supports X1, X1S, and X2 through a direct local connection. It also provides live hub editing, local backup and restore, Wifi Events, Automation Events, command-payload tools, and a proxy for the official Sofabaton app. On X2, MQTT is optionally available as the delivery path for Wifi Command presses, and when Home Assistant's MQTT integration shares the hub's broker, the hub's Activity changes also arrive over MQTT, typically one to two seconds before the direct connection confirms them.
 
 </details>
 

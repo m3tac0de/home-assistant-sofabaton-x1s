@@ -272,6 +272,63 @@ def test_ws_activity_sync_tolerates_hub_dangling_command_refs(monkeypatch):
     started["coro"].close()
 
 
+def test_ws_activity_sync_tolerates_unbound_zero_command_binding_rows(monkeypatch):
+    # The vendor app clears a hard-button slot by writing command_id 0 into
+    # the KeyToKey row instead of deleting it (user report: FWD button on
+    # cloud-provisioned Apple TV and PS5 pages). Both bundles carry that hub
+    # truth on an unchanged bystander device; it must not block syncing an
+    # activity edit.
+    conn = _Conn()
+    started = {}
+    _patch(monkeypatch)
+    hass = SimpleNamespace(
+        async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
+        data={integration.DOMAIN: {}},
+    )
+    baseline = _bundle([])
+    edited = _bundle([{"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"}])
+    for bundle in (baseline, edited):
+        bundle["devices"][0]["button_bindings"] = [
+            {"button_id": 0xBD, "command_id": 0, "long_press_command_id": None},
+        ]
+
+    _run(integration._ws_activity_sync(hass, conn, {
+        "id": 43, "entry_id": "entry-1", "activity_id": 101,
+        "baseline": baseline, "edited": edited,
+    }))
+
+    assert conn.error is None
+    assert "operation_id" in conn.result[1]
+    started["coro"].close()
+
+
+def test_ws_activity_sync_tolerates_hub_truth_name_outside_charset(monkeypatch):
+    # A hub named in the vendor app with characters outside our charset
+    # (mobile autocorrect curly quotes) is hub truth on every bundle; it must
+    # not block syncing. A name the edit newly introduces stays validated.
+    conn = _Conn()
+    started = {}
+    _patch(monkeypatch)
+    hass = SimpleNamespace(
+        async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
+        data={integration.DOMAIN: {}},
+    )
+    baseline = _bundle([])
+    edited = _bundle([{"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"}])
+    for bundle in (baseline, edited):
+        bundle["hub"]["name"] = "Marcel’s hub"
+        bundle["devices"][0]["device"]["name"] = "Marcel’s TV"
+
+    _run(integration._ws_activity_sync(hass, conn, {
+        "id": 44, "entry_id": "entry-1", "activity_id": 101,
+        "baseline": baseline, "edited": edited,
+    }))
+
+    assert conn.error is None
+    assert "operation_id" in conn.result[1]
+    started["coro"].close()
+
+
 def test_ws_activity_sync_enforces_invariants_on_changed_bystander(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch)

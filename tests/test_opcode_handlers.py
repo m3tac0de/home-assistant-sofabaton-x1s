@@ -1727,3 +1727,219 @@ def test_ack_ready_with_proxy_client_fires_redundant_off_directly() -> None:
     handler = AckReadyHandler()
     handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
     assert fired == ["off"]
+
+
+# ---------------------------------------------------------------------------
+# External activity state (MQTT fast path) + settling gate
+# ---------------------------------------------------------------------------
+
+
+def _external_state_proxy() -> tuple[X1Proxy, list[tuple]]:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy.enqueue_cmd = lambda *args, **kwargs: True  # type: ignore[assignment]
+    proxy._activities_catalog_ready = True
+    proxy.state.activities = {0x67: {"name": "Music"}, 0x68: {"name": "Movie"}}
+    changes: list[tuple] = []
+    proxy.on_activity_change(lambda new_id, old_id, name: changes.append((new_id, old_id, name)))
+    return proxy, changes
+
+
+def test_external_state_flips_and_arms_gate() -> None:
+    proxy, changes = _external_state_proxy()
+    assert proxy._external_settle_event.is_set()
+
+    assert proxy.apply_external_activity_state(0x68) is True
+    assert proxy.state.current_activity == 0x68
+    assert changes == [(0x68, None, "Movie")]
+    # The settling gate is armed until ACK_READY.
+    assert not proxy._external_settle_event.is_set()
+
+    # The verify path (ACK_READY -> REQ_ACTIVITIES burst) re-derives the
+    # same hint: no duplicate notification.
+    proxy.handle_active_state("activities")
+    assert changes == [(0x68, None, "Movie")]
+
+
+def test_external_state_requires_catalog() -> None:
+    proxy, changes = _external_state_proxy()
+    proxy._activities_catalog_ready = False
+
+    assert proxy.apply_external_activity_state(0x68) is False
+    assert proxy.state.current_activity is None
+    assert changes == []
+    assert proxy._external_settle_event.is_set()
+
+
+def test_external_state_unknown_id_ignored() -> None:
+    proxy, changes = _external_state_proxy()
+
+    assert proxy.apply_external_activity_state(0x99) is False
+    assert proxy.state.current_activity is None
+    assert changes == []
+    assert proxy._external_settle_event.is_set()
+
+
+def test_external_state_noop_when_ack_ready_won() -> None:
+    # ACK_READY -> REQ_ACTIVITIES landed first; the late MQTT push must
+    # not re-notify or re-arm the gate.
+    proxy, changes = _external_state_proxy()
+    proxy.state.set_hint(0x68)
+    proxy.handle_active_state("activities")
+    assert changes == [(0x68, None, "Movie")]
+
+    assert proxy.apply_external_activity_state(0x68) is False
+    assert changes == [(0x68, None, "Movie")]
+    assert proxy._external_settle_event.is_set()
+
+
+def test_external_state_off_and_stale_push_correction() -> None:
+    proxy, changes = _external_state_proxy()
+    proxy.apply_external_activity_state(0x67)
+    assert changes[-1] == (0x67, None, "Music")
+
+    # OFF push (hub publishes activity_id 255 -> caller maps to None).
+    assert proxy.apply_external_activity_state(None) is True
+    assert proxy.state.current_activity is None
+    assert changes[-1] == (None, 0x67, None)
+
+    # A wrong push is corrected by the next activities burst (the
+    # verify-anyway path): state follows the hub rows, not the push.
+    proxy.apply_external_activity_state(0x67)
+    proxy.state.set_hint(0x68)
+    proxy.handle_active_state("activities")
+    assert proxy.state.current_activity == 0x68
+    assert changes[-1] == (0x68, 0x67, "Movie")
+
+
+def test_ack_ready_releases_settle_gate() -> None:
+    proxy, _changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    proxy.apply_external_activity_state(0x68)
+    assert not proxy._external_settle_event.is_set()
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    assert proxy._external_settle_event.is_set()
+
+
+def test_hub_disconnect_releases_settle_gate() -> None:
+    proxy, _changes = _external_state_proxy()
+    proxy.apply_external_activity_state(0x68)
+    assert not proxy._external_settle_event.is_set()
+
+    proxy._notify_hub_state(False)
+    assert proxy._external_settle_event.is_set()
+
+
+def test_external_state_skips_gate_while_ack_ready_refresh_in_flight() -> None:
+    # ACK_READY beat the MQTT push (instant macro plus broker latency) and
+    # its REQ_ACTIVITIES burst has not landed yet: the push still flips
+    # state, but no later ACK_READY exists to release a gate armed now, so
+    # the gate must stay open instead of holding commands for the timeout.
+    proxy, changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    assert proxy._ack_ready_refresh_pending
+
+    assert proxy.apply_external_activity_state(0x68) is True
+    assert proxy.state.current_activity == 0x68
+    assert changes == [(0x68, None, "Movie")]
+    assert proxy._external_settle_event.is_set()
+
+    # The in-flight burst lands, agrees with the push, and clears the
+    # window: no duplicate notification.
+    proxy.handle_active_state("activities")
+    assert changes == [(0x68, None, "Movie")]
+    assert not proxy._ack_ready_refresh_pending
+
+    # The next transition's push (arriving before its ACK_READY, the
+    # normal order) arms the gate again.
+    assert proxy.apply_external_activity_state(0x67) is True
+    assert not proxy._external_settle_event.is_set()
+
+
+def test_hub_disconnect_clears_ack_ready_refresh_window() -> None:
+    proxy, _changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    AckReadyHandler().handle(
+        _build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY")
+    )
+    assert proxy._ack_ready_refresh_pending
+
+    proxy._notify_hub_state(False)
+    assert not proxy._ack_ready_refresh_pending
+
+
+def test_ack_ready_after_external_off_does_not_fire_redundant_off() -> None:
+    # A real A -> OFF transition whose MQTT push beat the ACK_READY: the
+    # companion ACK_READY sees current_activity None, but that is the
+    # already-applied transition, not a redundant OFF press.
+    proxy, _changes = _external_state_proxy()
+    fired: list[str] = []
+    proxy.on_redundant_off_press(lambda: fired.append("off"))
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+
+    proxy.apply_external_activity_state(0x68)
+    proxy.notify_hub_ready()  # settle the switch-on transition
+    proxy.apply_external_activity_state(None)
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    # The verify burst confirms off with no change: still no false fire.
+    proxy.handle_active_state("activities")
+    assert fired == []
+
+    # A LATER genuine redundant OFF press (gate settled) still fires.
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    proxy.handle_active_state("activities")
+    assert fired == ["off"]
+
+
+def test_ack_ready_after_external_off_with_proxy_client_does_not_fire() -> None:
+    # Same race on the hint path (proxy client connected).
+    proxy, _changes = _external_state_proxy()
+    fired: list[str] = []
+    proxy.on_redundant_off_press(lambda: fired.append("off"))
+    proxy.can_issue_commands = lambda: False  # type: ignore[assignment]
+
+    proxy.apply_external_activity_state(0x68)
+    proxy.notify_hub_ready()
+    proxy.apply_external_activity_state(None)
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    assert fired == []
+
+    # A later ACK_READY with the gate settled is a genuine redundant OFF.
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    assert fired == ["off"]
+
+
+def test_send_command_waits_out_settle_gate() -> None:
+    import time as _time
+
+    proxy, _changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    sent: list[tuple] = []
+    proxy.enqueue_cmd = lambda opcode, payload=b"", **kw: sent.append((opcode, payload)) or True  # type: ignore[assignment]
+
+    proxy.apply_external_activity_state(0x68)
+    # Shrink the deadline so the timeout path is fast in tests.
+    proxy._external_settle_deadline = _time.monotonic() + 0.05
+
+    started = _time.monotonic()
+    assert proxy.send_command(0x68, 0x10) is True
+    waited = _time.monotonic() - started
+
+    assert sent, "command must be sent after the gate times out"
+    assert waited >= 0.04
+    assert proxy._external_settle_event.is_set()
+
+    # Once settled, later commands pass straight through.
+    started = _time.monotonic()
+    proxy.send_command(0x68, 0x10)
+    assert _time.monotonic() - started < 0.04

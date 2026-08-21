@@ -50,11 +50,98 @@ export const REMOTE_CARD_CSS = `
         --ha-color-form-background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
       }
 
-      .activityRow { 
-        display: grid; 
-        grid-template-columns: 1fr; 
+      .activityRow {
+        display: grid;
+        grid-template-columns: 1fr;
         position: relative;
         z-index: 3;
+      }
+      /* Long activity/device names ellipsize inside the select instead of
+         pushing the card wider (grid items default to min-width auto). */
+      .activityRow .sb-activity-select {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      /* Device mode: the toggle fuses to the select's left edge. */
+      .activityRow--with-toggle {
+        grid-template-columns: auto 1fr;
+      }
+      .activityRow--with-toggle .loadIndicator {
+        grid-column: 1 / -1;
+      }
+      .sb-mode-toggle {
+        width: 48px;
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        cursor: pointer;
+        color: var(--primary-text-color);
+        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        border: none;
+        border-right: 1px solid var(--divider-color);
+        border-bottom: 1px solid var(--mdc-select-idle-line-color, var(--divider-color));
+        border-top-left-radius: var(--mdc-shape-small, 4px);
+        border-top-right-radius: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .sb-mode-toggle:hover {
+        background: color-mix(in srgb, var(--primary-text-color) 8%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+      }
+      .sb-mode-toggle:active {
+        transform: scale(0.97);
+      }
+      .sb-mode-toggle[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .activityRow--with-toggle .sb-activity-select {
+        --mdc-shape-small: 0 4px 0 0;
+      }
+
+      /* Device mode: Commands drawer (one command per row + filter input).
+         Compound selector: the base .mf-grid two-column rule sits LATER in
+         this sheet and would win at equal specificity. Responsive columns:
+         one full-width command per row on narrow cards (~230px), two per
+         row once the card has the width for it (~300px+). */
+      .mf-grid.mf-grid--commands {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      }
+      .mf-grid--commands .drawer-btn .name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sb-commands-filter {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 8px;
+        padding: 8px 12px;
+        font: inherit;
+        font-size: 13px;
+        color: var(--primary-text-color);
+        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        border: 1px solid var(--divider-color);
+        border-radius: var(--sb-group-radius);
+        outline: none;
+      }
+      .sb-commands-filter:focus {
+        border-color: var(--primary-color, #03a9f4);
+      }
+      .sb-commands-filter::placeholder {
+        color: var(--secondary-text-color);
+        opacity: 0.8;
+      }
+      /* The card sets an inline max-height from the measured viewport space
+         (commandsOverlayMaxHeight); this only keeps the filter pinned. */
+      .mf-overlay--commands .sb-commands-filter {
+        position: sticky;
+        top: 0;
+        z-index: 1;
       }
 
       .automationAssist {
@@ -673,6 +760,27 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
           .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+          /* The two "Default ... layout" entries act as section heads in the
+             layout selector: a tinted background plus a colored bottom
+             border split the list into its activity and device sections.
+             The items are our own slotted children of ha-select, so this
+             document-level background overrides the component's :host hover
+             style — define hover/selected explicitly to keep them alive. */
+          .sb-option-default {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
+            background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+            border-bottom: 2px solid rgba(var(--rgb-primary-color, 3, 169, 244), 0.45);
+            border-bottom: 2px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
+          }
+          .sb-option-default:hover {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.14);
+            background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+          }
+          .sb-option-default[selected],
+          .sb-option-default[activated] {
+            background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18);
+            background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+          }
           .sb-layout-row + .sb-layout-row { border-top: 1px solid var(--divider-color); }
           .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
           .sb-layout-actions-full { flex: 1; }
@@ -684,7 +792,6 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
-          .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -703,18 +810,39 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
-          .sb-commands-wrap { padding: 0 0 12px 0; }
-          .sb-commands-meta { margin-bottom: 12px; }
-          .sb-yaml-helper-row { display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; margin-bottom: 10px; }
-          .sb-yaml-helper-drag { color: var(--secondary-text-color); opacity: 0.75; padding-top: 2px; }
-          .sb-yaml-helper-drag ha-icon { --mdc-icon-size: 20px; }
-          .sb-yaml-helper-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
-          .sb-yaml-helper-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
-          .sb-yaml-helper-label { line-height: 1.2; }
-          .sb-yaml-helper-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
-          .sb-yaml-helper-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
-          .sb-yaml-helper-link:hover { color: var(--primary-color); opacity: 1; }
-          .sb-yaml-helper-link ha-icon { --mdc-icon-size: 16px; }
+          /* General Options rows: label + description with the switch at the
+             end; a row's sub-controls (ha-form) sit below, indented to the
+             label column. Rows are separated by the divider line. */
+          .sb-opt-list { display: flex; flex-direction: column; }
+          .sb-opt-row { padding: 8px 0; }
+          .sb-opt-row + .sb-opt-row { border-top: 1px solid var(--divider-color); }
+          .sb-opt-head { display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; }
+          .sb-opt-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
+          .sb-opt-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+          .sb-opt-label { line-height: 1.2; }
+          .sb-opt-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
+          .sb-opt-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-opt-link:hover { color: var(--primary-color); opacity: 1; }
+          .sb-opt-link ha-icon { --mdc-icon-size: 16px; }
+          .sb-opt-row--form ha-form { display: block; }
+          .sb-opt-sub { padding: 10px 0 2px; }
+          .sb-opt-sub ha-form { display: block; }
+          /* Sub-option label + checkbox list (long press buttons): the label
+             sits in the row's label column at description size, the
+             checkboxes are indented beneath it. The checkbox labels take
+             their size from HA's component vars, not from inherited
+             font-size: web-awesome ha-checkbox reads --wa-font-size-m (HA
+             2026.x), the older MDC ha-formfield reads the typography var,
+             so pin all of them to the description size. */
+          .sb-opt-sub-label { font-size: 13px; font-weight: 500; line-height: 1.3; }
+          .sb-opt-sub--list ha-form {
+            padding-inline-start: 12px;
+            font-size: 13px;
+            --wa-font-size-m: 13px;
+            --mdc-typography-body2-font-size: 13px;
+            --mdc-typography-body2-line-height: 1.3;
+            --ha-font-size-m: 13px;
+          }
           .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
           .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
           .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }

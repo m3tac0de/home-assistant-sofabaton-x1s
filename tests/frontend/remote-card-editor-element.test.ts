@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SofabatonRemoteCardEditor } from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-element";
-import { renderCommandsEditorSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/commands-editor";
+import { renderGeneralOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/general-options";
 import { renderStylingOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/styling-options";
 import { renderGroupOrderSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/group-order";
-import { DEFAULT_GROUP_ORDER } from "../../custom_components/sofabaton_x1s/www/src/remote-card-layout";
 import { REMOTE_CARD_CSS } from "../../custom_components/sofabaton_x1s/www/src/remote-card-styles";
 import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/remote-card-types";
 import type { RemoteCardConfig } from "../../custom_components/sofabaton_x1s/www/src/remote-card-types";
@@ -150,10 +149,12 @@ test("moving a group by key swaps it with its visible neighbour", () => {
   const { editor, changes } = createEditor({ entity: "remote.living_room" });
 
   // Default order starts: activity, macro_favorites, ... — moving activity
-  // down swaps it with macro_favorites.
+  // down swaps it with macro_favorites. Default-layout writes land in
+  // layouts.default (top level stays card settings only).
   editor._moveGroupByKey("activity", +1);
   assert.equal(changes.length, 1);
-  const order = changes[0].group_order as string[];
+  const layouts = changes[0].layouts as Record<string, { group_order?: string[] }>;
+  const order = layouts.default.group_order as string[];
   assert.equal(order[0], "macro_favorites");
   assert.equal(order[1], "activity");
 });
@@ -166,18 +167,99 @@ test("moving by key skips rows hidden for the current hub (abc on non-X2)", () =
   assert.equal(changes.length, 0);
 });
 
-test("reset on the default selection restores order and re-enables all groups", () => {
+test("reset on the default selection deletes the stored keys back to defaults", () => {
+  // Reset means "built-in defaults", stored as the absence of keys — the
+  // saved YAML shrinks instead of materializing the whole default set.
   const { editor, changes } = createEditor({
     entity: "remote.living_room",
     show_nav: false,
     group_order: ["colors", "dpad", "activity"],
+    layouts: { default: { show_dvr: false }, "101": { show_nav: false } },
   });
 
   editor._resetGroupOrder();
   assert.equal(changes.length, 1);
-  assert.deepEqual(changes[0].group_order, DEFAULT_GROUP_ORDER.slice());
-  assert.equal(changes[0].show_nav, true);
-  assert.equal(changes[0].mf_as_rows, false);
+  assert.equal("group_order" in changes[0], false);
+  assert.equal("show_nav" in changes[0], false);
+  // layouts.default is part of the default layout; other overrides survive.
+  assert.deepEqual(changes[0].layouts, { "101": { show_nav: false } });
+});
+
+test("device master switch and open_device live in the device_mode block", () => {
+  const { editor, changes } = createEditor({ entity: "remote.living_room" });
+
+  editor._setDeviceModeEnabled(false);
+  assert.deepEqual(changes.at(-1)?.device_mode, { enabled: false });
+
+  // Re-enabling is the default: the block disappears entirely.
+  editor._setDeviceModeEnabled(true);
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+
+  editor._setOpenDevice("9");
+  assert.deepEqual(changes.at(-1)?.device_mode, { open_device: 9 });
+  editor._setOpenDevice("");
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+});
+
+test("initial-view select value routes to open_device; the sentinel clears it", () => {
+  const { editor, changes } = createEditor({ entity: "remote.living_room" });
+
+  editor._onInitialViewChanged("9");
+  assert.deepEqual(changes.at(-1)?.device_mode, { open_device: 9 });
+
+  // The "current" sentinel (and a cleared select) drop open_device again.
+  editor._onInitialViewChanged("current");
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+
+  editor._onInitialViewChanged("9");
+  editor._onInitialViewChanged("");
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+
+  editor._onInitialViewChanged("9");
+  editor._onInitialViewChanged(undefined);
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+});
+
+test("long press switch stores the minimal block and drops it when disabled", () => {
+  const { editor, changes } = createEditor({ entity: "remote.living_room" });
+
+  // Already off: no change fired.
+  editor._setLongPressEnabled(false);
+  assert.equal(changes.length, 0);
+
+  editor._setLongPressEnabled(true);
+  assert.deepEqual(changes.at(-1)?.hold_repeat, { enabled: true });
+
+  // Deselecting groups writes explicit false; re-selecting removes it.
+  editor._setLongPressGroups(["volume", "dpad"]);
+  assert.deepEqual(changes.at(-1)?.hold_repeat, { enabled: true, channel: false });
+  editor._setLongPressGroups(["volume", "dpad"]);
+  assert.equal(changes.length, 2, "identical selection fires nothing");
+  editor._setLongPressGroups(["volume", "channel", "dpad"]);
+  assert.deepEqual(changes.at(-1)?.hold_repeat, { enabled: true });
+
+  // Disabling drops the whole block (the group selection with it).
+  editor._setLongPressGroups(["channel"]);
+  editor._setLongPressEnabled(false);
+  assert.equal("hold_repeat" in (changes.at(-1) ?? {}), false);
+});
+
+test("reset on a device selection drops only that device layer", () => {
+  const { editor, changes } = createEditor({
+    entity: "remote.living_room",
+    device_mode: {
+      open_device: 3,
+      layouts: { default: { c_as_rows: true }, "3": { show_nav: false } },
+    },
+  });
+  editor._layoutSelection = "device:3";
+
+  editor._resetGroupOrder();
+  assert.equal(changes.length, 1);
+  assert.deepEqual(changes[0].device_mode, {
+    open_device: 3,
+    layouts: { default: { c_as_rows: true } },
+  });
 });
 
 test("reset on an activity selection drops only that layout override", () => {
@@ -196,25 +278,101 @@ test("reset on an activity selection drops only that layout override", () => {
 
 // ---------- sections: template structure ----------
 
-test("commands section renders the key-capture switch state and wifi pointer", () => {
-  const on = renderCommandsEditorSection({
-    expanded: true,
-    automationAssistEnabled: true,
-    onToggleExpanded: () => undefined,
-    onSetAutomationAssist: () => undefined,
-  });
-  assert.equal(templateHasString(on, "sb-yaml-helper-row"), true);
-  // The old "Wifi Commands moved" pointer is gone (removed 2026-07-21).
-  assert.equal(templateHasString(on, "sb-commands-section-title"), false);
-  assert.match(templateText(on), /Key capture/);
+/** Template serialized with functions dropped, so schema objects are searchable. */
+function templateJson(template: unknown): string {
+  return JSON.stringify(template, (_key, value) =>
+    typeof value === "function" ? undefined : value,
+  );
+}
 
-  const collapsed = renderCommandsEditorSection({
-    expanded: false,
-    automationAssistEnabled: false,
+function generalOptionsParams(overrides: Record<string, unknown> = {}) {
+  return {
+    hass: null,
+    expanded: true,
     onToggleExpanded: () => undefined,
+    automationAssistEnabled: true,
     onSetAutomationAssist: () => undefined,
-  });
+    deviceMode: null,
+    longPress: {
+      enabled: false,
+      selected: [],
+      onSetEnabled: () => undefined,
+      onSetSelected: () => undefined,
+    },
+    ...overrides,
+  };
+}
+
+test("general options section renders key capture and hold-to-repeat rows, in that order", () => {
+  const on = renderGeneralOptionsSection(generalOptionsParams());
+  const text = templateText(on);
+  assert.match(text, /General Options/);
+  assert.match(text, /Key capture/);
+  assert.match(text, /Enable hold-to-repeat/);
+  assert.ok(text.indexOf("Key capture") < text.indexOf("Enable hold-to-repeat"));
+  assert.equal(templateHasString(on, "sb-opt-key-capture"), true);
+  assert.equal(templateHasString(on, "sb-opt-long-press"), true);
+  // No device-mode row unless the shell offers one (x1s hub with devices).
+  assert.equal(templateHasString(on, "sb-opt-device-mode"), false);
+  // Hold-to-repeat off: the button list stays hidden.
+  assert.doesNotMatch(templateJson(on), /"name":"long_press_buttons"/);
+
+  const collapsed = renderGeneralOptionsSection(generalOptionsParams({ expanded: false }));
   assert.equal(templateHasString(collapsed, "sb-exp-collapsed"), true);
+});
+
+test("general options section renders the device-mode row between the others and its initial view only when on", () => {
+  const off = renderGeneralOptionsSection(
+    generalOptionsParams({
+      deviceMode: {
+        enabled: false,
+        openDevice: "current",
+        options: [{ value: "current", label: "Current activity" }],
+        onSetEnabled: () => undefined,
+        onSetOpenDevice: () => undefined,
+      },
+    }),
+  );
+  const offText = templateText(off);
+  assert.ok(offText.indexOf("Key capture") < offText.indexOf("Enable device mode"));
+  assert.ok(offText.indexOf("Enable device mode") < offText.indexOf("Enable hold-to-repeat"));
+  assert.doesNotMatch(templateJson(off), /"name":"open_device"/);
+
+  const on = renderGeneralOptionsSection(
+    generalOptionsParams({
+      deviceMode: {
+        enabled: true,
+        openDevice: "9",
+        options: [
+          { value: "current", label: "Current activity" },
+          { value: "9", label: "TV" },
+        ],
+        onSetEnabled: () => undefined,
+        onSetOpenDevice: () => undefined,
+      },
+    }),
+  );
+  assert.match(templateJson(on), /"name":"open_device"/);
+});
+
+test("general options section lists the hold-to-repeat button groups while enabled", () => {
+  const on = renderGeneralOptionsSection(
+    generalOptionsParams({
+      longPress: {
+        enabled: true,
+        selected: ["volume", "channel", "dpad"],
+        onSetEnabled: () => undefined,
+        onSetSelected: () => undefined,
+      },
+    }),
+  );
+  // The schema carries the three groups with their localized labels.
+  const schema = templateJson(on);
+  assert.match(schema, /"name":"long_press_buttons"/);
+  assert.match(schema, /"value":"volume","label":"Volume"/);
+  assert.match(schema, /"value":"channel","label":"Channel"/);
+  assert.match(schema, /"value":"dpad","label":"Direction Pad"/);
+  assert.match(schema, /"multiple":true,"mode":"list"/);
 });
 
 test("styling section only offers the color picker while the override is on", () => {
@@ -264,12 +422,18 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     channelEnabled: true,
     mediaEnabled: true,
     dvrEnabled: true,
+    isDeviceSelection: false,
+    commandsEnabled: true,
+    showDeviceModeSwitch: false,
+    deviceModeEnabled: true,
     isGroupEnabled: () => true,
     groupLabel: (key: string) => key,
     onToggleExpanded: () => undefined,
     onSelectLayout: () => undefined,
     onSetMacro: () => undefined,
     onSetFavorites: () => undefined,
+    onSetCommands: () => undefined,
+    onSetDeviceMode: () => undefined,
     onSetVolume: () => undefined,
     onSetChannel: () => undefined,
     onSetMedia: () => undefined,
