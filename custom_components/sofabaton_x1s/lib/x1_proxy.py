@@ -554,6 +554,12 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._external_settle_event = threading.Event()
         self._external_settle_event.set()
         self._external_settle_deadline = 0.0
+        # True between an ACK_READY-triggered REQ_ACTIVITIES and the end of
+        # its burst. An external push landing inside that window belongs
+        # to a transition the hub already declared ready for, so arming
+        # the gate then would leave nothing to release it (only the
+        # timeout); apply_external_activity_state skips the gate instead.
+        self._ack_ready_refresh_pending = False
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -661,6 +667,10 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             cb()
 
     def handle_active_state(self, trigger: str) -> None:
+        if trigger == "activities":
+            # Whatever triggered this burst, state now mirrors hub rows:
+            # an ACK_READY refresh, if one was in flight, has landed.
+            self._ack_ready_refresh_pending = False
         new_id, old_id = self.state.update_activity_state()
         pending_redundant_off = self._pending_redundant_off_check
         self._pending_redundant_off_check = False
@@ -725,11 +735,27 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             and self.state.current_activity_hint == act_lo
         ):
             return False
-        self._log.info("[EXT] applying external activity state: %s", act_lo)
         self.state.set_hint(act_lo)
-        self._arm_external_settle()
+        if self._ack_ready_refresh_pending:
+            # ACK_READY beat the push (instant macro plus broker latency)
+            # and its REQ_ACTIVITIES burst has not landed yet. The hub is
+            # already ready, so no ACK_READY would follow to release a
+            # gate armed now: flip state, skip the gate, and let the
+            # in-flight burst reconcile.
+            self._log.info(
+                "[EXT] applying external activity state: %s (hub already ready)",
+                act_lo,
+            )
+        else:
+            self._log.info("[EXT] applying external activity state: %s", act_lo)
+            self._arm_external_settle()
         self.handle_active_state("external")
         return True
+
+    def note_ack_ready_refresh(self) -> None:
+        """Record that an ACK_READY-triggered activities refresh is in flight."""
+
+        self._ack_ready_refresh_pending = True
 
     def _arm_external_settle(self) -> None:
         self._external_settle_deadline = (
@@ -1742,6 +1768,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             # No ACK_READY can arrive on a dead link; don't make queued
             # commands sit out the settle timeout for nothing.
             self._external_settle_event.set()
+            self._ack_ready_refresh_pending = False
         for cb in self._hub_state_listeners:
             try:
                 cb(connected)

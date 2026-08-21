@@ -1833,6 +1833,47 @@ def test_hub_disconnect_releases_settle_gate() -> None:
     assert proxy._external_settle_event.is_set()
 
 
+def test_external_state_skips_gate_while_ack_ready_refresh_in_flight() -> None:
+    # ACK_READY beat the MQTT push (instant macro plus broker latency) and
+    # its REQ_ACTIVITIES burst has not landed yet: the push still flips
+    # state, but no later ACK_READY exists to release a gate armed now, so
+    # the gate must stay open instead of holding commands for the timeout.
+    proxy, changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    assert proxy._ack_ready_refresh_pending
+
+    assert proxy.apply_external_activity_state(0x68) is True
+    assert proxy.state.current_activity == 0x68
+    assert changes == [(0x68, None, "Movie")]
+    assert proxy._external_settle_event.is_set()
+
+    # The in-flight burst lands, agrees with the push, and clears the
+    # window: no duplicate notification.
+    proxy.handle_active_state("activities")
+    assert changes == [(0x68, None, "Movie")]
+    assert not proxy._ack_ready_refresh_pending
+
+    # The next transition's push (arriving before its ACK_READY, the
+    # normal order) arms the gate again.
+    assert proxy.apply_external_activity_state(0x67) is True
+    assert not proxy._external_settle_event.is_set()
+
+
+def test_hub_disconnect_clears_ack_ready_refresh_window() -> None:
+    proxy, _changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    AckReadyHandler().handle(
+        _build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY")
+    )
+    assert proxy._ack_ready_refresh_pending
+
+    proxy._notify_hub_state(False)
+    assert not proxy._ack_ready_refresh_pending
+
+
 def test_ack_ready_after_external_off_does_not_fire_redundant_off() -> None:
     # A real A -> OFF transition whose MQTT push beat the ACK_READY: the
     # companion ACK_READY sees current_activity None, but that is the

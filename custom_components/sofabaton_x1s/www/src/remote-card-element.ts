@@ -32,6 +32,7 @@ import {
   commandsOverlayMaxHeight,
   drawerDesiredHeight,
   drawerDirection,
+  holdRepeatIndexOf,
   layeringZIndexes,
 } from "./remote-card-gestures";
 import { RemoteCardStore } from "./state/remote-card-store";
@@ -826,7 +827,7 @@ export class SofabatonRemoteCard extends LitElement {
       disableAll,
       editMode: this._editMode,
       isEnabled: (id) => store.isEnabled(id),
-      onKeyPress: (spec) => this._onKeyPress(spec),
+      onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
       holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
@@ -1045,23 +1046,29 @@ export class SofabatonRemoteCard extends LitElement {
     `;
   }
 
-  private _onKeyPress(spec: KeySpec): void {
+  private _onKeyPress(spec: KeySpec, ev?: Event): void {
     const deviceMode = this._store.mode() === "device";
     const targetDeviceId = deviceMode
       ? this._store.currentDeviceId()
       : (this._store.commandTarget(spec.id)?.activity_id ??
         this._store.currentActivityId());
-    this._assist.recordClick({
-      label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
-      commandId: spec.cmd,
-      deviceId: targetDeviceId ?? null,
-      commandType: "assigned",
-      icon: spec.color ? null : spec.icon || null,
-      deviceMode,
-      deviceName: deviceMode
-        ? this._store.deviceNameForId(targetDeviceId)
-        : null,
-    });
+    // A hold is one press for Key capture: record it on the first repeat
+    // (the release tap of a hold that repeated is suppressed) and let the
+    // later repeats only send, or every tick would create another
+    // persistent notification.
+    if (holdRepeatIndexOf(ev) <= 1) {
+      this._assist.recordClick({
+        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        commandId: spec.cmd,
+        deviceId: targetDeviceId ?? null,
+        commandType: "assigned",
+        icon: spec.color ? null : spec.icon || null,
+        deviceMode,
+        deviceName: deviceMode
+          ? this._store.deviceNameForId(targetDeviceId)
+          : null,
+      });
+    }
     this._store.triggerCommandPulse();
     void this._store.sendCommand(spec.cmd, targetDeviceId);
   }

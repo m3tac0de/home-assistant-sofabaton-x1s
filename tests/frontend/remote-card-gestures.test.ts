@@ -1,13 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  HOLD_REPEAT_EVENT_TYPE,
   commandsOverlayMaxHeight,
   createPrimaryActionGate,
   drawerDesiredHeight,
   drawerDirection,
+  holdRepeatIndexOf,
   layeringZIndexes,
   primaryActionGateAllows,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-gestures";
+
+test("holdRepeatIndexOf reads the repeat index only from hold-repeat events", () => {
+  // Node has no CustomEvent constructor with detail in every version; the
+  // helper only looks at type + detail, so a plain object-shaped event works.
+  const repeat = (detail: unknown) =>
+    ({ type: HOLD_REPEAT_EVENT_TYPE, detail }) as unknown as Event;
+  assert.equal(holdRepeatIndexOf(repeat(1)), 1);
+  assert.equal(holdRepeatIndexOf(repeat(4)), 4);
+  assert.equal(holdRepeatIndexOf(repeat("3")), 3);
+  assert.equal(holdRepeatIndexOf(repeat(0)), 0);
+  assert.equal(holdRepeatIndexOf(repeat(undefined)), 0);
+  // Taps, keyboard activations and ha-click are never repeats.
+  assert.equal(holdRepeatIndexOf({ type: "pointerup" } as Event), 0);
+  assert.equal(holdRepeatIndexOf({ type: "click", detail: 2 } as unknown as Event), 0);
+  assert.equal(holdRepeatIndexOf(null), 0);
+  assert.equal(holdRepeatIndexOf(undefined), 0);
+});
 
 test("commands overlay height clamps to the card, never beyond it", () => {
   // Opening down: space is card bottom minus the row bottom.

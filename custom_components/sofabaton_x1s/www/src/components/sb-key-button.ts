@@ -2,7 +2,11 @@
 // shadow root so Lit cannot mistake the imperative child nodes for template
 // content when the surrounding card re-renders.
 
-import { HoldRepeatTimer, attachPrimaryAction } from "../remote-card-gestures";
+import {
+  HOLD_REPEAT_EVENT_TYPE,
+  HoldRepeatTimer,
+  attachPrimaryAction,
+} from "../remote-card-gestures";
 
 const CONTROL_CSS = `
   :host {
@@ -232,7 +236,7 @@ export class SbKeyButton extends HTMLElement {
     }
     // One haptic when the hold engages; the repeats themselves stay quiet.
     if (repeatIndex === 1) this.fireHaptic();
-    this.onTrigger?.(new CustomEvent("sb-hold-repeat", { detail: repeatIndex }));
+    this.onTrigger?.(new CustomEvent(HOLD_REPEAT_EVENT_TYPE, { detail: repeatIndex }));
   }
 
   private onHoldPointerDown(ev: PointerEvent): void {
@@ -241,8 +245,14 @@ export class SbKeyButton extends HTMLElement {
     this._hold.start();
   }
 
-  private onHoldPointerEnd(): void {
+  private onHoldPointerEnd(ev: Event): void {
     this._hold.stop();
+    // Only a pointerup on the button goes on to trigger(), which consumes
+    // the "a repeat fired" memory while suppressing the release tap. The
+    // other endings (the mouse drifting off the button, pointercancel,
+    // lost capture) never reach trigger(), so clear the memory here or the
+    // next keyboard activation of this button would be swallowed.
+    if (ev.type !== "pointerup") this._hold.consumeFired();
   }
 
   private syncContent(): void {
@@ -299,7 +309,7 @@ export class SbKeyButton extends HTMLElement {
       capture: true,
     });
     for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
-      this.addEventListener(type, () => this.onHoldPointerEnd(), { capture: true });
+      this.addEventListener(type, (ev) => this.onHoldPointerEnd(ev), { capture: true });
     }
     // A long press on touch devices would otherwise open the context menu
     // (and cancel the pointer sequence).

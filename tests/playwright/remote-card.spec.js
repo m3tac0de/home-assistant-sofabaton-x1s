@@ -638,4 +638,47 @@ test.describe("remote card playwright harness", () => {
     await page.waitForTimeout(300);
     expect(await sendCommandCount(page)).toBe(afterDpad + 1);
   });
+
+  test("long press with key capture on records the hold once, not once per repeat", async ({ page }) => {
+    await mountCard(page, "active", {
+      hold_repeat: { enabled: true },
+      show_automation_assist: true,
+    });
+
+    await holdKey(page, "sb-key-button.mid-btn-volup", 1200);
+    await page.waitForTimeout(300);
+    expect(await sendCommandCount(page)).toBeGreaterThanOrEqual(3);
+
+    const notifications = await page.evaluate(
+      () =>
+        window.__remoteCardHarness
+          .getServiceCalls()
+          .filter(
+            (call) => call.domain === "persistent_notification" && call.service === "create",
+          ).length,
+    );
+    expect(notifications).toBe(1);
+  });
+
+  test("a mouse hold that drifts off the button does not swallow the next keyboard activation", async ({ page }) => {
+    await mountCard(page, "active", { hold_repeat: { enabled: true } });
+
+    // Press, let it repeat, drag the cursor off the button, release there:
+    // the hold stops on pointerleave and pointerup never reaches the button.
+    const box = await page.locator("sb-key-button.mid-btn-volup").boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(900);
+    await page.mouse.move(box.x + box.width + 80, box.y + box.height + 80, { steps: 4 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    const afterDrift = await sendCommandCount(page);
+    expect(afterDrift).toBeGreaterThanOrEqual(2);
+
+    // Enter on the focused control must send exactly once.
+    await page.locator("sb-key-button.mid-btn-volup button").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    expect(await sendCommandCount(page)).toBe(afterDrift + 1);
+  });
 });

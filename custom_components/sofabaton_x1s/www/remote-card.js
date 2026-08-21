@@ -3957,6 +3957,13 @@ function layeringZIndexes(menuOpen, drawerOpen) {
 }
 var HOLD_REPEAT_DELAY_MS = 400;
 var HOLD_REPEAT_INTERVAL_MS = 250;
+var HOLD_REPEAT_EVENT_TYPE = "sb-hold-repeat";
+function holdRepeatIndexOf(ev) {
+  if (!ev || ev.type !== HOLD_REPEAT_EVENT_TYPE) return 0;
+  const detail = ev.detail;
+  const index = typeof detail === "number" ? detail : Number(detail);
+  return Number.isFinite(index) && index > 0 ? index : 0;
+}
 var HoldRepeatTimer = class {
   constructor(fire, options = {}) {
     this.delayHandle = null;
@@ -6485,15 +6492,16 @@ var SbKeyButton = class extends HTMLElement {
       return;
     }
     if (repeatIndex === 1) this.fireHaptic();
-    this.onTrigger?.(new CustomEvent("sb-hold-repeat", { detail: repeatIndex }));
+    this.onTrigger?.(new CustomEvent(HOLD_REPEAT_EVENT_TYPE, { detail: repeatIndex }));
   }
   onHoldPointerDown(ev) {
     if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
     if (ev.isPrimary === false || typeof ev.button === "number" && ev.button !== 0) return;
     this._hold.start();
   }
-  onHoldPointerEnd() {
+  onHoldPointerEnd(ev) {
     this._hold.stop();
+    if (ev.type !== "pointerup") this._hold.consumeFired();
   }
   syncContent() {
     if (!this._control || !this._iconEl || !this._labelEl) return;
@@ -6534,7 +6542,7 @@ var SbKeyButton = class extends HTMLElement {
       capture: true
     });
     for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
-      this.addEventListener(type, () => this.onHoldPointerEnd(), { capture: true });
+      this.addEventListener(type, (ev) => this.onHoldPointerEnd(ev), { capture: true });
     }
     control.addEventListener("contextmenu", (ev) => {
       if (this._holdRepeat) ev.preventDefault();
@@ -6628,7 +6636,7 @@ function renderKey(params, spec) {
       .sizeVar=${spec.color ? null : "--sb-key-font-size"}
       .disabled=${!enabled}
       .holdRepeat=${params.holdRepeatForKey(spec.key)}
-      .onTrigger=${() => params.onKeyPress(spec)}
+      .onTrigger=${(ev) => params.onKeyPress(spec, ev)}
     ></sb-key-button>
   `;
 }
@@ -7644,7 +7652,7 @@ var SofabatonRemoteCard = class extends i4 {
       disableAll,
       editMode: this._editMode,
       isEnabled: (id) => store.isEnabled(id),
-      onKeyPress: (spec) => this._onKeyPress(spec),
+      onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
       holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
@@ -7810,18 +7818,20 @@ var SofabatonRemoteCard = class extends i4 {
       </ha-card>
     `;
   }
-  _onKeyPress(spec) {
+  _onKeyPress(spec, ev) {
     const deviceMode = this._store.mode() === "device";
     const targetDeviceId = deviceMode ? this._store.currentDeviceId() : this._store.commandTarget(spec.id)?.activity_id ?? this._store.currentActivityId();
-    this._assist.recordClick({
-      label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
-      commandId: spec.cmd,
-      deviceId: targetDeviceId ?? null,
-      commandType: "assigned",
-      icon: spec.color ? null : spec.icon || null,
-      deviceMode,
-      deviceName: deviceMode ? this._store.deviceNameForId(targetDeviceId) : null
-    });
+    if (holdRepeatIndexOf(ev) <= 1) {
+      this._assist.recordClick({
+        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        commandId: spec.cmd,
+        deviceId: targetDeviceId ?? null,
+        commandType: "assigned",
+        icon: spec.color ? null : spec.icon || null,
+        deviceMode,
+        deviceName: deviceMode ? this._store.deviceNameForId(targetDeviceId) : null
+      });
+    }
     this._store.triggerCommandPulse();
     void this._store.sendCommand(spec.cmd, targetDeviceId);
   }

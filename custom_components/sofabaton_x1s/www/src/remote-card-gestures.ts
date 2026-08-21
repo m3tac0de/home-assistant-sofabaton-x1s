@@ -233,6 +233,20 @@ export interface HoldRepeatTimerOptions {
  * release tap (pointerup) of a hold that already repeated can be suppressed
  * instead of sending one more command. start() always clears that memory.
  */
+/** Event type an sb-key-button hands to onTrigger for every hold repeat. */
+export const HOLD_REPEAT_EVENT_TYPE = "sb-hold-repeat";
+
+/**
+ * 1-based repeat index carried by a hold-repeat trigger event, or 0 for any
+ * other trigger (tap, keyboard activation, ha-click).
+ */
+export function holdRepeatIndexOf(ev: Event | null | undefined): number {
+  if (!ev || ev.type !== HOLD_REPEAT_EVENT_TYPE) return 0;
+  const detail = (ev as CustomEvent<unknown>).detail;
+  const index = typeof detail === "number" ? detail : Number(detail);
+  return Number.isFinite(index) && index > 0 ? index : 0;
+}
+
 export class HoldRepeatTimer {
   private readonly fire: (repeatIndex: number) => void;
   private readonly delayMs: number;

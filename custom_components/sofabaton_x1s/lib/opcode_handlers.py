@@ -691,7 +691,11 @@ class AckReadyHandler(BaseFrameHandler):
                 # refreshed state stays off, this ACK_READY was an OFF press
                 # with nothing left to turn off.
                 proxy.flag_pending_redundant_off_check()
-            proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+            if proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities"):
+                # An MQTT push for this same transition may still be on
+                # its way; until the burst lands it must not arm a settle
+                # gate that no later ACK_READY would release.
+                proxy.note_ack_ready_refresh()
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
 
