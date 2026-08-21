@@ -159,9 +159,9 @@ test("show_device_toggle=false hides the toggle but not the capability", async (
   assert.equal(store.deriveRuntimeState().deviceModeAvailable, false);
 });
 
-test("enable_device_mode=false removes the capability entirely", async () => {
+test("device_mode.enabled=false removes the capability entirely", async () => {
   const store = createStore(createHass({ state: deviceState() }), {
-    enable_device_mode: false,
+    device_mode: { enabled: false },
   });
   await flush();
   assert.equal(store.deviceModeAvailable(), false);
@@ -170,12 +170,12 @@ test("enable_device_mode=false removes the capability entirely", async () => {
   assert.equal(derived.mode, "activity");
 });
 
-test("open_device opens the card in device mode on that device", async () => {
+test("device_mode.open_device opens the card in device mode on that device", async () => {
   storageBacking.clear();
   const keymapCalls: Array<Record<string, unknown>> = [];
   const store = createStore(
     createHass({ state: deviceState(), keymapResponse: READY_KEYMAP, keymapCalls }),
-    { open_device: 9 },
+    { device_mode: { open_device: 9 } },
   );
   await flush();
 
@@ -189,15 +189,14 @@ test("open_device opens the card in device mode on that device", async () => {
 
 test("open_device is ignored when device mode is disabled or unknown", async () => {
   const disabled = createStore(createHass({ state: deviceState() }), {
-    open_device: 9,
-    enable_device_mode: false,
+    device_mode: { enabled: false, open_device: 9 },
   });
   await flush();
   assert.equal(disabled.deriveRuntimeState().mode, "activity");
 
   // Unknown device id: stays on the current activity.
   const unknown = createStore(createHass({ state: deviceState() }), {
-    open_device: 77,
+    device_mode: { open_device: 77 },
   });
   await flush();
   assert.equal(unknown.deriveRuntimeState().mode, "activity");
@@ -373,8 +372,12 @@ test("editor device previews force device mode with the device layout chain", as
     layouts: {
       default: { show_dpad: false }, // activity default must NOT leak
       "3": { show_colors: false }, // activity 3, not device 3
-      "device:default": { show_media: false },
-      "device:3": { show_nav: false },
+    },
+    device_mode: {
+      layouts: {
+        default: { show_media: false },
+        "3": { show_nav: false },
+      },
     },
   };
   const store = createStore(createHass({ state: deviceState() }), config);
@@ -396,7 +399,9 @@ test("editor device previews force device mode with the device layout chain", as
 
 // ---------- layout namespace helpers ----------
 
-test("device layout keys are namespaced and collision-safe", () => {
+test("device selection keys stay namespaced and collision-safe", () => {
+  // "device:" is the editor/preview *selection* namespace; storage keys by
+  // plain id inside device_mode.layouts.
   assert.equal(deviceLayoutKey(8), "device:8");
   assert.equal(deviceLayoutKey(null), "device:default");
   assert.equal(isDeviceLayoutKey("device:8"), true);
@@ -406,8 +411,12 @@ test("device layout keys are namespaced and collision-safe", () => {
 
   const config = {
     layouts: {
-      "8": { show_dpad: false },
-      "device:8": { show_nav: false },
+      "8": { show_dpad: false }, // activity 8, not device 8
+    },
+    device_mode: {
+      layouts: {
+        "8": { show_nav: false },
+      },
     },
   };
   const layout = layoutConfigForDevice(config, 8);
@@ -434,6 +443,26 @@ test("device chain is decoupled from the activity side entirely", () => {
   assert.equal(layout.show_commands_button, true);
 });
 
+test("device layouts store c_as_rows and validate against their own key set", () => {
+  const config = {
+    device_mode: {
+      layouts: {
+        default: { c_as_rows: true, c_row_visible_rows: 3 },
+        // Activity-side spellings and keys are dropped, not honored.
+        "3": { mf_as_rows: true, show_macros_button: false, show_dpad: false },
+      },
+    },
+  };
+  const shared = layoutConfigForDevice(config, null);
+  assert.equal(shared.mf_as_rows, true); // c_as_rows -> internal name
+  assert.equal(shared.mf_row_visible_rows, 3);
+
+  const specific = layoutConfigForDevice(config, 3);
+  assert.equal(specific.show_dpad, false);
+  assert.equal(specific.mf_as_rows, true); // from the default layer
+  assert.equal("show_macros_button" in specific, false);
+});
+
 test("previewSelection understands device keys", () => {
   const deviceSel = previewSelection(true, "device:8", []);
   assert.equal(deviceSel?.mode, "device");
@@ -452,8 +481,12 @@ test("editor selection helpers route device keys through the device chain", () =
   const config = {
     layouts: {
       default: { show_dpad: false },
-      "device:default": { show_media: false },
-      "device:3": { show_nav: false },
+    },
+    device_mode: {
+      layouts: {
+        default: { show_media: false },
+        "3": { show_nav: false },
+      },
     },
   };
   const shared = layoutConfigForSelection(config, "device:default");
@@ -468,10 +501,44 @@ test("editor selection helpers route device keys through the device chain", () =
   const { nextConfig } = applyLayoutConfigPatch(config, "device:3", {
     show_colors: false,
   });
-  assert.deepEqual(nextConfig.layouts["device:3"], {
+  assert.deepEqual(nextConfig.device_mode.layouts["3"], {
     show_nav: false,
     show_colors: false,
   });
+  // The activity-side layouts map is untouched by device writes.
+  assert.deepEqual(nextConfig.layouts, { default: { show_dpad: false } });
+});
+
+test("device patches store the c_* spelling and clean up empty layers", () => {
+  // The editor patches in the internal spelling; storage translates.
+  const { nextConfig } = applyLayoutConfigPatch({}, "device:default", {
+    mf_as_rows: true,
+  });
+  assert.deepEqual(nextConfig.device_mode, {
+    layouts: { default: { c_as_rows: true } },
+  });
+
+  // Toggling back to the default prunes the layer, the map, and the block.
+  const { nextConfig: reverted } = applyLayoutConfigPatch(
+    nextConfig,
+    "device:default",
+    { mf_as_rows: false },
+  );
+  assert.equal("device_mode" in reverted, false);
+
+  // enabled/open_device survive layer cleanup.
+  const withSettings = {
+    device_mode: {
+      open_device: 9,
+      layouts: { "9": { c_as_rows: true } },
+    },
+  };
+  const { nextConfig: cleaned } = applyLayoutConfigPatch(
+    withSettings,
+    "device:9",
+    { mf_as_rows: false },
+  );
+  assert.deepEqual(cleaned.device_mode, { open_device: 9 });
 });
 
 test("editorDevicesFromState mirrors the devices attribute", () => {

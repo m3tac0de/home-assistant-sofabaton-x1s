@@ -6,13 +6,15 @@
 import { LitElement, html, nothing, unsafeCSS } from "lit";
 import { html as staticHtml, unsafeStatic } from "lit/static-html.js";
 import {
-  DEFAULT_GROUP_ORDER,
-  DEFAULT_ROW_VISIBLE_ROWS,
+  LAYOUT_KEYS,
   channelGroupEnabled,
+  deviceModeEnabledInConfig,
   dvrGroupEnabled,
   favoritesButtonEnabled,
+  isDeviceLayoutKey,
   macrosButtonEnabled,
   mediaGroupEnabled,
+  openDeviceFromConfig,
   volumeGroupEnabled,
 } from "./remote-card-layout";
 import {
@@ -20,6 +22,7 @@ import {
   channelTogglePatch,
   commandsEnabled,
   commandsTogglePatch,
+  deviceStoredLayerKey,
   deviceToggleEnabledForEditor,
   deviceTogglePatch,
   dvrTogglePatch,
@@ -40,7 +43,6 @@ import {
   moveVisibleGroup,
   volumeTogglePatch,
 } from "./remote-card-editor-layout";
-import { isDeviceLayoutKey } from "./remote-card-layout";
 import {
   hubVersionFor,
   isX2Hub,
@@ -65,6 +67,16 @@ import {
   renderStylingOptionsSection,
 } from "./editor-sections/styling-options";
 import { renderGroupOrderSection } from "./editor-sections/group-order";
+
+// Card-level settings whose absence means exactly this value (see
+// normalizeRemoteCardConfig); the editor never stores them at their default.
+const CARD_SETTING_DEFAULTS: Record<string, unknown> = {
+  theme: "",
+  max_width: 360,
+  shrink: 0,
+  show_automation_assist: false,
+  background_override: null,
+};
 
 const ENTITY_FORM_SCHEMA = [
   {
@@ -141,19 +153,34 @@ export class SofabatonRemoteCardEditor extends LitElement {
   }
 
   private _deviceModeEnabled(): boolean {
-    return this._config?.enable_device_mode !== false;
+    return deviceModeEnabledInConfig(this._config);
+  }
+
+  /** Write back the device_mode block, dropping it entirely when empty. */
+  private _withDeviceModeBlock(
+    mutate: (block: Record<string, unknown>) => void,
+  ): RemoteCardConfig {
+    const next = { ...this._config };
+    const block: Record<string, unknown> = { ...(next.device_mode || {}) };
+    mutate(block);
+    if (Object.keys(block).length) {
+      next.device_mode = block;
+    } else {
+      delete next.device_mode;
+    }
+    return next;
   }
 
   private _setDeviceModeEnabled(enabled: boolean): void {
-    const next = { ...this._config };
-    if (enabled) {
-      // Absent = enabled (the default): keep saved configs clean.
-      delete next.enable_device_mode;
-    } else {
-      next.enable_device_mode = false;
-      delete next.open_device;
-    }
-    this._config = next;
+    this._config = this._withDeviceModeBlock((block) => {
+      if (enabled) {
+        // Absent = enabled (the default): keep saved configs clean.
+        delete block.enabled;
+      } else {
+        block.enabled = false;
+        delete block.open_device;
+      }
+    });
     if (!enabled && isDeviceLayoutKey(this._layoutSelection)) {
       this._layoutSelection = "default";
       this._setPreviewActivityForSelection("default");
@@ -163,14 +190,14 @@ export class SofabatonRemoteCardEditor extends LitElement {
   }
 
   private _setOpenDevice(value: string): void {
-    const next = { ...this._config };
-    if (value === "") {
-      delete next.open_device;
-    } else {
-      const id = Number(value);
-      if (!Number.isFinite(id)) return;
-      next.open_device = id;
-    }
+    if (value !== "" && !Number.isFinite(Number(value))) return;
+    const next = this._withDeviceModeBlock((block) => {
+      if (value === "") {
+        delete block.open_device;
+      } else {
+        block.open_device = Number(value);
+      }
+    });
     if (JSON.stringify(next) === JSON.stringify(this._config)) return;
     this._config = next;
     this._fireChanged();
@@ -291,7 +318,13 @@ export class SofabatonRemoteCardEditor extends LitElement {
       delete newValue.background_override;
     }
 
-    // 2. STABILITY CHECK: only fire if something actually changed.
+    // 2. Card-level hygiene: ha-form echoes its whole data object back, so
+    // drop settings that merely restate their defaults (absent = default).
+    for (const [key, defaultValue] of Object.entries(CARD_SETTING_DEFAULTS)) {
+      if (newValue[key] === defaultValue) delete newValue[key];
+    }
+
+    // 3. STABILITY CHECK: only fire if something actually changed.
     if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
 
     if (entityChanged) {
@@ -324,7 +357,14 @@ export class SofabatonRemoteCardEditor extends LitElement {
   }
 
   private _setAutomationAssistEnabled(enabled: boolean): void {
-    this._config = { ...this._config, show_automation_assist: !!enabled };
+    const next = { ...this._config };
+    if (enabled) {
+      next.show_automation_assist = true;
+    } else {
+      // Absent = disabled (the default).
+      delete next.show_automation_assist;
+    }
+    this._config = next;
     this._fireChanged();
     this.requestUpdate();
   }
@@ -420,9 +460,25 @@ export class SofabatonRemoteCardEditor extends LitElement {
   }
 
   private _resetGroupOrder(): void {
+    // Reset = "back to built-in defaults", stored as the ABSENCE of keys: the
+    // relevant layer is deleted (or, for the base layout, its keys are), so
+    // saved YAML shrinks instead of materializing the whole default set.
     const selection = this._layoutSelectionKey();
-    if (selection !== "default") {
-      const next = { ...this._config };
+    let next: RemoteCardConfig;
+    if (isDeviceLayoutKey(selection)) {
+      next = this._withDeviceModeBlock((block) => {
+        const layouts = {
+          ...((block.layouts as Record<string, unknown> | undefined) || {}),
+        };
+        delete layouts[deviceStoredLayerKey(selection)];
+        if (Object.keys(layouts).length) {
+          block.layouts = layouts;
+        } else {
+          delete block.layouts;
+        }
+      });
+    } else if (selection !== "default") {
+      next = { ...this._config };
       const layouts = { ...(next.layouts || {}) };
       delete layouts[selection];
       if (Number.isFinite(Number(selection))) {
@@ -433,42 +489,20 @@ export class SofabatonRemoteCardEditor extends LitElement {
       } else {
         delete next.layouts;
       }
-      this._config = next;
-      this._fireChanged();
-      this.requestUpdate();
-      return;
-    }
-
-    // Reset order AND turn all groups back on.
-    const enabledDefaults = {
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_colors: true,
-      show_abc: true,
-      show_dvr: true,
-      show_macros_button: true,
-      show_favorites_button: true,
-      show_commands_button: true,
-      show_device_toggle: true,
-      mf_as_rows: false,
-      mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
-      group_order: DEFAULT_GROUP_ORDER.slice(),
-    };
-
-    const next = { ...this._config };
-    const defaultLayout = next.layouts?.default;
-    if (defaultLayout && typeof defaultLayout === "object") {
-      next.layouts = {
-        ...(next.layouts || {}),
-        default: { ...defaultLayout, ...enabledDefaults },
-      };
     } else {
-      Object.assign(next, enabledDefaults);
+      next = { ...this._config };
+      for (const key of LAYOUT_KEYS) {
+        delete next[key];
+      }
+      if (next.layouts && typeof next.layouts === "object") {
+        const layouts = { ...next.layouts };
+        delete layouts.default;
+        if (Object.keys(layouts).length) {
+          next.layouts = layouts;
+        } else {
+          delete next.layouts;
+        }
+      }
     }
     this._config = next;
     this._fireChanged();
@@ -488,7 +522,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
     // integration only, and only while the backend publishes the `devices`
     // attribute (persistent cache enabled).
     // Gating: positive x1s check, the devices attribute present (persistent
-    // cache on), and the enable_device_mode master switch (absent = on).
+    // cache on), and the device_mode.enabled master switch (absent = on).
     const deviceCapable =
       Boolean(remoteState) &&
       this._isX1sIntegrationForEditor() &&
@@ -562,18 +596,11 @@ export class SofabatonRemoteCardEditor extends LitElement {
       });
     }
 
+    // Scope the form data to its schema: ha-form echoes the whole data
+    // object back on value-changed, so anything extra here would get merged
+    // into the stored config.
     const entityFormData = {
-      ...this._config,
       entity: this._config.entity || "",
-      theme: this._config.theme || "",
-      // Maintain the toggle state correctly
-      use_background_override:
-        this._config.use_background_override ??
-        !!this._config.background_override,
-      background_override: this._config.background_override ?? [255, 255, 255],
-      max_width: this._config.max_width ?? 360,
-      group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
-      show_automation_assist: this._config.show_automation_assist ?? false,
     };
 
     return html`
@@ -613,8 +640,8 @@ export class SofabatonRemoteCardEditor extends LitElement {
                       .label=${str().editor.opensWith}
                       .hass=${this._hass}
                       .value=${selectValueCompat(
-                        this._config?.open_device != null
-                          ? String(this._config.open_device)
+                        openDeviceFromConfig(this._config) != null
+                          ? String(openDeviceFromConfig(this._config))
                           : "",
                         openWithOptions,
                       )}
@@ -677,24 +704,12 @@ export class SofabatonRemoteCardEditor extends LitElement {
             this.requestUpdate();
           },
           onSelectLayout: (value) => this._onSelectLayout(value),
-          onSetMacro: (v) =>
-            this._updateLayoutConfig(
-              macroTogglePatch(this._config, this._layoutSelectionKey(), v),
-            ),
-          onSetFavorites: (v) =>
-            this._updateLayoutConfig(
-              favoritesTogglePatch(this._config, this._layoutSelectionKey(), v),
-            ),
+          onSetMacro: (v) => this._updateLayoutConfig(macroTogglePatch(v)),
+          onSetFavorites: (v) => this._updateLayoutConfig(favoritesTogglePatch(v)),
           onSetCommands: (v) => this._updateLayoutConfig(commandsTogglePatch(v)),
           onSetDeviceMode: (v) => this._updateLayoutConfig(deviceTogglePatch(v)),
-          onSetVolume: (v) =>
-            this._updateLayoutConfig(
-              volumeTogglePatch(this._config, this._layoutSelectionKey(), v),
-            ),
-          onSetChannel: (v) =>
-            this._updateLayoutConfig(
-              channelTogglePatch(this._config, this._layoutSelectionKey(), v),
-            ),
+          onSetVolume: (v) => this._updateLayoutConfig(volumeTogglePatch(v)),
+          onSetChannel: (v) => this._updateLayoutConfig(channelTogglePatch(v)),
           onSetMedia: (v) => {
             const patch = groupEnabledPatch("media", v);
             if (patch) this._updateLayoutConfig(patch);

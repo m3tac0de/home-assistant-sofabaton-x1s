@@ -14,12 +14,14 @@ import {
   channelGroupEnabled,
   commandsButtonEnabled,
   deviceLayoutKey,
+  deviceModeEnabledInConfig,
   deviceToggleEnabled,
   dvrGroupEnabled,
   favoritesButtonEnabled,
   layoutConfigForActivity,
   layoutConfigForDevice,
   macrosButtonEnabled,
+  openDeviceFromConfig,
   mediaGroupEnabled,
   normalizedGroupOrder,
   volumeGroupEnabled,
@@ -124,8 +126,9 @@ export function normalizeRemoteCardConfig(
     show_dpad: true,
     show_nav: true,
     show_mid: true,
-    show_volume: true,
-    show_channel: true,
+    // Do not materialize the split volume/channel defaults here. Their
+    // resolvers already default to true, and absence is what lets released
+    // `show_mid` configs remain a read-side fallback.
     show_media: true,
     show_dvr: true,
     show_colors: true,
@@ -413,7 +416,7 @@ export class RemoteCardStore {
   /**
    * Device mode capability: x1s integration only (the official
    * sofabaton_hub integration has no device keymap path), the
-   * enable_device_mode master switch (absent = on), and a non-empty
+   * device_mode.enabled master switch (absent = on), and a non-empty
    * `devices` attribute (published only while the persistent cache is
    * enabled). The show_device_toggle layout switch is deliberately NOT
    * part of this: it only hides the toggle BUTTON (which may strand the
@@ -421,18 +424,19 @@ export class RemoteCardStore {
    */
   deviceModeAvailable(): boolean {
     if (String(this.integrationDomain || "") !== "sofabaton_x1s") return false;
-    if (this._config?.enable_device_mode === false) return false;
+    if (!deviceModeEnabledInConfig(this._config)) return false;
     return this.devices().length > 0;
   }
 
   /**
-   * Apply the configured opening view once per config: open_device puts the
-   * card in device mode on that device. Retries until the capability
-   * resolves (integration probe + devices attribute are async).
+   * Apply the configured opening view once per config: device_mode
+   * .open_device puts the card in device mode on that device. Retries until
+   * the capability resolves (integration probe + devices attribute are
+   * async).
    */
   private maybeApplyInitialView(): void {
     if (this.initialViewApplied) return;
-    const openDevice = this._config?.open_device;
+    const openDevice = openDeviceFromConfig(this._config);
     if (openDevice == null) {
       this.initialViewApplied = true;
       return;

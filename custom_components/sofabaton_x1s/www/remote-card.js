@@ -607,7 +607,6 @@ var LAYOUT_KEYS = [
   "show_abc",
   "show_macros_button",
   "show_favorites_button",
-  "show_commands_button",
   "show_device_toggle",
   "mf_as_rows",
   "mf_row_visible_rows"
@@ -626,6 +625,64 @@ function parseDeviceLayoutKey(selection) {
   const id = Number(rest);
   return Number.isFinite(id) ? id : null;
 }
+var DEVICE_LAYOUT_KEYS = [
+  "group_order",
+  "show_activity",
+  "show_dpad",
+  "show_nav",
+  "show_volume",
+  "show_channel",
+  "show_media",
+  "show_dvr",
+  "show_colors",
+  "show_abc",
+  "show_commands_button",
+  "show_device_toggle",
+  "c_as_rows",
+  "c_row_visible_rows"
+];
+var DEVICE_STORED_KEY_FOR = {
+  mf_as_rows: "c_as_rows",
+  mf_row_visible_rows: "c_row_visible_rows"
+};
+var DEVICE_INTERNAL_KEY_FOR = Object.fromEntries(
+  Object.entries(DEVICE_STORED_KEY_FOR).map(([internal, stored]) => [stored, internal])
+);
+var DEVICE_LAYOUT_KEY_SET = new Set(DEVICE_LAYOUT_KEYS);
+function deviceModeBlock(config) {
+  const block = config?.device_mode;
+  return block && typeof block === "object" ? block : null;
+}
+function deviceModeEnabledInConfig(config) {
+  return deviceModeBlock(config)?.enabled !== false;
+}
+function openDeviceFromConfig(config) {
+  const value = deviceModeBlock(config)?.open_device;
+  if (value == null) return null;
+  const id = Number(value);
+  return Number.isFinite(id) ? id : null;
+}
+function storedDeviceLayer(config, layerKey) {
+  const layouts = deviceModeBlock(config)?.layouts;
+  const layer = layouts && typeof layouts === "object" ? layouts[layerKey] : null;
+  return layer && typeof layer === "object" ? layer : null;
+}
+function resolveStoredDeviceLayer(layer) {
+  const resolved = {};
+  if (!layer || typeof layer !== "object") return resolved;
+  for (const [key, value] of Object.entries(layer)) {
+    if (!DEVICE_LAYOUT_KEY_SET.has(key)) continue;
+    resolved[DEVICE_INTERNAL_KEY_FOR[key] ?? key] = value;
+  }
+  return resolved;
+}
+function toStoredDeviceLayer(layer) {
+  const stored = {};
+  for (const [key, value] of Object.entries(layer)) {
+    stored[DEVICE_STORED_KEY_FOR[key] ?? key] = value;
+  }
+  return stored;
+}
 var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_activity: true,
   show_dpad: true,
@@ -638,19 +695,21 @@ var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_colors: true,
   show_abc: true,
   show_commands_button: true,
+  show_device_toggle: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
   group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
 });
 function layoutConfigForDevice(config, deviceId) {
-  const layouts = config?.layouts;
-  const deviceDefault = layouts && typeof layouts === "object" ? layouts[DEVICE_DEFAULT_LAYOUT_KEY] : null;
-  let merged = deviceDefault && typeof deviceDefault === "object" ? { ...DEVICE_LAYOUT_DEFAULTS, ...deviceDefault } : { ...DEVICE_LAYOUT_DEFAULTS };
-  if (deviceId != null && layouts && typeof layouts === "object") {
-    const override = layouts[deviceLayoutKey(deviceId)];
-    if (override && typeof override === "object") {
-      merged = { ...merged, ...override };
-    }
+  let merged = {
+    ...DEVICE_LAYOUT_DEFAULTS,
+    ...resolveStoredDeviceLayer(storedDeviceLayer(config, "default"))
+  };
+  if (deviceId != null) {
+    merged = {
+      ...merged,
+      ...resolveStoredDeviceLayer(storedDeviceLayer(config, String(deviceId)))
+    };
   }
   return merged;
 }
@@ -1063,7 +1122,14 @@ function isLocalizedPoweredOffLabel(label) {
 }
 
 // custom_components/sofabaton_x1s/www/src/remote-card-editor-layout.ts
+function deviceStoredLayerKey(selection) {
+  const id = parseDeviceLayoutKey(selection);
+  return id == null ? "default" : String(id);
+}
 function layoutHasCustomOverride(config, selection) {
+  if (isDeviceLayoutKey(selection)) {
+    return Boolean(storedDeviceLayer(config, deviceStoredLayerKey(selection)));
+  }
   const layouts = config?.layouts;
   if (!layouts || typeof layouts !== "object") return false;
   const key = String(selection ?? "");
@@ -1108,26 +1174,109 @@ function layoutConfigForSelection(config, selection) {
   }
   return layoutConfigForActivity(config, selection);
 }
+var ACTIVITY_LAYOUT_DEFAULTS = Object.freeze({
+  show_activity: true,
+  show_dpad: true,
+  show_nav: true,
+  show_mid: true,
+  show_volume: true,
+  show_channel: true,
+  show_media: true,
+  show_dvr: true,
+  show_colors: true,
+  show_abc: true,
+  show_macros_button: true,
+  show_favorites_button: true,
+  show_device_toggle: true,
+  mf_as_rows: false,
+  mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
+});
+var sameLayoutValue = (a4, b3) => JSON.stringify(a4) === JSON.stringify(b3);
+function effectiveValueFor(key, raw, defaults) {
+  switch (key) {
+    case "show_volume":
+      return volumeGroupEnabled(raw);
+    case "show_channel":
+      return channelGroupEnabled(raw);
+    case "show_macros_button":
+      return macrosButtonEnabled(raw);
+    case "show_favorites_button":
+      return favoritesButtonEnabled(raw);
+    case "group_order":
+      return normalizedGroupOrder(raw.group_order);
+    default:
+      return raw[key] !== void 0 ? raw[key] : defaults[key];
+  }
+}
+function pruneLayoutLayer(layer, rawBase, defaults) {
+  const pruned = {};
+  const withLayer = { ...rawBase, ...layer };
+  for (const [key, value] of Object.entries(layer)) {
+    if (value === void 0) continue;
+    const without = { ...withLayer };
+    if (rawBase[key] !== void 0) {
+      without[key] = rawBase[key];
+    } else {
+      delete without[key];
+    }
+    const kept = effectiveValueFor(key, withLayer, defaults);
+    const dropped = effectiveValueFor(key, without, defaults);
+    if (dropped !== void 0 && sameLayoutValue(kept, dropped)) continue;
+    pruned[key] = value;
+  }
+  return pruned;
+}
+function setOrDelete(target, key, value) {
+  if (Object.keys(value).length) {
+    target[key] = value;
+  } else {
+    delete target[key];
+  }
+}
 function applyLayoutConfigPatch(config, selection, patch) {
   const next = { ...config || {} };
+  if (isDeviceLayoutKey(selection)) {
+    const layerKey = deviceStoredLayerKey(selection);
+    const block = { ...next.device_mode || {} };
+    const layouts2 = { ...block.layouts || {} };
+    const current = resolveStoredDeviceLayer(storedDeviceLayer(next, layerKey));
+    const rawBase = layerKey === "default" ? {} : resolveStoredDeviceLayer(storedDeviceLayer(next, "default"));
+    const merged2 = pruneLayoutLayer(
+      { ...current, ...patch },
+      rawBase,
+      DEVICE_LAYOUT_DEFAULTS
+    );
+    setOrDelete(layouts2, layerKey, toStoredDeviceLayer(merged2));
+    setOrDelete(block, "layouts", layouts2);
+    setOrDelete(next, "device_mode", block);
+    return { nextConfig: next };
+  }
   if (selection === "default") {
     const defaultLayout = next.layouts?.default;
-    if (defaultLayout && typeof defaultLayout === "object") {
-      next.layouts = {
-        ...next.layouts || {},
-        default: { ...defaultLayout, ...patch }
-      };
-      return { nextConfig: next, syncFormPatch: null };
-    }
-    Object.assign(next, patch);
-    return { nextConfig: next, syncFormPatch: patch };
+    const existing2 = defaultLayout && typeof defaultLayout === "object" ? defaultLayout : {};
+    const merged2 = pruneLayoutLayer(
+      { ...layoutBaseConfig(next), ...existing2, ...patch },
+      {},
+      ACTIVITY_LAYOUT_DEFAULTS
+    );
+    for (const key of LAYOUT_KEYS) delete next[key];
+    const layouts2 = { ...next.layouts || {} };
+    setOrDelete(layouts2, "default", merged2);
+    setOrDelete(next, "layouts", layouts2);
+    return { nextConfig: next };
   }
   const layouts = { ...next.layouts || {} };
   const selectionKey = String(selection);
   const existing = layouts[selectionKey] && typeof layouts[selectionKey] === "object" ? layouts[selectionKey] : {};
-  layouts[selectionKey] = { ...existing, ...patch };
-  next.layouts = layouts;
-  return { nextConfig: next, syncFormPatch: null };
+  const merged = pruneLayoutLayer(
+    { ...existing, ...patch },
+    layoutDefaultConfig(next),
+    ACTIVITY_LAYOUT_DEFAULTS
+  );
+  setOrDelete(layouts, selectionKey, merged);
+  setOrDelete(next, "layouts", layouts);
+  return { nextConfig: next };
 }
 function groupOrderListForEditor(config, selection) {
   const layout = layoutConfigForSelection(config, selection);
@@ -1142,29 +1291,11 @@ function isGroupEnabled(config, selection, key) {
   const layout = layoutConfigForSelection(config, selection);
   return layout?.[prop] ?? true;
 }
-function macroEnabled(config, selection) {
-  return macrosButtonEnabled(layoutConfigForSelection(config, selection));
+function macroTogglePatch(enabled) {
+  return { show_macros_button: !!enabled };
 }
-function favoritesEnabled(config, selection) {
-  return favoritesButtonEnabled(layoutConfigForSelection(config, selection));
-}
-function volumeEnabled(config, selection) {
-  return volumeGroupEnabled(layoutConfigForSelection(config, selection));
-}
-function channelEnabled(config, selection) {
-  return channelGroupEnabled(layoutConfigForSelection(config, selection));
-}
-function macroTogglePatch(config, selection, enabled) {
-  return {
-    show_macros_button: !!enabled,
-    show_favorites_button: !!favoritesEnabled(config, selection)
-  };
-}
-function favoritesTogglePatch(config, selection, enabled) {
-  return {
-    show_macros_button: !!macroEnabled(config, selection),
-    show_favorites_button: !!enabled
-  };
+function favoritesTogglePatch(enabled) {
+  return { show_favorites_button: !!enabled };
 }
 function commandsEnabled(config, selection) {
   return commandsButtonEnabled(layoutConfigForSelection(config, selection));
@@ -1190,19 +1321,11 @@ function mfAsRowsPatch(enabled) {
 function mfRowVisibleRowsPatch(value) {
   return { mf_row_visible_rows: value };
 }
-function volumeTogglePatch(config, selection, enabled) {
-  const channel = channelEnabled(config, selection);
-  return {
-    show_volume: !!enabled,
-    show_mid: !!enabled || !!channel
-  };
+function volumeTogglePatch(enabled) {
+  return { show_volume: !!enabled };
 }
-function channelTogglePatch(config, selection, enabled) {
-  const volume = volumeEnabled(config, selection);
-  return {
-    show_channel: !!enabled,
-    show_mid: !!enabled || !!volume
-  };
+function channelTogglePatch(enabled) {
+  return { show_channel: !!enabled };
 }
 function dvrTogglePatch(enabled) {
   return {
@@ -2786,6 +2909,13 @@ function renderGroupOrderSection(params) {
 }
 
 // custom_components/sofabaton_x1s/www/src/remote-card-editor-element.ts
+var CARD_SETTING_DEFAULTS = {
+  theme: "",
+  max_width: 360,
+  shrink: 0,
+  show_automation_assist: false,
+  background_override: null
+};
 var ENTITY_FORM_SCHEMA = [
   {
     name: "entity",
@@ -2851,17 +2981,29 @@ var SofabatonRemoteCardEditor = class extends i4 {
     return String(this._editorIntegrationDomain || "") === "sofabaton_x1s";
   }
   _deviceModeEnabled() {
-    return this._config?.enable_device_mode !== false;
+    return deviceModeEnabledInConfig(this._config);
+  }
+  /** Write back the device_mode block, dropping it entirely when empty. */
+  _withDeviceModeBlock(mutate) {
+    const next = { ...this._config };
+    const block = { ...next.device_mode || {} };
+    mutate(block);
+    if (Object.keys(block).length) {
+      next.device_mode = block;
+    } else {
+      delete next.device_mode;
+    }
+    return next;
   }
   _setDeviceModeEnabled(enabled) {
-    const next = { ...this._config };
-    if (enabled) {
-      delete next.enable_device_mode;
-    } else {
-      next.enable_device_mode = false;
-      delete next.open_device;
-    }
-    this._config = next;
+    this._config = this._withDeviceModeBlock((block) => {
+      if (enabled) {
+        delete block.enabled;
+      } else {
+        block.enabled = false;
+        delete block.open_device;
+      }
+    });
     if (!enabled && isDeviceLayoutKey(this._layoutSelection)) {
       this._layoutSelection = "default";
       this._setPreviewActivityForSelection("default");
@@ -2870,14 +3012,14 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this.requestUpdate();
   }
   _setOpenDevice(value) {
-    const next = { ...this._config };
-    if (value === "") {
-      delete next.open_device;
-    } else {
-      const id = Number(value);
-      if (!Number.isFinite(id)) return;
-      next.open_device = id;
-    }
+    if (value !== "" && !Number.isFinite(Number(value))) return;
+    const next = this._withDeviceModeBlock((block) => {
+      if (value === "") {
+        delete block.open_device;
+      } else {
+        block.open_device = Number(value);
+      }
+    });
     if (JSON.stringify(next) === JSON.stringify(this._config)) return;
     this._config = next;
     this._fireChanged();
@@ -2967,6 +3109,9 @@ var SofabatonRemoteCardEditor = class extends i4 {
     if (newValue.use_background_override === false) {
       delete newValue.background_override;
     }
+    for (const [key, defaultValue] of Object.entries(CARD_SETTING_DEFAULTS)) {
+      if (newValue[key] === defaultValue) delete newValue[key];
+    }
     if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
     if (entityChanged) {
       const prevConfig = this._config;
@@ -2995,7 +3140,13 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this.requestUpdate();
   }
   _setAutomationAssistEnabled(enabled) {
-    this._config = { ...this._config, show_automation_assist: !!enabled };
+    const next = { ...this._config };
+    if (enabled) {
+      next.show_automation_assist = true;
+    } else {
+      delete next.show_automation_assist;
+    }
+    this._config = next;
     this._fireChanged();
     this.requestUpdate();
   }
@@ -3075,51 +3226,45 @@ var SofabatonRemoteCardEditor = class extends i4 {
   }
   _resetGroupOrder() {
     const selection = this._layoutSelectionKey();
-    if (selection !== "default") {
-      const next2 = { ...this._config };
-      const layouts = { ...next2.layouts || {} };
+    let next;
+    if (isDeviceLayoutKey(selection)) {
+      next = this._withDeviceModeBlock((block) => {
+        const layouts = {
+          ...block.layouts || {}
+        };
+        delete layouts[deviceStoredLayerKey(selection)];
+        if (Object.keys(layouts).length) {
+          block.layouts = layouts;
+        } else {
+          delete block.layouts;
+        }
+      });
+    } else if (selection !== "default") {
+      next = { ...this._config };
+      const layouts = { ...next.layouts || {} };
       delete layouts[selection];
       if (Number.isFinite(Number(selection))) {
         delete layouts[String(Number(selection))];
       }
       if (Object.keys(layouts).length) {
-        next2.layouts = layouts;
+        next.layouts = layouts;
       } else {
-        delete next2.layouts;
+        delete next.layouts;
       }
-      this._config = next2;
-      this._fireChanged();
-      this.requestUpdate();
-      return;
-    }
-    const enabledDefaults = {
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_colors: true,
-      show_abc: true,
-      show_dvr: true,
-      show_macros_button: true,
-      show_favorites_button: true,
-      show_commands_button: true,
-      show_device_toggle: true,
-      mf_as_rows: false,
-      mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
-      group_order: DEFAULT_GROUP_ORDER.slice()
-    };
-    const next = { ...this._config };
-    const defaultLayout = next.layouts?.default;
-    if (defaultLayout && typeof defaultLayout === "object") {
-      next.layouts = {
-        ...next.layouts || {},
-        default: { ...defaultLayout, ...enabledDefaults }
-      };
     } else {
-      Object.assign(next, enabledDefaults);
+      next = { ...this._config };
+      for (const key of LAYOUT_KEYS) {
+        delete next[key];
+      }
+      if (next.layouts && typeof next.layouts === "object") {
+        const layouts = { ...next.layouts };
+        delete layouts.default;
+        if (Object.keys(layouts).length) {
+          next.layouts = layouts;
+        } else {
+          delete next.layouts;
+        }
+      }
     }
     this._config = next;
     this._fireChanged();
@@ -3189,15 +3334,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
       });
     }
     const entityFormData = {
-      ...this._config,
-      entity: this._config.entity || "",
-      theme: this._config.theme || "",
-      // Maintain the toggle state correctly
-      use_background_override: this._config.use_background_override ?? !!this._config.background_override,
-      background_override: this._config.background_override ?? [255, 255, 255],
-      max_width: this._config.max_width ?? 360,
-      group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
-      show_automation_assist: this._config.show_automation_assist ?? false
+      entity: this._config.entity || ""
     };
     return b2`
       <div style="padding: 12px 0;">
@@ -3234,7 +3371,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
                       .label=${str().editor.opensWith}
                       .hass=${this._hass}
                       .value=${selectValueCompat(
-      this._config?.open_device != null ? String(this._config.open_device) : "",
+      openDeviceFromConfig(this._config) != null ? String(openDeviceFromConfig(this._config)) : "",
       openWithOptions
     )}
                       @selected=${handleOpenWithSelect}
@@ -3293,20 +3430,12 @@ var SofabatonRemoteCardEditor = class extends i4 {
         this.requestUpdate();
       },
       onSelectLayout: (value) => this._onSelectLayout(value),
-      onSetMacro: (v3) => this._updateLayoutConfig(
-        macroTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
-      onSetFavorites: (v3) => this._updateLayoutConfig(
-        favoritesTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
+      onSetMacro: (v3) => this._updateLayoutConfig(macroTogglePatch(v3)),
+      onSetFavorites: (v3) => this._updateLayoutConfig(favoritesTogglePatch(v3)),
       onSetCommands: (v3) => this._updateLayoutConfig(commandsTogglePatch(v3)),
       onSetDeviceMode: (v3) => this._updateLayoutConfig(deviceTogglePatch(v3)),
-      onSetVolume: (v3) => this._updateLayoutConfig(
-        volumeTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
-      onSetChannel: (v3) => this._updateLayoutConfig(
-        channelTogglePatch(this._config, this._layoutSelectionKey(), v3)
-      ),
+      onSetVolume: (v3) => this._updateLayoutConfig(volumeTogglePatch(v3)),
+      onSetChannel: (v3) => this._updateLayoutConfig(channelTogglePatch(v3)),
       onSetMedia: (v3) => {
         const patch = groupEnabledPatch("media", v3);
         if (patch) this._updateLayoutConfig(patch);
@@ -3489,12 +3618,12 @@ function macroFavoriteDisplayState({
   const showMF = showMacrosButton || showFavoritesButton;
   const visibleCount = (showMacrosButton ? 1 : 0) + (showFavoritesButton ? 1 : 0);
   const macrosEnabled = editMode ? true : macros.length > 0;
-  const favoritesEnabled2 = editMode ? true : favorites.length + customFavorites.length > 0;
+  const favoritesEnabled = editMode ? true : favorites.length + customFavorites.length > 0;
   return {
     showMF,
     visibleCount,
     macrosDisabled: disableAllButtons || !macrosEnabled,
-    favoritesDisabled: disableAllButtons || !favoritesEnabled2
+    favoritesDisabled: disableAllButtons || !favoritesEnabled
   };
 }
 
@@ -4013,8 +4142,9 @@ function normalizeRemoteCardConfig(config) {
     show_dpad: true,
     show_nav: true,
     show_mid: true,
-    show_volume: true,
-    show_channel: true,
+    // Do not materialize the split volume/channel defaults here. Their
+    // resolvers already default to true, and absence is what lets released
+    // `show_mid` configs remain a read-side fallback.
     show_media: true,
     show_dvr: true,
     show_colors: true,
@@ -4244,7 +4374,7 @@ var RemoteCardStore = class {
   /**
    * Device mode capability: x1s integration only (the official
    * sofabaton_hub integration has no device keymap path), the
-   * enable_device_mode master switch (absent = on), and a non-empty
+   * device_mode.enabled master switch (absent = on), and a non-empty
    * `devices` attribute (published only while the persistent cache is
    * enabled). The show_device_toggle layout switch is deliberately NOT
    * part of this: it only hides the toggle BUTTON (which may strand the
@@ -4252,17 +4382,18 @@ var RemoteCardStore = class {
    */
   deviceModeAvailable() {
     if (String(this.integrationDomain || "") !== "sofabaton_x1s") return false;
-    if (this._config?.enable_device_mode === false) return false;
+    if (!deviceModeEnabledInConfig(this._config)) return false;
     return this.devices().length > 0;
   }
   /**
-   * Apply the configured opening view once per config: open_device puts the
-   * card in device mode on that device. Retries until the capability
-   * resolves (integration probe + devices attribute are async).
+   * Apply the configured opening view once per config: device_mode
+   * .open_device puts the card in device mode on that device. Retries until
+   * the capability resolves (integration probe + devices attribute are
+   * async).
    */
   maybeApplyInitialView() {
     if (this.initialViewApplied) return;
-    const openDevice = this._config?.open_device;
+    const openDevice = openDeviceFromConfig(this._config);
     if (openDevice == null) {
       this.initialViewApplied = true;
       return;
@@ -6725,28 +6856,7 @@ var SofabatonRemoteCard = class extends i4 {
     return document.createElement(EDITOR);
   }
   static getStubConfig() {
-    return {
-      entity: "",
-      theme: "",
-      background_override: null,
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_dvr: true,
-      show_colors: true,
-      show_abc: true,
-      show_automation_assist: false,
-      show_macros_button: null,
-      show_favorites_button: null,
-      custom_favorites: [],
-      max_width: 360,
-      shrink: 0,
-      group_order: DEFAULT_GROUP_ORDER.slice()
-    };
+    return { entity: "" };
   }
   // ---------- lifecycle ----------
   connectedCallback() {
@@ -7283,7 +7393,7 @@ var SofabatonRemoteCard = class extends i4 {
       overlayRef: this._commandsOverlayRef
     };
     const sharedRows = mfRowVisibleRows(layoutConfig);
-    const midEnabled = (layoutConfig.show_mid ?? true) && (derived.showVolume || derived.showChannel);
+    const midEnabled = derived.showVolume || derived.showChannel;
     const mediaEnabled = derived.isX2 ? derived.showMedia || derived.showDvr : derived.showMedia;
     const order = normalizedGroupOrder(layoutConfig.group_order);
     const groupTemplates = {

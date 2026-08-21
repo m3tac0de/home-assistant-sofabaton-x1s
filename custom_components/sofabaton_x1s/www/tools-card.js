@@ -2487,6 +2487,10 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventsTitle: "Wifi Events",
     wifiEventsSubtitle: "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
     wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
+    // Shared by the WIFI EVENTS and ACTIVITY EVENTS sections: the header
+    // count pill and the expander link that reveals unconfigured rows.
+    eventsConfiguredPill: (configured, total) => `${configured} of ${total} configured`,
+    eventsShowUnconfigured: (count) => `Show ${count} unconfigured\u2026`,
     wifiEventRowPress: (name) => `When ${name} is pressed`,
     wifiEventRowLongPress: "and when it's long-pressed",
     wifiEventModalTitle: (name) => `When ${name} is pressed`,
@@ -14551,6 +14555,11 @@ function hubEventModalTitle(key) {
   };
   return titles[key];
 }
+var NAME_SENTINEL = "\0";
+function phraseWithName(phrase, name) {
+  const [before, after = ""] = phrase(NAME_SENTINEL).split(NAME_SENTINEL);
+  return b2`${before}<span class="hub-event-name">${name}</span>${after}`;
+}
 var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   constructor() {
     super(...arguments);
@@ -14602,6 +14611,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._wifiEventsStaleConfirm = false;
     this._wifiEventsStaleBusy = false;
     this._wifiEventsStaleError = "";
+    // One-way expanders: unconfigured rows stay hidden until the user asks.
+    this._wifiEventsShowUnconfigured = false;
+    this._activityEventsShowUnconfigured = false;
     this.selectedSection = "wifi";
     this.setSelectedSection = () => {
     };
@@ -15188,6 +15200,28 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       stop: this._normalizeCommandAction(entry?.stop)
     };
   }
+  // "Configured" for the section pills and the unconfigured-row filter:
+  // any of the row's action hooks carries a custom action.
+  _wifiEventConfigured(event) {
+    if (this._commandHasCustomAction(this._normalizeCommandAction(event.action))) return true;
+    return Boolean(event.long_press_enabled) && this._commandHasCustomAction(this._normalizeCommandAction(event.long_press_action));
+  }
+  _activityEventConfigured(activityId) {
+    const entry = this._activityEventEntry(activityId);
+    return this._commandHasCustomAction(entry.start) || this._commandHasCustomAction(entry.stop);
+  }
+  _renderConfiguredPill(configured, total) {
+    if (!total) return A;
+    return b2`<span class="section-pill">${TOOLS_CARD_STRINGS.wifiCommands.eventsConfiguredPill(configured, total)}</span>`;
+  }
+  _renderShowUnconfigured(hiddenCount, onShow) {
+    if (hiddenCount <= 0) return A;
+    return b2`
+      <button class="show-unconfigured" @click=${onShow}>
+        ${TOOLS_CARD_STRINGS.wifiCommands.eventsShowUnconfigured(hiddenCount)}
+      </button>
+    `;
+  }
   // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
   _wifiEventBySlot(slotIndex) {
     return (this._wifiEventsRows ?? []).find((event) => event.slot_index === slotIndex) ?? null;
@@ -15384,26 +15418,37 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           ><ha-icon icon="mdi:close"></ha-icon></button>` : A}`;
     };
     const orphaned = this._wifiEventsOrphaned();
+    const configuredCount = events.filter((event) => this._wifiEventConfigured(event)).length;
+    const visible = this._wifiEventsShowUnconfigured ? events : events.filter((event) => this._wifiEventConfigured(event));
     return b2`
       <div class="hub-events">
         <div class="section-title-wrap">
           <div class="acc-title">${W.wifiEventsTitle}</div>
+          ${this._renderConfiguredPill(configuredCount, events.length)}
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
         ${orphaned ? this._renderWifiEventsStaleNotice() : A}
         ${events.length ? b2`
-          <ul class="hub-event-lines">
-            ${events.map((event) => b2`
-              <li class="hub-event-line">
-                <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
-                <span class="hub-event-text">
-                  ${W.wifiEventRowPress(event.name)}${event.deployed || orphaned ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
-                  ${renderAction(event, "short")}${event.long_press_enabled ? b2`, ${W.wifiEventRowLongPress}
-                  ${renderAction(event, "long")}` : A}.
-                </span>
-              </li>
-            `)}
-          </ul>
+          ${visible.length ? b2`
+            <ul class="hub-event-lines">
+              ${visible.map((event) => b2`
+                <li class="hub-event-line">
+                  <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
+                  <span class="hub-event-text">
+                    ${phraseWithName(W.wifiEventRowPress, event.name)}${event.deployed || orphaned ? A : b2` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
+                    ${renderAction(event, "short")}${event.long_press_enabled ? b2`, ${W.wifiEventRowLongPress}
+                    ${renderAction(event, "long")}` : A}.
+                  </span>
+                </li>
+              `)}
+            </ul>
+          ` : A}
+          ${this._renderShowUnconfigured(
+      this._wifiEventsShowUnconfigured ? 0 : events.length - configuredCount,
+      () => {
+        this._wifiEventsShowUnconfigured = true;
+      }
+    )}
         ` : b2`<div class="empty-hint">${W.wifiEventsEmpty}</div>`}
       </div>
     `;
@@ -15453,6 +15498,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _renderHubEventsView() {
     const flash = this._activeHubEventFlash();
     const activities = this._editorActivities();
+    const configuredActivities = activities.filter((activity) => this._activityEventConfigured(String(activity.id)));
+    const visibleActivities = this._activityEventsShowUnconfigured ? activities : configuredActivities;
     const renderHubAction = (key) => {
       const action = this._hubEventActions[key];
       const configured = this._commandHasCustomAction(action);
@@ -15498,12 +15545,21 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         <div class="hub-events">
           <div class="section-title-wrap">
             <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
+            ${this._renderConfiguredPill(configuredActivities.length, activities.length)}
           </div>
           <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsSubtitle}</div>
           ${activities.length ? b2`
-            <ul class="hub-event-lines">
-              ${activities.map((activity) => this._renderActivityEventLine(activity, flash))}
-            </ul>
+            ${visibleActivities.length ? b2`
+              <ul class="hub-event-lines">
+                ${visibleActivities.map((activity) => this._renderActivityEventLine(activity, flash))}
+              </ul>
+            ` : A}
+            ${this._renderShowUnconfigured(
+      this._activityEventsShowUnconfigured ? 0 : activities.length - configuredActivities.length,
+      () => {
+        this._activityEventsShowUnconfigured = true;
+      }
+    )}
           ` : b2`<div class="empty-hint">${TOOLS_CARD_STRINGS.wifiCommands.noActivitiesForEvents}</div>`}
         </div>
       </div>
@@ -15529,7 +15585,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       <li class="hub-event-line">
         <span class="hub-event-icon"><ha-icon icon="mdi:television-play"></ha-icon></span>
         <span class="hub-event-text">
-          ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStarts(activity.name)},
+          ${phraseWithName(TOOLS_CARD_STRINGS.wifiCommands.activityEventStarts, activity.name)},
           ${renderPhase("start")},
           ${TOOLS_CARD_STRINGS.wifiCommands.activityEventStops},
           ${renderPhase("stop")}.
@@ -17189,6 +17245,8 @@ _SofabatonWifiCommandsTab.properties = {
   _wifiEventsStaleConfirm: { state: true },
   _wifiEventsStaleBusy: { state: true },
   _wifiEventsStaleError: { state: true },
+  _wifiEventsShowUnconfigured: { state: true },
+  _activityEventsShowUnconfigured: { state: true },
   selectedSection: { attribute: false },
   setSelectedSection: { attribute: false },
   _devicePowerPickerKind: { state: true },
@@ -17388,6 +17446,9 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
+    /* User-chosen label inside an event phrase: a subtle tinted chip marks
+       it as the user's own name rather than part of the sentence. */
+    .hub-event-name { background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent); border-radius: 4px; padding: 0 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
     .wifi-events-stale { color: var(--warning-color, #b58a00); }
     .wifi-events-stale .hub-event-action-link { display: inline; font-size: inherit; }
     .wifi-events-stale-actions { display: inline-flex; gap: 8px; margin-left: 8px; vertical-align: middle; }
@@ -17494,6 +17555,31 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       color: var(--secondary-text-color);
     }
     .section-title-wrap { display: flex; align-items: center; gap: 8px; }
+    .section-pill {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-text-color) 12%, transparent);
+      border-radius: var(--tools-radius-pill);
+      padding: 2px 9px;
+    }
+    /* Expander under a section list revealing the hidden unconfigured rows. */
+    .show-unconfigured {
+      justify-self: start;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 3px;
+    }
+    .show-unconfigured:hover { color: var(--primary-color); }
     .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
     .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }

@@ -364,6 +364,8 @@ export const TOOLS_CARD_STRINGS_DE = {
     wifiEventsTitle: "Wifi-Events",
     wifiEventsSubtitle: "Ereignisse, die im Aktivitäten-Editor erstellt wurden. Wird eines davon auf der Fernbedienung gedrückt, löst es hier seine Home-Assistant-Aktion aus (aktualisiert auch den Wifi-Commands-Sensor).",
     wifiEventsEmpty: "Noch keine Wifi-Events. Erstelle sie in den Hinzufügen-Dialogen des Aktivitäten-Editors (Verknüpfungen, Tasten und Makroschritte).",
+    eventsConfiguredPill: (configured: number, total: number) => `${configured} von ${total} konfiguriert`,
+    eventsShowUnconfigured: (count: number) => `${count} nicht konfigurierte${count === 1 ? "s" : ""} anzeigen…`,
     wifiEventRowPress: (name: string) => `Wenn ${name} gedrückt wird`,
     wifiEventRowLongPress: "und bei langem Drücken",
     wifiEventModalTitle: (name: string) => `Wenn ${name} gedrückt wird`,

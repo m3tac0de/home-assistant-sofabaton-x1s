@@ -139,6 +139,31 @@ test("remove-config goes through wifi_event/clear_all and applies the response",
   assert.equal(tab._wifiEventsStaleError, "");
 });
 
+test("configured detection drives the section pill and unconfigured filter", () => {
+  const tab = makeTab();
+  // EVENT has both actions configured.
+  assert.equal(tab._wifiEventConfigured(EVENT), true);
+  // Long action alone counts only while long press is enabled.
+  const longOnly = { ...EVENT, action: { action: "perform-action" } };
+  assert.equal(tab._wifiEventConfigured(longOnly), true);
+  assert.equal(tab._wifiEventConfigured({ ...longOnly, long_press_enabled: false }), false);
+  const bare = {
+    ...EVENT,
+    action: { action: "perform-action" },
+    long_press_action: { action: "perform-action" },
+  };
+  assert.equal(tab._wifiEventConfigured(bare), false);
+
+  // Activity entries: start or stop configured counts.
+  tab._activityEventActions = {
+    "101": { start: { action: "perform-action", perform_action: "scene.turn_on" }, stop: { action: "perform-action" } },
+    "102": { start: { action: "perform-action" }, stop: { action: "perform-action" } },
+  };
+  assert.equal(tab._activityEventConfigured("101"), true);
+  assert.equal(tab._activityEventConfigured("102"), false);
+  assert.equal(tab._activityEventConfigured("103"), false);
+});
+
 test("remove-config failure keeps the rows and surfaces the error", async () => {
   const tab = makeTab(async () => {
     throw new Error("boom");

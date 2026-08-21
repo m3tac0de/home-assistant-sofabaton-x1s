@@ -4,7 +4,6 @@ import { SofabatonRemoteCardEditor } from "../../custom_components/sofabaton_x1s
 import { renderCommandsEditorSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/commands-editor";
 import { renderStylingOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/styling-options";
 import { renderGroupOrderSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/group-order";
-import { DEFAULT_GROUP_ORDER } from "../../custom_components/sofabaton_x1s/www/src/remote-card-layout";
 import { REMOTE_CARD_CSS } from "../../custom_components/sofabaton_x1s/www/src/remote-card-styles";
 import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/remote-card-types";
 import type { RemoteCardConfig } from "../../custom_components/sofabaton_x1s/www/src/remote-card-types";
@@ -150,10 +149,12 @@ test("moving a group by key swaps it with its visible neighbour", () => {
   const { editor, changes } = createEditor({ entity: "remote.living_room" });
 
   // Default order starts: activity, macro_favorites, ... — moving activity
-  // down swaps it with macro_favorites.
+  // down swaps it with macro_favorites. Default-layout writes land in
+  // layouts.default (top level stays card settings only).
   editor._moveGroupByKey("activity", +1);
   assert.equal(changes.length, 1);
-  const order = changes[0].group_order as string[];
+  const layouts = changes[0].layouts as Record<string, { group_order?: string[] }>;
+  const order = layouts.default.group_order as string[];
   assert.equal(order[0], "macro_favorites");
   assert.equal(order[1], "activity");
 });
@@ -166,18 +167,56 @@ test("moving by key skips rows hidden for the current hub (abc on non-X2)", () =
   assert.equal(changes.length, 0);
 });
 
-test("reset on the default selection restores order and re-enables all groups", () => {
+test("reset on the default selection deletes the stored keys back to defaults", () => {
+  // Reset means "built-in defaults", stored as the absence of keys — the
+  // saved YAML shrinks instead of materializing the whole default set.
   const { editor, changes } = createEditor({
     entity: "remote.living_room",
     show_nav: false,
     group_order: ["colors", "dpad", "activity"],
+    layouts: { default: { show_dvr: false }, "101": { show_nav: false } },
   });
 
   editor._resetGroupOrder();
   assert.equal(changes.length, 1);
-  assert.deepEqual(changes[0].group_order, DEFAULT_GROUP_ORDER.slice());
-  assert.equal(changes[0].show_nav, true);
-  assert.equal(changes[0].mf_as_rows, false);
+  assert.equal("group_order" in changes[0], false);
+  assert.equal("show_nav" in changes[0], false);
+  // layouts.default is part of the default layout; other overrides survive.
+  assert.deepEqual(changes[0].layouts, { "101": { show_nav: false } });
+});
+
+test("device master switch and open_device live in the device_mode block", () => {
+  const { editor, changes } = createEditor({ entity: "remote.living_room" });
+
+  editor._setDeviceModeEnabled(false);
+  assert.deepEqual(changes.at(-1)?.device_mode, { enabled: false });
+
+  // Re-enabling is the default: the block disappears entirely.
+  editor._setDeviceModeEnabled(true);
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+
+  editor._setOpenDevice("9");
+  assert.deepEqual(changes.at(-1)?.device_mode, { open_device: 9 });
+  editor._setOpenDevice("");
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+});
+
+test("reset on a device selection drops only that device layer", () => {
+  const { editor, changes } = createEditor({
+    entity: "remote.living_room",
+    device_mode: {
+      open_device: 3,
+      layouts: { default: { c_as_rows: true }, "3": { show_nav: false } },
+    },
+  });
+  editor._layoutSelection = "device:3";
+
+  editor._resetGroupOrder();
+  assert.equal(changes.length, 1);
+  assert.deepEqual(changes[0].device_mode, {
+    open_device: 3,
+    layouts: { default: { c_as_rows: true } },
+  });
 });
 
 test("reset on an activity selection drops only that layout override", () => {

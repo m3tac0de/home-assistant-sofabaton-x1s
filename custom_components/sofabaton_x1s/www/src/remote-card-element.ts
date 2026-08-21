@@ -9,7 +9,6 @@ import { LitElement, html, nothing, css, unsafeCSS, type PropertyValues } from "
 import { repeat } from "lit/directives/repeat.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import {
-  DEFAULT_GROUP_ORDER,
   favoritesButtonEnabled,
   macrosButtonEnabled,
   mfAsRows,
@@ -207,28 +206,10 @@ export class SofabatonRemoteCard extends LitElement {
   }
 
   static getStubConfig(): RemoteCardConfig {
-    return {
-      entity: "",
-      theme: "",
-      background_override: null,
-      show_activity: true,
-      show_dpad: true,
-      show_nav: true,
-      show_mid: true,
-      show_volume: true,
-      show_channel: true,
-      show_media: true,
-      show_dvr: true,
-      show_colors: true,
-      show_abc: true,
-      show_automation_assist: false,
-      show_macros_button: null,
-      show_favorites_button: null,
-      custom_favorites: [],
-      max_width: 360,
-      shrink: 0,
-      group_order: DEFAULT_GROUP_ORDER.slice() as unknown as string[],
-    };
+    // Minimal on purpose: absent keys mean their defaults everywhere, so the
+    // YAML a fresh card starts with is just the entity. setConfig() layers
+    // the runtime defaults (normalizeRemoteCardConfig) either way.
+    return { entity: "" };
   }
 
   // ---------- lifecycle ----------
@@ -927,9 +908,9 @@ export class SofabatonRemoteCard extends LitElement {
     };
 
     const sharedRows = mfRowVisibleRows(layoutConfig);
-    const midEnabled =
-      ((layoutConfig.show_mid as boolean | undefined) ?? true) &&
-      (derived.showVolume || derived.showChannel);
+    // Volume/channel resolve show_mid as their legacy fallback themselves;
+    // the mid row shows whenever either half is visible.
+    const midEnabled = derived.showVolume || derived.showChannel;
     const mediaEnabled = derived.isX2
       ? derived.showMedia || derived.showDvr
       : derived.showMedia;

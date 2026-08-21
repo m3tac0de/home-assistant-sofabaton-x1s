@@ -867,6 +867,8 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiEventsTitle: "Wifi \u4E8B\u4EF6",
     wifiEventsSubtitle: "\u5728\u6D3B\u52A8\u7F16\u8F91\u5668\u4E2D\u521B\u5EFA\u7684\u4E8B\u4EF6\u3002\u6309\u4E0B\u9065\u63A7\u5668\u6309\u952E\u4F1A\u5728\u6B64\u89E6\u53D1 Home Assistant \u52A8\u4F5C\uFF0C\u5E76\u66F4\u65B0 Wifi Commands \u4F20\u611F\u5668\u3002",
     wifiEventsEmpty: "\u6682\u65E0 Wifi \u4E8B\u4EF6\u3002\u8BF7\u5728\u6D3B\u52A8\u7F16\u8F91\u5668\u7684\u6DFB\u52A0\u5BF9\u8BDD\u6846\u4E2D\u521B\u5EFA\uFF08\u5FEB\u6377\u9879\u3001\u6309\u952E\u6216\u5B8F\u6B65\u9AA4\uFF09\u3002",
+    eventsConfiguredPill: (configured, total) => `\u5DF2\u914D\u7F6E ${configured}/${total}`,
+    eventsShowUnconfigured: (count) => `\u663E\u793A ${count} \u4E2A\u672A\u914D\u7F6E\u9879\u2026`,
     wifiEventRowPress: (name) => `\u6309\u4E0B\u201C${name}\u201D\u65F6`,
     wifiEventRowLongPress: "\u4EE5\u53CA\u957F\u6309\u65F6",
     wifiEventModalTitle: (name) => `\u6309\u4E0B\u201C${name}\u201D\u65F6`,

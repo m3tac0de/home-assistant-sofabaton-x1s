@@ -868,6 +868,8 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiEventsTitle: "\xC9v\xE9nements Wifi",
     wifiEventsSubtitle: "\xC9v\xE9nements cr\xE9\xE9s depuis l\u2019\xE9diteur d\u2019activit\xE9s. Un appui sur la t\xE9l\xE9commande d\xE9clenche ici son action Home Assistant (met aussi \xE0 jour le capteur Wifi Commands).",
     wifiEventsEmpty: "Aucun \xE9v\xE9nement Wifi pour le moment. Cr\xE9ez-les depuis les bo\xEEtes de dialogue d\u2019ajout de l\u2019\xE9diteur d\u2019activit\xE9s (raccourcis, touches et \xE9tapes de macro).",
+    eventsConfiguredPill: (configured, total) => `${configured} sur ${total} configur\xE9${configured === 1 ? "" : "s"}`,
+    eventsShowUnconfigured: (count) => `Afficher ${count} non configur\xE9${count === 1 ? "" : "s"}\u2026`,
     wifiEventRowPress: (name) => `Lorsque ${name} est press\xE9`,
     wifiEventRowLongPress: "et quand il est press\xE9 longuement",
     wifiEventModalTitle: (name) => `Lorsque ${name} est press\xE9`,

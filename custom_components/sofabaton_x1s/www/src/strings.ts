@@ -1024,6 +1024,10 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiEventsSubtitle:
       "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
     wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
+    // Shared by the WIFI EVENTS and ACTIVITY EVENTS sections: the header
+    // count pill and the expander link that reveals unconfigured rows.
+    eventsConfiguredPill: (configured: number, total: number) => `${configured} of ${total} configured`,
+    eventsShowUnconfigured: (count: number) => `Show ${count} unconfigured…`,
     wifiEventRowPress: (name: string) => `When ${name} is pressed`,
     wifiEventRowLongPress: "and when it's long-pressed",
     wifiEventModalTitle: (name: string) => `When ${name} is pressed`,
