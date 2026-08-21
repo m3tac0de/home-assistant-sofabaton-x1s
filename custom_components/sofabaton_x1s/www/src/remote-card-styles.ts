@@ -793,9 +793,13 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
           .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
-          /* Device-mode master switch + "Opens with" under the entity picker. */
-          .sb-device-mode-config { display: grid; gap: 10px; padding: 0 0 12px 0; }
-          .sb-device-mode-config ha-select { width: 100%; }
+          /* Device mode group box under the entity picker: titled border
+             around the master switch and the "Initial view" select, both
+             rendered via ha-form. The title band mirrors the expanded
+             sb-exp-hdr so the box reads as an always-open drawer. */
+          .sb-device-mode-config { border: 1px solid var(--divider-color); border-radius: 12px; margin: 0 0 12px; }
+          .sb-device-mode-title { display: flex; align-items: center; gap: 10px; font-weight: 600; padding: 12px; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
+          .sb-device-mode-config ha-form { display: block; padding: 8px 12px 12px; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

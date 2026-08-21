@@ -8,11 +8,12 @@
 // this with the tools-card import.meta.url versioning.
 
 export const CARD_NAME = "Sofabaton Virtual Remote";
-export const CARD_VERSION = "0.3.0";
+export const CARD_VERSION = "0.2.1";
 export const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 export const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
-export const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
+export const AUTOMATION_ASSIST_SESSION_KEY =
+  "__sofabatonAutomationAssistSession__";
 export const PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
 export const TYPE = "sofabaton-virtual-remote";
 export const EDITOR = "sofabaton-virtual-remote-editor";
@@ -34,7 +35,10 @@ export const readPreviewActivity = (entityId: unknown): string | null => {
   return cache[String(entityId)] ?? null;
 };
 
-export const writePreviewActivity = (entityId: unknown, value: unknown): void => {
+export const writePreviewActivity = (
+  entityId: unknown,
+  value: unknown,
+): void => {
   if (!entityId || typeof window === "undefined") return;
   const cache = previewCache() ?? {};
   cache[String(entityId)] = value == null ? "" : String(value);

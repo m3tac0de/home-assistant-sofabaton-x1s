@@ -201,6 +201,28 @@ test("device master switch and open_device live in the device_mode block", () =>
   assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
 });
 
+test("device-mode form value routes to the enable switch and open_device", () => {
+  const { editor, changes } = createEditor({ entity: "remote.living_room" });
+
+  // Disabling wins over whatever open_device the echoed form data carries.
+  editor._onDeviceModeFormChanged({ device_mode_enabled: false, open_device: "9" });
+  assert.deepEqual(changes.at(-1)?.device_mode, { enabled: false });
+
+  editor._onDeviceModeFormChanged({ device_mode_enabled: true });
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+
+  editor._onDeviceModeFormChanged({ device_mode_enabled: true, open_device: "9" });
+  assert.deepEqual(changes.at(-1)?.device_mode, { open_device: 9 });
+
+  // The "current" sentinel (and a cleared select) drop open_device again.
+  editor._onDeviceModeFormChanged({ device_mode_enabled: true, open_device: "current" });
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+
+  editor._onDeviceModeFormChanged({ device_mode_enabled: true, open_device: "9" });
+  editor._onDeviceModeFormChanged({ device_mode_enabled: true });
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+});
+
 test("reset on a device selection drops only that device layer", () => {
   const { editor, changes } = createEditor({
     entity: "remote.living_room",

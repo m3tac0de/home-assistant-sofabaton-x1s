@@ -4,7 +4,6 @@
 // render via editor-sections/*.
 
 import { LitElement, html, nothing, unsafeCSS } from "lit";
-import { html as staticHtml, unsafeStatic } from "lit/static-html.js";
 import {
   LAYOUT_KEYS,
   channelGroupEnabled,
@@ -43,12 +42,7 @@ import {
   moveVisibleGroup,
   volumeTogglePatch,
 } from "./remote-card-editor-layout";
-import {
-  hubVersionFor,
-  isX2Hub,
-  selectItemTagName,
-  selectValueCompat,
-} from "./remote-card-compat";
+import { hubVersionFor, isX2Hub } from "./remote-card-compat";
 import {
   remoteCardDirection,
   remoteCardLanguage,
@@ -92,6 +86,22 @@ const ENTITY_FORM_SCHEMA = [
     required: true,
   },
 ];
+
+// Sentinel select value for "no open_device configured" — the initial-view
+// select always has a concrete selection, and device ids are numeric so the
+// sentinel can never collide.
+const OPEN_WITH_CURRENT = "current";
+
+// The device-mode ha-form reuses field names that are not card-level config
+// keys, so it gets its own label/helper computers instead of fieldLabels.
+const computeDeviceModeFieldLabel = (schema: { name: string }): string => {
+  if (schema.name === "device_mode_enabled") return str().editor.enableDeviceMode;
+  if (schema.name === "open_device") return str().editor.initialView;
+  return computeEditorFieldLabel(schema);
+};
+
+const computeDeviceModeFieldHelper = (schema: { name: string }): string | undefined =>
+  schema.name === "open_device" ? str().editor.initialViewHelper : undefined;
 
 export class SofabatonRemoteCardEditor extends LitElement {
   static styles = unsafeCSS(REMOTE_CARD_EDITOR_CSS);
@@ -202,6 +212,24 @@ export class SofabatonRemoteCardEditor extends LitElement {
     this._config = next;
     this._fireChanged();
     this.requestUpdate();
+  }
+
+  /**
+   * value-changed handler for the device-mode ha-form. ha-form echoes the
+   * whole data object, so diff against the current config: an enable/disable
+   * flip wins (disabling already drops open_device), otherwise apply the
+   * initial-view selection.
+   */
+  private _onDeviceModeFormChanged(value: Record<string, unknown>): void {
+    const nextEnabled = value.device_mode_enabled !== false;
+    if (nextEnabled !== this._deviceModeEnabled()) {
+      this._setDeviceModeEnabled(nextEnabled);
+      return;
+    }
+    const raw = value.open_device;
+    this._setOpenDevice(
+      raw == null || raw === OPEN_WITH_CURRENT ? "" : String(raw),
+    );
   }
 
   private _isEditorX2(): boolean {
@@ -531,20 +559,41 @@ export class SofabatonRemoteCardEditor extends LitElement {
     const devices =
       deviceCapable && deviceModeEnabled ? editorDevicesFromState(remoteState) : [];
 
-    // "Opens with": current activity (default) or a specific device.
-    const openWithItemTag = unsafeStatic(selectItemTagName());
-    const openWithOptions = [
-      { value: "", label: str().editor.openOnCurrentActivity },
-      ...devices.map((device: { id: unknown; name: string }) => ({
-        value: String(device.id),
-        label: device.name,
-      })),
+    // "Initial view": current activity (default) or a specific device. Both
+    // controls render through ha-form so the group matches the entity picker
+    // styling; the select only joins the schema while device mode is on.
+    const openDevice = openDeviceFromConfig(this._config);
+    const deviceModeSchema = [
+      { name: "device_mode_enabled", selector: { boolean: {} } },
+      ...(deviceModeEnabled
+        ? [
+            {
+              name: "open_device",
+              required: true,
+              selector: {
+                select: {
+                  mode: "dropdown",
+                  options: [
+                    {
+                      value: OPEN_WITH_CURRENT,
+                      label: str().editor.openOnCurrentActivity,
+                    },
+                    ...devices.map((device: { id: unknown; name: string }) => ({
+                      value: String(device.id),
+                      label: device.name,
+                    })),
+                  ],
+                },
+              },
+            },
+          ]
+        : []),
     ];
-    const handleOpenWithSelect = (ev: Event) => {
-      ev.stopPropagation();
-      const detailValue = (ev as CustomEvent<{ value?: string }>).detail?.value;
-      const targetValue = (ev.target as HTMLElement & { value?: string })?.value;
-      this._setOpenDevice(String(detailValue ?? targetValue ?? ""));
+    const deviceModeFormData = {
+      device_mode_enabled: deviceModeEnabled,
+      ...(deviceModeEnabled
+        ? { open_device: openDevice != null ? String(openDevice) : OPEN_WITH_CURRENT }
+        : {}),
     };
     // The two "Default ... layout" entries are styled as section heads; the
     // sections themselves separate activities from devices, so device names
@@ -619,43 +668,21 @@ export class SofabatonRemoteCardEditor extends LitElement {
       ${deviceCapable
         ? html`
             <div class="sb-device-mode-config">
-              <div class="sb-layout-switch-item">
-                <ha-switch
-                  .checked=${deviceModeEnabled}
-                  @change=${(ev: Event) => {
-                    ev.stopPropagation();
-                    const target = ev.target as HTMLElement & { checked?: boolean };
-                    this._setDeviceModeEnabled(!!target.checked);
-                  }}
-                ></ha-switch>
-                <div class="sb-layout-switch-label">
-                  ${str().editor.enableDeviceMode}
-                </div>
+              <div class="sb-device-mode-title">
+                <ha-icon icon="mdi:audio-video"></ha-icon>
+                <div>${str().editor.deviceModeTitle}</div>
               </div>
-              ${deviceModeEnabled
-                ? html`
-                    <ha-select
-                      class="sb-opens-with"
-                      .fixedMenuPosition=${true}
-                      .label=${str().editor.opensWith}
-                      .hass=${this._hass}
-                      .value=${selectValueCompat(
-                        openDeviceFromConfig(this._config) != null
-                          ? String(openDeviceFromConfig(this._config))
-                          : "",
-                        openWithOptions,
-                      )}
-                      @selected=${handleOpenWithSelect}
-                      @change=${handleOpenWithSelect}
-                    >
-                      ${openWithOptions.map(
-                        (option) => staticHtml`
-                          <${openWithItemTag} .value=${option.value}>${option.label}</${openWithItemTag}>
-                        `,
-                      )}
-                    </ha-select>
-                  `
-                : nothing}
+              <ha-form
+                .hass=${this._hass}
+                .schema=${deviceModeSchema}
+                .data=${deviceModeFormData}
+                .computeLabel=${computeDeviceModeFieldLabel}
+                .computeHelper=${computeDeviceModeFieldHelper}
+                @value-changed=${(ev: CustomEvent<{ value: Record<string, unknown> }>) => {
+                  ev.stopPropagation();
+                  this._onDeviceModeFormChanged(ev.detail.value ?? {});
+                }}
+              ></ha-form>
             </div>
           `
         : nothing}

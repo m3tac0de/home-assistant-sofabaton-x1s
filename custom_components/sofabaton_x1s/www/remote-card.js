@@ -550,32 +550,6 @@ var o4 = s3.litElementPolyfillSupport;
 o4?.({ LitElement: i4 });
 (s3.litElementVersions ?? (s3.litElementVersions = [])).push("4.2.2");
 
-// node_modules/lit-html/static.js
-var a3 = /* @__PURE__ */ Symbol.for("");
-var o5 = (t5) => {
-  if (t5?.r === a3) return t5?._$litStatic$;
-};
-var s4 = (t5) => ({ _$litStatic$: t5, r: a3 });
-var l3 = /* @__PURE__ */ new Map();
-var n4 = (t5) => (r6, ...e6) => {
-  const a4 = e6.length;
-  let s7, i7;
-  const n7 = [], u6 = [];
-  let c7, $3 = 0, f4 = false;
-  for (; $3 < a4; ) {
-    for (c7 = r6[$3]; $3 < a4 && void 0 !== (i7 = e6[$3], s7 = o5(i7)); ) c7 += s7 + r6[++$3], f4 = true;
-    $3 !== a4 && u6.push(i7), n7.push(c7), $3++;
-  }
-  if ($3 === a4 && n7.push(r6[a4]), f4) {
-    const t6 = n7.join("$$lit$$");
-    void 0 === (r6 = l3.get(t6)) && (n7.raw = n7, l3.set(t6, r6 = n7)), e6 = u6;
-  }
-  return t5(r6, ...e6);
-};
-var u3 = n4(b2);
-var c4 = n4(w);
-var $2 = n4(T);
-
 // custom_components/sofabaton_x1s/www/src/remote-card-layout.ts
 var DEFAULT_GROUP_ORDER = [
   "activity",
@@ -908,14 +882,14 @@ var REMOTE_CARD_STRINGS_EN = {
     activitySelectLabel: "Activity",
     deviceSelectLabel: "Device",
     selectDevice: "Select device",
-    allDevicesLayout: "Default Device Layout",
+    allDevicesLayout: "Default device layout",
     filterCommands: "Filter commands",
     switchToDeviceMode: "Switch to device mode",
     switchToActivityMode: "Switch to activity mode",
-    deviceKeymapMissing: "This device's commands are not cached yet. Refresh it from the Control Panel's Hub tab.",
+    deviceKeymapMissing: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
     deviceKeymapError: "Could not load this device's commands.",
     poweredOff: "Powered Off",
-    defaultLayout: "Default Activity Layout",
+    defaultLayout: "Default activity layout",
     activityFallback: (id) => `Activity ${id}`,
     deviceFallback: (id) => `Device ${id}`,
     pickerName: "Sofabaton Virtual Remote",
@@ -972,7 +946,7 @@ var REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select Background Color",
-      show_activity: "Activity Selector",
+      show_activity: "Activity/device selector",
       show_dpad: "Direction Pad",
       show_nav: "Back/Home/Menu Keys",
       show_mid: "Volume/Channel Rockers",
@@ -992,13 +966,15 @@ var REMOTE_CARD_STRINGS_EN = {
     stylingOptions: "Styling Options",
     layoutOptions: "Layout Options",
     layoutSelectLabel: "Layout",
-    defaultLayoutOption: "Default Activity layout",
-    allDevicesOption: "Default Device layout",
+    defaultLayoutOption: "Default activity layout",
+    allDevicesOption: "Default device layout",
     commands: "Commands",
-    modeToggle: "Mode toggle",
-    enableDeviceMode: "Enable Device mode",
-    opensWith: "Opens with",
-    openOnCurrentActivity: "Current Activity",
+    modeToggle: "Mode switch",
+    deviceModeTitle: "Device mode",
+    enableDeviceMode: "Enable device mode",
+    initialView: "Initial view",
+    initialViewHelper: "What the card shows when it loads",
+    openOnCurrentActivity: "Current activity",
     macrosFavoritesAsRows: "Macros/Favorites as rows",
     commandsAsRows: "Commands as rows",
     visibleRows: "Visible rows",
@@ -1019,7 +995,7 @@ var REMOTE_CARD_STRINGS_EN = {
     noteUsingDeviceDefault: "Using default device layout"
   },
   groups: {
-    activity: "Selector",
+    activity: "Activity/device",
     macro_favorites: "Macros/Favorites",
     macros_row: "Macros Row",
     favorites_row: "Favorites Row",
@@ -2182,9 +2158,13 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
           .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
-          /* Device-mode master switch + "Opens with" under the entity picker. */
-          .sb-device-mode-config { display: grid; gap: 10px; padding: 0 0 12px 0; }
-          .sb-device-mode-config ha-select { width: 100%; }
+          /* Device mode group box under the entity picker: titled border
+             around the master switch and the "Initial view" select, both
+             rendered via ha-form. The title band mirrors the expanded
+             sb-exp-hdr so the box reads as an always-open drawer. */
+          .sb-device-mode-config { border: 1px solid var(--divider-color); border-radius: 12px; margin: 0 0 12px; }
+          .sb-device-mode-title { display: flex; align-items: center; gap: 10px; font-weight: 600; padding: 12px; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
+          .sb-device-mode-config ha-form { display: block; padding: 8px 12px 12px; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2497,6 +2477,32 @@ function renderStylingOptionsSection(params) {
     body
   });
 }
+
+// node_modules/lit-html/static.js
+var a3 = /* @__PURE__ */ Symbol.for("");
+var o5 = (t5) => {
+  if (t5?.r === a3) return t5?._$litStatic$;
+};
+var s4 = (t5) => ({ _$litStatic$: t5, r: a3 });
+var l3 = /* @__PURE__ */ new Map();
+var n4 = (t5) => (r6, ...e6) => {
+  const a4 = e6.length;
+  let s7, i7;
+  const n7 = [], u6 = [];
+  let c7, $3 = 0, f4 = false;
+  for (; $3 < a4; ) {
+    for (c7 = r6[$3]; $3 < a4 && void 0 !== (i7 = e6[$3], s7 = o5(i7)); ) c7 += s7 + r6[++$3], f4 = true;
+    $3 !== a4 && u6.push(i7), n7.push(c7), $3++;
+  }
+  if ($3 === a4 && n7.push(r6[a4]), f4) {
+    const t6 = n7.join("$$lit$$");
+    void 0 === (r6 = l3.get(t6)) && (n7.raw = n7, l3.set(t6, r6 = n7)), e6 = u6;
+  }
+  return t5(r6, ...e6);
+};
+var u3 = n4(b2);
+var c4 = n4(w);
+var $2 = n4(T);
 
 // node_modules/lit-html/directive-helpers.js
 var { I: t3 } = j;
@@ -2930,6 +2936,13 @@ var ENTITY_FORM_SCHEMA = [
     required: true
   }
 ];
+var OPEN_WITH_CURRENT = "current";
+var computeDeviceModeFieldLabel = (schema) => {
+  if (schema.name === "device_mode_enabled") return str().editor.enableDeviceMode;
+  if (schema.name === "open_device") return str().editor.initialView;
+  return computeEditorFieldLabel(schema);
+};
+var computeDeviceModeFieldHelper = (schema) => schema.name === "open_device" ? str().editor.initialViewHelper : void 0;
 var SofabatonRemoteCardEditor = class extends i4 {
   constructor() {
     super(...arguments);
@@ -3024,6 +3037,23 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this._config = next;
     this._fireChanged();
     this.requestUpdate();
+  }
+  /**
+   * value-changed handler for the device-mode ha-form. ha-form echoes the
+   * whole data object, so diff against the current config: an enable/disable
+   * flip wins (disabling already drops open_device), otherwise apply the
+   * initial-view selection.
+   */
+  _onDeviceModeFormChanged(value) {
+    const nextEnabled = value.device_mode_enabled !== false;
+    if (nextEnabled !== this._deviceModeEnabled()) {
+      this._setDeviceModeEnabled(nextEnabled);
+      return;
+    }
+    const raw = value.open_device;
+    this._setOpenDevice(
+      raw == null || raw === OPEN_WITH_CURRENT ? "" : String(raw)
+    );
   }
   _isEditorX2() {
     return isX2Hub(
@@ -3280,19 +3310,34 @@ var SofabatonRemoteCardEditor = class extends i4 {
     const deviceCapable = Boolean(remoteState) && this._isX1sIntegrationForEditor() && editorDevicesFromState(remoteState).length > 0;
     const deviceModeEnabled = this._deviceModeEnabled();
     const devices = deviceCapable && deviceModeEnabled ? editorDevicesFromState(remoteState) : [];
-    const openWithItemTag = s4(selectItemTagName());
-    const openWithOptions = [
-      { value: "", label: str().editor.openOnCurrentActivity },
-      ...devices.map((device) => ({
-        value: String(device.id),
-        label: device.name
-      }))
+    const openDevice = openDeviceFromConfig(this._config);
+    const deviceModeSchema = [
+      { name: "device_mode_enabled", selector: { boolean: {} } },
+      ...deviceModeEnabled ? [
+        {
+          name: "open_device",
+          required: true,
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                {
+                  value: OPEN_WITH_CURRENT,
+                  label: str().editor.openOnCurrentActivity
+                },
+                ...devices.map((device) => ({
+                  value: String(device.id),
+                  label: device.name
+                }))
+              ]
+            }
+          }
+        }
+      ] : []
     ];
-    const handleOpenWithSelect = (ev) => {
-      ev.stopPropagation();
-      const detailValue = ev.detail?.value;
-      const targetValue = ev.target?.value;
-      this._setOpenDevice(String(detailValue ?? targetValue ?? ""));
+    const deviceModeFormData = {
+      device_mode_enabled: deviceModeEnabled,
+      ...deviceModeEnabled ? { open_device: openDevice != null ? String(openDevice) : OPEN_WITH_CURRENT } : {}
     };
     const selectionOptions = [
       {
@@ -3351,39 +3396,21 @@ var SofabatonRemoteCardEditor = class extends i4 {
       </div>
       ${deviceCapable ? b2`
             <div class="sb-device-mode-config">
-              <div class="sb-layout-switch-item">
-                <ha-switch
-                  .checked=${deviceModeEnabled}
-                  @change=${(ev) => {
-      ev.stopPropagation();
-      const target = ev.target;
-      this._setDeviceModeEnabled(!!target.checked);
-    }}
-                ></ha-switch>
-                <div class="sb-layout-switch-label">
-                  ${str().editor.enableDeviceMode}
-                </div>
+              <div class="sb-device-mode-title">
+                <ha-icon icon="mdi:audio-video"></ha-icon>
+                <div>${str().editor.deviceModeTitle}</div>
               </div>
-              ${deviceModeEnabled ? b2`
-                    <ha-select
-                      class="sb-opens-with"
-                      .fixedMenuPosition=${true}
-                      .label=${str().editor.opensWith}
-                      .hass=${this._hass}
-                      .value=${selectValueCompat(
-      openDeviceFromConfig(this._config) != null ? String(openDeviceFromConfig(this._config)) : "",
-      openWithOptions
-    )}
-                      @selected=${handleOpenWithSelect}
-                      @change=${handleOpenWithSelect}
-                    >
-                      ${openWithOptions.map(
-      (option) => u3`
-                          <${openWithItemTag} .value=${option.value}>${option.label}</${openWithItemTag}>
-                        `
-    )}
-                    </ha-select>
-                  ` : A}
+              <ha-form
+                .hass=${this._hass}
+                .schema=${deviceModeSchema}
+                .data=${deviceModeFormData}
+                .computeLabel=${computeDeviceModeFieldLabel}
+                .computeHelper=${computeDeviceModeFieldHelper}
+                @value-changed=${(ev) => {
+      ev.stopPropagation();
+      this._onDeviceModeFormChanged(ev.detail.value ?? {});
+    }}
+              ></ha-form>
             </div>
           ` : A}
       <div class="sb-styling-wrap" style="padding: 0 0 12px 0;">
@@ -7566,7 +7593,7 @@ var REMOTE_CARD_STRINGS_AR = {
     filterCommands: "\u062A\u0635\u0641\u064A\u0629 \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     switchToDeviceMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
     switchToActivityMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u0646\u0634\u0637\u0629",
-    deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Control Panel")}.`,
+    deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
     deviceKeymapError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
     poweredOff: "\u0645\u064F\u0637\u0641\u0623",
     defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
@@ -7626,7 +7653,7 @@ var REMOTE_CARD_STRINGS_AR = {
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0646\u0634\u0627\u0637",
+      show_activity: "\u0645\u062D\u062F\u0650\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
       show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
       show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
       show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
@@ -7649,9 +7676,11 @@ var REMOTE_CARD_STRINGS_AR = {
     defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     allDevicesOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629",
     commands: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
-    modeToggle: "\u0645\u0641\u062A\u0627\u062D \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0648\u0636\u0639",
+    modeToggle: "\u0632\u0631 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0648\u0636\u0639",
+    deviceModeTitle: "\u0648\u0636\u0639 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
     enableDeviceMode: "\u062A\u0641\u0639\u064A\u0644 \u0648\u0636\u0639 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
-    opensWith: "\u064A\u0641\u062A\u062D \u0639\u0644\u0649",
+    initialView: "\u0627\u0644\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0644\u064A",
+    initialViewHelper: "\u0645\u0627 \u062A\u0639\u0631\u0636\u0647 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0639\u0646\u062F \u0641\u062A\u062D\u0647\u0627",
     openOnCurrentActivity: "\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u062D\u0627\u0644\u064A",
     macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
     commandsAsRows: "\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0641\u064A \u0635\u0641\u0648\u0641",
@@ -7673,7 +7702,7 @@ var REMOTE_CARD_STRINGS_AR = {
     noteUsingDeviceDefault: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645"
   },
   groups: {
-    activity: "\u0627\u0644\u0645\u064F\u062D\u062F\u0650\u0651\u062F",
+    activity: "\u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
     macro_favorites: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     macros_row: "\u0635\u0641 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites_row: "\u0635\u0641 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
@@ -7757,7 +7786,7 @@ var REMOTE_CARD_STRINGS_DE = {
     filterCommands: "Befehle filtern",
     switchToDeviceMode: "In den Ger\xE4temodus wechseln",
     switchToActivityMode: "In den Aktivit\xE4tsmodus wechseln",
-    deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t \xFCber den Hub-Tab des Control Panels.",
+    deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivit\xE4tslayout",
@@ -7817,7 +7846,7 @@ var REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
-      show_activity: "Aktivit\xE4tsauswahl",
+      show_activity: "Aktivit\xE4ts-/Ger\xE4teauswahl",
       show_dpad: "Steuerkreuz",
       show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
       show_mid: "Lautst\xE4rke- und Kanalwippen",
@@ -7840,9 +7869,11 @@ var REMOTE_CARD_STRINGS_DE = {
     defaultLayoutOption: "Standard-Aktivit\xE4tslayout",
     allDevicesOption: "Standard-Ger\xE4telayout",
     commands: "Befehle",
-    modeToggle: "Modus-Umschalter",
+    modeToggle: "Modusschalter",
+    deviceModeTitle: "Ger\xE4temodus",
     enableDeviceMode: "Ger\xE4temodus aktivieren",
-    opensWith: "\xD6ffnet mit",
+    initialView: "Anfangsansicht",
+    initialViewHelper: "Was die Karte beim \xD6ffnen anzeigt",
     openOnCurrentActivity: "Aktuelle Aktivit\xE4t",
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
     commandsAsRows: "Befehle als Zeilen",
@@ -7864,7 +7895,7 @@ var REMOTE_CARD_STRINGS_DE = {
     noteUsingDeviceDefault: "Standard-Ger\xE4telayout aktiv"
   },
   groups: {
-    activity: "Auswahl",
+    activity: "Aktivit\xE4t/Ger\xE4t",
     macro_favorites: "Makros/Favoriten",
     macros_row: "Makrozeile",
     favorites_row: "Favoritenzeile",
@@ -7927,7 +7958,7 @@ var REMOTE_CARD_STRINGS_ES = {
     filterCommands: "Filtrar comandos",
     switchToDeviceMode: "Cambiar al modo de dispositivo",
     switchToActivityMode: "Cambiar al modo de actividad",
-    deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actual\xEDzalo desde la pesta\xF1a Hub del Control Panel.",
+    deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
     deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
     poweredOff: "Apagado",
     defaultLayout: "Dise\xF1o predeterminado de actividades",
@@ -7987,7 +8018,7 @@ var REMOTE_CARD_STRINGS_ES = {
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
-      show_activity: "Selector de actividad",
+      show_activity: "Selector de actividad/dispositivo",
       show_dpad: "Control direccional",
       show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
       show_mid: "Controles de volumen y canal",
@@ -8010,9 +8041,11 @@ var REMOTE_CARD_STRINGS_ES = {
     defaultLayoutOption: "Dise\xF1o predeterminado de actividades",
     allDevicesOption: "Dise\xF1o predeterminado de dispositivos",
     commands: "Comandos",
-    modeToggle: "Alternador de modo",
+    modeToggle: "Bot\xF3n de modo",
+    deviceModeTitle: "Modo de dispositivo",
     enableDeviceMode: "Activar el modo de dispositivo",
-    opensWith: "Se abre con",
+    initialView: "Vista inicial",
+    initialViewHelper: "Lo que muestra la tarjeta al abrirse",
     openOnCurrentActivity: "Actividad actual",
     macrosFavoritesAsRows: "Macros/favoritos como filas",
     commandsAsRows: "Comandos como filas",
@@ -8034,7 +8067,7 @@ var REMOTE_CARD_STRINGS_ES = {
     noteUsingDeviceDefault: "Se est\xE1 usando el dise\xF1o predeterminado de dispositivos"
   },
   groups: {
-    activity: "Selector",
+    activity: "Actividad/dispositivo",
     macro_favorites: "Macros/favoritos",
     macros_row: "Fila de macros",
     favorites_row: "Fila de favoritos",
@@ -8097,7 +8130,7 @@ var REMOTE_CARD_STRINGS_FR = {
     filterCommands: "Filtrer les commandes",
     switchToDeviceMode: "Passer en mode appareil",
     switchToActivityMode: "Passer en mode activit\xE9",
-    deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil depuis l\u2019onglet Hub du Control Panel.",
+    deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
     deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
     poweredOff: "\xC9teinte",
     defaultLayout: "Disposition par d\xE9faut des activit\xE9s",
@@ -8157,7 +8190,7 @@ var REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un th\xE8me \xE0 la carte",
       use_background_override: "Personnaliser la couleur d\u2019arri\xE8re-plan",
       background_override: "S\xE9lectionner la couleur d\u2019arri\xE8re-plan",
-      show_activity: "S\xE9lecteur d\u2019activit\xE9",
+      show_activity: "S\xE9lecteur d\u2019activit\xE9/appareil",
       show_dpad: "Pav\xE9 directionnel",
       show_nav: "Touches Retour/Accueil/Menu",
       show_mid: "Touches de volume et de cha\xEEne",
@@ -8180,9 +8213,11 @@ var REMOTE_CARD_STRINGS_FR = {
     defaultLayoutOption: "Disposition par d\xE9faut des activit\xE9s",
     allDevicesOption: "Disposition par d\xE9faut des appareils",
     commands: "Commandes",
-    modeToggle: "Bascule de mode",
+    modeToggle: "Bouton de mode",
+    deviceModeTitle: "Mode appareil",
     enableDeviceMode: "Activer le mode appareil",
-    opensWith: "S\u2019ouvre avec",
+    initialView: "Vue initiale",
+    initialViewHelper: "Ce que la carte affiche \xE0 l\u2019ouverture",
     openOnCurrentActivity: "Activit\xE9 en cours",
     macrosFavoritesAsRows: "Macros/favoris sous forme de lignes",
     commandsAsRows: "Commandes sous forme de lignes",
@@ -8204,7 +8239,7 @@ var REMOTE_CARD_STRINGS_FR = {
     noteUsingDeviceDefault: "Disposition par d\xE9faut des appareils utilis\xE9e"
   },
   groups: {
-    activity: "S\xE9lecteur",
+    activity: "Activit\xE9/appareil",
     macro_favorites: "Macros/favoris",
     macros_row: "Ligne des macros",
     favorites_row: "Ligne des favoris",
@@ -8262,14 +8297,14 @@ var REMOTE_CARD_STRINGS_NL = {
     activitySelectLabel: "Activiteit",
     deviceSelectLabel: "Apparaat",
     selectDevice: "Selecteer apparaat",
-    allDevicesLayout: "Standaard apparaatindeling",
+    allDevicesLayout: "Standaard voor apparaten",
     filterCommands: "Commando's filteren",
     switchToDeviceMode: "Naar apparaatmodus schakelen",
-    switchToActivityMode: "Naar activiteitenmodus schakelen",
-    deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat via het Hub-tabblad van het Control Panel.",
+    switchToActivityMode: "Naar activiteitsmodus schakelen",
+    deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
     poweredOff: "Uitgeschakeld",
-    defaultLayout: "Standaard activiteitenindeling",
+    defaultLayout: "Standaard voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
     deviceFallback: (id) => `Apparaat ${id}`,
     pickerName: "Sofabaton virtuele afstandsbediening",
@@ -8326,7 +8361,7 @@ var REMOTE_CARD_STRINGS_NL = {
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
-      show_activity: "Activiteitenkiezer",
+      show_activity: "Activiteits-/apparaatkiezer",
       show_dpad: "Richtingsknoppen",
       show_nav: "Terug/Home/Menu-knoppen",
       show_mid: "Volume-/kanaalknoppen",
@@ -8346,12 +8381,14 @@ var REMOTE_CARD_STRINGS_NL = {
     stylingOptions: "Stijlopties",
     layoutOptions: "Indelingsopties",
     layoutSelectLabel: "Indeling",
-    defaultLayoutOption: "Standaard activiteitenindeling",
-    allDevicesOption: "Standaard apparaatindeling",
+    defaultLayoutOption: "Standaard voor activiteiten",
+    allDevicesOption: "Standaard voor apparaten",
     commands: "Commando's",
-    modeToggle: "Modusschakelaar",
+    modeToggle: "Modusknop",
+    deviceModeTitle: "Apparaatmodus",
     enableDeviceMode: "Apparaatmodus inschakelen",
-    opensWith: "Opent met",
+    initialView: "Beginweergave",
+    initialViewHelper: "Wat de kaart toont bij het openen",
     openOnCurrentActivity: "Huidige activiteit",
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
     commandsAsRows: "Commando's als rijen",
@@ -8373,7 +8410,7 @@ var REMOTE_CARD_STRINGS_NL = {
     noteUsingDeviceDefault: "Standaard apparaatindeling in gebruik"
   },
   groups: {
-    activity: "Kiezer",
+    activity: "Activiteit/apparaat",
     macro_favorites: "Macro's/favorieten",
     macros_row: "Macrorij",
     favorites_row: "Favorietenrij",
@@ -8435,7 +8472,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     filterCommands: "\u7B5B\u9009\u547D\u4EE4",
     switchToDeviceMode: "\u5207\u6362\u5230\u8BBE\u5907\u6A21\u5F0F",
     switchToActivityMode: "\u5207\u6362\u5230\u6D3B\u52A8\u6A21\u5F0F",
-    deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Control Panel \u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u8BE5\u8BBE\u5907\u3002",
+    deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
     deviceKeymapError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002",
     poweredOff: "\u5DF2\u5173\u673A",
     defaultLayout: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
@@ -8495,7 +8532,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
-      show_activity: "\u6D3B\u52A8\u9009\u62E9\u5668",
+      show_activity: "\u6D3B\u52A8/\u8BBE\u5907\u9009\u62E9\u5668",
       show_dpad: "\u65B9\u5411\u952E",
       show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
       show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
@@ -8519,8 +8556,10 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     allDevicesOption: "\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40",
     commands: "\u547D\u4EE4",
     modeToggle: "\u6A21\u5F0F\u5207\u6362",
+    deviceModeTitle: "\u8BBE\u5907\u6A21\u5F0F",
     enableDeviceMode: "\u542F\u7528\u8BBE\u5907\u6A21\u5F0F",
-    opensWith: "\u9ED8\u8BA4\u6253\u5F00",
+    initialView: "\u521D\u59CB\u89C6\u56FE",
+    initialViewHelper: "\u5361\u7247\u6253\u5F00\u65F6\u663E\u793A\u7684\u5185\u5BB9",
     openOnCurrentActivity: "\u5F53\u524D\u6D3B\u52A8",
     macrosFavoritesAsRows: "\u5C06\u5B8F/\u6536\u85CF\u663E\u793A\u4E3A\u884C",
     commandsAsRows: "\u5C06\u547D\u4EE4\u663E\u793A\u4E3A\u884C",
@@ -8542,7 +8581,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     noteUsingDeviceDefault: "\u6B63\u5728\u4F7F\u7528\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40"
   },
   groups: {
-    activity: "\u9009\u62E9\u5668",
+    activity: "\u6D3B\u52A8/\u8BBE\u5907",
     macro_favorites: "\u5B8F/\u6536\u85CF",
     macros_row: "\u5B8F\u884C",
     favorites_row: "\u6536\u85CF\u884C",
