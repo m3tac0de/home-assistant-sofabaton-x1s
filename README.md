@@ -111,7 +111,7 @@ type: custom:sofabaton-virtual-remote
 entity: remote.<hub>_remote
 ```
 
-[Virtual Remote documentation](https://github.com/m3tac0de/sofabaton-virtual-remote)
+[Virtual Remote documentation](https://github.com/m3tac0de/sofabaton-virtual-remote#-configuration)
 
 <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-01.png" width="220" alt="Sofabaton Virtual Remote showing Activity controls"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-02.png" width="220" alt="Sofabaton Virtual Remote showing remote buttons"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-03.png" width="220" alt="Sofabaton Virtual Remote configuration editor">
 
