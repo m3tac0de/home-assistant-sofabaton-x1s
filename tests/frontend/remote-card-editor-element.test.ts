@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SofabatonRemoteCardEditor } from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-element";
-import { renderCommandsEditorSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/commands-editor";
+import { renderGeneralOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/general-options";
 import { renderStylingOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/styling-options";
 import { renderGroupOrderSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/group-order";
 import { REMOTE_CARD_CSS } from "../../custom_components/sofabaton_x1s/www/src/remote-card-styles";
@@ -201,26 +201,47 @@ test("device master switch and open_device live in the device_mode block", () =>
   assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
 });
 
-test("device-mode form value routes to the enable switch and open_device", () => {
+test("initial-view select value routes to open_device; the sentinel clears it", () => {
   const { editor, changes } = createEditor({ entity: "remote.living_room" });
 
-  // Disabling wins over whatever open_device the echoed form data carries.
-  editor._onDeviceModeFormChanged({ device_mode_enabled: false, open_device: "9" });
-  assert.deepEqual(changes.at(-1)?.device_mode, { enabled: false });
-
-  editor._onDeviceModeFormChanged({ device_mode_enabled: true });
-  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
-
-  editor._onDeviceModeFormChanged({ device_mode_enabled: true, open_device: "9" });
+  editor._onInitialViewChanged("9");
   assert.deepEqual(changes.at(-1)?.device_mode, { open_device: 9 });
 
   // The "current" sentinel (and a cleared select) drop open_device again.
-  editor._onDeviceModeFormChanged({ device_mode_enabled: true, open_device: "current" });
+  editor._onInitialViewChanged("current");
   assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
 
-  editor._onDeviceModeFormChanged({ device_mode_enabled: true, open_device: "9" });
-  editor._onDeviceModeFormChanged({ device_mode_enabled: true });
+  editor._onInitialViewChanged("9");
+  editor._onInitialViewChanged("");
   assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+
+  editor._onInitialViewChanged("9");
+  editor._onInitialViewChanged(undefined);
+  assert.equal("device_mode" in (changes.at(-1) ?? {}), false);
+});
+
+test("long press switch stores the minimal block and drops it when disabled", () => {
+  const { editor, changes } = createEditor({ entity: "remote.living_room" });
+
+  // Already off: no change fired.
+  editor._setLongPressEnabled(false);
+  assert.equal(changes.length, 0);
+
+  editor._setLongPressEnabled(true);
+  assert.deepEqual(changes.at(-1)?.long_press, { enabled: true });
+
+  // Deselecting groups writes explicit false; re-selecting removes it.
+  editor._setLongPressGroups(["volume", "dpad"]);
+  assert.deepEqual(changes.at(-1)?.long_press, { enabled: true, channel: false });
+  editor._setLongPressGroups(["volume", "dpad"]);
+  assert.equal(changes.length, 2, "identical selection fires nothing");
+  editor._setLongPressGroups(["volume", "channel", "dpad"]);
+  assert.deepEqual(changes.at(-1)?.long_press, { enabled: true });
+
+  // Disabling drops the whole block (the group selection with it).
+  editor._setLongPressGroups(["channel"]);
+  editor._setLongPressEnabled(false);
+  assert.equal("long_press" in (changes.at(-1) ?? {}), false);
 });
 
 test("reset on a device selection drops only that device layer", () => {
@@ -257,25 +278,101 @@ test("reset on an activity selection drops only that layout override", () => {
 
 // ---------- sections: template structure ----------
 
-test("commands section renders the key-capture switch state and wifi pointer", () => {
-  const on = renderCommandsEditorSection({
-    expanded: true,
-    automationAssistEnabled: true,
-    onToggleExpanded: () => undefined,
-    onSetAutomationAssist: () => undefined,
-  });
-  assert.equal(templateHasString(on, "sb-yaml-helper-row"), true);
-  // The old "Wifi Commands moved" pointer is gone (removed 2026-07-21).
-  assert.equal(templateHasString(on, "sb-commands-section-title"), false);
-  assert.match(templateText(on), /Key capture/);
+/** Template serialized with functions dropped, so schema objects are searchable. */
+function templateJson(template: unknown): string {
+  return JSON.stringify(template, (_key, value) =>
+    typeof value === "function" ? undefined : value,
+  );
+}
 
-  const collapsed = renderCommandsEditorSection({
-    expanded: false,
-    automationAssistEnabled: false,
+function generalOptionsParams(overrides: Record<string, unknown> = {}) {
+  return {
+    hass: null,
+    expanded: true,
     onToggleExpanded: () => undefined,
+    automationAssistEnabled: true,
     onSetAutomationAssist: () => undefined,
-  });
+    deviceMode: null,
+    longPress: {
+      enabled: false,
+      selected: [],
+      onSetEnabled: () => undefined,
+      onSetSelected: () => undefined,
+    },
+    ...overrides,
+  };
+}
+
+test("general options section renders key capture and long press rows, in that order", () => {
+  const on = renderGeneralOptionsSection(generalOptionsParams());
+  const text = templateText(on);
+  assert.match(text, /General Options/);
+  assert.match(text, /Key capture/);
+  assert.match(text, /Enable long press on selected buttons/);
+  assert.ok(text.indexOf("Key capture") < text.indexOf("Enable long press"));
+  assert.equal(templateHasString(on, "sb-opt-key-capture"), true);
+  assert.equal(templateHasString(on, "sb-opt-long-press"), true);
+  // No device-mode row unless the shell offers one (x1s hub with devices).
+  assert.equal(templateHasString(on, "sb-opt-device-mode"), false);
+  // Long press off: the button list stays hidden.
+  assert.doesNotMatch(templateJson(on), /"name":"long_press_buttons"/);
+
+  const collapsed = renderGeneralOptionsSection(generalOptionsParams({ expanded: false }));
   assert.equal(templateHasString(collapsed, "sb-exp-collapsed"), true);
+});
+
+test("general options section renders the device-mode row between the others and its initial view only when on", () => {
+  const off = renderGeneralOptionsSection(
+    generalOptionsParams({
+      deviceMode: {
+        enabled: false,
+        openDevice: "current",
+        options: [{ value: "current", label: "Current activity" }],
+        onSetEnabled: () => undefined,
+        onSetOpenDevice: () => undefined,
+      },
+    }),
+  );
+  const offText = templateText(off);
+  assert.ok(offText.indexOf("Key capture") < offText.indexOf("Enable device mode"));
+  assert.ok(offText.indexOf("Enable device mode") < offText.indexOf("Enable long press"));
+  assert.doesNotMatch(templateJson(off), /"name":"open_device"/);
+
+  const on = renderGeneralOptionsSection(
+    generalOptionsParams({
+      deviceMode: {
+        enabled: true,
+        openDevice: "9",
+        options: [
+          { value: "current", label: "Current activity" },
+          { value: "9", label: "TV" },
+        ],
+        onSetEnabled: () => undefined,
+        onSetOpenDevice: () => undefined,
+      },
+    }),
+  );
+  assert.match(templateJson(on), /"name":"open_device"/);
+});
+
+test("general options section lists the long-press button groups while enabled", () => {
+  const on = renderGeneralOptionsSection(
+    generalOptionsParams({
+      longPress: {
+        enabled: true,
+        selected: ["volume", "channel", "dpad"],
+        onSetEnabled: () => undefined,
+        onSetSelected: () => undefined,
+      },
+    }),
+  );
+  // The schema carries the three groups with their localized labels.
+  const schema = templateJson(on);
+  assert.match(schema, /"name":"long_press_buttons"/);
+  assert.match(schema, /"value":"volume","label":"Volume"/);
+  assert.match(schema, /"value":"channel","label":"Channel"/);
+  assert.match(schema, /"value":"dpad","label":"Direction Pad"/);
+  assert.match(schema, /"multiple":true,"mode":"list"/);
 });
 
 test("styling section only offers the color picker while the override is on", () => {

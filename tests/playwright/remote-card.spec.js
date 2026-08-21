@@ -573,4 +573,69 @@ test.describe("remote card playwright harness", () => {
     await expect(page.locator(".mf-overlay--favorites")).toHaveClass(/open/);
     await expect(page.locator(".mf-overlay--favorites .drawer-btn")).toHaveCount(1);
   });
+
+  // ---------- long press (hold-to-repeat) ----------
+
+  async function sendCommandCount(page) {
+    return page.evaluate(
+      () =>
+        window.__remoteCardHarness
+          .getServiceCalls()
+          .filter((call) => call.domain === "remote" && call.service === "send_command")
+          .length,
+    );
+  }
+
+  async function holdKey(page, selector, ms) {
+    const box = await page.locator(selector).boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(ms);
+    await page.mouse.up();
+  }
+
+  test("long press off by default: holding volume sends exactly one command on release", async ({ page }) => {
+    await mountCard(page, "active");
+    await holdKey(page, "sb-key-button.mid-btn-volup", 1200);
+    await page.waitForTimeout(300);
+    expect(await sendCommandCount(page)).toBe(1);
+  });
+
+  test("long press on: holding volume repeats and the release adds nothing; a tap still sends once", async ({ page }) => {
+    await mountCard(page, "active", { long_press: { enabled: true } });
+
+    // Hold ~1.2s: first repeat after the 400ms delay, then every 250ms
+    // (400, 650, 900, 1150) = 4 sends; the release must not add a fifth.
+    await holdKey(page, "sb-key-button.mid-btn-volup", 1200);
+    const afterHold = await sendCommandCount(page);
+    expect(afterHold).toBeGreaterThanOrEqual(3);
+    expect(afterHold).toBeLessThanOrEqual(5);
+    await page.waitForTimeout(1300);
+    expect(await sendCommandCount(page)).toBe(afterHold);
+
+    // A plain tap (shorter than the delay) still sends exactly once.
+    await holdKey(page, "sb-key-button.mid-btn-volup", 100);
+    await page.waitForTimeout(600);
+    expect(await sendCommandCount(page)).toBe(afterHold + 1);
+  });
+
+  test("long press only repeats the selected groups; other keys never repeat", async ({ page }) => {
+    await mountCard(page, "active", { long_press: { enabled: true, volume: false } });
+
+    // Volume deselected: one send on release.
+    await holdKey(page, "sb-key-button.mid-btn-volup", 1000);
+    await page.waitForTimeout(300);
+    expect(await sendCommandCount(page)).toBe(1);
+
+    // D-pad still selected: repeats.
+    await holdKey(page, ".dpad sb-key-button.area-up", 1000);
+    await page.waitForTimeout(300);
+    const afterDpad = await sendCommandCount(page);
+    expect(afterDpad).toBeGreaterThanOrEqual(3);
+
+    // Mute is never a long-press key, whatever the config says.
+    await holdKey(page, "sb-key-button.mid-btn-mute", 1000);
+    await page.waitForTimeout(300);
+    expect(await sendCommandCount(page)).toBe(afterDpad + 1);
+  });
 });

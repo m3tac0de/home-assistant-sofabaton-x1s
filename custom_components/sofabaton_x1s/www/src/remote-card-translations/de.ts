@@ -114,7 +114,7 @@ const REMOTE_CARD_STRINGS_DE = {
       max_width: "Maximale Kartenbreite (px)",
       group_order: "Gruppenreihenfolge",
     },
-    automationAssistTitle: "Automatisierungsassistent",
+    generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendrücke erfassen",
     keyCaptureDescription:
       "Sende Tastendrücke an den Hub, um sofort einsatzbereites YAML für Dashboard-Schaltflächen und Automatisierungen zu erzeugen.",
@@ -127,7 +127,12 @@ const REMOTE_CARD_STRINGS_DE = {
     allDevicesOption: "Standard-Gerätelayout",
     commands: "Befehle",
     modeToggle: "Modusschalter",
-    deviceModeTitle: "Gerätemodus",
+    deviceModeDescription:
+      "Schaltet die Fernbedienung auf ein einzelnes Hub-Gerät um, mit eigenen Tastenbelegungen und vollständiger Befehlsliste.",
+    longPress: "Langes Drücken für ausgewählte Tasten aktivieren",
+    longPressDescription:
+      "Gedrückt halten wiederholt den Befehl, wie auf der physischen Fernbedienung.",
+    longPressButtons: "Tasten",
     enableDeviceMode: "Gerätemodus aktivieren",
     initialView: "Anfangsansicht",
     initialViewHelper: "Was die Karte beim Öffnen anzeigt",

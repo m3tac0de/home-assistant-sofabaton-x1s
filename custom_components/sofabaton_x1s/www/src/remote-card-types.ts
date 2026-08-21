@@ -83,6 +83,22 @@ export interface DeviceModeConfig {
 }
 
 /**
+ * The `long_press` block (card-level, all integrations): holding a selected
+ * button repeats its command like the physical remote. Absent block or
+ * `enabled` not true = off; once enabled, each group defaults to on and only
+ * an explicit `false` opts it out. See remote-card-long-press.ts.
+ */
+export interface LongPressConfig {
+  enabled?: boolean;
+  /** Vol +/- (mute never repeats). */
+  volume?: boolean;
+  /** Ch +/-. */
+  channel?: boolean;
+  /** Up/Down/Left/Right (OK never repeats). */
+  dpad?: boolean;
+}
+
+/**
  * A user-defined favorite. normalizeCustomFavorite() accepts several aliases
  * for the id fields (key_id/command/key/id, activity_id/device/activity) and
  * `tap_action` for `action`; these are the canonical names.
@@ -119,6 +135,8 @@ export interface RemoteCardConfig extends RemoteCardLayoutConfig {
   show_automation_assist?: boolean;
   /** Device-mode settings block; see DeviceModeConfig. */
   device_mode?: DeviceModeConfig;
+  /** Long press (hold-to-repeat) settings block; see LongPressConfig. */
+  long_press?: LongPressConfig;
   /** px number or CSS length; null/""/0 = unconstrained. */
   max_width?: number | string | null;
   /** Percentage 0-100 mapped to CSS zoom 1..0 (0 = no shrink). */

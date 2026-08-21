@@ -85,6 +85,8 @@ export interface KeyGroupsParams {
   editMode: boolean;
   isEnabled: (id: number) => boolean;
   onKeyPress: (spec: KeySpec) => void;
+  /** Long press: true when holding this key should repeat its command. */
+  holdRepeatForKey: (key: string) => boolean;
   /** midModeState / mediaModeState inputs */
   showVolume: boolean;
   showChannel: boolean;
@@ -119,6 +121,7 @@ function renderKey(params: KeyGroupsParams, spec: KeySpec): TemplateResult | typ
       .color=${spec.color ?? null}
       .sizeVar=${spec.color ? null : "--sb-key-font-size"}
       .disabled=${!enabled}
+      .holdRepeat=${params.holdRepeatForKey(spec.key)}
       .onTrigger=${() => params.onKeyPress(spec)}
     ></sb-key-button>
   `;

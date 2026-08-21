@@ -113,7 +113,7 @@ export const REMOTE_CARD_STRINGS_EN = {
       max_width: "Maximum Card Width (px)",
       group_order: "Group Order",
     } as Record<string, string>,
-    automationAssistTitle: "Automation Assist",
+    generalOptionsTitle: "General Options",
     keyCapture: "Key capture",
     keyCaptureDescription:
       "Send button presses to the hub: capture them to generate ready-to-use YAML for dashboard buttons and automations.",
@@ -126,7 +126,12 @@ export const REMOTE_CARD_STRINGS_EN = {
     allDevicesOption: "Default device layout",
     commands: "Commands",
     modeToggle: "Mode switch",
-    deviceModeTitle: "Device mode",
+    deviceModeDescription:
+      "Switch the remote to a single hub device, with its own key bindings and full command list.",
+    longPress: "Enable long press on selected buttons",
+    longPressDescription:
+      "Press and hold to repeat the command, like on the physical remote.",
+    longPressButtons: "Buttons",
     enableDeviceMode: "Enable device mode",
     initialView: "Initial view",
     initialViewHelper: "What the card shows when it loads",

@@ -2,7 +2,7 @@
 // shadow root so Lit cannot mistake the imperative child nodes for template
 // content when the surrounding card re-renders.
 
-import { attachPrimaryAction } from "../remote-card-gestures";
+import { HoldRepeatTimer, attachPrimaryAction } from "../remote-card-gestures";
 
 const CONTROL_CSS = `
   :host {
@@ -42,6 +42,11 @@ const CONTROL_CSS = `
     z-index: 1;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
+    /* Holding a button (long press) must not open the iOS callout or
+       start a text selection. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   .sb-key-control::before {
@@ -135,8 +140,16 @@ export class SbKeyButton extends HTMLElement {
   private _sizeVar: string | null = null;
   private _disabled = false;
   private _wired = false;
+  private _holdRepeat = false;
+  /**
+   * Long press: while holdRepeat is on, pressing and holding repeats the
+   * trigger (first after HOLD_REPEAT_DELAY_MS, then every
+   * HOLD_REPEAT_INTERVAL_MS). The release tap of a hold that repeated is
+   * suppressed so letting go never sends one more command.
+   */
+  private readonly _hold = new HoldRepeatTimer((repeatIndex) => this.repeatTrigger(repeatIndex));
 
-  /** Called on a primary pointer action or keyboard activation. */
+  /** Called on a primary pointer action, keyboard activation, or hold repeat. */
   onTrigger: ((ev: Event) => void) | null = null;
 
   set label(value: string | null) {
@@ -178,6 +191,17 @@ export class SbKeyButton extends HTMLElement {
   set disabled(value: boolean) {
     this._disabled = Boolean(value);
     if (this._control) this._control.disabled = this._disabled;
+    if (this._disabled) this._hold.stop();
+  }
+
+  /** Enable long press (hold-to-repeat) on this control. */
+  set holdRepeat(value: boolean) {
+    this._holdRepeat = Boolean(value);
+    if (!this._holdRepeat) this._hold.stop();
+  }
+
+  get holdRepeat(): boolean {
+    return this._holdRepeat;
   }
 
   get disabled(): boolean {
@@ -196,7 +220,29 @@ export class SbKeyButton extends HTMLElement {
 
   private trigger(ev: Event): void {
     if (this._disabled || this.classList.contains("disabled")) return;
+    // The pointerup that ends a hold which already repeated is not a tap.
+    if (this._hold.consumeFired()) return;
     this.onTrigger?.(ev);
+  }
+
+  private repeatTrigger(repeatIndex: number): void {
+    if (this._disabled || this.classList.contains("disabled")) {
+      this._hold.stop();
+      return;
+    }
+    // One haptic when the hold engages; the repeats themselves stay quiet.
+    if (repeatIndex === 1) this.fireHaptic();
+    this.onTrigger?.(new CustomEvent("sb-hold-repeat", { detail: repeatIndex }));
+  }
+
+  private onHoldPointerDown(ev: PointerEvent): void {
+    if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
+    if (ev.isPrimary === false || (typeof ev.button === "number" && ev.button !== 0)) return;
+    this._hold.start();
+  }
+
+  private onHoldPointerEnd(): void {
+    this._hold.stop();
   }
 
   private syncContent(): void {
@@ -242,6 +288,25 @@ export class SbKeyButton extends HTMLElement {
     this._labelEl = label;
     this.syncContent();
 
+    // Long press plumbing. Registered on the host BEFORE attachPrimaryAction:
+    // its capture-phase pointerup handler stops propagation, and listeners on
+    // one target run in registration order, so the hold must settle first
+    // (that is what lets trigger() see consumeFired() for the release tap).
+    // Touch pointers are implicitly captured by the pointerdown target, so
+    // pointerup/pointercancel reach us even when the finger drifts; for the
+    // mouse, pointerleave ends the hold when the cursor leaves the button.
+    this.addEventListener("pointerdown", (ev) => this.onHoldPointerDown(ev as PointerEvent), {
+      capture: true,
+    });
+    for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+      this.addEventListener(type, () => this.onHoldPointerEnd(), { capture: true });
+    }
+    // A long press on touch devices would otherwise open the context menu
+    // (and cancel the pointer sequence).
+    control.addEventListener("contextmenu", (ev) => {
+      if (this._holdRepeat) ev.preventDefault();
+    });
+
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic(),
     });
@@ -254,6 +319,10 @@ export class SbKeyButton extends HTMLElement {
       this.fireHaptic();
       this.trigger(ev);
     });
+  }
+
+  disconnectedCallback(): void {
+    this._hold.stop();
   }
 }
 

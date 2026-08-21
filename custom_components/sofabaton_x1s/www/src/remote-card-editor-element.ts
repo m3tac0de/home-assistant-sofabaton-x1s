@@ -55,7 +55,14 @@ import {
   writePreviewActivity,
 } from "./remote-card-shared";
 import type { HassLike, RemoteCardConfig } from "./remote-card-types";
-import { renderCommandsEditorSection } from "./editor-sections/commands-editor";
+import { renderGeneralOptionsSection } from "./editor-sections/general-options";
+import {
+  longPressBlock,
+  longPressEnabledPatch,
+  longPressGroupsPatch,
+  longPressSelectedGroups,
+  longPressSettings,
+} from "./remote-card-long-press";
 import {
   computeEditorFieldLabel,
   renderStylingOptionsSection,
@@ -92,17 +99,6 @@ const ENTITY_FORM_SCHEMA = [
 // sentinel can never collide.
 const OPEN_WITH_CURRENT = "current";
 
-// The device-mode ha-form reuses field names that are not card-level config
-// keys, so it gets its own label/helper computers instead of fieldLabels.
-const computeDeviceModeFieldLabel = (schema: { name: string }): string => {
-  if (schema.name === "device_mode_enabled") return str().editor.enableDeviceMode;
-  if (schema.name === "open_device") return str().editor.initialView;
-  return computeEditorFieldLabel(schema);
-};
-
-const computeDeviceModeFieldHelper = (schema: { name: string }): string | undefined =>
-  schema.name === "open_device" ? str().editor.initialViewHelper : undefined;
-
 export class SofabatonRemoteCardEditor extends LitElement {
   static styles = unsafeCSS(REMOTE_CARD_EDITOR_CSS);
 
@@ -111,9 +107,9 @@ export class SofabatonRemoteCardEditor extends LitElement {
   private _configInitialized = false;
   private _previewActivity: string | null = null;
   private _layoutSelection = "default";
+  private _generalExpanded = false;
   private _stylingExpanded = false;
   private _layoutExpanded = false;
-  private _commandsExpanded = false;
   private _editorIntegrationDomain: string | null = null;
   private _editorIntegrationEntityId: string | null = null;
   private _editorIntegrationDetectingFor: string | null = null;
@@ -214,22 +210,39 @@ export class SofabatonRemoteCardEditor extends LitElement {
     this.requestUpdate();
   }
 
-  /**
-   * value-changed handler for the device-mode ha-form. ha-form echoes the
-   * whole data object, so diff against the current config: an enable/disable
-   * flip wins (disabling already drops open_device), otherwise apply the
-   * initial-view selection.
-   */
-  private _onDeviceModeFormChanged(value: Record<string, unknown>): void {
-    const nextEnabled = value.device_mode_enabled !== false;
-    if (nextEnabled !== this._deviceModeEnabled()) {
-      this._setDeviceModeEnabled(nextEnabled);
-      return;
-    }
-    const raw = value.open_device;
+  /** Initial-view select (General Options): the sentinel clears open_device. */
+  private _onInitialViewChanged(raw: unknown): void {
     this._setOpenDevice(
-      raw == null || raw === OPEN_WITH_CURRENT ? "" : String(raw),
+      raw == null || raw === "" || raw === OPEN_WITH_CURRENT ? "" : String(raw),
     );
+  }
+
+  // ---------- long press ----------
+
+  /** Write back the long_press block, dropping it entirely when disabled. */
+  private _setLongPressEnabled(enabled: boolean): void {
+    if (enabled === longPressSettings(this._config).enabled) return;
+    const next = { ...this._config };
+    const block = longPressEnabledPatch(enabled);
+    if (block) {
+      next.long_press = block;
+    } else {
+      delete next.long_press;
+    }
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
+  }
+
+  private _setLongPressGroups(selected: string[]): void {
+    const next = {
+      ...this._config,
+      long_press: longPressGroupsPatch(longPressBlock(this._config), selected),
+    };
+    if (JSON.stringify(next) === JSON.stringify(this._config)) return;
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
   }
 
   private _isEditorX2(): boolean {
@@ -559,42 +572,17 @@ export class SofabatonRemoteCardEditor extends LitElement {
     const devices =
       deviceCapable && deviceModeEnabled ? editorDevicesFromState(remoteState) : [];
 
-    // "Initial view": current activity (default) or a specific device. Both
-    // controls render through ha-form so the group matches the entity picker
-    // styling; the select only joins the schema while device mode is on.
+    // "Initial view" (General Options drawer): current activity (default) or
+    // a specific device; only offered while device mode is on.
     const openDevice = openDeviceFromConfig(this._config);
-    const deviceModeSchema = [
-      { name: "device_mode_enabled", selector: { boolean: {} } },
-      ...(deviceModeEnabled
-        ? [
-            {
-              name: "open_device",
-              required: true,
-              selector: {
-                select: {
-                  mode: "dropdown",
-                  options: [
-                    {
-                      value: OPEN_WITH_CURRENT,
-                      label: str().editor.openOnCurrentActivity,
-                    },
-                    ...devices.map((device: { id: unknown; name: string }) => ({
-                      value: String(device.id),
-                      label: device.name,
-                    })),
-                  ],
-                },
-              },
-            },
-          ]
-        : []),
+    const initialViewOptions = [
+      { value: OPEN_WITH_CURRENT, label: str().editor.openOnCurrentActivity },
+      ...devices.map((device: { id: unknown; name: string }) => ({
+        value: String(device.id),
+        label: device.name,
+      })),
     ];
-    const deviceModeFormData = {
-      device_mode_enabled: deviceModeEnabled,
-      ...(deviceModeEnabled
-        ? { open_device: openDevice != null ? String(openDevice) : OPEN_WITH_CURRENT }
-        : {}),
-    };
+    const longPress = longPressSettings(this._config);
     // The two "Default ... layout" entries are styled as section heads; the
     // sections themselves separate activities from devices, so device names
     // carry no prefix.
@@ -665,27 +653,33 @@ export class SofabatonRemoteCardEditor extends LitElement {
           }}
         ></ha-form>
       </div>
-      ${deviceCapable
-        ? html`
-            <div class="sb-device-mode-config">
-              <div class="sb-device-mode-title">
-                <ha-icon icon="mdi:audio-video"></ha-icon>
-                <div>${str().editor.deviceModeTitle}</div>
-              </div>
-              <ha-form
-                .hass=${this._hass}
-                .schema=${deviceModeSchema}
-                .data=${deviceModeFormData}
-                .computeLabel=${computeDeviceModeFieldLabel}
-                .computeHelper=${computeDeviceModeFieldHelper}
-                @value-changed=${(ev: CustomEvent<{ value: Record<string, unknown> }>) => {
-                  ev.stopPropagation();
-                  this._onDeviceModeFormChanged(ev.detail.value ?? {});
-                }}
-              ></ha-form>
-            </div>
-          `
-        : nothing}
+      <div class="sb-general-wrap" style="padding: 0 0 12px 0;">
+        ${renderGeneralOptionsSection({
+          hass: this._hass,
+          expanded: this._generalExpanded,
+          onToggleExpanded: () => {
+            this._generalExpanded = !this._generalExpanded;
+            this.requestUpdate();
+          },
+          automationAssistEnabled: !!this._config.show_automation_assist,
+          onSetAutomationAssist: (enabled) => this._setAutomationAssistEnabled(enabled),
+          deviceMode: deviceCapable
+            ? {
+                enabled: deviceModeEnabled,
+                openDevice: openDevice != null ? String(openDevice) : OPEN_WITH_CURRENT,
+                options: initialViewOptions,
+                onSetEnabled: (enabled) => this._setDeviceModeEnabled(enabled),
+                onSetOpenDevice: (value) => this._onInitialViewChanged(value),
+              }
+            : null,
+          longPress: {
+            enabled: longPress.enabled,
+            selected: longPressSelectedGroups(this._config),
+            onSetEnabled: (enabled) => this._setLongPressEnabled(enabled),
+            onSetSelected: (selected) => this._setLongPressGroups(selected),
+          },
+        })}
+      </div>
       <div class="sb-styling-wrap" style="padding: 0 0 12px 0;">
         ${renderStylingOptionsSection({
           hass: this._hass,
@@ -753,18 +747,6 @@ export class SofabatonRemoteCardEditor extends LitElement {
           onMoveGroupByVisibleIndex: (from, to) =>
             this._moveGroupByVisibleIndex(from, to),
           onResetGroupOrder: () => this._resetGroupOrder(),
-        })}
-      </div>
-      <div class="sb-commands-wrap">
-        ${renderCommandsEditorSection({
-          expanded: this._commandsExpanded,
-          automationAssistEnabled: !!this._config.show_automation_assist,
-          onToggleExpanded: () => {
-            this._commandsExpanded = !this._commandsExpanded;
-            this.requestUpdate();
-          },
-          onSetAutomationAssist: (enabled) =>
-            this._setAutomationAssistEnabled(enabled),
         })}
       </div>
     `;

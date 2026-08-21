@@ -26,6 +26,7 @@ import { REMOTE_CARD_CSS } from "./remote-card-styles";
 import { rgbToCss, automationAssistLabelForKey } from "./remote-card-ui-helpers";
 import { runtimeButtonVisibility } from "./remote-card-runtime-display";
 import { drawerVisibilityState } from "./remote-card-drawer-display";
+import { longPressEnabledForKey } from "./remote-card-long-press";
 import {
   DRAWER_DIRECTION_RESET_MS,
   commandsOverlayMaxHeight,
@@ -826,6 +827,7 @@ export class SofabatonRemoteCard extends LitElement {
       editMode: this._editMode,
       isEnabled: (id) => store.isEnabled(id),
       onKeyPress: (spec) => this._onKeyPress(spec),
+      holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,

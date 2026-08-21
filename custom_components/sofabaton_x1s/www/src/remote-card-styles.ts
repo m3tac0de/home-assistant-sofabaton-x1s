@@ -792,14 +792,6 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
-          .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
-          /* Device mode group box under the entity picker: titled border
-             around the master switch and the "Initial view" select, both
-             rendered via ha-form. The title band mirrors the expanded
-             sb-exp-hdr so the box reads as an always-open drawer. */
-          .sb-device-mode-config { border: 1px solid var(--divider-color); border-radius: 12px; margin: 0 0 12px; }
-          .sb-device-mode-title { display: flex; align-items: center; gap: 10px; font-weight: 600; padding: 12px; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
-          .sb-device-mode-config ha-form { display: block; padding: 8px 12px 12px; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -818,18 +810,39 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
-          .sb-commands-wrap { padding: 0 0 12px 0; }
-          .sb-commands-meta { margin-bottom: 12px; }
-          .sb-yaml-helper-row { display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; margin-bottom: 10px; }
-          .sb-yaml-helper-drag { color: var(--secondary-text-color); opacity: 0.75; padding-top: 2px; }
-          .sb-yaml-helper-drag ha-icon { --mdc-icon-size: 20px; }
-          .sb-yaml-helper-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
-          .sb-yaml-helper-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
-          .sb-yaml-helper-label { line-height: 1.2; }
-          .sb-yaml-helper-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
-          .sb-yaml-helper-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
-          .sb-yaml-helper-link:hover { color: var(--primary-color); opacity: 1; }
-          .sb-yaml-helper-link ha-icon { --mdc-icon-size: 16px; }
+          /* General Options rows: label + description with the switch at the
+             end; a row's sub-controls (ha-form) sit below, indented to the
+             label column. Rows are separated by the divider line. */
+          .sb-opt-list { display: flex; flex-direction: column; }
+          .sb-opt-row { padding: 8px 0; }
+          .sb-opt-row + .sb-opt-row { border-top: 1px solid var(--divider-color); }
+          .sb-opt-head { display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; }
+          .sb-opt-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
+          .sb-opt-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+          .sb-opt-label { line-height: 1.2; }
+          .sb-opt-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
+          .sb-opt-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-opt-link:hover { color: var(--primary-color); opacity: 1; }
+          .sb-opt-link ha-icon { --mdc-icon-size: 16px; }
+          .sb-opt-row--form ha-form { display: block; }
+          .sb-opt-sub { padding: 10px 0 2px; }
+          .sb-opt-sub ha-form { display: block; }
+          /* Sub-option label + checkbox list (long press buttons): the label
+             sits in the row's label column at description size, the
+             checkboxes are indented beneath it. The checkbox labels take
+             their size from HA's component vars, not from inherited
+             font-size: web-awesome ha-checkbox reads --wa-font-size-m (HA
+             2026.x), the older MDC ha-formfield reads the typography var,
+             so pin all of them to the description size. */
+          .sb-opt-sub-label { font-size: 13px; font-weight: 500; line-height: 1.3; }
+          .sb-opt-sub--list ha-form {
+            padding-inline-start: 12px;
+            font-size: 13px;
+            --wa-font-size-m: 13px;
+            --mdc-typography-body2-font-size: 13px;
+            --mdc-typography-body2-line-height: 1.3;
+            --ha-font-size-m: 13px;
+          }
           .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
           .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
           .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }

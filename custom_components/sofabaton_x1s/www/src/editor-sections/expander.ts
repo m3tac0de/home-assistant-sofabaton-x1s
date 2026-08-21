@@ -1,8 +1,8 @@
 import { html, type TemplateResult } from "lit";
 
 /**
- * Collapsible section chrome shared by the editor's Styling / Layout /
- * Automation Assist sections (the legacy sb-exp header + body markup).
+ * Collapsible section chrome shared by the editor's General Options /
+ * Styling / Layout sections (the legacy sb-exp header + body markup).
  */
 export function renderEditorExpander(params: {
   expanded: boolean;

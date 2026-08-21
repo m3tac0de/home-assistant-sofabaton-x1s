@@ -121,7 +121,7 @@ export const REMOTE_CARD_STRINGS_AR = {
       max_width: "الحد الأقصى لعرض البطاقة (بكسل)",
       group_order: "ترتيب المجموعات",
     },
-    automationAssistTitle: "مساعد الأتمتة",
+    generalOptionsTitle: "الخيارات العامة",
     keyCapture: "التقاط الأزرار",
     keyCaptureDescription:
       `أرسل ضغطات الأزرار إلى جهاز ${isolate("Hub")} لإنشاء ${YAML} جاهز للاستخدام في أزرار لوحة المعلومات وعمليات الأتمتة.`,
@@ -134,7 +134,12 @@ export const REMOTE_CARD_STRINGS_AR = {
     allDevicesOption: "التخطيط الافتراضي للأجهزة",
     commands: "الأوامر",
     modeToggle: "زر تبديل الوضع",
-    deviceModeTitle: "وضع الأجهزة",
+    deviceModeDescription:
+      "يحوّل جهاز التحكم إلى جهاز واحد من أجهزة الهب، بارتباطات أزراره الخاصة وقائمة أوامره الكاملة.",
+    longPress: "تفعيل الضغط المطوّل على الأزرار المحددة",
+    longPressDescription:
+      "اضغط مطوّلًا لتكرار الأمر، كما في جهاز التحكم الفعلي.",
+    longPressButtons: "الأزرار",
     enableDeviceMode: "تفعيل وضع الأجهزة",
     initialView: "العرض الأولي",
     initialViewHelper: "ما تعرضه البطاقة عند فتحها",

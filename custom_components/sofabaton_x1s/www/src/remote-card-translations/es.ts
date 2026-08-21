@@ -115,7 +115,7 @@ export const REMOTE_CARD_STRINGS_ES = {
       max_width: "Ancho máximo de la tarjeta (px)",
       group_order: "Orden de los grupos",
     },
-    automationAssistTitle: "Asistente de automatización",
+    generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
     keyCaptureDescription:
       "Envía pulsaciones de botones al hub para generar YAML listo para usar en botones del panel y automatizaciones.",
@@ -128,7 +128,12 @@ export const REMOTE_CARD_STRINGS_ES = {
     allDevicesOption: "Diseño predeterminado de dispositivos",
     commands: "Comandos",
     modeToggle: "Botón de modo",
-    deviceModeTitle: "Modo de dispositivo",
+    deviceModeDescription:
+      "Cambia el mando a un único dispositivo del hub, con sus propias asignaciones de teclas y su lista completa de comandos.",
+    longPress: "Activar pulsación larga en los botones seleccionados",
+    longPressDescription:
+      "Mantén pulsado para repetir el comando, como en el mando físico.",
+    longPressButtons: "Botones",
     enableDeviceMode: "Activar el modo de dispositivo",
     initialView: "Vista inicial",
     initialViewHelper: "Lo que muestra la tarjeta al abrirse",

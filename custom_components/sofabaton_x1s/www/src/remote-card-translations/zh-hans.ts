@@ -107,7 +107,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
       max_width: "卡片最大宽度（px）",
       group_order: "分组顺序",
     },
-    automationAssistTitle: "自动化助手",
+    generalOptionsTitle: "常规选项",
     keyCapture: "按键捕获",
     keyCaptureDescription:
       "将按键操作发送到 Hub，以生成可直接用于仪表板按钮和自动化的 YAML。",
@@ -120,7 +120,12 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     allDevicesOption: "默认设备布局",
     commands: "命令",
     modeToggle: "模式切换",
-    deviceModeTitle: "设备模式",
+    deviceModeDescription:
+      "将遥控器切换到单个 Hub 设备，使用该设备自己的按键绑定和完整命令列表。",
+    longPress: "为所选按钮启用长按",
+    longPressDescription:
+      "按住按钮可重复发送命令，与实体遥控器一致。",
+    longPressButtons: "按钮",
     enableDeviceMode: "启用设备模式",
     initialView: "初始视图",
     initialViewHelper: "卡片打开时显示的内容",

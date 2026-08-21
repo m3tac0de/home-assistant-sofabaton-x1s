@@ -122,7 +122,7 @@ target:
 
 Choose whichever method best fits your workflow:
 
-1. **Virtual Remote (recommended):** enable [Automation Assist → Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md). Press a key to receive the IDs and ready-to-use YAML in a Home Assistant notification.
+1. **Virtual Remote (recommended):** enable [Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md) in the card's General Options. Press a key to receive the IDs and ready-to-use YAML in a Home Assistant notification.
 2. **Control Panel:** enable persistent cache, browse the Hub tab, and inspect the relevant Activity, Device, or command.
 
 The sending entities are unavailable while the official Sofabaton app is connected to the proxy.

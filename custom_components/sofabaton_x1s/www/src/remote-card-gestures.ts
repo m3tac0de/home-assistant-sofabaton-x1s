@@ -208,3 +208,111 @@ export function layeringZIndexes(
   }
   return { activity: "3", drawer: "2" };
 }
+
+// ---------- long press (hold-to-repeat) ----------
+
+/** Hold this long before the first repeat fires. */
+export const HOLD_REPEAT_DELAY_MS = 400;
+/** Spacing between repeats while the button stays held. */
+export const HOLD_REPEAT_INTERVAL_MS = 250;
+
+export interface HoldRepeatTimerOptions {
+  delayMs?: number;
+  intervalMs?: number;
+  /** Injected timer functions (tests); default to the globals. */
+  setTimeout?: (fn: () => void, ms: number) => unknown;
+  clearTimeout?: (handle: unknown) => void;
+  setInterval?: (fn: () => void, ms: number) => unknown;
+  clearInterval?: (handle: unknown) => void;
+}
+
+/**
+ * Hold-to-repeat state for one button. start() on pointerdown arms the delay;
+ * once it elapses `fire` runs and keeps running every interval until stop().
+ * Whether a repeat fired is remembered until consumeFired() reads it, so the
+ * release tap (pointerup) of a hold that already repeated can be suppressed
+ * instead of sending one more command. start() always clears that memory.
+ */
+export class HoldRepeatTimer {
+  private readonly fire: (repeatIndex: number) => void;
+  private readonly delayMs: number;
+  private readonly intervalMs: number;
+  private readonly timers: Required<
+    Pick<HoldRepeatTimerOptions, "setTimeout" | "clearTimeout" | "setInterval" | "clearInterval">
+  >;
+  private delayHandle: unknown = null;
+  private intervalHandle: unknown = null;
+  private repeats = 0;
+  private fired = false;
+
+  constructor(fire: (repeatIndex: number) => void, options: HoldRepeatTimerOptions = {}) {
+    this.fire = fire;
+    this.delayMs = options.delayMs ?? HOLD_REPEAT_DELAY_MS;
+    this.intervalMs = options.intervalMs ?? HOLD_REPEAT_INTERVAL_MS;
+    this.timers = {
+      setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
+      clearTimeout: options.clearTimeout ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>)),
+      setInterval: options.setInterval ?? ((fn, ms) => setInterval(fn, ms)),
+      clearInterval:
+        options.clearInterval ?? ((h) => clearInterval(h as ReturnType<typeof setInterval>)),
+    };
+  }
+
+  /** True while a hold is armed or repeating. */
+  get active(): boolean {
+    return this.delayHandle != null || this.intervalHandle != null;
+  }
+
+  /** Repeats fired during the current/last hold. */
+  get repeatCount(): number {
+    return this.repeats;
+  }
+
+  start(): void {
+    this.clearTimers();
+    this.fired = false;
+    this.repeats = 0;
+    this.delayHandle = this.timers.setTimeout(() => {
+      this.delayHandle = null;
+      this.tick();
+      this.intervalHandle = this.timers.setInterval(() => this.tick(), this.intervalMs);
+    }, this.delayMs);
+  }
+
+  /** Stop repeating. Returns whether this hold fired at least once. */
+  stop(): boolean {
+    this.clearTimers();
+    return this.fired;
+  }
+
+  /**
+   * Read-and-clear the "a repeat fired" memory. The release tap that follows
+   * a hold calls this and skips its own send when it returns true.
+   */
+  consumeFired(): boolean {
+    const fired = this.fired;
+    this.fired = false;
+    return fired;
+  }
+
+  private tick(): void {
+    this.fired = true;
+    this.repeats += 1;
+    try {
+      this.fire(this.repeats);
+    } catch (e) {
+      /* no-op: a failing send must not stop the repeat loop */
+    }
+  }
+
+  private clearTimers(): void {
+    if (this.delayHandle != null) {
+      this.timers.clearTimeout(this.delayHandle);
+      this.delayHandle = null;
+    }
+    if (this.intervalHandle != null) {
+      this.timers.clearInterval(this.intervalHandle);
+      this.intervalHandle = null;
+    }
+  }
+}

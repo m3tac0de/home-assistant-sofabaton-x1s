@@ -110,7 +110,7 @@ const REMOTE_CARD_STRINGS_NL = {
       max_width: "Maximale kaartbreedte (px)",
       group_order: "Groepsvolgorde",
     },
-    automationAssistTitle: "Automatiseringshulp",
+    generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
     keyCaptureDescription:
       "Stuur knopdrukken naar de hub: leg knopdrukken vast om direct bruikbare YAML te genereren voor dashboardknoppen en automatiseringen.",
@@ -123,7 +123,12 @@ const REMOTE_CARD_STRINGS_NL = {
     allDevicesOption: "Standaard voor apparaten",
     commands: "Commando's",
     modeToggle: "Modusknop",
-    deviceModeTitle: "Apparaatmodus",
+    deviceModeDescription:
+      "Schakelt de afstandsbediening naar één hub-apparaat, met eigen toetsbindingen en de volledige opdrachtenlijst.",
+    longPress: "Lang indrukken inschakelen voor geselecteerde knoppen",
+    longPressDescription:
+      "Ingedrukt houden herhaalt de opdracht, zoals op de fysieke afstandsbediening.",
+    longPressButtons: "Knoppen",
     enableDeviceMode: "Apparaatmodus inschakelen",
     initialView: "Beginweergave",
     initialViewHelper: "Wat de kaart toont bij het openen",

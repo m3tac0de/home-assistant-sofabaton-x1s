@@ -115,7 +115,7 @@ export const REMOTE_CARD_STRINGS_FR = {
       max_width: "Largeur maximale de la carte (px)",
       group_order: "Ordre des groupes",
     },
-    automationAssistTitle: "Assistant d’automatisation",
+    generalOptionsTitle: "Options générales",
     keyCapture: "Capture de touches",
     keyCaptureDescription:
       "Envoyez les pressions sur les touches au hub afin de générer du YAML prêt à l’emploi pour les boutons du tableau de bord et les automatisations.",
@@ -128,7 +128,12 @@ export const REMOTE_CARD_STRINGS_FR = {
     allDevicesOption: "Disposition par défaut des appareils",
     commands: "Commandes",
     modeToggle: "Bouton de mode",
-    deviceModeTitle: "Mode appareil",
+    deviceModeDescription:
+      "Bascule la télécommande sur un seul appareil du hub, avec ses propres affectations de touches et sa liste complète de commandes.",
+    longPress: "Activer l’appui long sur les boutons sélectionnés",
+    longPressDescription:
+      "Maintenez le bouton enfoncé pour répéter la commande, comme sur la télécommande physique.",
+    longPressButtons: "Boutons",
     enableDeviceMode: "Activer le mode appareil",
     initialView: "Vue initiale",
     initialViewHelper: "Ce que la carte affiche à l’ouverture",

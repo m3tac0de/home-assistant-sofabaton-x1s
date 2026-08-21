@@ -958,7 +958,7 @@ var REMOTE_CARD_STRINGS_EN = {
       max_width: "Maximum Card Width (px)",
       group_order: "Group Order"
     },
-    automationAssistTitle: "Automation Assist",
+    generalOptionsTitle: "General Options",
     keyCapture: "Key capture",
     keyCaptureDescription: "Send button presses to the hub: capture them to generate ready-to-use YAML for dashboard buttons and automations.",
     keyCaptureLearnMore: "Learn more about Key capture",
@@ -970,7 +970,10 @@ var REMOTE_CARD_STRINGS_EN = {
     allDevicesOption: "Default device layout",
     commands: "Commands",
     modeToggle: "Mode switch",
-    deviceModeTitle: "Device mode",
+    deviceModeDescription: "Switch the remote to a single hub device, with its own key bindings and full command list.",
+    longPress: "Enable long press on selected buttons",
+    longPressDescription: "Press and hold to repeat the command, like on the physical remote.",
+    longPressButtons: "Buttons",
     enableDeviceMode: "Enable device mode",
     initialView: "Initial view",
     initialViewHelper: "What the card shows when it loads",
@@ -2157,14 +2160,6 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
-          .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
-          /* Device mode group box under the entity picker: titled border
-             around the master switch and the "Initial view" select, both
-             rendered via ha-form. The title band mirrors the expanded
-             sb-exp-hdr so the box reads as an always-open drawer. */
-          .sb-device-mode-config { border: 1px solid var(--divider-color); border-radius: 12px; margin: 0 0 12px; }
-          .sb-device-mode-title { display: flex; align-items: center; gap: 10px; font-weight: 600; padding: 12px; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
-          .sb-device-mode-config ha-form { display: block; padding: 8px 12px 12px; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2183,18 +2178,39 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
-          .sb-commands-wrap { padding: 0 0 12px 0; }
-          .sb-commands-meta { margin-bottom: 12px; }
-          .sb-yaml-helper-row { display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; margin-bottom: 10px; }
-          .sb-yaml-helper-drag { color: var(--secondary-text-color); opacity: 0.75; padding-top: 2px; }
-          .sb-yaml-helper-drag ha-icon { --mdc-icon-size: 20px; }
-          .sb-yaml-helper-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
-          .sb-yaml-helper-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
-          .sb-yaml-helper-label { line-height: 1.2; }
-          .sb-yaml-helper-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
-          .sb-yaml-helper-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
-          .sb-yaml-helper-link:hover { color: var(--primary-color); opacity: 1; }
-          .sb-yaml-helper-link ha-icon { --mdc-icon-size: 16px; }
+          /* General Options rows: label + description with the switch at the
+             end; a row's sub-controls (ha-form) sit below, indented to the
+             label column. Rows are separated by the divider line. */
+          .sb-opt-list { display: flex; flex-direction: column; }
+          .sb-opt-row { padding: 8px 0; }
+          .sb-opt-row + .sb-opt-row { border-top: 1px solid var(--divider-color); }
+          .sb-opt-head { display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; }
+          .sb-opt-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
+          .sb-opt-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+          .sb-opt-label { line-height: 1.2; }
+          .sb-opt-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
+          .sb-opt-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-opt-link:hover { color: var(--primary-color); opacity: 1; }
+          .sb-opt-link ha-icon { --mdc-icon-size: 16px; }
+          .sb-opt-row--form ha-form { display: block; }
+          .sb-opt-sub { padding: 10px 0 2px; }
+          .sb-opt-sub ha-form { display: block; }
+          /* Sub-option label + checkbox list (long press buttons): the label
+             sits in the row's label column at description size, the
+             checkboxes are indented beneath it. The checkbox labels take
+             their size from HA's component vars, not from inherited
+             font-size: web-awesome ha-checkbox reads --wa-font-size-m (HA
+             2026.x), the older MDC ha-formfield reads the typography var,
+             so pin all of them to the description size. */
+          .sb-opt-sub-label { font-size: 13px; font-weight: 500; line-height: 1.3; }
+          .sb-opt-sub--list ha-form {
+            padding-inline-start: 12px;
+            font-size: 13px;
+            --wa-font-size-m: 13px;
+            --mdc-typography-body2-font-size: 13px;
+            --mdc-typography-body2-line-height: 1.3;
+            --ha-font-size-m: 13px;
+          }
           .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
           .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
           .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
@@ -2292,7 +2308,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.3.0";
+var CARD_VERSION = "0.2.1";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -2346,6 +2362,64 @@ function stableJsonSignature(value) {
   }
 }
 
+// custom_components/sofabaton_x1s/www/src/remote-card-long-press.ts
+var LONG_PRESS_GROUPS = ["volume", "channel", "dpad"];
+var LONG_PRESS_GROUP_FOR_KEY = {
+  volup: "volume",
+  voldn: "volume",
+  chup: "channel",
+  chdn: "channel",
+  up: "dpad",
+  down: "dpad",
+  left: "dpad",
+  right: "dpad"
+};
+function longPressBlock(config) {
+  const block = config?.long_press;
+  return block && typeof block === "object" ? block : {};
+}
+function longPressSettings(config) {
+  const block = longPressBlock(config);
+  const enabled = block.enabled === true;
+  return {
+    enabled,
+    volume: enabled && block.volume !== false,
+    channel: enabled && block.channel !== false,
+    dpad: enabled && block.dpad !== false
+  };
+}
+function longPressGroupForKey(key) {
+  return LONG_PRESS_GROUP_FOR_KEY[String(key ?? "")] ?? null;
+}
+function longPressEnabledForKey(config, key) {
+  const group = longPressGroupForKey(key);
+  if (!group) return false;
+  return longPressSettings(config)[group];
+}
+function longPressSelectedGroups(config) {
+  const settings = longPressSettings(config);
+  return LONG_PRESS_GROUPS.filter((group) => settings[group]);
+}
+function longPressEnabledPatch(enabled) {
+  return enabled ? { enabled: true } : void 0;
+}
+function longPressGroupsPatch(current, selected) {
+  const wanted = new Set(
+    (Array.isArray(selected) ? selected : []).map((value) => String(value)).filter(
+      (value) => LONG_PRESS_GROUPS.includes(value)
+    )
+  );
+  const next = { ...current, enabled: true };
+  for (const group of LONG_PRESS_GROUPS) {
+    if (wanted.has(group)) {
+      delete next[group];
+    } else {
+      next[group] = false;
+    }
+  }
+  return next;
+}
+
 // custom_components/sofabaton_x1s/www/src/editor-sections/expander.ts
 function renderEditorExpander(params) {
   const toggle = (ev) => {
@@ -2375,53 +2449,159 @@ function renderEditorExpander(params) {
   `;
 }
 
-// custom_components/sofabaton_x1s/www/src/editor-sections/commands-editor.ts
-function renderCommandsEditorSection(params) {
+// custom_components/sofabaton_x1s/www/src/editor-sections/option-row.ts
+function renderOptionRow(params) {
   const onSwitchChange = (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
     const target = ev.target;
-    params.onSetAutomationAssist(!!target.checked);
+    params.onSet(!!target.checked);
   };
   const onLabelClick = (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
-    params.onSetAutomationAssist(!params.automationAssistEnabled);
+    params.onSet(!params.checked);
   };
-  const body = b2`
-    <div class="sb-commands-meta">
-      <label class="sb-yaml-helper-row">
-        <div class="sb-yaml-helper-drag">
-          <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
-        </div>
-        <div class="sb-yaml-helper-main">
-          <div class="sb-yaml-helper-label-wrap" @click=${onLabelClick}>
-            <span class="sb-yaml-helper-label">${str().editor.keyCapture}</span>
-            <a
-              class="sb-yaml-helper-link"
-              href=${KEY_CAPTURE_HELP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              title=${str().editor.keyCaptureLearnMore}
-              aria-label=${str().editor.keyCaptureDocsAria}
-              @click=${(ev) => ev.stopPropagation()}
-            >
-              <ha-icon icon="mdi:help-circle-outline"></ha-icon>
-            </a>
+  return b2`
+    <div class="sb-opt-row ${params.className ?? ""}">
+      <label class="sb-opt-head">
+        <div class="sb-opt-main">
+          <div class="sb-opt-label-wrap" @click=${onLabelClick}>
+            <span class="sb-opt-label">${params.label}</span>
+            ${params.link ? b2`
+                  <a
+                    class="sb-opt-link"
+                    href=${params.link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title=${params.link.title}
+                    aria-label=${params.link.ariaLabel}
+                    @click=${(ev) => ev.stopPropagation()}
+                  >
+                    <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+                  </a>
+                ` : A}
           </div>
-          <div class="sb-yaml-helper-desc">${str().editor.keyCaptureDescription}</div>
+          ${params.description ? b2`<div class="sb-opt-desc">${params.description}</div>` : A}
         </div>
-        <ha-switch
-          .checked=${params.automationAssistEnabled}
-          @change=${onSwitchChange}
-        ></ha-switch>
+        <ha-switch .checked=${params.checked} @change=${onSwitchChange}></ha-switch>
       </label>
+      ${params.sub ?? A}
     </div>
+  `;
+}
+function renderFormRow(form, className = "") {
+  return b2`<div class="sb-opt-row sb-opt-row--form ${className}">${form}</div>`;
+}
+
+// custom_components/sofabaton_x1s/www/src/editor-sections/general-options.ts
+var INITIAL_VIEW_FIELD = "open_device";
+var LONG_PRESS_BUTTONS_FIELD = "long_press_buttons";
+var computeSubFormLabel = (schema) => {
+  if (schema.name === INITIAL_VIEW_FIELD) return str().editor.initialView;
+  if (schema.name === LONG_PRESS_BUTTONS_FIELD) return "";
+  return schema.name;
+};
+var computeSubFormHelper = (schema) => schema.name === INITIAL_VIEW_FIELD ? str().editor.initialViewHelper : void 0;
+function longPressGroupLabel(group) {
+  if (group === "volume") return str().editor.volume;
+  if (group === "channel") return str().editor.channel;
+  if (group === "dpad") return str().groups.dpad || group;
+  return group;
+}
+function renderGeneralOptionsSection(params) {
+  const keyCaptureRow = renderOptionRow({
+    className: "sb-opt-key-capture",
+    label: str().editor.keyCapture,
+    description: str().editor.keyCaptureDescription,
+    checked: params.automationAssistEnabled,
+    onSet: params.onSetAutomationAssist,
+    link: {
+      href: KEY_CAPTURE_HELP_URL,
+      title: str().editor.keyCaptureLearnMore,
+      ariaLabel: str().editor.keyCaptureDocsAria
+    }
+  });
+  const deviceMode = params.deviceMode;
+  const deviceModeRow = deviceMode ? renderOptionRow({
+    className: "sb-opt-device-mode",
+    label: str().editor.enableDeviceMode,
+    description: str().editor.deviceModeDescription,
+    checked: deviceMode.enabled,
+    onSet: deviceMode.onSetEnabled,
+    sub: deviceMode.enabled ? b2`
+              <div class="sb-opt-sub">
+                <ha-form
+                  .hass=${params.hass}
+                  .schema=${[
+      {
+        name: INITIAL_VIEW_FIELD,
+        required: true,
+        selector: {
+          select: { mode: "dropdown", options: deviceMode.options }
+        }
+      }
+    ]}
+                  .data=${{ [INITIAL_VIEW_FIELD]: deviceMode.openDevice }}
+                  .computeLabel=${computeSubFormLabel}
+                  .computeHelper=${computeSubFormHelper}
+                  @value-changed=${(ev) => {
+      ev.stopPropagation();
+      deviceMode.onSetOpenDevice(
+        String(ev.detail?.value?.[INITIAL_VIEW_FIELD] ?? "")
+      );
+    }}
+                ></ha-form>
+              </div>
+            ` : A
+  }) : A;
+  const longPress = params.longPress;
+  const longPressRow = renderOptionRow({
+    className: "sb-opt-long-press",
+    label: str().editor.longPress,
+    description: str().editor.longPressDescription,
+    checked: longPress.enabled,
+    onSet: longPress.onSetEnabled,
+    sub: longPress.enabled ? b2`
+          <div class="sb-opt-sub sb-opt-sub--list">
+            <div class="sb-opt-sub-label">${str().editor.longPressButtons}</div>
+            <ha-form
+              .hass=${params.hass}
+              .schema=${[
+      {
+        name: LONG_PRESS_BUTTONS_FIELD,
+        selector: {
+          select: {
+            multiple: true,
+            mode: "list",
+            options: LONG_PRESS_GROUPS.map((group) => ({
+              value: group,
+              label: longPressGroupLabel(group)
+            }))
+          }
+        }
+      }
+    ]}
+              .data=${{ [LONG_PRESS_BUTTONS_FIELD]: longPress.selected }}
+              .computeLabel=${computeSubFormLabel}
+              @value-changed=${(ev) => {
+      ev.stopPropagation();
+      const raw = ev.detail?.value?.[LONG_PRESS_BUTTONS_FIELD];
+      longPress.onSetSelected(
+        Array.isArray(raw) ? raw.map((value) => String(value)) : []
+      );
+    }}
+            ></ha-form>
+          </div>
+        ` : A
+  });
+  const body = b2`
+    <div class="sb-opt-list">${keyCaptureRow}${deviceModeRow}${longPressRow}</div>
   `;
   return renderEditorExpander({
     expanded: params.expanded,
-    icon: "mdi:play-box-multiple-outline",
-    title: str().editor.automationAssistTitle,
+    icon: "mdi:tune",
+    title: str().editor.generalOptionsTitle,
     onToggle: params.onToggleExpanded,
     body
   });
@@ -2429,46 +2609,61 @@ function renderCommandsEditorSection(params) {
 
 // custom_components/sofabaton_x1s/www/src/editor-sections/styling-options.ts
 var computeEditorFieldLabel = (schema) => str().editor.fieldLabels[schema.name] || schema.name;
+var DEFAULT_BACKGROUND_OVERRIDE = [255, 255, 255];
 function renderStylingOptionsSection(params) {
   const config = params.config;
-  const showColorPicker = params.config.use_background_override || !!params.config.background_override;
-  const schema = [
-    { name: "theme", selector: { theme: {} } },
-    {
-      name: "max_width",
-      selector: {
-        number: {
-          min: 230,
-          max: 1200,
-          step: 5,
-          unit_of_measurement: "px"
-        }
-      }
-    },
-    { name: "use_background_override", selector: { boolean: {} } },
-    ...showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []
-  ];
-  const data = {
-    theme: config.theme || "",
-    max_width: config.max_width ?? 360,
-    use_background_override: config.use_background_override ?? !!config.background_override,
-    background_override: config.background_override ?? [255, 255, 255]
-  };
-  const onValueChanged = (ev) => {
+  const overrideOn = !!params.config.use_background_override || !!params.config.background_override;
+  const onFormValueChanged = (ev) => {
     ev.stopPropagation();
     params.onValueChanged(ev.detail.value);
   };
-  const body = b2`
-    <div class="sb-styling-card">
-      <ha-form
-        .hass=${params.hass}
-        .schema=${schema}
-        .data=${data}
-        .computeLabel=${computeEditorFieldLabel}
-        @value-changed=${onValueChanged}
-      ></ha-form>
-    </div>
+  const fieldForm = (schema, data) => b2`
+    <ha-form
+      .hass=${params.hass}
+      .schema=${[schema]}
+      .data=${data}
+      .computeLabel=${computeEditorFieldLabel}
+      @value-changed=${onFormValueChanged}
+    ></ha-form>
   `;
+  const themeRow = renderFormRow(
+    fieldForm({ name: "theme", selector: { theme: {} } }, { theme: config.theme || "" }),
+    "sb-opt-theme"
+  );
+  const maxWidthRow = renderFormRow(
+    fieldForm(
+      {
+        name: "max_width",
+        selector: {
+          number: { min: 230, max: 1200, step: 5, unit_of_measurement: "px" }
+        }
+      },
+      { max_width: config.max_width ?? 360 }
+    ),
+    "sb-opt-max-width"
+  );
+  const backgroundRow = renderOptionRow({
+    className: "sb-opt-background",
+    label: str().editor.fieldLabels.use_background_override,
+    checked: overrideOn,
+    onSet: (enabled) => {
+      params.onValueChanged(
+        enabled ? {
+          use_background_override: true,
+          background_override: config.background_override ?? DEFAULT_BACKGROUND_OVERRIDE
+        } : { use_background_override: false }
+      );
+    },
+    sub: overrideOn ? b2`
+          <div class="sb-opt-sub">
+            ${fieldForm(
+      { name: "background_override", selector: { color_rgb: {} } },
+      { background_override: config.background_override ?? DEFAULT_BACKGROUND_OVERRIDE }
+    )}
+          </div>
+        ` : A
+  });
+  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${backgroundRow}</div>`;
   return renderEditorExpander({
     expanded: params.expanded,
     icon: "mdi:palette",
@@ -2937,12 +3132,6 @@ var ENTITY_FORM_SCHEMA = [
   }
 ];
 var OPEN_WITH_CURRENT = "current";
-var computeDeviceModeFieldLabel = (schema) => {
-  if (schema.name === "device_mode_enabled") return str().editor.enableDeviceMode;
-  if (schema.name === "open_device") return str().editor.initialView;
-  return computeEditorFieldLabel(schema);
-};
-var computeDeviceModeFieldHelper = (schema) => schema.name === "open_device" ? str().editor.initialViewHelper : void 0;
 var SofabatonRemoteCardEditor = class extends i4 {
   constructor() {
     super(...arguments);
@@ -2951,9 +3140,9 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this._configInitialized = false;
     this._previewActivity = null;
     this._layoutSelection = "default";
+    this._generalExpanded = false;
     this._stylingExpanded = false;
     this._layoutExpanded = false;
-    this._commandsExpanded = false;
     this._editorIntegrationDomain = null;
     this._editorIntegrationEntityId = null;
     this._editorIntegrationDetectingFor = null;
@@ -3038,22 +3227,36 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this._fireChanged();
     this.requestUpdate();
   }
-  /**
-   * value-changed handler for the device-mode ha-form. ha-form echoes the
-   * whole data object, so diff against the current config: an enable/disable
-   * flip wins (disabling already drops open_device), otherwise apply the
-   * initial-view selection.
-   */
-  _onDeviceModeFormChanged(value) {
-    const nextEnabled = value.device_mode_enabled !== false;
-    if (nextEnabled !== this._deviceModeEnabled()) {
-      this._setDeviceModeEnabled(nextEnabled);
-      return;
-    }
-    const raw = value.open_device;
+  /** Initial-view select (General Options): the sentinel clears open_device. */
+  _onInitialViewChanged(raw) {
     this._setOpenDevice(
-      raw == null || raw === OPEN_WITH_CURRENT ? "" : String(raw)
+      raw == null || raw === "" || raw === OPEN_WITH_CURRENT ? "" : String(raw)
     );
+  }
+  // ---------- long press ----------
+  /** Write back the long_press block, dropping it entirely when disabled. */
+  _setLongPressEnabled(enabled) {
+    if (enabled === longPressSettings(this._config).enabled) return;
+    const next = { ...this._config };
+    const block = longPressEnabledPatch(enabled);
+    if (block) {
+      next.long_press = block;
+    } else {
+      delete next.long_press;
+    }
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
+  }
+  _setLongPressGroups(selected) {
+    const next = {
+      ...this._config,
+      long_press: longPressGroupsPatch(longPressBlock(this._config), selected)
+    };
+    if (JSON.stringify(next) === JSON.stringify(this._config)) return;
+    this._config = next;
+    this._fireChanged();
+    this.requestUpdate();
   }
   _isEditorX2() {
     return isX2Hub(
@@ -3311,34 +3514,14 @@ var SofabatonRemoteCardEditor = class extends i4 {
     const deviceModeEnabled = this._deviceModeEnabled();
     const devices = deviceCapable && deviceModeEnabled ? editorDevicesFromState(remoteState) : [];
     const openDevice = openDeviceFromConfig(this._config);
-    const deviceModeSchema = [
-      { name: "device_mode_enabled", selector: { boolean: {} } },
-      ...deviceModeEnabled ? [
-        {
-          name: "open_device",
-          required: true,
-          selector: {
-            select: {
-              mode: "dropdown",
-              options: [
-                {
-                  value: OPEN_WITH_CURRENT,
-                  label: str().editor.openOnCurrentActivity
-                },
-                ...devices.map((device) => ({
-                  value: String(device.id),
-                  label: device.name
-                }))
-              ]
-            }
-          }
-        }
-      ] : []
+    const initialViewOptions = [
+      { value: OPEN_WITH_CURRENT, label: str().editor.openOnCurrentActivity },
+      ...devices.map((device) => ({
+        value: String(device.id),
+        label: device.name
+      }))
     ];
-    const deviceModeFormData = {
-      device_mode_enabled: deviceModeEnabled,
-      ...deviceModeEnabled ? { open_device: openDevice != null ? String(openDevice) : OPEN_WITH_CURRENT } : {}
-    };
+    const longPress = longPressSettings(this._config);
     const selectionOptions = [
       {
         value: "default",
@@ -3394,25 +3577,31 @@ var SofabatonRemoteCardEditor = class extends i4 {
     }}
         ></ha-form>
       </div>
-      ${deviceCapable ? b2`
-            <div class="sb-device-mode-config">
-              <div class="sb-device-mode-title">
-                <ha-icon icon="mdi:audio-video"></ha-icon>
-                <div>${str().editor.deviceModeTitle}</div>
-              </div>
-              <ha-form
-                .hass=${this._hass}
-                .schema=${deviceModeSchema}
-                .data=${deviceModeFormData}
-                .computeLabel=${computeDeviceModeFieldLabel}
-                .computeHelper=${computeDeviceModeFieldHelper}
-                @value-changed=${(ev) => {
-      ev.stopPropagation();
-      this._onDeviceModeFormChanged(ev.detail.value ?? {});
-    }}
-              ></ha-form>
-            </div>
-          ` : A}
+      <div class="sb-general-wrap" style="padding: 0 0 12px 0;">
+        ${renderGeneralOptionsSection({
+      hass: this._hass,
+      expanded: this._generalExpanded,
+      onToggleExpanded: () => {
+        this._generalExpanded = !this._generalExpanded;
+        this.requestUpdate();
+      },
+      automationAssistEnabled: !!this._config.show_automation_assist,
+      onSetAutomationAssist: (enabled) => this._setAutomationAssistEnabled(enabled),
+      deviceMode: deviceCapable ? {
+        enabled: deviceModeEnabled,
+        openDevice: openDevice != null ? String(openDevice) : OPEN_WITH_CURRENT,
+        options: initialViewOptions,
+        onSetEnabled: (enabled) => this._setDeviceModeEnabled(enabled),
+        onSetOpenDevice: (value) => this._onInitialViewChanged(value)
+      } : null,
+      longPress: {
+        enabled: longPress.enabled,
+        selected: longPressSelectedGroups(this._config),
+        onSetEnabled: (enabled) => this._setLongPressEnabled(enabled),
+        onSetSelected: (selected) => this._setLongPressGroups(selected)
+      }
+    })}
+      </div>
       <div class="sb-styling-wrap" style="padding: 0 0 12px 0;">
         ${renderStylingOptionsSection({
       hass: this._hass,
@@ -3477,17 +3666,6 @@ var SofabatonRemoteCardEditor = class extends i4 {
       onMoveGroupByKey: (key, delta) => this._moveGroupByKey(key, delta),
       onMoveGroupByVisibleIndex: (from, to) => this._moveGroupByVisibleIndex(from, to),
       onResetGroupOrder: () => this._resetGroupOrder()
-    })}
-      </div>
-      <div class="sb-commands-wrap">
-        ${renderCommandsEditorSection({
-      expanded: this._commandsExpanded,
-      automationAssistEnabled: !!this._config.show_automation_assist,
-      onToggleExpanded: () => {
-        this._commandsExpanded = !this._commandsExpanded;
-        this.requestUpdate();
-      },
-      onSetAutomationAssist: (enabled) => this._setAutomationAssistEnabled(enabled)
     })}
       </div>
     `;
@@ -3777,6 +3955,75 @@ function layeringZIndexes(menuOpen, drawerOpen) {
   }
   return { activity: "3", drawer: "2" };
 }
+var HOLD_REPEAT_DELAY_MS = 400;
+var HOLD_REPEAT_INTERVAL_MS = 250;
+var HoldRepeatTimer = class {
+  constructor(fire, options = {}) {
+    this.delayHandle = null;
+    this.intervalHandle = null;
+    this.repeats = 0;
+    this.fired = false;
+    this.fire = fire;
+    this.delayMs = options.delayMs ?? HOLD_REPEAT_DELAY_MS;
+    this.intervalMs = options.intervalMs ?? HOLD_REPEAT_INTERVAL_MS;
+    this.timers = {
+      setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
+      clearTimeout: options.clearTimeout ?? ((h6) => clearTimeout(h6)),
+      setInterval: options.setInterval ?? ((fn, ms) => setInterval(fn, ms)),
+      clearInterval: options.clearInterval ?? ((h6) => clearInterval(h6))
+    };
+  }
+  /** True while a hold is armed or repeating. */
+  get active() {
+    return this.delayHandle != null || this.intervalHandle != null;
+  }
+  /** Repeats fired during the current/last hold. */
+  get repeatCount() {
+    return this.repeats;
+  }
+  start() {
+    this.clearTimers();
+    this.fired = false;
+    this.repeats = 0;
+    this.delayHandle = this.timers.setTimeout(() => {
+      this.delayHandle = null;
+      this.tick();
+      this.intervalHandle = this.timers.setInterval(() => this.tick(), this.intervalMs);
+    }, this.delayMs);
+  }
+  /** Stop repeating. Returns whether this hold fired at least once. */
+  stop() {
+    this.clearTimers();
+    return this.fired;
+  }
+  /**
+   * Read-and-clear the "a repeat fired" memory. The release tap that follows
+   * a hold calls this and skips its own send when it returns true.
+   */
+  consumeFired() {
+    const fired = this.fired;
+    this.fired = false;
+    return fired;
+  }
+  tick() {
+    this.fired = true;
+    this.repeats += 1;
+    try {
+      this.fire(this.repeats);
+    } catch (e6) {
+    }
+  }
+  clearTimers() {
+    if (this.delayHandle != null) {
+      this.timers.clearTimeout(this.delayHandle);
+      this.delayHandle = null;
+    }
+    if (this.intervalHandle != null) {
+      this.timers.clearInterval(this.intervalHandle);
+      this.intervalHandle = null;
+    }
+  }
+};
 
 // custom_components/sofabaton_x1s/www/src/remote-card-state.ts
 function hasOwn(obj, key) {
@@ -6068,6 +6315,11 @@ var CONTROL_CSS = `
     z-index: 1;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
+    /* Holding a button (long press) must not open the iOS callout or
+       start a text selection. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   .sb-key-control::before {
@@ -6155,7 +6407,15 @@ var SbKeyButton = class extends HTMLElement {
     this._sizeVar = null;
     this._disabled = false;
     this._wired = false;
-    /** Called on a primary pointer action or keyboard activation. */
+    this._holdRepeat = false;
+    /**
+     * Long press: while holdRepeat is on, pressing and holding repeats the
+     * trigger (first after HOLD_REPEAT_DELAY_MS, then every
+     * HOLD_REPEAT_INTERVAL_MS). The release tap of a hold that repeated is
+     * suppressed so letting go never sends one more command.
+     */
+    this._hold = new HoldRepeatTimer((repeatIndex) => this.repeatTrigger(repeatIndex));
+    /** Called on a primary pointer action, keyboard activation, or hold repeat. */
     this.onTrigger = null;
   }
   set label(value) {
@@ -6192,6 +6452,15 @@ var SbKeyButton = class extends HTMLElement {
   set disabled(value) {
     this._disabled = Boolean(value);
     if (this._control) this._control.disabled = this._disabled;
+    if (this._disabled) this._hold.stop();
+  }
+  /** Enable long press (hold-to-repeat) on this control. */
+  set holdRepeat(value) {
+    this._holdRepeat = Boolean(value);
+    if (!this._holdRepeat) this._hold.stop();
+  }
+  get holdRepeat() {
+    return this._holdRepeat;
   }
   get disabled() {
     return this._disabled;
@@ -6207,7 +6476,24 @@ var SbKeyButton = class extends HTMLElement {
   }
   trigger(ev) {
     if (this._disabled || this.classList.contains("disabled")) return;
+    if (this._hold.consumeFired()) return;
     this.onTrigger?.(ev);
+  }
+  repeatTrigger(repeatIndex) {
+    if (this._disabled || this.classList.contains("disabled")) {
+      this._hold.stop();
+      return;
+    }
+    if (repeatIndex === 1) this.fireHaptic();
+    this.onTrigger?.(new CustomEvent("sb-hold-repeat", { detail: repeatIndex }));
+  }
+  onHoldPointerDown(ev) {
+    if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
+    if (ev.isPrimary === false || typeof ev.button === "number" && ev.button !== 0) return;
+    this._hold.start();
+  }
+  onHoldPointerEnd() {
+    this._hold.stop();
   }
   syncContent() {
     if (!this._control || !this._iconEl || !this._labelEl) return;
@@ -6244,6 +6530,15 @@ var SbKeyButton = class extends HTMLElement {
     this._iconEl = icon;
     this._labelEl = label;
     this.syncContent();
+    this.addEventListener("pointerdown", (ev) => this.onHoldPointerDown(ev), {
+      capture: true
+    });
+    for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+      this.addEventListener(type, () => this.onHoldPointerEnd(), { capture: true });
+    }
+    control.addEventListener("contextmenu", (ev) => {
+      if (this._holdRepeat) ev.preventDefault();
+    });
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
@@ -6252,6 +6547,9 @@ var SbKeyButton = class extends HTMLElement {
       this.fireHaptic();
       this.trigger(ev);
     });
+  }
+  disconnectedCallback() {
+    this._hold.stop();
   }
 };
 if (!customElements.get("sb-key-button")) {
@@ -6329,6 +6627,7 @@ function renderKey(params, spec) {
       .color=${spec.color ?? null}
       .sizeVar=${spec.color ? null : "--sb-key-font-size"}
       .disabled=${!enabled}
+      .holdRepeat=${params.holdRepeatForKey(spec.key)}
       .onTrigger=${() => params.onKeyPress(spec)}
     ></sb-key-button>
   `;
@@ -7346,6 +7645,7 @@ var SofabatonRemoteCard = class extends i4 {
       editMode: this._editMode,
       isEnabled: (id) => store.isEnabled(id),
       onKeyPress: (spec) => this._onKeyPress(spec),
+      holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,
@@ -7665,7 +7965,7 @@ var REMOTE_CARD_STRINGS_AR = {
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
       group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
     },
-    automationAssistTitle: "\u0645\u0633\u0627\u0639\u062F \u0627\u0644\u0623\u062A\u0645\u062A\u0629",
+    generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
     keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     keyCaptureDescription: `\u0623\u0631\u0633\u0644 \u0636\u063A\u0637\u0627\u062A \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0625\u0644\u0649 \u062C\u0647\u0627\u0632 ${isolate("Hub")} \u0644\u0625\u0646\u0634\u0627\u0621 ${YAML} \u062C\u0627\u0647\u0632 \u0644\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0641\u064A \u0623\u0632\u0631\u0627\u0631 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A \u0648\u0639\u0645\u0644\u064A\u0627\u062A \u0627\u0644\u0623\u062A\u0645\u062A\u0629.`,
     keyCaptureLearnMore: "\u062A\u0639\u0631\u0651\u0641 \u0639\u0644\u0649 \u0627\u0644\u0645\u0632\u064A\u062F \u062D\u0648\u0644 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
@@ -7677,7 +7977,10 @@ var REMOTE_CARD_STRINGS_AR = {
     allDevicesOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629",
     commands: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     modeToggle: "\u0632\u0631 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0648\u0636\u0639",
-    deviceModeTitle: "\u0648\u0636\u0639 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    deviceModeDescription: "\u064A\u062D\u0648\u0651\u0644 \u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0625\u0644\u0649 \u062C\u0647\u0627\u0632 \u0648\u0627\u062D\u062F \u0645\u0646 \u0623\u062C\u0647\u0632\u0629 \u0627\u0644\u0647\u0628\u060C \u0628\u0627\u0631\u062A\u0628\u0627\u0637\u0627\u062A \u0623\u0632\u0631\u0627\u0631\u0647 \u0627\u0644\u062E\u0627\u0635\u0629 \u0648\u0642\u0627\u0626\u0645\u0629 \u0623\u0648\u0627\u0645\u0631\u0647 \u0627\u0644\u0643\u0627\u0645\u0644\u0629.",
+    longPress: "\u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u0636\u063A\u0637 \u0627\u0644\u0645\u0637\u0648\u0651\u0644 \u0639\u0644\u0649 \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0645\u062D\u062F\u062F\u0629",
+    longPressDescription: "\u0627\u0636\u063A\u0637 \u0645\u0637\u0648\u0651\u0644\u064B\u0627 \u0644\u062A\u0643\u0631\u0627\u0631 \u0627\u0644\u0623\u0645\u0631\u060C \u0643\u0645\u0627 \u0641\u064A \u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0627\u0644\u0641\u0639\u0644\u064A.",
+    longPressButtons: "\u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     enableDeviceMode: "\u062A\u0641\u0639\u064A\u0644 \u0648\u0636\u0639 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
     initialView: "\u0627\u0644\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0644\u064A",
     initialViewHelper: "\u0645\u0627 \u062A\u0639\u0631\u0636\u0647 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0639\u0646\u062F \u0641\u062A\u062D\u0647\u0627",
@@ -7858,7 +8161,7 @@ var REMOTE_CARD_STRINGS_DE = {
       max_width: "Maximale Kartenbreite (px)",
       group_order: "Gruppenreihenfolge"
     },
-    automationAssistTitle: "Automatisierungsassistent",
+    generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendr\xFCcke erfassen",
     keyCaptureDescription: "Sende Tastendr\xFCcke an den Hub, um sofort einsatzbereites YAML f\xFCr Dashboard-Schaltfl\xE4chen und Automatisierungen zu erzeugen.",
     keyCaptureLearnMore: "Mehr \xFCber die Tastenerfassung erfahren",
@@ -7870,7 +8173,10 @@ var REMOTE_CARD_STRINGS_DE = {
     allDevicesOption: "Standard-Ger\xE4telayout",
     commands: "Befehle",
     modeToggle: "Modusschalter",
-    deviceModeTitle: "Ger\xE4temodus",
+    deviceModeDescription: "Schaltet die Fernbedienung auf ein einzelnes Hub-Ger\xE4t um, mit eigenen Tastenbelegungen und vollst\xE4ndiger Befehlsliste.",
+    longPress: "Langes Dr\xFCcken f\xFCr ausgew\xE4hlte Tasten aktivieren",
+    longPressDescription: "Gedr\xFCckt halten wiederholt den Befehl, wie auf der physischen Fernbedienung.",
+    longPressButtons: "Tasten",
     enableDeviceMode: "Ger\xE4temodus aktivieren",
     initialView: "Anfangsansicht",
     initialViewHelper: "Was die Karte beim \xD6ffnen anzeigt",
@@ -8030,7 +8336,7 @@ var REMOTE_CARD_STRINGS_ES = {
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
       group_order: "Orden de los grupos"
     },
-    automationAssistTitle: "Asistente de automatizaci\xF3n",
+    generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
     keyCaptureDescription: "Env\xEDa pulsaciones de botones al hub para generar YAML listo para usar en botones del panel y automatizaciones.",
     keyCaptureLearnMore: "M\xE1s informaci\xF3n sobre la captura de botones",
@@ -8042,7 +8348,10 @@ var REMOTE_CARD_STRINGS_ES = {
     allDevicesOption: "Dise\xF1o predeterminado de dispositivos",
     commands: "Comandos",
     modeToggle: "Bot\xF3n de modo",
-    deviceModeTitle: "Modo de dispositivo",
+    deviceModeDescription: "Cambia el mando a un \xFAnico dispositivo del hub, con sus propias asignaciones de teclas y su lista completa de comandos.",
+    longPress: "Activar pulsaci\xF3n larga en los botones seleccionados",
+    longPressDescription: "Mant\xE9n pulsado para repetir el comando, como en el mando f\xEDsico.",
+    longPressButtons: "Botones",
     enableDeviceMode: "Activar el modo de dispositivo",
     initialView: "Vista inicial",
     initialViewHelper: "Lo que muestra la tarjeta al abrirse",
@@ -8202,7 +8511,7 @@ var REMOTE_CARD_STRINGS_FR = {
       max_width: "Largeur maximale de la carte (px)",
       group_order: "Ordre des groupes"
     },
-    automationAssistTitle: "Assistant d\u2019automatisation",
+    generalOptionsTitle: "Options g\xE9n\xE9rales",
     keyCapture: "Capture de touches",
     keyCaptureDescription: "Envoyez les pressions sur les touches au hub afin de g\xE9n\xE9rer du YAML pr\xEAt \xE0 l\u2019emploi pour les boutons du tableau de bord et les automatisations.",
     keyCaptureLearnMore: "En savoir plus sur la capture de touches",
@@ -8214,7 +8523,10 @@ var REMOTE_CARD_STRINGS_FR = {
     allDevicesOption: "Disposition par d\xE9faut des appareils",
     commands: "Commandes",
     modeToggle: "Bouton de mode",
-    deviceModeTitle: "Mode appareil",
+    deviceModeDescription: "Bascule la t\xE9l\xE9commande sur un seul appareil du hub, avec ses propres affectations de touches et sa liste compl\xE8te de commandes.",
+    longPress: "Activer l\u2019appui long sur les boutons s\xE9lectionn\xE9s",
+    longPressDescription: "Maintenez le bouton enfonc\xE9 pour r\xE9p\xE9ter la commande, comme sur la t\xE9l\xE9commande physique.",
+    longPressButtons: "Boutons",
     enableDeviceMode: "Activer le mode appareil",
     initialView: "Vue initiale",
     initialViewHelper: "Ce que la carte affiche \xE0 l\u2019ouverture",
@@ -8373,7 +8685,7 @@ var REMOTE_CARD_STRINGS_NL = {
       max_width: "Maximale kaartbreedte (px)",
       group_order: "Groepsvolgorde"
     },
-    automationAssistTitle: "Automatiseringshulp",
+    generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
     keyCaptureDescription: "Stuur knopdrukken naar de hub: leg knopdrukken vast om direct bruikbare YAML te genereren voor dashboardknoppen en automatiseringen.",
     keyCaptureLearnMore: "Meer informatie over Knopdrukken registreren",
@@ -8385,7 +8697,10 @@ var REMOTE_CARD_STRINGS_NL = {
     allDevicesOption: "Standaard voor apparaten",
     commands: "Commando's",
     modeToggle: "Modusknop",
-    deviceModeTitle: "Apparaatmodus",
+    deviceModeDescription: "Schakelt de afstandsbediening naar \xE9\xE9n hub-apparaat, met eigen toetsbindingen en de volledige opdrachtenlijst.",
+    longPress: "Lang indrukken inschakelen voor geselecteerde knoppen",
+    longPressDescription: "Ingedrukt houden herhaalt de opdracht, zoals op de fysieke afstandsbediening.",
+    longPressButtons: "Knoppen",
     enableDeviceMode: "Apparaatmodus inschakelen",
     initialView: "Beginweergave",
     initialViewHelper: "Wat de kaart toont bij het openen",
@@ -8544,7 +8859,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
       group_order: "\u5206\u7EC4\u987A\u5E8F"
     },
-    automationAssistTitle: "\u81EA\u52A8\u5316\u52A9\u624B",
+    generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
     keyCapture: "\u6309\u952E\u6355\u83B7",
     keyCaptureDescription: "\u5C06\u6309\u952E\u64CD\u4F5C\u53D1\u9001\u5230 Hub\uFF0C\u4EE5\u751F\u6210\u53EF\u76F4\u63A5\u7528\u4E8E\u4EEA\u8868\u677F\u6309\u94AE\u548C\u81EA\u52A8\u5316\u7684 YAML\u3002",
     keyCaptureLearnMore: "\u8BE6\u7EC6\u4E86\u89E3\u6309\u952E\u6355\u83B7",
@@ -8556,7 +8871,10 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     allDevicesOption: "\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40",
     commands: "\u547D\u4EE4",
     modeToggle: "\u6A21\u5F0F\u5207\u6362",
-    deviceModeTitle: "\u8BBE\u5907\u6A21\u5F0F",
+    deviceModeDescription: "\u5C06\u9065\u63A7\u5668\u5207\u6362\u5230\u5355\u4E2A Hub \u8BBE\u5907\uFF0C\u4F7F\u7528\u8BE5\u8BBE\u5907\u81EA\u5DF1\u7684\u6309\u952E\u7ED1\u5B9A\u548C\u5B8C\u6574\u547D\u4EE4\u5217\u8868\u3002",
+    longPress: "\u4E3A\u6240\u9009\u6309\u94AE\u542F\u7528\u957F\u6309",
+    longPressDescription: "\u6309\u4F4F\u6309\u94AE\u53EF\u91CD\u590D\u53D1\u9001\u547D\u4EE4\uFF0C\u4E0E\u5B9E\u4F53\u9065\u63A7\u5668\u4E00\u81F4\u3002",
+    longPressButtons: "\u6309\u94AE",
     enableDeviceMode: "\u542F\u7528\u8BBE\u5907\u6A21\u5F0F",
     initialView: "\u521D\u59CB\u89C6\u56FE",
     initialViewHelper: "\u5361\u7247\u6253\u5F00\u65F6\u663E\u793A\u7684\u5185\u5BB9",
