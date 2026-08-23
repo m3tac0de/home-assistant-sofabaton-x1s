@@ -16,6 +16,30 @@ export const cardStyles = [secondaryTabStyles, css`
     display: block;
     container-name: sofabaton-card;
     container-type: inline-size;
+    /* Theme-resilience tokens (docs/internal/control-panel-theme-contrast-plan.md).
+       Captured on the host, re-declared one level down on ha-card: a custom
+       property cannot reference itself, so the theme's value is read here and
+       the derived value applied below, where every descendant (our rules and
+       HA components alike) inherits it.
+       - Secondary text is floored toward primary text. Primary text is the
+         one colour every theme guarantees to read on its own card; themes
+         like Caule alias secondary text to their disabled colour (1.5:1).
+       - The card surface always resolves: HA's own palettes never define
+         --ha-card-background (real ha-card falls back to
+         --card-background-color), so rules with a #fff/transparent fallback
+         painted white or see-through patches in HA default dark. */
+    --sb-theme-secondary-text: var(--secondary-text-color);
+    --sb-card-surface: var(--ha-card-background, var(--card-background-color, #fff));
+    /* Accent-tinted TEXT. Accent colours (primary, status tones) never carry
+       text on their own: iOS themes ship an orange primary that is 1:1 as
+       text. Text that wants the accent uses this mix; the pure accent goes
+       on the indicator (underline, border, icon, fill). Sub-components
+       inherit it; they spell the fallback for standalone use. */
+    --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+  }
+  ha-card {
+    --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
+    --ha-card-background: var(--sb-card-surface);
   }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
@@ -126,7 +150,7 @@ export const cardStyles = [secondaryTabStyles, css`
     text-overflow: ellipsis;
   }
   .card-bottom-dock-status {
-    color: color-mix(in srgb, var(--secondary-text-color) 88%, transparent);
+    color: var(--secondary-text-color);
   }
   .card-bottom-dock--success .card-bottom-dock-status {
     color: color-mix(in srgb, var(--success-color, #22c55e) 88%, black 10%);
@@ -139,9 +163,13 @@ export const cardStyles = [secondaryTabStyles, css`
     font-weight: 600;
   }
   .card-bottom-dock-link {
-    color: var(--primary-color);
+    color: var(--sb-accent-text);
     text-decoration: underline;
+    text-decoration-color: var(--primary-color);
     font-weight: 400;
+  }
+  .card-bottom-dock-link:hover {
+    color: var(--primary-text-color);
   }
   .card-bottom-dock-link:hover {
     text-decoration: underline;
@@ -243,7 +271,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .hub-option { padding: 10px 14px; font-size: 13px; }
   .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
-  .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
+  .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--sb-accent-text); }
   .tabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
   .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; }
   .tab-btn { position: relative; border: none; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px; cursor: pointer; user-select: none; -webkit-user-select: none; }
@@ -253,7 +281,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .tab-btn--menu.is-open { color: var(--primary-color); }
   .tab-btn-menu-icon { --mdc-icon-size: 16px; }
   .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
-  .tab-btn.active { color: var(--primary-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
+  .tab-btn.active { color: var(--primary-text-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-menu { position: relative; display: flex; }
   .tab-menu--push-right { margin-left: auto; }
@@ -346,20 +374,23 @@ export const cardStyles = [secondaryTabStyles, css`
   .dock-pill-half + .dock-pill-half {
     border-left: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
   }
+  /* Status tones are mixed toward the theme's primary text so the pill text
+     follows the theme's polarity (dark green on light themes, light green on
+     dark ones) instead of a fixed hex that fails on half the tints. */
   .dock-pill-half--hub-on {
-    color: #2f9f43;
+    color: color-mix(in srgb, #2f9f43 35%, var(--primary-text-color));
     background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color)));
   }
   .dock-pill-half--hub-off {
-    color: #c13d3d;
+    color: color-mix(in srgb, #c13d3d 35%, var(--primary-text-color));
     background: color-mix(in srgb, #db4437 14%, var(--ha-card-background, var(--card-background-color)));
   }
   .dock-pill-half--app-on {
-    color: #2f80d8;
+    color: color-mix(in srgb, #2f80d8 35%, var(--primary-text-color));
     background: color-mix(in srgb, #67b7ff 16%, var(--ha-card-background, var(--card-background-color)));
   }
   .dock-pill-half--app-off {
-    color: color-mix(in srgb, var(--secondary-text-color) 78%, transparent);
+    color: var(--secondary-text-color);
     background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
   }
   .card-blocked-state {
@@ -400,7 +431,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .setting-tile-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .setting-tile-control { flex-shrink: 0; display: flex; align-items: center; }
   .setting-title { font-size: 14px; font-weight: 700; color: var(--primary-text-color); display: flex; align-items: center; gap: 7px; }
-  .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); flex-shrink: 0; }
+  .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 14%, var(--ha-card-background, var(--card-background-color))); color: var(--sb-accent-text); flex-shrink: 0; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
   .setting-select {
@@ -451,7 +482,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .entity-block.open .entity-body { display: block; }
   .entity-block.open > .entity-summary { position: sticky; top: 0; z-index: 2; background: var(--secondary-background-color, var(--ha-card-background)); border-bottom: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0; }
   .id-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; font-family: "SF Mono", "Fira Code", Consolas, monospace; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.4); padding: 2px 5px; flex-shrink: 0; white-space: nowrap; min-width: 68px; justify-content: space-between; }
-  .id-badge span:first-child { color: var(--secondary-text-color); opacity: 0.75; }
+  .id-badge span:first-child { color: var(--secondary-text-color); }
   .id-badge span:last-child { color: var(--primary-text-color); text-align: right; }
   .entity-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cache-panel-header {
@@ -586,7 +617,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 70%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
+  .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
   .hub-compact-stats { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
   .hub-compact-stat { display: flex; flex-direction: row; align-items: center; gap: 9px; padding: 0 14px; }

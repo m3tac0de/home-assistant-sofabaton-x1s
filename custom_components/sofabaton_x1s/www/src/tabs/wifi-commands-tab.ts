@@ -370,10 +370,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     .device-card-name { display: block; font-size: 13px; font-weight: 700; line-height: 1.15; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin-left: auto; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
-    .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
-    .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: var(--error-color, #db4437); }
-    .status-pill.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); color: var(--primary-color); }
-    .status-pill.sync-pending { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 40%, var(--divider-color)); color: var(--warning-color, #f59e0b); }
+    /* Tone text is mixed toward the theme's primary text so it follows the
+       theme's polarity; the pure tone stays on border and tint. */
+    .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color)); }
+    .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: color-mix(in srgb, var(--error-color, #db4437) 40%, var(--primary-text-color)); }
+    .status-pill.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); color: color-mix(in srgb, var(--primary-color) 40%, var(--primary-text-color)); }
+    .status-pill.sync-pending { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 40%, var(--divider-color)); color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); }
     .status-pill.sync-ok { background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color))); }
     .status-pill.sync-error { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .status-pill.sync-running { background: color-mix(in srgb, var(--primary-color) 12%, var(--ha-card-background, var(--card-background-color))); }
@@ -448,7 +450,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .device-power-option.active {
       border-color: var(--primary-color);
       background: color-mix(in srgb, var(--primary-color) 14%, transparent);
-      color: var(--primary-color);
+      color: var(--primary-text-color);
     }
     .hub-events { display: grid; gap: 6px; margin-top: 6px; }
     .hub-event-lines { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -474,7 +476,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       text-decoration: underline dotted;
       text-underline-offset: 3px;
     }
-    .hub-event-action-link:hover { color: var(--primary-color); }
+    .hub-event-action-link:hover { color: var(--primary-text-color); text-decoration-color: var(--primary-color); }
     /* Positioning anchor for the event-fired glow: the flash overlay hugs
        just the action link instead of the whole sentence row, so combined
        rows (start + stop in one line) show which hook actually fired.
@@ -617,7 +619,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       text-decoration: underline dotted;
       text-underline-offset: 3px;
     }
-    .show-unconfigured:hover { color: var(--primary-color); }
+    .show-unconfigured:hover { color: var(--primary-text-color); text-decoration-color: var(--primary-color); }
     .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
     .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
@@ -626,7 +628,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
     .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
     .sync-message { font-size: 13px; line-height: 1.4; }
-    .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
+    .sync-doc-link { color: var(--sb-accent-text, var(--primary-color)); font-weight: 600; text-decoration: underline; text-decoration-color: var(--primary-color); }
     .sync-doc-link:hover { text-decoration: underline; }
     .list-view .sticky-footer { border-top: none; }
     .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }

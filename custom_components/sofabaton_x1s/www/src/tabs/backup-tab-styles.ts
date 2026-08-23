@@ -71,9 +71,9 @@ export const backupTabStyles = css`
       min-height: 42px;
       padding: 0 18px;
       border-radius: var(--backup-radius-md);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 75%, white 10%);
-      background: color-mix(in srgb, var(--primary-color) 20%, white 80%);
-      color: var(--primary-color);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 65%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 16%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--primary-text-color);
       font: inherit;
       font-size: 13px;
       font-weight: 700;
@@ -83,7 +83,7 @@ export const backupTabStyles = css`
     }
     .header-primary-btn:hover:not(:disabled) {
       border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 24%, white 76%);
+      background: color-mix(in srgb, var(--primary-color) 24%, var(--ha-card-background, var(--card-background-color)));
     }
     .header-primary-btn:disabled {
       opacity: 0.45;
@@ -187,14 +187,14 @@ export const backupTabStyles = css`
       flex-wrap: wrap;
     }
     .backup-selected-count {
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       font-size: 12px;
       font-weight: 700;
     }
     .backup-link-btn {
       border: none;
       background: transparent;
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       font: inherit;
       font-size: 12px;
       font-weight: 700;
@@ -421,7 +421,7 @@ export const backupTabStyles = css`
     .power-control-option:hover {
       background: color-mix(in srgb, var(--primary-color) 8%, transparent);
     }
-    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-color); }
+    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-text-color); font-weight: 700; }
     .power-control-option .selection-chevron ha-icon { color: var(--primary-color); }
 
     /* Power-on/off sequence rows, dimmed + inert when power control is off */
@@ -511,12 +511,13 @@ export const backupTabStyles = css`
       transition: color 120ms ease;
     }
     .detail-crumb:hover {
-      color: var(--primary-color);
+      color: var(--primary-text-color);
       text-decoration: underline;
+      text-decoration-color: var(--primary-color);
     }
     .detail-crumb-sep {
       flex: 0 0 auto;
-      color: color-mix(in srgb, var(--secondary-text-color) 55%, transparent);
+      color: var(--secondary-text-color);
     }
     .detail-title-actions {
       display: inline-flex;
@@ -572,7 +573,7 @@ export const backupTabStyles = css`
       color: var(--primary-text-color);
     }
     .detail-section-nav-btn.active {
-      color: var(--primary-color);
+      color: var(--primary-text-color);
       background: color-mix(in srgb, var(--primary-color) 10%, transparent);
       box-shadow: inset 0 -2px 0 var(--primary-color);
     }

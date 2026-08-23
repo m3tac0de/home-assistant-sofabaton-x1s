@@ -15,6 +15,7 @@
     harness served without the fixture.
   -->
   <script src="./fixtures/ha-themes.js"></script>
+  <script src="./fixtures/ha-theme-engine.js"></script>
   <style id="harness-fallback-palette">
     :root {
       --primary-color: #03a9f4;
@@ -264,6 +265,8 @@
         padding: 10px;
       }
       body[data-width="responsive"] .card-area { min-width: auto; }
+      /* A HA view keeps only a few px around cards on phones. */
+      .card-area { padding: 4px; }
       .status-bar { margin: 0 10px; }
     }
   </style>
@@ -2820,136 +2823,34 @@
     }
 
     // ── Theme engine ───────────────────────────────────────────────────────────
-    // Values: "light" / "dark" = HA default palette in that mode; otherwise a
-    // fixture theme name, with "|light" / "|dark" appended for themes that
-    // declare both modes. Exactly like HA's themes-mixin: a theme declaring a
-    // single mode is forced to that mode (one entry, bare name), and a flat
-    // theme (no `modes`) runs with darkMode=false (no dark base vars under
-    // it) — its look is whatever its own variables say.
+    // Pure parts live in tests/fixtures/ha-theme-engine.js (shared with the
+    // remote-card harness); this block owns the DOM side. Values: "light" /
+    // "dark" = HA default palette in that mode; otherwise a fixture theme
+    // name, with "|light" / "|dark" appended for themes declaring both
+    // modes (single-mode and flat themes take a bare name and HA's forced
+    // mode, exactly like themes-mixin).
     const THEME_FIXTURE = window.HA_THEME_FIXTURE ?? null;
+    const THEME_ENGINE = window.HAThemeEngine;
     const fallbackPaletteEl = document.getElementById("harness-fallback-palette");
     const haBaseStyleEl = document.createElement("style");
     haBaseStyleEl.id = "harness-ha-base-palette";
     let appliedThemeKeys = [];
     let themeState = { value: "light", name: null, haDarkMode: false, appearance: "light", label: "Light" };
-
-    function themeOptionList() {
-      const options = [
-        { value: "light", label: "Light", group: "Home Assistant default" },
-        { value: "dark", label: "Dark", group: "Home Assistant default" },
-      ];
-      for (const [name, theme] of Object.entries(THEME_FIXTURE?.themes ?? {})) {
-        const modes = themeModes(theme);
-        if (modes.length === 2) {
-          options.push({ value: `${name}|light`, label: `${name} · light`, group: "Community themes" });
-          options.push({ value: `${name}|dark`, label: `${name} · dark`, group: "Community themes" });
-        } else {
-          options.push({ value: name, label: name, group: "Community themes" });
-        }
-      }
-      return options;
-    }
-
-    /** Modes a theme declares, in HA's sense: [] for flat themes. */
-    function themeModes(theme) {
-      return theme?.modes ? ["light", "dark"].filter((mode) => mode in theme.modes) : [];
-    }
-
-    /** HA's forced mode for a theme: null = follows the user's dark toggle. */
-    function forcedDark(theme) {
-      const modes = themeModes(theme);
-      if (modes.length === 2) return null;
-      return modes.includes("dark"); // single dark mode -> dark; light-only or flat -> light
-    }
-    const THEME_OPTIONS = themeOptionList();
+    const THEME_OPTIONS = THEME_ENGINE ? THEME_ENGINE.optionList(THEME_FIXTURE) : [
+      { value: "light", label: "Light", group: "Home Assistant default" },
+      { value: "dark", label: "Dark", group: "Home Assistant default" },
+    ];
 
     function parseThemeValue(raw) {
+      if (THEME_ENGINE) return THEME_ENGINE.parseValue(THEME_FIXTURE, raw);
       const value = String(raw ?? "light");
-      if (value === "light" || value === "dark") return { value, name: null, dark: value === "dark" };
-      const pipe = value.lastIndexOf("|");
-      const name = pipe === -1 ? value : value.slice(0, pipe);
-      const suffix = pipe === -1 ? "" : value.slice(pipe + 1);
-      const theme = THEME_FIXTURE?.themes?.[name];
-      if (!theme) return null;
-      const forced = forcedDark(theme);
-      if (forced === null) return { value: `${name}|${suffix === "dark" ? "dark" : "light"}`, name, dark: suffix === "dark" };
-      return { value: name, name, dark: forced };
-    }
-
-    function hexToRgbTriplet(value) {
-      const hex = value.trim().slice(1);
-      const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
-      if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
-      return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)).join(",");
-    }
-
-    // Port of applyThemesOnElement + processTheme (home-assistant/frontend
-    // src/common/dom/apply_themes_on_element.ts): dark base vars only when
-    // dark mode, theme vars on top, then the mode block; hex values also get
-    // an --rgb-<key> companion unless the theme defines one.
-    function buildThemeRules({ name, dark }) {
-      let rules = {};
-      if (dark) rules = { ...(THEME_FIXTURE?.base?.dark ?? {}) };
-      const theme = name ? THEME_FIXTURE?.themes?.[name] : null;
-      if (theme) {
-        rules = { ...rules, ...theme.vars };
-        const modeBlock = theme.modes?.[dark ? "dark" : "light"];
-        if (modeBlock) rules = { ...rules, ...modeBlock };
-      }
-      const styles = {};
-      for (const [key, rawValue] of Object.entries(rules)) {
-        const value = String(rawValue);
-        styles[`--${key}`] = value;
-        if (!value.startsWith("#") || rules[`rgb-${key}`] !== undefined) continue;
-        const triplet = hexToRgbTriplet(value);
-        if (triplet) styles[`--rgb-${key}`] = triplet;
-      }
-      return styles;
-    }
-
-    function parseCssColor(value) {
-      const text = String(value ?? "").trim();
-      let m = text.match(/^rgba?\(([^)]+)\)$/);
-      if (m) {
-        const parts = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
-        if (parts.length >= 3) return { r: parts[0], g: parts[1], b: parts[2], a: parts[3] ?? 1 };
-      }
-      // color-mix(in srgb, …) results serialise as color(srgb r g b / a).
-      m = text.match(/^color\(srgb\s+([^)]+)\)$/);
-      if (m) {
-        const parts = m[1].split(/[\s\/]+/).filter(Boolean).map(Number);
-        if (parts.length >= 3) return { r: parts[0] * 255, g: parts[1] * 255, b: parts[2] * 255, a: parts[3] ?? 1 };
-      }
-      if (text.startsWith("#")) {
-        const triplet = hexToRgbTriplet(text.slice(0, 7));
-        if (triplet) {
-          const [r, g, b] = triplet.split(",").map(Number);
-          const a = text.length === 9 ? parseInt(text.slice(7, 9), 16) / 255 : 1;
-          return { r, g, b, a };
-        }
-      }
-      return null;
-    }
-
-    function detectAppearance() {
-      // Resolve the text colour the browser will actually use on the page.
-      const probe = document.createElement("span");
-      probe.style.color = "var(--primary-text-color)";
-      probe.style.position = "absolute";
-      probe.style.visibility = "hidden";
-      document.body.appendChild(probe);
-      const color = parseCssColor(getComputedStyle(probe).color);
-      probe.remove();
-      if (!color) return "light";
-      const luminance = (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255;
-      return luminance > 0.5 ? "dark" : "light";
+      return value === "dark" ? { value, name: null, dark: true } : { value: "light", name: null, dark: false };
     }
 
     function harnessHassThemes() {
       const themes = {};
       if (themeState.name && THEME_FIXTURE?.themes?.[themeState.name]) {
-        const theme = THEME_FIXTURE.themes[themeState.name];
-        themes[themeState.name] = { ...theme.vars, ...(theme.modes ? { modes: theme.modes } : {}) };
+        themes[themeState.name] = THEME_ENGINE.rawTheme(THEME_FIXTURE, themeState.name);
       }
       return {
         darkMode: themeState.haDarkMode,
@@ -2964,14 +2865,14 @@
       for (const key of appliedThemeKeys) root.style.removeProperty(key);
       appliedThemeKeys = [];
       if (THEME_FIXTURE) {
-        const styles = buildThemeRules(parsed);
+        const styles = THEME_ENGINE.buildRules(THEME_FIXTURE, parsed);
         for (const [key, value] of Object.entries(styles)) {
           root.style.setProperty(key, value);
           appliedThemeKeys.push(key);
         }
       }
       const option = THEME_OPTIONS.find((item) => item.value === parsed.value);
-      const appearance = THEME_FIXTURE ? detectAppearance() : (parsed.dark ? "dark" : "light");
+      const appearance = THEME_FIXTURE ? THEME_ENGINE.detectAppearance(document.body) : (parsed.dark ? "dark" : "light");
       themeState = {
         value: parsed.value,
         name: parsed.name,
@@ -2987,10 +2888,7 @@
 
     function installThemeFixture() {
       if (!THEME_FIXTURE) return;
-      const declarations = Object.entries(THEME_FIXTURE.base?.light ?? {})
-        .map(([key, value]) => `  --${key}: ${value};`)
-        .join("\n");
-      haBaseStyleEl.textContent = `:root {\n${declarations}\n}`;
+      haBaseStyleEl.textContent = THEME_ENGINE.baseLightCss(THEME_FIXTURE);
       fallbackPaletteEl.insertAdjacentElement("afterend", haBaseStyleEl);
       fallbackPaletteEl.disabled = true;
       // Replace the static options with the fixture-driven list, grouped.

@@ -62,6 +62,14 @@ import {
 } from "./sections/macro-favorites";
 import { renderAssistModal, renderAssistRow } from "./sections/assist";
 
+/** "#rgb" / "#rrggbb" -> "r,g,b" (HA's hex2rgb for --rgb-* companions). */
+function hexToRgbTriplet(value: string): string | null {
+  const hex = value.trim().slice(1);
+  const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)).join(",");
+}
+
 export class SofabatonRemoteCard extends LitElement {
   static styles = [
     unsafeCSS(REMOTE_CARD_CSS),
@@ -553,6 +561,20 @@ export class SofabatonRemoteCard extends LitElement {
           root.style.setProperty(cssVar, String(v));
           this._appliedThemeVars.push(cssVar);
         }
+        // HA parity (applyThemesOnElement/processTheme): every hex value
+        // also gets an --rgb-<key> companion unless the theme ships one, so
+        // rgba(var(--rgb-primary-color), …) rules follow the card theme
+        // instead of the page theme.
+        for (const [k, v] of Object.entries(vars)) {
+          if (typeof v !== "string" || !v.startsWith("#")) continue;
+          const key = k.startsWith("--") ? k.slice(2) : k;
+          if (vars[`rgb-${key}`] !== undefined || vars[`--rgb-${key}`] !== undefined) continue;
+          const triplet = hexToRgbTriplet(v);
+          if (!triplet) continue;
+          const cssVar = `--rgb-${key}`;
+          root.style.setProperty(cssVar, triplet);
+          this._appliedThemeVars.push(cssVar);
+        }
       }
     }
 
@@ -954,14 +976,17 @@ export class SofabatonRemoteCard extends LitElement {
                 onToggle: () => this._handleModeToggle(),
               }
             : null,
+          menuOpen: Boolean(store.activityMenuOpen),
           onSelect: (ev) => this._handleSelect(ev),
           onMenuOpened: () => {
             store.activityMenuOpen = true;
             this._syncLayering();
+            this.requestUpdate(); // row class mirrors the open menu
           },
           onMenuClosed: () => {
             store.activityMenuOpen = false;
             this._syncLayering();
+            this.requestUpdate();
           },
           rowRef: this._activityRowRef,
           loadIndicatorRef: this._loadIndicatorRef,

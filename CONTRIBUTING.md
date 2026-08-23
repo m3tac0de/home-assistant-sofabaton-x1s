@@ -119,15 +119,23 @@ Glass, visionOS). The theme switcher in the harness sidebar and the
 theme's own CDN URL, so they need network access to look right.
 
 ```powershell
-npm run audit:contrast                          # WCAG AA contrast of every visible text element, all themes x key scenarios
+npm run audit:contrast                          # control panel: WCAG AA contrast of every visible text element + hover/pressed visibility, all themes x key scenarios
+npm run audit:contrast -- --target remote       # virtual remote: same, for theme applied globally AND as card-level `theme:` (modes global+card)
 npm run audit:contrast -- --themes "dark,Caule Black Purple" --scenarios "automation-events"
 npm run audit:contrast -- --strict              # exit 1 on any failure (not part of the test suite)
 npm run fetch:ha-themes                         # regenerate the fixture (needs scripts/.ha-config.json + .ha-token)
 ```
 
-The audit writes `artifacts/contrast-audit.md` (+ `.json`), grouped by
+The remote-card harness (`tests/playwright/fixtures/remote-card-harness.html`)
+takes `?theme=<value>&mode=global|card&scenario=active[+macros|+favorites|+menu]`
+for manual checks; without `?theme=` it keeps its legacy palette so the
+Playwright snapshots stay stable.
+
+The audit writes `artifacts/contrast-audit.md` (remote: `contrast-audit-remote.md`, + `.json`), grouped by
 element signature (component + tag + classes) with the worst theme per
-row, so token decisions can be made per style rule. Disabled controls are
+row, so token decisions can be made per style rule. Hover states are
+measured too (rows marked `@hover`; `--no-hover` skips them), and
+`--inject-css <file>` A/Bs a candidate rule-set without touching source. Disabled controls are
 measured but never counted; deliberate exceptions go in
 `tests/fixtures/contrast-allowlist.json` with the reason documented next
 to the style rule.

@@ -1377,7 +1377,9 @@ var REMOTE_CARD_CSS = `
         --sb-group-radius: var(--ha-card-border-radius, 18px);
         --remote-max-width: 360px;
         --remote-zoom: 1;
-        --sb-overlay-rgb: var(--rgb-primary-text-color, 0, 0, 0);
+        /* Hover / press overlays for keys and drawer buttons, derived from
+           the theme's text colour (see sb-key-button.ts). Declared on
+           .wrap below so a card-level theme applied on ha-card is seen. */
 
         display: block;
       }
@@ -1396,6 +1398,17 @@ var REMOTE_CARD_CSS = `
         container-type: inline-size;
       }
 
+      /* Theme-resilience tokens, one level below ha-card (where a card-level
+         theme: config lands as inline variables) so both global and card-level
+         themes feed them. --secondary-text-color is floored toward primary
+         text: themes like Caule alias it to their disabled grey. */
+      ha-card { --sb-theme-secondary-text: var(--secondary-text-color); }
+      .wrap {
+        --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
+        --sb-overlay-hover: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
+        --sb-overlay-press: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+        --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+      }
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
       .layout-container { display: grid; gap: 12px; }
       .layout-overlay {
@@ -1431,6 +1444,41 @@ var REMOTE_CARD_CSS = `
         --wa-color-text-quiet: var(--secondary-text-color);
         --mdc-theme-text-primary-on-background: var(--primary-text-color);
         --mdc-theme-text-secondary-on-background: var(--secondary-text-color);
+        /* Field label ("Activity" / "Device") and value. HA chains these to
+           --input-label-ink-color / --input-ink-color on <html>, so a
+           card-level theme never reaches them, and some themes (Caule) map
+           the label to their disabled grey. Derive both from the card's
+           own text colour instead. */
+        --mdc-select-label-ink-color: color-mix(in srgb, var(--primary-text-color) 85%, transparent);
+        --mdc-select-ink-color: var(--primary-text-color);
+        --mdc-select-dropdown-icon-color: color-mix(in srgb, var(--primary-text-color) 70%, transparent);
+        /* Menu item hover / selected fills. HA's ha-dropdown-item paints
+           --ha-color-fill-neutral-quiet-hover (light grey under any flat
+           theme, since flat themes run in light mode) behind item text that
+           is now the card's text colour: under Caule both are ~#e5e5e5.
+           Derive the fills from the card's own colours instead, as
+           translucent tints over the menu panel. The selected item's text
+           follows the accent-text rule (not pure primary colour). */
+        --ha-color-fill-neutral-quiet-resting: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
+        --ha-color-fill-neutral-quiet-hover: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+        --ha-color-fill-primary-quiet-resting: color-mix(in srgb, var(--primary-color) 14%, transparent);
+        --ha-color-fill-primary-quiet-hover: color-mix(in srgb, var(--primary-color) 24%, transparent);
+        /* wa-dropdown-item paints :host(:hover) and :focus-visible with
+           --wa-color-neutral-fill-normal (HA: --ha-color-fill-neutral-normal-resting). */
+        --ha-color-fill-neutral-normal-resting: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+        --ha-color-fill-neutral-normal-hover: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+        --wa-color-neutral-fill-normal: var(--ha-color-fill-neutral-normal-resting);
+        --wa-color-neutral-fill-quiet: var(--ha-color-fill-neutral-quiet-hover);
+        --wa-color-brand-fill-quiet: var(--ha-color-fill-primary-quiet-hover);
+        --mdc-ripple-color: var(--primary-text-color);
+        --sb-select-selected-text: var(--sb-accent-text, color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color)));
+      }
+      /* Outer-scope rule on the item host beats ha-dropdown-item's
+         :host([selected]) { color: var(--primary-color) }. */
+      .sb-activity-select ha-dropdown-item[selected],
+      .sb-activity-select mwc-list-item[selected],
+      .sb-activity-select mwc-list-item[activated] {
+        color: var(--sb-select-selected-text);
       }
 
       .activityRow {
@@ -1438,6 +1486,21 @@ var REMOTE_CARD_CSS = `
         grid-template-columns: 1fr;
         position: relative;
         z-index: 3;
+        /* One bottom line for the whole row. The select's field (HA's
+           ha-picker-field) paints 1px --ha-color-border-neutral-loud at rest
+           and 2px --mdc-theme-primary when focused; HA declares that chain on
+           <html>, so under a card-level theme it resolved to the PAGE's
+           primary (HA blue). Both tokens are re-declared below from these
+           row tokens, and the mode toggle draws the same line so the two
+           read as one control. */
+        --sb-field-line: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
+        --sb-field-line-active: var(--primary-color);
+      }
+      .activityRow .sb-activity-select {
+        --ha-color-border-neutral-loud: var(--sb-field-line);
+        --mdc-theme-primary: var(--sb-field-line-active);
+        --mdc-select-idle-line-color: var(--sb-field-line);
+        --mdc-select-hover-line-color: var(--sb-field-line);
       }
       /* Long activity/device names ellipsize inside the select instead of
          pushing the card wider (grid items default to min-width auto). */
@@ -1465,7 +1528,10 @@ var REMOTE_CARD_CSS = `
         background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
         border: none;
         border-right: 1px solid var(--divider-color);
-        border-bottom: 1px solid var(--mdc-select-idle-line-color, var(--divider-color));
+        /* Same line as the field, drawn as an inset shadow so the 1px -> 2px
+           active state never shifts layout. */
+        box-shadow: inset 0 -1px 0 var(--sb-field-line);
+        transition: box-shadow 180ms ease-in-out, background 120ms ease;
         border-top-left-radius: var(--mdc-shape-small, 4px);
         border-top-right-radius: 0;
         border-bottom-left-radius: 0;
@@ -1473,14 +1539,26 @@ var REMOTE_CARD_CSS = `
         -webkit-tap-highlight-color: transparent;
       }
       .sb-mode-toggle:hover {
-        background: color-mix(in srgb, var(--primary-text-color) 8%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+        background: color-mix(in srgb, var(--primary-text-color) 10%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
       }
       .sb-mode-toggle:active {
         transform: scale(0.97);
+        background: color-mix(in srgb, var(--primary-text-color) 18%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
       }
       .sb-mode-toggle[disabled] {
         opacity: 0.5;
         cursor: default;
+      }
+      .sb-mode-toggle:focus-visible {
+        outline: none;
+      }
+      /* The toggle's line follows the field: focused field (HA keeps the
+         field focused after the menu closes, so does this), open menu, or
+         keyboard focus on the toggle itself. */
+      .activityRow--with-toggle:has(.sb-activity-select:focus-within) .sb-mode-toggle,
+      .activityRow--with-toggle.activityRow--menu-open .sb-mode-toggle,
+      .sb-mode-toggle:focus-visible {
+        box-shadow: inset 0 -2px 0 var(--sb-field-line-active);
       }
       .activityRow--with-toggle .sb-activity-select {
         --mdc-shape-small: 0 4px 0 0;
@@ -1532,8 +1610,8 @@ var REMOTE_CARD_CSS = `
         gap: 4px;
         padding: 12px;
         border-radius: var(--sb-group-radius);
-        border: 1px solid rgba(var(--rgb-primary-color), 0.25);
-        background: rgba(var(--rgb-primary-color), 0.08);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 8%, transparent);
       }
 
       .automationAssist__header {
@@ -1556,8 +1634,8 @@ var REMOTE_CARD_CSS = `
 
       /* small pill button */
       .automationAssist__startBtn {
-        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
-        background: rgba(var(--rgb-primary-color), 0.10);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
         color: var(--primary-text-color);
         border-radius: 999px;
         padding: 2px 10px;
@@ -1568,8 +1646,8 @@ var REMOTE_CARD_CSS = `
       }
 
       .automationAssist__mqttBtn {
-        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
-        background: rgba(var(--rgb-primary-color), 0.10);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
         color: var(--primary-text-color);
         border-radius: 999px;
         margin:10px;
@@ -1581,7 +1659,7 @@ var REMOTE_CARD_CSS = `
       }
 
       .automationAssist__startBtn:hover {
-        background: rgba(var(--rgb-primary-color), 0.16);
+        background: color-mix(in srgb, var(--primary-color) 16%, transparent);
       }
 
       .automationAssist__startBtn:active {
@@ -1673,8 +1751,10 @@ var REMOTE_CARD_CSS = `
         --sb-control-radius: 0;
       }
       
+      /* Active tab: text stays the theme's text colour, the accent tints the
+         surface (primary colour as text is 1:1 on iOS-light orange). */
       .macroFavoritesButton.active-tab {
-        color: var(--primary-color);
+        color: var(--primary-text-color);
       }
 
       .macroFavoritesButton + .macroFavoritesButton {
@@ -1802,7 +1882,7 @@ var REMOTE_CARD_CSS = `
         position: absolute;
         inset: 0;
         border-radius: inherit;
-        background: rgba(var(--sb-overlay-rgb), 0.08);
+        background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
         opacity: 0;
         transition: opacity 120ms ease;
         pointer-events: none;
@@ -1814,11 +1894,11 @@ var REMOTE_CARD_CSS = `
 
       .drawer-btn:active::before {
         opacity: 1;
-        background: rgba(var(--sb-overlay-rgb), 0.16);
+        background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color) 18%, transparent));
       }
 
       .drawer-btn:focus-visible {
-        outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+        outline: 2px solid color-mix(in srgb, var(--primary-color) 55%, transparent);
         outline-offset: 2px;
       }
 
@@ -1868,8 +1948,8 @@ var REMOTE_CARD_CSS = `
 
       /* Active state for buttons */
       .macroFavoritesButton.active-tab {
-        background: rgba(var(--rgb-primary-color), 0.1);
-        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+        color: var(--primary-text-color);
       }
 
       /* D-pad cluster */
@@ -6268,7 +6348,7 @@ function renderActivityRow(params) {
       ` : A;
   return b2`
     <div
-      class="activityRow${params.modeToggle ? " activityRow--with-toggle" : ""}"
+      class="activityRow${params.modeToggle ? " activityRow--with-toggle" : ""}${params.menuOpen ? " activityRow--menu-open" : ""}"
       style=${params.visible ? "" : "display: none !important;"}
       ${params.rowRef ? n6(params.rowRef) : A}
     >
@@ -6349,7 +6429,12 @@ var CONTROL_CSS = `
     inset: 0;
     z-index: 0;
     border-radius: inherit;
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.08);
+    /* Hover / press overlay derived from the theme's text colour via
+       color-mix: works for any colour syntax and for card-level themes.
+       The rgba(var(--rgb-primary-text-color)) form only worked for hex
+       themes, and HA's base hardcodes --rgb-primary-text-color to dark
+       (33,33,33), so dark themes got an invisible dark-on-dark overlay. */
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color, #000) 10%, transparent));
     opacity: 0;
     pointer-events: none;
     transition: opacity 120ms ease;
@@ -6362,12 +6447,12 @@ var CONTROL_CSS = `
   }
 
   .sb-key-control:not(:disabled):active::before {
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.16);
+    background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color, #000) 18%, transparent));
     opacity: 1;
   }
 
   .sb-key-control:focus-visible {
-    outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+    outline: 2px solid color-mix(in srgb, var(--primary-color, #03a9f4) 55%, transparent);
     outline-offset: -2px;
   }
 
@@ -7093,6 +7178,12 @@ function renderAssistModal(params) {
 }
 
 // custom_components/sofabaton_x1s/www/src/remote-card-element.ts
+function hexToRgbTriplet(value) {
+  const hex = value.trim().slice(1);
+  const full = hex.length === 3 ? hex.split("").map((c7) => c7 + c7).join("") : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  return [0, 2, 4].map((i7) => parseInt(full.slice(i7, i7 + 2), 16)).join(",");
+}
 var SofabatonRemoteCard = class extends i4 {
   constructor() {
     super();
@@ -7463,6 +7554,16 @@ var SofabatonRemoteCard = class extends i4 {
           root.style.setProperty(cssVar, String(v3));
           this._appliedThemeVars.push(cssVar);
         }
+        for (const [k2, v3] of Object.entries(vars)) {
+          if (typeof v3 !== "string" || !v3.startsWith("#")) continue;
+          const key = k2.startsWith("--") ? k2.slice(2) : k2;
+          if (vars[`rgb-${key}`] !== void 0 || vars[`--rgb-${key}`] !== void 0) continue;
+          const triplet = hexToRgbTriplet(v3);
+          if (!triplet) continue;
+          const cssVar = `--rgb-${key}`;
+          root.style.setProperty(cssVar, triplet);
+          this._appliedThemeVars.push(cssVar);
+        }
       }
     }
     const themeBg = vars?.["ha-card-background"] ?? vars?.["card-background-color"] ?? vars?.["ha-card-background-color"] ?? vars?.["primary-background-color"] ?? null;
@@ -7764,14 +7865,17 @@ var SofabatonRemoteCard = class extends i4 {
           // switch is visualized in the preview.
           onToggle: () => this._handleModeToggle()
         } : null,
+        menuOpen: Boolean(store.activityMenuOpen),
         onSelect: (ev) => this._handleSelect(ev),
         onMenuOpened: () => {
           store.activityMenuOpen = true;
           this._syncLayering();
+          this.requestUpdate();
         },
         onMenuClosed: () => {
           store.activityMenuOpen = false;
           this._syncLayering();
+          this.requestUpdate();
         },
         rowRef: this._activityRowRef,
         loadIndicatorRef: this._loadIndicatorRef

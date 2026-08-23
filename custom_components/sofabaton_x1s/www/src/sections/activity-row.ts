@@ -40,6 +40,8 @@ export interface ActivityRowParams {
   loading: boolean;
   /** Activity/device mode toggle; absent = no toggle rendered. */
   modeToggle?: ModeToggleParams | null;
+  /** Menu currently open (the toggle mirrors the field's active line). */
+  menuOpen?: boolean;
   onSelect: (ev: Event) => void;
   onMenuOpened: () => void;
   onMenuClosed: () => void;
@@ -88,7 +90,7 @@ export function renderActivityRow(params: ActivityRowParams): TemplateResult {
 
   return html`
     <div
-      class="activityRow${params.modeToggle ? " activityRow--with-toggle" : ""}"
+      class="activityRow${params.modeToggle ? " activityRow--with-toggle" : ""}${params.menuOpen ? " activityRow--menu-open" : ""}"
       style=${params.visible ? "" : "display: none !important;"}
       ${params.rowRef ? ref(params.rowRef) : nothing}
     >

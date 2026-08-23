@@ -106,6 +106,10 @@ async function build() {
     join(publishedFixturesDir, "ha-themes.js"),
   );
   await cp(
+    join(ROOT, "tests", "fixtures", "ha-theme-engine.js"),
+    join(publishedFixturesDir, "ha-theme-engine.js"),
+  );
+  await cp(
     join(WWW_SOURCE, "tools-card.js"),
     join(publishedWwwDir, "tools-card.js"),
   );

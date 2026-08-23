@@ -87,7 +87,7 @@ export const secondaryTabStyles = css`
     border-right: none;
   }
   .secondary-tab-btn.active {
-    color: var(--primary-color);
+    color: var(--primary-text-color);
     background: transparent;
     box-shadow: inset 0 -2px 0 var(--primary-color);
   }

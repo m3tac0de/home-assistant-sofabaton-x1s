@@ -137,7 +137,7 @@ class SofabatonActivitiesTab extends LitElement {
       border: 1px solid var(--divider-color);
       border-radius: 999px;
       background: transparent;
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       font: inherit;
       font-weight: 700;
       padding: 4px 12px;

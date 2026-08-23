@@ -59,7 +59,12 @@ const CONTROL_CSS = `
     inset: 0;
     z-index: 0;
     border-radius: inherit;
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.08);
+    /* Hover / press overlay derived from the theme's text colour via
+       color-mix: works for any colour syntax and for card-level themes.
+       The rgba(var(--rgb-primary-text-color)) form only worked for hex
+       themes, and HA's base hardcodes --rgb-primary-text-color to dark
+       (33,33,33), so dark themes got an invisible dark-on-dark overlay. */
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color, #000) 10%, transparent));
     opacity: 0;
     pointer-events: none;
     transition: opacity 120ms ease;
@@ -72,12 +77,12 @@ const CONTROL_CSS = `
   }
 
   .sb-key-control:not(:disabled):active::before {
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.16);
+    background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color, #000) 18%, transparent));
     opacity: 1;
   }
 
   .sb-key-control:focus-visible {
-    outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+    outline: 2px solid color-mix(in srgb, var(--primary-color, #03a9f4) 55%, transparent);
     outline-offset: -2px;
   }
 

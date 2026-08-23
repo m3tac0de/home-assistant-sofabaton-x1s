@@ -363,7 +363,7 @@ export class SofabatonEditDetailView extends LitElement {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 6px 12px; border-radius: 999px;
       font-size: 13px; font-weight: 600;
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
       background: color-mix(in srgb, var(--primary-color) 12%, transparent);
     }
