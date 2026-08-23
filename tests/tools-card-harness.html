@@ -6,7 +6,16 @@
   <title>Sofabaton Tools Card — Test Harness</title>
   <!-- MDI icon font — makes ha-icon stub render real icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css">
-  <style>
+  <!--
+    HA theme fixture (tests/fixtures/ha-themes.js, regenerate with
+    scripts/fetch-ha-themes.mjs): Home Assistant's real base palette plus
+    popular community themes. When it loads, the hand-picked palette below
+    is disabled and the variables are applied the way HA's
+    applyThemesOnElement does; the palette below is only the fallback for a
+    harness served without the fixture.
+  -->
+  <script src="./fixtures/ha-themes.js"></script>
+  <style id="harness-fallback-palette">
     :root {
       --primary-color: #03a9f4;
       --primary-text-color: #212121;
@@ -23,17 +32,6 @@
       --mdc-icon-size: 20px;
     }
 
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      padding: 20px 24px 40px;
-      background: #e8eaf0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #212121;
-      min-height: 100vh;
-    }
-
     body[data-theme="dark"] {
       --primary-text-color: #f1f3f4;
       --secondary-text-color: #aeb6bf;
@@ -43,8 +41,19 @@
       --ha-card-background: #1f242a;
       --secondary-background-color: #2a3037;
       --primary-background-color: #171b20;
-      color: #f1f3f4;
-      background: #11151a;
+    }
+  </style>
+  <style>
+    * { box-sizing: border-box; }
+
+    /* Page chrome follows the active palette (fixture theme or fallback). */
+    body {
+      margin: 0;
+      padding: 20px 24px 40px;
+      background: var(--primary-background-color, #e8eaf0);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--primary-text-color, #212121);
+      min-height: 100vh;
     }
 
     h1 {
@@ -74,7 +83,7 @@
     }
 
     .scenario-group {
-      background: var(--ha-card-background, white);
+      background: var(--ha-card-background, var(--card-background-color, white));
       border-radius: 10px;
       padding: 10px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -105,7 +114,7 @@
       padding: 5px 8px;
       border: 1px solid var(--divider-color, #e0e0e0);
       border-radius: 7px;
-      background: var(--ha-card-background, white);
+      background: var(--ha-card-background, var(--card-background-color, white));
       color: var(--primary-text-color, #212121);
       font: inherit;
       font-size: 12px;
@@ -154,15 +163,23 @@
     }
 
     /* ── Right: status + card ─────────────────────────────────────── */
+    /* Stands in for a Lovelace view: HA's hui-view-background paints
+       var(--lovelace-background, var(--primary-background-color)) behind the
+       cards, which is how wallpaper themes (iOS, Frosted Glass, Liquid Glass,
+       visionos) get their image; glass cards blur it via
+       --ha-card-backdrop-filter on ha-card. */
     .card-area {
       display: flex;
       flex-direction: column;
       gap: 14px;
       min-width: 0;
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--lovelace-background, var(--primary-background-color, transparent));
     }
 
     .status-bar {
-      background: var(--ha-card-background, white);
+      background: var(--ha-card-background, var(--card-background-color, white));
       border-radius: 10px;
       padding: 12px 14px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -275,6 +292,7 @@
           <select id="harness-theme">
             <option value="light">Light</option>
             <option value="dark">Dark</option>
+            <!-- fixture themes are appended at startup -->
           </select>
         </div>
         <div class="harness-field">
@@ -320,11 +338,21 @@
         const s = this.attachShadow({ mode: "open" });
         s.innerHTML = `
           <style>
+            /* Same host rules as HA's ha-card so themes that style cards via
+               border / shadow / backdrop-filter variables render faithfully. */
             :host {
               display: block;
-              background: var(--ha-card-background, #fff);
-              border-radius: var(--ha-card-border-radius, 12px);
-              box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0,0,0,0.14));
+              position: relative;
+              box-sizing: border-box;
+              background: var(--ha-card-background, var(--card-background-color, white));
+              -webkit-backdrop-filter: var(--ha-card-backdrop-filter, none);
+              backdrop-filter: var(--ha-card-backdrop-filter, none);
+              box-shadow: var(--ha-card-box-shadow, none);
+              border-radius: var(--ha-card-border-radius, var(--ha-border-radius-lg, 12px));
+              border-width: var(--ha-card-border-width, 1px);
+              border-style: solid;
+              border-color: var(--ha-card-border-color, var(--divider-color, #e0e0e0));
+              color: var(--primary-text-color);
               overflow: hidden;
             }
           </style>
@@ -484,7 +512,7 @@
             input { display:block; width:100%; padding:8px 10px; box-sizing:border-box;
                     border:1px solid var(--divider-color,#e0e0e0); border-radius:8px;
                     font:inherit; font-size:14px;
-                    background:var(--ha-card-background,#fff); color:inherit; }
+                    background:var(--ha-card-background, var(--card-background-color, #fff)); color:inherit; }
             input:focus { outline:2px solid var(--primary-color,#03a9f4); border-color:transparent; }
           </style>
           <div class="label"></div>
@@ -534,7 +562,7 @@
                     box-sizing:border-box;
                     border:1px solid var(--divider-color,#e0e0e0); border-radius:8px;
                     font:inherit; font-size:14px;
-                    background:var(--ha-card-background,#fff); color:inherit; }
+                    background:var(--ha-card-background, var(--card-background-color, #fff)); color:inherit; }
             input:focus { outline:2px solid var(--primary-color,#03a9f4); border-color:transparent; }
           </style>
           <div class="label"></div>
@@ -598,7 +626,7 @@
             select { display:block; width:100%; padding:8px 10px; box-sizing:border-box;
                      border:1px solid var(--divider-color,#e0e0e0); border-radius:8px;
                      font:inherit; font-size:14px;
-                     background:var(--ha-card-background,#fff); color:inherit; }
+                     background:var(--ha-card-background, var(--card-background-color, #fff)); color:inherit; }
             select:focus { outline:2px solid var(--primary-color,#03a9f4); border-color:transparent; }
           </style>
           <div class="label"></div>
@@ -654,7 +682,7 @@
             textarea { display:block; width:100%; min-height:120px; padding:10px 12px; box-sizing:border-box;
                        border:1px solid var(--divider-color,#e0e0e0); border-radius:8px;
                        font:inherit; font-size:13px; line-height:1.5;
-                       background:var(--ha-card-background,#fff); color:inherit;
+                       background:var(--ha-card-background, var(--card-background-color, #fff)); color:inherit;
                        resize:vertical; }
             textarea:focus { outline:2px solid var(--primary-color,#03a9f4); border-color:transparent; }
           </style>
@@ -818,7 +846,7 @@
             select { display:block; width:100%; padding:8px 10px; box-sizing:border-box;
                      border:1px solid var(--divider-color,#e0e0e0); border-radius:8px;
                      font:inherit; font-size:14px;
-                     background:var(--ha-card-background,#fff); color:inherit; }
+                     background:var(--ha-card-background, var(--card-background-color, #fff)); color:inherit; }
             .placeholder { padding:10px 12px; border:1px dashed var(--divider-color,#e0e0e0);
                            border-radius:8px; color:var(--secondary-text-color,#727272);
                            font-size:13px; }
@@ -1465,7 +1493,7 @@
         states:     scenario.states ?? {},
         locale: { language: currentLanguage },
         language: currentLanguage,
-        themes: { darkMode: currentTheme === "dark" },
+        themes: harnessHassThemes(),
         connection: {
           subscribeMessage(callback, message) {
             const type = String(message?.type ?? "");
@@ -2791,16 +2819,207 @@
       updateUrlState();
     }
 
+    // ── Theme engine ───────────────────────────────────────────────────────────
+    // Values: "light" / "dark" = HA default palette in that mode; otherwise a
+    // fixture theme name, with "|light" / "|dark" appended for themes that
+    // declare both modes. Exactly like HA's themes-mixin: a theme declaring a
+    // single mode is forced to that mode (one entry, bare name), and a flat
+    // theme (no `modes`) runs with darkMode=false (no dark base vars under
+    // it) — its look is whatever its own variables say.
+    const THEME_FIXTURE = window.HA_THEME_FIXTURE ?? null;
+    const fallbackPaletteEl = document.getElementById("harness-fallback-palette");
+    const haBaseStyleEl = document.createElement("style");
+    haBaseStyleEl.id = "harness-ha-base-palette";
+    let appliedThemeKeys = [];
+    let themeState = { value: "light", name: null, haDarkMode: false, appearance: "light", label: "Light" };
+
+    function themeOptionList() {
+      const options = [
+        { value: "light", label: "Light", group: "Home Assistant default" },
+        { value: "dark", label: "Dark", group: "Home Assistant default" },
+      ];
+      for (const [name, theme] of Object.entries(THEME_FIXTURE?.themes ?? {})) {
+        const modes = themeModes(theme);
+        if (modes.length === 2) {
+          options.push({ value: `${name}|light`, label: `${name} · light`, group: "Community themes" });
+          options.push({ value: `${name}|dark`, label: `${name} · dark`, group: "Community themes" });
+        } else {
+          options.push({ value: name, label: name, group: "Community themes" });
+        }
+      }
+      return options;
+    }
+
+    /** Modes a theme declares, in HA's sense: [] for flat themes. */
+    function themeModes(theme) {
+      return theme?.modes ? ["light", "dark"].filter((mode) => mode in theme.modes) : [];
+    }
+
+    /** HA's forced mode for a theme: null = follows the user's dark toggle. */
+    function forcedDark(theme) {
+      const modes = themeModes(theme);
+      if (modes.length === 2) return null;
+      return modes.includes("dark"); // single dark mode -> dark; light-only or flat -> light
+    }
+    const THEME_OPTIONS = themeOptionList();
+
+    function parseThemeValue(raw) {
+      const value = String(raw ?? "light");
+      if (value === "light" || value === "dark") return { value, name: null, dark: value === "dark" };
+      const pipe = value.lastIndexOf("|");
+      const name = pipe === -1 ? value : value.slice(0, pipe);
+      const suffix = pipe === -1 ? "" : value.slice(pipe + 1);
+      const theme = THEME_FIXTURE?.themes?.[name];
+      if (!theme) return null;
+      const forced = forcedDark(theme);
+      if (forced === null) return { value: `${name}|${suffix === "dark" ? "dark" : "light"}`, name, dark: suffix === "dark" };
+      return { value: name, name, dark: forced };
+    }
+
+    function hexToRgbTriplet(value) {
+      const hex = value.trim().slice(1);
+      const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+      if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+      return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)).join(",");
+    }
+
+    // Port of applyThemesOnElement + processTheme (home-assistant/frontend
+    // src/common/dom/apply_themes_on_element.ts): dark base vars only when
+    // dark mode, theme vars on top, then the mode block; hex values also get
+    // an --rgb-<key> companion unless the theme defines one.
+    function buildThemeRules({ name, dark }) {
+      let rules = {};
+      if (dark) rules = { ...(THEME_FIXTURE?.base?.dark ?? {}) };
+      const theme = name ? THEME_FIXTURE?.themes?.[name] : null;
+      if (theme) {
+        rules = { ...rules, ...theme.vars };
+        const modeBlock = theme.modes?.[dark ? "dark" : "light"];
+        if (modeBlock) rules = { ...rules, ...modeBlock };
+      }
+      const styles = {};
+      for (const [key, rawValue] of Object.entries(rules)) {
+        const value = String(rawValue);
+        styles[`--${key}`] = value;
+        if (!value.startsWith("#") || rules[`rgb-${key}`] !== undefined) continue;
+        const triplet = hexToRgbTriplet(value);
+        if (triplet) styles[`--rgb-${key}`] = triplet;
+      }
+      return styles;
+    }
+
+    function parseCssColor(value) {
+      const text = String(value ?? "").trim();
+      let m = text.match(/^rgba?\(([^)]+)\)$/);
+      if (m) {
+        const parts = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
+        if (parts.length >= 3) return { r: parts[0], g: parts[1], b: parts[2], a: parts[3] ?? 1 };
+      }
+      // color-mix(in srgb, …) results serialise as color(srgb r g b / a).
+      m = text.match(/^color\(srgb\s+([^)]+)\)$/);
+      if (m) {
+        const parts = m[1].split(/[\s\/]+/).filter(Boolean).map(Number);
+        if (parts.length >= 3) return { r: parts[0] * 255, g: parts[1] * 255, b: parts[2] * 255, a: parts[3] ?? 1 };
+      }
+      if (text.startsWith("#")) {
+        const triplet = hexToRgbTriplet(text.slice(0, 7));
+        if (triplet) {
+          const [r, g, b] = triplet.split(",").map(Number);
+          const a = text.length === 9 ? parseInt(text.slice(7, 9), 16) / 255 : 1;
+          return { r, g, b, a };
+        }
+      }
+      return null;
+    }
+
+    function detectAppearance() {
+      // Resolve the text colour the browser will actually use on the page.
+      const probe = document.createElement("span");
+      probe.style.color = "var(--primary-text-color)";
+      probe.style.position = "absolute";
+      probe.style.visibility = "hidden";
+      document.body.appendChild(probe);
+      const color = parseCssColor(getComputedStyle(probe).color);
+      probe.remove();
+      if (!color) return "light";
+      const luminance = (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255;
+      return luminance > 0.5 ? "dark" : "light";
+    }
+
+    function harnessHassThemes() {
+      const themes = {};
+      if (themeState.name && THEME_FIXTURE?.themes?.[themeState.name]) {
+        const theme = THEME_FIXTURE.themes[themeState.name];
+        themes[themeState.name] = { ...theme.vars, ...(theme.modes ? { modes: theme.modes } : {}) };
+      }
+      return {
+        darkMode: themeState.haDarkMode,
+        theme: themeState.name ?? "default",
+        default_theme: "default",
+        themes,
+      };
+    }
+
+    function applyThemeState(parsed) {
+      const root = document.documentElement;
+      for (const key of appliedThemeKeys) root.style.removeProperty(key);
+      appliedThemeKeys = [];
+      if (THEME_FIXTURE) {
+        const styles = buildThemeRules(parsed);
+        for (const [key, value] of Object.entries(styles)) {
+          root.style.setProperty(key, value);
+          appliedThemeKeys.push(key);
+        }
+      }
+      const option = THEME_OPTIONS.find((item) => item.value === parsed.value);
+      const appearance = THEME_FIXTURE ? detectAppearance() : (parsed.dark ? "dark" : "light");
+      themeState = {
+        value: parsed.value,
+        name: parsed.name,
+        haDarkMode: parsed.dark,
+        appearance,
+        label: option?.label ?? parsed.value,
+      };
+      document.body.dataset.theme = appearance;
+      document.body.dataset.themeName = parsed.name ?? "default";
+      themeSelect.value = parsed.value;
+      activeThemeEl.textContent = themeState.label;
+    }
+
+    function installThemeFixture() {
+      if (!THEME_FIXTURE) return;
+      const declarations = Object.entries(THEME_FIXTURE.base?.light ?? {})
+        .map(([key, value]) => `  --${key}: ${value};`)
+        .join("\n");
+      haBaseStyleEl.textContent = `:root {\n${declarations}\n}`;
+      fallbackPaletteEl.insertAdjacentElement("afterend", haBaseStyleEl);
+      fallbackPaletteEl.disabled = true;
+      // Replace the static options with the fixture-driven list, grouped.
+      themeSelect.replaceChildren();
+      const groups = new Map();
+      for (const option of THEME_OPTIONS) {
+        if (!groups.has(option.group)) {
+          const group = document.createElement("optgroup");
+          group.label = option.group;
+          groups.set(option.group, group);
+          themeSelect.appendChild(group);
+        }
+        const el = document.createElement("option");
+        el.value = option.value;
+        el.textContent = option.label;
+        groups.get(option.group).appendChild(el);
+      }
+    }
+    installThemeFixture();
+
     async function setHarnessTheme(theme) {
-      currentTheme = theme === "dark" ? "dark" : "light";
-      themeSelect.value = currentTheme;
-      document.body.dataset.theme = currentTheme;
-      activeThemeEl.textContent = currentTheme === "dark" ? "Dark" : "Light";
+      const parsed = parseThemeValue(theme) ?? parseThemeValue("light");
+      currentTheme = parsed.value;
+      applyThemeState(parsed);
       const card = window._harnessCard;
       if (card && window._harnessHass) {
         window._harnessHass = {
           ...window._harnessHass,
-          themes: { ...(window._harnessHass.themes ?? {}), darkMode: currentTheme === "dark" },
+          themes: harnessHassThemes(),
         };
         card.hass = window._harnessHass;
         await card.updateComplete;
@@ -2858,6 +3077,11 @@
       },
       supportedLanguages: [...languageSelect.options].map((option) => option.value),
       scenarioIds: SCENARIOS.map((scenario) => String(scenario.id)),
+      themeOptions: THEME_OPTIONS.map((option) => ({ ...option })),
+      themeFixtureLoaded: Boolean(THEME_FIXTURE),
+      getThemeState() {
+        return { ...themeState };
+      },
     };
 
     const controlsEl = document.getElementById("controls");
@@ -2915,15 +3139,13 @@
     currentLanguage = [...languageSelect.options].some((option) => option.value === initialLanguage)
       ? initialLanguage
       : "en";
-    currentTheme = initialTheme === "dark" ? "dark" : "light";
+    currentTheme = (parseThemeValue(initialTheme) ?? parseThemeValue("light")).value;
     currentWidth = ["responsive", "360", "520", "900"].includes(initialWidth)
       ? initialWidth
       : "responsive";
     languageSelect.value = currentLanguage;
-    themeSelect.value = currentTheme;
-    document.body.dataset.theme = currentTheme;
+    applyThemeState(parseThemeValue(currentTheme));
     activeLanguageEl.textContent = languageSelect.selectedOptions[0]?.textContent ?? currentLanguage;
-    activeThemeEl.textContent = currentTheme === "dark" ? "Dark" : "Light";
     setHarnessWidth(currentWidth);
 
     const initialScenario = SCENARIOS.find(

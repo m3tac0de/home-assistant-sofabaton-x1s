@@ -321,7 +321,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     maximumDevices: "Se alcanzó el número máximo de dispositivos", configuredSlots: (count: number) => `${count} ${count === 1 ? "espacio" : "espacios"}`, unableSaveAction: "No se pudo guardar la acción",
     hubCommandInProgress: "Comando del hub en curso…", idle: "Inactivo", unableLoadSyncStatus: "No se pudo cargar el estado de sincronización", noTargetEntity: "Sin entidad de destino",
     commandNameLeadingSpace: "El nombre del comando debe comenzar con un carácter que no sea un espacio.", navigationGroup: "Navegación", transportGroup: "Volumen y canal", mediaGroup: "Reproducción", abcGroup: "ABC", colorGroup: "Color",
-    inputCommand: "Comando de entrada", inputFor: (activity: string) => `Entrada para ${activity}`, activitySingular: "Actividad", activityPlural: "Actividades", unconfiguredCommand: "Comando sin configurar",
+    inputCommand: "Comando de entrada", inputFor: (activity: string) => `Entrada para ${activity}`, inActivities: (count: number) => `en ${count} ${count === 1 ? "actividad" : "actividades"}`, unconfiguredCommand: "Comando sin configurar",
     powerBothCommand: "Comando de encendido y apagado", powerOnCommand: "Comando de encendido", powerOffCommand: "Comando de apagado", thisDevice: "este dispositivo",
     replacesOnButton: (slot: string) => `Reemplaza «${slot}» en este botón`, replacesFromDevice: (slot: string, device: string) => `Reemplaza «${slot}» de ${device}`, none: "Ninguno",
     commandSlotDescription: "Crea un comando en este espacio. Asígnale un nombre y decide a qué actividades aplicarlo. El nombre aparecerá en la pantalla del control remoto, en la aplicación móvil y como estado del sensor de Wifi Commands.",

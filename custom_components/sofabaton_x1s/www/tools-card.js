@@ -2398,8 +2398,7 @@ var TOOLS_CARD_STRINGS_EN = {
     colorGroup: "Color",
     inputCommand: "Input command",
     inputFor: (activity) => `Input for ${activity}`,
-    activitySingular: "Activity",
-    activityPlural: "Activities",
+    inActivities: (count) => `in ${count} ${count === 1 ? "activity" : "activities"}`,
     unconfiguredCommand: "Unconfigured command",
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
@@ -16660,7 +16659,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _commandSlotMetaLabel(command) {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
-    const activitiesLabel = activityCount === 1 ? TOOLS_CARD_STRINGS.wifiCommands.activitySingular : TOOLS_CARD_STRINGS.wifiCommands.activityPlural;
     const assignmentEnabled = this._activitySelectionEnabled(command);
     const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return TOOLS_CARD_STRINGS.wifiCommands.unconfiguredCommand;
@@ -16678,7 +16676,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         this._activityName(command.input_activity_id)
       );
     }
-    return `in ${activityCount} ${activitiesLabel}`;
+    return TOOLS_CARD_STRINGS.wifiCommands.inActivities(activityCount);
   }
   _toggleFavoriteRow() {
     const draft = this._activeCommandDraft();

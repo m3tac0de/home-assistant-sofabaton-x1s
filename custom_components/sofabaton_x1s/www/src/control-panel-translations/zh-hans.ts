@@ -387,7 +387,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     maximumDevices: "已达到设备数量上限", configuredSlots: (count: number) => `已配置 ${count} 个槽位`, unableSaveAction: "无法保存动作",
     hubCommandInProgress: "正在执行 Hub 命令…", idle: "空闲", unableLoadSyncStatus: "无法加载同步状态", noTargetEntity: "没有目标实体",
     commandNameLeadingSpace: "命令名称不能以空格开头。", navigationGroup: "导航", transportGroup: "音量和频道", mediaGroup: "播放", abcGroup: "ABC", colorGroup: "彩色按键",
-    inputCommand: "信源命令", inputFor: (activity: string) => `“${activity}”的信源`, activitySingular: "活动", activityPlural: "活动", unconfiguredCommand: "未配置的命令",
+    inputCommand: "信源命令", inputFor: (activity: string) => `“${activity}”的信源`, inActivities: (count: number) => `用于 ${count} 个活动`, unconfiguredCommand: "未配置的命令",
     powerBothCommand: "电源切换命令", powerOnCommand: "开机命令", powerOffCommand: "关机命令", thisDevice: "此设备",
     replacesOnButton: (slot: string) => `替换此按键上的“${slot}”`, replacesFromDevice: (slot: string, device: string) => `替换“${device}”的“${slot}”`, none: "无",
     commandSlotDescription: "在此槽位创建命令。请为其命名并选择适用的活动。该名称会显示在遥控器屏幕、移动应用和 Wifi 命令传感器状态中。",

@@ -389,7 +389,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     maximumDevices: "Maximumaantal apparaten bereikt", configuredSlots: (count: number) => `${count} ${count === 1 ? "positie" : "posities"}`, unableSaveAction: "Actie kan niet worden opgeslagen",
     hubCommandInProgress: "Hubcommando wordt uitgevoerd…", idle: "Inactief", unableLoadSyncStatus: "Synchronisatiestatus kan niet worden geladen", noTargetEntity: "Geen doelentiteit",
     commandNameLeadingSpace: "De commandonaam moet beginnen met een teken dat geen spatie is.", navigationGroup: "Navigatie", transportGroup: "Volume en kanaal", mediaGroup: "Afspelen", abcGroup: "ABC", colorGroup: "Kleur",
-    inputCommand: "Ingangscommando", inputFor: (activity: string) => `Ingang voor ${activity}`, activitySingular: "Activiteit", activityPlural: "Activiteiten", unconfiguredCommand: "Niet-geconfigureerd commando",
+    inputCommand: "Ingangscommando", inputFor: (activity: string) => `Ingang voor ${activity}`, inActivities: (count: number) => `in ${count} ${count === 1 ? "activiteit" : "activiteiten"}`, unconfiguredCommand: "Niet-geconfigureerd commando",
     powerBothCommand: "Commando voor in- en uitschakelen", powerOnCommand: "Inschakelcommando", powerOffCommand: "Uitschakelcommando", thisDevice: "dit apparaat",
     replacesOnButton: (slot: string) => `Vervangt "${slot}" op deze knop`, replacesFromDevice: (slot: string, device: string) => `Vervangt "${slot}" van ${device}`, none: "Geen",
     commandSlotDescription: "Maak een commando in deze positie. Geef het een naam en kies op welke activiteiten het wordt toegepast. De naam verschijnt op het scherm van je afstandsbediening, in de mobiele app en als sensorstatus van het Wifi-commando.",

@@ -325,7 +325,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     maximumDevices: "Nombre maximal d’appareils atteint", configuredSlots: (count: number) => `${count} ${count === 1 ? "emplacement" : "emplacements"}`, unableSaveAction: "Impossible d’enregistrer l’action",
     hubCommandInProgress: "Commande du hub en cours…", idle: "Inactif", unableLoadSyncStatus: "Impossible de charger l’état de synchronisation", noTargetEntity: "Aucune entité cible",
     commandNameLeadingSpace: "Le nom de la commande doit commencer par un caractère autre qu’un espace.", navigationGroup: "Navigation", transportGroup: "Volume et chaînes", mediaGroup: "Lecture", abcGroup: "ABC", colorGroup: "Couleur",
-    inputCommand: "Commande d’entrée", inputFor: (activity: string) => `Entrée pour ${activity}`, activitySingular: "Activité", activityPlural: "Activités", unconfiguredCommand: "Commande non configurée",
+    inputCommand: "Commande d’entrée", inputFor: (activity: string) => `Entrée pour ${activity}`, inActivities: (count: number) => `dans ${count} ${count === 1 ? "activité" : "activités"}`, unconfiguredCommand: "Commande non configurée",
     powerBothCommand: "Commande d’allumage et d’extinction", powerOnCommand: "Commande d’allumage", powerOffCommand: "Commande d’extinction", thisDevice: "cet appareil",
     replacesOnButton: (slot: string) => `Remplace « ${slot} » sur cette touche`, replacesFromDevice: (slot: string, device: string) => `Remplace « ${slot} » de ${device}`, none: "Aucun",
     commandSlotDescription: "Créez une commande dans cet emplacement. Nommez-la et choisissez les activités auxquelles elle s’applique. Son nom apparaîtra sur l’écran de la télécommande, dans l’application mobile et comme état du capteur de la commande Wifi.",

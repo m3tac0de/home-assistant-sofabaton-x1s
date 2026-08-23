@@ -3051,9 +3051,6 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _commandSlotMetaLabel(command: WifiCommandSlot) {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
-    const activitiesLabel = activityCount === 1
-      ? TOOLS_CARD_STRINGS.wifiCommands.activitySingular
-      : TOOLS_CARD_STRINGS.wifiCommands.activityPlural;
     const assignmentEnabled = this._activitySelectionEnabled(command);
     const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return TOOLS_CARD_STRINGS.wifiCommands.unconfiguredCommand;
@@ -3071,7 +3068,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         this._activityName(command.input_activity_id),
       );
     }
-    return `in ${activityCount} ${activitiesLabel}`;
+    return TOOLS_CARD_STRINGS.wifiCommands.inActivities(activityCount);
   }
 
   private _toggleFavoriteRow() {

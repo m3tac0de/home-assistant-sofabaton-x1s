@@ -108,6 +108,30 @@ npm run test:playwright:update     # refresh snapshots after intended UI changes
 Snapshot diffs are expected whenever card rendering changes intentionally —
 review them, then update.
 
+### 4. Control panel harness under real HA themes (contrast audit)
+
+`tests/tools-card-harness.html` renders the control panel against Home
+Assistant's real base palette plus a set of popular community themes
+(Noctis, iOS, Catppuccin, Material You, Caule, Frosted Glass, Liquid
+Glass, visionOS). The theme switcher in the harness sidebar and the
+`?theme=` URL parameter drive it; the variable maps come from
+`tests/fixtures/ha-themes.js`. Wallpaper themes load their image from the
+theme's own CDN URL, so they need network access to look right.
+
+```powershell
+npm run audit:contrast                          # WCAG AA contrast of every visible text element, all themes x key scenarios
+npm run audit:contrast -- --themes "dark,Caule Black Purple" --scenarios "automation-events"
+npm run audit:contrast -- --strict              # exit 1 on any failure (not part of the test suite)
+npm run fetch:ha-themes                         # regenerate the fixture (needs scripts/.ha-config.json + .ha-token)
+```
+
+The audit writes `artifacts/contrast-audit.md` (+ `.json`), grouped by
+element signature (component + tag + classes) with the worst theme per
+row, so token decisions can be made per style rule. Disabled controls are
+measured but never counted; deliberate exceptions go in
+`tests/fixtures/contrast-allowlist.json` with the reason documented next
+to the style rule.
+
 ## ◇ Documentation
 
 - User docs live in `docs/`; keep links **relative** (they are read on GitHub).

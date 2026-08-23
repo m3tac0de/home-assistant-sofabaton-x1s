@@ -236,8 +236,8 @@ test("X1 hides power/input roles from the slot meta label but keeps them on X1S"
   assert.match(String((element as any)._commandSlotMetaLabel(inputSlot)), /^Input for /);
 
   element.hub = { entry_id: "hub-1", version: "X1" };
-  assert.equal((element as any)._commandSlotMetaLabel(powerSlot), "in 0 Activities");
-  assert.equal((element as any)._commandSlotMetaLabel(inputSlot), "in 0 Activities");
+  assert.equal((element as any)._commandSlotMetaLabel(powerSlot), "in 0 activities");
+  assert.equal((element as any)._commandSlotMetaLabel(inputSlot), "in 0 activities");
 });
 
 test("hub events tab normalizes activity event actions and drops invalid ids", () => {

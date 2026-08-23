@@ -1417,6 +1417,20 @@ var REMOTE_CARD_CSS = `
          Override it here with theme-aware fallbacks so the field matches the theme. */
       .sb-activity-select {
         --ha-color-form-background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        /* Dropdown item text. HA declares these derived tokens on <html> as
+           var(--primary-text-color), where they resolve once against the
+           GLOBAL theme and descendants inherit the resolved color. A per-card
+           theme / background override rewrites --primary-text-color on the
+           card only, so the menu panel (which re-reads --card-background-color
+           locally) follows the card while the item text stays the global
+           theme's color: dark text on a dark panel. Re-declaring the tokens
+           here makes them resolve against the card-local text color. No-op
+           without a local override. Covers both dropdown generations:
+           ha-dropdown-item (wa) and mwc-list-item (mdc). */
+        --wa-color-text-normal: var(--primary-text-color);
+        --wa-color-text-quiet: var(--secondary-text-color);
+        --mdc-theme-text-primary-on-background: var(--primary-text-color);
+        --mdc-theme-text-secondary-on-background: var(--secondary-text-color);
       }
 
       .activityRow {
