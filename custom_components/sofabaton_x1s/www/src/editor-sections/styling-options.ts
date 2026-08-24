@@ -60,6 +60,28 @@ export function renderStylingOptionsSection(params: {
     "sb-opt-max-width",
   );
 
+  const keyStyleRow = renderFormRow(
+    fieldForm(
+      {
+        name: "key_style",
+        required: true,
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "flat", label: str().editor.keyStyleFlat },
+              { value: "tinted", label: str().editor.keyStyleTinted },
+              { value: "elevated", label: str().editor.keyStyleElevated },
+              { value: "glossy", label: str().editor.keyStyleGlossy },
+            ],
+          },
+        },
+      },
+      { key_style: config.key_style ?? "flat" },
+    ),
+    "sb-opt-key-style",
+  );
+
   const backgroundRow = renderOptionRow({
     className: "sb-opt-background",
     label: str().editor.fieldLabels.use_background_override,
@@ -89,7 +111,7 @@ export function renderStylingOptionsSection(params: {
       : nothing,
   });
 
-  const body = html`<div class="sb-opt-list">${themeRow}${maxWidthRow}${backgroundRow}</div>`;
+  const body = html`<div class="sb-opt-list">${themeRow}${maxWidthRow}${keyStyleRow}${backgroundRow}</div>`;
 
   return renderEditorExpander({
     expanded: params.expanded,

@@ -124,6 +124,16 @@ export function deviceModeBlock(
 }
 
 /** The `device_mode.enabled` master switch: absent = enabled. */
+/** Key surface treatment from config; unknown values fall back to "flat". */
+export function keyStyleFromConfig(
+  config: Record<string, any> | null | undefined,
+): "flat" | "tinted" | "elevated" | "glossy" {
+  const value = config?.key_style;
+  return value === "tinted" || value === "elevated" || value === "glossy"
+    ? value
+    : "flat";
+}
+
 export function deviceModeEnabledInConfig(
   config: Record<string, any> | null | undefined,
 ): boolean {

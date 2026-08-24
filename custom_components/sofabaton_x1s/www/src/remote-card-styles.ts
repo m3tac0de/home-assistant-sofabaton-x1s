@@ -36,11 +36,90 @@ export const REMOTE_CARD_CSS = `
       ha-card { --sb-theme-secondary-text: var(--secondary-text-color); }
       .wrap {
         --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
-        --sb-overlay-hover: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
-        --sb-overlay-press: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+        /* Overlay/tint base: the text colour, unless a background override
+           contradicts the page theme, in which case _applyLocalTheme sets
+           --sb-overlay-base from the override's own luminance. */
+        --sb-tint-base: var(--sb-overlay-base, var(--primary-text-color));
+        --sb-overlay-hover: color-mix(in srgb, var(--sb-tint-base) 10%, transparent);
+        --sb-overlay-press: color-mix(in srgb, var(--sb-tint-base) 18%, transparent);
         --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+        /* Raised-surface pair used by key_style tinted/elevated. Computed
+           here (not on the consumers) so redefining --ha-card-background on
+           a drawer button from it is not a self-reference. */
+        --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Glossy: a vertical curve of the same tint (bright top, dark
+           bottom) plus specular inset highlights. A gradient is legal here
+           because every consumer puts the token in a background shorthand. */
+        --sb-key-surface-glossy: linear-gradient(180deg,
+          color-mix(in srgb, var(--sb-tint-base) 18%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 0%,
+          color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 48%,
+          color-mix(in srgb, var(--sb-tint-base) 2%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 100%);
+        --sb-key-gloss-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.30),
+          inset 0 6px 10px -6px rgba(255, 255, 255, 0.18),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.22),
+          0 2px 6px rgba(0, 0, 0, 0.18);
       }
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
+      /* key_style: raise the keys off the card. The tint is mixed from the
+         theme's TEXT colour, so it lands on the right side of any palette
+         (8% white over a true-black card is a clearly raised #141414; 8%
+         black over white a soft grey) and stays below the 10%/18% hover and
+         press overlays, which stack on top of it. The floored border keeps
+         a visible outline even where the theme's divider matches its
+         background. Colour keys and the Macros/Favorites tabs declare their
+         own --sb-control-* values closer to the element and are unaffected.
+         "Elevated" adds a shadow, which only reads on light surfaces
+         (nothing renders darker than a black card); the tint carries dark
+         themes. */
+      .wrap--keys-tinted,
+      .wrap--keys-elevated {
+        --sb-control-background: var(--sb-key-surface);
+        --sb-control-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy {
+        --sb-control-background: var(--sb-key-surface-glossy);
+        --sb-control-border-color: var(--sb-key-border);
+        --sb-control-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated {
+        --sb-control-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* The drawer headers (Macros/Favorites bar and the device-mode
+         Commands bar reuse .macroFavorites) and the buttons inside the
+         drawers ride along with key_style: same raised surface and floored
+         border as the keys. The drawer panel itself (.mf-overlay) stays on
+         the card background so the buttons read as raised on it. The tab
+         buttons inside the bar keep their transparent --sb-control-* (the
+         BAR is the surface). Drawer buttons are ha-cards, so their tokens
+         are redefined from the pair computed on .wrap. */
+      .wrap--keys-tinted .macroFavorites,
+      .wrap--keys-elevated .macroFavorites {
+        background: var(--sb-key-surface);
+        border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .macroFavorites {
+        background: var(--sb-key-surface-glossy);
+        border-color: var(--sb-key-border);
+        box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-tinted .drawer-btn,
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-background: var(--sb-key-surface);
+        --ha-card-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .drawer-btn {
+        --ha-card-background: var(--sb-key-surface-glossy);
+        --ha-card-border-color: var(--sb-key-border);
+        --ha-card-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated .macroFavorites {
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
       .layout-container { display: grid; gap: 12px; }
       .layout-overlay {
         position: absolute;

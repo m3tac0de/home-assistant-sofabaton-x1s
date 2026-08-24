@@ -627,6 +627,10 @@ function deviceModeBlock(config) {
   const block = config?.device_mode;
   return block && typeof block === "object" ? block : null;
 }
+function keyStyleFromConfig(config) {
+  const value = config?.key_style;
+  return value === "tinted" || value === "elevated" || value === "glossy" ? value : "flat";
+}
 function deviceModeEnabledInConfig(config) {
   return deviceModeBlock(config)?.enabled !== false;
 }
@@ -956,6 +960,7 @@ var REMOTE_CARD_STRINGS_EN = {
       show_macros_button: "Macros Button",
       show_favorites_button: "Favorites Button",
       max_width: "Maximum Card Width (px)",
+      key_style: "Key style",
       group_order: "Group Order"
     },
     generalOptionsTitle: "General Options",
@@ -964,6 +969,10 @@ var REMOTE_CARD_STRINGS_EN = {
     keyCaptureLearnMore: "Learn more about Key capture",
     keyCaptureDocsAria: "Key capture documentation",
     stylingOptions: "Styling Options",
+    keyStyleFlat: "Flat (matches the card background)",
+    keyStyleTinted: "Tinted (keys stand out from the background)",
+    keyStyleElevated: "Elevated (tinted with a shadow)",
+    keyStyleGlossy: "Glossy (shiny, curved keys)",
     layoutOptions: "Layout Options",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Default activity layout",
@@ -1405,11 +1414,90 @@ var REMOTE_CARD_CSS = `
       ha-card { --sb-theme-secondary-text: var(--secondary-text-color); }
       .wrap {
         --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
-        --sb-overlay-hover: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
-        --sb-overlay-press: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+        /* Overlay/tint base: the text colour, unless a background override
+           contradicts the page theme, in which case _applyLocalTheme sets
+           --sb-overlay-base from the override's own luminance. */
+        --sb-tint-base: var(--sb-overlay-base, var(--primary-text-color));
+        --sb-overlay-hover: color-mix(in srgb, var(--sb-tint-base) 10%, transparent);
+        --sb-overlay-press: color-mix(in srgb, var(--sb-tint-base) 18%, transparent);
         --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+        /* Raised-surface pair used by key_style tinted/elevated. Computed
+           here (not on the consumers) so redefining --ha-card-background on
+           a drawer button from it is not a self-reference. */
+        --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Glossy: a vertical curve of the same tint (bright top, dark
+           bottom) plus specular inset highlights. A gradient is legal here
+           because every consumer puts the token in a background shorthand. */
+        --sb-key-surface-glossy: linear-gradient(180deg,
+          color-mix(in srgb, var(--sb-tint-base) 18%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 0%,
+          color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 48%,
+          color-mix(in srgb, var(--sb-tint-base) 2%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 100%);
+        --sb-key-gloss-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.30),
+          inset 0 6px 10px -6px rgba(255, 255, 255, 0.18),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.22),
+          0 2px 6px rgba(0, 0, 0, 0.18);
       }
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
+      /* key_style: raise the keys off the card. The tint is mixed from the
+         theme's TEXT colour, so it lands on the right side of any palette
+         (8% white over a true-black card is a clearly raised #141414; 8%
+         black over white a soft grey) and stays below the 10%/18% hover and
+         press overlays, which stack on top of it. The floored border keeps
+         a visible outline even where the theme's divider matches its
+         background. Colour keys and the Macros/Favorites tabs declare their
+         own --sb-control-* values closer to the element and are unaffected.
+         "Elevated" adds a shadow, which only reads on light surfaces
+         (nothing renders darker than a black card); the tint carries dark
+         themes. */
+      .wrap--keys-tinted,
+      .wrap--keys-elevated {
+        --sb-control-background: var(--sb-key-surface);
+        --sb-control-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy {
+        --sb-control-background: var(--sb-key-surface-glossy);
+        --sb-control-border-color: var(--sb-key-border);
+        --sb-control-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated {
+        --sb-control-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* The drawer headers (Macros/Favorites bar and the device-mode
+         Commands bar reuse .macroFavorites) and the buttons inside the
+         drawers ride along with key_style: same raised surface and floored
+         border as the keys. The drawer panel itself (.mf-overlay) stays on
+         the card background so the buttons read as raised on it. The tab
+         buttons inside the bar keep their transparent --sb-control-* (the
+         BAR is the surface). Drawer buttons are ha-cards, so their tokens
+         are redefined from the pair computed on .wrap. */
+      .wrap--keys-tinted .macroFavorites,
+      .wrap--keys-elevated .macroFavorites {
+        background: var(--sb-key-surface);
+        border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .macroFavorites {
+        background: var(--sb-key-surface-glossy);
+        border-color: var(--sb-key-border);
+        box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-tinted .drawer-btn,
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-background: var(--sb-key-surface);
+        --ha-card-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .drawer-btn {
+        --ha-card-background: var(--sb-key-surface-glossy);
+        --ha-card-border-color: var(--sb-key-border);
+        --ha-card-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated .macroFavorites {
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
       .layout-container { display: grid; gap: 12px; }
       .layout-overlay {
         position: absolute;
@@ -2736,6 +2824,27 @@ function renderStylingOptionsSection(params) {
     ),
     "sb-opt-max-width"
   );
+  const keyStyleRow = renderFormRow(
+    fieldForm(
+      {
+        name: "key_style",
+        required: true,
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "flat", label: str().editor.keyStyleFlat },
+              { value: "tinted", label: str().editor.keyStyleTinted },
+              { value: "elevated", label: str().editor.keyStyleElevated },
+              { value: "glossy", label: str().editor.keyStyleGlossy }
+            ]
+          }
+        }
+      },
+      { key_style: config.key_style ?? "flat" }
+    ),
+    "sb-opt-key-style"
+  );
   const backgroundRow = renderOptionRow({
     className: "sb-opt-background",
     label: str().editor.fieldLabels.use_background_override,
@@ -2757,7 +2866,7 @@ function renderStylingOptionsSection(params) {
           </div>
         ` : A
   });
-  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${backgroundRow}</div>`;
+  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${keyStyleRow}${backgroundRow}</div>`;
   return renderEditorExpander({
     expanded: params.expanded,
     icon: "mdi:palette",
@@ -7568,6 +7677,14 @@ var SofabatonRemoteCard = class extends i4 {
     }
     const themeBg = vars?.["ha-card-background"] ?? vars?.["card-background-color"] ?? vars?.["ha-card-background-color"] ?? vars?.["primary-background-color"] ?? null;
     const finalBg = bgOverrideCss || themeBg;
+    const override = this._store.config?.background_override;
+    if (bgOverrideCss && Array.isArray(override) && override.length === 3) {
+      const [r6, g2, b3] = override.map((v3) => Number(v3) / 255);
+      const lin = (c7) => c7 <= 0.03928 ? c7 / 12.92 : ((c7 + 0.055) / 1.055) ** 2.4;
+      const luminance = 0.2126 * lin(r6) + 0.7152 * lin(g2) + 0.0722 * lin(b3);
+      root.style.setProperty("--sb-overlay-base", luminance < 0.4 ? "#ffffff" : "#000000");
+      this._appliedThemeVars.push("--sb-overlay-base");
+    }
     if (finalBg) {
       root.style.setProperty("--ha-card-background", String(finalBg));
       root.style.setProperty("--card-background-color", String(finalBg));
@@ -7846,6 +7963,7 @@ var SofabatonRemoteCard = class extends i4 {
     const midEnabled = derived.showVolume || derived.showChannel;
     const mediaEnabled = derived.isX2 ? derived.showMedia || derived.showDvr : derived.showMedia;
     const order = normalizedGroupOrder(layoutConfig.group_order);
+    const keyStyle = keyStyleFromConfig(store.config);
     const groupTemplates = {
       activity: () => Boolean(layoutConfig.show_activity) ? renderActivityRow({
         hass: store.hass,
@@ -7920,7 +8038,7 @@ var SofabatonRemoteCard = class extends i4 {
     return b2`
       <ha-card ${n6(this._cardRef)}>
         ${assistEnabled ? renderAssistModal({ visible: true, controller: this._assist }) : A}
-        <div class="wrap" ${n6(this._wrapRef)}>
+        <div class="wrap${keyStyle === "flat" ? "" : ` wrap--keys-${keyStyle}`}" ${n6(this._wrapRef)}>
           ${assistEnabled ? renderAssistRow({ visible: true, controller: this._assist }) : A}
           <div class="layout-container" ${n6(this._layoutContainerRef)}>
             ${c6(
@@ -8091,6 +8209,7 @@ var REMOTE_CARD_STRINGS_AR = {
       show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
       show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
+      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
       group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
     },
     generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
@@ -8099,6 +8218,10 @@ var REMOTE_CARD_STRINGS_AR = {
     keyCaptureLearnMore: "\u062A\u0639\u0631\u0651\u0641 \u0639\u0644\u0649 \u0627\u0644\u0645\u0632\u064A\u062F \u062D\u0648\u0644 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     keyCaptureDocsAria: "\u0648\u062B\u0627\u0626\u0642 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     stylingOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0645\u0638\u0647\u0631",
+    keyStyleFlat: "\u0645\u0633\u0637\u062D (\u0628\u0646\u0641\u0633 \u0644\u0648\u0646 \u062E\u0644\u0641\u064A\u0629 \u0627\u0644\u0628\u0637\u0627\u0642\u0629)",
+    keyStyleTinted: "\u0645\u0644\u0648\u0651\u0646 (\u062A\u062A\u0645\u064A\u0632 \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0639\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629)",
+    keyStyleElevated: "\u0645\u0631\u062A\u0641\u0639 (\u0645\u0644\u0648\u0651\u0646 \u0645\u0639 \u0638\u0644)",
+    keyStyleGlossy: "\u0644\u0627\u0645\u0639 (\u0623\u0632\u0631\u0627\u0631 \u0644\u0627\u0645\u0639\u0629 \u0645\u0642\u0648\u0651\u0633\u0629)",
     layoutOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     layoutSelectLabel: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
@@ -8287,6 +8410,7 @@ var REMOTE_CARD_STRINGS_DE = {
       show_macros_button: "Makrotaste",
       show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
+      key_style: "Tastenstil",
       group_order: "Gruppenreihenfolge"
     },
     generalOptionsTitle: "Allgemeine Optionen",
@@ -8295,6 +8419,10 @@ var REMOTE_CARD_STRINGS_DE = {
     keyCaptureLearnMore: "Mehr \xFCber die Tastenerfassung erfahren",
     keyCaptureDocsAria: "Dokumentation zur Tastenerfassung",
     stylingOptions: "Stiloptionen",
+    keyStyleFlat: "Flach (wie der Kartenhintergrund)",
+    keyStyleTinted: "Get\xF6nt (Tasten heben sich vom Hintergrund ab)",
+    keyStyleElevated: "Erh\xF6ht (get\xF6nt mit Schatten)",
+    keyStyleGlossy: "Gl\xE4nzend (gl\xE4nzende, gew\xF6lbte Tasten)",
     layoutOptions: "Layoutoptionen",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Standard-Aktivit\xE4tslayout",
@@ -8462,6 +8590,7 @@ var REMOTE_CARD_STRINGS_ES = {
       show_macros_button: "Bot\xF3n de macros",
       show_favorites_button: "Bot\xF3n de favoritos",
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
+      key_style: "Estilo de las teclas",
       group_order: "Orden de los grupos"
     },
     generalOptionsTitle: "Opciones generales",
@@ -8470,6 +8599,10 @@ var REMOTE_CARD_STRINGS_ES = {
     keyCaptureLearnMore: "M\xE1s informaci\xF3n sobre la captura de botones",
     keyCaptureDocsAria: "Documentaci\xF3n sobre la captura de botones",
     stylingOptions: "Opciones de estilo",
+    keyStyleFlat: "Plano (igual que el fondo de la tarjeta)",
+    keyStyleTinted: "Tintado (las teclas destacan sobre el fondo)",
+    keyStyleElevated: "Elevado (tintado con sombra)",
+    keyStyleGlossy: "Brillante (teclas curvas y brillantes)",
     layoutOptions: "Opciones de dise\xF1o",
     layoutSelectLabel: "Dise\xF1o",
     defaultLayoutOption: "Dise\xF1o predeterminado de actividades",
@@ -8637,6 +8770,7 @@ var REMOTE_CARD_STRINGS_FR = {
       show_macros_button: "Bouton des macros",
       show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
+      key_style: "Style des touches",
       group_order: "Ordre des groupes"
     },
     generalOptionsTitle: "Options g\xE9n\xE9rales",
@@ -8645,6 +8779,10 @@ var REMOTE_CARD_STRINGS_FR = {
     keyCaptureLearnMore: "En savoir plus sur la capture de touches",
     keyCaptureDocsAria: "Documentation sur la capture de touches",
     stylingOptions: "Options de style",
+    keyStyleFlat: "Plat (m\xEAme couleur que la carte)",
+    keyStyleTinted: "Teint\xE9 (les touches se d\xE9tachent du fond)",
+    keyStyleElevated: "Sur\xE9lev\xE9 (teint\xE9 avec ombre)",
+    keyStyleGlossy: "Brillant (touches bomb\xE9es et brillantes)",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
     defaultLayoutOption: "Disposition par d\xE9faut des activit\xE9s",
@@ -8811,6 +8949,7 @@ var REMOTE_CARD_STRINGS_NL = {
       show_macros_button: "Macroknop",
       show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
+      key_style: "Knopstijl",
       group_order: "Groepsvolgorde"
     },
     generalOptionsTitle: "Algemene opties",
@@ -8819,6 +8958,10 @@ var REMOTE_CARD_STRINGS_NL = {
     keyCaptureLearnMore: "Meer informatie over Knopdrukken registreren",
     keyCaptureDocsAria: "Documentatie over Knopdrukken registreren",
     stylingOptions: "Stijlopties",
+    keyStyleFlat: "Vlak (zelfde kleur als de kaart)",
+    keyStyleTinted: "Getint (knoppen steken af tegen de achtergrond)",
+    keyStyleElevated: "Verhoogd (getint met schaduw)",
+    keyStyleGlossy: "Glanzend (glimmende, bolle knoppen)",
     layoutOptions: "Indelingsopties",
     layoutSelectLabel: "Indeling",
     defaultLayoutOption: "Standaard voor activiteiten",
@@ -8985,6 +9128,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       show_macros_button: "\u5B8F\u6309\u94AE",
       show_favorites_button: "\u6536\u85CF\u6309\u94AE",
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
+      key_style: "\u6309\u952E\u6837\u5F0F",
       group_order: "\u5206\u7EC4\u987A\u5E8F"
     },
     generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
@@ -8993,6 +9137,10 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     keyCaptureLearnMore: "\u8BE6\u7EC6\u4E86\u89E3\u6309\u952E\u6355\u83B7",
     keyCaptureDocsAria: "\u6309\u952E\u6355\u83B7\u6587\u6863",
     stylingOptions: "\u6837\u5F0F\u9009\u9879",
+    keyStyleFlat: "\u6241\u5E73\uFF08\u4E0E\u5361\u7247\u80CC\u666F\u76F8\u540C\uFF09",
+    keyStyleTinted: "\u7740\u8272\uFF08\u6309\u952E\u4E0E\u80CC\u666F\u533A\u5206\u5F00\uFF09",
+    keyStyleElevated: "\u60AC\u6D6E\uFF08\u7740\u8272\u5E76\u5E26\u9634\u5F71\uFF09",
+    keyStyleGlossy: "\u5149\u6CFD\uFF08\u6709\u5149\u6CFD\u7684\u7ACB\u4F53\u6309\u952E\uFF09",
     layoutOptions: "\u5E03\u5C40\u9009\u9879",
     layoutSelectLabel: "\u5E03\u5C40",
     defaultLayoutOption: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",

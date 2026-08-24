@@ -14,6 +14,7 @@ import {
   mfAsRows,
   mfRowVisibleRows,
   normalizedGroupOrder,
+  keyStyleFromConfig,
 } from "./remote-card-layout";
 import { ensureHaElements } from "./remote-card-compat";
 import {
@@ -587,6 +588,21 @@ export class SofabatonRemoteCard extends LitElement {
 
     const finalBg = bgOverrideCss || themeBg;
 
+    // A background override can contradict the page theme's text colour
+    // (black card on a light dashboard): the overlay/tint base derived from
+    // --primary-text-color would land on the wrong side. The override is a
+    // known RGB triple, so pick the base from its luminance; key tints,
+    // hover/press overlays and the tinted key style read --sb-overlay-base
+    // first (see remote-card-styles.ts).
+    const override = this._store.config?.background_override;
+    if (bgOverrideCss && Array.isArray(override) && override.length === 3) {
+      const [r, g, b] = override.map((v) => Number(v) / 255);
+      const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      root.style.setProperty("--sb-overlay-base", luminance < 0.4 ? "#ffffff" : "#000000");
+      this._appliedThemeVars.push("--sb-overlay-base");
+    }
+
     if (finalBg) {
       root.style.setProperty("--ha-card-background", String(finalBg));
       root.style.setProperty("--card-background-color", String(finalBg));
@@ -944,6 +960,7 @@ export class SofabatonRemoteCard extends LitElement {
     // through the device chain, which store.groupOrderList (activity-keyed)
     // must not re-resolve.
     const order = normalizedGroupOrder(layoutConfig.group_order);
+    const keyStyle = keyStyleFromConfig(store.config);
     const groupTemplates: Record<string, () => unknown> = {
       activity: () =>
         Boolean(layoutConfig.show_activity) ? renderActivityRow({
@@ -1052,7 +1069,7 @@ export class SofabatonRemoteCard extends LitElement {
         ${assistEnabled
           ? renderAssistModal({ visible: true, controller: this._assist })
           : nothing}
-        <div class="wrap" ${ref(this._wrapRef)}>
+        <div class="wrap${keyStyle === "flat" ? "" : ` wrap--keys-${keyStyle}`}" ${ref(this._wrapRef)}>
           ${assistEnabled
             ? renderAssistRow({ visible: true, controller: this._assist })
             : nothing}
