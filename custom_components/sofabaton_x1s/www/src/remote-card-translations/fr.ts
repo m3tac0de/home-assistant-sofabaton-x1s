@@ -127,6 +127,7 @@ export const REMOTE_CARD_STRINGS_FR = {
     keyStyleTinted: "Teinté (les touches se détachent du fond)",
     keyStyleElevated: "Surélevé (teinté avec ombre)",
     keyStyleGlossy: "Brillant (touches bombées et brillantes)",
+    keyStylePanel: "Panneaux (panneaux teintés d'accent derrière les touches)",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
     defaultLayoutOption: "Disposition par défaut des activités",

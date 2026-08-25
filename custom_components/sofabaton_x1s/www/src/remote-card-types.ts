@@ -120,7 +120,7 @@ export interface CustomFavoriteConfig {
  * inherited from RemoteCardLayoutConfig. setConfig() spreads user config over
  * defaults, so unknown keys survive round-trips — hence the index signature.
  */
-export type KeyStyle = "flat" | "tinted" | "elevated" | "glossy";
+export type KeyStyle = "flat" | "tinted" | "elevated" | "glossy" | "panel";
 
 export interface RemoteCardConfig extends RemoteCardLayoutConfig {
   type?: string;
@@ -132,7 +132,9 @@ export interface RemoteCardConfig extends RemoteCardLayoutConfig {
   /**
    * Key surface treatment. "flat" (default) keeps keys on the card
    * background; "tinted" raises them with a text-colour tint and a floored
-   * border; "elevated" adds a soft shadow on top of the tint.
+   * border; "elevated" adds a soft shadow on top of the tint; "panel"
+   * inverts the scheme — the group containers take a contrasting surface
+   * while the keys stay card-coloured.
    */
   key_style?: KeyStyle;
   /**

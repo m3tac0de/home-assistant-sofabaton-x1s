@@ -73,6 +73,7 @@ export function renderStylingOptionsSection(params: {
               { value: "tinted", label: str().editor.keyStyleTinted },
               { value: "elevated", label: str().editor.keyStyleElevated },
               { value: "glossy", label: str().editor.keyStyleGlossy },
+              { value: "panel", label: str().editor.keyStylePanel },
             ],
           },
         },

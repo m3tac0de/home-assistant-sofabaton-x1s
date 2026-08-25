@@ -126,6 +126,7 @@ const REMOTE_CARD_STRINGS_DE = {
     keyStyleTinted: "Getönt (Tasten heben sich vom Hintergrund ab)",
     keyStyleElevated: "Erhöht (getönt mit Schatten)",
     keyStyleGlossy: "Glänzend (glänzende, gewölbte Tasten)",
+    keyStylePanel: "Panels (akzentgetönte Panels hinter den Tasten)",
     layoutOptions: "Layoutoptionen",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Standard-Aktivitätslayout",

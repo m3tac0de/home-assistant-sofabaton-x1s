@@ -629,7 +629,7 @@ function deviceModeBlock(config) {
 }
 function keyStyleFromConfig(config) {
   const value = config?.key_style;
-  return value === "tinted" || value === "elevated" || value === "glossy" ? value : "flat";
+  return value === "tinted" || value === "elevated" || value === "glossy" || value === "panel" ? value : "flat";
 }
 function deviceModeEnabledInConfig(config) {
   return deviceModeBlock(config)?.enabled !== false;
@@ -973,6 +973,7 @@ var REMOTE_CARD_STRINGS_EN = {
     keyStyleTinted: "Tinted (keys stand out from the background)",
     keyStyleElevated: "Elevated (tinted with a shadow)",
     keyStyleGlossy: "Glossy (shiny, curved keys)",
+    keyStylePanel: "Panels (accent-tinted panels behind the keys)",
     layoutOptions: "Layout Options",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Default activity layout",
@@ -1438,6 +1439,17 @@ var REMOTE_CARD_CSS = `
           inset 0 6px 10px -6px rgba(255, 255, 255, 0.18),
           inset 0 -2px 4px rgba(0, 0, 0, 0.22),
           0 2px 6px rgba(0, 0, 0, 0.18);
+        /* Panel surface used by key_style "panel": the control panel's dock
+           recipe (card-styles.ts .card-topbar/.card-bottom-dock) \u2014 a subtle
+           8%\u21924% accent gradient into the card background with a softened
+           divider border \u2014 so both cards share one surface language. Subtle
+           enough that the theme's text and icon colours read on it
+           unchanged. A gradient is legal here because every consumer puts
+           the token in a background shorthand. */
+        --sb-panel-surface: linear-gradient(180deg,
+          color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))),
+          color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))));
+        --sb-panel-border: color-mix(in srgb, var(--divider-color) 82%, transparent);
       }
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
       /* key_style: raise the keys off the card. The tint is mixed from the
@@ -1497,6 +1509,49 @@ var REMOTE_CARD_CSS = `
       }
       .wrap--keys-elevated .drawer-btn {
         --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* key_style "panel": the inverse of tinted \u2014 the bordered group
+         containers take the dock surface and the keys KEEP the card
+         background (their --sb-control-background default), so they read as
+         card-coloured cutouts on a softly accent-tinted panel. The tint is
+         subtle enough that no text or icon colour needs to change. The nav
+         row (.row3) has no container to paint, so its keys take the panel
+         surface directly. The Macros/Favorites bar (and the device-mode
+         Commands bar) and the drawer overlay are bordered containers too:
+         the bar's transparent tabs and the active tab's 14%-primary tint
+         both still read on the dock surface, and the ha-card drawer
+         buttons inside the overlay keep the card background for the same
+         cutout read. */
+      .wrap--keys-panel .dpad,
+      .wrap--keys-panel .mid,
+      .wrap--keys-panel .media,
+      .wrap--keys-panel .colors,
+      .wrap--keys-panel .abc {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .row3 {
+        --sb-control-background: var(--sb-panel-surface);
+        --sb-control-border-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .macroFavorites {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .macroFavoritesButton + .macroFavoritesButton {
+        border-left-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .macroFavoritesButton:first-child {
+        border-right-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .mf-overlay {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      /* drawer-up re-declares border-top with the divider colour at higher
+         specificity; keep it on the panel border. */
+      .wrap--keys-panel .mf-container.drawer-up .mf-overlay {
+        border-top-color: var(--sb-panel-border);
       }
       .layout-container { display: grid; gap: 12px; }
       .layout-overlay {
@@ -2836,7 +2891,8 @@ function renderStylingOptionsSection(params) {
               { value: "flat", label: str().editor.keyStyleFlat },
               { value: "tinted", label: str().editor.keyStyleTinted },
               { value: "elevated", label: str().editor.keyStyleElevated },
-              { value: "glossy", label: str().editor.keyStyleGlossy }
+              { value: "glossy", label: str().editor.keyStyleGlossy },
+              { value: "panel", label: str().editor.keyStylePanel }
             ]
           }
         }
@@ -8222,6 +8278,7 @@ var REMOTE_CARD_STRINGS_AR = {
     keyStyleTinted: "\u0645\u0644\u0648\u0651\u0646 (\u062A\u062A\u0645\u064A\u0632 \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0639\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629)",
     keyStyleElevated: "\u0645\u0631\u062A\u0641\u0639 (\u0645\u0644\u0648\u0651\u0646 \u0645\u0639 \u0638\u0644)",
     keyStyleGlossy: "\u0644\u0627\u0645\u0639 (\u0623\u0632\u0631\u0627\u0631 \u0644\u0627\u0645\u0639\u0629 \u0645\u0642\u0648\u0651\u0633\u0629)",
+    keyStylePanel: "\u0644\u0648\u062D\u0627\u062A (\u0644\u0648\u062D\u0627\u062A \u0628\u0645\u0633\u062D\u0629 \u0645\u0646 \u0644\u0648\u0646 \u0627\u0644\u062A\u0645\u064A\u064A\u0632 \u062E\u0644\u0641 \u0627\u0644\u0623\u0632\u0631\u0627\u0631)",
     layoutOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     layoutSelectLabel: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
@@ -8423,6 +8480,7 @@ var REMOTE_CARD_STRINGS_DE = {
     keyStyleTinted: "Get\xF6nt (Tasten heben sich vom Hintergrund ab)",
     keyStyleElevated: "Erh\xF6ht (get\xF6nt mit Schatten)",
     keyStyleGlossy: "Gl\xE4nzend (gl\xE4nzende, gew\xF6lbte Tasten)",
+    keyStylePanel: "Panels (akzentget\xF6nte Panels hinter den Tasten)",
     layoutOptions: "Layoutoptionen",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Standard-Aktivit\xE4tslayout",
@@ -8603,6 +8661,7 @@ var REMOTE_CARD_STRINGS_ES = {
     keyStyleTinted: "Tintado (las teclas destacan sobre el fondo)",
     keyStyleElevated: "Elevado (tintado con sombra)",
     keyStyleGlossy: "Brillante (teclas curvas y brillantes)",
+    keyStylePanel: "Paneles (paneles con tinte de acento detr\xE1s de las teclas)",
     layoutOptions: "Opciones de dise\xF1o",
     layoutSelectLabel: "Dise\xF1o",
     defaultLayoutOption: "Dise\xF1o predeterminado de actividades",
@@ -8783,6 +8842,7 @@ var REMOTE_CARD_STRINGS_FR = {
     keyStyleTinted: "Teint\xE9 (les touches se d\xE9tachent du fond)",
     keyStyleElevated: "Sur\xE9lev\xE9 (teint\xE9 avec ombre)",
     keyStyleGlossy: "Brillant (touches bomb\xE9es et brillantes)",
+    keyStylePanel: "Panneaux (panneaux teint\xE9s d'accent derri\xE8re les touches)",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
     defaultLayoutOption: "Disposition par d\xE9faut des activit\xE9s",
@@ -8962,6 +9022,7 @@ var REMOTE_CARD_STRINGS_NL = {
     keyStyleTinted: "Getint (knoppen steken af tegen de achtergrond)",
     keyStyleElevated: "Verhoogd (getint met schaduw)",
     keyStyleGlossy: "Glanzend (glimmende, bolle knoppen)",
+    keyStylePanel: "Panelen (panelen met accenttint achter de knoppen)",
     layoutOptions: "Indelingsopties",
     layoutSelectLabel: "Indeling",
     defaultLayoutOption: "Standaard voor activiteiten",
@@ -9141,6 +9202,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     keyStyleTinted: "\u7740\u8272\uFF08\u6309\u952E\u4E0E\u80CC\u666F\u533A\u5206\u5F00\uFF09",
     keyStyleElevated: "\u60AC\u6D6E\uFF08\u7740\u8272\u5E76\u5E26\u9634\u5F71\uFF09",
     keyStyleGlossy: "\u5149\u6CFD\uFF08\u6709\u5149\u6CFD\u7684\u7ACB\u4F53\u6309\u952E\uFF09",
+    keyStylePanel: "\u9762\u677F\uFF08\u6309\u952E\u540E\u65B9\u663E\u793A\u6D45\u5F3A\u8C03\u8272\u9762\u677F\uFF09",
     layoutOptions: "\u5E03\u5C40\u9009\u9879",
     layoutSelectLabel: "\u5E03\u5C40",
     defaultLayoutOption: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",

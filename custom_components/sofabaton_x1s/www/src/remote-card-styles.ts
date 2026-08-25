@@ -60,6 +60,17 @@ export const REMOTE_CARD_CSS = `
           inset 0 6px 10px -6px rgba(255, 255, 255, 0.18),
           inset 0 -2px 4px rgba(0, 0, 0, 0.22),
           0 2px 6px rgba(0, 0, 0, 0.18);
+        /* Panel surface used by key_style "panel": the control panel's dock
+           recipe (card-styles.ts .card-topbar/.card-bottom-dock) — a subtle
+           8%→4% accent gradient into the card background with a softened
+           divider border — so both cards share one surface language. Subtle
+           enough that the theme's text and icon colours read on it
+           unchanged. A gradient is legal here because every consumer puts
+           the token in a background shorthand. */
+        --sb-panel-surface: linear-gradient(180deg,
+          color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))),
+          color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))));
+        --sb-panel-border: color-mix(in srgb, var(--divider-color) 82%, transparent);
       }
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
       /* key_style: raise the keys off the card. The tint is mixed from the
@@ -119,6 +130,49 @@ export const REMOTE_CARD_CSS = `
       }
       .wrap--keys-elevated .drawer-btn {
         --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* key_style "panel": the inverse of tinted — the bordered group
+         containers take the dock surface and the keys KEEP the card
+         background (their --sb-control-background default), so they read as
+         card-coloured cutouts on a softly accent-tinted panel. The tint is
+         subtle enough that no text or icon colour needs to change. The nav
+         row (.row3) has no container to paint, so its keys take the panel
+         surface directly. The Macros/Favorites bar (and the device-mode
+         Commands bar) and the drawer overlay are bordered containers too:
+         the bar's transparent tabs and the active tab's 14%-primary tint
+         both still read on the dock surface, and the ha-card drawer
+         buttons inside the overlay keep the card background for the same
+         cutout read. */
+      .wrap--keys-panel .dpad,
+      .wrap--keys-panel .mid,
+      .wrap--keys-panel .media,
+      .wrap--keys-panel .colors,
+      .wrap--keys-panel .abc {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .row3 {
+        --sb-control-background: var(--sb-panel-surface);
+        --sb-control-border-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .macroFavorites {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .macroFavoritesButton + .macroFavoritesButton {
+        border-left-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .macroFavoritesButton:first-child {
+        border-right-color: var(--sb-panel-border);
+      }
+      .wrap--keys-panel .mf-overlay {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      /* drawer-up re-declares border-top with the divider colour at higher
+         specificity; keep it on the panel border. */
+      .wrap--keys-panel .mf-container.drawer-up .mf-overlay {
+        border-top-color: var(--sb-panel-border);
       }
       .layout-container { display: grid; gap: 12px; }
       .layout-overlay {
