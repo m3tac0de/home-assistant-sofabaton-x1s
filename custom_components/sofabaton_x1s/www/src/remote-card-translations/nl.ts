@@ -22,6 +22,7 @@ const REMOTE_CARD_STRINGS_NL = {
     macrosTab: "Macro's >",
     favoritesTab: "Favorieten >",
     commandsTab: "Commando's >",
+    powerButton: "Aan/uit",
     activitySelectLabel: "Activiteit",
     deviceSelectLabel: "Apparaat",
     selectDevice: "Selecteer apparaat",
@@ -128,6 +129,7 @@ const REMOTE_CARD_STRINGS_NL = {
     defaultLayoutOption: "Standaard voor activiteiten",
     allDevicesOption: "Standaard voor apparaten",
     commands: "Commando's",
+    power: "Aan/uit",
     modeToggle: "Modusknop",
     deviceModeDescription:
       "Bedien één apparaat dat op de hub is ingesteld met de knopkoppelingen en volledige lijst met commando's van dat apparaat.",

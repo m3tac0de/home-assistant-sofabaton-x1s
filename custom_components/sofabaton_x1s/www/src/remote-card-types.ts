@@ -206,6 +206,8 @@ export interface DeviceKeymapPayload {
     long_press_command_id?: number | null;
   }>;
   commands: Array<{ command_id: number; name: string }>;
+  /** Power-key capability gate (idle-behavior byte in 1-3, fail-closed). */
+  power_configured?: boolean;
   fetched_at?: string;
 }
 
@@ -213,4 +215,9 @@ export interface DeviceKeymapResponse {
   keymap: DeviceKeymapPayload | null;
   reason?: "cache_disabled" | "cache_miss";
   generation?: number;
+}
+
+/** `sofabaton_x1s/device/power_state` WS payload (plan section 8). */
+export interface DevicePowerStateResponse {
+  power_state: number | null;
 }

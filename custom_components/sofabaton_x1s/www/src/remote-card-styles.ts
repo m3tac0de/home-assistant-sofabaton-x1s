@@ -592,6 +592,66 @@ export const REMOTE_CARD_CSS = `
         pointer-events: auto;
       }
 
+      /* Device mode: power key sharing the commands strip row. The
+         wrapper becomes the positioned ancestor (its .mf-container goes
+         static), so the absolutely-positioned commands drawer overlay
+         spans the FULL row, bar column plus power column. */
+      .commands-row {
+        position: relative;
+        z-index: 2;
+      }
+      /* With the bar only 3/4 wide, the overlay's right shoulder sticks
+         out past it under the power key. Round that exposed corner with
+         the themed radius and restore the edge border there; the bar
+         overlaps the left 3/4 of that border (the -1px seam margin), so
+         the fused look under the bar is unchanged. */
+      .commands-row--power .mf-overlay {
+        border-top: 1px solid var(--divider-color);
+        border-top-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power .drawer-up .mf-overlay {
+        border-top-right-radius: var(--sb-group-radius);
+        border-bottom: 1px solid var(--divider-color);
+        border-bottom-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .commands-row--power .mf-container {
+        position: static;
+        min-width: 0;
+      }
+      .sb-power-key {
+        color: var(--sb-power-key-color, var(--primary-color, #03a9f4));
+      }
+      .commands-row--power-only .sb-power-key {
+        /* No sibling strip to stretch against: match the Commands bar
+           height (tab height plus its 1px borders). */
+        height: calc(var(--sb-tab-height) + 2px);
+      }
+      .sb-power-key--busy {
+        animation: sb-power-busy 1s ease-in-out infinite;
+      }
+      @keyframes sb-power-busy {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+
+      /* Commands-as-rows: the power key docks beside the pinned filter. */
+      .inline-filter-row {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+        margin-bottom: 8px;
+      }
+      .inline-filter-row .sb-commands-filter {
+        margin-bottom: 0;
+      }
+
       .mf-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;

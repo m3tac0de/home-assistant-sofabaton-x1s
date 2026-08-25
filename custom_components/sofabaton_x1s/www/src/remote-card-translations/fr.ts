@@ -25,6 +25,7 @@ export const REMOTE_CARD_STRINGS_FR = {
     macrosTab: "Macros >",
     favoritesTab: "Favoris >",
     commandsTab: "Commandes >",
+    powerButton: "Alimentation",
     activitySelectLabel: "Activité",
     deviceSelectLabel: "Appareil",
     selectDevice: "Sélectionner un appareil",
@@ -133,6 +134,7 @@ export const REMOTE_CARD_STRINGS_FR = {
     defaultLayoutOption: "Disposition par défaut des activités",
     allDevicesOption: "Disposition par défaut des appareils",
     commands: "Commandes",
+    power: "Alimentation",
     modeToggle: "Bouton de mode",
     deviceModeDescription:
       "Contrôlez un seul appareil configuré sur le hub, avec ses propres affectations de touches et sa liste complète de commandes.",

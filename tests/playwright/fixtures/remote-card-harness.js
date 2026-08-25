@@ -723,6 +723,44 @@ scenarios.device_mode = (() => {
     { id: 1, name: "Television", device_class: "ir" },
     { id: 2, name: "Soundbar", device_class: "ir" },
   ];
+  // The keymap/power WS calls resolve the hub through this.
+  base.states[remoteEntityId].attributes.entry_id = "harness-entry";
+  // Served by the callWS stub for sofabaton_x1s/device/keymap. Device 1
+  // has power configured (the power key renders), device 2 does not.
+  base.keymaps = {
+    1: {
+      device: { device_id: 1, name: "Television", device_class: "ir" },
+      buttons: [174, 175, 176, 177, 178, 179, 180, 181, 182, 184, 185],
+      bindings: [
+        { button_id: 174, command_id: 11, command_name: "Up" },
+        { button_id: 176, command_id: 12, command_name: "OK" },
+      ],
+      commands: [
+        { command_id: 11, name: "Up" },
+        { command_id: 12, name: "OK" },
+        { command_id: 13, name: "Input HDMI 1" },
+        { command_id: 14, name: "Input HDMI 2" },
+        { command_id: 15, name: "Ambient Mode" },
+      ],
+      power_configured: true,
+      fetched_at: "2026-08-25T00:00:00Z",
+    },
+    2: {
+      device: { device_id: 2, name: "Soundbar", device_class: "ir" },
+      buttons: [182, 184, 185],
+      bindings: [],
+      commands: [
+        { command_id: 21, name: "Bass Up" },
+        { command_id: 22, name: "Bass Down" },
+      ],
+      power_configured: false,
+      fetched_at: "2026-08-25T00:00:00Z",
+    },
+  };
+  // Live power-state bytes served by the device/power_state stub; the
+  // send_command handler below flips them on 198/199 like the real hub
+  // (minus the macro-runtime commit lag).
+  base.devicePower = { 1: 0, 2: 0 };
   return base;
 })();
 
@@ -835,6 +873,14 @@ function createHass(scenario) {
       if (message?.type === "config/entity_registry/get") {
         return { platform: scenario.platform };
       }
+      if (message?.type === "sofabaton_x1s/device/keymap") {
+        const keymap = scenario.keymaps?.[message.device_id] ?? null;
+        return keymap ? { keymap: clone(keymap), generation: 1 } : { keymap: null, reason: "cache_miss" };
+      }
+      if (message?.type === "sofabaton_x1s/device/power_state") {
+        const state = scenario.devicePower?.[message.device_id];
+        return { power_state: state === 0 || state === 1 ? state : null };
+      }
       return { ok: true };
     },
     connection: {
@@ -866,6 +912,15 @@ function createHass(scenario) {
         remoteState.state = "off";
         remoteState.attributes.current_activity = "Powered Off";
         remoteState.attributes.current_activity_id = null;
+      } else if (
+        domain === "remote" &&
+        service === "send_command" &&
+        scenario.devicePower &&
+        data?.device != null &&
+        (Number(data?.command) === 198 || Number(data?.command) === 199)
+      ) {
+        // Device-scope power macro: track state like the real hub does.
+        scenario.devicePower[data.device] = Number(data.command) === 198 ? 1 : 0;
       }
       if (harnessState.card) harnessState.card.hass = hass;
     },

@@ -7980,7 +7980,7 @@ function deviceIdleBehavior(bundle, deviceId) {
     (entry) => Number(entry?.device?.device_id || 0) === normalizedId
   );
   if (!device?.device) return null;
-  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  const raw = device.device.idle_behavior;
   if (raw == null) return null;
   const mode = Number(raw);
   return Number.isFinite(mode) ? mode & 255 : null;

@@ -585,6 +585,8 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "device_class": "IR",
         "device_class_code": 0x10,
         "raw_body": device_raw_body,
+        # Cached 0x0242 idle byte; a capture without it is incomplete.
+        "idle_behavior": 1,
     }
     hub._proxy.state.commands[11] = {18: "Input"}
     hub._proxy.state.buttons[11] = {0x58}
@@ -708,6 +710,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "brand": "Sony",
         "device_class": "IR",
         "device_class_code": 0x10,
+        "idle_behavior": 1,
         "icon": 1,
         "sort": 0,
         "code_type": 0x10,
@@ -974,6 +977,7 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
         "brand": "Brand",
         "device_class": "wifi_sonos",
         "device_class_code": 0x1C,
+        "idle_behavior": 1,
     }
     hub._proxy.state.buttons[9] = set()
     hub._proxy._commands_complete.add(9)
@@ -1083,6 +1087,7 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
         "brand": "Brand",
         "device_class": device_class,
         "device_class_code": device_class_code,
+        "idle_behavior": 1,
     }
     hub._proxy.state.buttons[7] = set()
     hub._proxy._commands_complete.add(7)
@@ -1199,6 +1204,7 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
         "device_class": "IR",
         "device_class_code": 0x07,
         "raw_body": device_raw_body,
+        "idle_behavior": 1,
     }
     hub._proxy.state.commands[2] = {}
     hub._proxy.state.buttons[2] = set()

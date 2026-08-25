@@ -21,6 +21,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     macrosTab: "宏 >",
     favoritesTab: "收藏 >",
     commandsTab: "命令 >",
+    powerButton: "电源",
     activitySelectLabel: "活动",
     deviceSelectLabel: "设备",
     selectDevice: "选择设备",
@@ -125,6 +126,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     defaultLayoutOption: "默认活动布局",
     allDevicesOption: "默认设备布局",
     commands: "命令",
+    power: "电源",
     modeToggle: "模式切换",
     deviceModeDescription:
       "控制 Hub 中配置的单个设备，并使用该设备自己的按键分配和完整命令列表。",

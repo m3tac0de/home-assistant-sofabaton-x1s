@@ -346,7 +346,10 @@ class BackupExportMixin:
 
         # Readiness mirrors the predicates the fetch phase waits on, so a
         # payload assembled right after ``backup_device`` reports the same
-        # completeness the inline assembly used to.
+        # completeness the inline assembly used to. A missing idle byte
+        # counts as incomplete: restore and sync skip the value when it
+        # is absent, so a silent omission would freeze the device's
+        # automatic-power setting out of the capture.
         complete = all(
             [
                 bool(device_block),
@@ -355,6 +358,7 @@ class BackupExportMixin:
                 skip_macros or dev_lo in self._macros_complete,
                 blobs_complete,
                 key_sort_row is not None,
+                idle_behavior is not None,
             ]
         )
 

@@ -95,7 +95,7 @@ Observed body layout:
 | `25` | hide flag |
 | `26` | input flag |
 | `27` | channel / variant-specific selector |
-| `28` | power-state byte |
+| `28` | power-state byte (0 off, 1 on; the hub live-updates it as activities power the device on and off, so re-fetching the row is the protocol's only per-device power-state read; wire-validated 2026-08-25) |
 | `29..` | fixed-width name slot |
 | after name slot | fixed-width brand slot |
 | after brand slot | fixed-width tail slot |

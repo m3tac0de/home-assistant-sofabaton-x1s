@@ -611,6 +611,7 @@ var DEVICE_LAYOUT_KEYS = [
   "show_colors",
   "show_abc",
   "show_commands_button",
+  "show_power_button",
   "show_device_toggle",
   "c_as_rows",
   "c_row_visible_rows"
@@ -673,6 +674,7 @@ var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_colors: true,
   show_abc: true,
   show_commands_button: true,
+  show_power_button: true,
   show_device_toggle: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
@@ -694,6 +696,12 @@ function layoutConfigForDevice(config, deviceId) {
 function commandsButtonEnabled(layout) {
   if (typeof layout?.show_commands_button === "boolean") {
     return layout.show_commands_button;
+  }
+  return true;
+}
+function powerButtonEnabled(layout) {
+  if (typeof layout?.show_power_button === "boolean") {
+    return layout.show_power_button;
   }
   return true;
 }
@@ -883,6 +891,7 @@ var REMOTE_CARD_STRINGS_EN = {
     macrosTab: "Macros >",
     favoritesTab: "Favorites >",
     commandsTab: "Commands >",
+    powerButton: "Power",
     activitySelectLabel: "Activity",
     deviceSelectLabel: "Device",
     selectDevice: "Select device",
@@ -979,6 +988,7 @@ var REMOTE_CARD_STRINGS_EN = {
     defaultLayoutOption: "Default activity layout",
     allDevicesOption: "Default device layout",
     commands: "Commands",
+    power: "Power",
     modeToggle: "Mode switch",
     deviceModeDescription: "Control one device configured on the hub, using that device's button bindings and complete command list.",
     longPress: "Enable hold-to-repeat",
@@ -1291,6 +1301,12 @@ function commandsEnabled(config, selection) {
 }
 function commandsTogglePatch(enabled) {
   return { show_commands_button: !!enabled };
+}
+function powerEnabled(config, selection) {
+  return powerButtonEnabled(layoutConfigForSelection(config, selection));
+}
+function powerTogglePatch(enabled) {
+  return { show_power_button: !!enabled };
 }
 function deviceToggleEnabledForEditor(config, selection) {
   return deviceToggleEnabled(layoutConfigForSelection(config, selection));
@@ -1971,6 +1987,66 @@ var REMOTE_CARD_CSS = `
         pointer-events: auto;
       }
 
+      /* Device mode: power key sharing the commands strip row. The
+         wrapper becomes the positioned ancestor (its .mf-container goes
+         static), so the absolutely-positioned commands drawer overlay
+         spans the FULL row, bar column plus power column. */
+      .commands-row {
+        position: relative;
+        z-index: 2;
+      }
+      /* With the bar only 3/4 wide, the overlay's right shoulder sticks
+         out past it under the power key. Round that exposed corner with
+         the themed radius and restore the edge border there; the bar
+         overlaps the left 3/4 of that border (the -1px seam margin), so
+         the fused look under the bar is unchanged. */
+      .commands-row--power .mf-overlay {
+        border-top: 1px solid var(--divider-color);
+        border-top-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power .drawer-up .mf-overlay {
+        border-top-right-radius: var(--sb-group-radius);
+        border-bottom: 1px solid var(--divider-color);
+        border-bottom-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .commands-row--power .mf-container {
+        position: static;
+        min-width: 0;
+      }
+      .sb-power-key {
+        color: var(--sb-power-key-color, var(--primary-color, #03a9f4));
+      }
+      .commands-row--power-only .sb-power-key {
+        /* No sibling strip to stretch against: match the Commands bar
+           height (tab height plus its 1px borders). */
+        height: calc(var(--sb-tab-height) + 2px);
+      }
+      .sb-power-key--busy {
+        animation: sb-power-busy 1s ease-in-out infinite;
+      }
+      @keyframes sb-power-busy {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+
+      /* Commands-as-rows: the power key docks beside the pinned filter. */
+      .inline-filter-row {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+        margin-bottom: 8px;
+      }
+      .inline-filter-row .sb-commands-filter {
+        margin-bottom: 0;
+      }
+
       .mf-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -2545,7 +2621,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.2";
+var CARD_VERSION = "0.3.0";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -3273,7 +3349,7 @@ function renderGroupOrderSection(params) {
     } else if (params.isDeviceSelection && (key === "macro_favorites" || key === "macros_row")) {
       cells = b2`
         ${renderSwitchItem(str().editor.commands, params.commandsEnabled, params.onSetCommands)}
-        ${emptySlot}
+        ${renderSwitchItem(str().editor.power, params.powerEnabled, params.onSetPower)}
       `;
     } else if (key === "macro_favorites") {
       cells = b2`
@@ -3893,6 +3969,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
       dvrEnabled: dvrGroupEnabled(layoutCfg),
       isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
       commandsEnabled: commandsEnabled(this._config, this._layoutSelectionKey()),
+      powerEnabled: powerEnabled(this._config, this._layoutSelectionKey()),
       showDeviceModeSwitch: devices.length > 0,
       deviceModeEnabled: deviceToggleEnabledForEditor(
         this._config,
@@ -3908,6 +3985,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
       onSetMacro: (v3) => this._updateLayoutConfig(macroTogglePatch(v3)),
       onSetFavorites: (v3) => this._updateLayoutConfig(favoritesTogglePatch(v3)),
       onSetCommands: (v3) => this._updateLayoutConfig(commandsTogglePatch(v3)),
+      onSetPower: (v3) => this._updateLayoutConfig(powerTogglePatch(v3)),
       onSetDeviceMode: (v3) => this._updateLayoutConfig(deviceTogglePatch(v3)),
       onSetVolume: (v3) => this._updateLayoutConfig(volumeTogglePatch(v3)),
       onSetChannel: (v3) => this._updateLayoutConfig(channelTogglePatch(v3)),
@@ -4675,6 +4753,9 @@ function customFavoritesSignature(items) {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/remote-card-store.ts
+var POWER_ON_KEY_ID = 198;
+var POWER_OFF_KEY_ID = 199;
+var POWER_ASSUMPTION_TTL_MS = 15e3;
 var LAST_DEVICE_STORAGE_PREFIX = "sofabaton-remote:last-device:";
 function normalizeRemoteCardConfig(config) {
   return {
@@ -4749,6 +4830,10 @@ var RemoteCardStore = class {
     this.activityMenuOpen = false;
     // Update gating
     this.lastUpdateFingerprint = null;
+    /** True while a power click's read+fire round-trip is in flight. */
+    this.powerBusy = false;
+    /** Optimistic post-fire assumption; see POWER_ASSUMPTION_TTL_MS. */
+    this._powerAssumption = null;
     this.onChange = onChange;
     this.host = host;
   }
@@ -4981,6 +5066,68 @@ var RemoteCardStore = class {
     if (deviceId == null) return null;
     return this.deviceKeymaps[String(deviceId)] ?? null;
   }
+  /** Power button render gate: keymap ready AND backend says configured. */
+  devicePowerConfigured(deviceId = this._deviceId) {
+    const entry = this.deviceKeymapState(deviceId);
+    return entry?.status === "ready" && entry.powerConfigured === true;
+  }
+  async fetchDevicePowerState(deviceId) {
+    if (!this._hass?.callWS) return null;
+    const entryId = String(
+      this.remoteState()?.attributes?.entry_id ?? ""
+    );
+    if (!entryId) return null;
+    try {
+      const response = await this._hass.callWS({
+        type: "sofabaton_x1s/device/power_state",
+        entry_id: entryId,
+        device_id: deviceId
+      });
+      const raw = response?.power_state;
+      return raw === 1 ? 1 : raw === 0 ? 0 : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  /**
+   * Power button click: look up the device's current power state, then
+   * fire the opposite power macro (198 POWER_ON / 199 POWER_OFF) through
+   * the ordinary device-scope send path. The state read is skipped inside
+   * the optimistic window after our own fire (the hub's tracked byte
+   * commits only after the macro runs). An unreadable state aborts the
+   * click: firing blind would desync the hub's power bookkeeping.
+   */
+  async toggleDevicePower() {
+    if (this._editMode || this.powerBusy) return;
+    if (!this._hass || !this._config?.entity) return;
+    const deviceId = this._deviceId;
+    if (deviceId == null || !this.devicePowerConfigured(deviceId)) return;
+    this.powerBusy = true;
+    this.onChange();
+    try {
+      let state = null;
+      const assumption = this._powerAssumption;
+      if (assumption && assumption.deviceId === deviceId && Date.now() - assumption.at < POWER_ASSUMPTION_TTL_MS) {
+        state = assumption.state;
+      } else {
+        state = await this.fetchDevicePowerState(deviceId);
+      }
+      if (state == null) return;
+      const keyId = state === 1 ? POWER_OFF_KEY_ID : POWER_ON_KEY_ID;
+      const serviceData = remoteSendCommandData(this._config.entity, keyId, deviceId);
+      if (!serviceData) return;
+      this.triggerCommandPulse();
+      await this.callService("remote", "send_command", serviceData);
+      this._powerAssumption = {
+        deviceId,
+        state: state === 1 ? 0 : 1,
+        at: Date.now()
+      };
+    } finally {
+      this.powerBusy = false;
+      this.onChange();
+    }
+  }
   /** Commands for the current device, filtered and alphabetically sorted. */
   filteredCommands() {
     const entry = this.deviceKeymapState();
@@ -5029,7 +5176,8 @@ var RemoteCardStore = class {
           commands: (Array.isArray(keymap.commands) ? keymap.commands : []).map((command) => ({
             command_id: Number(command?.command_id),
             name: String(command?.name ?? "")
-          })).filter((command) => Number.isFinite(command.command_id) && command.name)
+          })).filter((command) => Number.isFinite(command.command_id) && command.name),
+          powerConfigured: keymap.power_configured === true
         };
       }
     } catch (_err) {
@@ -7140,12 +7288,18 @@ function renderMacroFavorites(params) {
 }
 function renderInlineDrawerRow(params) {
   const gridClass = params.kind === "commands" ? "inline-drawer-row__grid mf-grid mf-grid--commands" : "inline-drawer-row__grid mf-grid";
+  const filterStrip = params.filter ? params.power ? b2`
+          <div class="inline-filter-row">
+            ${renderCommandsFilter(params.filter)}
+            ${renderPowerKey(params.power)}
+          </div>
+        ` : renderCommandsFilter(params.filter) : A;
   return b2`
     <div
       class="inline-drawer-row inline-drawer-row--${params.kind}"
       style=${params.visible ? "" : "display: none !important;"}
     >
-      ${params.filter ? renderCommandsFilter(params.filter) : A}
+      ${filterStrip}
       <div
         class="inline-drawer-row__scroller"
         style="--inline-row-visible-rows: ${params.visibleRows};"
@@ -7158,6 +7312,26 @@ function renderInlineDrawerRow(params) {
               `}
         </div>
       </div>
+    </div>
+  `;
+}
+function renderPowerKey(params) {
+  return b2`
+    <sb-key-button
+      class="sb-power-key${params.busy ? " sb-power-key--busy" : ""}"
+      .label=${null}
+      .icon=${"mdi:power"}
+      .accessibilityLabel=${params.label}
+      .disabled=${params.disabled || params.busy}
+      .onTrigger=${() => params.onToggle()}
+    ></sb-key-button>
+  `;
+}
+function renderPowerRow(power) {
+  return b2`
+    <div class="commands-row commands-row--power commands-row--power-only">
+      <div class="commands-row__spacer"></div>
+      ${renderPowerKey(power)}
     </div>
   `;
 }
@@ -7205,8 +7379,11 @@ function renderCommandsDrawer(params) {
   const setRef = (r6) => r6 ? n6(r6) : A;
   return b2`
     <div
-      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
+      class="commands-row${params.power ? " commands-row--power" : ""}"
       style=${params.visible ? "" : "display: none !important;"}
+    >
+    <div
+      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
       ${setRef(params.containerRef)}
     >
       <div
@@ -7240,6 +7417,8 @@ function renderCommandsDrawer(params) {
               </div>
             ` : A}
       </div>
+    </div>
+    ${params.power ? renderPowerKey(params.power) : A}
     </div>
   `;
 }
@@ -7999,6 +8178,15 @@ var SofabatonRemoteCard = class extends i4 {
         void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
       }
     };
+    const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && store.devicePowerConfigured();
+    const powerParams = {
+      busy: store.powerBusy,
+      disabled: disableAll,
+      label: str().card.powerButton,
+      onToggle: () => {
+        void store.toggleDevicePower();
+      }
+    };
     const commandsParams = {
       visible: showCommandsDrawer,
       open: store.activeDrawer === "commands",
@@ -8054,7 +8242,10 @@ var SofabatonRemoteCard = class extends i4 {
         rowRef: this._activityRowRef,
         loadIndicatorRef: this._loadIndicatorRef
       }) : A,
-      macro_favorites: () => deviceMode ? showCommandsDrawer ? renderCommandsDrawer(commandsParams) : A : drawerDisplayState?.showMF ? renderMacroFavorites(mfParams) : A,
+      macro_favorites: () => deviceMode ? showCommandsDrawer ? renderCommandsDrawer({
+        ...commandsParams,
+        power: powerVisible ? powerParams : null
+      }) : powerVisible && !commandsAsRow ? renderPowerRow(powerParams) : A : drawerDisplayState?.showMF ? renderMacroFavorites(mfParams) : A,
       macros_row: () => deviceMode ? commandsAsRow ? renderInlineDrawerRow({
         kind: "commands",
         visible: true,
@@ -8065,7 +8256,8 @@ var SofabatonRemoteCard = class extends i4 {
         }),
         itemCount: derived.commands.length,
         emptyText: str().card.noCommands,
-        filter: commandsFilter
+        filter: commandsFilter,
+        power: powerVisible ? powerParams : null
       }) : A : macrosRowOn ? renderInlineDrawerRow({
         kind: "macros",
         visible: true,
@@ -8188,6 +8380,7 @@ var REMOTE_CARD_STRINGS_AR = {
     macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u2039",
     favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u2039",
     commandsTab: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u2039",
+    powerButton: "\u0627\u0644\u0637\u0627\u0642\u0629",
     activitySelectLabel: "\u0627\u0644\u0646\u0634\u0627\u0637",
     deviceSelectLabel: "\u0627\u0644\u062C\u0647\u0627\u0632",
     selectDevice: "\u0627\u062E\u062A\u0631 \u062C\u0647\u0627\u0632\u064B\u0627",
@@ -8284,6 +8477,7 @@ var REMOTE_CARD_STRINGS_AR = {
     defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     allDevicesOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629",
     commands: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
+    power: "\u0627\u0644\u0637\u0627\u0642\u0629",
     modeToggle: "\u0632\u0631 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0648\u0636\u0639",
     deviceModeDescription: `\u062A\u062D\u0643\u0651\u0645 \u0641\u064A \u062C\u0647\u0627\u0632 \u0648\u0627\u062D\u062F \u062A\u0645 \u0625\u0639\u062F\u0627\u062F\u0647 \u0639\u0644\u0649 \u062C\u0647\u0627\u0632 ${isolate("Hub")}\u060C \u0628\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u062A\u0639\u064A\u064A\u0646\u0627\u062A \u0623\u0632\u0631\u0627\u0631\u0647 \u0648\u0642\u0627\u0626\u0645\u0629 \u0623\u0648\u0627\u0645\u0631\u0647 \u0627\u0644\u0643\u0627\u0645\u0644\u0629.`,
     longPress: "\u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u062A\u0643\u0631\u0627\u0631 \u0639\u0646\u062F \u0627\u0644\u0636\u063A\u0637 \u0627\u0644\u0645\u0637\u0648\u0651\u0644",
@@ -8390,6 +8584,7 @@ var REMOTE_CARD_STRINGS_DE = {
     macrosTab: "Makros >",
     favoritesTab: "Favoriten >",
     commandsTab: "Befehle >",
+    powerButton: "Ein/Aus",
     activitySelectLabel: "Aktivit\xE4t",
     deviceSelectLabel: "Ger\xE4t",
     selectDevice: "Ger\xE4t ausw\xE4hlen",
@@ -8486,6 +8681,7 @@ var REMOTE_CARD_STRINGS_DE = {
     defaultLayoutOption: "Standard-Aktivit\xE4tslayout",
     allDevicesOption: "Standard-Ger\xE4telayout",
     commands: "Befehle",
+    power: "Ein/Aus",
     modeToggle: "Modusschalter",
     deviceModeDescription: "Steuere ein einzelnes, im Hub eingerichtetes Ger\xE4t mit dessen Tastenbelegungen und vollst\xE4ndiger Befehlsliste.",
     longPress: "Wiederholen beim Gedr\xFCckthalten aktivieren",
@@ -8571,6 +8767,7 @@ var REMOTE_CARD_STRINGS_ES = {
     macrosTab: "Macros >",
     favoritesTab: "Favoritos >",
     commandsTab: "Comandos >",
+    powerButton: "Encendido",
     activitySelectLabel: "Actividad",
     deviceSelectLabel: "Dispositivo",
     selectDevice: "Seleccionar dispositivo",
@@ -8667,6 +8864,7 @@ var REMOTE_CARD_STRINGS_ES = {
     defaultLayoutOption: "Dise\xF1o predeterminado de actividades",
     allDevicesOption: "Dise\xF1o predeterminado de dispositivos",
     commands: "Comandos",
+    power: "Encendido",
     modeToggle: "Bot\xF3n de modo",
     deviceModeDescription: "Controla un \xFAnico dispositivo configurado en el hub mediante sus asignaciones de botones y su lista completa de comandos.",
     longPress: "Activar la repetici\xF3n al mantener pulsado un bot\xF3n",
@@ -8752,6 +8950,7 @@ var REMOTE_CARD_STRINGS_FR = {
     macrosTab: "Macros >",
     favoritesTab: "Favoris >",
     commandsTab: "Commandes >",
+    powerButton: "Alimentation",
     activitySelectLabel: "Activit\xE9",
     deviceSelectLabel: "Appareil",
     selectDevice: "S\xE9lectionner un appareil",
@@ -8848,6 +9047,7 @@ var REMOTE_CARD_STRINGS_FR = {
     defaultLayoutOption: "Disposition par d\xE9faut des activit\xE9s",
     allDevicesOption: "Disposition par d\xE9faut des appareils",
     commands: "Commandes",
+    power: "Alimentation",
     modeToggle: "Bouton de mode",
     deviceModeDescription: "Contr\xF4lez un seul appareil configur\xE9 sur le hub, avec ses propres affectations de touches et sa liste compl\xE8te de commandes.",
     longPress: "Activer la r\xE9p\xE9tition par appui prolong\xE9",
@@ -8932,6 +9132,7 @@ var REMOTE_CARD_STRINGS_NL = {
     macrosTab: "Macro's >",
     favoritesTab: "Favorieten >",
     commandsTab: "Commando's >",
+    powerButton: "Aan/uit",
     activitySelectLabel: "Activiteit",
     deviceSelectLabel: "Apparaat",
     selectDevice: "Selecteer apparaat",
@@ -9028,6 +9229,7 @@ var REMOTE_CARD_STRINGS_NL = {
     defaultLayoutOption: "Standaard voor activiteiten",
     allDevicesOption: "Standaard voor apparaten",
     commands: "Commando's",
+    power: "Aan/uit",
     modeToggle: "Modusknop",
     deviceModeDescription: "Bedien \xE9\xE9n apparaat dat op de hub is ingesteld met de knopkoppelingen en volledige lijst met commando's van dat apparaat.",
     longPress: "Herhalen bij ingedrukt houden inschakelen",
@@ -9112,6 +9314,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     macrosTab: "\u5B8F >",
     favoritesTab: "\u6536\u85CF >",
     commandsTab: "\u547D\u4EE4 >",
+    powerButton: "\u7535\u6E90",
     activitySelectLabel: "\u6D3B\u52A8",
     deviceSelectLabel: "\u8BBE\u5907",
     selectDevice: "\u9009\u62E9\u8BBE\u5907",
@@ -9208,6 +9411,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     defaultLayoutOption: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     allDevicesOption: "\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40",
     commands: "\u547D\u4EE4",
+    power: "\u7535\u6E90",
     modeToggle: "\u6A21\u5F0F\u5207\u6362",
     deviceModeDescription: "\u63A7\u5236 Hub \u4E2D\u914D\u7F6E\u7684\u5355\u4E2A\u8BBE\u5907\uFF0C\u5E76\u4F7F\u7528\u8BE5\u8BBE\u5907\u81EA\u5DF1\u7684\u6309\u952E\u5206\u914D\u548C\u5B8C\u6574\u547D\u4EE4\u5217\u8868\u3002",
     longPress: "\u542F\u7528\u957F\u6309\u91CD\u590D\u53D1\u9001",

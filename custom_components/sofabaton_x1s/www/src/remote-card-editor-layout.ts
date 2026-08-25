@@ -8,6 +8,7 @@ import {
   channelGroupEnabled,
   commandsButtonEnabled,
   deviceToggleEnabled,
+  powerButtonEnabled,
   favoritesButtonEnabled,
   isDeviceLayoutKey,
   layoutBaseConfig,
@@ -320,6 +321,17 @@ export function commandsEnabled(
 
 export function commandsTogglePatch(enabled: boolean) {
   return { show_commands_button: !!enabled };
+}
+
+export function powerEnabled(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+) {
+  return powerButtonEnabled(layoutConfigForSelection(config, selection));
+}
+
+export function powerTogglePatch(enabled: boolean) {
+  return { show_power_button: !!enabled };
 }
 
 export function deviceToggleEnabledForEditor(

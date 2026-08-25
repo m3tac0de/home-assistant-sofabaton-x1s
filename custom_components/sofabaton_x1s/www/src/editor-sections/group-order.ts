@@ -38,6 +38,7 @@ export interface GroupOrderSectionParams {
   /** A device layout ("device:*") is selected: mf rows become Commands. */
   isDeviceSelection: boolean;
   commandsEnabled: boolean;
+  powerEnabled: boolean;
   /** x1s integration only: the Device mode switch on the activity row. */
   showDeviceModeSwitch: boolean;
   deviceModeEnabled: boolean;
@@ -48,6 +49,7 @@ export interface GroupOrderSectionParams {
   onSetMacro: (enabled: boolean) => void;
   onSetFavorites: (enabled: boolean) => void;
   onSetCommands: (enabled: boolean) => void;
+  onSetPower: (enabled: boolean) => void;
   onSetDeviceMode: (enabled: boolean) => void;
   onSetVolume: (enabled: boolean) => void;
   onSetChannel: (enabled: boolean) => void;
@@ -265,10 +267,12 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       params.isDeviceSelection &&
       (key === "macro_favorites" || key === "macros_row")
     ) {
-      // Device layouts: the macro/favorites construct IS the Commands drawer.
+      // Device layouts: the macro/favorites construct IS the Commands
+      // drawer, and the power key shares its row (plan section 8) --
+      // independent toggles, mirroring Macros/Favorites.
       cells = html`
         ${renderSwitchItem(str().editor.commands, params.commandsEnabled, params.onSetCommands)}
-        ${emptySlot}
+        ${renderSwitchItem(str().editor.power, params.powerEnabled, params.onSetPower)}
       `;
     } else if (key === "macro_favorites") {
       // Keep independent toggles, but one shared move control. (The layout

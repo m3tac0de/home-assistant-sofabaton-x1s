@@ -155,6 +155,28 @@ def test_device_keymap_projects_cached_state_without_fetching() -> None:
     assert bindings[0x12]["long_press_command_id"] == 3
 
 
+def test_device_keymap_power_configured_gates_on_idle_behavior() -> None:
+    # The card's power button gate: idle modes 1-3 mean power is
+    # configured; 4 (no power key), 0 (never set up), and a missing
+    # value all fail closed. The record-tail power_mode byte must not
+    # leak into this decision (it reads 1 on every real hub device).
+    proxy = _proxy()
+    hub = _hub(proxy)
+    _populate_device(proxy)
+
+    for idle, expected in ((1, True), (2, True), (3, True), (4, False), (0, False)):
+        hub.devices = {7: {"name": "TV", "idle_behavior": idle, "power_mode": 1}}
+        keymap = hub.get_device_keymap(7)
+        assert keymap is not None
+        assert keymap["power_configured"] is expected, f"idle={idle}"
+
+    # Missing idle byte fails closed even with the tail byte present.
+    hub.devices = {7: {"name": "TV", "power_mode": 1}}
+    keymap = hub.get_device_keymap(7)
+    assert keymap is not None
+    assert keymap["power_configured"] is False
+
+
 def test_device_keymap_handles_device_with_no_bindings() -> None:
     proxy = _proxy()
     hub = _hub(proxy)
@@ -264,6 +286,84 @@ def test_ws_device_keymap_returns_projection_and_generation(monkeypatch):
 
     assert conn.result[1] == {"keymap": keymap, "generation": 42}
     assert hub.requested_device_id == 7
+
+
+# ---------------------------------------------------------------------------
+# WS device/power_state (plan section 8: the power button's click-time read)
+# ---------------------------------------------------------------------------
+
+
+class _PowerHub:
+    entry_id = "entry-1"
+
+    def __init__(self, *, power_state):
+        self._power_state = power_state
+        self.requested_device_id = None
+
+    async def async_get_device_power_state(self, device_id):
+        self.requested_device_id = device_id
+        return self._power_state
+
+
+def test_ws_device_power_state_returns_live_byte(monkeypatch):
+    conn = _Conn()
+    hub = _PowerHub(power_state=1)
+    _patch(monkeypatch, hub=hub, store=_Store(enabled=True))
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+
+    _run(
+        integration._ws_get_device_power_state(
+            hass, conn, {"id": 4, "entry_id": "entry-1", "device_id": "4"}
+        )
+    )
+
+    assert conn.error is None
+    assert conn.result[1] == {"power_state": 1}
+    assert hub.requested_device_id == 4
+
+
+def test_ws_device_power_state_null_when_unreadable(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch, hub=_PowerHub(power_state=None), store=_Store(enabled=True))
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+
+    _run(
+        integration._ws_get_device_power_state(
+            hass, conn, {"id": 5, "entry_id": "entry-1", "device_id": 4}
+        )
+    )
+
+    assert conn.result[1] == {"power_state": None}
+
+
+def test_hub_power_state_reads_fresh_row() -> None:
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+
+    proxy = _proxy()
+    hub = _hub(proxy)
+
+    # A real 210-byte record body with power_state=1, round-tripped
+    # through the schema builder so the offsets stay honest.
+    payload = build_device_create_payload(
+        DeviceConfig(name="Xbox", brand="Microsoft", device_id=4, power_state=1),
+        hub_version="X1S",
+    )
+    body = payload[3:]
+    assert parse_device_record(body, hub_version="X1S").power_state == 1
+
+    async def fake_refresh(timeout_seconds=15.0):
+        return {4: {"name": "Xbox", "raw_body": body}}
+
+    hub._async_refresh_devices_snapshot = fake_refresh  # type: ignore[method-assign]
+    hub.version = "X1S"
+
+    assert _run(hub.async_get_device_power_state(4)) == 1
+    # Missing device or unparsable body reads as unknown.
+    assert _run(hub.async_get_device_power_state(9)) is None
 
 
 # ---------------------------------------------------------------------------

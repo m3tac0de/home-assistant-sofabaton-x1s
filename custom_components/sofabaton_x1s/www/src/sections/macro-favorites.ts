@@ -268,6 +268,8 @@ export interface InlineRowParams {
   emptyText: string;
   /** Device mode: filter input pinned above the scroller. */
   filter?: CommandsFilterParams | null;
+  /** Device mode: power key docked beside the filter strip (plan §8.1). */
+  power?: PowerKeyParams | null;
 }
 
 export function renderInlineDrawerRow(params: InlineRowParams): TemplateResult {
@@ -275,12 +277,22 @@ export function renderInlineDrawerRow(params: InlineRowParams): TemplateResult {
     params.kind === "commands"
       ? "inline-drawer-row__grid mf-grid mf-grid--commands"
       : "inline-drawer-row__grid mf-grid";
+  const filterStrip = params.filter
+    ? params.power
+      ? html`
+          <div class="inline-filter-row">
+            ${renderCommandsFilter(params.filter)}
+            ${renderPowerKey(params.power)}
+          </div>
+        `
+      : renderCommandsFilter(params.filter)
+    : nothing;
   return html`
     <div
       class="inline-drawer-row inline-drawer-row--${params.kind}"
       style=${params.visible ? "" : "display: none !important;"}
     >
-      ${params.filter ? renderCommandsFilter(params.filter) : nothing}
+      ${filterStrip}
       <div
         class="inline-drawer-row__scroller"
         style="--inline-row-visible-rows: ${params.visibleRows};"
@@ -295,6 +307,46 @@ export function renderInlineDrawerRow(params: InlineRowParams): TemplateResult {
               `}
         </div>
       </div>
+    </div>
+  `;
+}
+
+// ---------- device mode: power key (plan §8.1) ----------
+//
+// A detached key, deliberately NOT merged into the Commands tab bar: a
+// tab reads as "opens something", power must read as "a button you
+// press". It right-docks at 1/4 of whichever strip tops the commands
+// region (the tab bar, or the filter input in commands-as-rows mode),
+// and keeps that 1/4 right-docked even when the Commands strip is
+// hidden. Rendered only when the device has power configured.
+
+export interface PowerKeyParams {
+  busy: boolean;
+  disabled: boolean;
+  /** Localized accessible name ("Power"). */
+  label: string;
+  onToggle: () => void;
+}
+
+export function renderPowerKey(params: PowerKeyParams): TemplateResult {
+  return html`
+    <sb-key-button
+      class="sb-power-key${params.busy ? " sb-power-key--busy" : ""}"
+      .label=${null}
+      .icon=${"mdi:power"}
+      .accessibilityLabel=${params.label}
+      .disabled=${params.disabled || params.busy}
+      .onTrigger=${() => params.onToggle()}
+    ></sb-key-button>
+  `;
+}
+
+/** Lone power key row: Commands strip hidden, power stays right-docked. */
+export function renderPowerRow(power: PowerKeyParams): TemplateResult {
+  return html`
+    <div class="commands-row commands-row--power commands-row--power-only">
+      <div class="commands-row__spacer"></div>
+      ${renderPowerKey(power)}
     </div>
   `;
 }
@@ -327,6 +379,8 @@ export interface CommandsDrawerParams extends CommandsItemsParams {
   tabLabel: string;
   filter: CommandsFilterParams;
   onToggle: () => void;
+  /** Power key sharing the row (3/4 bar + 1/4 key); null = full-width bar. */
+  power?: PowerKeyParams | null;
   containerRef?: Ref<HTMLElement>;
   rowRef?: Ref<HTMLElement>;
   overlayRef?: Ref<HTMLElement>;
@@ -381,10 +435,16 @@ export function renderCommandsItems(params: CommandsItemsParams): TemplateResult
 export function renderCommandsDrawer(params: CommandsDrawerParams): TemplateResult {
   const setRef = (r?: Ref<HTMLElement>) => (r ? ref(r) : nothing);
 
+  // With a power key the wrapper is the positioned ancestor, so the
+  // absolutely-positioned drawer overlay spans the FULL row (both the
+  // 3/4 bar and the 1/4 key), not just the bar's column (plan §8.2).
   return html`
     <div
-      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
+      class="commands-row${params.power ? " commands-row--power" : ""}"
       style=${params.visible ? "" : "display: none !important;"}
+    >
+    <div
+      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
       ${setRef(params.containerRef)}
     >
       <div
@@ -422,6 +482,8 @@ export function renderCommandsDrawer(params: CommandsDrawerParams): TemplateResu
             `
           : nothing}
       </div>
+    </div>
+    ${params.power ? renderPowerKey(params.power) : nothing}
     </div>
   `;
 }

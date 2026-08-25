@@ -33,7 +33,7 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x0210` | `FAV_DELETE` | activity/favorite ids | All observed | Delete one favorite |
 | `0x0109` | `DELETE_DEVICE` | `[id_lo]` | All observed | Delete one device **or activity**. The id range selects the target table: `< 0x65` deletes a device (id may be reused, followed by an activity-confirm sweep); `>= 0x65` deletes that activity directly. Live-validated on X1 + X1S: deleting an activity id removes only that activity, leaving devices and other activities intact. **Device-delete side effect**: the consistency sweep GCs every activity with exactly one member device (app-created or restored, any binding count); the purge can land seconds after the ack, so an immediate post-delete catalog read may still show the doomed activity. |
 | `0x0058` | `REQ_VERSION` | none observed | All observed | Request WiFi firmware and follow-up version/info banner frames |
-| `0x0140` | `PING2` | none observed | All observed | Keepalive probe |
+| `0x0140` | `REQ_IDLE_BEHAVIOR` | `[dev_lo]` | All observed | Query one device's idle/automatic-power mode; answered by `0x0242` |
 | `0x024F` | `ACTIVITY_DEVICE_CONFIRM` | `[dev_lo, include_flag]` | All observed | Confirm device membership during activity assignment |
 | `0x0265` | `ACTIVITY_ASSIGN_COMMIT` | variable | X1S, X2 observed | Post-save commit marker in some activity/device flows |
 | `0x0023` | `FIND_REMOTE` | none observed | X1, X1S | Trigger remote buzzer |
@@ -389,7 +389,7 @@ Observed page families:
 |----------|------|-----------|-------|
 | `0x0301` | `ACK_SUCCESS` | `H->A` | General acknowledgment |
 | `0x0160` | `ACK_READY` | `H->A` | Hub ready for next command |
-| `0x0242` | `PING2_ACK` | `H->A` | Keepalive reply on X1S/X2 |
+| `0x0242` | `IDLE_BEHAVIOR` | `H->A` | `[dev_lo, mode]` reply to `REQ_IDLE_BEHAVIOR`: the device's idle/automatic-power mode (1 auto-off, 2 always-on, 3 stay-on, 4 no power key, 0 never configured) |
 | family `0x02` | `BANNER` | `H->A` | Hub identity/banner; observed full opcodes include `0x1A02` (X1), `0x1D02` (X1S), `0x1502` (X2) |
 | family `0x31` | `HUB_NAME_REPLY` | `H->A` | Variable-length hub-name reply family, observed after both `0x0030` and `0x0032` |
 | `0x0032` | `REQ_HUB_NAME?` | `A->H` | Observed during discovery-driven hub switching; app appears to ask for the current hub name |

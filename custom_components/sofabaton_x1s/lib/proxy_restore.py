@@ -67,22 +67,27 @@ from .protocol_const import (
 ACTIVITY_ENTITY_ID_MIN = 0x65
 
 
-def _idle_behavior_mode(device_block: dict[str, Any]) -> int:
+def _idle_behavior_mode(device_block: dict[str, Any]) -> int | None:
     """Resolve a device backup block's idle / automatic-power mode byte.
 
-    Prefers the dedicated ``idle_behavior`` field (the 0x0242 reply byte,
-    captured since this field was added). Older backups predate it, so
-    fall back to ``power_mode`` to preserve their original restore
-    behavior. The byte is replayed verbatim via ``SET_IDLE_BEHAVIOR``.
+    Only the dedicated ``idle_behavior`` field (the 0x0242 reply byte)
+    counts; ``None`` means the capture has no usable value and no
+    ``SET_IDLE_BEHAVIOR`` write should happen. The historic fallback to
+    the bundle's ``power_mode`` field is deliberately gone: that field
+    holds the record-tail byte, which bench captures (2026-08-25) show
+    is a different, always-1-in-practice value, so the fallback wrote
+    mode 1 over devices whose real idle byte was 0, 2, 3, or 4. The
+    vendor app likewise treats a missing value as unknown rather than
+    substituting the record byte.
     """
 
     raw = device_block.get("idle_behavior")
     if raw is None:
-        raw = device_block.get("power_mode", 0)
+        return None
     try:
         return int(raw) & 0xFF
     except (TypeError, ValueError):
-        return 0
+        return None
 
 
 def _key_sort_table_has_positions(msg_hex: str) -> bool:
@@ -795,15 +800,18 @@ class RestoreMixin:
         self.state.commands[device_id] = dict(command_names)
         self._commands_complete.add(device_id)
         idle_mode = _idle_behavior_mode(device_block)
-        self.state.devices[device_id] = {
+        entry: dict[str, Any] = {
             "name": str(device_block.get("name") or ""),
             "brand": str(device_block.get("brand") or ""),
             "device_class": device_class,
             "device_class_code": int(device_block.get("device_class_code", 0)) & 0xFF,
-            "idle_behavior": idle_mode,
-            "power_mode": idle_mode,
-            "power_model": idle_mode,
         }
+        if idle_mode is not None:
+            # Same aliased key triple record_idle_behavior_value writes.
+            entry["idle_behavior"] = idle_mode
+            entry["power_mode"] = idle_mode
+            entry["power_model"] = idle_mode
+        self.state.devices[device_id] = entry
 
         return DeviceCreateResult(
             success=True,
@@ -1109,12 +1117,15 @@ class RestoreMixin:
             captured = button_code_map.get(command_id, 0)
             return captured or synthesize_command_code(command_id)
 
-        post_steps = [
-            build_set_idle_behavior_step(
-                device_id=new_device_id,
-                mode=_idle_behavior_mode(device_block),
+        post_steps = []
+        idle_mode = _idle_behavior_mode(device_block)
+        if idle_mode is not None:
+            post_steps.append(
+                build_set_idle_behavior_step(
+                    device_id=new_device_id,
+                    mode=idle_mode,
+                )
             )
-        ]
         post_steps.extend(command_steps)
         if isinstance(request.key_sort, dict):
             key_sort_msg_hex = str(request.key_sort.get("msg_hex") or "").strip()
@@ -1359,12 +1370,14 @@ class RestoreMixin:
                 kwargs["long_press_button_id"] = long_press_command_id
             post_steps.append(build_button_binding_step(**kwargs))
 
-        post_steps.append(
-            build_set_idle_behavior_step(
-                device_id=new_device_id,
-                mode=_idle_behavior_mode(device_block),
+        idle_mode = _idle_behavior_mode(device_block)
+        if idle_mode is not None:
+            post_steps.append(
+                build_set_idle_behavior_step(
+                    device_id=new_device_id,
+                    mode=idle_mode,
+                )
             )
-        )
 
         skipped_macro_steps = 0
         restored_macros = 0

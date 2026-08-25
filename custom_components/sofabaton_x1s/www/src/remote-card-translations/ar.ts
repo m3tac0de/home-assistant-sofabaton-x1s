@@ -31,6 +31,7 @@ export const REMOTE_CARD_STRINGS_AR = {
     macrosTab: "وحدات الماكرو ‹",
     favoritesTab: "المفضلات ‹",
     commandsTab: "الأوامر ‹",
+    powerButton: "الطاقة",
     activitySelectLabel: "النشاط",
     deviceSelectLabel: "الجهاز",
     selectDevice: "اختر جهازًا",
@@ -139,6 +140,7 @@ export const REMOTE_CARD_STRINGS_AR = {
     defaultLayoutOption: "التخطيط الافتراضي للأنشطة",
     allDevicesOption: "التخطيط الافتراضي للأجهزة",
     commands: "الأوامر",
+    power: "الطاقة",
     modeToggle: "زر تبديل الوضع",
     deviceModeDescription:
       `تحكّم في جهاز واحد تم إعداده على جهاز ${isolate("Hub")}، باستخدام تعيينات أزراره وقائمة أوامره الكاملة.`,

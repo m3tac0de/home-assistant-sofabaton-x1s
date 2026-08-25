@@ -424,6 +424,7 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     dvrEnabled: true,
     isDeviceSelection: false,
     commandsEnabled: true,
+    powerEnabled: true,
     showDeviceModeSwitch: false,
     deviceModeEnabled: true,
     isGroupEnabled: () => true,
@@ -433,6 +434,7 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     onSetMacro: () => undefined,
     onSetFavorites: () => undefined,
     onSetCommands: () => undefined,
+    onSetPower: () => undefined,
     onSetDeviceMode: () => undefined,
     onSetVolume: () => undefined,
     onSetChannel: () => undefined,
@@ -457,6 +459,24 @@ test("group order section renders up/down buttons until ha-sortable is ready", (
   assert.equal(templateHasString(sortable, "ha-sortable"), true);
   assert.equal(templateHasString(sortable, "sb-drag-handle"), true);
   assert.equal(templateHasString(sortable, "sb-move-wrap"), false);
+});
+
+test("device selections render Commands and Power switches on the mf rows", () => {
+  const result = renderGroupOrderSection(
+    groupOrderParams({
+      isDeviceSelection: true,
+      visibleOrder: ["macro_favorites"],
+    }),
+  );
+  const text = templateText(result);
+  assert.equal(text.includes("Commands"), true);
+  assert.equal(text.includes("Power"), true);
+  // Activity selections keep Macros/Favorites and show no Power switch.
+  const activity = templateText(
+    renderGroupOrderSection(groupOrderParams({ visibleOrder: ["macro_favorites"] })),
+  );
+  assert.equal(activity.includes("Power"), false);
+  assert.equal(activity.includes("Macros"), true);
 });
 
 test("group order section renders one order row per visible group", () => {

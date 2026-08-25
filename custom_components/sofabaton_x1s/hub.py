@@ -3034,12 +3034,25 @@ class SofabatonHub:
 
         device_row: dict[str, Any] = {"device_id": dev_lo}
         device = self.devices.get(dev_lo)
+        idle_behavior: int | None = None
         if isinstance(device, dict):
             name = str(device.get("name") or "").strip()
             if name:
                 device_row["name"] = name
             if device.get("device_class") is not None:
                 device_row["device_class"] = device.get("device_class")
+            raw_idle = device.get("idle_behavior")
+            if isinstance(raw_idle, int):
+                idle_behavior = raw_idle & 0xFF
+
+        # Power-key capability gate for the card's device-mode power
+        # button: the idle-behavior byte (0x0242, fetched per device
+        # during structural reads) is the authoritative signal. Modes
+        # 1-3 mean the device has power configured; 4 means no power
+        # key, 0 never set up, and a missing value fails closed. The
+        # record-tail power_mode byte is NOT usable here (it reads 1
+        # on every real hub device, configured or not).
+        power_configured = idle_behavior in (1, 2, 3)
 
         return {
             "device": device_row,
@@ -3049,6 +3062,7 @@ class SofabatonHub:
                 {"command_id": cmd_id, "name": label_map[cmd_id]}
                 for cmd_id in sorted(label_map)
             ],
+            "power_configured": power_configured,
             "fetched_at": fetched_at,
         }
 
@@ -3469,6 +3483,29 @@ class SofabatonHub:
             await asyncio.sleep(0.1)
 
         return dict(self._proxy.state.entities("device"))
+
+    async def async_get_device_power_state(self, device_id: int) -> int | None:
+        """Fresh read of one device's live power state (0 off, 1 on).
+
+        The hub live-updates the device row's power_state byte as
+        activities and device-scope power macros run, and a full
+        REQ_DEVICES burst is the protocol's only read for it (the hub
+        ignores request payloads on the device family; wire-validated
+        2026-08-25). Returns ``None`` when the row is unavailable or
+        does not parse. Note the byte commits with a macro-runtime lag
+        after a power fire, so callers that just fired must not expect
+        an immediate flip; the card keeps a short-lived optimistic
+        assumption instead.
+        """
+
+        dev_lo = int(device_id) & 0xFF
+        snapshot = await self._async_refresh_devices_snapshot()
+        body = (snapshot.get(dev_lo) or {}).get("raw_body") or b""
+        try:
+            config = parse_device_record(bytes(body), hub_version=self.version)
+        except ValueError:
+            return None
+        return int(config.power_state) & 0xFF
 
     async def _async_refresh_activities_snapshot(
         self, timeout_seconds: float = 15.0

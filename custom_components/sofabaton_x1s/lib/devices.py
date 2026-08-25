@@ -108,7 +108,11 @@ class DeviceConfig:
     #: (e.g. IR carrier-group selector on RF devices).
     channel: int = 0
 
-    #: Initial power state to display: ``0`` off, ``1`` on.
+    #: Assumed power state of the device: ``0`` off, ``1`` on. The hub
+    #: keeps this byte live as activities power the device on and off
+    #: (bench capture 2026-08-25: toggling a device flips exactly this
+    #: byte in the re-fetched row), so a fresh REQ_DEVICES read is the
+    #: protocol's only "is this device on" query.
     power_state: int = 0
 
     #: IPv4 address as a dotted-decimal string. Encoded into the tail
@@ -143,13 +147,16 @@ class DeviceConfig:
     #: behaviour by default. See :attr:`is_input_configured`.
     input_mode: int = 0
 
-    #: Power configuration value. ``0`` means **power has not been
-    #: configured** on this device (the user has not picked a power
-    #: style). A non-zero value indicates power is configured; the
-    #: specific value distinguishes between toggle / discrete /
-    #: separate-on-off styles, but the encoding here is not fully
-    #: decoded yet (real captures show ``0`` unconfigured, ``1``
-    #: configured). See :attr:`is_power_configured`.
+    #: Tail power byte. NOT the power-key capability signal: bench
+    #: captures (2026-08-25) show ``1`` on every hub device, including
+    #: devices whose power is unconfigured or disabled, because ``1``
+    #: is also the parse floor when the tail marker block is absent.
+    #: The authoritative capability/style signal is the separate
+    #: idle-behavior byte (0x0140 -> 0x0242 exchange). This byte is
+    #: still hub-functional: rewriting a Wifi device head without
+    #: carrying it breaks activity-driven power/input callback
+    #: delivery (docs/protocol/live-hub-testing.md, the P2 recipe),
+    #: so round-trip it faithfully. See :attr:`is_power_configured`.
     power_mode: int = 0
 
     #: Companion byte to :attr:`power_mode`. Observed values vary per
@@ -191,11 +198,18 @@ class DeviceConfig:
 
     @property
     def is_power_configured(self) -> bool:
-        """``True`` when the device has been configured for power.
+        """``True`` when the tail power byte is non-zero.
 
-        Empirically: tail byte 11 (``power_mode``) is ``0`` on devices
-        the user has not yet configured for power, and non-zero once
-        they have (the specific value encodes the chosen power style).
+        Caution: this is NOT "the user configured a power key". Bench
+        captures (2026-08-25) show ``power_mode`` at ``1`` on every hub
+        device, including power-disabled ones, and the parser floors it
+        to ``1`` when the tail marker block is absent, so this property
+        is effectively always true on real hubs. The real power-key
+        capability signal is the idle-behavior byte (0x0242): modes
+        1-3 mean power is configured, 4 means no power key, 0 means
+        never set up. Kept because a zero here still matters to the
+        hub (see :attr:`power_mode`): callers use it to detect a tail
+        that must be carried through head rewrites.
         """
 
         return self.power_mode != 0

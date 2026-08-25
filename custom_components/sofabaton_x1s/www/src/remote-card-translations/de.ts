@@ -24,6 +24,7 @@ const REMOTE_CARD_STRINGS_DE = {
     macrosTab: "Makros >",
     favoritesTab: "Favoriten >",
     commandsTab: "Befehle >",
+    powerButton: "Ein/Aus",
     activitySelectLabel: "Aktivität",
     deviceSelectLabel: "Gerät",
     selectDevice: "Gerät auswählen",
@@ -132,6 +133,7 @@ const REMOTE_CARD_STRINGS_DE = {
     defaultLayoutOption: "Standard-Aktivitätslayout",
     allDevicesOption: "Standard-Gerätelayout",
     commands: "Befehle",
+    power: "Ein/Aus",
     modeToggle: "Modusschalter",
     deviceModeDescription:
       "Steuere ein einzelnes, im Hub eingerichtetes Gerät mit dessen Tastenbelegungen und vollständiger Befehlsliste.",

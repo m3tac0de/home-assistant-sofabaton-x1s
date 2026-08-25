@@ -99,6 +99,7 @@ export const DEVICE_LAYOUT_KEYS = [
   "show_colors",
   "show_abc",
   "show_commands_button",
+  "show_power_button",
   "show_device_toggle",
   "c_as_rows",
   "c_row_visible_rows",
@@ -204,6 +205,7 @@ export const DEVICE_LAYOUT_DEFAULTS: Record<string, unknown> = Object.freeze({
   show_colors: true,
   show_abc: true,
   show_commands_button: true,
+  show_power_button: true,
   show_device_toggle: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
@@ -230,6 +232,13 @@ export function layoutConfigForDevice(
 export function commandsButtonEnabled(layout: Record<string, any> | null | undefined) {
   if (typeof layout?.show_commands_button === "boolean") {
     return layout.show_commands_button;
+  }
+  return true;
+}
+
+export function powerButtonEnabled(layout: Record<string, any> | null | undefined) {
+  if (typeof layout?.show_power_button === "boolean") {
+    return layout.show_power_button;
   }
   return true;
 }

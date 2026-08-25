@@ -15,6 +15,7 @@ import {
   mfRowVisibleRows,
   normalizedGroupOrder,
   keyStyleFromConfig,
+  powerButtonEnabled,
 } from "./remote-card-layout";
 import { ensureHaElements } from "./remote-card-compat";
 import {
@@ -58,8 +59,10 @@ import {
   renderFavoritesItems,
   renderInlineDrawerRow,
   renderMacroFavorites,
+  renderPowerRow,
   type CommandsFilterParams,
   type MacroFavoritesParams,
+  type PowerKeyParams,
 } from "./sections/macro-favorites";
 import { renderAssistModal, renderAssistRow } from "./sections/assist";
 
@@ -929,6 +932,24 @@ export class SofabatonRemoteCard extends LitElement {
       },
     };
 
+    // Device-mode power key (plan §8.1): rendered only when the selected
+    // device has power configured (backend gate, fail-closed) and the
+    // layout has not hidden it. It docks on the commands strip: beside
+    // the drawer bar, beside the filter in commands-as-rows mode, and
+    // alone right-docked when the Commands strip is hidden.
+    const powerVisible =
+      deviceMode &&
+      powerButtonEnabled(layoutConfig) &&
+      store.devicePowerConfigured();
+    const powerParams: PowerKeyParams = {
+      busy: store.powerBusy,
+      disabled: disableAll,
+      label: str().card.powerButton,
+      onToggle: () => {
+        void store.toggleDevicePower();
+      },
+    };
+
     const commandsParams = {
       visible: showCommandsDrawer,
       open: store.activeDrawer === "commands",
@@ -1011,8 +1032,13 @@ export class SofabatonRemoteCard extends LitElement {
       macro_favorites: () =>
         deviceMode
           ? showCommandsDrawer
-            ? renderCommandsDrawer(commandsParams)
-            : nothing
+            ? renderCommandsDrawer({
+                ...commandsParams,
+                power: powerVisible ? powerParams : null,
+              })
+            : powerVisible && !commandsAsRow
+              ? renderPowerRow(powerParams)
+              : nothing
           : drawerDisplayState?.showMF
             ? renderMacroFavorites(mfParams)
             : nothing,
@@ -1030,6 +1056,7 @@ export class SofabatonRemoteCard extends LitElement {
                 itemCount: derived.commands.length,
                 emptyText: str().card.noCommands,
                 filter: commandsFilter,
+                power: powerVisible ? powerParams : null,
               })
             : nothing
           : macrosRowOn
