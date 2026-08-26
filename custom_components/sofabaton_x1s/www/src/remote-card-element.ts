@@ -16,6 +16,7 @@ import {
   normalizedGroupOrder,
   keyStyleFromConfig,
   powerButtonEnabled,
+  tintedPanelsFromConfig,
 } from "./remote-card-layout";
 import { ensureHaElements } from "./remote-card-compat";
 import {
@@ -419,8 +420,16 @@ export class SofabatonRemoteCard extends LitElement {
 
   private _syncLayering(): void {
     const activityRow = this._activityRowRef.value;
-    const mfContainer = this._mfContainerRef.value;
+    let mfContainer = this._mfContainerRef.value;
     if (!activityRow || !mfContainer) return;
+
+    // Device mode wraps the container in .commands-row (the power key's
+    // row grid), which is the positioned ancestor and stacking context;
+    // a z-index on the now-static container inside it is inert, so the
+    // raise must land on the wrapper or an open drawer stays underneath
+    // the selector whenever its group is ordered above the activity row.
+    mfContainer =
+      (mfContainer.closest(".commands-row") as HTMLElement | null) ?? mfContainer;
 
     const key = `${this._store.activityMenuOpen ? 1 : 0}:${this._store.activeDrawer || ""}`;
     const targets: [HTMLElement | null, HTMLElement | null] = [activityRow, mfContainer];
@@ -936,11 +945,14 @@ export class SofabatonRemoteCard extends LitElement {
     // device has power configured (backend gate, fail-closed) and the
     // layout has not hidden it. It docks on the commands strip: beside
     // the drawer bar, beside the filter in commands-as-rows mode, and
-    // alone right-docked when the Commands strip is hidden.
+    // alone right-docked when the Commands strip is hidden. The edit
+    // preview drops the data gate: previewing a device layout has no
+    // real device selected, and the Power switch should visualize like
+    // every other layout toggle (the key is inert in edit mode anyway).
     const powerVisible =
       deviceMode &&
       powerButtonEnabled(layoutConfig) &&
-      store.devicePowerConfigured();
+      (this._editMode || store.devicePowerConfigured());
     const powerParams: PowerKeyParams = {
       busy: store.powerBusy,
       disabled: disableAll,
@@ -982,6 +994,12 @@ export class SofabatonRemoteCard extends LitElement {
     // must not re-resolve.
     const order = normalizedGroupOrder(layoutConfig.group_order);
     const keyStyle = keyStyleFromConfig(store.config);
+    const tintedPanels = tintedPanelsFromConfig(store.config);
+    const wrapClass = [
+      "wrap",
+      ...(keyStyle === "flat" ? [] : [`wrap--keys-${keyStyle}`]),
+      ...(tintedPanels ? ["wrap--panels"] : []),
+    ].join(" ");
     const groupTemplates: Record<string, () => unknown> = {
       activity: () =>
         Boolean(layoutConfig.show_activity) ? renderActivityRow({
@@ -1096,7 +1114,7 @@ export class SofabatonRemoteCard extends LitElement {
         ${assistEnabled
           ? renderAssistModal({ visible: true, controller: this._assist })
           : nothing}
-        <div class="wrap${keyStyle === "flat" ? "" : ` wrap--keys-${keyStyle}`}" ${ref(this._wrapRef)}>
+        <div class=${wrapClass} ${ref(this._wrapRef)}>
           ${assistEnabled
             ? renderAssistRow({ visible: true, controller: this._assist })
             : nothing}

@@ -137,6 +137,8 @@ export interface RemoteCardConfig extends RemoteCardLayoutConfig {
    * while the keys stay card-coloured.
    */
   key_style?: KeyStyle;
+  /** Accent-tinted group panels, combinable with any key style. */
+  tinted_panels?: boolean;
   /**
    * Editor-only helper toggle backing background_override; stripped from the
    * stored config by the editor's _fireChanged().

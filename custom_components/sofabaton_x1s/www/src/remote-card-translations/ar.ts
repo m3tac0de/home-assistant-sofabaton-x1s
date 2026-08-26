@@ -134,7 +134,7 @@ export const REMOTE_CARD_STRINGS_AR = {
     keyStyleTinted: "ملوّن (تتميز الأزرار عن الخلفية)",
     keyStyleElevated: "مرتفع (ملوّن مع ظل)",
     keyStyleGlossy: "لامع (أزرار لامعة مقوّسة)",
-    keyStylePanel: "لوحات (لوحات بمسحة من لون التمييز خلف الأزرار)",
+    tintedPanels: "لوحات ملونة",
     layoutOptions: "خيارات التخطيط",
     layoutSelectLabel: "التخطيط",
     defaultLayoutOption: "التخطيط الافتراضي للأنشطة",

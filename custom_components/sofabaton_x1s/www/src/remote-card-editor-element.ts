@@ -79,6 +79,8 @@ const CARD_SETTING_DEFAULTS: Record<string, unknown> = {
   shrink: 0,
   show_automation_assist: false,
   background_override: null,
+  key_style: "flat",
+  tinted_panels: false,
 };
 
 const ENTITY_FORM_SCHEMA = [

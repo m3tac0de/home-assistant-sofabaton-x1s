@@ -128,7 +128,7 @@ export const REMOTE_CARD_STRINGS_ES = {
     keyStyleTinted: "Tintado (las teclas destacan sobre el fondo)",
     keyStyleElevated: "Elevado (tintado con sombra)",
     keyStyleGlossy: "Brillante (teclas curvas y brillantes)",
-    keyStylePanel: "Paneles (paneles con tinte de acento detrás de las teclas)",
+    tintedPanels: "Paneles tintados",
     layoutOptions: "Opciones de diseño",
     layoutSelectLabel: "Diseño",
     defaultLayoutOption: "Diseño predeterminado de actividades",

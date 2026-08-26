@@ -120,7 +120,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     keyStyleTinted: "着色（按键与背景区分开）",
     keyStyleElevated: "悬浮（着色并带阴影）",
     keyStyleGlossy: "光泽（有光泽的立体按键）",
-    keyStylePanel: "面板（按键后方显示浅强调色面板）",
+    tintedPanels: "浅色面板",
     layoutOptions: "布局选项",
     layoutSelectLabel: "布局",
     defaultLayoutOption: "默认活动布局",

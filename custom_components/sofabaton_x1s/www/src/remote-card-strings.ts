@@ -126,7 +126,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     keyStyleTinted: "Tinted (keys stand out from the background)",
     keyStyleElevated: "Elevated (tinted with a shadow)",
     keyStyleGlossy: "Glossy (shiny, curved keys)",
-    keyStylePanel: "Panels (accent-tinted panels behind the keys)",
+    tintedPanels: "Tinted panels",
     layoutOptions: "Layout Options",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Default activity layout",

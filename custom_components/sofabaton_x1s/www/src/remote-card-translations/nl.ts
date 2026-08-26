@@ -123,7 +123,7 @@ const REMOTE_CARD_STRINGS_NL = {
     keyStyleTinted: "Getint (knoppen steken af tegen de achtergrond)",
     keyStyleElevated: "Verhoogd (getint met schaduw)",
     keyStyleGlossy: "Glanzend (glimmende, bolle knoppen)",
-    keyStylePanel: "Panelen (panelen met accenttint achter de knoppen)",
+    tintedPanels: "Getinte panelen",
     layoutOptions: "Indelingsopties",
     layoutSelectLabel: "Indeling",
     defaultLayoutOption: "Standaard voor activiteiten",

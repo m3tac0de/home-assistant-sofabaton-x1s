@@ -630,7 +630,10 @@ function deviceModeBlock(config) {
 }
 function keyStyleFromConfig(config) {
   const value = config?.key_style;
-  return value === "tinted" || value === "elevated" || value === "glossy" || value === "panel" ? value : "flat";
+  return value === "tinted" || value === "elevated" || value === "glossy" ? value : "flat";
+}
+function tintedPanelsFromConfig(config) {
+  return config?.tinted_panels === true || config?.key_style === "panel";
 }
 function deviceModeEnabledInConfig(config) {
   return deviceModeBlock(config)?.enabled !== false;
@@ -982,7 +985,7 @@ var REMOTE_CARD_STRINGS_EN = {
     keyStyleTinted: "Tinted (keys stand out from the background)",
     keyStyleElevated: "Elevated (tinted with a shadow)",
     keyStyleGlossy: "Glossy (shiny, curved keys)",
-    keyStylePanel: "Panels (accent-tinted panels behind the keys)",
+    tintedPanels: "Tinted panels",
     layoutOptions: "Layout Options",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Default activity layout",
@@ -1526,47 +1529,49 @@ var REMOTE_CARD_CSS = `
       .wrap--keys-elevated .drawer-btn {
         --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
       }
-      /* key_style "panel": the inverse of tinted \u2014 the bordered group
-         containers take the dock surface and the keys KEEP the card
-         background (their --sb-control-background default), so they read as
-         card-coloured cutouts on a softly accent-tinted panel. The tint is
-         subtle enough that no text or icon colour needs to change. The nav
-         row (.row3) has no container to paint, so its keys take the panel
-         surface directly. The Macros/Favorites bar (and the device-mode
-         Commands bar) and the drawer overlay are bordered containers too:
-         the bar's transparent tabs and the active tab's 14%-primary tint
-         both still read on the dock surface, and the ha-card drawer
-         buttons inside the overlay keep the card background for the same
-         cutout read. */
-      .wrap--keys-panel .dpad,
-      .wrap--keys-panel .mid,
-      .wrap--keys-panel .media,
-      .wrap--keys-panel .colors,
-      .wrap--keys-panel .abc {
+      /* Tinted panels (the former key_style "panel", an independent
+         switch since 0.3.0 so it combines with any key style): the
+         bordered group containers take the dock surface. With flat keys
+         the keys KEEP the card background and read as card-coloured
+         cutouts on a softly accent-tinted panel; with a tinted/elevated/
+         glossy key style the keys keep that style's raised surface and
+         the panels tint the ground behind them. The tint is subtle
+         enough that no text or icon colour needs to change. Container-
+         less keys (the nav .row3 and the device-mode power key) take
+         the panel surface directly, but only under flat keys - a real
+         key style owns their surface. These rules sit AFTER the
+         key-style .macroFavorites rules so the bar counts as a
+         container (panel surface) when both are on. */
+      .wrap--panels .dpad,
+      .wrap--panels .mid,
+      .wrap--panels .media,
+      .wrap--panels .colors,
+      .wrap--panels .abc {
         background: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .row3 {
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .row3,
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .sb-power-key {
         --sb-control-background: var(--sb-panel-surface);
         --sb-control-border-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .macroFavorites {
+      .wrap--panels .macroFavorites {
         background: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .macroFavoritesButton + .macroFavoritesButton {
+      .wrap--panels .macroFavoritesButton + .macroFavoritesButton {
         border-left-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .macroFavoritesButton:first-child {
+      .wrap--panels .macroFavoritesButton:first-child {
         border-right-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .mf-overlay {
+      .wrap--panels .mf-overlay {
         background: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
       /* drawer-up re-declares border-top with the divider colour at higher
          specificity; keep it on the panel border. */
-      .wrap--keys-panel .mf-container.drawer-up .mf-overlay {
+      .wrap--panels .mf-container.drawer-up .mf-overlay {
         border-top-color: var(--sb-panel-border);
       }
       .layout-container { display: grid; gap: 12px; }
@@ -2093,6 +2098,12 @@ var REMOTE_CARD_CSS = `
         position: relative;
         overflow: hidden;
         -webkit-tap-highlight-color: transparent;
+      }
+      /* Same colour language as the keys: names and icons both take the
+         icon accent (sb-key-button's label rule is the counterpart). */
+      .drawer-btn .name,
+      .drawer-btn__icon {
+        color: var(--sb-key-label-color, var(--primary-color));
       }
 
       /* Hover/press overlay  */
@@ -2621,7 +2632,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.3.0";
+var CARD_VERSION = "0.2.2";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -2955,8 +2966,20 @@ function renderStylingOptionsSection(params) {
     ),
     "sb-opt-max-width"
   );
+  const resolvedKeyStyle = keyStyleFromConfig(config);
+  const panelsOn = tintedPanelsFromConfig(config);
+  const legacyPanel = config.key_style === "panel";
+  const onKeyStyleChanged = (ev) => {
+    ev.stopPropagation();
+    const value = { ...ev.detail.value };
+    if (legacyPanel) value.tinted_panels = true;
+    params.onValueChanged(value);
+  };
   const keyStyleRow = renderFormRow(
-    fieldForm(
+    b2`
+      <ha-form
+        .hass=${params.hass}
+        .schema=${[
       {
         name: "key_style",
         required: true,
@@ -2967,16 +2990,29 @@ function renderStylingOptionsSection(params) {
               { value: "flat", label: str().editor.keyStyleFlat },
               { value: "tinted", label: str().editor.keyStyleTinted },
               { value: "elevated", label: str().editor.keyStyleElevated },
-              { value: "glossy", label: str().editor.keyStyleGlossy },
-              { value: "panel", label: str().editor.keyStylePanel }
+              { value: "glossy", label: str().editor.keyStyleGlossy }
             ]
           }
         }
-      },
-      { key_style: config.key_style ?? "flat" }
-    ),
+      }
+    ]}
+        .data=${{ key_style: resolvedKeyStyle }}
+        .computeLabel=${computeEditorFieldLabel}
+        @value-changed=${onKeyStyleChanged}
+      ></ha-form>
+    `,
     "sb-opt-key-style"
   );
+  const panelsRow = renderOptionRow({
+    className: "sb-opt-tinted-panels",
+    label: str().editor.tintedPanels,
+    checked: panelsOn,
+    onSet: (enabled) => {
+      params.onValueChanged(
+        legacyPanel ? { key_style: resolvedKeyStyle, tinted_panels: enabled } : { tinted_panels: enabled }
+      );
+    }
+  });
   const backgroundRow = renderOptionRow({
     className: "sb-opt-background",
     label: str().editor.fieldLabels.use_background_override,
@@ -2998,7 +3034,7 @@ function renderStylingOptionsSection(params) {
           </div>
         ` : A
   });
-  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${keyStyleRow}${backgroundRow}</div>`;
+  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${keyStyleRow}${panelsRow}${backgroundRow}</div>`;
   return renderEditorExpander({
     expanded: params.expanded,
     icon: "mdi:palette",
@@ -3450,7 +3486,9 @@ var CARD_SETTING_DEFAULTS = {
   max_width: 360,
   shrink: 0,
   show_automation_assist: false,
-  background_override: null
+  background_override: null,
+  key_style: "flat",
+  tinted_panels: false
 };
 var ENTITY_FORM_SCHEMA = [
   {
@@ -6782,7 +6820,7 @@ var CONTROL_CSS = `
     line-height: 1;
     flex: 0 0 auto;
     --mdc-icon-size: 1.2em;
-    color: var(--primary-color);
+    color: var(--sb-key-label-color, var(--primary-color));
     position: relative;
     z-index: 1;
   }
@@ -6793,6 +6831,9 @@ var CONTROL_CSS = `
     white-space: nowrap;
     position: relative;
     z-index: 1;
+    /* Text on keys reads as part of the same control language as the
+       icons, so it shares their colour (the icon rule above). */
+    color: var(--sb-key-label-color, var(--primary-color));
   }
 
   [hidden] {
@@ -7791,8 +7832,9 @@ var SofabatonRemoteCard = class extends i4 {
   }
   _syncLayering() {
     const activityRow = this._activityRowRef.value;
-    const mfContainer = this._mfContainerRef.value;
+    let mfContainer = this._mfContainerRef.value;
     if (!activityRow || !mfContainer) return;
+    mfContainer = mfContainer.closest(".commands-row") ?? mfContainer;
     const key = `${this._store.activityMenuOpen ? 1 : 0}:${this._store.activeDrawer || ""}`;
     const targets = [activityRow, mfContainer];
     if (this._lastLayeringKey === key && this._lastLayeringTargets[0] === targets[0] && this._lastLayeringTargets[1] === targets[1]) {
@@ -8178,7 +8220,7 @@ var SofabatonRemoteCard = class extends i4 {
         void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
       }
     };
-    const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && store.devicePowerConfigured();
+    const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && (this._editMode || store.devicePowerConfigured());
     const powerParams = {
       busy: store.powerBusy,
       disabled: disableAll,
@@ -8208,6 +8250,12 @@ var SofabatonRemoteCard = class extends i4 {
     const mediaEnabled = derived.isX2 ? derived.showMedia || derived.showDvr : derived.showMedia;
     const order = normalizedGroupOrder(layoutConfig.group_order);
     const keyStyle = keyStyleFromConfig(store.config);
+    const tintedPanels = tintedPanelsFromConfig(store.config);
+    const wrapClass = [
+      "wrap",
+      ...keyStyle === "flat" ? [] : [`wrap--keys-${keyStyle}`],
+      ...tintedPanels ? ["wrap--panels"] : []
+    ].join(" ");
     const groupTemplates = {
       activity: () => Boolean(layoutConfig.show_activity) ? renderActivityRow({
         hass: store.hass,
@@ -8286,7 +8334,7 @@ var SofabatonRemoteCard = class extends i4 {
     return b2`
       <ha-card ${n6(this._cardRef)}>
         ${assistEnabled ? renderAssistModal({ visible: true, controller: this._assist }) : A}
-        <div class="wrap${keyStyle === "flat" ? "" : ` wrap--keys-${keyStyle}`}" ${n6(this._wrapRef)}>
+        <div class=${wrapClass} ${n6(this._wrapRef)}>
           ${assistEnabled ? renderAssistRow({ visible: true, controller: this._assist }) : A}
           <div class="layout-container" ${n6(this._layoutContainerRef)}>
             ${c6(
@@ -8471,7 +8519,7 @@ var REMOTE_CARD_STRINGS_AR = {
     keyStyleTinted: "\u0645\u0644\u0648\u0651\u0646 (\u062A\u062A\u0645\u064A\u0632 \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0639\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629)",
     keyStyleElevated: "\u0645\u0631\u062A\u0641\u0639 (\u0645\u0644\u0648\u0651\u0646 \u0645\u0639 \u0638\u0644)",
     keyStyleGlossy: "\u0644\u0627\u0645\u0639 (\u0623\u0632\u0631\u0627\u0631 \u0644\u0627\u0645\u0639\u0629 \u0645\u0642\u0648\u0651\u0633\u0629)",
-    keyStylePanel: "\u0644\u0648\u062D\u0627\u062A (\u0644\u0648\u062D\u0627\u062A \u0628\u0645\u0633\u062D\u0629 \u0645\u0646 \u0644\u0648\u0646 \u0627\u0644\u062A\u0645\u064A\u064A\u0632 \u062E\u0644\u0641 \u0627\u0644\u0623\u0632\u0631\u0627\u0631)",
+    tintedPanels: "\u0644\u0648\u062D\u0627\u062A \u0645\u0644\u0648\u0646\u0629",
     layoutOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     layoutSelectLabel: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
@@ -8675,7 +8723,7 @@ var REMOTE_CARD_STRINGS_DE = {
     keyStyleTinted: "Get\xF6nt (Tasten heben sich vom Hintergrund ab)",
     keyStyleElevated: "Erh\xF6ht (get\xF6nt mit Schatten)",
     keyStyleGlossy: "Gl\xE4nzend (gl\xE4nzende, gew\xF6lbte Tasten)",
-    keyStylePanel: "Panels (akzentget\xF6nte Panels hinter den Tasten)",
+    tintedPanels: "Get\xF6nte Panels",
     layoutOptions: "Layoutoptionen",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Standard-Aktivit\xE4tslayout",
@@ -8858,7 +8906,7 @@ var REMOTE_CARD_STRINGS_ES = {
     keyStyleTinted: "Tintado (las teclas destacan sobre el fondo)",
     keyStyleElevated: "Elevado (tintado con sombra)",
     keyStyleGlossy: "Brillante (teclas curvas y brillantes)",
-    keyStylePanel: "Paneles (paneles con tinte de acento detr\xE1s de las teclas)",
+    tintedPanels: "Paneles tintados",
     layoutOptions: "Opciones de dise\xF1o",
     layoutSelectLabel: "Dise\xF1o",
     defaultLayoutOption: "Dise\xF1o predeterminado de actividades",
@@ -9041,7 +9089,7 @@ var REMOTE_CARD_STRINGS_FR = {
     keyStyleTinted: "Teint\xE9 (les touches se d\xE9tachent du fond)",
     keyStyleElevated: "Sur\xE9lev\xE9 (teint\xE9 avec ombre)",
     keyStyleGlossy: "Brillant (touches bomb\xE9es et brillantes)",
-    keyStylePanel: "Panneaux (panneaux teint\xE9s d'accent derri\xE8re les touches)",
+    tintedPanels: "Panneaux teint\xE9s",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
     defaultLayoutOption: "Disposition par d\xE9faut des activit\xE9s",
@@ -9223,7 +9271,7 @@ var REMOTE_CARD_STRINGS_NL = {
     keyStyleTinted: "Getint (knoppen steken af tegen de achtergrond)",
     keyStyleElevated: "Verhoogd (getint met schaduw)",
     keyStyleGlossy: "Glanzend (glimmende, bolle knoppen)",
-    keyStylePanel: "Panelen (panelen met accenttint achter de knoppen)",
+    tintedPanels: "Getinte panelen",
     layoutOptions: "Indelingsopties",
     layoutSelectLabel: "Indeling",
     defaultLayoutOption: "Standaard voor activiteiten",
@@ -9405,7 +9453,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     keyStyleTinted: "\u7740\u8272\uFF08\u6309\u952E\u4E0E\u80CC\u666F\u533A\u5206\u5F00\uFF09",
     keyStyleElevated: "\u60AC\u6D6E\uFF08\u7740\u8272\u5E76\u5E26\u9634\u5F71\uFF09",
     keyStyleGlossy: "\u5149\u6CFD\uFF08\u6709\u5149\u6CFD\u7684\u7ACB\u4F53\u6309\u952E\uFF09",
-    keyStylePanel: "\u9762\u677F\uFF08\u6309\u952E\u540E\u65B9\u663E\u793A\u6D45\u5F3A\u8C03\u8272\u9762\u677F\uFF09",
+    tintedPanels: "\u6D45\u8272\u9762\u677F",
     layoutOptions: "\u5E03\u5C40\u9009\u9879",
     layoutSelectLabel: "\u5E03\u5C40",
     defaultLayoutOption: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",

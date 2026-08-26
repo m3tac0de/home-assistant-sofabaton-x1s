@@ -99,7 +99,7 @@ const CONTROL_CSS = `
     line-height: 1;
     flex: 0 0 auto;
     --mdc-icon-size: 1.2em;
-    color: var(--primary-color);
+    color: var(--sb-key-label-color, var(--primary-color));
     position: relative;
     z-index: 1;
   }
@@ -110,6 +110,9 @@ const CONTROL_CSS = `
     white-space: nowrap;
     position: relative;
     z-index: 1;
+    /* Text on keys reads as part of the same control language as the
+       icons, so it shares their colour (the icon rule above). */
+    color: var(--sb-key-label-color, var(--primary-color));
   }
 
   [hidden] {

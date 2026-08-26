@@ -374,3 +374,25 @@ test("deriveRuntimeState settles activity loading once the target is reached", a
   assert.equal(store.isLoadingActive(), false);
   store.disconnected();
 });
+
+test("key style and tinted panels resolve independently, with legacy panel fallback", async () => {
+  const {
+    keyStyleFromConfig,
+    tintedPanelsFromConfig,
+  } = await import("../../custom_components/sofabaton_x1s/www/src/remote-card-layout");
+
+  // The four real key styles pass through; unknown values floor to flat.
+  assert.equal(keyStyleFromConfig({ key_style: "tinted" }), "tinted");
+  assert.equal(keyStyleFromConfig({ key_style: "glossy" }), "glossy");
+  assert.equal(keyStyleFromConfig({}), "flat");
+  assert.equal(keyStyleFromConfig({ key_style: "bogus" }), "flat");
+
+  // Panels are their own switch and combine with any key style.
+  assert.equal(tintedPanelsFromConfig({ tinted_panels: true }), true);
+  assert.equal(tintedPanelsFromConfig({ key_style: "tinted", tinted_panels: true }), true);
+  assert.equal(tintedPanelsFromConfig({}), false);
+
+  // Released key_style:"panel" configs read as flat keys + panels on.
+  assert.equal(keyStyleFromConfig({ key_style: "panel" }), "flat");
+  assert.equal(tintedPanelsFromConfig({ key_style: "panel" }), true);
+});

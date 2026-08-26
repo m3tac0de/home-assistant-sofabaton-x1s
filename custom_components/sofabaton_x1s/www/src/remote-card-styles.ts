@@ -131,47 +131,49 @@ export const REMOTE_CARD_CSS = `
       .wrap--keys-elevated .drawer-btn {
         --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
       }
-      /* key_style "panel": the inverse of tinted — the bordered group
-         containers take the dock surface and the keys KEEP the card
-         background (their --sb-control-background default), so they read as
-         card-coloured cutouts on a softly accent-tinted panel. The tint is
-         subtle enough that no text or icon colour needs to change. The nav
-         row (.row3) has no container to paint, so its keys take the panel
-         surface directly. The Macros/Favorites bar (and the device-mode
-         Commands bar) and the drawer overlay are bordered containers too:
-         the bar's transparent tabs and the active tab's 14%-primary tint
-         both still read on the dock surface, and the ha-card drawer
-         buttons inside the overlay keep the card background for the same
-         cutout read. */
-      .wrap--keys-panel .dpad,
-      .wrap--keys-panel .mid,
-      .wrap--keys-panel .media,
-      .wrap--keys-panel .colors,
-      .wrap--keys-panel .abc {
+      /* Tinted panels (the former key_style "panel", an independent
+         switch since 0.3.0 so it combines with any key style): the
+         bordered group containers take the dock surface. With flat keys
+         the keys KEEP the card background and read as card-coloured
+         cutouts on a softly accent-tinted panel; with a tinted/elevated/
+         glossy key style the keys keep that style's raised surface and
+         the panels tint the ground behind them. The tint is subtle
+         enough that no text or icon colour needs to change. Container-
+         less keys (the nav .row3 and the device-mode power key) take
+         the panel surface directly, but only under flat keys - a real
+         key style owns their surface. These rules sit AFTER the
+         key-style .macroFavorites rules so the bar counts as a
+         container (panel surface) when both are on. */
+      .wrap--panels .dpad,
+      .wrap--panels .mid,
+      .wrap--panels .media,
+      .wrap--panels .colors,
+      .wrap--panels .abc {
         background: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .row3 {
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .row3,
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .sb-power-key {
         --sb-control-background: var(--sb-panel-surface);
         --sb-control-border-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .macroFavorites {
+      .wrap--panels .macroFavorites {
         background: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .macroFavoritesButton + .macroFavoritesButton {
+      .wrap--panels .macroFavoritesButton + .macroFavoritesButton {
         border-left-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .macroFavoritesButton:first-child {
+      .wrap--panels .macroFavoritesButton:first-child {
         border-right-color: var(--sb-panel-border);
       }
-      .wrap--keys-panel .mf-overlay {
+      .wrap--panels .mf-overlay {
         background: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
       /* drawer-up re-declares border-top with the divider colour at higher
          specificity; keep it on the panel border. */
-      .wrap--keys-panel .mf-container.drawer-up .mf-overlay {
+      .wrap--panels .mf-container.drawer-up .mf-overlay {
         border-top-color: var(--sb-panel-border);
       }
       .layout-container { display: grid; gap: 12px; }
@@ -698,6 +700,12 @@ export const REMOTE_CARD_CSS = `
         position: relative;
         overflow: hidden;
         -webkit-tap-highlight-color: transparent;
+      }
+      /* Same colour language as the keys: names and icons both take the
+         icon accent (sb-key-button's label rule is the counterpart). */
+      .drawer-btn .name,
+      .drawer-btn__icon {
+        color: var(--sb-key-label-color, var(--primary-color));
       }
 
       /* Hover/press overlay  */

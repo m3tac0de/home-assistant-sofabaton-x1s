@@ -125,14 +125,30 @@ export function deviceModeBlock(
 }
 
 /** The `device_mode.enabled` master switch: absent = enabled. */
-/** Key surface treatment from config; unknown values fall back to "flat". */
+/**
+ * Key surface treatment from config; unknown values fall back to "flat".
+ * The legacy `key_style: "panel"` value (panels used to be a key style)
+ * resolves to flat keys; `tintedPanelsFromConfig` picks up the panels.
+ */
 export function keyStyleFromConfig(
   config: Record<string, any> | null | undefined,
-): "flat" | "tinted" | "elevated" | "glossy" | "panel" {
+): "flat" | "tinted" | "elevated" | "glossy" {
   const value = config?.key_style;
-  return value === "tinted" || value === "elevated" || value === "glossy" || value === "panel"
+  return value === "tinted" || value === "elevated" || value === "glossy"
     ? value
     : "flat";
+}
+
+/**
+ * Tinted panels: the group containers take the accent-tinted dock
+ * surface. An independent switch since 0.3.0 so it combines with any
+ * key style; released `key_style: "panel"` configs read as flat keys
+ * plus panels (never rewritten unless the user edits styling).
+ */
+export function tintedPanelsFromConfig(
+  config: Record<string, any> | null | undefined,
+): boolean {
+  return config?.tinted_panels === true || config?.key_style === "panel";
 }
 
 export function deviceModeEnabledInConfig(

@@ -1,5 +1,9 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { str } from "../remote-card-strings";
+import {
+  keyStyleFromConfig,
+  tintedPanelsFromConfig,
+} from "../remote-card-layout";
 import type { HassLike, RemoteCardConfig } from "../remote-card-types";
 import { renderEditorExpander } from "./expander";
 import { renderFormRow, renderOptionRow } from "./option-row";
@@ -60,28 +64,62 @@ export function renderStylingOptionsSection(params: {
     "sb-opt-max-width",
   );
 
+  // Panels moved out of the key-style dropdown into their own switch
+  // (0.3.0): resolve legacy `key_style: "panel"` configs through the
+  // shared readers, and normalize them away on the first styling write
+  // so the two settings stay independent from then on.
+  const resolvedKeyStyle = keyStyleFromConfig(config);
+  const panelsOn = tintedPanelsFromConfig(config);
+  const legacyPanel = config.key_style === "panel";
+
+  const onKeyStyleChanged = (ev: CustomEvent<{ value: Record<string, unknown> }>) => {
+    ev.stopPropagation();
+    const value = { ...ev.detail.value };
+    if (legacyPanel) value.tinted_panels = true;
+    params.onValueChanged(value);
+  };
+
   const keyStyleRow = renderFormRow(
-    fieldForm(
-      {
-        name: "key_style",
-        required: true,
-        selector: {
-          select: {
-            mode: "dropdown",
-            options: [
-              { value: "flat", label: str().editor.keyStyleFlat },
-              { value: "tinted", label: str().editor.keyStyleTinted },
-              { value: "elevated", label: str().editor.keyStyleElevated },
-              { value: "glossy", label: str().editor.keyStyleGlossy },
-              { value: "panel", label: str().editor.keyStylePanel },
-            ],
+    html`
+      <ha-form
+        .hass=${params.hass}
+        .schema=${[
+          {
+            name: "key_style",
+            required: true,
+            selector: {
+              select: {
+                mode: "dropdown",
+                options: [
+                  { value: "flat", label: str().editor.keyStyleFlat },
+                  { value: "tinted", label: str().editor.keyStyleTinted },
+                  { value: "elevated", label: str().editor.keyStyleElevated },
+                  { value: "glossy", label: str().editor.keyStyleGlossy },
+                ],
+              },
+            },
           },
-        },
-      },
-      { key_style: config.key_style ?? "flat" },
-    ),
+        ]}
+        .data=${{ key_style: resolvedKeyStyle }}
+        .computeLabel=${computeEditorFieldLabel}
+        @value-changed=${onKeyStyleChanged}
+      ></ha-form>
+    `,
     "sb-opt-key-style",
   );
+
+  const panelsRow = renderOptionRow({
+    className: "sb-opt-tinted-panels",
+    label: str().editor.tintedPanels,
+    checked: panelsOn,
+    onSet: (enabled) => {
+      params.onValueChanged(
+        legacyPanel
+          ? { key_style: resolvedKeyStyle, tinted_panels: enabled }
+          : { tinted_panels: enabled },
+      );
+    },
+  });
 
   const backgroundRow = renderOptionRow({
     className: "sb-opt-background",
@@ -112,7 +150,7 @@ export function renderStylingOptionsSection(params: {
       : nothing,
   });
 
-  const body = html`<div class="sb-opt-list">${themeRow}${maxWidthRow}${keyStyleRow}${backgroundRow}</div>`;
+  const body = html`<div class="sb-opt-list">${themeRow}${maxWidthRow}${keyStyleRow}${panelsRow}${backgroundRow}</div>`;
 
   return renderEditorExpander({
     expanded: params.expanded,
