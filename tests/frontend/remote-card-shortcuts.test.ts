@@ -298,11 +298,21 @@ test("slot strip marks configured and open slots; panel offers Reset and flags m
     (_key, value) => (typeof value === "function" ? undefined : value),
   );
   assert.equal(panelValues.includes("(missing)"), true);
-  // Unavailable commands render the note instead of the form.
+  // Cache misses and request errors render distinct recovery notes instead of
+  // the form, because refreshing the Control Panel cache cannot fix both.
   const missingText = templateText(
     renderShortcutsRowPanel({ ...panelParams, commandsStatus: "cache_miss" as const }),
   );
   assert.equal(missingText.includes("sb-shortcut-note"), true);
+  assert.equal(missingText.includes("not cached yet"), true);
+  assert.equal(missingText.includes("reload the dashboard"), true);
+
+  const errorText = templateText(
+    renderShortcutsRowPanel({ ...panelParams, commandsStatus: "error" as const }),
+  );
+  assert.equal(errorText.includes("Could not load"), true);
+  assert.equal(errorText.includes("try again"), true);
+  assert.notEqual(errorText, missingText);
 });
 
 test("editor lists the Shortcuts group for device selections only", () => {

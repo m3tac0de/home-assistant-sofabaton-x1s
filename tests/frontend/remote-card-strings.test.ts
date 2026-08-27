@@ -88,7 +88,53 @@ test("device cache recovery names the localized Control Panel card and Hub tab",
     const message = str().card.deviceKeymapMissing;
     assert.equal(message.includes(panelStrings.card.pickerName), true, `${locale}: card name`);
     assert.equal(message.includes(panelStrings.tabs.cache), true, `${locale}: tab name`);
+    assert.equal(
+      str().editor.shortcutsCommandsUnavailable,
+      message,
+      `${locale}: card and shortcut recovery instructions`,
+    );
   }
+
+  setRemoteCardLanguage("en");
+});
+
+test("power copy distinguishes the runtime action from the editor button", () => {
+  const cases = [
+    ["en", "Toggle power", "Power button"],
+    ["ar", "تبديل التشغيل/الإيقاف", "زر التشغيل/الإيقاف"],
+    ["de", "Ein-/Ausschalten", "Ein-/Aus-Taste"],
+    ["es", "Alternar encendido/apagado", "Botón de encendido/apagado"],
+    ["fr", "Basculer marche/arrêt", "Bouton Marche/Arrêt"],
+    ["nl", "In-/uitschakelen", "Aan/uit-knop"],
+    ["zh-Hans", "切换电源", "电源按钮"],
+  ] as const;
+
+  for (const [locale, action, button] of cases) {
+    setRemoteCardLanguage(locale);
+    assert.equal(str().card.powerButton, action, `${locale}: runtime action`);
+    assert.equal(str().editor.power, button, `${locale}: editor button`);
+  }
+
+  setRemoteCardLanguage("en");
+});
+
+test("missing shortcut commands stay distinct and bidi-safe", () => {
+  setRemoteCardLanguage("es");
+  assert.equal(str().editor.shortcutCommandMissing(17), "Comando 17 (no encontrado)");
+  assert.notEqual(
+    str().editor.shortcutCommandMissing(17).includes("no disponible"),
+    true,
+  );
+
+  setRemoteCardLanguage("ar");
+  assert.equal(
+    str().editor.shortcutCommandMissing(17),
+    "الأمر \u206817\u2069 (مفقود)",
+  );
+
+  setRemoteCardLanguage("de");
+  assert.equal(str().groups.shortcuts, "Verknüpfungen");
+  assert.equal(str().editor.shortcutSlotLeft, "Linke Verknüpfung");
 
   setRemoteCardLanguage("en");
 });

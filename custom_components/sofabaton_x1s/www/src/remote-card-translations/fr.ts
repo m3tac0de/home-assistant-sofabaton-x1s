@@ -25,7 +25,7 @@ export const REMOTE_CARD_STRINGS_FR = {
     macrosTab: "Macros >",
     favoritesTab: "Favoris >",
     commandsTab: "Commandes >",
-    powerButton: "Alimentation",
+    powerButton: "Basculer marche/arrêt",
     activitySelectLabel: "Activité",
     deviceSelectLabel: "Appareil",
     selectDevice: "Sélectionner un appareil",
@@ -129,12 +129,14 @@ export const REMOTE_CARD_STRINGS_FR = {
     keyStyleElevated: "Surélevé (teinté avec ombre)",
     keyStyleGlossy: "Brillant (touches bombées et brillantes)",
     tintedPanels: "Panneaux teintés",
+    tintedPanelsDescription:
+      "Affiche un fond teinté derrière chaque groupe de touches.",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
     defaultLayoutOption: "Disposition par défaut des activités",
     allDevicesOption: "Disposition par défaut des appareils",
     commands: "Commandes",
-    power: "Alimentation",
+    power: "Bouton Marche/Arrêt",
     modeToggle: "Bouton de mode",
     deviceModeDescription:
       "Contrôlez un seul appareil configuré sur le hub, avec ses propres affectations de touches et sa liste complète de commandes.",
@@ -169,7 +171,9 @@ export const REMOTE_CARD_STRINGS_FR = {
     shortcutCommandMissing: (id: number | string) => `Commande ${id} (manquante)`,
     shortcutsCommandsLoading: "Chargement des commandes…",
     shortcutsCommandsUnavailable:
-      "Les commandes de cet appareil ne sont pas disponibles. Actualisez l’appareil dans l’onglet Hub du panneau de contrôle Sofabaton.",
+      "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l’appareil dans l’onglet Hub du Panneau de contrôle Sofabaton, puis rechargez le tableau de bord.",
+    shortcutsCommandsError:
+      "Impossible de charger les commandes de cet appareil. Rechargez le tableau de bord et réessayez.",
     noteDefaultLayout: "Utilisée pour les activités sans disposition propre",
     noteDeviceDefaultLayout: "Utilisée pour les appareils sans disposition propre",
     noteCustomActivityLayout: "Disposition d’activité personnalisée utilisée",

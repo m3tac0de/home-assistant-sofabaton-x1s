@@ -111,6 +111,7 @@ export function renderStylingOptionsSection(params: {
   const panelsRow = renderOptionRow({
     className: "sb-opt-tinted-panels",
     label: str().editor.tintedPanels,
+    description: str().editor.tintedPanelsDescription,
     checked: panelsOn,
     onSet: (enabled) => {
       params.onValueChanged(

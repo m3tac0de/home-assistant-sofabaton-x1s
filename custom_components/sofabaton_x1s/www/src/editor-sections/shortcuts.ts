@@ -96,10 +96,17 @@ export function renderShortcutsRowPanel(
       </div>
     `;
   }
-  if (params.commandsStatus !== "ready") {
+  if (params.commandsStatus === "cache_miss") {
     return html`
       <div class="sb-shortcut-panel">
         <div class="sb-shortcut-note">${str().editor.shortcutsCommandsUnavailable}</div>
+      </div>
+    `;
+  }
+  if (params.commandsStatus === "error") {
+    return html`
+      <div class="sb-shortcut-panel">
+        <div class="sb-shortcut-note">${str().editor.shortcutsCommandsError}</div>
       </div>
     `;
   }
