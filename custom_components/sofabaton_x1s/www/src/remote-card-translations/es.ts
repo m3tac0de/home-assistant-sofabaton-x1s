@@ -158,9 +158,6 @@ export const REMOTE_CARD_STRINGS_ES = {
     mediaControls: "Controles multimedia",
     dvr: "DVR",
     resetDefaultLayout: "Restablecer diseño",
-    shortcutsTitle: "Accesos directos",
-    shortcutsDescription:
-      "Hasta tres botones con el icono y el comando que elijas. Solo los botones configurados aparecen en el mando.",
     shortcutSlotLeft: "Acceso directo izquierdo",
     shortcutSlotMiddle: "Acceso directo central",
     shortcutSlotRight: "Acceso directo derecho",

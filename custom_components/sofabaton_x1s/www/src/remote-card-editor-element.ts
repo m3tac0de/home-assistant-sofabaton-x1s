@@ -67,7 +67,10 @@ import type {
   RemoteCardConfig,
 } from "./remote-card-types";
 import { renderGeneralOptionsSection } from "./editor-sections/general-options";
-import { renderShortcutsEditor } from "./editor-sections/shortcuts";
+import {
+  renderShortcutsRowPanel,
+  renderShortcutsSlotStrip,
+} from "./editor-sections/shortcuts";
 import {
   longPressBlock,
   longPressEnabledPatch,
@@ -763,11 +766,14 @@ export class SofabatonRemoteCardEditor extends LitElement {
       });
     }
 
-    // Shortcuts slot editor: concrete device selections only ("device:<id>",
-    // never "device:default" — slot config is strictly per-device, no
+    // Shortcuts slot editing rides on the group's own order row: the strip
+    // fills the row's second cell, the open slot's panel drops out inside
+    // the row. Concrete device selections only ("device:<id>", never
+    // "device:default" — slot config is strictly per-device, no
     // inheritance). The keymap fetch feeds the command select.
     const shortcutDeviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
-    let shortcutsEditor: TemplateResult | typeof nothing = nothing;
+    let shortcutsStrip: TemplateResult | typeof nothing = nothing;
+    let shortcutsPanel: TemplateResult | typeof nothing = nothing;
     if (
       shortcutDeviceId != null &&
       devices.some((device: { id: unknown }) => Number(device.id) === shortcutDeviceId)
@@ -775,22 +781,27 @@ export class SofabatonRemoteCardEditor extends LitElement {
       this._ensureEditorKeymap(shortcutDeviceId);
       const keymap = this._editorKeymaps[String(shortcutDeviceId)];
       const stored = deviceShortcutsFromConfig(this._config, shortcutDeviceId);
-      shortcutsEditor = renderShortcutsEditor({
-        hass: this._hass,
+      shortcutsStrip = renderShortcutsSlotStrip({
         slots: SHORTCUT_SLOTS.map((slot) => ({
           slot,
           icon: stored[slot]?.icon ?? null,
         })),
         openSlot: this._shortcutOpenSlot,
-        draftIcon: this._shortcutDraftIcon,
-        draftCommandId: this._shortcutDraftCommand,
-        commandsStatus: keymap?.status ?? "loading",
-        commands: keymap?.commands ?? [],
         onToggleSlot: (slot) => this._toggleShortcutSlot(slot),
-        onDraftChanged: (icon, commandId) =>
-          this._onShortcutDraftChanged(icon, commandId),
-        onReset: (slot) => this._resetShortcutSlot(slot),
       });
+      if (this._shortcutOpenSlot) {
+        shortcutsPanel = renderShortcutsRowPanel({
+          hass: this._hass,
+          openSlot: this._shortcutOpenSlot,
+          draftIcon: this._shortcutDraftIcon,
+          draftCommandId: this._shortcutDraftCommand,
+          commandsStatus: keymap?.status ?? "loading",
+          commands: keymap?.commands ?? [],
+          onDraftChanged: (icon, commandId) =>
+            this._onShortcutDraftChanged(icon, commandId),
+          onReset: (slot) => this._resetShortcutSlot(slot),
+        });
+      }
     }
 
     // Scope the form data to its schema: ha-form echoes the whole data
@@ -871,7 +882,8 @@ export class SofabatonRemoteCardEditor extends LitElement {
           mediaEnabled: mediaGroupEnabled(layoutCfg),
           dvrEnabled: dvrGroupEnabled(layoutCfg),
           isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
-          shortcutsEditor,
+          shortcutsStrip,
+          shortcutsPanel,
           commandsEnabled: commandsEnabled(this._config, this._layoutSelectionKey()),
           powerEnabled: powerEnabled(this._config, this._layoutSelectionKey()),
           showDeviceModeSwitch: devices.length > 0,

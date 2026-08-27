@@ -166,9 +166,6 @@ export const REMOTE_CARD_STRINGS_AR = {
     mediaControls: "أزرار تشغيل الوسائط",
     dvr: DVR,
     resetDefaultLayout: "إعادة ضبط التخطيط",
-    shortcutsTitle: "الاختصارات",
-    shortcutsDescription:
-      "حتى ثلاثة أزرار بأيقونة وأمر من اختيارك. تظهر الأزرار المهيّأة فقط على جهاز التحكم.",
     shortcutSlotLeft: "الاختصار الأيسر",
     shortcutSlotMiddle: "الاختصار الأوسط",
     shortcutSlotRight: "الاختصار الأيمن",

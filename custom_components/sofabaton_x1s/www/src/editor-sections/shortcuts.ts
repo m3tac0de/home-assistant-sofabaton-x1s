@@ -1,32 +1,33 @@
-// Shortcuts slot editor (docs/internal/shortcuts-row-plan.md §4.2): a strip
-// of three mini slot buttons with ONE inline panel below editing whichever
-// slot is open — deliberately not a floating popover (the HA edit dialog
-// clips overlays). Rendered inside the Layout Options section, only for a
-// concrete "device:<id>" selection: slot config is strictly per-device.
+// Shortcuts slot editing lives ON the group-order row itself
+// (shortcuts-row-plan.md §4.2): the three mini slot buttons sit in the row
+// beside the switch, and clicking one drops a full-width panel out of that
+// row, with a caret pointing at the open slot. Deliberately NOT a floating
+// menu: the panel hosts an icon picker and a command select that open popup
+// menus of their own, and popups nested inside a popup fight outside-click
+// detection. Rendered only for concrete "device:<id>" selections — slot
+// config is strictly per-device.
 
 import { html, nothing, type TemplateResult } from "lit";
 import { str } from "../remote-card-strings";
 import type { HassLike } from "../remote-card-types";
 import type { ShortcutSlot } from "../remote-card-layout";
 
-export interface ShortcutsEditorSlotView {
-  slot: ShortcutSlot;
-  /** Stored icon; null = unconfigured. */
-  icon: string | null;
+export interface ShortcutsSlotStripParams {
+  /** Always the three slots in left/middle/right order; icon null = unconfigured. */
+  slots: Array<{ slot: ShortcutSlot; icon: string | null }>;
+  openSlot: ShortcutSlot | null;
+  onToggleSlot: (slot: ShortcutSlot) => void;
 }
 
-export interface ShortcutsEditorParams {
+export interface ShortcutsRowPanelParams {
   hass: HassLike | null;
-  /** Always the three slots in left/middle/right order. */
-  slots: ShortcutsEditorSlotView[];
-  openSlot: ShortcutSlot | null;
+  openSlot: ShortcutSlot;
   /** Draft state of the open slot (written to config once both are valid). */
   draftIcon: string;
   draftCommandId: number | null;
   commandsStatus: "loading" | "ready" | "cache_miss" | "error";
   /** Device commands, alphabetically sorted. */
   commands: Array<{ command_id: number; name: string }>;
-  onToggleSlot: (slot: ShortcutSlot) => void;
   onDraftChanged: (icon: string, commandId: number | null) => void;
   onReset: (slot: ShortcutSlot) => void;
 }
@@ -46,10 +47,48 @@ const computeShortcutFieldLabel = (schema: { name: string }): string => {
   return schema.name;
 };
 
-function renderOpenPanel(params: ShortcutsEditorParams): TemplateResult | typeof nothing {
-  const openSlot = params.openSlot;
-  if (!openSlot) return nothing;
+/** The three mini slot buttons, filling the Shortcuts row's second cell. */
+export function renderShortcutsSlotStrip(
+  params: ShortcutsSlotStripParams,
+): TemplateResult {
+  return html`
+    <div class="sb-shortcut-strip">
+      ${params.slots.map((view) => {
+        const isOpen = params.openSlot === view.slot;
+        const configured = view.icon != null;
+        const className = [
+          "sb-shortcut-slot",
+          ...(configured ? ["is-configured"] : []),
+          ...(isOpen ? ["is-open"] : []),
+        ].join(" ");
+        return html`
+          <button
+            type="button"
+            class=${className}
+            aria-label=${slotLabel(view.slot)}
+            aria-expanded=${isOpen ? "true" : "false"}
+            @click=${(ev: Event) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              params.onToggleSlot(view.slot);
+            }}
+          >
+            ${configured ? html`<ha-icon icon=${view.icon}></ha-icon>` : nothing}
+          </button>
+        `;
+      })}
+    </div>
+  `;
+}
 
+/**
+ * The drop-out slot editor. Rendered INSIDE the Shortcuts group-order row
+ * (spanning its grid), so ha-sortable keeps treating the row as one
+ * draggable unit and nothing floats over the dialog.
+ */
+export function renderShortcutsRowPanel(
+  params: ShortcutsRowPanelParams,
+): TemplateResult {
   if (params.commandsStatus === "loading") {
     return html`
       <div class="sb-shortcut-panel">
@@ -74,10 +113,7 @@ function renderOpenPanel(params: ShortcutsEditorParams): TemplateResult | typeof
   }));
   const draftCommand =
     params.draftCommandId != null ? String(params.draftCommandId) : "";
-  if (
-    draftCommand &&
-    !options.some((option) => option.value === draftCommand)
-  ) {
+  if (draftCommand && !options.some((option) => option.value === draftCommand)) {
     options.push({
       value: draftCommand,
       label: str().editor.shortcutCommandMissing(draftCommand),
@@ -124,52 +160,12 @@ function renderOpenPanel(params: ShortcutsEditorParams): TemplateResult | typeof
           @click=${(ev: Event) => {
             ev.preventDefault();
             ev.stopPropagation();
-            params.onReset(openSlot);
+            params.onReset(params.openSlot);
           }}
         >
           ${str().editor.shortcutReset}
         </button>
       </div>
-    </div>
-  `;
-}
-
-export function renderShortcutsEditor(params: ShortcutsEditorParams): TemplateResult {
-  return html`
-    <div class="sb-shortcut-section">
-      <div class="sb-shortcut-header">
-        <div class="sb-shortcut-title">${str().editor.shortcutsTitle}</div>
-        <div class="sb-shortcut-desc">${str().editor.shortcutsDescription}</div>
-      </div>
-      <div class="sb-shortcut-strip">
-        ${params.slots.map((view) => {
-          const isOpen = params.openSlot === view.slot;
-          const configured = view.icon != null;
-          const className = [
-            "sb-shortcut-slot",
-            ...(configured ? ["is-configured"] : []),
-            ...(isOpen ? ["is-open"] : []),
-          ].join(" ");
-          return html`
-            <button
-              type="button"
-              class=${className}
-              aria-label=${slotLabel(view.slot)}
-              aria-expanded=${isOpen ? "true" : "false"}
-              @click=${(ev: Event) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-                params.onToggleSlot(view.slot);
-              }}
-            >
-              ${configured
-                ? html`<ha-icon icon=${view.icon}></ha-icon>`
-                : nothing}
-            </button>
-          `;
-        })}
-      </div>
-      ${renderOpenPanel(params)}
     </div>
   `;
 }

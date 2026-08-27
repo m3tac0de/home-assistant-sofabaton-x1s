@@ -158,9 +158,6 @@ const REMOTE_CARD_STRINGS_DE = {
     mediaControls: "Mediensteuerung",
     dvr: "DVR",
     resetDefaultLayout: "Layout zurücksetzen",
-    shortcutsTitle: "Schnelltasten",
-    shortcutsDescription:
-      "Bis zu drei Tasten mit frei wählbarem Symbol und Befehl. Nur konfigurierte Tasten erscheinen auf der Fernbedienung.",
     shortcutSlotLeft: "Linke Schnelltaste",
     shortcutSlotMiddle: "Mittlere Schnelltaste",
     shortcutSlotRight: "Rechte Schnelltaste",

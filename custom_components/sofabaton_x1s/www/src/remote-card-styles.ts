@@ -1101,6 +1101,7 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
+          .sb-layout-switch-item.is-disabled { opacity: 0.45; pointer-events: none; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
@@ -1116,18 +1117,21 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
-          /* Shortcuts slot editor (Layout Options, device selections): the
-             three-slot strip plus one inline panel below (never a popover —
-             the edit dialog clips overlays). */
-          .sb-shortcut-section { margin: 8px 0; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
-          .sb-shortcut-title { font-size: 13px; font-weight: 600; }
-          .sb-shortcut-desc { font-size: 12px; color: var(--secondary-text-color); line-height: 1.3; margin-top: 2px; }
-          .sb-shortcut-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-          .sb-shortcut-slot { height: 44px; border: 1px dashed var(--divider-color); border-radius: 12px; background: var(--ha-card-background, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--primary-color); }
-          .sb-shortcut-slot ha-icon { --mdc-icon-size: 22px; }
+          /* Shortcuts slot editing on the group-order row: the three mini
+             slot buttons fill the row's second cell; the open slot's panel
+             drops out inside the row, spanning its grid (never a popover —
+             the panel's icon picker and command select open popup menus of
+             their own, and nested popups fight outside-click detection).
+             The caret rides on the open slot, so it stays anchored to the
+             button that opened the panel. */
+          .sb-shortcut-strip { display: inline-flex; gap: 8px; min-width: 0; }
+          .sb-shortcut-slot { position: relative; width: 40px; height: 30px; border: 1px dashed var(--secondary-text-color, var(--divider-color)); border-radius: 8px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05); background: color-mix(in srgb, var(--primary-text-color) 5%, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--primary-color); flex: 0 1 auto; min-width: 26px; }
+          .sb-shortcut-slot.is-configured { background: var(--ha-card-background, transparent); }
+          .sb-shortcut-slot ha-icon { --mdc-icon-size: 18px; }
           .sb-shortcut-slot.is-configured { border-style: solid; }
           .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
-          .sb-shortcut-panel { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--divider-color); padding-top: 10px; }
+          .sb-shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--primary-color); pointer-events: none; }
+          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
           .sb-shortcut-panel ha-form { display: block; }
           .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
           .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }

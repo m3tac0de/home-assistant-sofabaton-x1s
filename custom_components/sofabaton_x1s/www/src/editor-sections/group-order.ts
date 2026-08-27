@@ -43,10 +43,17 @@ export interface GroupOrderSectionParams {
   showDeviceModeSwitch: boolean;
   deviceModeEnabled: boolean;
   /**
-   * Shortcuts slot editor, prebuilt by the shell (editor-sections/
-   * shortcuts.ts); nothing outside concrete "device:<id>" selections.
+   * Mini slot strip for the Shortcuts row's second cell, prebuilt by the
+   * shell (editor-sections/shortcuts.ts); nothing outside concrete
+   * "device:<id>" selections (the "All devices" layer has no per-device
+   * buttons to edit).
    */
-  shortcutsEditor: TemplateResult | typeof nothing;
+  shortcutsStrip: TemplateResult | typeof nothing;
+  /**
+   * Drop-out slot editor, rendered inside the Shortcuts row (spanning its
+   * grid) while a slot is open; nothing otherwise.
+   */
+  shortcutsPanel: TemplateResult | typeof nothing;
   isGroupEnabled: (key: string) => boolean;
   groupLabel: (key: string) => string;
   onToggleExpanded: () => void;
@@ -98,15 +105,17 @@ function renderSwitchItem(
   text: string,
   checked: boolean,
   onSet: (value: boolean) => void,
+  disabled = false,
 ): TemplateResult {
   const onChange = (ev: Event) => {
     stopEvent(ev);
+    if (disabled) return;
     const target = ev.target as HTMLElement & { checked?: boolean };
     onSet(!!target.checked);
   };
   return html`
-    <div class="sb-layout-switch-item">
-      <ha-switch .checked=${checked} @change=${onChange}></ha-switch>
+    <div class="sb-layout-switch-item${disabled ? " is-disabled" : ""}">
+      <ha-switch .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
       <div class="sb-layout-switch-label">${text}</div>
     </div>
   `;
@@ -261,12 +270,21 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
     let cells: TemplateResult | typeof nothing = nothing;
     if (key === "activity" && params.showDeviceModeSwitch) {
       // The mode toggle rides on the activity group's row (same pattern as
-      // volume/channel on mid).
+      // volume/channel on mid). Hiding the activity row hides the mode
+      // toggle with it on the card, so the editor switch mirrors that:
+      // shown off and inert while Activity/device is off, back to its
+      // stored value when the row returns.
+      const activityOn = params.isGroupEnabled(key);
       cells = html`
-        ${renderSwitchItem(params.groupLabel(key), params.isGroupEnabled(key), (val) =>
+        ${renderSwitchItem(params.groupLabel(key), activityOn, (val) =>
           params.onSetGroupEnabled(key, val),
         )}
-        ${renderSwitchItem(str().editor.modeToggle, params.deviceModeEnabled, params.onSetDeviceMode)}
+        ${renderSwitchItem(
+          str().editor.modeToggle,
+          activityOn && params.deviceModeEnabled,
+          params.onSetDeviceMode,
+          !activityOn,
+        )}
       `;
     } else if (
       params.isDeviceSelection &&
@@ -308,6 +326,21 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
         ${params.isEditorX2
           ? renderSwitchItem(str().editor.dvr, params.dvrEnabled, params.onSetDvr)
           : emptySlot}
+      `;
+    } else if (key === "shortcuts") {
+      // The slot editor rides on the group's own row: switch + label, then
+      // the three mini slot buttons; the open slot's panel drops out below
+      // (rendered inside the row, so ha-sortable drags it as one unit).
+      cells = html`
+        ${renderSwitchItem(params.groupLabel(key), params.isGroupEnabled(key), (val) =>
+          params.onSetGroupEnabled(key, val),
+        )}
+        ${params.shortcutsStrip === nothing ? emptySlot : params.shortcutsStrip}
+      `;
+      return html`
+        <div class="sb-layout-row sb-layout-row-order">
+          ${cells}${moveControl(key, index)}${params.shortcutsPanel}
+        </div>
       `;
     } else {
       cells = html`
@@ -357,7 +390,6 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       <div class="sb-layout-note">${params.selectionNote}</div>
       ${rows}
       ${mfRow}
-      ${params.shortcutsEditor}
       <div class="sb-layout-footer">
         <button
           type="button"

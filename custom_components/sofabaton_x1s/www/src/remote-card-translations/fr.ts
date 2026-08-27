@@ -160,9 +160,6 @@ export const REMOTE_CARD_STRINGS_FR = {
     mediaControls: "Commandes multimédias",
     dvr: "DVR",
     resetDefaultLayout: "Réinitialiser",
-    shortcutsTitle: "Raccourcis",
-    shortcutsDescription:
-      "Jusqu’à trois touches avec l’icône et la commande de votre choix. Seules les touches configurées apparaissent sur la télécommande.",
     shortcutSlotLeft: "Raccourci gauche",
     shortcutSlotMiddle: "Raccourci central",
     shortcutSlotRight: "Raccourci droit",

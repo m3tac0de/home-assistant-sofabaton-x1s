@@ -424,7 +424,8 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     mediaEnabled: true,
     dvrEnabled: true,
     isDeviceSelection: false,
-    shortcutsEditor: nothing as typeof nothing,
+    shortcutsStrip: nothing as typeof nothing,
+    shortcutsPanel: nothing as typeof nothing,
     commandsEnabled: true,
     powerEnabled: true,
     showDeviceModeSwitch: false,
@@ -479,6 +480,22 @@ test("device selections render Commands and Power switches on the mf rows", () =
   );
   assert.equal(activity.includes("Power"), false);
   assert.equal(activity.includes("Macros"), true);
+});
+
+test("the Mode switch follows the Activity/device toggle: off and inert while the row is hidden", () => {
+  // The card hides the mode toggle together with the activity row, so the
+  // editor switch must read off and be inert while Activity/device is off.
+  const params = (activityOn: boolean) =>
+    groupOrderParams({
+      showDeviceModeSwitch: true,
+      deviceModeEnabled: true,
+      visibleOrder: ["activity"],
+      isGroupEnabled: (key: string) => (key === "activity" ? activityOn : true),
+    });
+  const off = templateText(renderGroupOrderSection(params(false)));
+  assert.equal(off.includes("sb-layout-switch-item is-disabled"), true);
+  const on = templateText(renderGroupOrderSection(params(true)));
+  assert.equal(on.includes("sb-layout-switch-item is-disabled"), false);
 });
 
 test("group order section renders one order row per visible group", () => {

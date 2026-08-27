@@ -156,9 +156,6 @@ export const REMOTE_CARD_STRINGS_EN = {
     mediaControls: "Media Controls",
     dvr: "DVR",
     resetDefaultLayout: "Reset layout",
-    shortcutsTitle: "Shortcuts",
-    shortcutsDescription:
-      "Up to three buttons with an icon and command of your choice. Only configured buttons appear on the remote.",
     shortcutSlotLeft: "Left shortcut",
     shortcutSlotMiddle: "Middle shortcut",
     shortcutSlotRight: "Right shortcut",

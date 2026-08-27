@@ -153,9 +153,6 @@ const REMOTE_CARD_STRINGS_NL = {
     mediaControls: "Mediabediening",
     dvr: "DVR",
     resetDefaultLayout: "Indeling resetten",
-    shortcutsTitle: "Snelkoppelingen",
-    shortcutsDescription:
-      "Maximaal drie knoppen met een zelfgekozen pictogram en commando. Alleen geconfigureerde knoppen verschijnen op de afstandsbediening.",
     shortcutSlotLeft: "Linker snelkoppeling",
     shortcutSlotMiddle: "Middelste snelkoppeling",
     shortcutSlotRight: "Rechter snelkoppeling",

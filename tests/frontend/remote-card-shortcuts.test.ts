@@ -18,7 +18,10 @@ import {
   applyShortcutSlotPatch,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-layout";
 import { renderShortcutsRow } from "../../custom_components/sofabaton_x1s/www/src/sections/key-groups";
-import { renderShortcutsEditor } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/shortcuts";
+import {
+  renderShortcutsRowPanel,
+  renderShortcutsSlotStrip,
+} from "../../custom_components/sofabaton_x1s/www/src/editor-sections/shortcuts";
 import { SofabatonRemoteCardEditor } from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-element";
 import type { RemoteCardConfig } from "../../custom_components/sofabaton_x1s/www/src/remote-card-types";
 
@@ -256,14 +259,25 @@ test("a missing command renders the shortcut disabled instead of hiding it", () 
 
 // ---------- editor ----------
 
-test("shortcuts editor lists commands, marks a vanished stored id, and offers Reset", () => {
-  const params = {
+test("slot strip marks configured and open slots; panel offers Reset and flags missing ids", () => {
+  const stripText = templateText(
+    renderShortcutsSlotStrip({
+      slots: [
+        { slot: "left", icon: "mdi:netflix" },
+        { slot: "middle", icon: null },
+        { slot: "right", icon: null },
+      ],
+      openSlot: "left",
+      onToggleSlot: () => undefined,
+    }),
+  );
+  assert.equal(stripText.includes("sb-shortcut-strip"), true);
+  assert.equal((stripText.match(/sb-shortcut-slot/g) || []).length >= 3, true);
+  assert.equal(stripText.includes("is-configured"), true);
+  assert.equal(stripText.includes("is-open"), true);
+
+  const panelParams = {
     hass: null,
-    slots: [
-      { slot: "left" as const, icon: "mdi:netflix" },
-      { slot: "middle" as const, icon: null },
-      { slot: "right" as const, icon: null },
-    ],
     openSlot: "left" as const,
     draftIcon: "mdi:netflix",
     draftCommandId: 999,
@@ -272,23 +286,21 @@ test("shortcuts editor lists commands, marks a vanished stored id, and offers Re
       { command_id: 7, name: "Netflix" },
       { command_id: 15, name: "Setup" },
     ],
-    onToggleSlot: () => undefined,
     onDraftChanged: () => undefined,
     onReset: () => undefined,
   };
-  const text = templateText(renderShortcutsEditor(params));
-  assert.equal(text.includes("sb-shortcut-strip"), true);
-  assert.equal(text.includes("sb-shortcut-panel"), true);
-  assert.equal(text.includes("Reset"), true);
+  const panelText = templateText(renderShortcutsRowPanel(panelParams));
+  assert.equal(panelText.includes("sb-shortcut-panel"), true);
+  assert.equal(panelText.includes("Reset"), true);
   // The stale stored command surfaces as a "(missing)" option, not a blank.
-  const openPanelValues = JSON.stringify(
-    (renderShortcutsEditor(params) as unknown as { values: unknown[] }).values,
+  const panelValues = JSON.stringify(
+    (renderShortcutsRowPanel(panelParams) as unknown as { values: unknown[] }).values,
     (_key, value) => (typeof value === "function" ? undefined : value),
   );
-  assert.equal(openPanelValues.includes("(missing)"), true);
+  assert.equal(panelValues.includes("(missing)"), true);
   // Unavailable commands render the note instead of the form.
   const missingText = templateText(
-    renderShortcutsEditor({ ...params, commandsStatus: "cache_miss" as const }),
+    renderShortcutsRowPanel({ ...panelParams, commandsStatus: "cache_miss" as const }),
   );
   assert.equal(missingText.includes("sb-shortcut-note"), true);
 });

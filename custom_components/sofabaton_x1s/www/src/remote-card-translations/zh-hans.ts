@@ -150,9 +150,6 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     mediaControls: "媒体控件",
     dvr: "DVR",
     resetDefaultLayout: "重置布局",
-    shortcutsTitle: "快捷按键",
-    shortcutsDescription:
-      "最多三个按键，可自选图标和命令。只有已配置的按键才会显示在遥控器上。",
     shortcutSlotLeft: "左侧快捷按键",
     shortcutSlotMiddle: "中间快捷按键",
     shortcutSlotRight: "右侧快捷按键",
