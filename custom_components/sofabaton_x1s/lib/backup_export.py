@@ -148,6 +148,7 @@ def build_device_block(
             "power_mode": config.power_mode,
             "power_style": config.power_style,
             "share_mode": config.share_mode,
+            "tail_flag": config.tail_flag,
             "tail_marker": config.tail_marker,
             "extras": (
                 {"a": config.extra_a, "b": config.extra_b, "c": config.extra_c}

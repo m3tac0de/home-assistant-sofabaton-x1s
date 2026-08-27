@@ -170,6 +170,16 @@ class DeviceConfig:
     #: visible to other apps/integrations.
     share_mode: int = 0
 
+    #: State flag at tail offset 15 (between the 0xFC markers at 14 and
+    #: 16). Hub-maintained on some records: a live X2 record captured on
+    #: bench (2026-08-27) stores ``1`` here while its write-time checksum
+    #: still reflects ``0``, i.e. the hub flips this byte in storage after
+    #: the record was written. Semantics not fully decoded; it must be
+    #: preserved verbatim on rewrite. This builder used to hardcode ``0``,
+    #: which silently cleared the flag on rename/IP-edit rewrites of any
+    #: record carrying it.
+    tail_flag: int = 0
+
     #: Tail-slot marker byte at offset 17 of the tail region. Empirical
     #: captures show this is ``1`` on WiFi-IP devices and ``0`` on
     #: other classes; the value is round-tripped by this builder.
@@ -280,7 +290,7 @@ def _build_tail_slot(config: DeviceConfig, *, width: int) -> bytes:
     tail[12] = config.power_style & 0xFF
     tail[13] = config.share_mode & 0xFF
     tail[14] = 0xFC
-    tail[15] = 0
+    tail[15] = config.tail_flag & 0xFF
     tail[16] = 0xFC
     tail[17] = config.tail_marker & 0xFF
 
@@ -437,6 +447,7 @@ def parse_device_record(
     power_mode = tail[11] if len(tail) > 11 else 0
     power_style = tail[12] if len(tail) > 12 else 0
     share_mode = tail[13] if len(tail) > 13 else 0
+    tail_flag = tail[15] if len(tail) > 15 else 0
     tail_marker = tail[17] if len(tail) > 17 else 0
 
     extras_present = False
@@ -467,6 +478,7 @@ def parse_device_record(
         power_mode=power_mode,
         power_style=power_style,
         share_mode=share_mode,
+        tail_flag=tail_flag,
         tail_marker=tail_marker,
         extra_a=extra_a,
         extra_b=extra_b,
@@ -529,6 +541,7 @@ def device_config_from_backup(
         power_mode=_as_int("power_mode", 0) & 0xFF,
         power_style=_as_int("power_style", 2) & 0xFF,
         share_mode=_as_int("share_mode", 0) & 0xFF,
+        tail_flag=0 if for_create else (_as_int("tail_flag", 0) & 0xFF),
         tail_marker=0 if for_create else (_as_int("tail_marker", 1) & 0xFF),
         extra_a=_as_int("a", 0) & 0xFF if isinstance(extras, Mapping) else 0,
         extra_b=_as_int("b", 0) & 0xFF if isinstance(extras, Mapping) else 0,

@@ -106,8 +106,7 @@ from .protocol_const import (
     OP_FIND_REMOTE_X2,
     OP_REMOTE_SYNC,
     OP_SET_HUB_NAME,
-    OP_X2_REMOTE_LIST,
-    OP_X2_REMOTE_SYNC,
+    OP_X2_REMOTE_SYNC_ALL,
     OP_INFO_BANNER,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
@@ -1401,19 +1400,13 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self.hub_version = version
 
         if version == HUB_VERSION_X2:
-            with self._x2_remote_sync_id_lock:
-                self._x2_remote_sync_id = None
-                self._x2_remote_sync_id_event.clear()
-
-            if not self.enqueue_cmd(OP_X2_REMOTE_LIST, b"\x00"):
-                return False
-
-            remote_id = self.wait_for_x2_remote_sync_id(timeout=2.0)
-            if remote_id is None:
-                self._log.warning("%s sync: timed out waiting for X2 remote list response", LogTag.REMOTE)
-                return False
-
-            return self.enqueue_cmd(OP_X2_REMOTE_SYNC, remote_id + b"\x01")
+            # All-remotes broadcast, bench-validated live 2026-08-27: this
+            # is the only form that actually starts a sync. The historical
+            # remote-list + OP_X2_REMOTE_SYNC [id:3][0x01] flow is ACKed
+            # 0x00 by the hub but starts nothing (accepted no-op). The hub
+            # serializes triggers, so re-sending while a sync runs simply
+            # queues one more pass.
+            return self.enqueue_cmd(OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")
 
         return self.enqueue_cmd(OP_REMOTE_SYNC)
 

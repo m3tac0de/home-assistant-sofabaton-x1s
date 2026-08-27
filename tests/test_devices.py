@@ -246,6 +246,7 @@ def test_build_parse_round_trip_x1() -> None:
         power_mode=1,
         power_style=2,
         share_mode=0,
+        tail_flag=1,
         tail_marker=1,
     )
     payload = build_device_create_payload(original, hub_version=HUB_VERSION_X1)
@@ -255,7 +256,8 @@ def test_build_parse_round_trip_x1() -> None:
         "name", "brand", "device_id", "icon", "sort", "code_type",
         "device_type", "code_id", "hide", "input_flag", "channel",
         "power_state", "ip_address", "poll_time", "input_mode",
-        "power_mode", "power_style", "share_mode", "tail_marker",
+        "power_mode", "power_style", "share_mode", "tail_flag",
+        "tail_marker",
     ):
         assert getattr(parsed, field) == getattr(original, field), field
 
@@ -352,9 +354,50 @@ def test_real_x1_capture_input_and_power_configuration_signals() -> None:
         "name", "brand", "device_id", "icon", "sort", "code_type",
         "device_type", "code_id", "hide", "input_flag", "channel",
         "power_state", "ip_address", "poll_time", "share_mode",
-        "tail_marker",
+        "tail_flag", "tail_marker",
     ):
         assert getattr(none, fld) == getattr(input_only, fld) == getattr(full, fld), fld
+
+    # The captured Denon frames carry the hub-set state flag at tail[15];
+    # the parser must surface it (the builder used to zero it on rewrite).
+    assert none.tail_flag == 1
+
+
+def test_real_x2_capture_round_trips_to_write_form() -> None:
+    """Round-trip a live-captured X2 record body (bench 2026-08-27).
+
+    The hub-stored form differs from the write form in two hub-maintained
+    spots: body[0] is restamped (0x09 stored vs the 0x01 every writer
+    sends) and the trailing checksum byte is left at its write-time value
+    when the hub later flips state bytes in storage (the captured record
+    stores tail[15]=1 with a checksum that predates the flip). A faithful
+    parse -> build cycle must therefore reproduce the stored record
+    exactly, except body[0] normalized to 0x01 and the trailer recomputed
+    over the actual content.
+    """
+
+    stored = bytes.fromhex(
+        "0900010001080120100000000000000000000000000000000000000000004d00"
+        "5100540054002000740065007300740020006400650076006900630065000000"
+        "0000000000000000000000000000000000000000000000000000000000000000"
+        "0000000000000000000000000000000000000000000000000000000000000000"
+        "000000000000000000000000000000000000000000000000000000fc0000fc02"
+        "010000fc01fc01fc000000000000000000000000000000000000000000000000"
+        "0000000000000000000000000000000000e2"
+    )
+    assert len(stored) == 210
+
+    parsed = parse_device_record(stored, hub_version=HUB_VERSION_X1S)
+    assert parsed.name == "MQTT test device"
+    assert parsed.device_id == 0x01
+    assert parsed.tail_flag == 1
+    assert parsed.tail_marker == 1
+
+    rebuilt = build_device_create_payload(parsed, hub_version=HUB_VERSION_X1S)[3:]
+    expected = bytearray(stored)
+    expected[0] = 0x01
+    expected[-1] = sum(expected[:-1]) & 0xFF
+    assert rebuilt == bytes(expected)
 
 
 def test_parser_rejects_body_with_wrong_length() -> None:

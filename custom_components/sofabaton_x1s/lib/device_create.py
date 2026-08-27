@@ -480,6 +480,14 @@ class DeviceCreateRequest:
     bundle_devices_by_source_id: dict[int, dict[str, Any]] = field(
         default_factory=dict
     )
+    #: When true (the default), the pipeline ends with the remote-sync
+    #: trigger so the physical remote picks up the new entity. Batch
+    #: orchestrators (bundle restore, the Wifi Commands deploy) set
+    #: this False and send ONE terminal trigger themselves after all
+    #: writes: every accepted mid-batch trigger aborts and restarts
+    #: the remote's multi-minute full sync (bench 2026-08-27), which
+    #: is how remotes ended up with partial state after long flows.
+    send_remote_sync: bool = True
 
 
 @dataclass(frozen=True, slots=True)

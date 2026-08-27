@@ -120,7 +120,7 @@ The main per-family differences are the device-id tail and the version block con
 | Opcode | X1 | X1S | X2 |
 |--------|----|-----|----|
 | `FIND_REMOTE` | `0x0023` | `0x0023` | `0x0323` |
-| `REMOTE_SYNC` | `0x0064` | `0x0064` | `0x0464` plus remote-list flow |
+| `REMOTE_SYNC` | `0x0064` | `0x0064` | `0x0364` `[FF FF FF]` broadcast (the `0x0464` per-remote form is an accepted no-op; bench 2026-08-27) |
 | `X2_REMOTE_LIST` | no | no | `0x012E` / `0x332F` |
 
 ### Keepalive

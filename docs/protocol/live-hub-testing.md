@@ -1584,3 +1584,116 @@ is charged to the arm — which is exactly the leg a real send would
 pay. Both arms ran while this bench held the hub's TCP session, i.e.
 the MQTT dispatch was measured on an otherwise-idle hub; contention
 behavior during an app session was not measured.
+
+## ◇ Validated: remote-sync model — silent deltas vs 0x64 full sync (X1S + X2, 2026-08-27)
+
+Bench program for the remote-sync collision investigation (users left
+with incomplete remotes after long batch writes). Scripts:
+`bench_154_remote_sync_probe.py` (0x64 kick, collision probes, frame
+tape), `bench_155_scoped_sync_probe.py` (0x65 device-scoped probe,
+device list), `bench_156_rename_sync_attribution.py` (visible-change
+attribution with a pre-write round-trip gate),
+`bench_157_x2_sync_recon.py` (X2 status rows + sync reply timing).
+All runs with an operator watching the physical remote; wall-clock
+frame tapes in `out/`.
+
+**The hub keeps the remote current through two distinct paths:**
+
+1. **Silent incremental push.** After a device-record write the hub
+   pushes the change to the remote on its own: an X1S rename landed on
+   the remote in 63 s (observed live while the remote's device list
+   was on screen: the list re-renders, jumping back to its top, and
+   shows the new data; no sync UI at any point). Works while a TCP
+   client holds the app session. Confirmed twice more on X1S
+   (rename-back) and twice on X2 (rename + rename-back, remote asleep
+   during the write, name present on wake, no sync UI). A bare
+   device-record update does NOT trigger the visible full sync.
+2. **Full re-sync (`REMOTE_SYNC` 0x64).** The visible progress-bar
+   rebuild on the remote (2 m 12 s on the bench X1S config, roughly
+   linear progress). The trigger is acked with STATUS_ACK 0x00 in
+   40-80 ms in every observed state; the ack means "accepted", not
+   "completed".
+
+**0x64 collision semantics (X1S, observed on the physical remote):**
+
+- A 0x64 sent while a full sync is running is NOT dropped: it acks
+  0x00 and the running sync aborts and restarts from zero ~11 s later
+  (probes at +20 s and +75 s both restarted it; the final pass then
+  ran uninterrupted to completion).
+- One additional restart occurred with no trigger on the wire (sync
+  restarted on its own at 15% after a probe-driven restart), so the
+  abort/restart path has some instability of its own.
+- **No TCP-visible boundary signal exists.** Across three capture
+  windows (8 min unobserved, full observed sync, 3.5 min post-
+  completion) the hub emitted exactly one frame per trigger: the
+  STATUS_ACK. Nothing at sync start, during, or at completion. No
+  0x0160 ACK_READY, no 0x2F rows, nothing.
+
+**Integration implication:** the damage vector is our own mid-batch
+0x64s (per-activity restore tails, the wifi-create save-tail), which
+repeatedly abort/restart multi-minute rebuilds during long flows; an
+aborted rebuild is exactly a "vanished activity" / "commandless
+device" remote state, and a later clean pass (manual resync) fixes
+it. The correct shape is: no 0x64 mid-batch, at most one terminal
+0x64 after all writes, and nothing after it that can retrigger. The
+live editor's sync path (which sends no 0x64 at all) is correct as
+is; the silent delta path keeps remotes current for ordinary edits.
+
+**0x65 [device_id] probe (X1S):** acked 0x00, produced no observable
+remote effect in 3 min (no UI, no wire frames). With the silent delta
+path existing, this opcode's remote-facing semantics remain open; do
+not rely on it as a sync trigger.
+
+**X2 specifics:**
+
+- Remote/emitter status list: request `0x012E [type]` (0 remotes,
+  1 RF emitters), reply family 0x2F rows. Observed payload layout:
+  p[0] row index, p[1] total, p[2]/p[3] id slots (slot depends on the
+  type byte), p[5] battery percent, p[6] hardware code, p[7:11]
+  production batch (BCD date), p[11] firmware code, p[12] type,
+  p[13] online flag, p[14] emitter-line flag, name from p[21]
+  (UTF-8, null-padded). Battery refreshes on request (0 stale-asleep
+  reading, then 59 on the next fetch); the online flag stayed 1 with
+  the remote asleep, so the X2 remote holds a standing link.
+- Sync triggers, RESOLVED same day after the operator noticed the
+  official app's Sync Remote wakes the X2 remote into a visible sync
+  UI (which none of our frames had done):
+  - **Accepted no-ops** (ack 0x00 instantly, nothing happens): the
+    shipping remote-list + `0x0464 [01 00 00][0x01]` flow, bare
+    `0x0364 [00 00 00]`, and `0x0364 [08 00 00]`. An 0x00 ack on
+    these opcodes does NOT mean a sync began — the integration's X2
+    resync button had been a silent no-op until the 2026-08-27 fix.
+  - **The working trigger is `0x0364 [FF FF FF]`** (all-remotes
+    broadcast): remote wakes into the visible sync UI, full pass
+    ~5 min on the bench config. Ack is still an instant 0x00
+    ("queued", not "completed").
+  - **Collision semantics: the X2 SERIALIZES triggers.** A second
+    broadcast sent ~3 min into a running sync did not reset the
+    progress; the second pass started immediately after the first
+    completed. No abort/restart (unlike X1S), no drop.
+  - **No completion or busy signal on TCP**: the requesting session
+    received nothing at either sync completion (capture ran through
+    both passes plus margin), and a status-row poll taken mid-sync
+    was byte-identical to idle. (The app's own Syncing screen does
+    resolve at completion, so the app tracks it via some other
+    channel — untraced, optional future chunk.)
+  The silent delta finding (renames propagating with no UI) is
+  unaffected by the correction.
+
+**Device-record storage vs write form (found via the pre-write
+round-trip gate):** the hub-stored record body differs from the write
+form in two hub-maintained spots. body[0] is restamped in storage
+(0x09 observed on X2 where every writer sends 0x01), and the trailing
+checksum byte keeps its write-time value when the hub later flips
+state bytes in storage. The captured X2 record stores tail[15]=1 with
+a checksum that only matches tail[15]=0 content. tail[15] is a real
+hub-maintained state flag (also set on the 2026-07 X1 Denon captures
+in `tests/test_devices.py`); the serializer used to hardcode it to 0
+on rewrite and now round-trips it (`DeviceConfig.tail_flag`,
+regression-locked by `test_real_x2_capture_round_trips_to_write_form`
+with the captured record). Any future stored-vs-rebuilt comparison
+must normalize body[0] to 0x01 and recompute the trailer.
+
+Open items for a later chunk: X1 replication of the collision runs, a
+late-phase (~90%) 0x64 probe, reproducing the spontaneous restart,
+and 0x65 semantics.

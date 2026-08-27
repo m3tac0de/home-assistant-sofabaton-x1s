@@ -39,8 +39,9 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x0023` | `FIND_REMOTE` | none observed | X1, X1S | Trigger remote buzzer |
 | `0x0323` | `FIND_REMOTE_X2` | `[0x00, 0x00, 0x08]` | X2 observed | Trigger remote buzzer |
 | `0x0064` | `REMOTE_SYNC` | none observed | X1, X1S | Force remote/hub sync |
-| `0x012E` | `X2_REMOTE_LIST` | `[0x00]` | X2 observed | Request connected remote list |
-| `0x0464` | `X2_REMOTE_SYNC` | `[remote_id:3][0x01]` | X2 observed | Force sync for one remote |
+| `0x012E` | `X2_REMOTE_LIST` | `[type]` (0 remotes, 1 RF emitters) | X2 observed | Request remote/emitter status rows (family 0x2F replies carry id, battery, firmware, online flag, name) |
+| `0x0364` | `X2_REMOTE_SYNC_ALL` | `[0xFF, 0xFF, 0xFF]` | X2 bench-validated 2026-08-27 | Sync all paired remotes. Instant STATUS_ACK 0x00 = queued, not completed; the hub serializes triggers (a second one runs after the current pass ends, ~5 min full sync observed); no TCP-visible completion or busy signal |
+| `0x0464` | `X2_REMOTE_SYNC` | `[remote_id:3][0x01]` | X2 observed | Historical per-remote form: ACKed 0x00 but starts NO sync (accepted no-op, bench 2026-08-27). Use `0x0364` instead |
 
 ### Device / activity create and update writes
 

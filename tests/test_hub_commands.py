@@ -727,6 +727,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "power_mode": 1,
         "power_style": 3,
         "share_mode": 0,
+        "tail_flag": 0,
         "tail_marker": 0,
         "extras": None,
     }
@@ -2940,6 +2941,9 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
             "power_on_command_id": 1,
             "power_off_command_id": None,
             "input_command_ids": None,
+            # The deploy owns the batch; its single terminal resync
+            # replaces the create pipeline's app-parity save-tail sync.
+            "send_remote_sync": False,
         }
     ]
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
@@ -4503,6 +4507,9 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
             "power_on_command_id": None,
             "power_off_command_id": None,
             "input_command_ids": [1],
+            # The deploy owns the batch; its single terminal resync
+            # replaces the create pipeline's app-parity save-tail sync.
+            "send_remote_sync": False,
         }
     ]
     assert add_calls == [

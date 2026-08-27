@@ -36,7 +36,6 @@ from .device_create import (
     build_key_sort_steps,
     build_macro_step,
     build_macro_step_record,
-    build_remote_sync_step,
     build_set_idle_behavior_step,
     run_create_sequence,
     run_device_create,
@@ -1523,6 +1522,7 @@ class RestoreMixin:
         bundle_devices_by_source_id: dict[int, dict[str, Any]] | None = None,
         command_id_maps_by_source_device_id: dict[int, dict[int, int]] | None = None,
         activity_id_map: dict[int, int] | None = None,
+        send_remote_sync: bool = True,
     ) -> dict[str, Any] | None:
         """Restore an activity from a backup payload.
 
@@ -1640,6 +1640,7 @@ class RestoreMixin:
                 },
                 bundle_devices_by_source_id=bundle_devices,
                 command_id_maps_by_source_device_id=command_id_maps,
+                send_remote_sync=send_remote_sync,
             )
 
             result = run_device_create(self, request)
@@ -1824,6 +1825,10 @@ class RestoreMixin:
                     bundle_devices_by_source_id=bundle_devices_by_source_id,
                     command_id_maps_by_source_device_id=command_id_maps,
                     activity_id_map=activity_id_map,
+                    # One terminal trigger for the whole bundle (below):
+                    # per-activity triggers kept aborting/restarting the
+                    # remote's multi-minute full sync (bench 2026-08-27).
+                    send_remote_sync=False,
                 )
             except Exception:
                 self._log.exception(
@@ -1868,6 +1873,22 @@ class RestoreMixin:
                 completed_steps=completed_steps,
                 total_steps=total_steps,
                 current_activity_id=src_act_id,
+            )
+
+        # Single terminal remote sync for the entire bundle, after every
+        # write (devices, activities, favorites) has landed. The remote
+        # runs one clean full pass instead of N aborted ones.
+        _progress(
+            status="running",
+            phase="remote_sync",
+            message="Triggering the remote's sync…",
+            completed_steps=completed_steps,
+            total_steps=total_steps,
+        )
+        if not self.resync_remote():
+            self._log.warning(
+                "[RESTORE] terminal remote-sync trigger was not sent "
+                "after the bundle restore"
             )
 
         return {
@@ -2080,8 +2101,14 @@ class RestoreMixin:
             )
             restored_macros += 1
 
-        post_steps.append(build_remote_sync_step())
-
+        # No remote-sync step here: it used to sit in this batch, BEFORE
+        # the favorites replay below, so the remote's rebuild never saw
+        # the activity's favorites -- and in a bundle restore the
+        # per-activity triggers kept aborting/restarting the remote's
+        # multi-minute full sync (bench 2026-08-27). The trigger now
+        # fires once at the very end of this pipeline (see below), and
+        # bundle restores suppress even that in favor of one terminal
+        # trigger for the whole bundle.
         self.reset_ack_queues()
         post_result = _run_create_sequence(self, post_steps)
         if not post_result.success:
@@ -2180,6 +2207,17 @@ class RestoreMixin:
             "active": False,
             "needs_confirm": False,
         }
+
+        # Terminal remote sync AFTER the favorites replay, so the
+        # remote's rebuild includes them. Suppressed by the bundle
+        # orchestrator, which sends one trigger for the whole bundle.
+        if request.send_remote_sync:
+            if not self.resync_remote():
+                self._log.warning(
+                    "[RESTORE] terminal remote-sync trigger was not sent "
+                    "for activity 0x%02X",
+                    new_activity_id,
+                )
 
         # ``restored_inputs`` carries the favorite-replay count for
         # activities (DeviceCreateResult has no dedicated favorites

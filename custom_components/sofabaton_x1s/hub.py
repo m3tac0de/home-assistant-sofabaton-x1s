@@ -2259,6 +2259,7 @@ class SofabatonHub:
         power_on_command_id: int | None = None,
         power_off_command_id: int | None = None,
         input_command_ids: list[int] | None = None,
+        send_remote_sync: bool = True,
     ) -> dict[str, Any] | None:
         """Replay the WiFi virtual-device creation sequence on the selected hub."""
 
@@ -2272,6 +2273,7 @@ class SofabatonHub:
                 power_on_command_id=power_on_command_id,
                 power_off_command_id=power_off_command_id,
                 input_command_ids=input_command_ids,
+                send_remote_sync=send_remote_sync,
             ),
         )
 
@@ -4734,6 +4736,13 @@ class SofabatonHub:
                         power_on_command_id=power_on_command_id,
                         power_off_command_id=power_off_command_id,
                         input_command_ids=input_command_ids or None,
+                        # The deploy keeps writing after the create
+                        # (memberships, favorites, bindings); the single
+                        # terminal resync at the end of this pipeline
+                        # covers the remote. A mid-batch trigger here
+                        # aborts/restarts the remote's multi-minute full
+                        # sync (bench 2026-08-27).
+                        send_remote_sync=False,
                     )
                 if not created or not created.get("device_id"):
                     raise HomeAssistantError("Failed creating Wifi Device")
