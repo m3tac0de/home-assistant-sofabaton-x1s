@@ -160,6 +160,19 @@ export const REMOTE_CARD_STRINGS_FR = {
     mediaControls: "Commandes multimédias",
     dvr: "DVR",
     resetDefaultLayout: "Réinitialiser",
+    shortcutsTitle: "Raccourcis",
+    shortcutsDescription:
+      "Jusqu’à trois touches avec l’icône et la commande de votre choix. Seules les touches configurées apparaissent sur la télécommande.",
+    shortcutSlotLeft: "Raccourci gauche",
+    shortcutSlotMiddle: "Raccourci central",
+    shortcutSlotRight: "Raccourci droit",
+    shortcutIcon: "Icône",
+    shortcutCommand: "Commande",
+    shortcutReset: "Réinitialiser",
+    shortcutCommandMissing: (id: number | string) => `Commande ${id} (manquante)`,
+    shortcutsCommandsLoading: "Chargement des commandes…",
+    shortcutsCommandsUnavailable:
+      "Les commandes de cet appareil ne sont pas disponibles. Actualisez l’appareil dans l’onglet Hub du panneau de contrôle Sofabaton.",
     noteDefaultLayout: "Utilisée pour les activités sans disposition propre",
     noteDeviceDefaultLayout: "Utilisée pour les appareils sans disposition propre",
     noteCustomActivityLayout: "Disposition d’activité personnalisée utilisée",
@@ -178,6 +191,7 @@ export const REMOTE_CARD_STRINGS_FR = {
     media: "Commandes multimédias",
     colors: "Touches de couleur",
     abc: "A/B/C",
+    shortcuts: "Raccourcis",
   },
   keys: {
     up: "Haut",

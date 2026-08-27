@@ -141,7 +141,15 @@ function installControlStyles(root: ShadowRoot): void {
   root.appendChild(style);
 }
 
-export class SbKeyButton extends HTMLElement {
+// Node (unit-test bundle) tolerance: lit's SSR shim installs a global
+// customElements but no global HTMLElement, and this class extends it at
+// module-eval time. Fall back the way LitElement itself does so importing
+// any module that pulls this one in never throws off-browser.
+const BaseElement: typeof HTMLElement =
+  (globalThis as { HTMLElement?: typeof HTMLElement }).HTMLElement ??
+  (class {} as unknown as typeof HTMLElement);
+
+export class SbKeyButton extends BaseElement {
   private _control: HTMLButtonElement | null = null;
   private _iconEl: HTMLElement | null = null;
   private _labelEl: HTMLSpanElement | null = null;

@@ -42,6 +42,11 @@ export interface GroupOrderSectionParams {
   /** x1s integration only: the Device mode switch on the activity row. */
   showDeviceModeSwitch: boolean;
   deviceModeEnabled: boolean;
+  /**
+   * Shortcuts slot editor, prebuilt by the shell (editor-sections/
+   * shortcuts.ts); nothing outside concrete "device:<id>" selections.
+   */
+  shortcutsEditor: TemplateResult | typeof nothing;
   isGroupEnabled: (key: string) => boolean;
   groupLabel: (key: string) => string;
   onToggleExpanded: () => void;
@@ -352,6 +357,7 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       <div class="sb-layout-note">${params.selectionNote}</div>
       ${rows}
       ${mfRow}
+      ${params.shortcutsEditor}
       <div class="sb-layout-footer">
         <button
           type="button"

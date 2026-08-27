@@ -158,6 +158,19 @@ const REMOTE_CARD_STRINGS_DE = {
     mediaControls: "Mediensteuerung",
     dvr: "DVR",
     resetDefaultLayout: "Layout zurücksetzen",
+    shortcutsTitle: "Schnelltasten",
+    shortcutsDescription:
+      "Bis zu drei Tasten mit frei wählbarem Symbol und Befehl. Nur konfigurierte Tasten erscheinen auf der Fernbedienung.",
+    shortcutSlotLeft: "Linke Schnelltaste",
+    shortcutSlotMiddle: "Mittlere Schnelltaste",
+    shortcutSlotRight: "Rechte Schnelltaste",
+    shortcutIcon: "Symbol",
+    shortcutCommand: "Befehl",
+    shortcutReset: "Zurücksetzen",
+    shortcutCommandMissing: (id: number | string) => `Befehl ${id} (fehlt)`,
+    shortcutsCommandsLoading: "Befehle werden geladen…",
+    shortcutsCommandsUnavailable:
+      "Die Befehle dieses Geräts sind nicht verfügbar. Aktualisiere das Gerät im Hub-Tab des Sofabaton-Bedienfelds.",
     noteDefaultLayout: "Für Aktivitäten ohne eigenes Layout",
     noteDeviceDefaultLayout: "Für Geräte ohne eigenes Layout",
     noteCustomActivityLayout: "Benutzerdefiniertes Aktivitätslayout aktiv",
@@ -176,6 +189,7 @@ const REMOTE_CARD_STRINGS_DE = {
     media: "Mediensteuerung",
     colors: "Farbtasten",
     abc: "A/B/C",
+    shortcuts: "Schnelltasten",
   },
   keys: {
     up: "Nach oben",

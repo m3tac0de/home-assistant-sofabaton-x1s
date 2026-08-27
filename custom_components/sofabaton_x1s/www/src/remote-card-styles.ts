@@ -914,6 +914,19 @@ export const REMOTE_CARD_CSS = `
         filter: grayscale(0.2);
       }
 
+      /* Shortcuts row (device mode): unconfigured slots keep their grid
+         cell. Live mode hides them entirely; the edit preview shows a
+         ghost outline so the row's position visualizes before any slot
+         is configured. */
+      .shortcut-spacer {
+        visibility: hidden;
+      }
+      .shortcut-ghost {
+        border: 1px dashed var(--divider-color);
+        border-radius: var(--sb-group-radius, var(--ha-card-border-radius, 18px));
+        opacity: 0.5;
+      }
+
       /* sizing */
 
 /* Allow grid children to shrink (prevents overflow on mobile / narrow cards) */
@@ -1103,6 +1116,21 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
+          /* Shortcuts slot editor (Layout Options, device selections): the
+             three-slot strip plus one inline panel below (never a popover —
+             the edit dialog clips overlays). */
+          .sb-shortcut-section { margin: 8px 0; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-shortcut-title { font-size: 13px; font-weight: 600; }
+          .sb-shortcut-desc { font-size: 12px; color: var(--secondary-text-color); line-height: 1.3; margin-top: 2px; }
+          .sb-shortcut-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+          .sb-shortcut-slot { height: 44px; border: 1px dashed var(--divider-color); border-radius: 12px; background: var(--ha-card-background, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--primary-color); }
+          .sb-shortcut-slot ha-icon { --mdc-icon-size: 22px; }
+          .sb-shortcut-slot.is-configured { border-style: solid; }
+          .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
+          .sb-shortcut-panel { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--divider-color); padding-top: 10px; }
+          .sb-shortcut-panel ha-form { display: block; }
+          .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
+          .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
           /* General Options rows: label + description with the switch at the

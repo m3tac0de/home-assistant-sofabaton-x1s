@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { nothing } from "lit";
 import { SofabatonRemoteCardEditor } from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-element";
 import { renderGeneralOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/general-options";
 import { renderStylingOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/styling-options";
@@ -423,6 +424,7 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     mediaEnabled: true,
     dvrEnabled: true,
     isDeviceSelection: false,
+    shortcutsEditor: nothing as typeof nothing,
     commandsEnabled: true,
     powerEnabled: true,
     showDeviceModeSwitch: false,

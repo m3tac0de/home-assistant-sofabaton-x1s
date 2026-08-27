@@ -292,6 +292,54 @@ test.describe("remote card playwright harness", () => {
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-layout-volume-only.png");
   });
 
+  test("device-mode shortcuts row keeps slot positions and sends the device command", async ({ page }) => {
+    // Icons must come from the harness ha-icon stub's glyph map.
+    await mountCard(page, "device_mode", {
+      device_mode: {
+        open_device: 1,
+        shortcuts: {
+          1: {
+            left: { icon: "mdi:television-play", command_id: 13 },
+            right: { icon: "mdi:play-circle", command_id: 15 },
+          },
+        },
+      },
+    });
+
+    const row = page.locator(".row3.shortcuts");
+    await expect(row).toBeVisible();
+    await expect(row.locator("sb-key-button")).toHaveCount(2);
+    await expect(row.locator(".shortcut-spacer")).toHaveCount(1);
+
+    // The middle slot is unconfigured: its cell stays empty, so the two
+    // configured keys keep their outer-column positions.
+    const left = await row.locator("sb-key-button").first().boundingBox();
+    const right = await row.locator("sb-key-button").nth(1).boundingBox();
+    expect(right.x - left.x).toBeGreaterThan(left.width * 1.5);
+
+    // The aria label carries the command name resolved from the keymap.
+    await expect(row.locator("sb-key-button .sb-key-control").first()).toHaveAttribute(
+      "aria-label",
+      "Input HDMI 1",
+    );
+
+    // Baseline before any interaction (a click would bake the pressed
+    // overlay into the shot).
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-device-shortcuts.png");
+
+    await row.locator("sb-key-button").first().click();
+    await expect
+      .poll(async () =>
+        page.evaluate(() =>
+          window.__remoteCardHarness
+            .getServiceCalls()
+            .filter((call) => call.domain === "remote" && call.service === "send_command")
+            .map((call) => call.data),
+        ),
+      )
+      .toEqual([{ entity_id: "remote.living_room", command: 13, device: 1 }]);
+  });
+
   test("captures channel-only middle cluster", async ({ page }) => {
     await mountCard(page, "active", {
       show_volume: false,

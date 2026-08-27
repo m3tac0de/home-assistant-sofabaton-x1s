@@ -158,6 +158,19 @@ export const REMOTE_CARD_STRINGS_ES = {
     mediaControls: "Controles multimedia",
     dvr: "DVR",
     resetDefaultLayout: "Restablecer diseño",
+    shortcutsTitle: "Accesos directos",
+    shortcutsDescription:
+      "Hasta tres botones con el icono y el comando que elijas. Solo los botones configurados aparecen en el mando.",
+    shortcutSlotLeft: "Acceso directo izquierdo",
+    shortcutSlotMiddle: "Acceso directo central",
+    shortcutSlotRight: "Acceso directo derecho",
+    shortcutIcon: "Icono",
+    shortcutCommand: "Comando",
+    shortcutReset: "Restablecer",
+    shortcutCommandMissing: (id: number | string) => `Comando ${id} (no disponible)`,
+    shortcutsCommandsLoading: "Cargando comandos…",
+    shortcutsCommandsUnavailable:
+      "Los comandos de este dispositivo no están disponibles. Actualiza el dispositivo en la pestaña Hub del panel de control de Sofabaton.",
     noteDefaultLayout: "Se usa para actividades sin un diseño propio",
     noteDeviceDefaultLayout: "Se usa para dispositivos sin un diseño propio",
     noteCustomActivityLayout: "Se está usando un diseño de actividad personalizado",
@@ -176,6 +189,7 @@ export const REMOTE_CARD_STRINGS_ES = {
     media: "Controles multimedia",
     colors: "Botones de colores",
     abc: "A/B/C",
+    shortcuts: "Accesos directos",
   },
   keys: {
     up: "Arriba",

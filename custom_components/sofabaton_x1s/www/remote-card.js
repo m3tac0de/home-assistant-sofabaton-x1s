@@ -561,7 +561,11 @@ var DEFAULT_GROUP_ORDER = [
   "mid",
   "media",
   "colors",
-  "abc"
+  "abc",
+  // Device-mode-only Shortcuts row. Listed last so normalizedGroupOrder
+  // back-fills every stored group_order with it in last position; the
+  // activity side admits the key but never renders or lists the group.
+  "shortcuts"
 ];
 var DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
 var DEFAULT_ROW_VISIBLE_ROWS = 2;
@@ -613,6 +617,7 @@ var DEVICE_LAYOUT_KEYS = [
   "show_commands_button",
   "show_power_button",
   "show_device_toggle",
+  "show_shortcuts",
   "c_as_rows",
   "c_row_visible_rows"
 ];
@@ -679,6 +684,7 @@ var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_commands_button: true,
   show_power_button: true,
   show_device_toggle: true,
+  show_shortcuts: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
   group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
@@ -713,6 +719,32 @@ function deviceToggleEnabled(layout) {
     return layout.show_device_toggle;
   }
   return true;
+}
+function shortcutsRowEnabled(layout) {
+  if (typeof layout?.show_shortcuts === "boolean") {
+    return layout.show_shortcuts;
+  }
+  return true;
+}
+var SHORTCUT_SLOTS = ["left", "middle", "right"];
+function normalizedShortcutSlot(value) {
+  if (!value || typeof value !== "object") return null;
+  const icon = String(value.icon ?? "").trim();
+  const commandId = Number(value.command_id);
+  if (!icon || !Number.isFinite(commandId)) return null;
+  return { icon, command_id: commandId };
+}
+function deviceShortcutsFromConfig(config, deviceId) {
+  const result = {};
+  if (deviceId == null) return result;
+  const shortcuts = deviceModeBlock(config)?.shortcuts;
+  const entry = shortcuts && typeof shortcuts === "object" ? shortcuts[String(deviceId)] : null;
+  if (!entry || typeof entry !== "object") return result;
+  for (const slot of SHORTCUT_SLOTS) {
+    const normalized = normalizedShortcutSlot(entry[slot]);
+    if (normalized) result[slot] = normalized;
+  }
+  return result;
 }
 function layoutBaseConfig(config) {
   const base = {};
@@ -811,7 +843,10 @@ var GROUP_VISIBILITY_KEYS = {
   mid: "show_mid",
   media: "show_media",
   colors: "show_colors",
-  abc: "show_abc"
+  abc: "show_abc",
+  // Device layouts only: the editor never lists the group for activity
+  // selections, so the key is never written on the activity side.
+  shortcuts: "show_shortcuts"
 };
 var ID = {
   UP: 174,
@@ -1013,6 +1048,17 @@ var REMOTE_CARD_STRINGS_EN = {
     mediaControls: "Media Controls",
     dvr: "DVR",
     resetDefaultLayout: "Reset layout",
+    shortcutsTitle: "Shortcuts",
+    shortcutsDescription: "Up to three buttons with an icon and command of your choice. Only configured buttons appear on the remote.",
+    shortcutSlotLeft: "Left shortcut",
+    shortcutSlotMiddle: "Middle shortcut",
+    shortcutSlotRight: "Right shortcut",
+    shortcutIcon: "Icon",
+    shortcutCommand: "Command",
+    shortcutReset: "Reset",
+    shortcutCommandMissing: (id) => `Command ${id} (missing)`,
+    shortcutsCommandsLoading: "Loading commands\u2026",
+    shortcutsCommandsUnavailable: "This device's commands are not available. Refresh this device in the Hub tab of the Sofabaton Control Panel.",
     noteDefaultLayout: "Used for activities without their own layout",
     noteDeviceDefaultLayout: "Used for devices without their own layout",
     noteCustomActivityLayout: "Using custom activity layout",
@@ -1030,7 +1076,8 @@ var REMOTE_CARD_STRINGS_EN = {
     mid: "Volume/Channel",
     media: "Media Controls",
     colors: "Color Buttons",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Shortcuts"
   },
   keys: {
     up: "Up",
@@ -1310,6 +1357,27 @@ function powerEnabled(config, selection) {
 }
 function powerTogglePatch(enabled) {
   return { show_power_button: !!enabled };
+}
+function applyShortcutSlotPatch(config, deviceId, slot, value) {
+  const next = { ...config || {} };
+  const block = { ...next.device_mode || {} };
+  const shortcuts = {
+    ...block.shortcuts || {}
+  };
+  const key = String(deviceId);
+  const entry = {
+    ...shortcuts[key] || {}
+  };
+  const normalized = normalizedShortcutSlot(value);
+  if (normalized) {
+    entry[slot] = normalized;
+  } else {
+    delete entry[slot];
+  }
+  setOrDelete(shortcuts, key, entry);
+  setOrDelete(block, "shortcuts", shortcuts);
+  setOrDelete(next, "device_mode", block);
+  return { nextConfig: next };
 }
 function deviceToggleEnabledForEditor(config, selection) {
   return deviceToggleEnabled(layoutConfigForSelection(config, selection));
@@ -2312,6 +2380,19 @@ var REMOTE_CARD_CSS = `
         filter: grayscale(0.2);
       }
 
+      /* Shortcuts row (device mode): unconfigured slots keep their grid
+         cell. Live mode hides them entirely; the edit preview shows a
+         ghost outline so the row's position visualizes before any slot
+         is configured. */
+      .shortcut-spacer {
+        visibility: hidden;
+      }
+      .shortcut-ghost {
+        border: 1px dashed var(--divider-color);
+        border-radius: var(--sb-group-radius, var(--ha-card-border-radius, 18px));
+        opacity: 0.5;
+      }
+
       /* sizing */
 
 /* Allow grid children to shrink (prevents overflow on mobile / narrow cards) */
@@ -2500,6 +2581,21 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
+          /* Shortcuts slot editor (Layout Options, device selections): the
+             three-slot strip plus one inline panel below (never a popover \u2014
+             the edit dialog clips overlays). */
+          .sb-shortcut-section { margin: 8px 0; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-shortcut-title { font-size: 13px; font-weight: 600; }
+          .sb-shortcut-desc { font-size: 12px; color: var(--secondary-text-color); line-height: 1.3; margin-top: 2px; }
+          .sb-shortcut-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+          .sb-shortcut-slot { height: 44px; border: 1px dashed var(--divider-color); border-radius: 12px; background: var(--ha-card-background, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--primary-color); }
+          .sb-shortcut-slot ha-icon { --mdc-icon-size: 22px; }
+          .sb-shortcut-slot.is-configured { border-style: solid; }
+          .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
+          .sb-shortcut-panel { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--divider-color); padding-top: 10px; }
+          .sb-shortcut-panel ha-form { display: block; }
+          .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
+          .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
           /* General Options rows: label + description with the switch at the
@@ -2632,7 +2728,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.2";
+var CARD_VERSION = "0.3.0";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -2929,6 +3025,131 @@ function renderGeneralOptionsSection(params) {
     onToggle: params.onToggleExpanded,
     body
   });
+}
+
+// custom_components/sofabaton_x1s/www/src/editor-sections/shortcuts.ts
+var SHORTCUT_ICON_FIELD = "icon";
+var SHORTCUT_COMMAND_FIELD = "command";
+function slotLabel(slot) {
+  if (slot === "left") return str().editor.shortcutSlotLeft;
+  if (slot === "middle") return str().editor.shortcutSlotMiddle;
+  return str().editor.shortcutSlotRight;
+}
+var computeShortcutFieldLabel = (schema) => {
+  if (schema.name === SHORTCUT_ICON_FIELD) return str().editor.shortcutIcon;
+  if (schema.name === SHORTCUT_COMMAND_FIELD) return str().editor.shortcutCommand;
+  return schema.name;
+};
+function renderOpenPanel(params) {
+  const openSlot = params.openSlot;
+  if (!openSlot) return A;
+  if (params.commandsStatus === "loading") {
+    return b2`
+      <div class="sb-shortcut-panel">
+        <div class="sb-shortcut-note">${str().editor.shortcutsCommandsLoading}</div>
+      </div>
+    `;
+  }
+  if (params.commandsStatus !== "ready") {
+    return b2`
+      <div class="sb-shortcut-panel">
+        <div class="sb-shortcut-note">${str().editor.shortcutsCommandsUnavailable}</div>
+      </div>
+    `;
+  }
+  const options = params.commands.map((command) => ({
+    value: String(command.command_id),
+    label: command.name
+  }));
+  const draftCommand = params.draftCommandId != null ? String(params.draftCommandId) : "";
+  if (draftCommand && !options.some((option) => option.value === draftCommand)) {
+    options.push({
+      value: draftCommand,
+      label: str().editor.shortcutCommandMissing(draftCommand)
+    });
+  }
+  return b2`
+    <div class="sb-shortcut-panel">
+      <ha-form
+        .hass=${params.hass}
+        .schema=${[
+    {
+      name: SHORTCUT_ICON_FIELD,
+      required: true,
+      selector: { icon: {} }
+    },
+    {
+      name: SHORTCUT_COMMAND_FIELD,
+      required: true,
+      selector: { select: { mode: "dropdown", options } }
+    }
+  ]}
+        .data=${{
+    [SHORTCUT_ICON_FIELD]: params.draftIcon,
+    [SHORTCUT_COMMAND_FIELD]: draftCommand
+  }}
+        .computeLabel=${computeShortcutFieldLabel}
+        @value-changed=${(ev) => {
+    ev.stopPropagation();
+    const value = ev.detail?.value || {};
+    const icon = String(value[SHORTCUT_ICON_FIELD] ?? "");
+    const rawCommand = String(value[SHORTCUT_COMMAND_FIELD] ?? "");
+    const commandId = rawCommand !== "" && Number.isFinite(Number(rawCommand)) ? Number(rawCommand) : null;
+    params.onDraftChanged(icon, commandId);
+  }}
+      ></ha-form>
+      <div class="sb-shortcut-panel-footer">
+        <button
+          type="button"
+          class="sb-reset-btn"
+          @click=${(ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    params.onReset(openSlot);
+  }}
+        >
+          ${str().editor.shortcutReset}
+        </button>
+      </div>
+    </div>
+  `;
+}
+function renderShortcutsEditor(params) {
+  return b2`
+    <div class="sb-shortcut-section">
+      <div class="sb-shortcut-header">
+        <div class="sb-shortcut-title">${str().editor.shortcutsTitle}</div>
+        <div class="sb-shortcut-desc">${str().editor.shortcutsDescription}</div>
+      </div>
+      <div class="sb-shortcut-strip">
+        ${params.slots.map((view) => {
+    const isOpen = params.openSlot === view.slot;
+    const configured = view.icon != null;
+    const className = [
+      "sb-shortcut-slot",
+      ...configured ? ["is-configured"] : [],
+      ...isOpen ? ["is-open"] : []
+    ].join(" ");
+    return b2`
+            <button
+              type="button"
+              class=${className}
+              aria-label=${slotLabel(view.slot)}
+              aria-expanded=${isOpen ? "true" : "false"}
+              @click=${(ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      params.onToggleSlot(view.slot);
+    }}
+            >
+              ${configured ? b2`<ha-icon icon=${view.icon}></ha-icon>` : A}
+            </button>
+          `;
+  })}
+      </div>
+      ${renderOpenPanel(params)}
+    </div>
+  `;
 }
 
 // custom_components/sofabaton_x1s/www/src/editor-sections/styling-options.ts
@@ -3457,6 +3678,7 @@ function renderGroupOrderSection(params) {
       <div class="sb-layout-note">${params.selectionNote}</div>
       ${rows}
       ${mfRow}
+      ${params.shortcutsEditor}
       <div class="sb-layout-footer">
         <button
           type="button"
@@ -3520,6 +3742,96 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this._editorIntegrationEntityId = null;
     this._editorIntegrationDetectingFor = null;
     this._sortableDefinePending = false;
+    // Shortcuts slot editor state (shortcuts-row-plan.md §4.2/§4.3). The open
+    // slot's draft lives here, NOT in config: a slot is written only once both
+    // icon and command are valid, so config never holds a half-configured slot.
+    this._shortcutOpenSlot = null;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+    /** Editor-lifetime keymap cache, keyed by device id. */
+    this._editorKeymaps = {};
+  }
+  // ---------- shortcuts (device selections only) ----------
+  /**
+   * Fetch one device's commands for the shortcut command select — the same
+   * cache-first WS the card uses; the editor never invalidates it.
+   */
+  _ensureEditorKeymap(deviceId) {
+    const key = String(deviceId);
+    if (this._editorKeymaps[key]) return;
+    const entityId = String(this._config?.entity || "");
+    const remoteState = entityId ? this._hass?.states?.[entityId] : null;
+    const entryId = String(
+      remoteState?.attributes?.entry_id ?? ""
+    );
+    if (!entryId || !this._hass?.callWS) return;
+    this._editorKeymaps[key] = { status: "loading", commands: [] };
+    void this._hass.callWS({
+      type: "sofabaton_x1s/device/keymap",
+      entry_id: entryId,
+      device_id: deviceId
+    }).then((response) => {
+      const keymap = response?.keymap;
+      if (!keymap) {
+        this._editorKeymaps[key] = { status: "cache_miss", commands: [] };
+        return;
+      }
+      const commands = (Array.isArray(keymap.commands) ? keymap.commands : []).map((command) => ({
+        command_id: Number(command?.command_id),
+        name: String(command?.name ?? "")
+      })).filter((command) => Number.isFinite(command.command_id) && command.name).sort((a4, b3) => a4.name.localeCompare(b3.name));
+      this._editorKeymaps[key] = { status: "ready", commands };
+    }).catch(() => {
+      this._editorKeymaps[key] = { status: "error", commands: [] };
+    }).then(() => this.requestUpdate());
+  }
+  _clearShortcutPanel() {
+    this._shortcutOpenSlot = null;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+  }
+  _toggleShortcutSlot(slot) {
+    if (this._shortcutOpenSlot === slot) {
+      this._clearShortcutPanel();
+    } else {
+      this._shortcutOpenSlot = slot;
+      const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+      const stored = deviceShortcutsFromConfig(this._config, deviceId)[slot];
+      this._shortcutDraftIcon = stored?.icon ?? "";
+      this._shortcutDraftCommand = stored?.command_id ?? null;
+    }
+    this.requestUpdate();
+  }
+  /**
+   * Draft edit: config is written (and the preview updates) the moment both
+   * fields are valid; an incomplete draft leaves the stored slot untouched.
+   */
+  _onShortcutDraftChanged(icon, commandId) {
+    this._shortcutDraftIcon = icon;
+    this._shortcutDraftCommand = commandId;
+    const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    const slot = this._shortcutOpenSlot;
+    if (deviceId != null && slot && icon.trim() && commandId != null) {
+      const { nextConfig } = applyShortcutSlotPatch(this._config, deviceId, slot, {
+        icon: icon.trim(),
+        command_id: commandId
+      });
+      if (JSON.stringify(nextConfig) !== JSON.stringify(this._config)) {
+        this._config = nextConfig;
+        this._fireChanged();
+      }
+    }
+    this.requestUpdate();
+  }
+  _resetShortcutSlot(slot) {
+    const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    if (deviceId == null) return;
+    const { nextConfig } = applyShortcutSlotPatch(this._config, deviceId, slot, null);
+    this._config = nextConfig;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+    this._fireChanged();
+    this.requestUpdate();
   }
   // ---------- integration detection (x1s vs hub) ----------
   async _ensureEditorIntegration() {
@@ -3684,6 +3996,8 @@ var SofabatonRemoteCardEditor = class extends i4 {
       this._editorIntegrationEntityId = null;
       this._editorIntegrationDomain = null;
       this._editorIntegrationDetectingFor = null;
+      this._editorKeymaps = {};
+      this._clearShortcutPanel();
     }
     if ("commands" in incomingConfig) delete incomingConfig.commands;
     const configUnchanged = !isInitialEditorConfig && JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
@@ -3782,6 +4096,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
   _onSelectLayout(selection) {
     if (selection === this._layoutSelectionKey()) return;
     this._layoutSelection = selection;
+    this._clearShortcutPanel();
     this._setPreviewActivityForSelection(selection);
     this.requestUpdate();
   }
@@ -3789,6 +4104,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
   _isEditorGroupVisible(key, isEditorX2) {
     if (!isEditorX2 && key === "abc") return false;
     const selection = this._layoutSelectionKey();
+    if (key === "shortcuts") return isDeviceLayoutKey(selection);
     const asRows = mfAsRowsForEditor(this._config, selection);
     if (isDeviceLayoutKey(selection)) {
       if (key === "macro_favorites") return !asRows;
@@ -3934,6 +4250,28 @@ var SofabatonRemoteCardEditor = class extends i4 {
         this.requestUpdate();
       });
     }
+    const shortcutDeviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    let shortcutsEditor = A;
+    if (shortcutDeviceId != null && devices.some((device) => Number(device.id) === shortcutDeviceId)) {
+      this._ensureEditorKeymap(shortcutDeviceId);
+      const keymap = this._editorKeymaps[String(shortcutDeviceId)];
+      const stored = deviceShortcutsFromConfig(this._config, shortcutDeviceId);
+      shortcutsEditor = renderShortcutsEditor({
+        hass: this._hass,
+        slots: SHORTCUT_SLOTS.map((slot) => ({
+          slot,
+          icon: stored[slot]?.icon ?? null
+        })),
+        openSlot: this._shortcutOpenSlot,
+        draftIcon: this._shortcutDraftIcon,
+        draftCommandId: this._shortcutDraftCommand,
+        commandsStatus: keymap?.status ?? "loading",
+        commands: keymap?.commands ?? [],
+        onToggleSlot: (slot) => this._toggleShortcutSlot(slot),
+        onDraftChanged: (icon, commandId) => this._onShortcutDraftChanged(icon, commandId),
+        onReset: (slot) => this._resetShortcutSlot(slot)
+      });
+    }
     const entityFormData = {
       entity: this._config.entity || ""
     };
@@ -4006,6 +4344,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
       mediaEnabled: mediaGroupEnabled(layoutCfg),
       dvrEnabled: dvrGroupEnabled(layoutCfg),
       isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
+      shortcutsEditor,
       commandsEnabled: commandsEnabled(this._config, this._layoutSelectionKey()),
       powerEnabled: powerEnabled(this._config, this._layoutSelectionKey()),
       showDeviceModeSwitch: devices.length > 0,
@@ -6854,7 +7193,9 @@ function installControlStyles(root) {
   style.textContent = CONTROL_CSS;
   root.appendChild(style);
 }
-var SbKeyButton = class extends HTMLElement {
+var BaseElement = globalThis.HTMLElement ?? class {
+};
+var SbKeyButton = class extends BaseElement {
   constructor() {
     super(...arguments);
     this._control = null;
@@ -7126,6 +7467,36 @@ function renderMedia(params, visible) {
     ...Object.entries(mediaState.classMap).filter(([, on]) => on).map(([name]) => name)
   ].join(" ");
   return b2`<div class=${className}>${MEDIA_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderShortcutsRow(params, visible) {
+  if (!visible) return A;
+  return b2`
+    <div class="row3 shortcuts">
+      ${params.slots.map((slot) => {
+    if (slot.icon == null) {
+      return b2`
+            <div
+              class="key key--normal ${params.editMode ? "shortcut-ghost" : "shortcut-spacer"}"
+              aria-hidden="true"
+            ></div>
+          `;
+    }
+    const enabled = !params.disableAll && (params.editMode || !slot.missing);
+    return b2`
+          <sb-key-button
+            class="key key--normal shortcut-key${enabled ? "" : " disabled"}"
+            .label=${""}
+            .icon=${slot.icon}
+            .accessibilityLabel=${slot.label}
+            .sizeVar=${"--sb-key-font-size"}
+            .disabled=${!enabled}
+            .holdRepeat=${false}
+            .onTrigger=${() => params.onPress(slot)}
+          ></sb-key-button>
+        `;
+  })}
+    </div>
+  `;
 }
 function renderColors(params, visible) {
   if (!visible) return A;
@@ -8229,6 +8600,26 @@ var SofabatonRemoteCard = class extends i4 {
         void store.toggleDevicePower();
       }
     };
+    const shortcutConfigs = deviceMode ? deviceShortcutsFromConfig(store.config, derived.deviceId) : {};
+    const shortcutSlots = SHORTCUT_SLOTS.map((slot) => {
+      const config = shortcutConfigs[slot];
+      if (!config) {
+        return { slot, icon: null, label: "", commandId: null, missing: false };
+      }
+      const keymapCommands = derived.keymapEntry?.status === "ready" ? derived.keymapEntry.commands : null;
+      const match = keymapCommands?.find(
+        (command) => command.command_id === config.command_id
+      );
+      return {
+        slot,
+        icon: config.icon,
+        label: match?.name ?? str().assist.commandFallback(config.command_id),
+        commandId: config.command_id,
+        missing: keymapCommands != null && !match
+      };
+    });
+    const shortcutsConfigured = shortcutSlots.some((slot) => slot.icon != null);
+    const shortcutsVisible = deviceMode && shortcutsRowEnabled(layoutConfig) && (shortcutsConfigured || this._editMode);
     const commandsParams = {
       visible: showCommandsDrawer,
       open: store.activeDrawer === "commands",
@@ -8327,7 +8718,16 @@ var SofabatonRemoteCard = class extends i4 {
       mid: () => renderMid(keyParams, midEnabled),
       media: () => renderMedia(keyParams, mediaEnabled),
       colors: () => renderColors(keyParams, Boolean(layoutConfig.show_colors)),
-      abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2)
+      abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2),
+      shortcuts: () => renderShortcutsRow(
+        {
+          editMode: this._editMode,
+          disableAll,
+          slots: shortcutSlots,
+          onPress: (slot) => this._onShortcutPress(slot)
+        },
+        shortcutsVisible
+      )
     };
     const warnText = derived.isUnavailable ? str().card.remoteUnavailable : derived.noActivitiesMessage;
     const assistEnabled = store.automationAssistEnabled();
@@ -8366,6 +8766,22 @@ var SofabatonRemoteCard = class extends i4 {
     }
     this._store.triggerCommandPulse();
     void this._store.sendCommand(spec.cmd, targetDeviceId);
+  }
+  _onShortcutPress(slot) {
+    if (slot.commandId == null) return;
+    const deviceId = this._store.currentDeviceId();
+    if (deviceId == null) return;
+    this._assist.recordClick({
+      label: slot.label,
+      commandId: slot.commandId,
+      deviceId,
+      commandType: "favorite",
+      icon: slot.icon,
+      deviceMode: true,
+      deviceName: this._store.deviceNameForId(deviceId)
+    });
+    this._store.triggerCommandPulse();
+    void this._store.sendCommand(slot.commandId, deviceId);
   }
   _onCommandItem(command) {
     const deviceId = this._store.currentDeviceId();
@@ -8547,6 +8963,17 @@ var REMOTE_CARD_STRINGS_AR = {
     mediaControls: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
     dvr: DVR,
     resetDefaultLayout: "\u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
+    shortcutsTitle: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631\u0627\u062A",
+    shortcutsDescription: "\u062D\u062A\u0649 \u062B\u0644\u0627\u062B\u0629 \u0623\u0632\u0631\u0627\u0631 \u0628\u0623\u064A\u0642\u0648\u0646\u0629 \u0648\u0623\u0645\u0631 \u0645\u0646 \u0627\u062E\u062A\u064A\u0627\u0631\u0643. \u062A\u0638\u0647\u0631 \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0645\u0647\u064A\u0651\u0623\u0629 \u0641\u0642\u0637 \u0639\u0644\u0649 \u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645.",
+    shortcutSlotLeft: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u064A\u0633\u0631",
+    shortcutSlotMiddle: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u0648\u0633\u0637",
+    shortcutSlotRight: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u064A\u0645\u0646",
+    shortcutIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
+    shortcutCommand: "\u0627\u0644\u0623\u0645\u0631",
+    shortcutReset: "\u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0636\u0628\u0637",
+    shortcutCommandMissing: (id) => `\u0627\u0644\u0623\u0645\u0631 ${id} (\u0645\u0641\u0642\u0648\u062F)`,
+    shortcutsCommandsLoading: "\u062C\u0627\u0631\u064D \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0623\u0648\u0627\u0645\u0631\u2026",
+    shortcutsCommandsUnavailable: "\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D\u0629. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 Hub \u0641\u064A \u0644\u0648\u062D\u0629 \u062A\u062D\u0643\u0645 Sofabaton.",
     noteDefaultLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0644\u0644\u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u062A\u064A \u0644\u064A\u0633 \u0644\u0647\u0627 \u062A\u062E\u0637\u064A\u0637 \u062E\u0627\u0635",
     noteDeviceDefaultLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0644\u0644\u0623\u062C\u0647\u0632\u0629 \u0627\u0644\u062A\u064A \u0644\u064A\u0633 \u0644\u0647\u0627 \u062A\u062E\u0637\u064A\u0637 \u062E\u0627\u0635",
     noteCustomActivityLayout: "\u062A\u062E\u0637\u064A\u0637 \u0623\u0646\u0634\u0637\u0629 \u0645\u062E\u0635\u0651\u0635 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
@@ -8564,7 +8991,8 @@ var REMOTE_CARD_STRINGS_AR = {
     mid: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A/\u0627\u0644\u0642\u0646\u0627\u0629",
     media: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
     colors: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0623\u0644\u0648\u0627\u0646",
-    abc: ABC
+    abc: ABC,
+    shortcuts: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631\u0627\u062A"
   },
   keys: {
     up: "\u0623\u0639\u0644\u0649",
@@ -8751,6 +9179,17 @@ var REMOTE_CARD_STRINGS_DE = {
     mediaControls: "Mediensteuerung",
     dvr: "DVR",
     resetDefaultLayout: "Layout zur\xFCcksetzen",
+    shortcutsTitle: "Schnelltasten",
+    shortcutsDescription: "Bis zu drei Tasten mit frei w\xE4hlbarem Symbol und Befehl. Nur konfigurierte Tasten erscheinen auf der Fernbedienung.",
+    shortcutSlotLeft: "Linke Schnelltaste",
+    shortcutSlotMiddle: "Mittlere Schnelltaste",
+    shortcutSlotRight: "Rechte Schnelltaste",
+    shortcutIcon: "Symbol",
+    shortcutCommand: "Befehl",
+    shortcutReset: "Zur\xFCcksetzen",
+    shortcutCommandMissing: (id) => `Befehl ${id} (fehlt)`,
+    shortcutsCommandsLoading: "Befehle werden geladen\u2026",
+    shortcutsCommandsUnavailable: "Die Befehle dieses Ger\xE4ts sind nicht verf\xFCgbar. Aktualisiere das Ger\xE4t im Hub-Tab des Sofabaton-Bedienfelds.",
     noteDefaultLayout: "F\xFCr Aktivit\xE4ten ohne eigenes Layout",
     noteDeviceDefaultLayout: "F\xFCr Ger\xE4te ohne eigenes Layout",
     noteCustomActivityLayout: "Benutzerdefiniertes Aktivit\xE4tslayout aktiv",
@@ -8768,7 +9207,8 @@ var REMOTE_CARD_STRINGS_DE = {
     mid: "Lautst\xE4rke/Kanal",
     media: "Mediensteuerung",
     colors: "Farbtasten",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Schnelltasten"
   },
   keys: {
     up: "Nach oben",
@@ -8934,6 +9374,17 @@ var REMOTE_CARD_STRINGS_ES = {
     mediaControls: "Controles multimedia",
     dvr: "DVR",
     resetDefaultLayout: "Restablecer dise\xF1o",
+    shortcutsTitle: "Accesos directos",
+    shortcutsDescription: "Hasta tres botones con el icono y el comando que elijas. Solo los botones configurados aparecen en el mando.",
+    shortcutSlotLeft: "Acceso directo izquierdo",
+    shortcutSlotMiddle: "Acceso directo central",
+    shortcutSlotRight: "Acceso directo derecho",
+    shortcutIcon: "Icono",
+    shortcutCommand: "Comando",
+    shortcutReset: "Restablecer",
+    shortcutCommandMissing: (id) => `Comando ${id} (no disponible)`,
+    shortcutsCommandsLoading: "Cargando comandos\u2026",
+    shortcutsCommandsUnavailable: "Los comandos de este dispositivo no est\xE1n disponibles. Actualiza el dispositivo en la pesta\xF1a Hub del panel de control de Sofabaton.",
     noteDefaultLayout: "Se usa para actividades sin un dise\xF1o propio",
     noteDeviceDefaultLayout: "Se usa para dispositivos sin un dise\xF1o propio",
     noteCustomActivityLayout: "Se est\xE1 usando un dise\xF1o de actividad personalizado",
@@ -8951,7 +9402,8 @@ var REMOTE_CARD_STRINGS_ES = {
     mid: "Volumen/Canal",
     media: "Controles multimedia",
     colors: "Botones de colores",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Accesos directos"
   },
   keys: {
     up: "Arriba",
@@ -9117,6 +9569,17 @@ var REMOTE_CARD_STRINGS_FR = {
     mediaControls: "Commandes multim\xE9dias",
     dvr: "DVR",
     resetDefaultLayout: "R\xE9initialiser",
+    shortcutsTitle: "Raccourcis",
+    shortcutsDescription: "Jusqu\u2019\xE0 trois touches avec l\u2019ic\xF4ne et la commande de votre choix. Seules les touches configur\xE9es apparaissent sur la t\xE9l\xE9commande.",
+    shortcutSlotLeft: "Raccourci gauche",
+    shortcutSlotMiddle: "Raccourci central",
+    shortcutSlotRight: "Raccourci droit",
+    shortcutIcon: "Ic\xF4ne",
+    shortcutCommand: "Commande",
+    shortcutReset: "R\xE9initialiser",
+    shortcutCommandMissing: (id) => `Commande ${id} (manquante)`,
+    shortcutsCommandsLoading: "Chargement des commandes\u2026",
+    shortcutsCommandsUnavailable: "Les commandes de cet appareil ne sont pas disponibles. Actualisez l\u2019appareil dans l\u2019onglet Hub du panneau de contr\xF4le Sofabaton.",
     noteDefaultLayout: "Utilis\xE9e pour les activit\xE9s sans disposition propre",
     noteDeviceDefaultLayout: "Utilis\xE9e pour les appareils sans disposition propre",
     noteCustomActivityLayout: "Disposition d\u2019activit\xE9 personnalis\xE9e utilis\xE9e",
@@ -9134,7 +9597,8 @@ var REMOTE_CARD_STRINGS_FR = {
     mid: "Volume/Cha\xEEne",
     media: "Commandes multim\xE9dias",
     colors: "Touches de couleur",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Raccourcis"
   },
   keys: {
     up: "Haut",
@@ -9299,6 +9763,17 @@ var REMOTE_CARD_STRINGS_NL = {
     mediaControls: "Mediabediening",
     dvr: "DVR",
     resetDefaultLayout: "Indeling resetten",
+    shortcutsTitle: "Snelkoppelingen",
+    shortcutsDescription: "Maximaal drie knoppen met een zelfgekozen pictogram en commando. Alleen geconfigureerde knoppen verschijnen op de afstandsbediening.",
+    shortcutSlotLeft: "Linker snelkoppeling",
+    shortcutSlotMiddle: "Middelste snelkoppeling",
+    shortcutSlotRight: "Rechter snelkoppeling",
+    shortcutIcon: "Pictogram",
+    shortcutCommand: "Commando",
+    shortcutReset: "Resetten",
+    shortcutCommandMissing: (id) => `Commando ${id} (ontbreekt)`,
+    shortcutsCommandsLoading: "Commando's laden\u2026",
+    shortcutsCommandsUnavailable: "De commando's van dit apparaat zijn niet beschikbaar. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel.",
     noteDefaultLayout: "Gebruikt voor activiteiten zonder eigen indeling",
     noteDeviceDefaultLayout: "Gebruikt voor apparaten zonder eigen indeling",
     noteCustomActivityLayout: "Aangepaste activiteitenindeling in gebruik",
@@ -9316,7 +9791,8 @@ var REMOTE_CARD_STRINGS_NL = {
     mid: "Volume/kanaal",
     media: "Mediabediening",
     colors: "Kleurknoppen",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Snelkoppelingen"
   },
   keys: {
     up: "Omhoog",
@@ -9481,6 +9957,17 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     mediaControls: "\u5A92\u4F53\u63A7\u4EF6",
     dvr: "DVR",
     resetDefaultLayout: "\u91CD\u7F6E\u5E03\u5C40",
+    shortcutsTitle: "\u5FEB\u6377\u6309\u952E",
+    shortcutsDescription: "\u6700\u591A\u4E09\u4E2A\u6309\u952E\uFF0C\u53EF\u81EA\u9009\u56FE\u6807\u548C\u547D\u4EE4\u3002\u53EA\u6709\u5DF2\u914D\u7F6E\u7684\u6309\u952E\u624D\u4F1A\u663E\u793A\u5728\u9065\u63A7\u5668\u4E0A\u3002",
+    shortcutSlotLeft: "\u5DE6\u4FA7\u5FEB\u6377\u6309\u952E",
+    shortcutSlotMiddle: "\u4E2D\u95F4\u5FEB\u6377\u6309\u952E",
+    shortcutSlotRight: "\u53F3\u4FA7\u5FEB\u6377\u6309\u952E",
+    shortcutIcon: "\u56FE\u6807",
+    shortcutCommand: "\u547D\u4EE4",
+    shortcutReset: "\u91CD\u7F6E",
+    shortcutCommandMissing: (id) => `\u547D\u4EE4 ${id}\uFF08\u7F3A\u5931\uFF09`,
+    shortcutsCommandsLoading: "\u6B63\u5728\u52A0\u8F7D\u547D\u4EE4\u2026",
+    shortcutsCommandsUnavailable: "\u65E0\u6CD5\u83B7\u53D6\u8BE5\u8BBE\u5907\u7684\u547D\u4EE4\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u8BE5\u8BBE\u5907\u3002",
     noteDefaultLayout: "\u7528\u4E8E\u6CA1\u6709\u5355\u72EC\u5E03\u5C40\u7684\u6D3B\u52A8",
     noteDeviceDefaultLayout: "\u7528\u4E8E\u6CA1\u6709\u5355\u72EC\u5E03\u5C40\u7684\u8BBE\u5907",
     noteCustomActivityLayout: "\u6B63\u5728\u4F7F\u7528\u81EA\u5B9A\u4E49\u6D3B\u52A8\u5E03\u5C40",
@@ -9498,7 +9985,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     mid: "\u97F3\u91CF/\u9891\u9053",
     media: "\u5A92\u4F53\u63A7\u4EF6",
     colors: "\u5F69\u8272\u6309\u952E",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "\u5FEB\u6377\u6309\u952E"
   },
   keys: {
     up: "\u4E0A",

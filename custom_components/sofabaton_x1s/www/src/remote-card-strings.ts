@@ -156,6 +156,19 @@ export const REMOTE_CARD_STRINGS_EN = {
     mediaControls: "Media Controls",
     dvr: "DVR",
     resetDefaultLayout: "Reset layout",
+    shortcutsTitle: "Shortcuts",
+    shortcutsDescription:
+      "Up to three buttons with an icon and command of your choice. Only configured buttons appear on the remote.",
+    shortcutSlotLeft: "Left shortcut",
+    shortcutSlotMiddle: "Middle shortcut",
+    shortcutSlotRight: "Right shortcut",
+    shortcutIcon: "Icon",
+    shortcutCommand: "Command",
+    shortcutReset: "Reset",
+    shortcutCommandMissing: (id: number | string) => `Command ${id} (missing)`,
+    shortcutsCommandsLoading: "Loading commands…",
+    shortcutsCommandsUnavailable:
+      "This device's commands are not available. Refresh this device in the Hub tab of the Sofabaton Control Panel.",
     noteDefaultLayout: "Used for activities without their own layout",
     noteDeviceDefaultLayout: "Used for devices without their own layout",
     noteCustomActivityLayout: "Using custom activity layout",
@@ -174,6 +187,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     media: "Media Controls",
     colors: "Color Buttons",
     abc: "A/B/C",
+    shortcuts: "Shortcuts",
   } as Record<string, string>,
   keys: {
     up: "Up",

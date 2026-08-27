@@ -58,10 +58,27 @@ export interface DeviceLayoutConfig {
   show_commands_button?: boolean;
   /** Toggles the activity/device mode toggle button (default shown). */
   show_device_toggle?: boolean;
+  /** Toggles the Shortcuts row (default shown; renders only with configured slots). */
+  show_shortcuts?: boolean;
   /** Render commands as inline rows instead of the drawer tab. */
   c_as_rows?: boolean;
   c_row_visible_rows?: number;
 }
+
+/**
+ * One configured Shortcuts-row slot (docs/internal/shortcuts-row-plan.md).
+ * Both fields are required for the slot to count as configured; the icon is
+ * mandatory by design.
+ */
+export interface ShortcutSlotConfig {
+  icon: string;
+  command_id: number;
+}
+
+/** Per-device Shortcuts row: fixed left/middle/right slots, each optional. */
+export type DeviceShortcutsConfig = Partial<
+  Record<"left" | "middle" | "right", ShortcutSlotConfig>
+>;
 
 /**
  * The `device_mode` block: every stored device-mode setting in one place
@@ -80,6 +97,12 @@ export interface DeviceModeConfig {
   open_device?: number | null;
   /** "default" plus per-device-id entries. */
   layouts?: Record<string, Partial<DeviceLayoutConfig>>;
+  /**
+   * Shortcuts-row buttons, keyed by device id. Deliberately a sibling of
+   * `layouts`: the layout chain inherits default -> device, while shortcut
+   * buttons are strictly per-device with no inheritance.
+   */
+  shortcuts?: Record<string, DeviceShortcutsConfig>;
 }
 
 /**

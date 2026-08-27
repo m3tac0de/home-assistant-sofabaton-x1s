@@ -153,6 +153,19 @@ const REMOTE_CARD_STRINGS_NL = {
     mediaControls: "Mediabediening",
     dvr: "DVR",
     resetDefaultLayout: "Indeling resetten",
+    shortcutsTitle: "Snelkoppelingen",
+    shortcutsDescription:
+      "Maximaal drie knoppen met een zelfgekozen pictogram en commando. Alleen geconfigureerde knoppen verschijnen op de afstandsbediening.",
+    shortcutSlotLeft: "Linker snelkoppeling",
+    shortcutSlotMiddle: "Middelste snelkoppeling",
+    shortcutSlotRight: "Rechter snelkoppeling",
+    shortcutIcon: "Pictogram",
+    shortcutCommand: "Commando",
+    shortcutReset: "Resetten",
+    shortcutCommandMissing: (id: number | string) => `Commando ${id} (ontbreekt)`,
+    shortcutsCommandsLoading: "Commando's laden…",
+    shortcutsCommandsUnavailable:
+      "De commando's van dit apparaat zijn niet beschikbaar. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel.",
     noteDefaultLayout: "Gebruikt voor activiteiten zonder eigen indeling",
     noteDeviceDefaultLayout: "Gebruikt voor apparaten zonder eigen indeling",
     noteCustomActivityLayout: "Aangepaste activiteitenindeling in gebruik",
@@ -171,6 +184,7 @@ const REMOTE_CARD_STRINGS_NL = {
     media: "Mediabediening",
     colors: "Kleurknoppen",
     abc: "A/B/C",
+    shortcuts: "Snelkoppelingen",
   },
   keys: {
     up: "Omhoog",

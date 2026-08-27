@@ -150,6 +150,19 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     mediaControls: "媒体控件",
     dvr: "DVR",
     resetDefaultLayout: "重置布局",
+    shortcutsTitle: "快捷按键",
+    shortcutsDescription:
+      "最多三个按键，可自选图标和命令。只有已配置的按键才会显示在遥控器上。",
+    shortcutSlotLeft: "左侧快捷按键",
+    shortcutSlotMiddle: "中间快捷按键",
+    shortcutSlotRight: "右侧快捷按键",
+    shortcutIcon: "图标",
+    shortcutCommand: "命令",
+    shortcutReset: "重置",
+    shortcutCommandMissing: (id: number | string) => `命令 ${id}（缺失）`,
+    shortcutsCommandsLoading: "正在加载命令…",
+    shortcutsCommandsUnavailable:
+      "无法获取该设备的命令。请在 Sofabaton 控制面板的 Hub 标签页中刷新该设备。",
     noteDefaultLayout: "用于没有单独布局的活动",
     noteDeviceDefaultLayout: "用于没有单独布局的设备",
     noteCustomActivityLayout: "正在使用自定义活动布局",
@@ -168,6 +181,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     media: "媒体控件",
     colors: "彩色按键",
     abc: "A/B/C",
+    shortcuts: "快捷按键",
   },
   keys: {
     up: "上",

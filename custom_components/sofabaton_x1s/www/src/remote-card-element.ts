@@ -9,6 +9,8 @@ import { LitElement, html, nothing, css, unsafeCSS, type PropertyValues } from "
 import { repeat } from "lit/directives/repeat.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import {
+  SHORTCUT_SLOTS,
+  deviceShortcutsFromConfig,
   favoritesButtonEnabled,
   macrosButtonEnabled,
   mfAsRows,
@@ -16,6 +18,7 @@ import {
   normalizedGroupOrder,
   keyStyleFromConfig,
   powerButtonEnabled,
+  shortcutsRowEnabled,
   tintedPanelsFromConfig,
 } from "./remote-card-layout";
 import { ensureHaElements } from "./remote-card-compat";
@@ -50,8 +53,10 @@ import {
   renderMedia,
   renderMid,
   renderNavRow,
+  renderShortcutsRow,
   type KeyGroupsParams,
   type KeySpec,
+  type ShortcutsRowSlot,
 } from "./sections/key-groups";
 import {
   renderCommandsDrawer,
@@ -962,6 +967,38 @@ export class SofabatonRemoteCard extends LitElement {
       },
     };
 
+    // Shortcuts row (shortcuts-row-plan.md): per-device configured slots.
+    // Live mode renders only when at least one slot is configured; the edit
+    // preview always renders it (ghost slots) so the group's position and
+    // toggle visualize like every other layout row. A configured command id
+    // that has vanished from the keymap renders disabled, not hidden.
+    const shortcutConfigs = deviceMode
+      ? deviceShortcutsFromConfig(store.config, derived.deviceId)
+      : {};
+    const shortcutSlots: ShortcutsRowSlot[] = SHORTCUT_SLOTS.map((slot) => {
+      const config = shortcutConfigs[slot];
+      if (!config) {
+        return { slot, icon: null, label: "", commandId: null, missing: false };
+      }
+      const keymapCommands =
+        derived.keymapEntry?.status === "ready" ? derived.keymapEntry.commands : null;
+      const match = keymapCommands?.find(
+        (command) => command.command_id === config.command_id,
+      );
+      return {
+        slot,
+        icon: config.icon,
+        label: match?.name ?? str().assist.commandFallback(config.command_id),
+        commandId: config.command_id,
+        missing: keymapCommands != null && !match,
+      };
+    });
+    const shortcutsConfigured = shortcutSlots.some((slot) => slot.icon != null);
+    const shortcutsVisible =
+      deviceMode &&
+      shortcutsRowEnabled(layoutConfig) &&
+      (shortcutsConfigured || this._editMode);
+
     const commandsParams = {
       visible: showCommandsDrawer,
       open: store.activeDrawer === "commands",
@@ -1102,6 +1139,16 @@ export class SofabatonRemoteCard extends LitElement {
       media: () => renderMedia(keyParams, mediaEnabled),
       colors: () => renderColors(keyParams, Boolean(layoutConfig.show_colors)),
       abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2),
+      shortcuts: () =>
+        renderShortcutsRow(
+          {
+            editMode: this._editMode,
+            disableAll,
+            slots: shortcutSlots,
+            onPress: (slot) => this._onShortcutPress(slot),
+          },
+          shortcutsVisible,
+        ),
     };
 
     const warnText = derived.isUnavailable
@@ -1158,6 +1205,23 @@ export class SofabatonRemoteCard extends LitElement {
     }
     this._store.triggerCommandPulse();
     void this._store.sendCommand(spec.cmd, targetDeviceId);
+  }
+
+  private _onShortcutPress(slot: ShortcutsRowSlot): void {
+    if (slot.commandId == null) return;
+    const deviceId = this._store.currentDeviceId();
+    if (deviceId == null) return;
+    this._assist.recordClick({
+      label: slot.label,
+      commandId: slot.commandId,
+      deviceId,
+      commandType: "favorite",
+      icon: slot.icon,
+      deviceMode: true,
+      deviceName: this._store.deviceNameForId(deviceId),
+    });
+    this._store.triggerCommandPulse();
+    void this._store.sendCommand(slot.commandId, deviceId);
   }
 
   private _onCommandItem(command: { command_id: number; name: string }): void {

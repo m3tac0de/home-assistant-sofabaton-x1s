@@ -166,6 +166,19 @@ export const REMOTE_CARD_STRINGS_AR = {
     mediaControls: "أزرار تشغيل الوسائط",
     dvr: DVR,
     resetDefaultLayout: "إعادة ضبط التخطيط",
+    shortcutsTitle: "الاختصارات",
+    shortcutsDescription:
+      "حتى ثلاثة أزرار بأيقونة وأمر من اختيارك. تظهر الأزرار المهيّأة فقط على جهاز التحكم.",
+    shortcutSlotLeft: "الاختصار الأيسر",
+    shortcutSlotMiddle: "الاختصار الأوسط",
+    shortcutSlotRight: "الاختصار الأيمن",
+    shortcutIcon: "الأيقونة",
+    shortcutCommand: "الأمر",
+    shortcutReset: "إعادة الضبط",
+    shortcutCommandMissing: (id: number | string) => `الأمر ${id} (مفقود)`,
+    shortcutsCommandsLoading: "جارٍ تحميل الأوامر…",
+    shortcutsCommandsUnavailable:
+      "أوامر هذا الجهاز غير متاحة. حدِّث الجهاز من تبويب Hub في لوحة تحكم Sofabaton.",
     noteDefaultLayout: "يُستخدم للأنشطة التي ليس لها تخطيط خاص",
     noteDeviceDefaultLayout: "يُستخدم للأجهزة التي ليس لها تخطيط خاص",
     noteCustomActivityLayout: "تخطيط أنشطة مخصّص قيد الاستخدام",
@@ -184,6 +197,7 @@ export const REMOTE_CARD_STRINGS_AR = {
     media: "أزرار تشغيل الوسائط",
     colors: "أزرار الألوان",
     abc: ABC,
+    shortcuts: "الاختصارات",
   },
   keys: {
     up: "أعلى",

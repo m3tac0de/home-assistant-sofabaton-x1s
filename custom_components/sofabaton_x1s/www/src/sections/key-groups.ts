@@ -170,6 +170,66 @@ export function renderMedia(params: KeyGroupsParams, visible: boolean): Template
   return html`<div class=${className}>${MEDIA_KEYS.map((k) => renderKey(params, k))}</div>`;
 }
 
+/** One Shortcuts-row slot as the renderer sees it (fixed left/middle/right order). */
+export interface ShortcutsRowSlot {
+  slot: "left" | "middle" | "right";
+  /** null = unconfigured (spacer in live mode, ghost in edit mode). */
+  icon: string | null;
+  /** Command name (aria label / assist label); "" when unresolved. */
+  label: string;
+  commandId: number | null;
+  /** Command id no longer in the device keymap: rendered disabled, not hidden. */
+  missing: boolean;
+}
+
+export interface ShortcutsRowParams {
+  editMode: boolean;
+  disableAll: boolean;
+  slots: ShortcutsRowSlot[];
+  onPress: (slot: ShortcutsRowSlot) => void;
+}
+
+/**
+ * Device-mode Shortcuts row: styled exactly like the nav row (row3 +
+ * sb-key-button). Unconfigured slots hold their grid cell so configured
+ * buttons keep the position they would have in a full row; in edit mode
+ * they render as ghost outlines so the editor preview visualizes the row
+ * even before any slot is configured. No hold-to-repeat by design.
+ */
+export function renderShortcutsRow(
+  params: ShortcutsRowParams,
+  visible: boolean,
+): TemplateResult | typeof nothing {
+  if (!visible) return nothing;
+  return html`
+    <div class="row3 shortcuts">
+      ${params.slots.map((slot) => {
+        if (slot.icon == null) {
+          return html`
+            <div
+              class="key key--normal ${params.editMode ? "shortcut-ghost" : "shortcut-spacer"}"
+              aria-hidden="true"
+            ></div>
+          `;
+        }
+        const enabled = !params.disableAll && (params.editMode || !slot.missing);
+        return html`
+          <sb-key-button
+            class="key key--normal shortcut-key${enabled ? "" : " disabled"}"
+            .label=${""}
+            .icon=${slot.icon}
+            .accessibilityLabel=${slot.label}
+            .sizeVar=${"--sb-key-font-size"}
+            .disabled=${!enabled}
+            .holdRepeat=${false}
+            .onTrigger=${() => params.onPress(slot)}
+          ></sb-key-button>
+        `;
+      })}
+    </div>
+  `;
+}
+
 export function renderColors(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
   if (!visible) return nothing;
   return html`
