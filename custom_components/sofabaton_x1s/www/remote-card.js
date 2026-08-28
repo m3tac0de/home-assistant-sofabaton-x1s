@@ -7195,7 +7195,18 @@ var CONTROL_CSS = `
     z-index: 1;
   }
 
+  /* A trailing affordance must not take width away from the label. Keep it
+     pinned to the logical inline end (right in LTR, left in RTL), while the
+     label reserves only the icon's footprint inside its own full-width box. */
+  .sb-key-control__trailing-icon {
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
   .sb-key-control__label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7204,6 +7215,12 @@ var CONTROL_CSS = `
     /* Text on keys reads as part of the same control language as the
        icons, so it shares their colour (the icon rule above). */
     color: var(--sb-key-label-color, var(--primary-color));
+  }
+
+  .sb-key-control--with-trailing-icon .sb-key-control__label {
+    box-sizing: border-box;
+    width: 100%;
+    padding-inline-end: 1.2em;
   }
 
   [hidden] {
@@ -7350,6 +7367,10 @@ var SbKeyButton = class extends BaseElement {
       this._trailingIconEl.removeAttribute("icon");
       this._trailingIconEl.hidden = true;
     }
+    this._control.classList.toggle(
+      "sb-key-control--with-trailing-icon",
+      Boolean(this._trailingIcon)
+    );
     this._labelEl.textContent = this._label;
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(

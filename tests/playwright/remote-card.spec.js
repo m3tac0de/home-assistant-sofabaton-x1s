@@ -201,6 +201,55 @@ test.describe("remote card playwright harness", () => {
     expect(drawerLabelsContained).toBe(true);
   });
 
+  test("keeps narrow drawer tabs readable with the chevron at the logical inline end", async ({ page }) => {
+    await mountCard(page, "active", { max_width: 230 });
+    await page.locator("#mount").evaluate((mount) => {
+      mount.style.width = "230px";
+    });
+
+    const tabGeometry = () => page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      const host = card.shadowRoot.querySelector(".macroFavoritesButton:nth-child(2)");
+      const control = host.shadowRoot.querySelector(".sb-key-control");
+      const label = host.shadowRoot.querySelector(".sb-key-control__label");
+      const icon = host.shadowRoot.querySelector(".sb-key-control__trailing-icon");
+      const textRange = document.createRange();
+      textRange.selectNodeContents(label);
+      const text = textRange.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        direction: getComputedStyle(control).direction,
+        labelClipped: label.scrollWidth > label.clientWidth + 0.5,
+        iconName: icon.getAttribute("icon"),
+        textLeft: text.left,
+        textRight: text.right,
+        iconLeft: iconRect.left,
+        iconRight: iconRect.right,
+      };
+    });
+
+    const ltr = await tabGeometry();
+    expect(ltr.direction).toBe("ltr");
+    expect(ltr.labelClipped).toBe(false);
+    expect(ltr.iconName).toBe("mdi:chevron-right");
+    expect(ltr.iconLeft).toBeGreaterThanOrEqual(ltr.textRight - 0.5);
+
+    await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      card.hass = {
+        ...card.hass,
+        locale: { language: "ar-SA" },
+      };
+    });
+    await expect(page.locator("sofabaton-virtual-remote")).toHaveAttribute("dir", "rtl");
+
+    const rtl = await tabGeometry();
+    expect(rtl.direction).toBe("rtl");
+    expect(rtl.labelClipped).toBe(false);
+    expect(rtl.iconName).toBe("mdi:chevron-left");
+    expect(rtl.iconRight).toBeLessThanOrEqual(rtl.textLeft + 0.5);
+  });
+
   test("applies the selected theme radius to groups, keys, and drawer buttons", async ({ page }) => {
     await mountCard(page, "active", { theme: "Harness Square" });
     await page.locator(".macroFavoritesButton").first().click();
