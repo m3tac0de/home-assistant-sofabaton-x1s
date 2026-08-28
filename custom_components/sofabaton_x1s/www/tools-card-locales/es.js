@@ -717,7 +717,7 @@ var TOOLS_CARD_STRINGS_ES = {
   },
   decodedPayload: {
     httpTitle: "Solicitud HTTP",
-    httpSubtitle: "Los cambios se reproducen mediante el escritor Wifi_ip del hub. El host, el puerto y Content-Length se deducen; no se configuran aqu\xED.",
+    httpSubtitle: "Los cambios se reproducen mediante el escritor wifi_ip del hub. El host, el puerto y Content-Length se deducen; no se configuran aqu\xED.",
     hostIpv4: "Host (IPv4)",
     hostExample: "p. ej., 192.168.2.77",
     port: "Puerto",

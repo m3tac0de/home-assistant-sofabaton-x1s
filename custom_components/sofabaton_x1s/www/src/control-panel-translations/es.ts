@@ -301,7 +301,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     },
   },
   decodedPayload: {
-    httpTitle: "Solicitud HTTP", httpSubtitle: "Los cambios se reproducen mediante el escritor Wifi_ip del hub. El host, el puerto y Content-Length se deducen; no se configuran aquí.",
+    httpTitle: "Solicitud HTTP", httpSubtitle: "Los cambios se reproducen mediante el escritor wifi_ip del hub. El host, el puerto y Content-Length se deducen; no se configuran aquí.",
     hostIpv4: "Host (IPv4)", hostExample: "p. ej., 192.168.2.77", port: "Puerto", httpMethod: "Método HTTP", httpMethodExample: "p. ej., GET, POST", path: "Ruta", extraHeaders: "Encabezados adicionales",
     extraHeadersHelper: "Un encabezado por línea. Host y Content-Length se añaden automáticamente.", contentType: "Tipo de contenido", body: "Cuerpo", rokuTitle: "Solicitud Roku ECP", ecpPath: "Ruta URL de ECP",
     ecpPathExample: "p. ej., /launch/12 o /keypress/Home", hueTitle: "Solicitud REST de Hue", sonosTitle: "Solicitud UPnP de Sonos", bodyBlockSubtitle: "El bloque del cuerpo se inserta sin cambios entre los encabezados Host y la escritura de red.",

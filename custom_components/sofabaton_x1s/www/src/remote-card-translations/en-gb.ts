@@ -8,7 +8,7 @@ import { registerRemoteCardTranslation } from "../remote-card-strings";
 
 registerRemoteCardTranslation("en-gb", {
   card: {
-    favoritesTab: "Favourites >",
+    favoritesTab: "Favourites",
     noFavorites: "No favourites available",
   },
   editor: {

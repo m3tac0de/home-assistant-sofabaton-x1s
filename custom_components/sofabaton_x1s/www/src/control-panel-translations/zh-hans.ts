@@ -311,7 +311,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiEventDeploying: "正在暂存 Wifi 事件…",
     wifiEventNoneYet: "暂无 Wifi 事件。请在下方新建。",
     wifiEventNeedsSync: (name: string) => `${name}（需要同步）`,
-    wifiEventCreateFailed: "无法创建 Wifi 事件。事件会保持暂存，并在下次同步时重试。",
+    wifiEventCreateFailed: "无法创建 Wifi 事件。事件会保持暂存，并在下次创建时重试。",
     wifiEventNameRequired: "请输入新 Wifi 事件的名称。",
     wifiEventBindingLongPressNote: "长按会触发此事件的长按动作。请在“自动化 → 事件”中进行设置。",
     macroTargetNoExisting: "暂无宏。请在下方新建。", addShortcutActionName: "名称", addShortcutActionHelper: "接下来选择步骤。", addShortcutCommandHelper: "快捷项将以命令名称显示。",

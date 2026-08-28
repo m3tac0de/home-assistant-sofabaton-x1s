@@ -926,9 +926,9 @@ var REMOTE_CARD_STRINGS_EN = {
     noMacros: "No macros available",
     noFavorites: "No favorites available",
     noCommands: "No commands available",
-    macrosTab: "Macros >",
-    favoritesTab: "Favorites >",
-    commandsTab: "Commands >",
+    macrosTab: "Macros",
+    favoritesTab: "Favorites",
+    commandsTab: "Commands",
     powerButton: "Toggle power",
     activitySelectLabel: "Activity",
     deviceSelectLabel: "Device",
@@ -7180,7 +7180,8 @@ var CONTROL_CSS = `
     cursor: default;
   }
 
-  .sb-key-control__icon {
+  .sb-key-control__icon,
+  .sb-key-control__trailing-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -7230,9 +7231,11 @@ var SbKeyButton = class extends BaseElement {
     super(...arguments);
     this._control = null;
     this._iconEl = null;
+    this._trailingIconEl = null;
     this._labelEl = null;
     this._label = "";
     this._icon = null;
+    this._trailingIcon = null;
     this._accessibilityLabel = "";
     this._color = null;
     this._sizeVar = null;
@@ -7255,6 +7258,10 @@ var SbKeyButton = class extends BaseElement {
   }
   set icon(value) {
     this._icon = value ? String(value) : null;
+    this.syncContent();
+  }
+  set trailingIcon(value) {
+    this._trailingIcon = value ? String(value) : null;
     this.syncContent();
   }
   set accessibilityLabel(value) {
@@ -7328,13 +7335,20 @@ var SbKeyButton = class extends BaseElement {
     if (ev.type !== "pointerup") this._hold.consumeFired();
   }
   syncContent() {
-    if (!this._control || !this._iconEl || !this._labelEl) return;
+    if (!this._control || !this._iconEl || !this._trailingIconEl || !this._labelEl) return;
     if (this._icon) {
       this._iconEl.setAttribute("icon", this._icon);
       this._iconEl.hidden = false;
     } else {
       this._iconEl.removeAttribute("icon");
       this._iconEl.hidden = true;
+    }
+    if (this._trailingIcon) {
+      this._trailingIconEl.setAttribute("icon", this._trailingIcon);
+      this._trailingIconEl.hidden = false;
+    } else {
+      this._trailingIconEl.removeAttribute("icon");
+      this._trailingIconEl.hidden = true;
     }
     this._labelEl.textContent = this._label;
     this._labelEl.hidden = !this._label;
@@ -7356,10 +7370,13 @@ var SbKeyButton = class extends BaseElement {
     icon.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
-    control.append(icon, label);
+    const trailingIcon = document.createElement("ha-icon");
+    trailingIcon.className = "sb-key-control__trailing-icon";
+    control.append(icon, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
     this._iconEl = icon;
+    this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
     this.addEventListener("pointerdown", (ev) => this.onHoldPointerDown(ev), {
@@ -7657,12 +7674,16 @@ function renderTab(_params, label, visible, active, disabled, onClick) {
       class=${classes}
       .label=${label}
       .icon=${null}
+      .trailingIcon=${drawerTabChevronIcon()}
       .accessibilityLabel=${label}
       .sizeVar=${"--sb-tab-font-size"}
       .disabled=${disabled}
       .onTrigger=${onClick}
     ></sb-key-button>
   `;
+}
+function drawerTabChevronIcon() {
+  return remoteCardDirection() === "rtl" ? "mdi:chevron-left" : "mdi:chevron-right";
 }
 function rowRadiusStyle(anyOpen, up) {
   const r6 = "var(--sb-group-radius)";
@@ -8871,9 +8892,9 @@ var REMOTE_CARD_STRINGS_AR = {
     noMacros: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0648\u062D\u062F\u0627\u062A \u0645\u0627\u0643\u0631\u0648",
     noFavorites: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0645\u0641\u0636\u0644\u0627\u062A",
     noCommands: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0623\u0648\u0627\u0645\u0631",
-    macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u2039",
-    favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u2039",
-    commandsTab: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u2039",
+    macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
+    commandsTab: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     powerButton: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062A\u0634\u063A\u064A\u0644/\u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     activitySelectLabel: "\u0627\u0644\u0646\u0634\u0627\u0637",
     deviceSelectLabel: "\u0627\u0644\u062C\u0647\u0627\u0632",
@@ -9059,7 +9080,7 @@ registerRemoteCardTranslation("ar", REMOTE_CARD_STRINGS_AR);
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/en-gb.ts
 registerRemoteCardTranslation("en-gb", {
   card: {
-    favoritesTab: "Favourites >",
+    favoritesTab: "Favourites",
     noFavorites: "No favourites available"
   },
   editor: {
@@ -9087,9 +9108,9 @@ var REMOTE_CARD_STRINGS_DE = {
     noMacros: "Keine Makros verf\xFCgbar",
     noFavorites: "Keine Favoriten verf\xFCgbar",
     noCommands: "Keine Befehle verf\xFCgbar",
-    macrosTab: "Makros >",
-    favoritesTab: "Favoriten >",
-    commandsTab: "Befehle >",
+    macrosTab: "Makros",
+    favoritesTab: "Favoriten",
+    commandsTab: "Befehle",
     powerButton: "Ein-/Ausschalten",
     activitySelectLabel: "Aktivit\xE4t",
     deviceSelectLabel: "Ger\xE4t",
@@ -9282,9 +9303,9 @@ var REMOTE_CARD_STRINGS_ES = {
     noMacros: "No hay macros disponibles",
     noFavorites: "No hay favoritos disponibles",
     noCommands: "No hay comandos disponibles",
-    macrosTab: "Macros >",
-    favoritesTab: "Favoritos >",
-    commandsTab: "Comandos >",
+    macrosTab: "Macros",
+    favoritesTab: "Favoritos",
+    commandsTab: "Comandos",
     powerButton: "Alternar encendido/apagado",
     activitySelectLabel: "Actividad",
     deviceSelectLabel: "Dispositivo",
@@ -9468,7 +9489,7 @@ var REMOTE_CARD_STRINGS_ES = {
 registerRemoteCardTranslation("es", REMOTE_CARD_STRINGS_ES);
 
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/fr.ts
-var plural2 = (count, singular, pluralForm = `${singular}s`) => count === 1 ? singular : pluralForm;
+var plural2 = (count, singular, pluralForm = `${singular}s`) => count > 1 ? pluralForm : singular;
 var REMOTE_CARD_STRINGS_FR = {
   card: {
     selectEntityError: "S\xE9lectionnez une entit\xE9 de t\xE9l\xE9commande Sofabaton",
@@ -9477,9 +9498,9 @@ var REMOTE_CARD_STRINGS_FR = {
     noMacros: "Aucune macro disponible",
     noFavorites: "Aucun favori disponible",
     noCommands: "Aucune commande disponible",
-    macrosTab: "Macros >",
-    favoritesTab: "Favoris >",
-    commandsTab: "Commandes >",
+    macrosTab: "Macros",
+    favoritesTab: "Favoris",
+    commandsTab: "Commandes",
     powerButton: "Basculer marche/arr\xEAt",
     activitySelectLabel: "Activit\xE9",
     deviceSelectLabel: "Appareil",
@@ -9671,9 +9692,9 @@ var REMOTE_CARD_STRINGS_NL = {
     noMacros: "Geen macro's beschikbaar",
     noFavorites: "Geen favorieten beschikbaar",
     noCommands: "Geen commando's beschikbaar",
-    macrosTab: "Macro's >",
-    favoritesTab: "Favorieten >",
-    commandsTab: "Commando's >",
+    macrosTab: "Macro's",
+    favoritesTab: "Favorieten",
+    commandsTab: "Commando's",
     powerButton: "In-/uitschakelen",
     activitySelectLabel: "Activiteit",
     deviceSelectLabel: "Apparaat",
@@ -9865,9 +9886,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     noMacros: "\u6CA1\u6709\u53EF\u7528\u7684\u5B8F",
     noFavorites: "\u6CA1\u6709\u53EF\u7528\u7684\u6536\u85CF",
     noCommands: "\u6CA1\u6709\u53EF\u7528\u547D\u4EE4",
-    macrosTab: "\u5B8F >",
-    favoritesTab: "\u6536\u85CF >",
-    commandsTab: "\u547D\u4EE4 >",
+    macrosTab: "\u5B8F",
+    favoritesTab: "\u6536\u85CF",
+    commandsTab: "\u547D\u4EE4",
     powerButton: "\u5207\u6362\u7535\u6E90",
     activitySelectLabel: "\u6D3B\u52A8",
     deviceSelectLabel: "\u8BBE\u5907",

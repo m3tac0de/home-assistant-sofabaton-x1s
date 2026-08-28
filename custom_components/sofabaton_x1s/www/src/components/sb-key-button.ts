@@ -90,7 +90,8 @@ const CONTROL_CSS = `
     cursor: default;
   }
 
-  .sb-key-control__icon {
+  .sb-key-control__icon,
+  .sb-key-control__trailing-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -152,9 +153,11 @@ const BaseElement: typeof HTMLElement =
 export class SbKeyButton extends BaseElement {
   private _control: HTMLButtonElement | null = null;
   private _iconEl: HTMLElement | null = null;
+  private _trailingIconEl: HTMLElement | null = null;
   private _labelEl: HTMLSpanElement | null = null;
   private _label = "";
   private _icon: string | null = null;
+  private _trailingIcon: string | null = null;
   private _accessibilityLabel = "";
   private _color: string | null = null;
   private _sizeVar: string | null = null;
@@ -179,6 +182,11 @@ export class SbKeyButton extends BaseElement {
 
   set icon(value: string | null) {
     this._icon = value ? String(value) : null;
+    this.syncContent();
+  }
+
+  set trailingIcon(value: string | null) {
+    this._trailingIcon = value ? String(value) : null;
     this.syncContent();
   }
 
@@ -272,7 +280,7 @@ export class SbKeyButton extends BaseElement {
   }
 
   private syncContent(): void {
-    if (!this._control || !this._iconEl || !this._labelEl) return;
+    if (!this._control || !this._iconEl || !this._trailingIconEl || !this._labelEl) return;
 
     if (this._icon) {
       this._iconEl.setAttribute("icon", this._icon);
@@ -280,6 +288,14 @@ export class SbKeyButton extends BaseElement {
     } else {
       this._iconEl.removeAttribute("icon");
       this._iconEl.hidden = true;
+    }
+
+    if (this._trailingIcon) {
+      this._trailingIconEl.setAttribute("icon", this._trailingIcon);
+      this._trailingIconEl.hidden = false;
+    } else {
+      this._trailingIconEl.removeAttribute("icon");
+      this._trailingIconEl.hidden = true;
     }
 
     this._labelEl.textContent = this._label;
@@ -306,11 +322,14 @@ export class SbKeyButton extends BaseElement {
     icon.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
+    const trailingIcon = document.createElement("ha-icon");
+    trailingIcon.className = "sb-key-control__trailing-icon";
 
-    control.append(icon, label);
+    control.append(icon, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
     this._iconEl = icon;
+    this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
 

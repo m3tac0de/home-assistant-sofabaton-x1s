@@ -124,6 +124,84 @@ test("Spanish power section labels describe both on and off behavior", () => {
   setToolsCardLanguage("en");
 });
 
+test("correctness-sensitive translations preserve runtime meaning and protocol identifiers", () => {
+  setToolsCardLanguage("zh-Hans");
+  assert.equal(
+    TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed,
+    "无法创建 Wifi 事件。事件会保持暂存，并在下次创建时重试。",
+  );
+
+  setToolsCardLanguage("es");
+  assert.match(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /\bwifi_ip\b/);
+  assert.doesNotMatch(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /Wifi_ip/);
+
+  setToolsCardLanguage("nl");
+  assert.equal(TOOLS_CARD_STRINGS.wifiCommands.clearSlotSubtitle, "De configuratie wordt gewist.");
+  assert.deepEqual(
+    [
+      TOOLS_CARD_STRINGS.backendState.operationBackup,
+      TOOLS_CARD_STRINGS.backendState.operationRestore,
+      TOOLS_CARD_STRINGS.backendState.operationCacheRefresh,
+      TOOLS_CARD_STRINGS.backendState.operationEntitySync,
+      TOOLS_CARD_STRINGS.backendState.operationWifiDeploy,
+    ],
+    [
+      "Back-up wordt gemaakt",
+      "Back-up wordt hersteld",
+      "Hubcache wordt vernieuwd",
+      "Synchronisatie met hub wordt uitgevoerd",
+      "Wifi Commands worden gesynchroniseerd",
+    ],
+  );
+
+  setToolsCardLanguage("en");
+});
+
+test("French zero counts use the singular category", () => {
+  setToolsCardLanguage("fr");
+
+  assert.deepEqual(
+    [
+      TOOLS_CARD_STRINGS.backup.selectedCount(0),
+      TOOLS_CARD_STRINGS.backup.backupResultSummary(0, 0),
+      TOOLS_CARD_STRINGS.backup.activityMeta(0, 0),
+      TOOLS_CARD_STRINGS.backup.deleteImpactActivities(0),
+      TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(0),
+      TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(0),
+      TOOLS_CARD_STRINGS.backup.deleteImpactPowerSteps(0),
+      TOOLS_CARD_STRINGS.backup.deleteImpactBindings(0),
+      TOOLS_CARD_STRINGS.backup.macroStepsCount(0),
+      TOOLS_CARD_STRINGS.backup.roleMappedNote(0, 3),
+      TOOLS_CARD_STRINGS.backup.bindingsConfiguredCount(0),
+      TOOLS_CARD_STRINGS.wifiCommands.configuredSlots(0),
+      TOOLS_CARD_STRINGS.wifiCommands.inActivities(0),
+      TOOLS_CARD_STRINGS.wifiCommands.eventsConfiguredPill(0, 3),
+      TOOLS_CARD_STRINGS.wifiCommands.eventsShowUnconfigured(0),
+      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(0, 0, 0),
+    ],
+    [
+      "0 sélectionné",
+      "Sauvegarde de 0 activité et 0 appareil",
+      "0 favori · 0 macro",
+      "0 activité y fait référence",
+      "0 raccourci sera supprimé",
+      "0 étape de séquence sera supprimée",
+      "0 étape de marche/arrêt sera effacée",
+      "0 attribution de touche sera effacée",
+      "0 étape",
+      "0 touche attribuée sur 3",
+      "0 configurée",
+      "0 emplacement",
+      "dans 0 activité",
+      "0 sur 3 configuré",
+      "Afficher 0 non configuré…",
+      "Le hub supprimera aussi 0 raccourci et 0 attribution de touche qui y font référence ; l’étape est retirée de 0 macro (une macro sans étapes est supprimée).",
+    ],
+  );
+
+  setToolsCardLanguage("en");
+});
+
 test("bundled Simplified Chinese control-panel translation supports zh-Hans", () => {
   setToolsCardLanguage("zh-Hans");
 
@@ -463,7 +541,7 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 touche attribuée sur 2",
         "1 configurée",
         "2 configurées",
-        "Le hub supprimera aussi 1 raccourci et 0 attributions de touches qui y font référence ; l’étape est retirée de 1 macro (une macro sans étapes est supprimée).",
+        "Le hub supprimera aussi 1 raccourci et 0 attribution de touche qui y font référence ; l’étape est retirée de 1 macro (une macro sans étapes est supprimée).",
         "Le hub supprimera aussi 2 raccourcis et 2 attributions de touches qui y font référence ; l’étape est retirée de 2 macros (une macro sans étapes est supprimée).",
       ],
     },

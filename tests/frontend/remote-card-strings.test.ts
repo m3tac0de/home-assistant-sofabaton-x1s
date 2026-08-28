@@ -10,6 +10,7 @@ import {
   str,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../custom_components/sofabaton_x1s/www/src/remote-card-state";
+import { drawerTabChevronIcon } from "../../custom_components/sofabaton_x1s/www/src/sections/macro-favorites";
 import { TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import TOOLS_CARD_STRINGS_DE from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
 import TOOLS_CARD_STRINGS_ES from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
@@ -195,9 +196,19 @@ test("Arabic and regional Arabic locales select right-to-left direction", () => 
   setRemoteCardLanguage("ar-SA");
   assert.equal(remoteCardLanguage(), "ar-sa");
   assert.equal(remoteCardDirection(), "rtl");
+  assert.equal(drawerTabChevronIcon(), "mdi:chevron-left");
+  assert.deepEqual(
+    [str().card.macrosTab, str().card.favoritesTab, str().card.commandsTab],
+    ["وحدات الماكرو", "المفضلات", "الأوامر"],
+  );
 
   setRemoteCardLanguage("en-GB");
   assert.equal(remoteCardDirection(), "ltr");
+  assert.equal(drawerTabChevronIcon(), "mdi:chevron-right");
+  assert.deepEqual(
+    [str().card.macrosTab, str().card.favoritesTab, str().card.commandsTab],
+    ["Macros", "Favourites", "Commands"],
+  );
   setRemoteCardLanguage("en");
 });
 
@@ -284,6 +295,10 @@ test("bundled French translation supports regional locales and inflection", () =
   assert.equal(
     str().assist.createdTriggers(1, "Téléviseur"),
     "1 déclencheur MQTT Discovery créé pour Téléviseur",
+  );
+  assert.equal(
+    str().assist.createdTriggers(0, "Téléviseur"),
+    "0 déclencheur MQTT Discovery créé pour Téléviseur",
   );
   assert.equal(
     str().assist.createdTriggers(2, "Téléviseur"),

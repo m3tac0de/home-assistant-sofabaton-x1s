@@ -10,7 +10,7 @@ import {
 } from "../remote-card-strings";
 
 const plural = (count: number, singular: string, pluralForm = `${singular}s`) =>
-  count === 1 ? singular : pluralForm;
+  count > 1 ? pluralForm : singular;
 
 export const REMOTE_CARD_STRINGS_FR = {
   card: {
@@ -22,9 +22,9 @@ export const REMOTE_CARD_STRINGS_FR = {
     noMacros: "Aucune macro disponible",
     noFavorites: "Aucun favori disponible",
     noCommands: "Aucune commande disponible",
-    macrosTab: "Macros >",
-    favoritesTab: "Favoris >",
-    commandsTab: "Commandes >",
+    macrosTab: "Macros",
+    favoritesTab: "Favoris",
+    commandsTab: "Commandes",
     powerButton: "Basculer marche/arrêt",
     activitySelectLabel: "Activité",
     deviceSelectLabel: "Appareil",

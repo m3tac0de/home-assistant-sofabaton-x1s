@@ -10,7 +10,7 @@ import {
   customFavoriteButtonModel,
   drawerButtonModel,
 } from "../remote-card-render-models";
-import { str } from "../remote-card-strings";
+import { remoteCardDirection, str } from "../remote-card-strings";
 import { primaryActionRef } from "./wire";
 import "../components/sb-key-button";
 
@@ -179,12 +179,17 @@ function renderTab(
       class=${classes}
       .label=${label}
       .icon=${null}
+      .trailingIcon=${drawerTabChevronIcon()}
       .accessibilityLabel=${label}
       .sizeVar=${"--sb-tab-font-size"}
       .disabled=${disabled}
       .onTrigger=${onClick}
     ></sb-key-button>
   `;
+}
+
+export function drawerTabChevronIcon(): "mdi:chevron-left" | "mdi:chevron-right" {
+  return remoteCardDirection() === "rtl" ? "mdi:chevron-left" : "mdi:chevron-right";
 }
 
 /** Direction-aware radius so the drawer "connects" to the button row. */
