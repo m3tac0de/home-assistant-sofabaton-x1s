@@ -129,16 +129,23 @@ test.describe("remote card playwright harness", () => {
     await mountCard(page, "active");
 
     const tabLabels = page.locator(".macroFavoritesButton .sb-key-control__label");
-    await expect(tabLabels).toHaveText(["Macros >", "Favorites >"]);
+    await expect(tabLabels).toHaveText(["Macros", "Favorites"]);
 
     const closedGeometry = await page.evaluate(() => {
       const root = document.querySelector("sofabaton-virtual-remote").shadowRoot;
       const metrics = (hostSelector, contentSelector) => {
         const host = root.querySelector(hostSelector);
         const control = host.shadowRoot.querySelector(".sb-key-control");
-        const content = host.shadowRoot.querySelector(contentSelector);
+        const content = [...host.shadowRoot.querySelectorAll(contentSelector)]
+          .filter((element) => !element.hidden);
         const outer = control.getBoundingClientRect();
-        const inner = content.getBoundingClientRect();
+        const contentRects = content.map((element) => element.getBoundingClientRect());
+        const inner = {
+          left: Math.min(...contentRects.map((rect) => rect.left)),
+          right: Math.max(...contentRects.map((rect) => rect.right)),
+          top: Math.min(...contentRects.map((rect) => rect.top)),
+          bottom: Math.max(...contentRects.map((rect) => rect.bottom)),
+        };
         return {
           centerX: Math.abs((outer.left + outer.right) / 2 - (inner.left + inner.right) / 2),
           centerY: Math.abs((outer.top + outer.bottom) / 2 - (inner.top + inner.bottom) / 2),
@@ -153,7 +160,7 @@ test.describe("remote card playwright harness", () => {
         upIcon: metrics(".dpad .area-up", "ha-icon"),
         favoritesTab: metrics(
           ".macroFavoritesButton:nth-child(2)",
-          ".sb-key-control__label",
+          ".sb-key-control__label, .sb-key-control__trailing-icon",
         ),
       };
     });
@@ -166,7 +173,7 @@ test.describe("remote card playwright harness", () => {
     expect(closedGeometry.favoritesTab.fullyContained).toBe(true);
 
     await page.locator(".macroFavoritesButton").nth(1).click();
-    await expect(tabLabels).toHaveText(["Macros >", "Favorites >"]);
+    await expect(tabLabels).toHaveText(["Macros", "Favorites"]);
     const favoriteNames = page.locator(".mf-overlay--favorites .drawer-btn .name");
     await expect(favoriteNames).toHaveText([
       "Netflix",
@@ -519,7 +526,9 @@ test.describe("remote card playwright harness", () => {
 
     await expect(page.locator(".macroFavoritesGrid")).toHaveClass(/single/);
     await expect(page.locator(".macroFavoritesButton:visible")).toHaveCount(1);
-    await expect(page.locator(".macroFavoritesButton:visible").first()).toContainText("Macros >");
+    const macrosTab = page.locator(".macroFavoritesButton:visible").first();
+    await expect(macrosTab).toContainText("Macros");
+    await expect(macrosTab.locator('ha-icon[icon="mdi:chevron-right"]')).toHaveCount(1);
   });
 
   test("renders a single favorites tab full width when macros are hidden", async ({ page }) => {
@@ -529,7 +538,9 @@ test.describe("remote card playwright harness", () => {
 
     await expect(page.locator(".macroFavoritesGrid")).toHaveClass(/single/);
     await expect(page.locator(".macroFavoritesButton:visible")).toHaveCount(1);
-    await expect(page.locator(".macroFavoritesButton:visible").first()).toContainText("Favorites >");
+    const favoritesTab = page.locator(".macroFavoritesButton:visible").first();
+    await expect(favoritesTab).toContainText("Favorites");
+    await expect(favoritesTab.locator('ha-icon[icon="mdi:chevron-right"]')).toHaveCount(1);
   });
 
   test("supports moving macro favorites ahead of the activity selector", async ({ page }) => {

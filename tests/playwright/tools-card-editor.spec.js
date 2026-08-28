@@ -177,7 +177,7 @@ test.describe("tools-card activity editor harness", () => {
     assertActivityMembershipInvariant(bundle, 101);
 
     const bindingRow = page.locator('[data-kind="binding"]').filter({ hasText: "Streamer" });
-    await bindingRow.getByRole("button", { name: "Delete binding", exact: true }).click();
+    await bindingRow.getByRole("button", { name: "Delete assignment", exact: true }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
 
     const afterDelete = await page.evaluate(() => window.__toolsCardHarness.getWorkingBundle());

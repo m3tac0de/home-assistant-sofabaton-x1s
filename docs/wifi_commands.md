@@ -53,7 +53,7 @@ Use separate Wifi Devices for logical groups such as lighting scenes and audio p
 Wifi Commands owns the managed device's commands, power/input settings, and button assignments, so those sections are read-only in the live device editor. Two kinds of external change are preserved:
 
 - A device rename in **Hub → Devices → Edit** is copied back into Wifi Commands.
-- Extra references added elsewhere, such as favorites, button bindings, or Activity membership, survive normal in-place syncs.
+- Extra references added elsewhere, such as favorites, button assignments, or Activity membership, survive normal in-place syncs.
 
 ### HTTP and MQTT delivery
 
@@ -99,7 +99,7 @@ A full replacement is required for the first deployment, the first sync of a leg
 Before a replacement or deletion, note that:
 
 - The hub deletes an Activity with no devices. Add another device first or create a backup.
-- Removing a Wifi Command clears its physical-button binding; the previous binding is not restored.
+- Removing a Wifi Command clears its physical-button assignment; the previous assignment is not restored.
 
 Failed first deployments are rolled back. During replacement, the integration verifies the new command table before changing Activities or deleting the old device; failed verification removes the unused replacement and keeps the old device. Interrupted in-place updates are safe to retry.
 
@@ -111,7 +111,7 @@ X1 firmware sends only one power and one Activity-start callback per Activity tr
 
 ## ◇ Wifi Events
 
-A Wifi Event is the editor-native path: start from the place where something should happen, then add a named Home Assistant trigger there. Events can be used in Activity shortcuts, short or long physical-button bindings, macros, startup and shutdown sequences, and Activity inputs. The editor batches the dependent Sofabaton changes when you sync.
+A Wifi Event is the editor-native path: start from the place where something should happen, then add a named Home Assistant trigger there. Events can be used in Activity shortcuts, short- or long-press physical-button assignments, macros, startup and shutdown sequences, and Activity inputs. The editor batches the dependent Sofabaton changes when you sync.
 
 Each hub supports up to **25 Wifi Events** on X1, X1S, and X2.
 
@@ -128,7 +128,7 @@ Leaving without syncing keeps a newly created event but discards its unsynchroni
 
 ### Actions and event maintenance
 
-All staged and deployed events appear under **Automation → Events → Wifi Events**. Configure the short-press Action there; a long-press Action appears after long press is enabled on a physical-button binding. **Needs sync** describes deployment state but does not prevent Action configuration.
+All staged and deployed events appear under **Automation → Events → Wifi Events**. Configure the short-press Action there; a long-press Action appears after long press is enabled on a physical-button assignment. **Needs sync** describes deployment state but does not prevent Action configuration.
 
 All events live on one reserved hub device named **Wifi Events**. It is hidden from the user-managed Wifi Devices list and does not count toward the five-device limit, but appears in the remote's device list and in backups. Wifi Events currently use HTTP on every hub model and therefore need the [shared callback listener](#http-setup).
 

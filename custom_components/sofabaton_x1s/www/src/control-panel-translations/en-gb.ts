@@ -34,13 +34,13 @@ export const TOOLS_CARD_STRINGS_EN_GB = {
     },
   },
   backup: {
-    powerNoDevices: "No devices yet. Add a favourite, binding, or macro that uses one.",
+    powerNoDevices: "No devices yet. Add a favourite, assignment, or macro that uses one.",
     activityMeta: (favourites: number, macros: number) =>
       `${favourites} ${favourites === 1 ? "favourite" : "favourites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name: string) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",
-    renameFavorite: "Rename Favourite",
+    renameFavorite: "Rename favourite",
     buttonCatalog: {
       colour: "Colour",
     },

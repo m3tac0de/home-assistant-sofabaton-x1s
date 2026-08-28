@@ -307,7 +307,7 @@ function generalOptionsParams(overrides: Record<string, unknown> = {}) {
 test("general options section renders key capture and hold-to-repeat rows, in that order", () => {
   const on = renderGeneralOptionsSection(generalOptionsParams());
   const text = templateText(on);
-  assert.match(text, /General Options/);
+  assert.match(text, /General options/);
   assert.match(text, /Key capture/);
   assert.match(text, /Enable hold-to-repeat/);
   assert.ok(text.indexOf("Key capture") < text.indexOf("Enable hold-to-repeat"));
@@ -372,7 +372,7 @@ test("general options section lists the hold-to-repeat button groups while enabl
   assert.match(schema, /"name":"long_press_buttons"/);
   assert.match(schema, /"value":"volume","label":"Volume"/);
   assert.match(schema, /"value":"channel","label":"Channel"/);
-  assert.match(schema, /"value":"dpad","label":"Direction Pad"/);
+  assert.match(schema, /"value":"dpad","label":"Direction pad"/);
   assert.match(schema, /"multiple":true,"mode":"list"/);
 });
 

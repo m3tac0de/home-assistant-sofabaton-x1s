@@ -49,7 +49,7 @@ copy and does not change the hub.
 | --- | --- |
 | Hub | Hub name and the order of Devices and Activities |
 | Activities | Name, participating Devices, inputs, power sequences, button groups and bindings, shortcuts, and macros |
-| Devices | Name, automatic power behavior, power sequences, commands and payloads, button bindings, and supported Wifi IP settings |
+| Devices | Name, automatic power behavior, power sequences, commands and payloads, button assignments, and supported Wifi IP settings |
 
 You can also remove Activities, Devices, commands, shortcuts, and macros. The
 editor shows affected references and clears them from the loaded backup where

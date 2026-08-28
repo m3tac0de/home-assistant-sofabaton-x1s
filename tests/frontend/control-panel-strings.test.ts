@@ -82,7 +82,7 @@ test("bundled complete control-panel translations select regional locales and pr
       immediate: "Dies wird sofort auf dem Hub angewendet.",
       replace: "Löschungen werden nur auf den Hub angewendet, wenn „Vorhandene Geräte und Aktivitäten löschen“ bei der Wiederherstellung aktiviert ist.",
       volumeChannel: "Lautstärke & Kanal",
-      playback: "Medienwiedergabe",
+      playback: "Wiedergabe",
     },
     {
       locale: "fr-FR",
@@ -121,6 +121,31 @@ test("Spanish power section labels describe both on and off behavior", () => {
   setToolsCardLanguage("es-ES");
   assert.equal(TOOLS_CARD_STRINGS.activities.deviceReview.sectionPower, "Encendido y apagado");
   assert.equal(TOOLS_CARD_STRINGS.backup.detailPower, "Encendido y apagado");
+  setToolsCardLanguage("en");
+});
+
+test("shared editor terminology stays aligned within every Control Panel locale", () => {
+  const cases = [
+    ["en", "Button assignments", "Updating automatic power control…", "Playback", "HTTP listener", "Fast forward"],
+    ["de", "Tastenbelegungen", "Automatisches Ein- und Ausschalten wird aktualisiert…", "Wiedergabe", "HTTP-Listener", "Vorspulen"],
+    ["es", "Asignaciones de botones", "Actualizando el encendido y apagado automático…", "Reproducción", "listener HTTP", "Avance rápido"],
+    ["fr", "Attributions de touches", "Mise à jour de la marche/arrêt automatique…", "Lecture", "écouteur HTTP", "Avance rapide"],
+    ["nl", "Knoptoewijzingen", "Automatisch in- en uitschakelen bijwerken…", "Afspelen", "HTTP-listener", "Vooruitspoelen"],
+    ["zh-Hans", "按键分配", "正在更新自动电源控制…", "播放", "HTTP 监听器", "快进"],
+  ] as const;
+
+  for (const [locale, assignments, powerProgress, playback, listener, fastForward] of cases) {
+    setToolsCardLanguage(locale);
+    assert.equal(TOOLS_CARD_STRINGS.backup.buttonBindingsTitle, assignments, locale);
+    assert.equal(TOOLS_CARD_STRINGS.backendState.entityStepIdleBehavior, powerProgress, locale);
+    assert.equal(TOOLS_CARD_STRINGS.backendState.wifiStepPowerConfig, powerProgress, locale);
+    assert.equal(TOOLS_CARD_STRINGS.backup.buttonCatalog.transport, playback, locale);
+    assert.equal(TOOLS_CARD_STRINGS.wifiCommands.mediaGroup, playback, locale);
+    assert.match(TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint, new RegExp(listener), locale);
+    assert.equal(TOOLS_CARD_STRINGS.backup.buttonCatalog.forward, fastForward, locale);
+    assert.equal(TOOLS_CARD_STRINGS.wifiCommands.keyLabels.fwd, fastForward, locale);
+  }
+
   setToolsCardLanguage("en");
 });
 
@@ -525,8 +550,8 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 von 2 Tasten belegt",
         "1 konfiguriert",
         "2 konfiguriert",
-        "Der Hub entfernt außerdem 1 Verknüpfung und 0 Tastenzuweisungen, die darauf verweisen; der Schritt wird aus 1 Makro entfernt (ein Makro ohne Schritte wird gelöscht).",
-        "Der Hub entfernt außerdem 2 Verknüpfungen und 2 Tastenzuweisungen, die darauf verweisen; der Schritt wird aus 2 Makros entfernt (ein Makro ohne Schritte wird gelöscht).",
+        "Der Hub entfernt außerdem 1 Verknüpfung und 0 Tastenbelegungen, die darauf verweisen; der Schritt wird aus 1 Makro entfernt (ein Makro ohne Schritte wird gelöscht).",
+        "Der Hub entfernt außerdem 2 Verknüpfungen und 2 Tastenbelegungen, die darauf verweisen; der Schritt wird aus 2 Makros entfernt (ein Makro ohne Schritte wird gelöscht).",
       ],
     },
     {

@@ -49,7 +49,7 @@ test("action target routing reads short and long actions per press type", () => 
 test("modal titles distinguish short and long press", () => {
   const tab = makeTab();
   assert.match(tab._hubEventEditorTitle({ kind: "wifi_event", slotIndex: 0, pressType: "short" }), /Movie Night/);
-  assert.match(tab._hubEventEditorTitle({ kind: "wifi_event", slotIndex: 0, pressType: "long" }), /long/i);
+  assert.match(tab._hubEventEditorTitle({ kind: "wifi_event", slotIndex: 0, pressType: "long" }), /pressed and held/i);
 });
 
 test("press flash matches on device id + slot index + press type", () => {

@@ -171,6 +171,29 @@ test("English device-mode labels use Control Panel sentence case", () => {
   assert.equal(str().editor.openOnCurrentActivity, "Current activity");
 });
 
+test("Playback and physical-key names stay aligned in every Virtual Remote locale", () => {
+  const cases = [
+    ["en", "Playback", "Fast forward"],
+    ["en-GB", "Playback", "Fast forward"],
+    ["de", "Wiedergabe", "Vorspulen"],
+    ["es", "Reproducción", "Avance rápido"],
+    ["fr", "Lecture", "Avance rapide"],
+    ["nl", "Afspelen", "Vooruitspoelen"],
+    ["zh-Hans", "播放", "快进"],
+    ["ar", "التشغيل", "تقديم سريع"],
+  ] as const;
+
+  for (const [locale, playback, fastForward] of cases) {
+    setRemoteCardLanguage(locale);
+    assert.equal(str().editor.fieldLabels.show_media, playback, locale);
+    assert.equal(str().editor.mediaControls, playback, locale);
+    assert.equal(str().groups.media, playback, locale);
+    assert.equal(str().keys.fwd, fastForward, locale);
+  }
+
+  setRemoteCardLanguage("en");
+});
+
 test("MQTT detection modal copy preserves the Sofabaton device meaning in every locale", () => {
   const cases = [
     ["en", "Sofabaton MQTT device detected.", "Don't show this again for this device during this session."],

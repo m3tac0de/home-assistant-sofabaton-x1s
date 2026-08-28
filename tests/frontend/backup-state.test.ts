@@ -566,7 +566,7 @@ test("bundleButtonCatalog adapts to hub model", () => {
 
 test("activityButtonBindingItems resolves labels and long-press, sorted by button id", () => {
   const items = activityButtonBindingItems(bindingBundle(), 101);
-  assert.deepEqual(items.map((i) => i.buttonName), ["OK", "Volume Up"]); // 0xB0 before 0xB6
+  assert.deepEqual(items.map((i) => i.buttonName), ["OK", "Volume up"]); // 0xB0 before 0xB6
   const ok = items.find((i) => i.buttonName === "OK")!;
   assert.equal(ok.shortPressLabel, "TV · Power");
   assert.equal(ok.longPress?.label, "Soundbar · Power");
