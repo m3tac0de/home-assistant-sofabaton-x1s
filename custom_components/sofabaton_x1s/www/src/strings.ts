@@ -507,9 +507,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     chooseBackupFile: "Choose backup file",
     reorderHint: " Drag the handle on any row to reorder activities and devices.",
     macroStepsSortableHelp:
-      "Drag to reorder. Each step plays a command; set the wait that follows it on the right.",
+      "Drag to reorder. Each step plays a command; set the following wait below the step.",
     macroStepsHelp:
-      "Each step plays a command; set the wait that follows it on the right.",
+      "Each step plays a command; set the following wait below the step.",
     hubName: "Hub name",
     hubNameNotSet: "(not set)",
     renameHub: "Rename hub",
@@ -1072,13 +1072,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     selectTriggeredAction: "Select triggered action",
     action: "Action",
     save: "Save",
-    syncWarningTitle: "Sync commands to hub?",
-    syncWarningBody:
-      "This sync can run for several minutes. During this process, other interactions with the hub are blocked.",
-    syncWarningBody2:
-      "At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.",
-    syncWarningOptOut: "Don't show this warning again for this remote.",
-    syncWarningStart: "Start sync",
     keyLabels: {
       up: "Up",
       down: "Down",

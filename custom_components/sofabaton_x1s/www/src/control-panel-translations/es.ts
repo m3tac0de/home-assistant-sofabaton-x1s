@@ -193,7 +193,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     activityMeta: (favorites: number, macros: number) => `${favorites} ${favorites === 1 ? "favorito" : "favoritos"} · ${macros} ${macros === 1 ? "macro" : "macros"}`, linkedDevices: (count: number) => `${count} ${count === 1 ? "dispositivo vinculado" : "dispositivos vinculados"}`,
     deselectAll: "Ninguno", selectAll: "Todos", noDevicesAvailable: "No hay dispositivos disponibles.", working: "Procesando", startBackup: "Iniciar",
     editLoadPrompt: "Carga un archivo de copia de seguridad y elige una actividad o un dispositivo para editarlo.", chooseBackupFile: "Elegir archivo", reorderHint: " Arrastra el tirador de una fila para reordenar actividades y dispositivos.",
-    macroStepsSortableHelp: "Arrastra para reordenar. Cada paso reproduce un comando; configura a la derecha la espera que le sigue.", macroStepsHelp: "Cada paso reproduce un comando; configura a la derecha la espera que le sigue.",
+    macroStepsSortableHelp: "Arrastra para reordenar. Cada paso reproduce un comando; configura debajo la espera que le sigue.", macroStepsHelp: "Cada paso reproduce un comando; configura debajo la espera que le sigue.",
     hubName: "Nombre del hub", hubNameNotSet: "(sin definir)", renameHub: "Cambiar nombre del hub", activities: "Actividades", noActivitiesInFile: "Este archivo de copia de seguridad no contiene actividades.",
     devices: "Dispositivos", noDevicesInFile: "Este archivo de copia de seguridad no contiene dispositivos.",
     downloadEditedBackup: "Descargar", deleteActivityTitle: (name: string) => `¿Eliminar la actividad «${name}»?`, deleteDeviceTitle: (name: string) => `¿Eliminar el dispositivo «${name}»?`,
@@ -378,9 +378,6 @@ export const TOOLS_CARD_STRINGS_ES = {
     activityEventFallbackName: (id: string) => `Actividad ${id}`, noActivitiesForEvents: "Todavía no hay actividades en este hub.", favorite: "Marcar como favorito", physicalButtonAssignment: "Asignación de botones físicos",
     enableLongPress: "Activar pulsación larga", applyToActivities: "Aplicar a estas actividades", actionModalNote: "Ejecuta una acción cada vez que se ejecute el comando. Configurar una acción es opcional; puedes crear tus propias automatizaciones que se activen desde el sensor de Wifi Commands.",
     shortPress: "Pulsación corta", longPress: "Pulsación larga", selectLongPressAction: "Seleccionar acción de pulsación larga", selectTriggeredAction: "Seleccionar acción a ejecutar", action: "Acción", save: "Guardar",
-    syncWarningTitle: "¿Sincronizar comandos con el hub?", syncWarningBody: "Esta sincronización puede tardar varios minutos. Durante el proceso se bloquean otras interacciones con el hub.",
-    syncWarningBody2: "Al final del despliegue, el control remoto físico se volverá a sincronizar de forma forzada. Se recomienda terminar primero toda la configuración de Wifi Commands y sincronizar una sola vez.",
-    syncWarningOptOut: "No volver a mostrar esta advertencia para este control remoto.", syncWarningStart: "Iniciar sincronización",
     keyLabels: {
       up: "Arriba", down: "Abajo", left: "Izquierda", right: "Derecha", ok: "OK", back: "Atrás", home: "Inicio", menu: "Menú", volup: "Volumen +", voldn: "Volumen -", mute: "Silencio",
       chup: "Canal +", chdn: "Canal -", guide: "Guía", dvr: "DVR", play: "Reproducir", exit: "Salir", rew: "Retroceder", pause: "Pausa", fwd: "Avance rápido",

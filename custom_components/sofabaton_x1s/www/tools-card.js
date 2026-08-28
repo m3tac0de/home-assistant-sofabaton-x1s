@@ -2048,8 +2048,8 @@ var TOOLS_CARD_STRINGS_EN = {
     editLoadPrompt: "Load a backup file, then choose an activity or device to edit.",
     chooseBackupFile: "Choose backup file",
     reorderHint: " Drag the handle on any row to reorder activities and devices.",
-    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the wait that follows it on the right.",
-    macroStepsHelp: "Each step plays a command; set the wait that follows it on the right.",
+    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
+    macroStepsHelp: "Each step plays a command; set the following wait below the step.",
     hubName: "Hub name",
     hubNameNotSet: "(not set)",
     renameHub: "Rename hub",
@@ -2562,11 +2562,6 @@ var TOOLS_CARD_STRINGS_EN = {
     selectTriggeredAction: "Select triggered action",
     action: "Action",
     save: "Save",
-    syncWarningTitle: "Sync commands to hub?",
-    syncWarningBody: "This sync can run for several minutes. During this process, other interactions with the hub are blocked.",
-    syncWarningBody2: "At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.",
-    syncWarningOptOut: "Don't show this warning again for this remote.",
-    syncWarningStart: "Start sync",
     keyLabels: {
       up: "Up",
       down: "Down",
@@ -14618,8 +14613,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._confirmClearSlot = null;
     this._commandSaveError = "";
     this._activeCommandActionTab = "short";
-    this._syncWarningOpen = false;
-    this._syncWarningOptOut = false;
     this._advancedOptionsOpen = false;
     this._commandEditorDrafts = {};
     this._shortSelectorVersion = 0;
@@ -14807,24 +14800,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         this._setSharedHubCommandBusy(false, null, busyEntryId);
       }
     };
-    this._confirmSyncWarning = async () => {
-      const entityId = String(this._entityId() || "").trim();
-      if (entityId && this._syncWarningOptOut) this._setCommandSyncWarningOptOut(entityId, true);
-      this._syncWarningOpen = false;
-      await this._startCommandConfigSync();
-    };
     this._runCommandConfigSync = async () => {
       if (this._commandSyncRunning || this._hubCommandLocked()) return;
       const entityId = String(this._entityId() || "").trim();
       const deviceKey = String(this._selectedDeviceKey || "").trim();
       if (!entityId) return;
       if (!deviceKey) return;
-      if (this._commandSyncWarningOptedOut(entityId)) {
-        await this._startCommandConfigSync();
-        return;
-      }
-      this._syncWarningOptOut = false;
-      this._syncWarningOpen = true;
+      await this._startCommandConfigSync();
     };
   }
   connectedCallback() {
@@ -14927,7 +14909,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       })}
           ${this._renderDetailsModal()}
           ${this._renderActionModal()}
-          ${this._renderSyncWarningModal()}
           ${this._renderCreateDeviceModal()}
           ${this._renderDeleteDeviceModal()}
         </div>
@@ -14982,7 +14963,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         </div>
         ${this._renderDetailsModal()}
         ${this._renderActionModal()}
-        ${this._renderSyncWarningModal()}
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
@@ -16110,44 +16090,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       </div>
     `;
   }
-  _renderSyncWarningModal() {
-    if (!this._syncWarningOpen) return A;
-    return b2`
-      <div class="modal-backdrop" @click=${() => {
-      this._syncWarningOpen = false;
-    }}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.syncWarningTitle}</div>
-            <button class="dialog-close" @click=${() => {
-      this._syncWarningOpen = false;
-    }}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="dialog-text sync-warning-text">
-              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody}<br /><br />
-              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody2}
-            </div>
-            <label class="warning-optout">
-              <input type="checkbox" .checked=${this._syncWarningOptOut} @change=${(event) => {
-      this._syncWarningOptOut = event.currentTarget.checked;
-    }} />
-              <span>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningOptOut}</span>
-            </label>
-          </div>
-          <div class="dialog-footer">
-            <div></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => {
-      this._syncWarningOpen = false;
-    }}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._confirmSyncWarning}>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningStart}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
   async _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass?.callWS) return;
@@ -17056,23 +16998,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._deviceMutationError = "";
     this._deleteDeviceKey = deviceKey;
   }
-  _commandSyncWarningStorageKey(entityId) {
-    return `sofabaton_x1s:sync_warning_optout:${String(entityId || "").trim()}`;
-  }
-  _commandSyncWarningOptedOut(entityId) {
-    try {
-      return window.localStorage?.getItem(this._commandSyncWarningStorageKey(entityId)) === "1";
-    } catch (_error) {
-      return false;
-    }
-  }
-  _setCommandSyncWarningOptOut(entityId, optedOut) {
-    try {
-      if (optedOut) window.localStorage?.setItem(this._commandSyncWarningStorageKey(entityId), "1");
-      else window.localStorage?.removeItem(this._commandSyncWarningStorageKey(entityId));
-    } catch (_error) {
-    }
-  }
   async _startCommandConfigSync() {
     const entityId = String(this._entityId() || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
@@ -17253,8 +17178,6 @@ _SofabatonWifiCommandsTab.properties = {
   _confirmClearSlot: { state: true },
   _commandSaveError: { state: true },
   _activeCommandActionTab: { state: true },
-  _syncWarningOpen: { state: true },
-  _syncWarningOptOut: { state: true },
   _advancedOptionsOpen: { state: true },
   _commandEditorDrafts: { state: true },
   _shortSelectorVersion: { state: true },
@@ -17613,7 +17536,7 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       text-underline-offset: 3px;
     }
     .show-unconfigured:hover { color: var(--primary-text-color); text-decoration-color: var(--primary-color); }
-    .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
+    .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
     .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
     .sync-row.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); }
@@ -17801,7 +17724,6 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .action-tab { border: 1px solid var(--divider-color); border-radius: 999px; padding: 7px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .action-selector-wrap[hidden] { display: none; }
     .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
-    .warning-optout { display: flex; align-items: center; gap: 10px; }
     .dialog-body ha-input,
     .dialog-body ha-textfield,
     .dialog-body ha-selector {

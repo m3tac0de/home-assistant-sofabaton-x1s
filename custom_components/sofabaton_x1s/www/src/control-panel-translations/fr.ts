@@ -198,7 +198,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     activityMeta: (favorites: number, macros: number) => `${favorites} ${favorites > 1 ? "favoris" : "favori"} · ${macros} ${macros > 1 ? "macros" : "macro"}`, linkedDevices: (count: number) => `${count} ${count > 1 ? "appareils liés" : "appareil lié"}`,
     deselectAll: "Aucun", selectAll: "Tout", noDevicesAvailable: "Aucun appareil disponible.", working: "Traitement en cours", startBackup: "Démarrer",
     editLoadPrompt: "Chargez un fichier de sauvegarde, puis choisissez une activité ou un appareil à modifier.", chooseBackupFile: "Choisir un fichier", reorderHint: " Faites glisser la poignée d’une ligne pour réorganiser les activités et les appareils.",
-    macroStepsSortableHelp: "Faites glisser pour réorganiser. Chaque étape lit une commande ; réglez à droite l’attente qui la suit.", macroStepsHelp: "Chaque étape lit une commande ; réglez à droite l’attente qui la suit.",
+    macroStepsSortableHelp: "Faites glisser pour réorganiser. Chaque étape lit une commande ; réglez en dessous l’attente qui la suit.", macroStepsHelp: "Chaque étape lit une commande ; réglez en dessous l’attente qui la suit.",
     hubName: "Nom du hub", hubNameNotSet: "(non défini)", renameHub: "Renommer le hub", activities: "Activités", noActivitiesInFile: "Ce fichier de sauvegarde ne contient aucune activité.",
     devices: "Appareils", noDevicesInFile: "Ce fichier de sauvegarde ne contient aucun appareil.",
     downloadEditedBackup: "Télécharger", deleteActivityTitle: (name: string) => `Supprimer l’activité « ${name} » ?`,
@@ -381,9 +381,6 @@ export const TOOLS_CARD_STRINGS_FR = {
     activityEventFallbackName: (id: string) => `Activité ${id}`, noActivitiesForEvents: "Aucune activité sur ce hub pour le moment.", favorite: "Définir comme favori", physicalButtonAssignment: "Attribution des touches physiques",
     enableLongPress: "Activer l’appui long", applyToActivities: "Appliquer à ces activités", actionModalNote: "Exécutez une action chaque fois que la commande est déclenchée. La configuration d’une action est facultative ; vous pouvez créer vos propres automatisations déclenchées par le capteur Wifi Commands.",
     shortPress: "Appui court", longPress: "Appui long", selectLongPressAction: "Sélectionner l’action d’appui long", selectTriggeredAction: "Sélectionner l’action déclenchée", action: "Action", save: "Enregistrer",
-    syncWarningTitle: "Synchroniser les commandes avec le hub ?", syncWarningBody: "Cette synchronisation peut prendre plusieurs minutes. Pendant ce processus, les autres interactions avec le hub sont bloquées.",
-    syncWarningBody2: "À la fin du déploiement, la télécommande physique sera resynchronisée de force. Il est recommandé de terminer d’abord toute votre configuration Wifi Commands, puis de synchroniser une seule fois.",
-    syncWarningOptOut: "Ne plus afficher cet avertissement pour cette télécommande.", syncWarningStart: "Démarrer la synchronisation",
     keyLabels: {
       up: "Haut", down: "Bas", left: "Gauche", right: "Droite", ok: "OK", back: "Retour", home: "Accueil", menu: "Menu", volup: "Volume +", voldn: "Volume -", mute: "Muet",
       chup: "Chaîne +", chdn: "Chaîne -", guide: "Guide", dvr: "DVR", play: "Lecture", exit: "Quitter", rew: "Retour rapide", pause: "Pause", fwd: "Avance rapide",
