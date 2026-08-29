@@ -222,7 +222,7 @@ test("Arabic and regional Arabic locales select right-to-left direction", () => 
   assert.equal(drawerTabChevronIcon(), "mdi:chevron-left");
   assert.deepEqual(
     [str().card.macrosTab, str().card.favoritesTab, str().card.commandsTab],
-    ["وحدات الماكرو", "المفضلات", "الأوامر"],
+    ["الماكرو", "المفضلات", "الأوامر"],
   );
 
   setRemoteCardLanguage("en-GB");

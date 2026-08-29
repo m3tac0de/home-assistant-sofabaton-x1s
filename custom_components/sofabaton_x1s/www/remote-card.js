@@ -1969,6 +1969,12 @@ var REMOTE_CARD_CSS = `
       }
 			.macroFavoritesButton {
         cursor: pointer;
+        /* Tighter side padding than the default keys: at the 230px minimum
+           card width each tab's text budget is ~81px minus the chevron
+           reserve, and the longest tab labels (nl "Favorieten", en-GB
+           "Favourites", ~65px at 14px Roboto) need the extra 4px to render
+           without an ellipsis at the 14px font floor. */
+        --sb-control-padding-inline: 8px;
         padding: 4px 0;
         box-sizing: border-box;
         height: var(--sb-tab-height);
@@ -7115,7 +7121,7 @@ var CONTROL_CSS = `
     height: 100%;
     min-width: 0;
     min-height: 100%;
-    padding: 0 10px;
+    padding: 0 var(--sb-control-padding-inline, 10px);
     border-radius: var(
       --sb-control-radius,
       var(--sb-group-radius, var(--ha-card-border-radius, 18px))
@@ -7453,7 +7459,11 @@ var NAV_KEYS = [
 var MID_KEYS = [
   { key: "volup", id: ID.VOL_UP, cmd: ID.VOL_UP, label: "", icon: "mdi:volume-plus", extraClass: "mid-btn mid-btn-volup" },
   { key: "voldn", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN, label: "", icon: "mdi:volume-minus", extraClass: "mid-btn mid-btn-voldn" },
-  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "Guide", icon: "", extraClass: "mid-btn mid-btn-guide" },
+  // Language-neutral TV-guide glyph instead of the always-English "Guide"
+  // text, which was the one label in the icon-only mid cluster and clipped
+  // at narrow card widths. Like the OK key, the assist capture label still
+  // resolves to the localized str().keys.guide via the key fallback.
+  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "", icon: "mdi:television-guide", extraClass: "mid-btn mid-btn-guide" },
   { key: "mute", id: ID.MUTE, cmd: ID.MUTE, label: "", icon: "mdi:volume-mute", extraClass: "mid-btn mid-btn-mute" },
   { key: "chup", id: ID.CH_UP, cmd: ID.CH_UP, label: "", icon: "mdi:chevron-up", extraClass: "mid-btn mid-btn-chup" },
   { key: "chdn", id: ID.CH_DOWN, cmd: ID.CH_DOWN, label: "", icon: "mdi:chevron-down", extraClass: "mid-btn mid-btn-chdn" }
@@ -8913,7 +8923,9 @@ var REMOTE_CARD_STRINGS_AR = {
     noMacros: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0648\u062D\u062F\u0627\u062A \u0645\u0627\u0643\u0631\u0648",
     noFavorites: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0645\u0641\u0636\u0644\u0627\u062A",
     noCommands: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0623\u0648\u0627\u0645\u0631",
-    macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    // Tab label only: the space-budgeted drawer tab keeps the short form
+    // (the longer "وحدات الماكرو" stays in the editor strings below).
+    macrosTab: "\u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     commandsTab: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     powerButton: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062A\u0634\u063A\u064A\u0644/\u0627\u0644\u0625\u064A\u0642\u0627\u0641",

@@ -49,7 +49,11 @@ const NAV_KEYS: KeySpec[] = [
 const MID_KEYS: KeySpec[] = [
   { key: "volup", id: ID.VOL_UP, cmd: ID.VOL_UP, label: "", icon: "mdi:volume-plus", extraClass: "mid-btn mid-btn-volup" },
   { key: "voldn", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN, label: "", icon: "mdi:volume-minus", extraClass: "mid-btn mid-btn-voldn" },
-  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "Guide", icon: "", extraClass: "mid-btn mid-btn-guide" },
+  // Language-neutral TV-guide glyph instead of the always-English "Guide"
+  // text, which was the one label in the icon-only mid cluster and clipped
+  // at narrow card widths. Like the OK key, the assist capture label still
+  // resolves to the localized str().keys.guide via the key fallback.
+  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "", icon: "mdi:television-guide", extraClass: "mid-btn mid-btn-guide" },
   { key: "mute", id: ID.MUTE, cmd: ID.MUTE, label: "", icon: "mdi:volume-mute", extraClass: "mid-btn mid-btn-mute" },
   { key: "chup", id: ID.CH_UP, cmd: ID.CH_UP, label: "", icon: "mdi:chevron-up", extraClass: "mid-btn mid-btn-chup" },
   { key: "chdn", id: ID.CH_DOWN, cmd: ID.CH_DOWN, label: "", icon: "mdi:chevron-down", extraClass: "mid-btn mid-btn-chdn" },

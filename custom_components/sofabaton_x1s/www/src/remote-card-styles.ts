@@ -503,6 +503,12 @@ export const REMOTE_CARD_CSS = `
       }
 			.macroFavoritesButton {
         cursor: pointer;
+        /* Tighter side padding than the default keys: at the 230px minimum
+           card width each tab's text budget is ~81px minus the chevron
+           reserve, and the longest tab labels (nl "Favorieten", en-GB
+           "Favourites", ~65px at 14px Roboto) need the extra 4px to render
+           without an ellipsis at the 14px font floor. */
+        --sb-control-padding-inline: 8px;
         padding: 4px 0;
         box-sizing: border-box;
         height: var(--sb-tab-height);

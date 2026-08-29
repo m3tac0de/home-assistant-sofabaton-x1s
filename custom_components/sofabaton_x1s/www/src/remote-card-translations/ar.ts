@@ -28,7 +28,9 @@ export const REMOTE_CARD_STRINGS_AR = {
     noMacros: "لا تتوفر أي وحدات ماكرو",
     noFavorites: "لا تتوفر أي مفضلات",
     noCommands: "لا تتوفر أي أوامر",
-    macrosTab: "وحدات الماكرو",
+    // Tab label only: the space-budgeted drawer tab keeps the short form
+    // (the longer "وحدات الماكرو" stays in the editor strings below).
+    macrosTab: "الماكرو",
     favoritesTab: "المفضلات",
     commandsTab: "الأوامر",
     powerButton: "تبديل التشغيل/الإيقاف",

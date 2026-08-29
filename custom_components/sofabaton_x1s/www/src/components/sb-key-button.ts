@@ -25,7 +25,7 @@ const CONTROL_CSS = `
     height: 100%;
     min-width: 0;
     min-height: 100%;
-    padding: 0 10px;
+    padding: 0 var(--sb-control-padding-inline, 10px);
     border-radius: var(
       --sb-control-radius,
       var(--sb-group-radius, var(--ha-card-border-radius, 18px))

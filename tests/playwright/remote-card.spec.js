@@ -209,45 +209,68 @@ test.describe("remote card playwright harness", () => {
 
     const tabGeometry = () => page.evaluate(() => {
       const card = document.querySelector("sofabaton-virtual-remote");
-      const host = card.shadowRoot.querySelector(".macroFavoritesButton:nth-child(2)");
-      const control = host.shadowRoot.querySelector(".sb-key-control");
-      const label = host.shadowRoot.querySelector(".sb-key-control__label");
-      const icon = host.shadowRoot.querySelector(".sb-key-control__trailing-icon");
-      const textRange = document.createRange();
-      textRange.selectNodeContents(label);
-      const text = textRange.getBoundingClientRect();
-      const iconRect = icon.getBoundingClientRect();
-      return {
-        direction: getComputedStyle(control).direction,
-        labelClipped: label.scrollWidth > label.clientWidth + 0.5,
-        iconName: icon.getAttribute("icon"),
-        textLeft: text.left,
-        textRight: text.right,
-        iconLeft: iconRect.left,
-        iconRight: iconRect.right,
-      };
+      const hosts = [...card.shadowRoot.querySelectorAll(".macroFavoritesButton")];
+      return hosts.map((host) => {
+        const control = host.shadowRoot.querySelector(".sb-key-control");
+        const label = host.shadowRoot.querySelector(".sb-key-control__label");
+        const icon = host.shadowRoot.querySelector(".sb-key-control__trailing-icon");
+        const textRange = document.createRange();
+        textRange.selectNodeContents(label);
+        const text = textRange.getBoundingClientRect();
+        const iconRect = icon.getBoundingClientRect();
+        return {
+          direction: getComputedStyle(control).direction,
+          text: label.textContent,
+          labelClipped: label.scrollWidth > label.clientWidth + 0.5,
+          iconName: icon.getAttribute("icon"),
+          textLeft: text.left,
+          textRight: text.right,
+          iconLeft: iconRect.left,
+          iconRight: iconRect.right,
+        };
+      });
     });
 
-    const ltr = await tabGeometry();
+    const setLanguage = (language) => page.evaluate((lang) => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      card.hass = {
+        ...card.hass,
+        locale: { language: lang },
+      };
+    }, language);
+
+    const [, ltr] = await tabGeometry();
     expect(ltr.direction).toBe("ltr");
     expect(ltr.labelClipped).toBe(false);
     expect(ltr.iconName).toBe("mdi:chevron-right");
     expect(ltr.iconLeft).toBeGreaterThanOrEqual(ltr.textRight - 0.5);
 
-    await page.evaluate(() => {
-      const card = document.querySelector("sofabaton-virtual-remote");
-      card.hass = {
-        ...card.hass,
-        locale: { language: "ar-SA" },
-      };
-    });
+    await setLanguage("ar-SA");
     await expect(page.locator("sofabaton-virtual-remote")).toHaveAttribute("dir", "rtl");
 
-    const rtl = await tabGeometry();
+    const [, rtl] = await tabGeometry();
     expect(rtl.direction).toBe("rtl");
     expect(rtl.labelClipped).toBe(false);
     expect(rtl.iconName).toBe("mdi:chevron-left");
     expect(rtl.iconRight).toBeLessThanOrEqual(rtl.textLeft + 0.5);
+
+    // The widest tab labels across all shipped locales (nl "Favorieten",
+    // en-GB "Favourites", ar "الماكرو"/"المفضلات") must render without an
+    // ellipsis at the 230px minimum card width, at the shared tab font size.
+    const worstCaseLocales = [
+      ["nl-NL", ["Macro's", "Favorieten"]],
+      ["en-GB", ["Macros", "Favourites"]],
+      ["ar-SA", ["الماكرو", "المفضلات"]],
+      ["en", ["Macros", "Favorites"]],
+    ];
+    const tabLabels = page.locator(".macroFavoritesButton .sb-key-control__label");
+    for (const [locale, expectedLabels] of worstCaseLocales) {
+      await setLanguage(locale);
+      await expect(tabLabels).toHaveText(expectedLabels);
+      for (const tab of await tabGeometry()) {
+        expect(tab.labelClipped, `${locale} tab "${tab.text}" fits unclipped`).toBe(false);
+      }
+    }
   });
 
   test("applies the selected theme radius to groups, keys, and drawer buttons", async ({ page }) => {

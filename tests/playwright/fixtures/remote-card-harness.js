@@ -70,6 +70,8 @@ const ICONS = {
   "mdi:fast-forward": iconSvg(`<path d="M5 7l6 5-6 5z" fill="currentColor" stroke="none"></path><path d="M13 7l6 5-6 5z" fill="currentColor" stroke="none"></path>`),
   "mdi:play-circle-outline": iconSvg(`<circle cx="12" cy="12" r="9"></circle><path d="M10 8l6 4-6 4z" fill="currentColor" stroke="none"></path>`),
   "mdi:television-play": iconSvg(`<rect x="4" y="6" width="16" height="11" rx="2"></rect><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"></path><path d="M9 20h6"></path>`),
+  "mdi:television-guide": iconSvg(`<rect x="4" y="6" width="16" height="11" rx="2"></rect><path d="M7 9.5h6"></path><path d="M7 13.5h4"></path><path d="M9 20h6"></path>`),
+  "mdi:play": iconSvg(`<path d="M8 6l10 6-10 6z" fill="currentColor" stroke="none"></path>`),
   "mdi:play-circle": iconSvg(`<circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"></circle><path d="M10 8l6 4-6 4z" fill="#fff" stroke="none"></path>`),
   "mdi:circle": iconSvg(`<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"></circle>`, { stroke: "none" }),
 };
