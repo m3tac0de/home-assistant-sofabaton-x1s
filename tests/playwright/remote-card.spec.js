@@ -303,6 +303,8 @@ test.describe("remote card playwright harness", () => {
           .borderRadius,
         segmentedTab: controlRadius(root.querySelector(".macroFavoritesButton")),
         colorPill: controlRadius(root.querySelector(".key--color")),
+        activitySelect: getComputedStyle(root.querySelector(".sb-activity-select"))
+          .borderRadius,
       };
     });
 
@@ -313,7 +315,46 @@ test.describe("remote card playwright harness", () => {
       drawer: "6px",
       segmentedTab: "0px",
       colorPill: "999px",
+      activitySelect: "6px",
     });
+  });
+
+  test("mode toggle and selector fuse into one control with a flat meeting edge", async ({ page }) => {
+    await mountCard(page, "device_mode", { theme: "Harness Square" });
+
+    const corners = () => page.evaluate(() => {
+      const root = document.querySelector("sofabaton-virtual-remote").shadowRoot;
+      const pick = (el) => {
+        const cs = getComputedStyle(el);
+        return {
+          topLeft: cs.borderTopLeftRadius,
+          topRight: cs.borderTopRightRadius,
+          bottomLeft: cs.borderBottomLeftRadius,
+          bottomRight: cs.borderBottomRightRadius,
+        };
+      };
+      return {
+        toggle: pick(root.querySelector(".sb-mode-toggle")),
+        select: pick(root.querySelector(".activityRow--with-toggle .sb-activity-select")),
+      };
+    });
+
+    // LTR: toggle sits left, so its left corners carry the theme radius and
+    // the meeting edge (toggle right / select left) is square.
+    const ltr = await corners();
+    expect(ltr.toggle).toEqual({ topLeft: "6px", bottomLeft: "6px", topRight: "0px", bottomRight: "0px" });
+    expect(ltr.select).toEqual({ topLeft: "0px", bottomLeft: "0px", topRight: "6px", bottomRight: "6px" });
+
+    // RTL: the row mirrors, the toggle sits visually right, and the fused
+    // edge flips with it via the logical corner properties.
+    await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      card.hass = { ...card.hass, locale: { language: "ar-SA" } };
+    });
+    await expect(page.locator("sofabaton-virtual-remote")).toHaveAttribute("dir", "rtl");
+    const rtl = await corners();
+    expect(rtl.toggle).toEqual({ topRight: "6px", bottomRight: "6px", topLeft: "0px", bottomLeft: "0px" });
+    expect(rtl.select).toEqual({ topRight: "0px", bottomRight: "0px", topLeft: "6px", bottomLeft: "6px" });
   });
 
   test("captures powered-off visual baseline", async ({ page }) => {

@@ -1735,10 +1735,19 @@ var REMOTE_CARD_CSS = `
         --mdc-select-hover-line-color: var(--sb-field-line);
       }
       /* Long activity/device names ellipsize inside the select instead of
-         pushing the card wider (grid items default to min-width auto). */
+         pushing the card wider (grid items default to min-width auto). The
+         same overflow clip also gives the field the theme's corner radius:
+         rounding the HOST and zeroing the inner mdc shape token works for
+         both ha-select generations (mdc and ha-picker-field) without
+         knowing their internal shape tokens. The host paints the form
+         background so any residual inner rounding never shows as notched
+         corners. */
       .activityRow .sb-activity-select {
         min-width: 0;
         overflow: hidden;
+        border-radius: var(--sb-group-radius);
+        --mdc-shape-small: 0px;
+        background: var(--ha-color-form-background);
       }
 
       /* Device mode: the toggle fuses to the select's left edge. */
@@ -1759,15 +1768,19 @@ var REMOTE_CARD_CSS = `
         color: var(--primary-text-color);
         background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
         border: none;
-        border-right: 1px solid var(--divider-color);
+        border-inline-end: 1px solid var(--divider-color);
         /* Same line as the field, drawn as an inset shadow so the 1px -> 2px
            active state never shifts layout. */
         box-shadow: inset 0 -1px 0 var(--sb-field-line);
         transition: box-shadow 180ms ease-in-out, background 120ms ease;
-        border-top-left-radius: var(--mdc-shape-small, 4px);
-        border-top-right-radius: 0;
-        border-bottom-left-radius: 0;
-        border-bottom-right-radius: 0;
+        /* One fused control with the select: the outer (inline-start) side
+           follows the theme radius, the side meeting the select stays
+           square. Logical corners keep the fused edge correct in RTL,
+           where the toggle sits visually on the right. */
+        border-start-start-radius: var(--sb-group-radius);
+        border-end-start-radius: var(--sb-group-radius);
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
         -webkit-tap-highlight-color: transparent;
       }
       .sb-mode-toggle:hover {
@@ -1792,8 +1805,11 @@ var REMOTE_CARD_CSS = `
       .sb-mode-toggle:focus-visible {
         box-shadow: inset 0 -2px 0 var(--sb-field-line-active);
       }
+      /* The select's corners on the fused edge go flat so toggle + select
+         read as one control. */
       .activityRow--with-toggle .sb-activity-select {
-        --mdc-shape-small: 0 4px 0 0;
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
       }
 
       /* Device mode: Commands drawer (one command per row + filter input).
