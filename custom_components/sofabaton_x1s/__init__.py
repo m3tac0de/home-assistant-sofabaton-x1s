@@ -3436,6 +3436,34 @@ async def _ws_get_device_keymap(hass: HomeAssistant, connection, msg: dict[str, 
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/device/power_state",
+        vol.Required("entry_id"): str,
+        vol.Required("device_id"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_device_power_state(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Remote-card power button: live power state of one device.
+
+    Unlike device/keymap this deliberately does hub I/O: the click flow
+    reads the device row's live power_state byte via a fresh REQ_DEVICES
+    burst, then the card fires the matching 198/199 power macro
+    (docs/internal/device-mode-plan.md section 8).
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    power_state = await hub.async_get_device_power_state(int(msg["device_id"]))
+    connection.send_result(msg["id"], {"power_state": power_state})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/logs/get",
         vol.Required("entry_id"): str,
         vol.Optional("limit", default=250): vol.All(int, vol.Range(min=1, max=1000)),
@@ -3801,6 +3829,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)
     websocket_api.async_register_command(hass, _ws_get_device_keymap)
+    websocket_api.async_register_command(hass, _ws_get_device_power_state)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_wifi_presses)

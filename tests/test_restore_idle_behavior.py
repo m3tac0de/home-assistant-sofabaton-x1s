@@ -3,8 +3,11 @@
 The "Power On/Off Setup" + "Idle Behavior" choice lives in its own hub
 query (OP_IDLE_BEHAVIOR, 0x0242), not the device record. Backups capture
 it as ``idle_behavior``; restore replays it verbatim via
-``SET_IDLE_BEHAVIOR``. ``_idle_behavior_mode`` is the resolver: it prefers
-the dedicated field and falls back to ``power_mode`` for older backups.
+``SET_IDLE_BEHAVIOR``. ``_idle_behavior_mode`` is the resolver: only the
+dedicated field counts, and ``None`` means "unknown, write nothing". The
+bundle's ``power_mode`` field is the record-tail byte, a different value
+that reads 1 on every real hub device, so the old fallback to it wrote
+mode 1 over devices whose real idle byte was 0, 2, 3, or 4.
 """
 
 from __future__ import annotations
@@ -34,25 +37,30 @@ from custom_components.sofabaton_x1s.lib.proxy_restore import (  # noqa: E402
 )
 
 
-def test_prefers_idle_behavior_field_over_power_mode() -> None:
-    # idle_behavior=4 (disabled) must win over the unrelated power_mode tail
-    # byte, which is a constant 1 on real captures regardless of state.
+def test_reads_the_dedicated_idle_behavior_field() -> None:
     block = {"idle_behavior": 4, "power_mode": 1}
     assert _idle_behavior_mode(block) == 4
 
 
-def test_falls_back_to_power_mode_for_legacy_backups() -> None:
-    # Older backups predate idle_behavior capture; preserve their behavior.
-    assert _idle_behavior_mode({"power_mode": 1}) == 1
-    assert _idle_behavior_mode({"power_mode": 3}) == 3
+def test_power_mode_is_never_a_fallback() -> None:
+    # The record-tail byte is not an idle spelling; a bundle without
+    # idle_behavior has no usable value at all.
+    assert _idle_behavior_mode({"power_mode": 1}) is None
+    assert _idle_behavior_mode({"power_mode": 3}) is None
 
 
-def test_missing_everything_defaults_to_zero() -> None:
-    assert _idle_behavior_mode({}) == 0
+def test_missing_everything_is_unknown() -> None:
+    assert _idle_behavior_mode({}) is None
 
 
-def test_non_numeric_values_default_to_zero() -> None:
-    assert _idle_behavior_mode({"idle_behavior": "nope"}) == 0
+def test_non_numeric_values_are_unknown() -> None:
+    assert _idle_behavior_mode({"idle_behavior": "nope"}) is None
+
+
+def test_zero_is_a_real_value_not_unknown() -> None:
+    # Hubs report 0 on never-configured devices (observed on Wifi
+    # devices); replaying it verbatim is hub truth, not a default.
+    assert _idle_behavior_mode({"idle_behavior": 0}) == 0
 
 
 def test_masks_to_byte() -> None:

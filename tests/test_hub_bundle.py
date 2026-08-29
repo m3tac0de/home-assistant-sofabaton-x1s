@@ -467,6 +467,62 @@ def test_restore_bundle_devices_only_succeeds_and_returns_map(monkeypatch) -> No
     assert [d["device"]["device_id"] for d in restored_devices] == [7, 8]
 
 
+def test_restore_bundle_sends_single_terminal_remote_sync(monkeypatch) -> None:
+    """One remote-sync trigger for the whole bundle, none per activity.
+
+    Bench 2026-08-27: every accepted mid-batch trigger aborts and
+    restarts the remote's multi-minute full sync, so a bundle restore
+    suppresses the per-activity trigger and fires exactly one after
+    every write has landed.
+    """
+
+    proxy = _proxy(monkeypatch)
+
+    monkeypatch.setattr(
+        proxy,
+        "restore_device",
+        lambda *, payload, wifi_commands_request_port=8060: {
+            "status": "success",
+            "device_id": payload["device"]["device_id"] + 0x10,
+            "command_id_map": {},
+        },
+    )
+
+    activity_sync_flags: list[bool] = []
+
+    def _restore_activity(*, payload, **kwargs):
+        activity_sync_flags.append(kwargs.get("send_remote_sync", True))
+        return {
+            "status": "success",
+            "activity_id": payload["device"]["device_id"] + 0x10,
+        }
+
+    monkeypatch.setattr(proxy, "restore_activity", _restore_activity)
+
+    resyncs: list[bool] = []
+    monkeypatch.setattr(
+        proxy, "resync_remote", lambda *a, **kw: (resyncs.append(True), True)[1]
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [_device_payload(source_device_id=7)],
+        "activities": [
+            _activity_payload(source_activity_id=0x55),
+            _activity_payload(source_activity_id=0x56),
+        ],
+    }
+
+    result = proxy.restore_hub_bundle(bundle)
+
+    assert result["status"] == "success"
+    # Both activities were told NOT to send their own trigger…
+    assert activity_sync_flags == [False, False]
+    # …and the bundle sent exactly one terminal trigger.
+    assert resyncs == [True]
+
+
 def test_restore_bundle_partial_device_failure_returns_failed_at(monkeypatch) -> None:
     """Mid-bundle device failure leaves earlier devices in place and skips the rest."""
 

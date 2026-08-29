@@ -20,14 +20,22 @@ class HaCardStub extends HTMLElement {
     shadow.innerHTML = `
       <style>
         *, :host { box-sizing: border-box; }
+        /* Same tokens as HA's ha-card (src/components/ha-card.ts); the
+           literals are the legacy harness look used when no theme is set. */
         :host {
           display: block;
-          background: #fff;
+          position: relative;
+          background: var(--ha-card-background, var(--card-background-color, #fff));
+          -webkit-backdrop-filter: var(--ha-card-backdrop-filter, none);
+          backdrop-filter: var(--ha-card-backdrop-filter, none);
           border-radius: var(--ha-card-border-radius, 18px);
-          border: 1px solid #dbdbdb;
-          box-shadow:
+          border-width: var(--ha-card-border-width, 1px);
+          border-style: solid;
+          border-color: var(--ha-card-border-color, var(--divider-color, #dbdbdb));
+          box-shadow: var(--ha-card-box-shadow,
             0 1px 2px rgba(0, 0, 0, 0.06),
-            0 12px 24px rgba(0, 0, 0, 0.04);
+            0 12px 24px rgba(0, 0, 0, 0.04));
+          color: var(--primary-text-color);
         }
       </style>
       <slot></slot>
@@ -62,6 +70,9 @@ const ICONS = {
   "mdi:fast-forward": iconSvg(`<path d="M5 7l6 5-6 5z" fill="currentColor" stroke="none"></path><path d="M13 7l6 5-6 5z" fill="currentColor" stroke="none"></path>`),
   "mdi:play-circle-outline": iconSvg(`<circle cx="12" cy="12" r="9"></circle><path d="M10 8l6 4-6 4z" fill="currentColor" stroke="none"></path>`),
   "mdi:television-play": iconSvg(`<rect x="4" y="6" width="16" height="11" rx="2"></rect><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"></path><path d="M9 20h6"></path>`),
+  "mdi:television-guide": iconSvg(`<rect x="4" y="6" width="16" height="11" rx="2"></rect><path d="M7 9.5h6"></path><path d="M7 13.5h4"></path><path d="M9 20h6"></path>`),
+  "mdi:audio-video": iconSvg(`<rect x="3" y="7" width="18" height="10" rx="1.5"></rect><circle cx="16.5" cy="12" r="2.5"></circle><path d="M6 10.5h5"></path><path d="M6 13.5h5"></path>`),
+  "mdi:play": iconSvg(`<path d="M8 6l10 6-10 6z" fill="currentColor" stroke="none"></path>`),
   "mdi:play-circle": iconSvg(`<circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"></circle><path d="M10 8l6 4-6 4z" fill="#fff" stroke="none"></path>`),
   "mdi:circle": iconSvg(`<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"></circle>`, { stroke: "none" }),
 };
@@ -214,16 +225,22 @@ class HaSelectStub extends HTMLElement {
           display: block;
           position: relative;
         }
+        /* Tokens mirror HA's ha-select field (ha-picker-field ->
+           ha-combo-box-item: overline label, headline value, form
+           background) and its ha-dropdown menu; literals = legacy look. */
         .label {
           font-size: 12px;
-          color: #6f7890;
+          color: var(--mdc-select-label-ink-color, #6f7890);
           line-height: 1.2;
         }
         .trigger {
           width: 100%;
           border: 0;
-          background: #f6f6f6;
-          border-radius: 10px;
+          background: var(--ha-color-form-background, #f6f6f6);
+          /* Same contract as the real mdc field: shape token, 4px default.
+             The card rounds the ha-select HOST with the theme radius and
+             zeroes this token, so the stub must not invent its own look. */
+          border-radius: var(--mdc-shape-small, 4px);
           min-height: 112px;
           padding: 18px 20px 16px 22px;
           color: var(--primary-text-color, #202124);
@@ -234,7 +251,22 @@ class HaSelectStub extends HTMLElement {
           grid-template-rows: auto auto;
           gap: 10px 10px;
           cursor: pointer;
-          box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.55);
+          /* HA's field line: 1px --ha-color-border-neutral-loud at rest,
+             2px --mdc-theme-primary while the field is focused. */
+          box-shadow: inset 0 -1px 0 var(--ha-color-border-neutral-loud, rgba(0, 0, 0, 0.55));
+          transition: box-shadow 180ms ease-in-out;
+        }
+        .trigger:focus {
+          outline: none;
+          box-shadow: inset 0 -2px 0 var(--mdc-theme-primary, #4c78a8);
+        }
+        /* md-list-item hover / pressed state layers (on-surface 8% / 12%),
+           as the real ha-picker-field shows them. */
+        .trigger:hover:not([disabled]) {
+          background: color-mix(in srgb, var(--primary-text-color, #202124) 8%, var(--ha-color-form-background, #f6f6f6));
+        }
+        .trigger:active:not([disabled]) {
+          background: color-mix(in srgb, var(--primary-text-color, #202124) 12%, var(--ha-color-form-background, #f6f6f6));
         }
         .trigger[disabled] {
           cursor: default;
@@ -243,7 +275,7 @@ class HaSelectStub extends HTMLElement {
         .value {
           font-size: 27px;
           line-height: 1.1;
-          color: #111;
+          color: var(--primary-text-color, #111);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -254,7 +286,7 @@ class HaSelectStub extends HTMLElement {
           align-self: center;
           width: 30px;
           height: 30px;
-          color: #777;
+          color: var(--secondary-text-color, #777);
         }
         .menu {
           position: absolute;
@@ -262,9 +294,9 @@ class HaSelectStub extends HTMLElement {
           right: 0;
           top: calc(100% - 2px);
           display: none;
-          background: #fff;
+          background: var(--card-background-color, var(--ha-dialog-surface-background, var(--mdc-theme-surface, #fff)));
           border-radius: 0 0 24px 24px;
-          border: 1px solid #dadada;
+          border: 1px solid var(--ha-color-border-neutral-quiet, var(--divider-color, #dadada));
           border-top: 0;
           box-shadow:
             0 2px 0 rgba(0, 0, 0, 0.08),
@@ -281,7 +313,7 @@ class HaSelectStub extends HTMLElement {
           margin: 0 auto;
           border: 0;
           background: transparent;
-          color: #202124;
+          color: var(--wa-color-text-normal, var(--mdc-theme-text-primary-on-background, #202124));
           text-align: left;
           font: inherit;
           font-size: 26px;
@@ -290,9 +322,16 @@ class HaSelectStub extends HTMLElement {
           border-radius: 8px;
           cursor: pointer;
         }
-        .option:hover,
+        /* Real wa-dropdown-item: :host(:hover) -> --wa-color-neutral-fill-normal. */
+        .option:hover {
+          background: var(--wa-color-neutral-fill-normal, #ededed);
+        }
         .option[data-selected="true"] {
-          background: #ededed;
+          background: var(--ha-color-fill-primary-quiet-resting, #ededed);
+          /* Real HA: ha-dropdown-item :host([selected]) paints
+             --primary-color; the card overrides that host from outside with
+             --sb-select-selected-text, which the stub honours here. */
+          color: var(--sb-select-selected-text, var(--primary-color, inherit));
         }
         .option + .option {
           margin-top: 2px;
@@ -552,6 +591,9 @@ if (!customElements.get("ha-form")) customElements.define("ha-form", HaFormStub)
 if (!customElements.get("ha-switch")) customElements.define("ha-switch", HaSwitchStub);
 
 const scenarios = {
+  // Filled in below: "active" plus a devices attribute, so the device-mode
+  // toggle renders next to the selector (audits / manual theme checks).
+  device_mode: null,
   powered_off: {
     platform: "sofabaton_x1s",
     states: {
@@ -681,10 +723,83 @@ const scenarios = {
   },
 };
 
+scenarios.device_mode = (() => {
+  const base = clone(scenarios.active);
+  base.states[remoteEntityId].attributes.devices = [
+    { id: 1, name: "Television", device_class: "ir" },
+    { id: 2, name: "Soundbar", device_class: "ir" },
+  ];
+  // The keymap/power WS calls resolve the hub through this.
+  base.states[remoteEntityId].attributes.entry_id = "harness-entry";
+  // Served by the callWS stub for sofabaton_x1s/device/keymap. Device 1
+  // has power configured (the power key renders), device 2 does not.
+  base.keymaps = {
+    1: {
+      device: { device_id: 1, name: "Television", device_class: "ir" },
+      buttons: [174, 175, 176, 177, 178, 179, 180, 181, 182, 184, 185],
+      bindings: [
+        { button_id: 174, command_id: 11, command_name: "Up" },
+        { button_id: 176, command_id: 12, command_name: "OK" },
+      ],
+      commands: [
+        { command_id: 11, name: "Up" },
+        { command_id: 12, name: "OK" },
+        { command_id: 13, name: "Input HDMI 1" },
+        { command_id: 14, name: "Input HDMI 2" },
+        { command_id: 15, name: "Ambient Mode" },
+      ],
+      power_configured: true,
+      fetched_at: "2026-08-25T00:00:00Z",
+    },
+    2: {
+      device: { device_id: 2, name: "Soundbar", device_class: "ir" },
+      buttons: [182, 184, 185],
+      bindings: [],
+      commands: [
+        { command_id: 21, name: "Bass Up" },
+        { command_id: 22, name: "Bass Down" },
+      ],
+      power_configured: false,
+      fetched_at: "2026-08-25T00:00:00Z",
+    },
+  };
+  // Live power-state bytes served by the device/power_state stub; the
+  // send_command handler below flips them on 198/199 like the real hub
+  // (minus the macro-runtime commit lag).
+  base.devicePower = { 1: 0, 2: 0 };
+  return base;
+})();
+
+// Transparent hub long-press: the device_mode picture plus the
+// `long_press_keys` attribute (published only while the persistent cache is
+// enabled), carrying each bound button's resolved (device_id, command_id)
+// pair. OK (176) and VOL_UP (182) carry bindings on activity 101; OK also
+// on device page 1 (activity and device ids share the namespace).
+scenarios.long_press = (() => {
+  const base = clone(scenarios.device_mode);
+  base.states[remoteEntityId].attributes.long_press_keys = {
+    101: {
+      176: { device_id: 4, command_id: 9 },
+      182: { device_id: 3, command_id: 6 },
+    },
+    1: {
+      176: { device_id: 1, command_id: 21 },
+    },
+  };
+  return base;
+})();
+
+// The official integration must ignore the attribute even when present:
+// long-press is gated on the sofabaton_x1s platform, not just on the data.
+scenarios.hub_x2.states[remoteEntityId].attributes.long_press_keys = {
+  201: { 176: { device_id: 8, command_id: 9 } },
+};
+
 const harnessState = {
   card: null,
   config: null,
   scenarioName: null,
+  view: null,
   scenario: null,
   hass: null,
   serviceCalls: [],
@@ -692,10 +807,80 @@ const harnessState = {
   mqttSubscriptions: [],
 };
 
+// ── HA theme support ─────────────────────────────────────────────────────────
+// tests/fixtures/ha-themes.js + ha-theme-engine.js (loaded by the page).
+// themeState.mode: "global" applies the theme on <html> like HA's themes-mixin
+// (the card sees it through inheritance, config.theme stays unset);
+// "card" leaves <html> on HA default light and hands the theme to the card
+// through config.theme + hass.themes, i.e. the card's own _applyTheme path.
+const THEME_FIXTURE = window.HA_THEME_FIXTURE ?? null;
+const THEME_ENGINE = window.HAThemeEngine ?? null;
+const themeState = { value: null, name: null, dark: false, mode: "global", appearance: "light" };
+let appliedThemeKeys = [];
+let haBasePaletteInstalled = false;
+
+function installHaBasePalette() {
+  if (haBasePaletteInstalled || !THEME_FIXTURE || !THEME_ENGINE) return;
+  const fallback = document.getElementById("harness-fallback-palette");
+  const style = document.createElement("style");
+  style.id = "harness-ha-base-palette";
+  style.textContent = THEME_ENGINE.baseLightCss(THEME_FIXTURE);
+  fallback.insertAdjacentElement("afterend", style);
+  fallback.disabled = true;
+  document.body.dataset.themed = "";
+  haBasePaletteInstalled = true;
+}
+
+function applyThemeToHtml(parsed) {
+  const root = document.documentElement;
+  for (const key of appliedThemeKeys) root.style.removeProperty(key);
+  appliedThemeKeys = [];
+  const styles = THEME_ENGINE.buildRules(THEME_FIXTURE, parsed);
+  for (const [key, value] of Object.entries(styles)) {
+    root.style.setProperty(key, value);
+    appliedThemeKeys.push(key);
+  }
+}
+
+/**
+ * Select a fixture theme. value: "light" | "dark" | "<name>[|light|dark]";
+ * mode: "global" | "card". Remounts the card with the current scenario.
+ */
+async function setTheme(value, mode = "global") {
+  if (!THEME_FIXTURE || !THEME_ENGINE) throw new Error("theme fixture not loaded");
+  const parsed = THEME_ENGINE.parseValue(THEME_FIXTURE, value);
+  if (!parsed) throw new Error(`Unknown theme value: ${value}`);
+  installHaBasePalette();
+  const cardMode = mode === "card" && parsed.name;
+  // Global: the theme on <html>. Card: <html> is HA default light, the card
+  // applies the theme itself (hass.themes.darkMode stays false, as in HA).
+  applyThemeToHtml(cardMode ? { name: null, dark: false } : parsed);
+  Object.assign(themeState, { value: parsed.value, name: parsed.name, dark: parsed.dark, mode: cardMode ? "card" : "global" });
+  themeState.appearance = THEME_ENGINE.detectAppearance(document.body);
+  document.body.dataset.theme = themeState.appearance;
+  const scenario = harnessState.scenarioName ?? "active";
+  const config = { ...(harnessState.config ?? {}) };
+  delete config.theme; // mountCard sets it from themeState
+  await mountCard({ scenario, config, view: harnessState.view ?? null });
+  return { ...themeState };
+}
+
+function themedHassThemes() {
+  if (!themeState.value) return null;
+  const themes = {};
+  if (themeState.name) themes[themeState.name] = THEME_ENGINE.rawTheme(THEME_FIXTURE, themeState.name);
+  return {
+    darkMode: themeState.mode === "card" ? false : themeState.dark,
+    theme: themeState.mode === "card" ? "default" : (themeState.name ?? "default"),
+    default_theme: "default",
+    themes,
+  };
+}
+
 function createHass(scenario) {
   const hass = {
     states: clone(scenario.states),
-    themes: {
+    themes: themedHassThemes() ?? {
       themes: {
         "Harness Midnight": {
           "--primary-color": "#4c78a8",
@@ -718,6 +903,14 @@ function createHass(scenario) {
       harnessState.wsCalls.push(clone(message));
       if (message?.type === "config/entity_registry/get") {
         return { platform: scenario.platform };
+      }
+      if (message?.type === "sofabaton_x1s/device/keymap") {
+        const keymap = scenario.keymaps?.[message.device_id] ?? null;
+        return keymap ? { keymap: clone(keymap), generation: 1 } : { keymap: null, reason: "cache_miss" };
+      }
+      if (message?.type === "sofabaton_x1s/device/power_state") {
+        const state = scenario.devicePower?.[message.device_id];
+        return { power_state: state === 0 || state === 1 ? state : null };
       }
       return { ok: true };
     },
@@ -750,6 +943,15 @@ function createHass(scenario) {
         remoteState.state = "off";
         remoteState.attributes.current_activity = "Powered Off";
         remoteState.attributes.current_activity_id = null;
+      } else if (
+        domain === "remote" &&
+        service === "send_command" &&
+        scenario.devicePower &&
+        data?.device != null &&
+        (Number(data?.command) === 198 || Number(data?.command) === 199)
+      ) {
+        // Device-scope power macro: track state like the real hub does.
+        scenario.devicePower[data.device] = Number(data.command) === 198 ? 1 : 0;
       }
       if (harnessState.card) harnessState.card.hass = hass;
     },
@@ -780,16 +982,50 @@ function defaultConfig() {
   };
 }
 
-async function mountCard({ scenario = "active", config = {} } = {}) {
+// Views layered on a scenario for audits: open drawers / the activity menu.
+const VIEWS = ["macros", "favorites", "menu"];
+async function applyView(card, view) {
+  const root = card.shadowRoot || card;
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 80));
+  if (view === "macros" || view === "favorites") {
+    // The tab is an sb-key-button; a synthetic click (detail 0) on its inner
+    // control takes the keyboard-activation path and toggles the drawer.
+    const hosts = root.querySelectorAll(".macroFavoritesButton");
+    const host = hosts[view === "macros" ? 0 : 1];
+    (host?.shadowRoot?.querySelector(".sb-key-control") ?? host)?.click();
+    await settle();
+  } else if (view === "menu") {
+    // The stub listens on its inner trigger (a real mouse click would land
+    // there); a click on the host itself does nothing.
+    const select = root.querySelector("ha-select");
+    (select?.shadowRoot?.querySelector(".trigger") ?? select)?.click();
+    await settle();
+  }
+}
+
+/** "active", "active+macros", "powered_off+menu", ... */
+async function loadView(id) {
+  const [scenario, view] = String(id).split("+");
+  return mountCard({ scenario, view: view || null });
+}
+
+async function mountCard({ scenario = "active", config = {}, view = null } = {}) {
   await ensureRemoteCardLoaded();
   const mount = document.querySelector("#mount");
   mount.innerHTML = "";
 
   harnessState.scenarioName = scenario;
+  harnessState.view = VIEWS.includes(view) ? view : null;
   harnessState.scenario = clone(scenarios[scenario]);
   harnessState.serviceCalls = [];
   harnessState.wsCalls = [];
   harnessState.config = { ...defaultConfig(), ...clone(config) };
+  // Under a fixture theme the legacy "Harness Midnight" default would fight
+  // it: global mode wants no card theme, card mode wants the fixture theme.
+  if (themeState.value) {
+    if (themeState.mode === "card" && themeState.name) harnessState.config.theme = themeState.name;
+    else if (!("theme" in config)) delete harnessState.config.theme;
+  }
   harnessState.hass = createHass(harnessState.scenario);
 
   const card = document.createElement("sofabaton-virtual-remote");
@@ -799,6 +1035,7 @@ async function mountCard({ scenario = "active", config = {} } = {}) {
   harnessState.card = card;
 
   await new Promise((resolve) => setTimeout(resolve, 50));
+  if (harnessState.view) await applyView(card, harnessState.view);
   return card;
 }
 
@@ -853,6 +1090,15 @@ window.__remoteCardHarness = {
   mountCard,
   mountEditor,
   updateScenarioState,
+  setTheme,
+  getThemeState: () => ({ ...themeState }),
+  themeOptions: THEME_ENGINE ? THEME_ENGINE.optionList(THEME_FIXTURE) : [],
+  themeFixtureLoaded: Boolean(THEME_FIXTURE && THEME_ENGINE),
+  loadView,
+  scenarioNames: [
+    ...Object.keys(scenarios),
+    ...Object.keys(scenarios).flatMap((name) => VIEWS.map((view) => `${name}+${view}`)),
+  ],
   query: (selector) => cardRoot().querySelector(selector),
   queryAll: (selector) => Array.from(cardRoot().querySelectorAll(selector)),
   getMqttSubscriptions: () =>
@@ -871,3 +1117,12 @@ window.__remoteCardHarness = {
 };
 
 await ensureRemoteCardLoaded();
+
+{
+  const params = new URL(window.location.href).searchParams;
+  const themeParam = params.get("theme");
+  if (themeParam && THEME_FIXTURE && THEME_ENGINE) {
+    await loadView(params.get("scenario") || "active");
+    await setTheme(themeParam, params.get("mode") === "card" ? "card" : "global");
+  }
+}

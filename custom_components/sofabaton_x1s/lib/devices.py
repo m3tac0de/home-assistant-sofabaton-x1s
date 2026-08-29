@@ -108,7 +108,11 @@ class DeviceConfig:
     #: (e.g. IR carrier-group selector on RF devices).
     channel: int = 0
 
-    #: Initial power state to display: ``0`` off, ``1`` on.
+    #: Assumed power state of the device: ``0`` off, ``1`` on. The hub
+    #: keeps this byte live as activities power the device on and off
+    #: (bench capture 2026-08-25: toggling a device flips exactly this
+    #: byte in the re-fetched row), so a fresh REQ_DEVICES read is the
+    #: protocol's only "is this device on" query.
     power_state: int = 0
 
     #: IPv4 address as a dotted-decimal string. Encoded into the tail
@@ -143,13 +147,16 @@ class DeviceConfig:
     #: behaviour by default. See :attr:`is_input_configured`.
     input_mode: int = 0
 
-    #: Power configuration value. ``0`` means **power has not been
-    #: configured** on this device (the user has not picked a power
-    #: style). A non-zero value indicates power is configured; the
-    #: specific value distinguishes between toggle / discrete /
-    #: separate-on-off styles, but the encoding here is not fully
-    #: decoded yet (real captures show ``0`` unconfigured, ``1``
-    #: configured). See :attr:`is_power_configured`.
+    #: Tail power byte. NOT the power-key capability signal: bench
+    #: captures (2026-08-25) show ``1`` on every hub device, including
+    #: devices whose power is unconfigured or disabled, because ``1``
+    #: is also the parse floor when the tail marker block is absent.
+    #: The authoritative capability/style signal is the separate
+    #: idle-behavior byte (0x0140 -> 0x0242 exchange). This byte is
+    #: still hub-functional: rewriting a Wifi device head without
+    #: carrying it breaks activity-driven power/input callback
+    #: delivery (docs/protocol/live-hub-testing.md, the P2 recipe),
+    #: so round-trip it faithfully. See :attr:`is_power_configured`.
     power_mode: int = 0
 
     #: Companion byte to :attr:`power_mode`. Observed values vary per
@@ -162,6 +169,16 @@ class DeviceConfig:
     #: Shared-state flag controlling whether the device's commands are
     #: visible to other apps/integrations.
     share_mode: int = 0
+
+    #: State flag at tail offset 15 (between the 0xFC markers at 14 and
+    #: 16). Hub-maintained on some records: a live X2 record captured on
+    #: bench (2026-08-27) stores ``1`` here while its write-time checksum
+    #: still reflects ``0``, i.e. the hub flips this byte in storage after
+    #: the record was written. Semantics not fully decoded; it must be
+    #: preserved verbatim on rewrite. This builder used to hardcode ``0``,
+    #: which silently cleared the flag on rename/IP-edit rewrites of any
+    #: record carrying it.
+    tail_flag: int = 0
 
     #: Tail-slot marker byte at offset 17 of the tail region. Empirical
     #: captures show this is ``1`` on WiFi-IP devices and ``0`` on
@@ -191,11 +208,18 @@ class DeviceConfig:
 
     @property
     def is_power_configured(self) -> bool:
-        """``True`` when the device has been configured for power.
+        """``True`` when the tail power byte is non-zero.
 
-        Empirically: tail byte 11 (``power_mode``) is ``0`` on devices
-        the user has not yet configured for power, and non-zero once
-        they have (the specific value encodes the chosen power style).
+        Caution: this is NOT "the user configured a power key". Bench
+        captures (2026-08-25) show ``power_mode`` at ``1`` on every hub
+        device, including power-disabled ones, and the parser floors it
+        to ``1`` when the tail marker block is absent, so this property
+        is effectively always true on real hubs. The real power-key
+        capability signal is the idle-behavior byte (0x0242): modes
+        1-3 mean power is configured, 4 means no power key, 0 means
+        never set up. Kept because a zero here still matters to the
+        hub (see :attr:`power_mode`): callers use it to detect a tail
+        that must be carried through head rewrites.
         """
 
         return self.power_mode != 0
@@ -266,7 +290,7 @@ def _build_tail_slot(config: DeviceConfig, *, width: int) -> bytes:
     tail[12] = config.power_style & 0xFF
     tail[13] = config.share_mode & 0xFF
     tail[14] = 0xFC
-    tail[15] = 0
+    tail[15] = config.tail_flag & 0xFF
     tail[16] = 0xFC
     tail[17] = config.tail_marker & 0xFF
 
@@ -423,6 +447,7 @@ def parse_device_record(
     power_mode = tail[11] if len(tail) > 11 else 0
     power_style = tail[12] if len(tail) > 12 else 0
     share_mode = tail[13] if len(tail) > 13 else 0
+    tail_flag = tail[15] if len(tail) > 15 else 0
     tail_marker = tail[17] if len(tail) > 17 else 0
 
     extras_present = False
@@ -453,6 +478,7 @@ def parse_device_record(
         power_mode=power_mode,
         power_style=power_style,
         share_mode=share_mode,
+        tail_flag=tail_flag,
         tail_marker=tail_marker,
         extra_a=extra_a,
         extra_b=extra_b,
@@ -515,6 +541,7 @@ def device_config_from_backup(
         power_mode=_as_int("power_mode", 0) & 0xFF,
         power_style=_as_int("power_style", 2) & 0xFF,
         share_mode=_as_int("share_mode", 0) & 0xFF,
+        tail_flag=0 if for_create else (_as_int("tail_flag", 0) & 0xFF),
         tail_marker=0 if for_create else (_as_int("tail_marker", 1) & 0xFF),
         extra_a=_as_int("a", 0) & 0xFF if isinstance(extras, Mapping) else 0,
         extra_b=_as_int("b", 0) & 0xFF if isinstance(extras, Mapping) else 0,

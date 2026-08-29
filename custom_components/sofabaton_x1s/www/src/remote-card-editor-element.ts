@@ -3,24 +3,31 @@
 // delegate to the pure helpers in remote-card-editor-layout.ts; the sections
 // render via editor-sections/*.
 
-import { LitElement, html, nothing, unsafeCSS } from "lit";
+import { LitElement, html, nothing, unsafeCSS, type TemplateResult } from "lit";
 import {
   LAYOUT_KEYS,
+  SHORTCUT_SLOTS,
   channelGroupEnabled,
   deviceModeEnabledInConfig,
+  deviceShortcutsFromConfig,
   dvrGroupEnabled,
   favoritesButtonEnabled,
   isDeviceLayoutKey,
   macrosButtonEnabled,
   mediaGroupEnabled,
   openDeviceFromConfig,
+  parseDeviceLayoutKey,
   volumeGroupEnabled,
+  type ShortcutSlot,
 } from "./remote-card-layout";
 import {
   applyLayoutConfigPatch,
+  applyShortcutSlotPatch,
   channelTogglePatch,
   commandsEnabled,
   commandsTogglePatch,
+  powerEnabled,
+  powerTogglePatch,
   deviceStoredLayerKey,
   deviceToggleEnabledForEditor,
   deviceTogglePatch,
@@ -54,8 +61,16 @@ import {
   readPreviewActivity,
   writePreviewActivity,
 } from "./remote-card-shared";
-import type { HassLike, RemoteCardConfig } from "./remote-card-types";
+import type {
+  DeviceKeymapResponse,
+  HassLike,
+  RemoteCardConfig,
+} from "./remote-card-types";
 import { renderGeneralOptionsSection } from "./editor-sections/general-options";
+import {
+  renderShortcutsRowPanel,
+  renderShortcutsSlotStrip,
+} from "./editor-sections/shortcuts";
 import {
   longPressBlock,
   longPressEnabledPatch,
@@ -77,6 +92,8 @@ const CARD_SETTING_DEFAULTS: Record<string, unknown> = {
   shrink: 0,
   show_automation_assist: false,
   background_override: null,
+  key_style: "flat",
+  tinted_panels: false,
 };
 
 const ENTITY_FORM_SCHEMA = [
@@ -114,6 +131,116 @@ export class SofabatonRemoteCardEditor extends LitElement {
   private _editorIntegrationEntityId: string | null = null;
   private _editorIntegrationDetectingFor: string | null = null;
   private _sortableDefinePending = false;
+
+  // Shortcuts slot editor state (shortcuts-row-plan.md §4.2/§4.3). The open
+  // slot's draft lives here, NOT in config: a slot is written only once both
+  // icon and command are valid, so config never holds a half-configured slot.
+  private _shortcutOpenSlot: ShortcutSlot | null = null;
+  private _shortcutDraftIcon = "";
+  private _shortcutDraftCommand: number | null = null;
+  /** Editor-lifetime keymap cache, keyed by device id. */
+  private _editorKeymaps: Record<
+    string,
+    {
+      status: "loading" | "ready" | "cache_miss" | "error";
+      commands: Array<{ command_id: number; name: string }>;
+    }
+  > = {};
+
+  // ---------- shortcuts (device selections only) ----------
+
+  /**
+   * Fetch one device's commands for the shortcut command select — the same
+   * cache-first WS the card uses; the editor never invalidates it.
+   */
+  private _ensureEditorKeymap(deviceId: number): void {
+    const key = String(deviceId);
+    if (this._editorKeymaps[key]) return;
+    const entityId = String(this._config?.entity || "");
+    const remoteState = entityId ? this._hass?.states?.[entityId] : null;
+    const entryId = String(
+      (remoteState?.attributes as Record<string, unknown> | undefined)?.entry_id ?? "",
+    );
+    if (!entryId || !this._hass?.callWS) return;
+    this._editorKeymaps[key] = { status: "loading", commands: [] };
+    void this._hass
+      .callWS<DeviceKeymapResponse>({
+        type: "sofabaton_x1s/device/keymap",
+        entry_id: entryId,
+        device_id: deviceId,
+      })
+      .then((response) => {
+        const keymap = response?.keymap;
+        if (!keymap) {
+          this._editorKeymaps[key] = { status: "cache_miss", commands: [] };
+          return;
+        }
+        const commands = (Array.isArray(keymap.commands) ? keymap.commands : [])
+          .map((command) => ({
+            command_id: Number(command?.command_id),
+            name: String(command?.name ?? ""),
+          }))
+          .filter((command) => Number.isFinite(command.command_id) && command.name)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        this._editorKeymaps[key] = { status: "ready", commands };
+      })
+      .catch(() => {
+        this._editorKeymaps[key] = { status: "error", commands: [] };
+      })
+      .then(() => this.requestUpdate());
+  }
+
+  private _clearShortcutPanel(): void {
+    this._shortcutOpenSlot = null;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+  }
+
+  private _toggleShortcutSlot(slot: ShortcutSlot): void {
+    if (this._shortcutOpenSlot === slot) {
+      this._clearShortcutPanel();
+    } else {
+      this._shortcutOpenSlot = slot;
+      const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+      const stored = deviceShortcutsFromConfig(this._config, deviceId)[slot];
+      this._shortcutDraftIcon = stored?.icon ?? "";
+      this._shortcutDraftCommand = stored?.command_id ?? null;
+    }
+    this.requestUpdate();
+  }
+
+  /**
+   * Draft edit: config is written (and the preview updates) the moment both
+   * fields are valid; an incomplete draft leaves the stored slot untouched.
+   */
+  private _onShortcutDraftChanged(icon: string, commandId: number | null): void {
+    this._shortcutDraftIcon = icon;
+    this._shortcutDraftCommand = commandId;
+    const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    const slot = this._shortcutOpenSlot;
+    if (deviceId != null && slot && icon.trim() && commandId != null) {
+      const { nextConfig } = applyShortcutSlotPatch(this._config, deviceId, slot, {
+        icon: icon.trim(),
+        command_id: commandId,
+      });
+      if (JSON.stringify(nextConfig) !== JSON.stringify(this._config)) {
+        this._config = nextConfig as RemoteCardConfig;
+        this._fireChanged();
+      }
+    }
+    this.requestUpdate();
+  }
+
+  private _resetShortcutSlot(slot: ShortcutSlot): void {
+    const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    if (deviceId == null) return;
+    const { nextConfig } = applyShortcutSlotPatch(this._config, deviceId, slot, null);
+    this._config = nextConfig as RemoteCardConfig;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+    this._fireChanged();
+    this.requestUpdate();
+  }
 
   // ---------- integration detection (x1s vs hub) ----------
 
@@ -313,6 +440,8 @@ export class SofabatonRemoteCardEditor extends LitElement {
       this._editorIntegrationEntityId = null;
       this._editorIntegrationDomain = null;
       this._editorIntegrationDetectingFor = null;
+      this._editorKeymaps = {};
+      this._clearShortcutPanel();
     }
 
     if ("commands" in incomingConfig) delete incomingConfig.commands;
@@ -440,6 +569,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
   private _onSelectLayout(selection: string): void {
     if (selection === this._layoutSelectionKey()) return;
     this._layoutSelection = selection;
+    this._clearShortcutPanel();
     this._setPreviewActivityForSelection(selection);
     this.requestUpdate();
   }
@@ -449,6 +579,9 @@ export class SofabatonRemoteCardEditor extends LitElement {
   private _isEditorGroupVisible(key: string, isEditorX2: boolean): boolean {
     if (!isEditorX2 && key === "abc") return false;
     const selection = this._layoutSelectionKey();
+    // Shortcuts is a device-mode-only group: listed (and orderable) for
+    // device selections, never on the activity side.
+    if (key === "shortcuts") return isDeviceLayoutKey(selection);
     const asRows = mfAsRowsForEditor(this._config, selection);
     if (isDeviceLayoutKey(selection)) {
       // Device layouts render ONE commands construct: the drawer row when
@@ -633,6 +766,44 @@ export class SofabatonRemoteCardEditor extends LitElement {
       });
     }
 
+    // Shortcuts slot editing rides on the group's own order row: the strip
+    // fills the row's second cell, the open slot's panel drops out inside
+    // the row. Concrete device selections only ("device:<id>", never
+    // "device:default" — slot config is strictly per-device, no
+    // inheritance). The keymap fetch feeds the command select.
+    const shortcutDeviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    let shortcutsStrip: TemplateResult | typeof nothing = nothing;
+    let shortcutsPanel: TemplateResult | typeof nothing = nothing;
+    if (
+      shortcutDeviceId != null &&
+      devices.some((device: { id: unknown }) => Number(device.id) === shortcutDeviceId)
+    ) {
+      this._ensureEditorKeymap(shortcutDeviceId);
+      const keymap = this._editorKeymaps[String(shortcutDeviceId)];
+      const stored = deviceShortcutsFromConfig(this._config, shortcutDeviceId);
+      shortcutsStrip = renderShortcutsSlotStrip({
+        slots: SHORTCUT_SLOTS.map((slot) => ({
+          slot,
+          icon: stored[slot]?.icon ?? null,
+        })),
+        openSlot: this._shortcutOpenSlot,
+        onToggleSlot: (slot) => this._toggleShortcutSlot(slot),
+      });
+      if (this._shortcutOpenSlot) {
+        shortcutsPanel = renderShortcutsRowPanel({
+          hass: this._hass,
+          openSlot: this._shortcutOpenSlot,
+          draftIcon: this._shortcutDraftIcon,
+          draftCommandId: this._shortcutDraftCommand,
+          commandsStatus: keymap?.status ?? "loading",
+          commands: keymap?.commands ?? [],
+          onDraftChanged: (icon, commandId) =>
+            this._onShortcutDraftChanged(icon, commandId),
+          onReset: (slot) => this._resetShortcutSlot(slot),
+        });
+      }
+    }
+
     // Scope the form data to its schema: ha-form echoes the whole data
     // object back on value-changed, so anything extra here would get merged
     // into the stored config.
@@ -711,7 +882,10 @@ export class SofabatonRemoteCardEditor extends LitElement {
           mediaEnabled: mediaGroupEnabled(layoutCfg),
           dvrEnabled: dvrGroupEnabled(layoutCfg),
           isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
+          shortcutsStrip,
+          shortcutsPanel,
           commandsEnabled: commandsEnabled(this._config, this._layoutSelectionKey()),
+          powerEnabled: powerEnabled(this._config, this._layoutSelectionKey()),
           showDeviceModeSwitch: devices.length > 0,
           deviceModeEnabled: deviceToggleEnabledForEditor(
             this._config,
@@ -728,6 +902,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
           onSetMacro: (v) => this._updateLayoutConfig(macroTogglePatch(v)),
           onSetFavorites: (v) => this._updateLayoutConfig(favoritesTogglePatch(v)),
           onSetCommands: (v) => this._updateLayoutConfig(commandsTogglePatch(v)),
+          onSetPower: (v) => this._updateLayoutConfig(powerTogglePatch(v)),
           onSetDeviceMode: (v) => this._updateLayoutConfig(deviceTogglePatch(v)),
           onSetVolume: (v) => this._updateLayoutConfig(volumeTogglePatch(v)),
           onSetChannel: (v) => this._updateLayoutConfig(channelTogglePatch(v)),

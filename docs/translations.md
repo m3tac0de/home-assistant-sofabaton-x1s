@@ -79,6 +79,16 @@ literal UI text outside the English table.
 
 - Keep product and feature names unchanged: `Sofabaton`, `Home Assistant`,
   `Wifi Commands`, `Wifi Events`, and `MQTT Discovery`.
+- Use **button assignment** for user-facing English copy. Choose one equivalent
+  assignment term per locale and use it throughout both cards; internal keys
+  such as `binding*` are implementation details, not translation guidance.
+- Call the callback component the **HTTP listener**, never the HTTP service.
+- Reuse each locale's editor label for **automatic power control** in progress
+  messages instead of introducing a second translation for the same feature.
+- Use **Playback** for the generic media-button section. Reserve *transport* for
+  delivery methods such as MQTT and HTTP.
+- Use **Fast forward** for the physical key. Compact key-face abbreviations such
+  as `Fwd`, `Rew`, `Vol +`, and `Ch +` are allowed where space is constrained.
 - Translate generic uses of *event*, *action*, *activity*, *device*, and
   *synchronization*. A product name such as `Wifi Events` does not make every
   surrounding use of “event” a product name.

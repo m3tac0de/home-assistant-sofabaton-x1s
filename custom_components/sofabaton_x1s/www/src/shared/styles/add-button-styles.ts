@@ -19,7 +19,7 @@ export const addButtonStyles = css`
     border-radius: var(--ha-card-border-radius, 12px);
     border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
     background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-    color: var(--primary-color);
+    color: var(--sb-accent-text, var(--primary-color));
     font: inherit;
     font-size: 12px;
     font-weight: 700;
@@ -30,6 +30,7 @@ export const addButtonStyles = css`
     border-color: var(--primary-color);
     background: color-mix(in srgb, var(--primary-color) 16%, transparent);
   }
+  .quick-access-add-btn:hover:not(:disabled) { color: var(--primary-text-color); }
   .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
-  .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
+  .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; color: var(--primary-color); }
 `;

@@ -366,6 +366,73 @@ test("later control-panel refresh can transition tools card into blocked mismatc
   assert.equal(store.snapshot.toolsFrontendVersionMismatch, true);
 });
 
+// HA restart with the card open: a backend-retry load can succeed in the
+// window where the WS API is registered but no hub entries are set up yet,
+// leaving both payloads with an empty hub list. The state-only refresh paths
+// (runtime poll, connection changes, hub switches) must then heal `contents`
+// too (before the fix the Hub/Backup tabs stayed on "No hubs found" until a
+// manual card reload), and the persisted hub selection must survive the
+// transient empty window.
+test("state refresh reloads cache contents when hubs appear after a restart window", async () => {
+  globalThis.localStorage?.setItem(
+    VIEW_STATE_STORAGE_KEY,
+    JSON.stringify({ selectedHubEntryId: "hub-1", selectedTab: "cache" }),
+  );
+  const store = new ControlPanelStore(() => undefined, {
+    loadedFrontendVersion: "dev",
+  });
+  liveStores.push(store);
+  let hubsReady = false;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () =>
+          hubsReady ? baseState : { ...baseState, hubs: [] },
+        "sofabaton_x1s/persistent_cache/contents": () =>
+          hubsReady ? baseContents : { enabled: true, hubs: [] },
+      },
+    }),
+  );
+
+  // The retry that lands mid-startup: both payloads are empty.
+  await store.loadState();
+  assert.equal(store.snapshot.state?.hubs.length, 0);
+  assert.equal(store.snapshot.contents?.hubs.length, 0);
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+
+  // The next state-only refresh (runtime poll) sees the hubs come up.
+  hubsReady = true;
+  await store.loadControlPanelState();
+
+  assert.equal(store.snapshot.state?.hubs.length, 1);
+  assert.equal(store.snapshot.contents?.hubs.length, 1);
+  assert.equal(store.snapshot.contents?.hubs[0]?.entry_id, "hub-1");
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+});
+
+test("state refresh leaves cache contents alone when they already cover the hubs", async () => {
+  const { store } = createStore();
+  let contentsCalls = 0;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/persistent_cache/contents": () => {
+          contentsCalls += 1;
+          return baseContents;
+        },
+      },
+    }),
+  );
+
+  await store.loadState();
+  assert.equal(contentsCalls, 1);
+
+  await store.loadControlPanelState();
+  assert.equal(contentsCalls, 1);
+});
+
 test("setSetting applies optimistic state and rolls back on failure", async () => {
   const { store } = createStore();
   store.connected();

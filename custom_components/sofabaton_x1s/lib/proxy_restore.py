@@ -36,7 +36,6 @@ from .device_create import (
     build_key_sort_steps,
     build_macro_step,
     build_macro_step_record,
-    build_remote_sync_step,
     build_set_idle_behavior_step,
     run_create_sequence,
     run_device_create,
@@ -67,22 +66,27 @@ from .protocol_const import (
 ACTIVITY_ENTITY_ID_MIN = 0x65
 
 
-def _idle_behavior_mode(device_block: dict[str, Any]) -> int:
+def _idle_behavior_mode(device_block: dict[str, Any]) -> int | None:
     """Resolve a device backup block's idle / automatic-power mode byte.
 
-    Prefers the dedicated ``idle_behavior`` field (the 0x0242 reply byte,
-    captured since this field was added). Older backups predate it, so
-    fall back to ``power_mode`` to preserve their original restore
-    behavior. The byte is replayed verbatim via ``SET_IDLE_BEHAVIOR``.
+    Only the dedicated ``idle_behavior`` field (the 0x0242 reply byte)
+    counts; ``None`` means the capture has no usable value and no
+    ``SET_IDLE_BEHAVIOR`` write should happen. The historic fallback to
+    the bundle's ``power_mode`` field is deliberately gone: that field
+    holds the record-tail byte, which bench captures (2026-08-25) show
+    is a different, always-1-in-practice value, so the fallback wrote
+    mode 1 over devices whose real idle byte was 0, 2, 3, or 4. The
+    vendor app likewise treats a missing value as unknown rather than
+    substituting the record byte.
     """
 
     raw = device_block.get("idle_behavior")
     if raw is None:
-        raw = device_block.get("power_mode", 0)
+        return None
     try:
         return int(raw) & 0xFF
     except (TypeError, ValueError):
-        return 0
+        return None
 
 
 def _key_sort_table_has_positions(msg_hex: str) -> bool:
@@ -795,15 +799,18 @@ class RestoreMixin:
         self.state.commands[device_id] = dict(command_names)
         self._commands_complete.add(device_id)
         idle_mode = _idle_behavior_mode(device_block)
-        self.state.devices[device_id] = {
+        entry: dict[str, Any] = {
             "name": str(device_block.get("name") or ""),
             "brand": str(device_block.get("brand") or ""),
             "device_class": device_class,
             "device_class_code": int(device_block.get("device_class_code", 0)) & 0xFF,
-            "idle_behavior": idle_mode,
-            "power_mode": idle_mode,
-            "power_model": idle_mode,
         }
+        if idle_mode is not None:
+            # Same aliased key triple record_idle_behavior_value writes.
+            entry["idle_behavior"] = idle_mode
+            entry["power_mode"] = idle_mode
+            entry["power_model"] = idle_mode
+        self.state.devices[device_id] = entry
 
         return DeviceCreateResult(
             success=True,
@@ -1109,12 +1116,15 @@ class RestoreMixin:
             captured = button_code_map.get(command_id, 0)
             return captured or synthesize_command_code(command_id)
 
-        post_steps = [
-            build_set_idle_behavior_step(
-                device_id=new_device_id,
-                mode=_idle_behavior_mode(device_block),
+        post_steps = []
+        idle_mode = _idle_behavior_mode(device_block)
+        if idle_mode is not None:
+            post_steps.append(
+                build_set_idle_behavior_step(
+                    device_id=new_device_id,
+                    mode=idle_mode,
+                )
             )
-        ]
         post_steps.extend(command_steps)
         if isinstance(request.key_sort, dict):
             key_sort_msg_hex = str(request.key_sort.get("msg_hex") or "").strip()
@@ -1359,12 +1369,14 @@ class RestoreMixin:
                 kwargs["long_press_button_id"] = long_press_command_id
             post_steps.append(build_button_binding_step(**kwargs))
 
-        post_steps.append(
-            build_set_idle_behavior_step(
-                device_id=new_device_id,
-                mode=_idle_behavior_mode(device_block),
+        idle_mode = _idle_behavior_mode(device_block)
+        if idle_mode is not None:
+            post_steps.append(
+                build_set_idle_behavior_step(
+                    device_id=new_device_id,
+                    mode=idle_mode,
+                )
             )
-        )
 
         skipped_macro_steps = 0
         restored_macros = 0
@@ -1510,6 +1522,7 @@ class RestoreMixin:
         bundle_devices_by_source_id: dict[int, dict[str, Any]] | None = None,
         command_id_maps_by_source_device_id: dict[int, dict[int, int]] | None = None,
         activity_id_map: dict[int, int] | None = None,
+        send_remote_sync: bool = True,
     ) -> dict[str, Any] | None:
         """Restore an activity from a backup payload.
 
@@ -1627,6 +1640,7 @@ class RestoreMixin:
                 },
                 bundle_devices_by_source_id=bundle_devices,
                 command_id_maps_by_source_device_id=command_id_maps,
+                send_remote_sync=send_remote_sync,
             )
 
             result = run_device_create(self, request)
@@ -1811,6 +1825,10 @@ class RestoreMixin:
                     bundle_devices_by_source_id=bundle_devices_by_source_id,
                     command_id_maps_by_source_device_id=command_id_maps,
                     activity_id_map=activity_id_map,
+                    # One terminal trigger for the whole bundle (below):
+                    # per-activity triggers kept aborting/restarting the
+                    # remote's multi-minute full sync (bench 2026-08-27).
+                    send_remote_sync=False,
                 )
             except Exception:
                 self._log.exception(
@@ -1855,6 +1873,22 @@ class RestoreMixin:
                 completed_steps=completed_steps,
                 total_steps=total_steps,
                 current_activity_id=src_act_id,
+            )
+
+        # Single terminal remote sync for the entire bundle, after every
+        # write (devices, activities, favorites) has landed. The remote
+        # runs one clean full pass instead of N aborted ones.
+        _progress(
+            status="running",
+            phase="remote_sync",
+            message="Triggering the remote's sync…",
+            completed_steps=completed_steps,
+            total_steps=total_steps,
+        )
+        if not self.resync_remote():
+            self._log.warning(
+                "[RESTORE] terminal remote-sync trigger was not sent "
+                "after the bundle restore"
             )
 
         return {
@@ -2067,8 +2101,14 @@ class RestoreMixin:
             )
             restored_macros += 1
 
-        post_steps.append(build_remote_sync_step())
-
+        # No remote-sync step here: it used to sit in this batch, BEFORE
+        # the favorites replay below, so the remote's rebuild never saw
+        # the activity's favorites -- and in a bundle restore the
+        # per-activity triggers kept aborting/restarting the remote's
+        # multi-minute full sync (bench 2026-08-27). The trigger now
+        # fires once at the very end of this pipeline (see below), and
+        # bundle restores suppress even that in favor of one terminal
+        # trigger for the whole bundle.
         self.reset_ack_queues()
         post_result = _run_create_sequence(self, post_steps)
         if not post_result.success:
@@ -2167,6 +2207,17 @@ class RestoreMixin:
             "active": False,
             "needs_confirm": False,
         }
+
+        # Terminal remote sync AFTER the favorites replay, so the
+        # remote's rebuild includes them. Suppressed by the bundle
+        # orchestrator, which sends one trigger for the whole bundle.
+        if request.send_remote_sync:
+            if not self.resync_remote():
+                self._log.warning(
+                    "[RESTORE] terminal remote-sync trigger was not sent "
+                    "for activity 0x%02X",
+                    new_activity_id,
+                )
 
         # ``restored_inputs`` carries the favorite-replay count for
         # activities (DeviceCreateResult has no dedicated favorites

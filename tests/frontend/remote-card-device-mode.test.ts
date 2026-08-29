@@ -81,6 +81,8 @@ function createHass(options: {
   calls?: ServiceCall[];
   keymapResponse?: unknown;
   keymapCalls?: Array<Record<string, unknown>>;
+  powerStateResponse?: unknown;
+  powerStateCalls?: Array<Record<string, unknown>>;
 } = {}): HassLike {
   const platform = options.platform ?? "sofabaton_x1s";
   const calls = options.calls ?? [];
@@ -94,6 +96,11 @@ function createHass(options: {
         options.keymapCalls?.push(message);
         if (options.keymapResponse instanceof Error) throw options.keymapResponse;
         return (options.keymapResponse ?? { keymap: null, reason: "cache_miss" }) as T;
+      }
+      if (String(message.type) === "sofabaton_x1s/device/power_state") {
+        options.powerStateCalls?.push(message);
+        if (options.powerStateResponse instanceof Error) throw options.powerStateResponse;
+        return (options.powerStateResponse ?? { power_state: null }) as T;
       }
       return { ok: true } as T;
     },
@@ -334,6 +341,147 @@ test("device mode scopes key and command sends to the selected device", async ()
   const before = calls.length;
   await store.sendCommand(174);
   assert.equal(calls.length, before);
+});
+
+// ---------- power button (docs/internal/device-mode-plan.md §8) ----------
+
+const POWER_KEYMAP = {
+  keymap: { ...READY_KEYMAP.keymap, power_configured: true },
+  generation: 7,
+};
+
+test("power gate requires a ready keymap that says configured", async () => {
+  storageBacking.clear();
+  const withPower = createStore(
+    createHass({ state: deviceState(), keymapResponse: POWER_KEYMAP }),
+  );
+  await flush();
+  withPower.setMode("device");
+  withPower.setDevice(3);
+  await flush();
+  assert.equal(withPower.devicePowerConfigured(), true);
+
+  // Backend omits or denies the flag: fail-closed.
+  const without = createStore(
+    createHass({ state: deviceState(), keymapResponse: READY_KEYMAP }),
+  );
+  await flush();
+  without.setMode("device");
+  without.setDevice(3);
+  await flush();
+  assert.equal(without.devicePowerConfigured(), false);
+
+  // No keymap at all (cache miss): fail-closed.
+  const miss = createStore(createHass({ state: deviceState() }));
+  await flush();
+  miss.setMode("device");
+  miss.setDevice(3);
+  await flush();
+  assert.equal(miss.devicePowerConfigured(), false);
+});
+
+test("power toggle reads live state then fires the opposite macro", async () => {
+  storageBacking.clear();
+  const calls: ServiceCall[] = [];
+  const powerStateCalls: Array<Record<string, unknown>> = [];
+  const store = createStore(
+    createHass({
+      state: deviceState(),
+      calls,
+      keymapResponse: POWER_KEYMAP,
+      powerStateResponse: { power_state: 1 },
+      powerStateCalls,
+    }),
+  );
+  await flush();
+  store.setMode("device");
+  store.setDevice(3);
+  await flush();
+
+  await store.toggleDevicePower();
+  assert.deepEqual(powerStateCalls, [
+    { type: "sofabaton_x1s/device/power_state", entry_id: "entry-1", device_id: 3 },
+  ]);
+  // Device reads as ON: fire POWER_OFF (199).
+  assert.deepEqual(calls.at(-1), {
+    domain: "remote",
+    service: "send_command",
+    data: { entity_id: ENTITY, command: 199, device: 3 },
+  });
+
+  // Second press inside the optimistic window: no re-read (the hub's
+  // tracked byte lags the macro), fire the opposite of our own flip.
+  await store.toggleDevicePower();
+  assert.equal(powerStateCalls.length, 1);
+  assert.deepEqual(calls.at(-1)?.data, { entity_id: ENTITY, command: 198, device: 3 });
+
+  // And back again: still no re-read, alternating macros.
+  await store.toggleDevicePower();
+  assert.equal(powerStateCalls.length, 1);
+  assert.deepEqual(calls.at(-1)?.data, { entity_id: ENTITY, command: 199, device: 3 });
+});
+
+test("an unreadable power state aborts the click without firing", async () => {
+  storageBacking.clear();
+  const calls: ServiceCall[] = [];
+  const store = createStore(
+    createHass({
+      state: deviceState(),
+      calls,
+      keymapResponse: POWER_KEYMAP,
+      powerStateResponse: { power_state: null },
+    }),
+  );
+  await flush();
+  store.setMode("device");
+  store.setDevice(3);
+  await flush();
+
+  const before = calls.length;
+  await store.toggleDevicePower();
+  assert.equal(calls.length, before);
+  assert.equal(store.powerBusy, false);
+
+  // A WS error is the same story.
+  const errCalls: ServiceCall[] = [];
+  const errStore = createStore(
+    createHass({
+      state: deviceState(),
+      calls: errCalls,
+      keymapResponse: POWER_KEYMAP,
+      powerStateResponse: new Error("boom"),
+    }),
+  );
+  await flush();
+  errStore.setMode("device");
+  errStore.setDevice(3);
+  await flush();
+  const errBefore = errCalls.length;
+  await errStore.toggleDevicePower();
+  assert.equal(errCalls.length, errBefore);
+});
+
+test("power toggle refuses when the device has no power configured", async () => {
+  storageBacking.clear();
+  const calls: ServiceCall[] = [];
+  const powerStateCalls: Array<Record<string, unknown>> = [];
+  const store = createStore(
+    createHass({
+      state: deviceState(),
+      calls,
+      keymapResponse: READY_KEYMAP,
+      powerStateResponse: { power_state: 1 },
+      powerStateCalls,
+    }),
+  );
+  await flush();
+  store.setMode("device");
+  store.setDevice(3);
+  await flush();
+
+  await store.toggleDevicePower();
+  assert.equal(powerStateCalls.length, 0);
+  assert.equal(calls.some((call) => call.service === "send_command"), false);
 });
 
 // ---------- derived state ----------

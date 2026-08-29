@@ -664,7 +664,7 @@ var secondaryTabStyles = i`
     border-right: none;
   }
   .secondary-tab-btn.active {
-    color: var(--primary-color);
+    color: var(--primary-text-color);
     background: transparent;
     box-shadow: inset 0 -2px 0 var(--primary-color);
   }
@@ -925,6 +925,30 @@ var cardStyles = [secondaryTabStyles, i`
     display: block;
     container-name: sofabaton-card;
     container-type: inline-size;
+    /* Theme-resilience tokens (docs/internal/control-panel-theme-contrast-plan.md).
+       Captured on the host, re-declared one level down on ha-card: a custom
+       property cannot reference itself, so the theme's value is read here and
+       the derived value applied below, where every descendant (our rules and
+       HA components alike) inherits it.
+       - Secondary text is floored toward primary text. Primary text is the
+         one colour every theme guarantees to read on its own card; themes
+         like Caule alias secondary text to their disabled colour (1.5:1).
+       - The card surface always resolves: HA's own palettes never define
+         --ha-card-background (real ha-card falls back to
+         --card-background-color), so rules with a #fff/transparent fallback
+         painted white or see-through patches in HA default dark. */
+    --sb-theme-secondary-text: var(--secondary-text-color);
+    --sb-card-surface: var(--ha-card-background, var(--card-background-color, #fff));
+    /* Accent-tinted TEXT. Accent colours (primary, status tones) never carry
+       text on their own: iOS themes ship an orange primary that is 1:1 as
+       text. Text that wants the accent uses this mix; the pure accent goes
+       on the indicator (underline, border, icon, fill). Sub-components
+       inherit it; they spell the fallback for standalone use. */
+    --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+  }
+  ha-card {
+    --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
+    --ha-card-background: var(--sb-card-surface);
   }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
@@ -1035,7 +1059,7 @@ var cardStyles = [secondaryTabStyles, i`
     text-overflow: ellipsis;
   }
   .card-bottom-dock-status {
-    color: color-mix(in srgb, var(--secondary-text-color) 88%, transparent);
+    color: var(--secondary-text-color);
   }
   .card-bottom-dock--success .card-bottom-dock-status {
     color: color-mix(in srgb, var(--success-color, #22c55e) 88%, black 10%);
@@ -1048,9 +1072,13 @@ var cardStyles = [secondaryTabStyles, i`
     font-weight: 600;
   }
   .card-bottom-dock-link {
-    color: var(--primary-color);
+    color: var(--sb-accent-text);
     text-decoration: underline;
+    text-decoration-color: var(--primary-color);
     font-weight: 400;
+  }
+  .card-bottom-dock-link:hover {
+    color: var(--primary-text-color);
   }
   .card-bottom-dock-link:hover {
     text-decoration: underline;
@@ -1152,7 +1180,7 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .hub-option { padding: 10px 14px; font-size: 13px; }
   .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
-  .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
+  .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--sb-accent-text); }
   .tabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
   .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; }
   .tab-btn { position: relative; border: none; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px; cursor: pointer; user-select: none; -webkit-user-select: none; }
@@ -1162,7 +1190,7 @@ var cardStyles = [secondaryTabStyles, i`
   .tab-btn--menu.is-open { color: var(--primary-color); }
   .tab-btn-menu-icon { --mdc-icon-size: 16px; }
   .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
-  .tab-btn.active { color: var(--primary-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
+  .tab-btn.active { color: var(--primary-text-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-menu { position: relative; display: flex; }
   .tab-menu--push-right { margin-left: auto; }
@@ -1255,20 +1283,23 @@ var cardStyles = [secondaryTabStyles, i`
   .dock-pill-half + .dock-pill-half {
     border-left: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
   }
+  /* Status tones are mixed toward the theme's primary text so the pill text
+     follows the theme's polarity (dark green on light themes, light green on
+     dark ones) instead of a fixed hex that fails on half the tints. */
   .dock-pill-half--hub-on {
-    color: #2f9f43;
+    color: color-mix(in srgb, #2f9f43 35%, var(--primary-text-color));
     background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color)));
   }
   .dock-pill-half--hub-off {
-    color: #c13d3d;
+    color: color-mix(in srgb, #c13d3d 35%, var(--primary-text-color));
     background: color-mix(in srgb, #db4437 14%, var(--ha-card-background, var(--card-background-color)));
   }
   .dock-pill-half--app-on {
-    color: #2f80d8;
+    color: color-mix(in srgb, #2f80d8 35%, var(--primary-text-color));
     background: color-mix(in srgb, #67b7ff 16%, var(--ha-card-background, var(--card-background-color)));
   }
   .dock-pill-half--app-off {
-    color: color-mix(in srgb, var(--secondary-text-color) 78%, transparent);
+    color: var(--secondary-text-color);
     background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
   }
   .card-blocked-state {
@@ -1309,7 +1340,7 @@ var cardStyles = [secondaryTabStyles, i`
   .setting-tile-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .setting-tile-control { flex-shrink: 0; display: flex; align-items: center; }
   .setting-title { font-size: 14px; font-weight: 700; color: var(--primary-text-color); display: flex; align-items: center; gap: 7px; }
-  .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); flex-shrink: 0; }
+  .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 14%, var(--ha-card-background, var(--card-background-color))); color: var(--sb-accent-text); flex-shrink: 0; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
   .setting-select {
@@ -1360,7 +1391,7 @@ var cardStyles = [secondaryTabStyles, i`
   .entity-block.open .entity-body { display: block; }
   .entity-block.open > .entity-summary { position: sticky; top: 0; z-index: 2; background: var(--secondary-background-color, var(--ha-card-background)); border-bottom: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0; }
   .id-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; font-family: "SF Mono", "Fira Code", Consolas, monospace; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.4); padding: 2px 5px; flex-shrink: 0; white-space: nowrap; min-width: 68px; justify-content: space-between; }
-  .id-badge span:first-child { color: var(--secondary-text-color); opacity: 0.75; }
+  .id-badge span:first-child { color: var(--secondary-text-color); }
   .id-badge span:last-child { color: var(--primary-text-color); text-align: right; }
   .entity-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cache-panel-header {
@@ -1495,7 +1526,7 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-compact-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 70%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
+  .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
   .hub-compact-stats { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
   .hub-compact-stat { display: flex; flex-direction: row; align-items: center; gap: 9px; padding: 0 14px; }
@@ -1571,7 +1602,7 @@ var TOOLS_CARD_STRINGS_EN = {
     editorHeight: "Card height",
     editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
     pickerName: "Sofabaton Control Panel",
-    pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wifi commands."
+    pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wifi Commands."
   },
   docs: {
     wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
@@ -1637,11 +1668,11 @@ var TOOLS_CARD_STRINGS_EN = {
     179: "Back",
     180: "Home",
     181: "Menu",
-    182: "Vol Up",
-    183: "Ch Up",
+    182: "Vol +",
+    183: "Ch +",
     184: "Mute",
-    185: "Vol Down",
-    186: "Ch Down",
+    185: "Vol -",
+    186: "Ch -",
     187: "Rew",
     188: "Pause",
     189: "Fwd",
@@ -1649,8 +1680,8 @@ var TOOLS_CARD_STRINGS_EN = {
     191: "Green",
     192: "Yellow",
     193: "Blue",
-    198: "Power On",
-    199: "Power Off"
+    198: "Power on",
+    199: "Power off"
   },
   errors: {
     backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
@@ -1745,10 +1776,10 @@ var TOOLS_CARD_STRINGS_EN = {
       button: "Button",
       command: "Command"
     },
-    lovelaceHeading: "Lovelace Button Code",
-    lovelaceHint: "Copy this to your Dashboard YAML:",
-    actionHeading: "Service Call (Automation)",
-    actionHint: "Use this in your Scripts or Automations:",
+    lovelaceHeading: "Lovelace button code",
+    lovelaceHint: "Copy this to your dashboard YAML:",
+    actionHeading: "Service call (automation)",
+    actionHint: "Use this in your scripts or automations:",
     noRemoteEntity: "The hub's remote entity is unavailable.",
     copied: (label) => `Copied "${label}" to notifications.`,
     sendTooltip: "Click to send this command to the hub",
@@ -1849,7 +1880,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiStepCommandPayload: (name) => name == null ? "Updating a command\u2026" : `Updating command \u201C${name}\u201D\u2026`,
     wifiStepCommandRename: (name) => name == null ? "Renaming a command\u2026" : `Renaming command to \u201C${name}\u201D\u2026`,
     wifiStepCommandDelete: (name) => name == null ? "Removing a command\u2026" : `Removing command \u201C${name}\u201D\u2026`,
-    wifiStepPowerConfig: "Updating power control\u2026",
+    wifiStepPowerConfig: "Updating automatic power control\u2026",
     wifiStepInputConfig: "Updating input configuration\u2026",
     wifiStepInputSelect: "Updating input selection\u2026",
     wifiStepActivityJoin: "Adding the device to an activity\u2026",
@@ -1958,7 +1989,7 @@ var TOOLS_CARD_STRINGS_EN = {
       macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
       macroChanged: (name) => `Edited macro "${name}".`,
       bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" no longer bound.`,
+      bindingCleared: (button) => `"${button}" is no longer assigned.`,
       ipChanged: (ip) => `IP address \u2192 ${ip}.`,
       ipCleared: "IP address cleared."
     }
@@ -1999,7 +2030,7 @@ var TOOLS_CARD_STRINGS_EN = {
     restoreInProgress: "Restore in progress\u2026",
     failedPrepareDownload: "Failed to prepare edited backup for download.",
     enterName: "Enter a name to continue.",
-    renameDialogTitle: "Rename Hub",
+    renameDialogTitle: "Rename hub",
     linked: "linked",
     hubNameRestoreOnlyAria: "Hub name is only applied at restore time when the user opts to wipe the hub.",
     entireHub: "Entire hub",
@@ -2017,11 +2048,11 @@ var TOOLS_CARD_STRINGS_EN = {
     editLoadPrompt: "Load a backup file, then choose an activity or device to edit.",
     chooseBackupFile: "Choose backup file",
     reorderHint: " Drag the handle on any row to reorder activities and devices.",
-    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the wait that follows it on the right.",
-    macroStepsHelp: "Each step plays a command; set the wait that follows it on the right.",
+    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
+    macroStepsHelp: "Each step plays a command; set the following wait below the step.",
     hubName: "Hub name",
     hubNameNotSet: "(not set)",
-    renameHub: "Rename Hub",
+    renameHub: "Rename hub",
     activities: "Activities",
     noActivitiesInFile: "This backup file has no activities.",
     devices: "Devices",
@@ -2056,30 +2087,30 @@ var TOOLS_CARD_STRINGS_EN = {
     addFavoriteCancel: "Cancel",
     addFavoriteNoDevices: "This backup has no devices with commands to add.",
     addFavoriteNoCommands: "This device has no commands to add.",
-    buttonBindingsTitle: "Button bindings",
-    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this activity.",
-    buttonBindingsDeviceSub: "Bind remote buttons to this device's own commands.",
-    buttonBindingsEmpty: "No button bindings configured.",
-    addBinding: "Add binding",
+    buttonBindingsTitle: "Button assignments",
+    buttonBindingsActivitySub: "Assign remote buttons to a device's command within this activity.",
+    buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
+    buttonBindingsEmpty: "No button assignments configured.",
+    addBinding: "Add assignment",
     bindingButton: "Button",
     bindingTargetDevice: "Device",
     bindingCommand: "Command",
-    bindingEnableLongPress: "Enable long-press binding",
+    bindingEnableLongPress: "Enable long-press assignment",
     bindingLongPressDevice: "Long-press device",
     bindingLongPressCommand: "Long-press command",
     bindingIncomplete: "Choose a button and target first.",
-    bindingNoButtons: "Every button on this hub model is already bound.",
-    bindingNoCommands: "This device has no commands to bind.",
-    bindingNoDevices: "This backup has no devices with commands to bind.",
+    bindingNoButtons: "Every button on this hub model is already assigned.",
+    bindingNoCommands: "This device has no commands to assign.",
+    bindingNoDevices: "This backup has no devices with commands to assign.",
     bindingAdd: "Add",
     bindingSave: "Save",
     bindingCancel: "Cancel",
-    bindingDialogAddTitle: "Add button binding",
-    bindingDialogEditTitle: (name) => `Edit ${name} binding`,
+    bindingDialogAddTitle: "Add button assignment",
+    bindingDialogEditTitle: (name) => `Edit ${name} assignment`,
     bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
-    deleteBindingTitle: (name) => `Delete ${name} binding?`,
-    deleteBindingAria: "Delete binding",
-    deleteImpactBindings: (count) => `${count} button binding${count === 1 ? "" : "s"} will be cleared`,
+    deleteBindingTitle: (name) => `Delete ${name} assignment?`,
+    deleteBindingAria: "Delete assignment",
+    deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
     macrosTitle: "Macros",
     macrosDeviceSub: "Edit the command sequences this device plays, including its power on/off.",
     macroPowerChip: "on/off",
@@ -2129,7 +2160,7 @@ var TOOLS_CARD_STRINGS_EN = {
     stepDialogEditTitle: "Edit step",
     stepDevice: "Device",
     stepCommand: "Command",
-    stepHoldSeconds: "Hold (seconds, 0 = click)",
+    stepHoldSeconds: "Hold (seconds, 0 = short press)",
     holdLabel: (seconds) => `Hold ${seconds}s`,
     stepAdd: "Add",
     stepSave: "Save",
@@ -2151,7 +2182,7 @@ var TOOLS_CARD_STRINGS_EN = {
     powerInputLabel: "Input",
     powerInputNone: "\u2014 none \u2014",
     powerDelayLabel: "Delay (s)",
-    powerNoDevices: "No devices yet. Add a favorite, binding, or macro that uses one.",
+    powerNoDevices: "No devices yet. Add a favorite, assignment, or macro that uses one.",
     powerOnSequence: "Power-on sequence",
     powerOffSequence: "Power-off sequence",
     powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
@@ -2221,13 +2252,13 @@ var TOOLS_CARD_STRINGS_EN = {
     detailCommands: "Commands",
     detailButtons: "Buttons",
     detailSectionsAria: "Detail sections",
-    editBindingAria: "Edit binding",
+    editBindingAria: "Edit assignment",
     editIpAria: "Edit IP address",
     networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
     ipv4Description: "IPv4 dotted-decimal address",
     addCommand: "Add command",
     addCommandTitle: "Add command",
-    editPayloadTitle: "Edit Payload",
+    editPayloadTitle: "Edit payload",
     commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit.",
     commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
     newCommandChip: "new command",
@@ -2258,10 +2289,10 @@ var TOOLS_CARD_STRINGS_EN = {
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",
-    renameMacro: "Rename Macro",
-    renameFavorite: "Rename Favorite",
-    renameCommand: "Rename Command",
-    ipAddress: "IP Address",
+    renameMacro: "Rename macro",
+    renameFavorite: "Rename favorite",
+    renameCommand: "Rename command",
+    ipAddress: "IP address",
     noPayloadReturned: "The hub returned no payload for this command.",
     noTemplateCommand: "This device has no commands to use as a template \u2014 add its first command with the Sofabaton app.",
     newCommandNameRequired: "Enter a name for the new command.",
@@ -2280,14 +2311,14 @@ var TOOLS_CARD_STRINGS_EN = {
       home: "Home",
       back: "Back",
       menu: "Menu",
-      volumeUp: "Volume Up",
-      volumeDown: "Volume Down",
+      volumeUp: "Volume up",
+      volumeDown: "Volume down",
       mute: "Mute",
-      channelUp: "Channel Up",
-      channelDown: "Channel Down",
+      channelUp: "Channel up",
+      channelDown: "Channel down",
       rewind: "Rewind",
       pause: "Pause",
-      forward: "Forward",
+      forward: "Fast forward",
       red: "Red",
       green: "Green",
       yellow: "Yellow",
@@ -2297,8 +2328,8 @@ var TOOLS_CARD_STRINGS_EN = {
       play: "Play",
       guide: "Guide",
       navigation: "Navigation",
-      volumeChannel: "Volume & Channel",
-      transport: "Transport",
+      volumeChannel: "Volume & channel",
+      transport: "Playback",
       colour: "Color",
       extra: "Extra",
       unknown: (code) => `Button 0x${code}`
@@ -2318,7 +2349,7 @@ var TOOLS_CARD_STRINGS_EN = {
     appConnected: "App connected",
     appNotConnected: "App not connected",
     version: "Version",
-    ipAddress: "IP Address",
+    ipAddress: "IP address",
     activities: "Activities",
     devices: "Devices",
     integrationVersion: "Integration version",
@@ -2398,8 +2429,7 @@ var TOOLS_CARD_STRINGS_EN = {
     colorGroup: "Color",
     inputCommand: "Input command",
     inputFor: (activity) => `Input for ${activity}`,
-    activitySingular: "Activity",
-    activityPlural: "Activities",
+    inActivities: (count) => `in ${count} ${count === 1 ? "activity" : "activities"}`,
     unconfiguredCommand: "Unconfigured command",
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
@@ -2433,7 +2463,7 @@ var TOOLS_CARD_STRINGS_EN = {
     actionButtonSyncing: "Syncing\u2026",
     actionButtonBusy: "Busy",
     actionButtonSyncToHub: "Sync to Hub",
-    actionButtonUpToDate: "Up to Date",
+    actionButtonUpToDate: "Up to date",
     createDeviceBusy: "Creating Wifi Device\u2026",
     deviceName: "Device name",
     createDeviceNameRequired: "Device name is required.",
@@ -2492,9 +2522,9 @@ var TOOLS_CARD_STRINGS_EN = {
     eventsConfiguredPill: (configured, total) => `${configured} of ${total} configured`,
     eventsShowUnconfigured: (count) => `Show ${count} unconfigured\u2026`,
     wifiEventRowPress: (name) => `When ${name} is pressed`,
-    wifiEventRowLongPress: "and when it's long-pressed",
+    wifiEventRowLongPress: "and when it's pressed and held",
     wifiEventModalTitle: (name) => `When ${name} is pressed`,
-    wifiEventLongModalTitle: (name) => `When ${name} is long-pressed`,
+    wifiEventLongModalTitle: (name) => `When ${name} is pressed and held`,
     wifiEventLongPressToggleTitle: "Enable long press",
     wifiEventNeedsSyncBadge: "needs sync",
     wifiEventRetrySync: "Retry sync",
@@ -2521,22 +2551,17 @@ var TOOLS_CARD_STRINGS_EN = {
     activityEventStopModalTitle: (name) => `When ${name} stops`,
     activityEventFallbackName: (id) => `Activity ${id}`,
     noActivitiesForEvents: "No activities on this hub yet.",
-    favorite: "Set as Favorite",
-    physicalButtonAssignment: "Physical Button Assignment",
-    enableLongPress: "Enable long-press",
+    favorite: "Set as favorite",
+    physicalButtonAssignment: "Physical button assignment",
+    enableLongPress: "Enable long press",
     applyToActivities: "Apply to these activities",
     actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
     shortPress: "Short press",
     longPress: "Long press",
-    selectLongPressAction: "Select Long-Press Action",
-    selectTriggeredAction: "Select Triggered Action",
+    selectLongPressAction: "Select long-press action",
+    selectTriggeredAction: "Select triggered action",
     action: "Action",
     save: "Save",
-    syncWarningTitle: "Sync commands to hub?",
-    syncWarningBody: "This sync can run for several minutes. During this process, other interactions with the hub are blocked.",
-    syncWarningBody2: "At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.",
-    syncWarningOptOut: "Don't show this warning again for this remote.",
-    syncWarningStart: "Start sync",
     keyLabels: {
       up: "Up",
       down: "Down",
@@ -2557,7 +2582,7 @@ var TOOLS_CARD_STRINGS_EN = {
       exit: "Exit",
       rew: "Rewind",
       pause: "Pause",
-      fwd: "Fast Forward",
+      fwd: "Fast forward",
       red: "Red",
       green: "Green",
       yellow: "Yellow",
@@ -3949,6 +3974,10 @@ var ControlPanelStore = class {
       const state = await this.api().loadState();
       this.applyControlPanelState(state);
       this.syncSelection();
+      if (this._contentsMissingStateHubs()) {
+        const contents = await this.api().loadCacheContents();
+        this._snapshot = { ...this._snapshot, contents };
+      }
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
@@ -3962,6 +3991,23 @@ var ControlPanelStore = class {
       }
       throw error;
     }
+  }
+  /**
+   * True when the control-panel state lists hubs the cache-contents payload
+   * doesn't cover yet. That happens when the card stays open across an HA
+   * restart: a backend-retry load can succeed in the window where the WS API
+   * is registered but the hub entries haven't finished setting up (both
+   * payloads come back with an empty hub list), after which the state-only
+   * refresh paths (runtime poll, connection changes, hub switches) heal
+   * `state` but would leave `contents` empty, pinning the Hub/Backup tabs
+   * on "No hubs found" until a manual card reload.
+   */
+  _contentsMissingStateHubs() {
+    if (!persistentCacheEnabled(this._snapshot)) return false;
+    const stateHubs = this._snapshot.state?.hubs ?? [];
+    if (!stateHubs.length) return false;
+    const cached = new Set((this._snapshot.contents?.hubs ?? []).map((hub) => hub.entry_id));
+    return stateHubs.some((hub) => !cached.has(hub.entry_id));
   }
   async loadCacheContents() {
     const contents = await this.api().loadCacheContents();
@@ -4450,13 +4496,7 @@ var ControlPanelStore = class {
    * the shared view state with its own snapshot. */
   syncSelection() {
     const hubs = this._snapshot.state?.hubs ?? [];
-    if (!hubs.length) {
-      if (this._snapshot.selectedHubEntryId !== null) {
-        this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
-        this.persistViewState();
-      }
-      return;
-    }
+    if (!hubs.length) return;
     if (!this._preferredHubApplied && this._preferredHubEntryId && hubs.some((hub) => hub.entry_id === this._preferredHubEntryId)) {
       this._preferredHubApplied = true;
       this._snapshot = { ...this._snapshot, selectedHubEntryId: this._preferredHubEntryId };
@@ -5655,9 +5695,9 @@ var backupTabStyles = i`
       min-height: 42px;
       padding: 0 18px;
       border-radius: var(--backup-radius-md);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 75%, white 10%);
-      background: color-mix(in srgb, var(--primary-color) 20%, white 80%);
-      color: var(--primary-color);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 65%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 16%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--primary-text-color);
       font: inherit;
       font-size: 13px;
       font-weight: 700;
@@ -5667,7 +5707,7 @@ var backupTabStyles = i`
     }
     .header-primary-btn:hover:not(:disabled) {
       border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 24%, white 76%);
+      background: color-mix(in srgb, var(--primary-color) 24%, var(--ha-card-background, var(--card-background-color)));
     }
     .header-primary-btn:disabled {
       opacity: 0.45;
@@ -5771,14 +5811,14 @@ var backupTabStyles = i`
       flex-wrap: wrap;
     }
     .backup-selected-count {
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       font-size: 12px;
       font-weight: 700;
     }
     .backup-link-btn {
       border: none;
       background: transparent;
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       font: inherit;
       font-size: 12px;
       font-weight: 700;
@@ -6005,7 +6045,7 @@ var backupTabStyles = i`
     .power-control-option:hover {
       background: color-mix(in srgb, var(--primary-color) 8%, transparent);
     }
-    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-color); }
+    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-text-color); font-weight: 700; }
     .power-control-option .selection-chevron ha-icon { color: var(--primary-color); }
 
     /* Power-on/off sequence rows, dimmed + inert when power control is off */
@@ -6095,12 +6135,13 @@ var backupTabStyles = i`
       transition: color 120ms ease;
     }
     .detail-crumb:hover {
-      color: var(--primary-color);
+      color: var(--primary-text-color);
       text-decoration: underline;
+      text-decoration-color: var(--primary-color);
     }
     .detail-crumb-sep {
       flex: 0 0 auto;
-      color: color-mix(in srgb, var(--secondary-text-color) 55%, transparent);
+      color: var(--secondary-text-color);
     }
     .detail-title-actions {
       display: inline-flex;
@@ -6156,7 +6197,7 @@ var backupTabStyles = i`
       color: var(--primary-text-color);
     }
     .detail-section-nav-btn.active {
-      color: var(--primary-color);
+      color: var(--primary-text-color);
       background: color-mix(in srgb, var(--primary-color) 10%, transparent);
       box-shadow: inset 0 -2px 0 var(--primary-color);
     }
@@ -7313,7 +7354,7 @@ var addButtonStyles = i`
     border-radius: var(--ha-card-border-radius, 12px);
     border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
     background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-    color: var(--primary-color);
+    color: var(--sb-accent-text, var(--primary-color));
     font: inherit;
     font-size: 12px;
     font-weight: 700;
@@ -7324,8 +7365,9 @@ var addButtonStyles = i`
     border-color: var(--primary-color);
     background: color-mix(in srgb, var(--primary-color) 16%, transparent);
   }
+  .quick-access-add-btn:hover:not(:disabled) { color: var(--primary-text-color); }
   .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
-  .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
+  .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; color: var(--primary-color); }
 `;
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
@@ -7948,7 +7990,7 @@ function deviceIdleBehavior(bundle, deviceId) {
     (entry) => Number(entry?.device?.device_id || 0) === normalizedId
   );
   if (!device?.device) return null;
-  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  const raw = device.device.idle_behavior;
   if (raw == null) return null;
   const mode = Number(raw);
   return Number.isFinite(mode) ? mode & 255 : null;
@@ -13102,7 +13144,7 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButt
       display: inline-flex; align-items: center; gap: 8px;
       padding: 6px 12px; border-radius: 999px;
       font-size: 13px; font-weight: 600;
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
       background: color-mix(in srgb, var(--primary-color) 12%, transparent);
     }
@@ -14586,8 +14628,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._confirmClearSlot = null;
     this._commandSaveError = "";
     this._activeCommandActionTab = "short";
-    this._syncWarningOpen = false;
-    this._syncWarningOptOut = false;
     this._advancedOptionsOpen = false;
     this._commandEditorDrafts = {};
     this._shortSelectorVersion = 0;
@@ -14775,24 +14815,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         this._setSharedHubCommandBusy(false, null, busyEntryId);
       }
     };
-    this._confirmSyncWarning = async () => {
-      const entityId = String(this._entityId() || "").trim();
-      if (entityId && this._syncWarningOptOut) this._setCommandSyncWarningOptOut(entityId, true);
-      this._syncWarningOpen = false;
-      await this._startCommandConfigSync();
-    };
     this._runCommandConfigSync = async () => {
       if (this._commandSyncRunning || this._hubCommandLocked()) return;
       const entityId = String(this._entityId() || "").trim();
       const deviceKey = String(this._selectedDeviceKey || "").trim();
       if (!entityId) return;
       if (!deviceKey) return;
-      if (this._commandSyncWarningOptedOut(entityId)) {
-        await this._startCommandConfigSync();
-        return;
-      }
-      this._syncWarningOptOut = false;
-      this._syncWarningOpen = true;
+      await this._startCommandConfigSync();
     };
   }
   connectedCallback() {
@@ -14895,7 +14924,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       })}
           ${this._renderDetailsModal()}
           ${this._renderActionModal()}
-          ${this._renderSyncWarningModal()}
           ${this._renderCreateDeviceModal()}
           ${this._renderDeleteDeviceModal()}
         </div>
@@ -14950,7 +14978,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         </div>
         ${this._renderDetailsModal()}
         ${this._renderActionModal()}
-        ${this._renderSyncWarningModal()}
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
@@ -16078,44 +16105,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       </div>
     `;
   }
-  _renderSyncWarningModal() {
-    if (!this._syncWarningOpen) return A;
-    return b2`
-      <div class="modal-backdrop" @click=${() => {
-      this._syncWarningOpen = false;
-    }}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.syncWarningTitle}</div>
-            <button class="dialog-close" @click=${() => {
-      this._syncWarningOpen = false;
-    }}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="dialog-text sync-warning-text">
-              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody}<br /><br />
-              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody2}
-            </div>
-            <label class="warning-optout">
-              <input type="checkbox" .checked=${this._syncWarningOptOut} @change=${(event) => {
-      this._syncWarningOptOut = event.currentTarget.checked;
-    }} />
-              <span>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningOptOut}</span>
-            </label>
-          </div>
-          <div class="dialog-footer">
-            <div></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => {
-      this._syncWarningOpen = false;
-    }}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._confirmSyncWarning}>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningStart}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
   async _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass?.callWS) return;
@@ -16660,7 +16649,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _commandSlotMetaLabel(command) {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
-    const activitiesLabel = activityCount === 1 ? TOOLS_CARD_STRINGS.wifiCommands.activitySingular : TOOLS_CARD_STRINGS.wifiCommands.activityPlural;
     const assignmentEnabled = this._activitySelectionEnabled(command);
     const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return TOOLS_CARD_STRINGS.wifiCommands.unconfiguredCommand;
@@ -16678,7 +16666,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         this._activityName(command.input_activity_id)
       );
     }
-    return `in ${activityCount} ${activitiesLabel}`;
+    return TOOLS_CARD_STRINGS.wifiCommands.inActivities(activityCount);
   }
   _toggleFavoriteRow() {
     const draft = this._activeCommandDraft();
@@ -17025,23 +17013,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._deviceMutationError = "";
     this._deleteDeviceKey = deviceKey;
   }
-  _commandSyncWarningStorageKey(entityId) {
-    return `sofabaton_x1s:sync_warning_optout:${String(entityId || "").trim()}`;
-  }
-  _commandSyncWarningOptedOut(entityId) {
-    try {
-      return window.localStorage?.getItem(this._commandSyncWarningStorageKey(entityId)) === "1";
-    } catch (_error) {
-      return false;
-    }
-  }
-  _setCommandSyncWarningOptOut(entityId, optedOut) {
-    try {
-      if (optedOut) window.localStorage?.setItem(this._commandSyncWarningStorageKey(entityId), "1");
-      else window.localStorage?.removeItem(this._commandSyncWarningStorageKey(entityId));
-    } catch (_error) {
-    }
-  }
   async _startCommandConfigSync() {
     const entityId = String(this._entityId() || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
@@ -17222,8 +17193,6 @@ _SofabatonWifiCommandsTab.properties = {
   _confirmClearSlot: { state: true },
   _commandSaveError: { state: true },
   _activeCommandActionTab: { state: true },
-  _syncWarningOpen: { state: true },
-  _syncWarningOptOut: { state: true },
   _advancedOptionsOpen: { state: true },
   _commandEditorDrafts: { state: true },
   _shortSelectorVersion: { state: true },
@@ -17332,10 +17301,12 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .device-card-name { display: block; font-size: 13px; font-weight: 700; line-height: 1.15; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin-left: auto; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
-    .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
-    .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: var(--error-color, #db4437); }
-    .status-pill.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); color: var(--primary-color); }
-    .status-pill.sync-pending { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 40%, var(--divider-color)); color: var(--warning-color, #f59e0b); }
+    /* Tone text is mixed toward the theme's primary text so it follows the
+       theme's polarity; the pure tone stays on border and tint. */
+    .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color)); }
+    .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: color-mix(in srgb, var(--error-color, #db4437) 40%, var(--primary-text-color)); }
+    .status-pill.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); color: color-mix(in srgb, var(--primary-color) 40%, var(--primary-text-color)); }
+    .status-pill.sync-pending { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 40%, var(--divider-color)); color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); }
     .status-pill.sync-ok { background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color))); }
     .status-pill.sync-error { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .status-pill.sync-running { background: color-mix(in srgb, var(--primary-color) 12%, var(--ha-card-background, var(--card-background-color))); }
@@ -17410,7 +17381,7 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .device-power-option.active {
       border-color: var(--primary-color);
       background: color-mix(in srgb, var(--primary-color) 14%, transparent);
-      color: var(--primary-color);
+      color: var(--primary-text-color);
     }
     .hub-events { display: grid; gap: 6px; margin-top: 6px; }
     .hub-event-lines { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -17436,7 +17407,7 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       text-decoration: underline dotted;
       text-underline-offset: 3px;
     }
-    .hub-event-action-link:hover { color: var(--primary-color); }
+    .hub-event-action-link:hover { color: var(--primary-text-color); text-decoration-color: var(--primary-color); }
     /* Positioning anchor for the event-fired glow: the flash overlay hugs
        just the action link instead of the whole sentence row, so combined
        rows (start + stop in one line) show which hook actually fired.
@@ -17579,8 +17550,8 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       text-decoration: underline dotted;
       text-underline-offset: 3px;
     }
-    .show-unconfigured:hover { color: var(--primary-color); }
-    .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
+    .show-unconfigured:hover { color: var(--primary-text-color); text-decoration-color: var(--primary-color); }
+    .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
     .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
     .sync-row.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); }
@@ -17588,7 +17559,7 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
     .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
     .sync-message { font-size: 13px; line-height: 1.4; }
-    .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
+    .sync-doc-link { color: var(--sb-accent-text, var(--primary-color)); font-weight: 600; text-decoration: underline; text-decoration-color: var(--primary-color); }
     .sync-doc-link:hover { text-decoration: underline; }
     .list-view .sticky-footer { border-top: none; }
     .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
@@ -17768,7 +17739,6 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .action-tab { border: 1px solid var(--divider-color); border-radius: 999px; padding: 7px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .action-selector-wrap[hidden] { display: none; }
     .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
-    .warning-optout { display: flex; align-items: center; gap: 10px; }
     .dialog-body ha-input,
     .dialog-body ha-textfield,
     .dialog-body ha-selector {
@@ -18788,7 +18758,7 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
       border: 1px solid var(--divider-color);
       border-radius: 999px;
       background: transparent;
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       font: inherit;
       font-weight: 700;
       padding: 4px 12px;

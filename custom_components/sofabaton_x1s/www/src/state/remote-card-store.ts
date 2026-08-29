@@ -65,6 +65,7 @@ import {
   hubMacroKeyCommand,
   remoteSendCommandData,
 } from "../remote-card-actions";
+import { hubLongPressBinding } from "../remote-card-long-press";
 import {
   customFavoritesSignature,
   normalizeCustomFavorite,
@@ -78,6 +79,7 @@ import {
 } from "../remote-card-shared";
 import type {
   DeviceKeymapResponse,
+  DevicePowerStateResponse,
   HassLike,
   RemoteCardConfig,
 } from "../remote-card-types";
@@ -113,7 +115,22 @@ export interface DeviceKeymapEntry {
   /** Enabled button codes (bindings ∪ REQ_BUTTONS list). */
   buttons: number[];
   commands: Array<{ command_id: number; name: string }>;
+  /** Power-key capability gate from the backend (fail-closed). */
+  powerConfigured?: boolean;
 }
+
+/** Device-scope power macro key ids (POWER_ON / POWER_OFF). */
+export const POWER_ON_KEY_ID = 198;
+export const POWER_OFF_KEY_ID = 199;
+
+/**
+ * How long a fired power macro's optimistic assumption outlives the fire.
+ * The hub commits the tracked power_state byte only after the macro runs
+ * (bench 2026-08-25: ~5-12s on a real device), so a re-read inside this
+ * window would return the pre-fire state and a second press would fire
+ * the same macro again. Inside the window the card trusts its own flip.
+ */
+export const POWER_ASSUMPTION_TTL_MS = 15000;
 
 const LAST_DEVICE_STORAGE_PREFIX = "sofabaton-remote:last-device:";
 
@@ -496,6 +513,87 @@ export class RemoteCardStore {
     return this.deviceKeymaps[String(deviceId)] ?? null;
   }
 
+  /** Power button render gate: keymap ready AND backend says configured. */
+  devicePowerConfigured(deviceId: number | null = this._deviceId): boolean {
+    const entry = this.deviceKeymapState(deviceId);
+    return entry?.status === "ready" && entry.powerConfigured === true;
+  }
+
+  /** True while a power click's read+fire round-trip is in flight. */
+  powerBusy = false;
+
+  /** Optimistic post-fire assumption; see POWER_ASSUMPTION_TTL_MS. */
+  private _powerAssumption: { deviceId: number; state: 0 | 1; at: number } | null =
+    null;
+
+  private async fetchDevicePowerState(deviceId: number): Promise<0 | 1 | null> {
+    if (!this._hass?.callWS) return null;
+    const entryId = String(
+      (this.remoteState()?.attributes as Record<string, unknown> | undefined)
+        ?.entry_id ?? "",
+    );
+    if (!entryId) return null;
+    try {
+      const response = await this._hass.callWS<DevicePowerStateResponse>({
+        type: "sofabaton_x1s/device/power_state",
+        entry_id: entryId,
+        device_id: deviceId,
+      });
+      // Strict 0/1 only: null (hub could not read the row) must NOT
+      // coerce to "off", or a blind fire would desync hub bookkeeping.
+      const raw = response?.power_state;
+      return raw === 1 ? 1 : raw === 0 ? 0 : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  /**
+   * Power button click: look up the device's current power state, then
+   * fire the opposite power macro (198 POWER_ON / 199 POWER_OFF) through
+   * the ordinary device-scope send path. The state read is skipped inside
+   * the optimistic window after our own fire (the hub's tracked byte
+   * commits only after the macro runs). An unreadable state aborts the
+   * click: firing blind would desync the hub's power bookkeeping.
+   */
+  async toggleDevicePower(): Promise<void> {
+    if (this._editMode || this.powerBusy) return;
+    if (!this._hass || !this._config?.entity) return;
+    const deviceId = this._deviceId;
+    if (deviceId == null || !this.devicePowerConfigured(deviceId)) return;
+
+    this.powerBusy = true;
+    this.onChange();
+    try {
+      let state: 0 | 1 | null = null;
+      const assumption = this._powerAssumption;
+      if (
+        assumption &&
+        assumption.deviceId === deviceId &&
+        Date.now() - assumption.at < POWER_ASSUMPTION_TTL_MS
+      ) {
+        state = assumption.state;
+      } else {
+        state = await this.fetchDevicePowerState(deviceId);
+      }
+      if (state == null) return;
+
+      const keyId = state === 1 ? POWER_OFF_KEY_ID : POWER_ON_KEY_ID;
+      const serviceData = remoteSendCommandData(this._config.entity, keyId, deviceId);
+      if (!serviceData) return;
+      this.triggerCommandPulse();
+      await this.callService("remote", "send_command", serviceData);
+      this._powerAssumption = {
+        deviceId,
+        state: state === 1 ? 0 : 1,
+        at: Date.now(),
+      };
+    } finally {
+      this.powerBusy = false;
+      this.onChange();
+    }
+  }
+
   /** Commands for the current device, filtered and alphabetically sorted. */
   filteredCommands(): Array<{ command_id: number; name: string }> {
     const entry = this.deviceKeymapState();
@@ -552,6 +650,7 @@ export class RemoteCardStore {
               name: String(command?.name ?? ""),
             }))
             .filter((command) => Number.isFinite(command.command_id) && command.name),
+          powerConfigured: keymap.power_configured === true,
         };
       }
     } catch (_err) {
@@ -1039,6 +1138,52 @@ export class RemoteCardStore {
 
     // X1S/X1 style
     const serviceData = remoteSendCommandData(this._config.entity, commandId, resolvedDevice);
+    if (!serviceData) return;
+    await this.callService("remote", "send_command", serviceData);
+  }
+
+  /**
+   * A button's hub long-press binding on one entity page, or null
+   * (docs/internal/long-press-plan.md). Gated on the x1s integration (the
+   * official sofabaton_hub integration has no keymap detail source) and on
+   * the `long_press_keys` attribute, which the backend publishes only
+   * while the persistent cache is enabled and only for pages whose keymap
+   * details are populated. Hold-repeat precedence is the caller's concern
+   * (it needs the key spec, not the button id).
+   */
+  longPressBindingForButton(
+    buttonId: unknown,
+    scopeId: unknown,
+  ): { device_id: number; command_id: number } | null {
+    if (String(this.integrationDomain || "") !== "sofabaton_x1s") return null;
+    const attrs = this.remoteState()?.attributes as
+      | { long_press_keys?: unknown }
+      | undefined;
+    return hubLongPressBinding(attrs, scopeId, buttonId);
+  }
+
+  /** True when holding this hard button should fire its long-press binding. */
+  longPressAvailableForButton(buttonId: unknown, scopeId: unknown): boolean {
+    return this.longPressBindingForButton(buttonId, scopeId) !== null;
+  }
+
+  /**
+   * Fire a button's hub long-press binding. The card resolves the pair and
+   * sends it exactly like a favorite (`send_command {command, device}`):
+   * the entity and its services have no long-press concept. Guarded like
+   * sendCommand; never reached for sofabaton_hub (the gate above stays
+   * null there).
+   */
+  async sendLongPress(buttonId: unknown, scopeId: unknown): Promise<void> {
+    if (this._editMode) return;
+    if (!this._hass || !this._config?.entity) return;
+    const binding = this.longPressBindingForButton(buttonId, scopeId);
+    if (!binding) return;
+    const serviceData = remoteSendCommandData(
+      this._config.entity,
+      binding.command_id,
+      binding.device_id,
+    );
     if (!serviceData) return;
     await this.callService("remote", "send_command", serviceData);
   }

@@ -1019,10 +1019,14 @@ export const IDLE_BEHAVIOR_STAY_ON = 3;
 export const IDLE_BEHAVIOR_DISABLED = 4;
 
 /**
- * Read a device's idle/automatic-power mode from the bundle. Prefers the
- * dedicated `idle_behavior` field; falls back to `power_mode` for older
- * backups that predate it (mirroring the restore-side resolution). Returns
- * `null` when the device is absent or carries no usable value.
+ * Read a device's idle/automatic-power mode from the bundle. Only the
+ * dedicated `idle_behavior` field counts (mirroring the restore-side
+ * resolution): the bundle's `power_mode` field is the record-tail byte,
+ * a different value that sits at 1 on real hubs, so the old fallback
+ * showed "turn off when not in use" for devices whose real mode was
+ * unset, always-on, stay-on, or no-power-key. Returns `null` when the
+ * device is absent or carries no usable value; callers render that as
+ * unknown instead of inventing a mode.
  */
 export function deviceIdleBehavior(
   bundle: BackupBundlePayload | null,
@@ -1034,7 +1038,7 @@ export function deviceIdleBehavior(
     (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
   );
   if (!device?.device) return null;
-  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  const raw = device.device.idle_behavior;
   if (raw == null) return null;
   const mode = Number(raw);
   return Number.isFinite(mode) ? mode & 0xff : null;

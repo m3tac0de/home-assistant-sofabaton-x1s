@@ -118,6 +118,79 @@ test.describe("tools-card browser harness", () => {
     expect(params.get("width")).toBe("360");
   });
 
+  test("applies Home Assistant base palette and fixture community themes the way HA does", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html?scenario=automation-events&theme=Caule%20Black%20Purple");
+
+    // Fixture loaded: HA's real defaults replace the hand-picked palette and
+    // the switcher lists the community themes (mode-aware ones twice).
+    expect(await page.evaluate(() => window.__toolsCardHarness.themeFixtureLoaded)).toBe(true);
+    const options = await page.evaluate(() => window.__toolsCardHarness.themeOptions);
+    expect(options.map((option) => option.value)).toEqual(
+      expect.arrayContaining(["light", "dark", "Caule Black Purple", "Material You|light", "Material You|dark"]),
+    );
+    expect(await page.evaluate(() => document.getElementById("harness-fallback-palette").disabled)).toBe(true);
+
+    const resolve = (cssValue) => page.evaluate((value) => {
+      const probe = document.createElement("span");
+      probe.style.color = value;
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    }, cssValue);
+
+    // Flat theme from the URL: HA keeps darkMode=false for themes without
+    // modes, the appearance is still detected as dark, and the theme's own
+    // var() chains resolve over HA's base (secondary text -> --disabled-color).
+    await expect(page.locator("#active-theme")).toHaveText("Caule Black Purple");
+    expect(await page.evaluate(() => window.__toolsCardHarness.getThemeState()))
+      .toMatchObject({ name: "Caule Black Purple", haDarkMode: false, appearance: "dark" });
+    await expect(page.locator("body")).toHaveAttribute("data-theme", "dark");
+    expect(await resolve("var(--secondary-text-color)")).toBe("rgb(57, 57, 57)");
+    expect(await resolve("var(--ha-card-background)")).toBe("rgb(25, 25, 25)");
+
+    // Mode-aware theme: the dark block layers over HA's dark base vars and
+    // hex values get an --rgb-* companion like processTheme generates.
+    await page.getByLabel("Theme", { exact: true }).selectOption("Material You|dark");
+    await expect(page.locator("#active-theme")).toHaveText("Material You · dark");
+    expect(await page.evaluate(() => window.__toolsCardHarness.getThemeState()))
+      .toMatchObject({ name: "Material You", haDarkMode: true, appearance: "dark" });
+    expect(await page.evaluate(
+      () => document.documentElement.style.getPropertyValue("--rgb-card-background-color"),
+    )).toBe("");
+    expect(await page.evaluate(
+      () => window._harnessHass.themes,
+    )).toMatchObject({ darkMode: true, theme: "Material You" });
+    expect(new URL(page.url()).searchParams.get("theme")).toBe("Material You|dark");
+
+    // HA default light: HA 2026 neutral ramp, and the inline theme vars are
+    // cleared again.
+    await page.getByLabel("Theme", { exact: true }).selectOption("light");
+    await expect(page.locator("#active-theme")).toHaveText("Light");
+    expect(await resolve("var(--primary-text-color)")).toBe("rgb(20, 20, 20)");
+    expect(await resolve("var(--secondary-text-color)")).toBe("rgb(94, 94, 94)");
+    expect(await page.evaluate(() => document.documentElement.style.length)).toBe(
+      await page.evaluate(() => [...document.documentElement.style].filter((name) => name === "--harness-card-width").length),
+    );
+
+    // Wallpaper theme: the view area paints --lovelace-background (the
+    // theme's image) and the card gets the theme's backdrop blur.
+    await page.getByLabel("Theme", { exact: true }).selectOption("visionos|dark");
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector(".card-area")).backgroundImage))
+      .toContain("night.jpg");
+    expect(await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-control-panel");
+      const haCard = card.shadowRoot.querySelector("ha-card");
+      return getComputedStyle(haCard).backdropFilter;
+    })).toMatch(/blur/);
+
+    // HA default dark: the dark base vars only.
+    await page.getByLabel("Theme", { exact: true }).selectOption("dark");
+    expect(await resolve("var(--primary-text-color)")).toBe("rgb(225, 225, 225)");
+    expect(await resolve("var(--card-background-color)")).toBe("rgb(28, 28, 28)");
+    await expect(page.locator("body")).toHaveAttribute("data-theme", "dark");
+  });
+
   test("restores a localized Automation Events scenario from URL state", async ({ page }) => {
     await page.goto(
       "/tests/tools-card-harness.html"

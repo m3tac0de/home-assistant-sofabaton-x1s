@@ -82,6 +82,7 @@ async function build() {
     `${PUBLISHED_BUNDLE_PATH}?v=${version}`,
   );
   const publishedTestsDir = join(OUTPUT_DIR, "tests");
+  const publishedFixturesDir = join(publishedTestsDir, "fixtures");
   const publishedWwwDir = join(
     OUTPUT_DIR,
     "custom_components",
@@ -90,13 +91,23 @@ async function build() {
   );
 
   await rm(OUTPUT_DIR, { recursive: true, force: true });
-  await mkdir(publishedTestsDir, { recursive: true });
+  await mkdir(publishedFixturesDir, { recursive: true });
   await mkdir(publishedWwwDir, { recursive: true });
   await writeFile(join(OUTPUT_DIR, "index.html"), rootIndex(), "utf8");
   await writeFile(
     join(publishedTestsDir, "tools-card-harness.html"),
     publishedHarness,
     "utf8",
+  );
+  // HA theme fixture (base palette + community themes) the harness's theme
+  // switcher is driven by; regenerate with scripts/fetch-ha-themes.mjs.
+  await cp(
+    join(ROOT, "tests", "fixtures", "ha-themes.js"),
+    join(publishedFixturesDir, "ha-themes.js"),
+  );
+  await cp(
+    join(ROOT, "tests", "fixtures", "ha-theme-engine.js"),
+    join(publishedFixturesDir, "ha-theme-engine.js"),
   );
   await cp(
     join(WWW_SOURCE, "tools-card.js"),

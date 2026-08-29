@@ -152,11 +152,17 @@ def _patched_proxy(monkeypatch: pytest.MonkeyPatch) -> tuple[X1Proxy, list[Any]]
 
 
 def test_restore_activity_post_steps_match_canonical(monkeypatch) -> None:
-    """The post-step batch is bindings -> macros -> remote-sync (in order)."""
+    """Post-steps are bindings -> macros; the remote sync fires after favorites.
+
+    The remote-sync trigger used to sit at the end of the post-step
+    batch, BEFORE the favorites replay, so the remote's rebuild missed
+    the favorites; it now fires once at the very end of the pipeline
+    (bench 2026-08-27), and never as a batch step.
+    """
 
     proxy, sequence_calls = _patched_proxy(monkeypatch)
 
-    favorite_calls: list[tuple[int, int, int, int | None]] = []
+    call_order: list[str] = []
 
     def _command_to_favorite(
         activity_id,
@@ -167,10 +173,13 @@ def test_restore_activity_post_steps_match_canonical(monkeypatch) -> None:
         refresh_after_write=True,
         query_existing_order=True,
     ):
-        favorite_calls.append((activity_id, device_id, command_id, slot_id))
+        call_order.append("favorite")
         return {"activity_id": activity_id, "device_id": device_id, "command_id": command_id}
 
     monkeypatch.setattr(proxy, "command_to_favorite", _command_to_favorite)
+    monkeypatch.setattr(
+        proxy, "resync_remote", lambda *a, **kw: (call_order.append("resync"), True)[1]
+    )
 
     result = proxy.restore_activity(
         _activity_backup(),
@@ -187,16 +196,42 @@ def test_restore_activity_post_steps_match_canonical(monkeypatch) -> None:
     assert len(create_steps) == 1
     assert create_steps[0].family == FAMILY_ACTIVITY_CREATE
 
-    # Second batch: bindings, macros, remote-sync, in that order.
+    # Second batch: bindings then macros; NO remote-sync step in the batch.
     post_steps = sequence_calls[1]
     families = [step.family for step in post_steps]
-    assert families[-1] == FAMILY_REMOTE_SYNC
+    assert FAMILY_REMOTE_SYNC not in families
     assert FAMILY_BUTTON_BINDING in families
     assert FAMILY_MACRO in families
-    # Bindings come before macros come before remote-sync.
-    binding_idx = families.index(FAMILY_BUTTON_BINDING)
-    macro_idx = families.index(FAMILY_MACRO)
-    assert binding_idx < macro_idx < families.index(FAMILY_REMOTE_SYNC)
+    assert families.index(FAMILY_BUTTON_BINDING) < families.index(FAMILY_MACRO)
+
+    # Exactly one terminal remote sync, after every favorite replay.
+    assert call_order.count("resync") == 1
+    assert call_order[-1] == "resync"
+    assert "favorite" in call_order
+
+
+def test_restore_activity_send_remote_sync_false_suppresses_trigger(monkeypatch) -> None:
+    """Bundle orchestration suppresses the per-activity terminal sync."""
+
+    proxy, _sequence_calls = _patched_proxy(monkeypatch)
+    monkeypatch.setattr(
+        proxy,
+        "command_to_favorite",
+        lambda *a, **kw: {"status": "success"},
+    )
+    resyncs: list[bool] = []
+    monkeypatch.setattr(
+        proxy, "resync_remote", lambda *a, **kw: (resyncs.append(True), True)[1]
+    )
+
+    result = proxy.restore_activity(
+        _activity_backup(),
+        device_id_map={11: 0x21, 12: 0x22},
+        send_remote_sync=False,
+    )
+
+    assert result is not None and result["status"] == "success"
+    assert resyncs == []
 
 
 def test_restore_activity_writes_favorite_slots(monkeypatch) -> None:

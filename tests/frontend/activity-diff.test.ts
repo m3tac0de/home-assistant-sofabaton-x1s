@@ -245,7 +245,7 @@ test("diffDeviceForReview reports cleared bindings under Buttons", () => {
   const edited = structuredClone(base) as any;
   edited.devices[0].button_bindings = [];
   const groups = diffDeviceForReview(base, edited, 1);
-  assert.match(deviceAllText(groups), /"OK" no longer bound/);
+  assert.match(deviceAllText(groups), /"OK" is no longer assigned/);
 });
 
 test("diffDeviceForReview reports an IP address change under Network", () => {

@@ -9,6 +9,10 @@ export const DEFAULT_GROUP_ORDER = [
   "media",
   "colors",
   "abc",
+  // Device-mode-only Shortcuts row. Listed last so normalizedGroupOrder
+  // back-fills every stored group_order with it in last position; the
+  // activity side admits the key but never renders or lists the group.
+  "shortcuts",
 ] as const;
 
 export const DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
@@ -99,7 +103,9 @@ export const DEVICE_LAYOUT_KEYS = [
   "show_colors",
   "show_abc",
   "show_commands_button",
+  "show_power_button",
   "show_device_toggle",
+  "show_shortcuts",
   "c_as_rows",
   "c_row_visible_rows",
 ] as const;
@@ -124,6 +130,32 @@ export function deviceModeBlock(
 }
 
 /** The `device_mode.enabled` master switch: absent = enabled. */
+/**
+ * Key surface treatment from config; unknown values fall back to "flat".
+ * The legacy `key_style: "panel"` value (panels used to be a key style)
+ * resolves to flat keys; `tintedPanelsFromConfig` picks up the panels.
+ */
+export function keyStyleFromConfig(
+  config: Record<string, any> | null | undefined,
+): "flat" | "tinted" | "elevated" | "glossy" {
+  const value = config?.key_style;
+  return value === "tinted" || value === "elevated" || value === "glossy"
+    ? value
+    : "flat";
+}
+
+/**
+ * Tinted panels: the group containers take the accent-tinted dock
+ * surface. An independent switch since 0.3.0 so it combines with any
+ * key style; released `key_style: "panel"` configs read as flat keys
+ * plus panels (never rewritten unless the user edits styling).
+ */
+export function tintedPanelsFromConfig(
+  config: Record<string, any> | null | undefined,
+): boolean {
+  return config?.tinted_panels === true || config?.key_style === "panel";
+}
+
 export function deviceModeEnabledInConfig(
   config: Record<string, any> | null | undefined,
 ): boolean {
@@ -194,7 +226,9 @@ export const DEVICE_LAYOUT_DEFAULTS: Record<string, unknown> = Object.freeze({
   show_colors: true,
   show_abc: true,
   show_commands_button: true,
+  show_power_button: true,
   show_device_toggle: true,
+  show_shortcuts: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
   group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice()),
@@ -224,11 +258,72 @@ export function commandsButtonEnabled(layout: Record<string, any> | null | undef
   return true;
 }
 
+export function powerButtonEnabled(layout: Record<string, any> | null | undefined) {
+  if (typeof layout?.show_power_button === "boolean") {
+    return layout.show_power_button;
+  }
+  return true;
+}
+
 export function deviceToggleEnabled(layout: Record<string, any> | null | undefined) {
   if (typeof layout?.show_device_toggle === "boolean") {
     return layout.show_device_toggle;
   }
   return true;
+}
+
+export function shortcutsRowEnabled(layout: Record<string, any> | null | undefined) {
+  if (typeof layout?.show_shortcuts === "boolean") {
+    return layout.show_shortcuts;
+  }
+  return true;
+}
+
+// ---------- device-mode Shortcuts row (docs/internal/shortcuts-row-plan.md) ----------
+//
+// Button config lives OUTSIDE the layout layers, in `device_mode.shortcuts`
+// keyed by device id: layout layers merge default -> device, and the
+// Shortcuts buttons are strictly per-device with no inheritance. Only the
+// row's position (group_order) and visibility (show_shortcuts) travel
+// through the layout chain.
+
+export const SHORTCUT_SLOTS = ["left", "middle", "right"] as const;
+
+export type ShortcutSlot = (typeof SHORTCUT_SLOTS)[number];
+
+/**
+ * A slot counts as configured only with BOTH a non-empty icon and a finite
+ * command id (icon selection is required in the editor); anything else reads
+ * as unconfigured.
+ */
+export function normalizedShortcutSlot(
+  value: unknown,
+): { icon: string; command_id: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const icon = String((value as Record<string, unknown>).icon ?? "").trim();
+  const commandId = Number((value as Record<string, unknown>).command_id);
+  if (!icon || !Number.isFinite(commandId)) return null;
+  return { icon, command_id: commandId };
+}
+
+/** The stored per-device shortcut map, slot-keyed; unknown slots dropped. */
+export function deviceShortcutsFromConfig(
+  config: Record<string, any> | null | undefined,
+  deviceId: unknown,
+): Partial<Record<ShortcutSlot, { icon: string; command_id: number }>> {
+  const result: Partial<Record<ShortcutSlot, { icon: string; command_id: number }>> = {};
+  if (deviceId == null) return result;
+  const shortcuts = deviceModeBlock(config)?.shortcuts;
+  const entry =
+    shortcuts && typeof shortcuts === "object"
+      ? (shortcuts as Record<string, unknown>)[String(deviceId)]
+      : null;
+  if (!entry || typeof entry !== "object") return result;
+  for (const slot of SHORTCUT_SLOTS) {
+    const normalized = normalizedShortcutSlot((entry as Record<string, unknown>)[slot]);
+    if (normalized) result[slot] = normalized;
+  }
+  return result;
 }
 
 export function layoutBaseConfig(config: Record<string, unknown> | null | undefined) {
@@ -360,6 +455,9 @@ export const GROUP_VISIBILITY_KEYS: Record<string, string> = {
   media: "show_media",
   colors: "show_colors",
   abc: "show_abc",
+  // Device layouts only: the editor never lists the group for activity
+  // selections, so the key is never written on the activity side.
+  shortcuts: "show_shortcuts",
 };
 
 export const ID = {

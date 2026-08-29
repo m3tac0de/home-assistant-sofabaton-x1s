@@ -223,7 +223,7 @@ test("deleteBundleActivity removes only the targeted activity", () => {
   assert.equal(next.devices.length, 2);
 });
 
-test("deviceIdleBehavior prefers idle_behavior, falls back to power_mode", () => {
+test("deviceIdleBehavior reads only the dedicated field", () => {
   const b = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -235,8 +235,10 @@ test("deviceIdleBehavior prefers idle_behavior, falls back to power_mode", () =>
     ],
     activities: [],
   };
-  assert.equal(deviceIdleBehavior(b, 1), 4); // dedicated field wins
-  assert.equal(deviceIdleBehavior(b, 2), 3); // legacy fallback
+  assert.equal(deviceIdleBehavior(b, 1), 4); // dedicated field
+  // power_mode is the record-tail byte (1 on every real device), not a
+  // legacy idle spelling: never substituted, missing means unknown.
+  assert.equal(deviceIdleBehavior(b, 2), null);
   assert.equal(deviceIdleBehavior(b, 3), null); // neither present
   assert.equal(deviceIdleBehavior(b, 99), null); // missing device
 });
@@ -255,7 +257,7 @@ test("updateBundleDeviceIdleBehavior writes the dedicated field only on the targ
   const next = updateBundleDeviceIdleBehavior(b, 1, IDLE_BEHAVIOR_DISABLED);
   assert.equal(deviceIdleBehavior(next, 1), IDLE_BEHAVIOR_DISABLED);
   assert.equal(deviceIdleBehavior(next, 2), 1); // untouched
-  assert.equal(deviceIdleBehavior(b, 1), 1); // original not mutated
+  assert.equal(deviceIdleBehavior(b, 1), null); // original not mutated (and power_mode is not read)
 });
 
 test("deleteBundleDevice clears references across activities", () => {
@@ -564,7 +566,7 @@ test("bundleButtonCatalog adapts to hub model", () => {
 
 test("activityButtonBindingItems resolves labels and long-press, sorted by button id", () => {
   const items = activityButtonBindingItems(bindingBundle(), 101);
-  assert.deepEqual(items.map((i) => i.buttonName), ["OK", "Volume Up"]); // 0xB0 before 0xB6
+  assert.deepEqual(items.map((i) => i.buttonName), ["OK", "Volume up"]); // 0xB0 before 0xB6
   const ok = items.find((i) => i.buttonName === "OK")!;
   assert.equal(ok.shortPressLabel, "TV · Power");
   assert.equal(ok.longPress?.label, "Soundbar · Power");

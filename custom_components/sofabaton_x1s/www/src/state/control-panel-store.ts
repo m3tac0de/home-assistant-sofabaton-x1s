@@ -547,6 +547,10 @@ export class ControlPanelStore {
       const state = await this.api().loadState();
       this.applyControlPanelState(state);
       this.syncSelection();
+      if (this._contentsMissingStateHubs()) {
+        const contents = await this.api().loadCacheContents();
+        this._snapshot = { ...this._snapshot, contents };
+      }
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
@@ -560,6 +564,24 @@ export class ControlPanelStore {
       }
       throw error;
     }
+  }
+
+  /**
+   * True when the control-panel state lists hubs the cache-contents payload
+   * doesn't cover yet. That happens when the card stays open across an HA
+   * restart: a backend-retry load can succeed in the window where the WS API
+   * is registered but the hub entries haven't finished setting up (both
+   * payloads come back with an empty hub list), after which the state-only
+   * refresh paths (runtime poll, connection changes, hub switches) heal
+   * `state` but would leave `contents` empty, pinning the Hub/Backup tabs
+   * on "No hubs found" until a manual card reload.
+   */
+  private _contentsMissingStateHubs(): boolean {
+    if (!persistentCacheEnabled(this._snapshot)) return false;
+    const stateHubs = this._snapshot.state?.hubs ?? [];
+    if (!stateHubs.length) return false;
+    const cached = new Set((this._snapshot.contents?.hubs ?? []).map((hub) => hub.entry_id));
+    return stateHubs.some((hub) => !cached.has(hub.entry_id));
   }
 
   async loadCacheContents() {
@@ -1103,14 +1125,13 @@ export class ControlPanelStore {
    * an unconditional write would let every open tab continuously overwrite
    * the shared view state with its own snapshot. */
   private syncSelection() {
+    // An empty hub list can be transient (HA restarting with the card open:
+    // the WS API answers before the hub entries finish setting up), so keep
+    // the current selection instead of persisting null over it: if the hub
+    // is truly gone, the fallback below reassigns once hubs reappear, and
+    // nothing renders from the selection while the list is empty anyway.
     const hubs = this._snapshot.state?.hubs ?? [];
-    if (!hubs.length) {
-      if (this._snapshot.selectedHubEntryId !== null) {
-        this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
-        this.persistViewState();
-      }
-      return;
-    }
+    if (!hubs.length) return;
     if (
       !this._preferredHubApplied &&
       this._preferredHubEntryId &&

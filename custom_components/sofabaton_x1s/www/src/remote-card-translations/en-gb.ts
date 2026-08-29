@@ -8,21 +8,21 @@ import { registerRemoteCardTranslation } from "../remote-card-strings";
 
 registerRemoteCardTranslation("en-gb", {
   card: {
-    favoritesTab: "Favourites >",
+    favoritesTab: "Favourites",
     noFavorites: "No favourites available",
   },
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
-      background_override: "Select Background Colour",
-      show_favorites_button: "Favourites Button",
+      background_override: "Select background colour",
+      show_favorites_button: "Favourites button",
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows",
   },
   groups: {
     macro_favorites: "Macros/Favourites",
-    favorites_row: "Favourites Row",
-    colors: "Colour Buttons",
+    favorites_row: "Favourites row",
+    colors: "Colour buttons",
   },
 });

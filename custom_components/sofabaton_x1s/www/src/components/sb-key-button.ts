@@ -5,6 +5,8 @@
 import {
   HOLD_REPEAT_EVENT_TYPE,
   HoldRepeatTimer,
+  LONG_PRESS_EVENT_TYPE,
+  LongPressTimer,
   attachPrimaryAction,
 } from "../remote-card-gestures";
 
@@ -25,7 +27,7 @@ const CONTROL_CSS = `
     height: 100%;
     min-width: 0;
     min-height: 100%;
-    padding: 0 10px;
+    padding: 0 var(--sb-control-padding-inline, 10px);
     border-radius: var(
       --sb-control-radius,
       var(--sb-group-radius, var(--ha-card-border-radius, 18px))
@@ -59,7 +61,12 @@ const CONTROL_CSS = `
     inset: 0;
     z-index: 0;
     border-radius: inherit;
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.08);
+    /* Hover / press overlay derived from the theme's text colour via
+       color-mix: works for any colour syntax and for card-level themes.
+       The rgba(var(--rgb-primary-text-color)) form only worked for hex
+       themes, and HA's base hardcodes --rgb-primary-text-color to dark
+       (33,33,33), so dark themes got an invisible dark-on-dark overlay. */
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color, #000) 10%, transparent));
     opacity: 0;
     pointer-events: none;
     transition: opacity 120ms ease;
@@ -72,12 +79,12 @@ const CONTROL_CSS = `
   }
 
   .sb-key-control:not(:disabled):active::before {
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.16);
+    background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color, #000) 18%, transparent));
     opacity: 1;
   }
 
   .sb-key-control:focus-visible {
-    outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+    outline: 2px solid color-mix(in srgb, var(--primary-color, #03a9f4) 55%, transparent);
     outline-offset: -2px;
   }
 
@@ -85,7 +92,8 @@ const CONTROL_CSS = `
     cursor: default;
   }
 
-  .sb-key-control__icon {
+  .sb-key-control__icon,
+  .sb-key-control__trailing-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -94,17 +102,37 @@ const CONTROL_CSS = `
     line-height: 1;
     flex: 0 0 auto;
     --mdc-icon-size: 1.2em;
-    color: var(--primary-color);
+    color: var(--sb-key-label-color, var(--primary-color));
     position: relative;
     z-index: 1;
   }
 
+  /* A trailing affordance must not take width away from the label. Keep it
+     pinned to the logical inline end (right in LTR, left in RTL), while the
+     label reserves only the icon's footprint inside its own full-width box. */
+  .sb-key-control__trailing-icon {
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
   .sb-key-control__label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     position: relative;
     z-index: 1;
+    /* Text on keys reads as part of the same control language as the
+       icons, so it shares their colour (the icon rule above). */
+    color: var(--sb-key-label-color, var(--primary-color));
+  }
+
+  .sb-key-control--with-trailing-icon .sb-key-control__label {
+    box-sizing: border-box;
+    width: 100%;
+    padding-inline-end: 1.2em;
   }
 
   [hidden] {
@@ -133,18 +161,29 @@ function installControlStyles(root: ShadowRoot): void {
   root.appendChild(style);
 }
 
-export class SbKeyButton extends HTMLElement {
+// Node (unit-test bundle) tolerance: lit's SSR shim installs a global
+// customElements but no global HTMLElement, and this class extends it at
+// module-eval time. Fall back the way LitElement itself does so importing
+// any module that pulls this one in never throws off-browser.
+const BaseElement: typeof HTMLElement =
+  (globalThis as { HTMLElement?: typeof HTMLElement }).HTMLElement ??
+  (class {} as unknown as typeof HTMLElement);
+
+export class SbKeyButton extends BaseElement {
   private _control: HTMLButtonElement | null = null;
   private _iconEl: HTMLElement | null = null;
+  private _trailingIconEl: HTMLElement | null = null;
   private _labelEl: HTMLSpanElement | null = null;
   private _label = "";
   private _icon: string | null = null;
+  private _trailingIcon: string | null = null;
   private _accessibilityLabel = "";
   private _color: string | null = null;
   private _sizeVar: string | null = null;
   private _disabled = false;
   private _wired = false;
   private _holdRepeat = false;
+  private _longPress = false;
   /**
    * Long press: while holdRepeat is on, pressing and holding repeats the
    * trigger (first after HOLD_REPEAT_DELAY_MS, then every
@@ -152,6 +191,14 @@ export class SbKeyButton extends HTMLElement {
    * suppressed so letting go never sends one more command.
    */
   private readonly _hold = new HoldRepeatTimer((repeatIndex) => this.repeatTrigger(repeatIndex));
+  /**
+   * Hub long-press binding: while longPress is on (and holdRepeat is not,
+   * hold-to-repeat wins that collision), holding fires the long-press
+   * trigger exactly once at LONG_PRESS_HOLD_MS. The release tap of a hold
+   * that fired is suppressed, so letting go never also sends the short
+   * press.
+   */
+  private readonly _longHold = new LongPressTimer(() => this.longPressTrigger());
 
   /** Called on a primary pointer action, keyboard activation, or hold repeat. */
   onTrigger: ((ev: Event) => void) | null = null;
@@ -163,6 +210,11 @@ export class SbKeyButton extends HTMLElement {
 
   set icon(value: string | null) {
     this._icon = value ? String(value) : null;
+    this.syncContent();
+  }
+
+  set trailingIcon(value: string | null) {
+    this._trailingIcon = value ? String(value) : null;
     this.syncContent();
   }
 
@@ -195,7 +247,10 @@ export class SbKeyButton extends HTMLElement {
   set disabled(value: boolean) {
     this._disabled = Boolean(value);
     if (this._control) this._control.disabled = this._disabled;
-    if (this._disabled) this._hold.stop();
+    if (this._disabled) {
+      this._hold.stop();
+      this._longHold.stop();
+    }
   }
 
   /** Enable long press (hold-to-repeat) on this control. */
@@ -206,6 +261,20 @@ export class SbKeyButton extends HTMLElement {
 
   get holdRepeat(): boolean {
     return this._holdRepeat;
+  }
+
+  /**
+   * Enable the hub long-press binding on this control. Ignored while
+   * holdRepeat is on: a hold can only mean one thing, and the explicit
+   * hold-to-repeat opt-in beats the transparent binding.
+   */
+  set longPress(value: boolean) {
+    this._longPress = Boolean(value);
+    if (!this._longPress) this._longHold.stop();
+  }
+
+  get longPress(): boolean {
+    return this._longPress;
   }
 
   get disabled(): boolean {
@@ -224,8 +293,10 @@ export class SbKeyButton extends HTMLElement {
 
   private trigger(ev: Event): void {
     if (this._disabled || this.classList.contains("disabled")) return;
-    // The pointerup that ends a hold which already repeated is not a tap.
+    // The pointerup that ends a hold which already repeated (or already
+    // fired its long-press binding) is not a tap.
     if (this._hold.consumeFired()) return;
+    if (this._longHold.consumeFired()) return;
     this.onTrigger?.(ev);
   }
 
@@ -239,24 +310,44 @@ export class SbKeyButton extends HTMLElement {
     this.onTrigger?.(new CustomEvent(HOLD_REPEAT_EVENT_TYPE, { detail: repeatIndex }));
   }
 
+  private longPressTrigger(): void {
+    if (this._disabled || this.classList.contains("disabled")) {
+      this._longHold.stop();
+      return;
+    }
+    this.fireHaptic();
+    this.onTrigger?.(new CustomEvent(LONG_PRESS_EVENT_TYPE));
+  }
+
   private onHoldPointerDown(ev: PointerEvent): void {
-    if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
+    if (this._disabled || this.classList.contains("disabled")) return;
     if (ev.isPrimary === false || (typeof ev.button === "number" && ev.button !== 0)) return;
-    this._hold.start();
+    // Exactly one hold meaning per button: hold-to-repeat wins the
+    // collision with a hub long-press binding (explicit config opt-in
+    // beats the transparent feature).
+    if (this._holdRepeat) {
+      this._hold.start();
+    } else if (this._longPress) {
+      this._longHold.start();
+    }
   }
 
   private onHoldPointerEnd(ev: Event): void {
     this._hold.stop();
+    this._longHold.stop();
     // Only a pointerup on the button goes on to trigger(), which consumes
     // the "a repeat fired" memory while suppressing the release tap. The
     // other endings (the mouse drifting off the button, pointercancel,
     // lost capture) never reach trigger(), so clear the memory here or the
     // next keyboard activation of this button would be swallowed.
-    if (ev.type !== "pointerup") this._hold.consumeFired();
+    if (ev.type !== "pointerup") {
+      this._hold.consumeFired();
+      this._longHold.consumeFired();
+    }
   }
 
   private syncContent(): void {
-    if (!this._control || !this._iconEl || !this._labelEl) return;
+    if (!this._control || !this._iconEl || !this._trailingIconEl || !this._labelEl) return;
 
     if (this._icon) {
       this._iconEl.setAttribute("icon", this._icon);
@@ -265,6 +356,18 @@ export class SbKeyButton extends HTMLElement {
       this._iconEl.removeAttribute("icon");
       this._iconEl.hidden = true;
     }
+
+    if (this._trailingIcon) {
+      this._trailingIconEl.setAttribute("icon", this._trailingIcon);
+      this._trailingIconEl.hidden = false;
+    } else {
+      this._trailingIconEl.removeAttribute("icon");
+      this._trailingIconEl.hidden = true;
+    }
+    this._control.classList.toggle(
+      "sb-key-control--with-trailing-icon",
+      Boolean(this._trailingIcon),
+    );
 
     this._labelEl.textContent = this._label;
     this._labelEl.hidden = !this._label;
@@ -290,11 +393,14 @@ export class SbKeyButton extends HTMLElement {
     icon.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
+    const trailingIcon = document.createElement("ha-icon");
+    trailingIcon.className = "sb-key-control__trailing-icon";
 
-    control.append(icon, label);
+    control.append(icon, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
     this._iconEl = icon;
+    this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
 
@@ -314,7 +420,7 @@ export class SbKeyButton extends HTMLElement {
     // A long press on touch devices would otherwise open the context menu
     // (and cancel the pointer sequence).
     control.addEventListener("contextmenu", (ev) => {
-      if (this._holdRepeat) ev.preventDefault();
+      if (this._holdRepeat || this._longPress) ev.preventDefault();
     });
 
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
@@ -333,6 +439,7 @@ export class SbKeyButton extends HTMLElement {
 
   disconnectedCallback(): void {
     this._hold.stop();
+    this._longHold.stop();
   }
 }
 

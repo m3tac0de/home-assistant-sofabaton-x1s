@@ -10,6 +10,7 @@ import {
   str,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../custom_components/sofabaton_x1s/www/src/remote-card-state";
+import { drawerTabChevronIcon } from "../../custom_components/sofabaton_x1s/www/src/sections/macro-favorites";
 import { TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import TOOLS_CARD_STRINGS_DE from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
 import TOOLS_CARD_STRINGS_ES from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
@@ -88,7 +89,53 @@ test("device cache recovery names the localized Control Panel card and Hub tab",
     const message = str().card.deviceKeymapMissing;
     assert.equal(message.includes(panelStrings.card.pickerName), true, `${locale}: card name`);
     assert.equal(message.includes(panelStrings.tabs.cache), true, `${locale}: tab name`);
+    assert.equal(
+      str().editor.shortcutsCommandsUnavailable,
+      message,
+      `${locale}: card and shortcut recovery instructions`,
+    );
   }
+
+  setRemoteCardLanguage("en");
+});
+
+test("power copy distinguishes the runtime action from the editor button", () => {
+  const cases = [
+    ["en", "Toggle power", "Power button"],
+    ["ar", "تبديل التشغيل/الإيقاف", "زر التشغيل/الإيقاف"],
+    ["de", "Ein-/Ausschalten", "Ein-/Aus-Taste"],
+    ["es", "Alternar encendido/apagado", "Botón de encendido/apagado"],
+    ["fr", "Basculer marche/arrêt", "Bouton Marche/Arrêt"],
+    ["nl", "In-/uitschakelen", "Aan/uit-knop"],
+    ["zh-Hans", "切换电源", "电源按钮"],
+  ] as const;
+
+  for (const [locale, action, button] of cases) {
+    setRemoteCardLanguage(locale);
+    assert.equal(str().card.powerButton, action, `${locale}: runtime action`);
+    assert.equal(str().editor.power, button, `${locale}: editor button`);
+  }
+
+  setRemoteCardLanguage("en");
+});
+
+test("missing shortcut commands stay distinct and bidi-safe", () => {
+  setRemoteCardLanguage("es");
+  assert.equal(str().editor.shortcutCommandMissing(17), "Comando 17 (no encontrado)");
+  assert.notEqual(
+    str().editor.shortcutCommandMissing(17).includes("no disponible"),
+    true,
+  );
+
+  setRemoteCardLanguage("ar");
+  assert.equal(
+    str().editor.shortcutCommandMissing(17),
+    "الأمر \u206817\u2069 (مفقود)",
+  );
+
+  setRemoteCardLanguage("de");
+  assert.equal(str().groups.shortcuts, "Verknüpfungen");
+  assert.equal(str().editor.shortcutSlotLeft, "Linke Verknüpfung");
 
   setRemoteCardLanguage("en");
 });
@@ -124,6 +171,29 @@ test("English device-mode labels use Control Panel sentence case", () => {
   assert.equal(str().editor.openOnCurrentActivity, "Current activity");
 });
 
+test("Playback and physical-key names stay aligned in every Virtual Remote locale", () => {
+  const cases = [
+    ["en", "Playback", "Fast forward"],
+    ["en-GB", "Playback", "Fast forward"],
+    ["de", "Wiedergabe", "Vorspulen"],
+    ["es", "Reproducción", "Avance rápido"],
+    ["fr", "Lecture", "Avance rapide"],
+    ["nl", "Afspelen", "Vooruitspoelen"],
+    ["zh-Hans", "播放", "快进"],
+    ["ar", "التشغيل", "تقديم سريع"],
+  ] as const;
+
+  for (const [locale, playback, fastForward] of cases) {
+    setRemoteCardLanguage(locale);
+    assert.equal(str().editor.fieldLabels.show_media, playback, locale);
+    assert.equal(str().editor.mediaControls, playback, locale);
+    assert.equal(str().groups.media, playback, locale);
+    assert.equal(str().keys.fwd, fastForward, locale);
+  }
+
+  setRemoteCardLanguage("en");
+});
+
 test("MQTT detection modal copy preserves the Sofabaton device meaning in every locale", () => {
   const cases = [
     ["en", "Sofabaton MQTT device detected.", "Don't show this again for this device during this session."],
@@ -149,9 +219,19 @@ test("Arabic and regional Arabic locales select right-to-left direction", () => 
   setRemoteCardLanguage("ar-SA");
   assert.equal(remoteCardLanguage(), "ar-sa");
   assert.equal(remoteCardDirection(), "rtl");
+  assert.equal(drawerTabChevronIcon(), "mdi:chevron-left");
+  assert.deepEqual(
+    [str().card.macrosTab, str().card.favoritesTab, str().card.commandsTab],
+    ["الماكرو", "المفضلات", "الأوامر"],
+  );
 
   setRemoteCardLanguage("en-GB");
   assert.equal(remoteCardDirection(), "ltr");
+  assert.equal(drawerTabChevronIcon(), "mdi:chevron-right");
+  assert.deepEqual(
+    [str().card.macrosTab, str().card.favoritesTab, str().card.commandsTab],
+    ["Macros", "Favourites", "Commands"],
+  );
   setRemoteCardLanguage("en");
 });
 
@@ -238,6 +318,10 @@ test("bundled French translation supports regional locales and inflection", () =
   assert.equal(
     str().assist.createdTriggers(1, "Téléviseur"),
     "1 déclencheur MQTT Discovery créé pour Téléviseur",
+  );
+  assert.equal(
+    str().assist.createdTriggers(0, "Téléviseur"),
+    "0 déclencheur MQTT Discovery créé pour Téléviseur",
   );
   assert.equal(
     str().assist.createdTriggers(2, "Téléviseur"),

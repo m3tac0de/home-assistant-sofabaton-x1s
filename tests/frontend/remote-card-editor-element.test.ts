@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { nothing } from "lit";
 import { SofabatonRemoteCardEditor } from "../../custom_components/sofabaton_x1s/www/src/remote-card-editor-element";
 import { renderGeneralOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/general-options";
 import { renderStylingOptionsSection } from "../../custom_components/sofabaton_x1s/www/src/editor-sections/styling-options";
@@ -306,7 +307,7 @@ function generalOptionsParams(overrides: Record<string, unknown> = {}) {
 test("general options section renders key capture and hold-to-repeat rows, in that order", () => {
   const on = renderGeneralOptionsSection(generalOptionsParams());
   const text = templateText(on);
-  assert.match(text, /General Options/);
+  assert.match(text, /General options/);
   assert.match(text, /Key capture/);
   assert.match(text, /Enable hold-to-repeat/);
   assert.ok(text.indexOf("Key capture") < text.indexOf("Enable hold-to-repeat"));
@@ -371,7 +372,7 @@ test("general options section lists the hold-to-repeat button groups while enabl
   assert.match(schema, /"name":"long_press_buttons"/);
   assert.match(schema, /"value":"volume","label":"Volume"/);
   assert.match(schema, /"value":"channel","label":"Channel"/);
-  assert.match(schema, /"value":"dpad","label":"Direction Pad"/);
+  assert.match(schema, /"value":"dpad","label":"Direction pad"/);
   assert.match(schema, /"multiple":true,"mode":"list"/);
 });
 
@@ -423,7 +424,10 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     mediaEnabled: true,
     dvrEnabled: true,
     isDeviceSelection: false,
+    shortcutsStrip: nothing as typeof nothing,
+    shortcutsPanel: nothing as typeof nothing,
     commandsEnabled: true,
+    powerEnabled: true,
     showDeviceModeSwitch: false,
     deviceModeEnabled: true,
     isGroupEnabled: () => true,
@@ -433,6 +437,7 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     onSetMacro: () => undefined,
     onSetFavorites: () => undefined,
     onSetCommands: () => undefined,
+    onSetPower: () => undefined,
     onSetDeviceMode: () => undefined,
     onSetVolume: () => undefined,
     onSetChannel: () => undefined,
@@ -457,6 +462,40 @@ test("group order section renders up/down buttons until ha-sortable is ready", (
   assert.equal(templateHasString(sortable, "ha-sortable"), true);
   assert.equal(templateHasString(sortable, "sb-drag-handle"), true);
   assert.equal(templateHasString(sortable, "sb-move-wrap"), false);
+});
+
+test("device selections render Commands and Power switches on the mf rows", () => {
+  const result = renderGroupOrderSection(
+    groupOrderParams({
+      isDeviceSelection: true,
+      visibleOrder: ["macro_favorites"],
+    }),
+  );
+  const text = templateText(result);
+  assert.equal(text.includes("Commands"), true);
+  assert.equal(text.includes("Power"), true);
+  // Activity selections keep Macros/Favorites and show no Power switch.
+  const activity = templateText(
+    renderGroupOrderSection(groupOrderParams({ visibleOrder: ["macro_favorites"] })),
+  );
+  assert.equal(activity.includes("Power"), false);
+  assert.equal(activity.includes("Macros"), true);
+});
+
+test("the Mode switch follows the Activity/device toggle: off and inert while the row is hidden", () => {
+  // The card hides the mode toggle together with the activity row, so the
+  // editor switch must read off and be inert while Activity/device is off.
+  const params = (activityOn: boolean) =>
+    groupOrderParams({
+      showDeviceModeSwitch: true,
+      deviceModeEnabled: true,
+      visibleOrder: ["activity"],
+      isGroupEnabled: (key: string) => (key === "activity" ? activityOn : true),
+    });
+  const off = templateText(renderGroupOrderSection(params(false)));
+  assert.equal(off.includes("sb-layout-switch-item is-disabled"), true);
+  const on = templateText(renderGroupOrderSection(params(true)));
+  assert.equal(on.includes("sb-layout-switch-item is-disabled"), false);
 });
 
 test("group order section renders one order row per visible group", () => {

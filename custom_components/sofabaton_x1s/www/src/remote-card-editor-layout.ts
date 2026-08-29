@@ -8,6 +8,7 @@ import {
   channelGroupEnabled,
   commandsButtonEnabled,
   deviceToggleEnabled,
+  powerButtonEnabled,
   favoritesButtonEnabled,
   isDeviceLayoutKey,
   layoutBaseConfig,
@@ -18,7 +19,9 @@ import {
   mfAsRows,
   mfRowVisibleRows,
   normalizedGroupOrder,
+  normalizedShortcutSlot,
   parseDeviceLayoutKey,
+  type ShortcutSlot,
   resolveStoredDeviceLayer,
   storedDeviceLayer,
   toStoredDeviceLayer,
@@ -320,6 +323,50 @@ export function commandsEnabled(
 
 export function commandsTogglePatch(enabled: boolean) {
   return { show_commands_button: !!enabled };
+}
+
+export function powerEnabled(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+) {
+  return powerButtonEnabled(layoutConfigForSelection(config, selection));
+}
+
+export function powerTogglePatch(enabled: boolean) {
+  return { show_power_button: !!enabled };
+}
+
+/**
+ * Write (or delete, value = null) one Shortcuts slot for one device. Lives
+ * under device_mode.shortcuts["<device id>"] — outside the layout layers,
+ * see shortcuts-row-plan.md — and prunes empty maps on the way out so saved
+ * YAML never carries hollow blocks.
+ */
+export function applyShortcutSlotPatch(
+  config: Record<string, any> | null | undefined,
+  deviceId: number,
+  slot: ShortcutSlot,
+  value: { icon: string; command_id: number } | null,
+) {
+  const next = { ...(config || {}) };
+  const block: Record<string, any> = { ...(next.device_mode || {}) };
+  const shortcuts: Record<string, any> = {
+    ...((block.shortcuts as Record<string, unknown> | undefined) || {}),
+  };
+  const key = String(deviceId);
+  const entry: Record<string, unknown> = {
+    ...((shortcuts[key] as Record<string, unknown> | undefined) || {}),
+  };
+  const normalized = normalizedShortcutSlot(value);
+  if (normalized) {
+    entry[slot] = normalized;
+  } else {
+    delete entry[slot];
+  }
+  setOrDelete(shortcuts, key, entry);
+  setOrDelete(block, "shortcuts", shortcuts);
+  setOrDelete(next, "device_mode", block);
+  return { nextConfig: next };
 }
 
 export function deviceToggleEnabledForEditor(

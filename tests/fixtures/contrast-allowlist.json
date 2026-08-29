@@ -1,0 +1,4 @@
+{
+  "_comment": "Element signatures (as printed by scripts/audit-contrast.mjs) that are deliberately below WCAG AA; they are still measured and listed in the report but never counted as failures. Keep this empty unless a design decision has been made and documented next to the style rule.",
+  "ignore": []
+}

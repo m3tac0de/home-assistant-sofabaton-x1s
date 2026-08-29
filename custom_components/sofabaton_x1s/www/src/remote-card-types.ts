@@ -58,10 +58,27 @@ export interface DeviceLayoutConfig {
   show_commands_button?: boolean;
   /** Toggles the activity/device mode toggle button (default shown). */
   show_device_toggle?: boolean;
+  /** Toggles the Shortcuts row (default shown; renders only with configured slots). */
+  show_shortcuts?: boolean;
   /** Render commands as inline rows instead of the drawer tab. */
   c_as_rows?: boolean;
   c_row_visible_rows?: number;
 }
+
+/**
+ * One configured Shortcuts-row slot (docs/internal/shortcuts-row-plan.md).
+ * Both fields are required for the slot to count as configured; the icon is
+ * mandatory by design.
+ */
+export interface ShortcutSlotConfig {
+  icon: string;
+  command_id: number;
+}
+
+/** Per-device Shortcuts row: fixed left/middle/right slots, each optional. */
+export type DeviceShortcutsConfig = Partial<
+  Record<"left" | "middle" | "right", ShortcutSlotConfig>
+>;
 
 /**
  * The `device_mode` block: every stored device-mode setting in one place
@@ -80,6 +97,12 @@ export interface DeviceModeConfig {
   open_device?: number | null;
   /** "default" plus per-device-id entries. */
   layouts?: Record<string, Partial<DeviceLayoutConfig>>;
+  /**
+   * Shortcuts-row buttons, keyed by device id. Deliberately a sibling of
+   * `layouts`: the layout chain inherits default -> device, while shortcut
+   * buttons are strictly per-device with no inheritance.
+   */
+  shortcuts?: Record<string, DeviceShortcutsConfig>;
 }
 
 /**
@@ -120,6 +143,8 @@ export interface CustomFavoriteConfig {
  * inherited from RemoteCardLayoutConfig. setConfig() spreads user config over
  * defaults, so unknown keys survive round-trips — hence the index signature.
  */
+export type KeyStyle = "flat" | "tinted" | "elevated" | "glossy" | "panel";
+
 export interface RemoteCardConfig extends RemoteCardLayoutConfig {
   type?: string;
   entity: string;
@@ -127,6 +152,16 @@ export interface RemoteCardConfig extends RemoteCardLayoutConfig {
   theme?: string;
   /** RGB triple for the card background when use_background_override is on. */
   background_override?: [number, number, number] | null;
+  /**
+   * Key surface treatment. "flat" (default) keeps keys on the card
+   * background; "tinted" raises them with a text-colour tint and a floored
+   * border; "elevated" adds a soft shadow on top of the tint; "panel"
+   * inverts the scheme — the group containers take a contrasting surface
+   * while the keys stay card-coloured.
+   */
+  key_style?: KeyStyle;
+  /** Accent-tinted group panels, combinable with any key style. */
+  tinted_panels?: boolean;
   /**
    * Editor-only helper toggle backing background_override; stripped from the
    * stored config by the editor's _fireChanged().
@@ -179,6 +214,14 @@ export interface RemoteEntityAttributes {
   activities?: RemoteActivityAttribute[];
   devices?: RemoteDeviceAttribute[];
   assigned_keys?: Record<string, number[]>;
+  /**
+   * The resolved long-press pair per bound hard button, per entity page
+   * (activity and device ids share the namespace). Published only while
+   * the persistent cache is enabled — its absence keeps long-press dark.
+   * The card fires a pair itself via the favorites-style send; the entity
+   * and its services have no long-press concept.
+   */
+  long_press_keys?: Record<string, Record<string, { device_id: number; command_id: number }>>;
   macro_keys?: Record<string, Array<Record<string, unknown>>>;
   favorite_keys?: Record<string, Array<Record<string, unknown>>>;
   [key: string]: unknown;
@@ -196,6 +239,8 @@ export interface DeviceKeymapPayload {
     long_press_command_id?: number | null;
   }>;
   commands: Array<{ command_id: number; name: string }>;
+  /** Power-key capability gate (idle-behavior byte in 1-3, fail-closed). */
+  power_configured?: boolean;
   fetched_at?: string;
 }
 
@@ -203,4 +248,9 @@ export interface DeviceKeymapResponse {
   keymap: DeviceKeymapPayload | null;
   reason?: "cache_disabled" | "cache_miss";
   generation?: number;
+}
+
+/** `sofabaton_x1s/device/power_state` WS payload (plan section 8). */
+export interface DevicePowerStateResponse {
+  power_state: number | null;
 }

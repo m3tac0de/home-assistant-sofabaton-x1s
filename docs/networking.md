@@ -3,49 +3,59 @@
 This integration acts as a proxy between your Sofabaton hub(s) and the official app. The network path is split in two segments so you can size firewall rules and container interfaces correctly.
 
 ```mermaid
-%%{init: { 'theme': 'default', 'sequence': { 'messageMargin': 10, 'boxMargin': 5, 'noteMargin': 5, 'mirrorActors': false }}}%%
+%%{init: { 'sequence': { 'messageMargin': 10, 'boxMargin': 5, 'noteMargin': 5, 'mirrorActors': false }}}%%
 sequenceDiagram
     autonumber
     participant Hub as Sofabaton Hub
     participant HA as Home Assistant (Proxy)
     participant App as Sofabaton App
 
-    rect rgb(230, 245, 255)
+    rect rgba(3, 169, 244, 0.12)
         Note over Hub, HA: Discovery
         Hub->>HA: UDP 5353 (mDNS: _x1hub._udp.local <br/> _sofabaton_hub._udp.local)
     end
 
-    rect rgb(240, 255, 240)
+    rect rgba(76, 175, 80, 0.12)
         Note over Hub, HA: Connect
         HA->>Hub: UDP 8102 (CALL_ME)
         Hub->>HA: TCP 8200 (Connect back to Proxy)
     end
 
-    rect rgb(255, 245, 230)
+    rect rgba(255, 152, 0, 0.12)
         Note over Hub, HA: HTTP Callback (Wifi Commands / Wifi Events)
         Hub-->>HA: TCP 8060
     end
 
-    rect rgb(230, 245, 255)
+    rect rgba(3, 169, 244, 0.12)
         Note over HA, App: Discovery
         HA->>App: UDP 5353 (mDNS: _x1hub._udp.local)
     end
 
-    rect rgb(255, 245, 230)
+    rect rgba(255, 152, 0, 0.12)
         Note over App, HA: Broadcast Discovery
         App-->>HA: UDP 8102 (NOTIFY_ME)
         HA-->>App: UDP 8100 (NOTIFY)
     end
 
-    rect rgb(240, 255, 240)
+    rect rgba(76, 175, 80, 0.12)
         Note over App, HA: Connect
         App->>HA: UDP 8102 (CALL_ME)
         HA->>App: TCP 8100..8110 (Connect back to App)
     end
 ```
 
+Optional MQTT traffic takes a separate path, so it does not pass through the proxy listeners shown above:
+
+```mermaid
+flowchart LR
+    HubX2["Sofabaton Hub<br/>(X2 only)"] <-->|"MQTT · TCP 1883*"| Broker["MQTT Broker"]
+    Broker <-->|"MQTT · TCP 1883*"| HA_MQTT["Home Assistant<br/>MQTT integration"]
+```
+
 > Broadcast Discovery is optional for Android clients.  
 > HTTP callbacks for Wifi Commands and Wifi Events are optional.
+>
+> MQTT is optional and X2-only; `1883` is the broker's default port and may be changed.
 
 ## ◇ Security / listener model
 
@@ -175,19 +185,22 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 
 ## ◇ Complete port reference
 
-| From        | To          | Protocol | Port(s)     | Used for                                      | Needed for                             |
-| ----------- | ----------- | -------- | ----------- | --------------------------------------------- | -------------------------------------- |
-| Hub network | HA host     | UDP      | 5353        | mDNS `_x1hub._udp.local.` hub advert.         | Hub discovery by integration for X1(S) |
-| Hub network | HA host     | UDP      | 5353        | mDNS `_sofabaton_hub._udp.local.` hub advert. | Hub discovery by integration for X2    |
-| HA host     | Hub network | UDP      | 8102        | `CALL_ME` from proxy to hub                   | Hub connect flow                       |
-| Hub network | HA host     | TCP      | 8200 \*     | Hub connects back to proxy                    | Hub control and status                 |
-| Hub network | HA host     | TCP      | 8060 \*\*   | Hub makes HTTP requests back to integration   | Wifi Commands and Wifi Events          |
-| HA host     | App network | UDP      | 5353        | mDNS `_x1hub._udp.local.` to app              | Sofabaton Android app                  |
-| App network | HA host     | UDP      | 8102        | iOS broadcast discovery to proxy              | Sofabaton iOS app                      |
-| HA host     | App network | UDP      | 8100        | iOS broadcast reply from proxy                | Sofabaton iOS app                      |
-| App network | HA host     | UDP      | 8102 \*\*\* | `CALL_ME` from app to proxy                   | iOS and Android app                    |
-| HA host     | App network | TCP      | 8100–8110   | Proxy connects back to app                    | iOS and Android app                    |
+| From        | To          | Protocol | Port(s)      | Used for                                      | Needed for                             |
+| ----------- | ----------- | -------- | ------------ | --------------------------------------------- | -------------------------------------- |
+| Hub network | HA host     | UDP      | 5353         | mDNS `_x1hub._udp.local.` hub advert.         | Hub discovery by integration for X1(S) |
+| Hub network | HA host     | UDP      | 5353         | mDNS `_sofabaton_hub._udp.local.` hub advert. | Hub discovery by integration for X2    |
+| HA host     | Hub network | UDP      | 8102         | `CALL_ME` from proxy to hub                   | Hub connect flow                       |
+| Hub network | HA host     | TCP      | 8200 \*      | Hub connects back to proxy                    | Hub control and status                 |
+| Hub network | HA host     | TCP      | 8060 \*\*    | Hub makes HTTP requests back to integration   | Wifi Commands and Wifi Events          |
+| HA host     | App network | UDP      | 5353         | mDNS `_x1hub._udp.local.` to app              | Sofabaton Android app                  |
+| App network | HA host     | UDP      | 8102         | iOS broadcast discovery to proxy              | Sofabaton iOS app                      |
+| HA host     | App network | UDP      | 8100         | iOS broadcast reply from proxy                | Sofabaton iOS app                      |
+| App network | HA host     | UDP      | 8102 \*\*\*  | `CALL_ME` from app to proxy                   | iOS and Android app                    |
+| HA host     | App network | TCP      | 8100–8110    | Proxy connects back to app                    | iOS and Android app                    |
+| Hub network | MQTT Broker | TCP      | 1883\*\*\*\* | X2 Hub connects to MQTT Broker                | Hub status                             |
+| HA host     | MQTT Broker | TCP      | 1883\*\*\*\* | HA MQTT integration connects to MQTT Broker   | Hub status                             |
 
 \* Ports can be changed in the integration's configuration.  
 \*\* Ports can be changed in the integration's configuration but doing so breaks X1 compatibility.  
-\*\*\* Ports can be changed in the integration's configuration but doing so breaks iOS compatibility.
+\*\*\* Ports can be changed in the integration's configuration but doing so breaks iOS compatibility.  
+\*\*\*\* Ports can be changed in the MQTT broker. The configuration of the X2 hub and MQTT integration must then also be adjusted.

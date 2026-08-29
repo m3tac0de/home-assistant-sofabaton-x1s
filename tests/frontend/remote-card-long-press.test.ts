@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   LONG_PRESS_GROUPS,
+  hubLongPressAvailable,
+  hubLongPressBinding,
   longPressEnabledForKey,
   longPressEnabledPatch,
   longPressGroupForKey,
@@ -13,6 +15,10 @@ import {
   HOLD_REPEAT_DELAY_MS,
   HOLD_REPEAT_INTERVAL_MS,
   HoldRepeatTimer,
+  LONG_PRESS_EVENT_TYPE,
+  LONG_PRESS_HOLD_MS,
+  LongPressTimer,
+  isLongPressEvent,
 } from "../../custom_components/sofabaton_x1s/www/src/remote-card-gestures";
 
 // ---------- config helpers ----------
@@ -230,4 +236,144 @@ test("a throwing fire callback does not stop the repeat loop", () => {
   scheduler.advance(200);
   assert.equal(calls, 3);
   assert.equal(timer.stop(), true);
+});
+
+// ---------- hub long-press bindings (attribute gate) ----------
+
+const BINDING_ATTRS = {
+  long_press_keys: {
+    "101": {
+      "13": { device_id: 3, command_id: 6 },
+      "14": { device_id: 4, command_id: 9 },
+    },
+    "7": {
+      "30": { device_id: 7, command_id: 4 },
+    },
+  },
+};
+
+test("hubLongPressBinding resolves one button's pair on one scope", () => {
+  assert.deepEqual(hubLongPressBinding(BINDING_ATTRS, 101, 13), {
+    device_id: 3,
+    command_id: 6,
+  });
+  assert.deepEqual(hubLongPressBinding(BINDING_ATTRS, "101", "14"), {
+    device_id: 4,
+    command_id: 9,
+  });
+  assert.deepEqual(hubLongPressBinding(BINDING_ATTRS, 7, 30), {
+    device_id: 7,
+    command_id: 4,
+  });
+  assert.equal(hubLongPressBinding(BINDING_ATTRS, 101, 15), null);
+  assert.equal(hubLongPressBinding(BINDING_ATTRS, 102, 13), null);
+});
+
+test("hubLongPressBinding stays dark on absent or malformed data", () => {
+  assert.equal(hubLongPressBinding(null, 101, 13), null);
+  assert.equal(hubLongPressBinding({}, 101, 13), null);
+  assert.equal(hubLongPressBinding({ long_press_keys: "nope" }, 101, 13), null);
+  assert.equal(hubLongPressBinding({ long_press_keys: { "101": "nope" } }, 101, 13), null);
+  assert.equal(hubLongPressBinding({ long_press_keys: { "101": [13] } }, 101, 13), null);
+  assert.equal(hubLongPressBinding(BINDING_ATTRS, null, 13), null);
+  assert.equal(hubLongPressBinding(BINDING_ATTRS, 101, null), null);
+  assert.equal(hubLongPressBinding(BINDING_ATTRS, "abc", 13), null);
+  assert.equal(hubLongPressBinding(BINDING_ATTRS, 101, "x"), null);
+  // Malformed pairs: missing halves, zero/negative ids (0 is the wire's
+  // "no long press" sentinel and Number(null) is 0), non-numeric values.
+  for (const pair of [
+    {},
+    { device_id: 3 },
+    { command_id: 6 },
+    { device_id: 0, command_id: 6 },
+    { device_id: 3, command_id: 0 },
+    { device_id: null, command_id: 6 },
+    { device_id: "x", command_id: 6 },
+    { device_id: -1, command_id: 6 },
+  ]) {
+    const attrs = { long_press_keys: { "101": { "13": pair } } };
+    assert.equal(hubLongPressBinding(attrs, 101, 13), null, JSON.stringify(pair));
+  }
+});
+
+test("hubLongPressAvailable mirrors the binding lookup", () => {
+  assert.equal(hubLongPressAvailable(BINDING_ATTRS, 101, 13), true);
+  assert.equal(hubLongPressAvailable(BINDING_ATTRS, 101, 15), false);
+  assert.equal(hubLongPressAvailable(null, 101, 13), false);
+});
+
+// ---------- hub long-press timer ----------
+
+test("a tap shorter than the hold threshold never fires the binding", () => {
+  const scheduler = createScheduler();
+  let fired = 0;
+  const timer = new LongPressTimer(() => (fired += 1), scheduler.timers);
+
+  timer.start();
+  assert.equal(timer.active, true);
+  scheduler.advance(LONG_PRESS_HOLD_MS - 1);
+  assert.equal(timer.stop(), false);
+  assert.equal(fired, 0);
+  assert.equal(timer.active, false);
+  assert.equal(timer.consumeFired(), false);
+  assert.equal(scheduler.pending(), 0);
+});
+
+test("a hold fires the binding exactly once, however long it lasts", () => {
+  const scheduler = createScheduler();
+  let fired = 0;
+  const timer = new LongPressTimer(() => (fired += 1), scheduler.timers);
+
+  timer.start();
+  scheduler.advance(LONG_PRESS_HOLD_MS);
+  assert.equal(fired, 1);
+  assert.equal(timer.active, false);
+  scheduler.advance(LONG_PRESS_HOLD_MS * 5);
+  assert.equal(fired, 1);
+
+  // stop() reports the hold fired; the release tap then consumes it once.
+  assert.equal(timer.stop(), true);
+  assert.equal(timer.consumeFired(), true);
+  assert.equal(timer.consumeFired(), false);
+});
+
+test("long-press start() resets the fired memory and replaces a pending hold", () => {
+  const scheduler = createScheduler();
+  let fired = 0;
+  const timer = new LongPressTimer(() => (fired += 1), scheduler.timers);
+
+  timer.start();
+  scheduler.advance(LONG_PRESS_HOLD_MS);
+  assert.equal(timer.stop(), true);
+  // The release tap never came (pointer drifted off); a new press starts clean.
+  timer.start();
+  assert.equal(timer.consumeFired(), false);
+  scheduler.advance(LONG_PRESS_HOLD_MS - 50);
+  timer.start();
+  scheduler.advance(LONG_PRESS_HOLD_MS - 50);
+  assert.equal(fired, 1);
+  scheduler.advance(50);
+  assert.equal(fired, 2);
+  assert.equal(scheduler.pending(), 0);
+  timer.stop();
+});
+
+test("a throwing long-press fire is contained and still counts as fired", () => {
+  const scheduler = createScheduler();
+  const timer = new LongPressTimer(
+    () => {
+      throw new Error("send failed");
+    },
+    { ...scheduler.timers, delayMs: 100 },
+  );
+  timer.start();
+  scheduler.advance(100);
+  assert.equal(timer.stop(), true);
+});
+
+test("isLongPressEvent recognises only the long-press trigger event", () => {
+  assert.equal(isLongPressEvent({ type: LONG_PRESS_EVENT_TYPE } as Event), true);
+  assert.equal(isLongPressEvent({ type: "click" } as Event), false);
+  assert.equal(isLongPressEvent(null), false);
+  assert.equal(isLongPressEvent(undefined), false);
 });

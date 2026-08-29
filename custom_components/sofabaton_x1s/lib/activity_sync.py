@@ -298,10 +298,13 @@ def _command_is_new(command: Mapping[str, Any]) -> bool:
 
 
 def _idle_mode(device: Mapping[str, Any]) -> int | None:
+    # Only the dedicated idle_behavior field counts. The bundle's
+    # power_mode field is the record-tail byte (a different value,
+    # 1 in practice on every hub device), so falling back to it here
+    # used to diff phantom idle changes out of old bundles and write
+    # mode 1 over real 0/2/3/4 values. None = unknown = no sync step.
     block = device.get("device") or {}
     raw = block.get("idle_behavior")
-    if raw is None:
-        raw = block.get("power_mode")
     return None if raw is None else _int(raw) & 0xFF
 
 

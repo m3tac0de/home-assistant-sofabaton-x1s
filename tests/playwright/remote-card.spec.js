@@ -129,16 +129,23 @@ test.describe("remote card playwright harness", () => {
     await mountCard(page, "active");
 
     const tabLabels = page.locator(".macroFavoritesButton .sb-key-control__label");
-    await expect(tabLabels).toHaveText(["Macros >", "Favorites >"]);
+    await expect(tabLabels).toHaveText(["Macros", "Favorites"]);
 
     const closedGeometry = await page.evaluate(() => {
       const root = document.querySelector("sofabaton-virtual-remote").shadowRoot;
       const metrics = (hostSelector, contentSelector) => {
         const host = root.querySelector(hostSelector);
         const control = host.shadowRoot.querySelector(".sb-key-control");
-        const content = host.shadowRoot.querySelector(contentSelector);
+        const content = [...host.shadowRoot.querySelectorAll(contentSelector)]
+          .filter((element) => !element.hidden);
         const outer = control.getBoundingClientRect();
-        const inner = content.getBoundingClientRect();
+        const contentRects = content.map((element) => element.getBoundingClientRect());
+        const inner = {
+          left: Math.min(...contentRects.map((rect) => rect.left)),
+          right: Math.max(...contentRects.map((rect) => rect.right)),
+          top: Math.min(...contentRects.map((rect) => rect.top)),
+          bottom: Math.max(...contentRects.map((rect) => rect.bottom)),
+        };
         return {
           centerX: Math.abs((outer.left + outer.right) / 2 - (inner.left + inner.right) / 2),
           centerY: Math.abs((outer.top + outer.bottom) / 2 - (inner.top + inner.bottom) / 2),
@@ -153,7 +160,7 @@ test.describe("remote card playwright harness", () => {
         upIcon: metrics(".dpad .area-up", "ha-icon"),
         favoritesTab: metrics(
           ".macroFavoritesButton:nth-child(2)",
-          ".sb-key-control__label",
+          ".sb-key-control__label, .sb-key-control__trailing-icon",
         ),
       };
     });
@@ -166,7 +173,7 @@ test.describe("remote card playwright harness", () => {
     expect(closedGeometry.favoritesTab.fullyContained).toBe(true);
 
     await page.locator(".macroFavoritesButton").nth(1).click();
-    await expect(tabLabels).toHaveText(["Macros >", "Favorites >"]);
+    await expect(tabLabels).toHaveText(["Macros", "Favorites"]);
     const favoriteNames = page.locator(".mf-overlay--favorites .drawer-btn .name");
     await expect(favoriteNames).toHaveText([
       "Netflix",
@@ -194,6 +201,89 @@ test.describe("remote card playwright harness", () => {
     expect(drawerLabelsContained).toBe(true);
   });
 
+  test("keeps narrow drawer tabs readable with the chevron at the logical inline end", async ({ page }) => {
+    await mountCard(page, "active", { max_width: 230 });
+    await page.locator("#mount").evaluate((mount) => {
+      mount.style.width = "230px";
+    });
+
+    const tabGeometry = () => page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      const hosts = [...card.shadowRoot.querySelectorAll(".macroFavoritesButton")];
+      return hosts.map((host) => {
+        const control = host.shadowRoot.querySelector(".sb-key-control");
+        const label = host.shadowRoot.querySelector(".sb-key-control__label");
+        const icon = host.shadowRoot.querySelector(".sb-key-control__trailing-icon");
+        const textRange = document.createRange();
+        textRange.selectNodeContents(label);
+        const text = textRange.getBoundingClientRect();
+        const iconRect = icon.getBoundingClientRect();
+        const cellRect = host.getBoundingClientRect();
+        const controlRect = control.getBoundingClientRect();
+        return {
+          // The control carries the hover/press overlay, so it must fill the
+          // whole tab cell (up to the 1px divider) or the highlight renders
+          // as an inset band instead of covering the full button.
+          controlCoversCell:
+            Math.abs(controlRect.top - cellRect.top) <= 0.5 &&
+            Math.abs(cellRect.bottom - controlRect.bottom) <= 0.5 &&
+            Math.abs(controlRect.left - cellRect.left) <= 1.5 &&
+            Math.abs(cellRect.right - controlRect.right) <= 1.5,
+          direction: getComputedStyle(control).direction,
+          text: label.textContent,
+          labelClipped: label.scrollWidth > label.clientWidth + 0.5,
+          iconName: icon.getAttribute("icon"),
+          textLeft: text.left,
+          textRight: text.right,
+          iconLeft: iconRect.left,
+          iconRight: iconRect.right,
+        };
+      });
+    });
+
+    const setLanguage = (language) => page.evaluate((lang) => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      card.hass = {
+        ...card.hass,
+        locale: { language: lang },
+      };
+    }, language);
+
+    const [, ltr] = await tabGeometry();
+    expect(ltr.direction).toBe("ltr");
+    expect(ltr.labelClipped).toBe(false);
+    expect(ltr.iconName).toBe("mdi:chevron-right");
+    expect(ltr.iconLeft).toBeGreaterThanOrEqual(ltr.textRight - 0.5);
+
+    await setLanguage("ar-SA");
+    await expect(page.locator("sofabaton-virtual-remote")).toHaveAttribute("dir", "rtl");
+
+    const [, rtl] = await tabGeometry();
+    expect(rtl.direction).toBe("rtl");
+    expect(rtl.labelClipped).toBe(false);
+    expect(rtl.iconName).toBe("mdi:chevron-left");
+    expect(rtl.iconRight).toBeLessThanOrEqual(rtl.textLeft + 0.5);
+
+    // The widest tab labels across all shipped locales (nl "Favorieten",
+    // en-GB "Favourites", ar "الماكرو"/"المفضلات") must render without an
+    // ellipsis at the 230px minimum card width, at the shared tab font size.
+    const worstCaseLocales = [
+      ["nl-NL", ["Macro's", "Favorieten"]],
+      ["en-GB", ["Macros", "Favourites"]],
+      ["ar-SA", ["الماكرو", "المفضلات"]],
+      ["en", ["Macros", "Favorites"]],
+    ];
+    const tabLabels = page.locator(".macroFavoritesButton .sb-key-control__label");
+    for (const [locale, expectedLabels] of worstCaseLocales) {
+      await setLanguage(locale);
+      await expect(tabLabels).toHaveText(expectedLabels);
+      for (const tab of await tabGeometry()) {
+        expect(tab.labelClipped, `${locale} tab "${tab.text}" fits unclipped`).toBe(false);
+        expect(tab.controlCoversCell, `${locale} tab "${tab.text}" hover surface fills the cell`).toBe(true);
+      }
+    }
+  });
+
   test("applies the selected theme radius to groups, keys, and drawer buttons", async ({ page }) => {
     await mountCard(page, "active", { theme: "Harness Square" });
     await page.locator(".macroFavoritesButton").first().click();
@@ -213,6 +303,8 @@ test.describe("remote card playwright harness", () => {
           .borderRadius,
         segmentedTab: controlRadius(root.querySelector(".macroFavoritesButton")),
         colorPill: controlRadius(root.querySelector(".key--color")),
+        activitySelect: getComputedStyle(root.querySelector(".sb-activity-select"))
+          .borderRadius,
       };
     });
 
@@ -223,7 +315,46 @@ test.describe("remote card playwright harness", () => {
       drawer: "6px",
       segmentedTab: "0px",
       colorPill: "999px",
+      activitySelect: "6px",
     });
+  });
+
+  test("mode toggle and selector fuse into one control with a flat meeting edge", async ({ page }) => {
+    await mountCard(page, "device_mode", { theme: "Harness Square" });
+
+    const corners = () => page.evaluate(() => {
+      const root = document.querySelector("sofabaton-virtual-remote").shadowRoot;
+      const pick = (el) => {
+        const cs = getComputedStyle(el);
+        return {
+          topLeft: cs.borderTopLeftRadius,
+          topRight: cs.borderTopRightRadius,
+          bottomLeft: cs.borderBottomLeftRadius,
+          bottomRight: cs.borderBottomRightRadius,
+        };
+      };
+      return {
+        toggle: pick(root.querySelector(".sb-mode-toggle")),
+        select: pick(root.querySelector(".activityRow--with-toggle .sb-activity-select")),
+      };
+    });
+
+    // LTR: toggle sits left, so its left corners carry the theme radius and
+    // the meeting edge (toggle right / select left) is square.
+    const ltr = await corners();
+    expect(ltr.toggle).toEqual({ topLeft: "6px", bottomLeft: "6px", topRight: "0px", bottomRight: "0px" });
+    expect(ltr.select).toEqual({ topLeft: "0px", bottomLeft: "0px", topRight: "6px", bottomRight: "6px" });
+
+    // RTL: the row mirrors, the toggle sits visually right, and the fused
+    // edge flips with it via the logical corner properties.
+    await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-virtual-remote");
+      card.hass = { ...card.hass, locale: { language: "ar-SA" } };
+    });
+    await expect(page.locator("sofabaton-virtual-remote")).toHaveAttribute("dir", "rtl");
+    const rtl = await corners();
+    expect(rtl.toggle).toEqual({ topRight: "6px", bottomRight: "6px", topLeft: "0px", bottomLeft: "0px" });
+    expect(rtl.select).toEqual({ topRight: "0px", bottomRight: "0px", topLeft: "6px", bottomLeft: "6px" });
   });
 
   test("captures powered-off visual baseline", async ({ page }) => {
@@ -290,6 +421,54 @@ test.describe("remote card playwright harness", () => {
       show_channel: false,
     });
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-layout-volume-only.png");
+  });
+
+  test("device-mode shortcuts row keeps slot positions and sends the device command", async ({ page }) => {
+    // Icons must come from the harness ha-icon stub's glyph map.
+    await mountCard(page, "device_mode", {
+      device_mode: {
+        open_device: 1,
+        shortcuts: {
+          1: {
+            left: { icon: "mdi:television-play", command_id: 13 },
+            right: { icon: "mdi:play-circle", command_id: 15 },
+          },
+        },
+      },
+    });
+
+    const row = page.locator(".row3.shortcuts");
+    await expect(row).toBeVisible();
+    await expect(row.locator("sb-key-button")).toHaveCount(2);
+    await expect(row.locator(".shortcut-spacer")).toHaveCount(1);
+
+    // The middle slot is unconfigured: its cell stays empty, so the two
+    // configured keys keep their outer-column positions.
+    const left = await row.locator("sb-key-button").first().boundingBox();
+    const right = await row.locator("sb-key-button").nth(1).boundingBox();
+    expect(right.x - left.x).toBeGreaterThan(left.width * 1.5);
+
+    // The aria label carries the command name resolved from the keymap.
+    await expect(row.locator("sb-key-button .sb-key-control").first()).toHaveAttribute(
+      "aria-label",
+      "Input HDMI 1",
+    );
+
+    // Baseline before any interaction (a click would bake the pressed
+    // overlay into the shot).
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-device-shortcuts.png");
+
+    await row.locator("sb-key-button").first().click();
+    await expect
+      .poll(async () =>
+        page.evaluate(() =>
+          window.__remoteCardHarness
+            .getServiceCalls()
+            .filter((call) => call.domain === "remote" && call.service === "send_command")
+            .map((call) => call.data),
+        ),
+      )
+      .toEqual([{ entity_id: "remote.living_room", command: 13, device: 1 }]);
   });
 
   test("captures channel-only middle cluster", async ({ page }) => {
@@ -471,7 +650,9 @@ test.describe("remote card playwright harness", () => {
 
     await expect(page.locator(".macroFavoritesGrid")).toHaveClass(/single/);
     await expect(page.locator(".macroFavoritesButton:visible")).toHaveCount(1);
-    await expect(page.locator(".macroFavoritesButton:visible").first()).toContainText("Macros >");
+    const macrosTab = page.locator(".macroFavoritesButton:visible").first();
+    await expect(macrosTab).toContainText("Macros");
+    await expect(macrosTab.locator('ha-icon[icon="mdi:chevron-right"]')).toHaveCount(1);
   });
 
   test("renders a single favorites tab full width when macros are hidden", async ({ page }) => {
@@ -481,7 +662,9 @@ test.describe("remote card playwright harness", () => {
 
     await expect(page.locator(".macroFavoritesGrid")).toHaveClass(/single/);
     await expect(page.locator(".macroFavoritesButton:visible")).toHaveCount(1);
-    await expect(page.locator(".macroFavoritesButton:visible").first()).toContainText("Favorites >");
+    const favoritesTab = page.locator(".macroFavoritesButton:visible").first();
+    await expect(favoritesTab).toContainText("Favorites");
+    await expect(favoritesTab.locator('ha-icon[icon="mdi:chevron-right"]')).toHaveCount(1);
   });
 
   test("supports moving macro favorites ahead of the activity selector", async ({ page }) => {
@@ -680,5 +863,95 @@ test.describe("remote card playwright harness", () => {
     await page.keyboard.press("Enter");
     await page.waitForTimeout(300);
     expect(await sendCommandCount(page)).toBe(afterDrift + 1);
+  });
+
+  // ---------- hub long-press bindings (transparent, cache-gated) ----------
+
+  async function sendCommandCalls(page) {
+    return page.evaluate(() =>
+      window.__remoteCardHarness
+        .getServiceCalls()
+        .filter((call) => call.domain === "remote" && call.service === "send_command")
+        .map((call) => call.data),
+    );
+  }
+
+  test("hub binding: holding OK fires the long press once; a tap stays a short press", async ({ page }) => {
+    await mountCard(page, "long_press");
+
+    // The binding fires mid-hold (500ms) as the resolved pair, sent
+    // favorites-style; the release must not add the short press on top.
+    await holdKey(page, ".dpad sb-key-button.area-ok", 900);
+    await page.waitForTimeout(300);
+    let calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ entity_id: "remote.living_room", command: 9, device: 4 });
+
+    // A quick tap on the same button stays the plain short-press payload.
+    // (Past the 450ms duplicate-event gate that follows the hold's release.)
+    await page.waitForTimeout(400);
+    await holdKey(page, ".dpad sb-key-button.area-ok", 100);
+    await page.waitForTimeout(300);
+    calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toMatchObject({ command: 176, device: 101 });
+  });
+
+  test("holding a key without a binding stays one plain press on release", async ({ page }) => {
+    await mountCard(page, "long_press");
+
+    await holdKey(page, ".dpad sb-key-button.area-up", 900);
+    await page.waitForTimeout(300);
+    const calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ command: 174, device: 101 });
+  });
+
+  test("hold-to-repeat beats the hub binding on the same button", async ({ page }) => {
+    await mountCard(page, "long_press", { hold_repeat: { enabled: true } });
+
+    // VOL_UP carries a binding AND hold_repeat claims the volume group:
+    // the explicit opt-in wins, so the hold repeats the plain short press
+    // and the bound pair (command 6 on device 3) never goes out.
+    await holdKey(page, "sb-key-button.mid-btn-volup", 1200);
+    await page.waitForTimeout(300);
+    const calls = await sendCommandCalls(page);
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (const call of calls) expect(call).toMatchObject({ command: 182, device: 101 });
+  });
+
+  test("device mode: holding OK fires the device page's binding", async ({ page }) => {
+    await mountCard(page, "long_press", { device_mode: { open_device: 1 } });
+    await expect(page.locator(".dpad sb-key-button.area-ok")).toBeVisible();
+
+    await holdKey(page, ".dpad sb-key-button.area-ok", 900);
+    await page.waitForTimeout(300);
+    const calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ command: 21, device: 1 });
+  });
+
+  test("official hub integration ignores the attribute: a hold stays a short press", async ({ page }) => {
+    await mountCard(page, "hub_x2");
+
+    // hub_x2 publishes long_press_keys for OK on purpose; the platform
+    // gate must keep the feature dark anyway. The hub path also emits
+    // request_* bootstrap traffic through send_command, so assert on the
+    // send_assigned_key calls.
+    await holdKey(page, ".dpad sb-key-button.area-ok", 900);
+    // The hub command queue serializes the press behind the bootstrap
+    // request_* traffic; poll until it drains.
+    await expect
+      .poll(async () => {
+        const calls = await sendCommandCalls(page);
+        return calls.filter(
+          (call) => Array.isArray(call?.command) && call.command[0] === "type:send_assigned_key",
+        ).length;
+      })
+      .toBe(1);
+    // Every hub-path send carries a command LIST; the bound pair's numeric
+    // favorites-style payload (command 9, device 8) must never appear.
+    const calls = await sendCommandCalls(page);
+    for (const call of calls) expect(Array.isArray(call.command)).toBe(true);
   });
 });

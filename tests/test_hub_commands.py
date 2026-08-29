@@ -585,6 +585,8 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "device_class": "IR",
         "device_class_code": 0x10,
         "raw_body": device_raw_body,
+        # Cached 0x0242 idle byte; a capture without it is incomplete.
+        "idle_behavior": 1,
     }
     hub._proxy.state.commands[11] = {18: "Input"}
     hub._proxy.state.buttons[11] = {0x58}
@@ -708,6 +710,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "brand": "Sony",
         "device_class": "IR",
         "device_class_code": 0x10,
+        "idle_behavior": 1,
         "icon": 1,
         "sort": 0,
         "code_type": 0x10,
@@ -724,6 +727,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "power_mode": 1,
         "power_style": 3,
         "share_mode": 0,
+        "tail_flag": 0,
         "tail_marker": 0,
         "extras": None,
     }
@@ -974,6 +978,7 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
         "brand": "Brand",
         "device_class": "wifi_sonos",
         "device_class_code": 0x1C,
+        "idle_behavior": 1,
     }
     hub._proxy.state.buttons[9] = set()
     hub._proxy._commands_complete.add(9)
@@ -1083,6 +1088,7 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
         "brand": "Brand",
         "device_class": device_class,
         "device_class_code": device_class_code,
+        "idle_behavior": 1,
     }
     hub._proxy.state.buttons[7] = set()
     hub._proxy._commands_complete.add(7)
@@ -1199,6 +1205,7 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
         "device_class": "IR",
         "device_class_code": 0x07,
         "raw_body": device_raw_body,
+        "idle_behavior": 1,
     }
     hub._proxy.state.commands[2] = {}
     hub._proxy.state.buttons[2] = set()
@@ -2934,6 +2941,9 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
             "power_on_command_id": 1,
             "power_off_command_id": None,
             "input_command_ids": None,
+            # The deploy owns the batch; its single terminal resync
+            # replaces the create pipeline's app-parity save-tail sync.
+            "send_remote_sync": False,
         }
     ]
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
@@ -4497,6 +4507,9 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
             "power_on_command_id": None,
             "power_off_command_id": None,
             "input_command_ids": [1],
+            # The deploy owns the batch; its single terminal resync
+            # replaces the create pipeline's app-parity save-tail sync.
+            "send_remote_sync": False,
         }
     ]
     assert add_calls == [

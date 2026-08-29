@@ -10,7 +10,7 @@ import {
 } from "../remote-card-strings";
 
 const plural = (count: number, singular: string, pluralForm = `${singular}s`) =>
-  count === 1 ? singular : pluralForm;
+  count > 1 ? pluralForm : singular;
 
 export const REMOTE_CARD_STRINGS_FR = {
   card: {
@@ -22,9 +22,10 @@ export const REMOTE_CARD_STRINGS_FR = {
     noMacros: "Aucune macro disponible",
     noFavorites: "Aucun favori disponible",
     noCommands: "Aucune commande disponible",
-    macrosTab: "Macros >",
-    favoritesTab: "Favoris >",
-    commandsTab: "Commandes >",
+    macrosTab: "Macros",
+    favoritesTab: "Favoris",
+    commandsTab: "Commandes",
+    powerButton: "Basculer marche/arrêt",
     activitySelectLabel: "Activité",
     deviceSelectLabel: "Appareil",
     selectDevice: "Sélectionner un appareil",
@@ -107,12 +108,13 @@ export const REMOTE_CARD_STRINGS_FR = {
       show_dpad: "Pavé directionnel",
       show_nav: "Touches Retour/Accueil/Menu",
       show_mid: "Touches de volume et de chaîne",
-      show_media: "Commandes de lecture multimédia",
+      show_media: "Lecture",
       show_colors: "Rouge/Vert/Jaune/Bleu",
       show_abc: "Touches A/B/C",
       show_macros_button: "Bouton des macros",
       show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
+      key_style: "Style des touches",
       group_order: "Ordre des groupes",
     },
     generalOptionsTitle: "Options générales",
@@ -122,14 +124,22 @@ export const REMOTE_CARD_STRINGS_FR = {
     keyCaptureLearnMore: "En savoir plus sur la capture de touches",
     keyCaptureDocsAria: "Documentation sur la capture de touches",
     stylingOptions: "Options de style",
+    keyStyleFlat: "Plat (même couleur que la carte)",
+    keyStyleTinted: "Teinté (les touches se détachent du fond)",
+    keyStyleElevated: "Surélevé (teinté avec ombre)",
+    keyStyleGlossy: "Brillant (touches bombées et brillantes)",
+    tintedPanels: "Panneaux teintés",
+    tintedPanelsDescription:
+      "Affiche un fond teinté derrière chaque groupe de touches.",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
     defaultLayoutOption: "Disposition par défaut des activités",
     allDevicesOption: "Disposition par défaut des appareils",
     commands: "Commandes",
+    power: "Bouton Marche/Arrêt",
     modeToggle: "Bouton de mode",
     deviceModeDescription:
-      "Contrôlez un seul appareil configuré sur le hub, avec ses propres affectations de touches et sa liste complète de commandes.",
+      "Contrôlez un seul appareil configuré sur le hub, avec ses propres attributions de touches et sa liste complète de commandes.",
     longPress: "Activer la répétition par appui prolongé",
     longPressDescription:
       "Maintenez une touche sélectionnée pour envoyer sa commande de façon répétée, comme sur la télécommande physique.",
@@ -149,9 +159,21 @@ export const REMOTE_CARD_STRINGS_FR = {
     favorites: "Favoris",
     volume: "Volume",
     channel: "Chaîne",
-    mediaControls: "Commandes multimédias",
+    mediaControls: "Lecture",
     dvr: "DVR",
     resetDefaultLayout: "Réinitialiser",
+    shortcutSlotLeft: "Raccourci gauche",
+    shortcutSlotMiddle: "Raccourci central",
+    shortcutSlotRight: "Raccourci droit",
+    shortcutIcon: "Icône",
+    shortcutCommand: "Commande",
+    shortcutReset: "Réinitialiser",
+    shortcutCommandMissing: (id: number | string) => `Commande ${id} (manquante)`,
+    shortcutsCommandsLoading: "Chargement des commandes…",
+    shortcutsCommandsUnavailable:
+      "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l’appareil dans l’onglet Hub du Panneau de contrôle Sofabaton, puis rechargez le tableau de bord.",
+    shortcutsCommandsError:
+      "Impossible de charger les commandes de cet appareil. Rechargez le tableau de bord et réessayez.",
     noteDefaultLayout: "Utilisée pour les activités sans disposition propre",
     noteDeviceDefaultLayout: "Utilisée pour les appareils sans disposition propre",
     noteCustomActivityLayout: "Disposition d’activité personnalisée utilisée",
@@ -167,9 +189,10 @@ export const REMOTE_CARD_STRINGS_FR = {
     dpad: "Pavé directionnel",
     nav: "Retour/Accueil/Menu",
     mid: "Volume/Chaîne",
-    media: "Commandes multimédias",
+    media: "Lecture",
     colors: "Touches de couleur",
     abc: "A/B/C",
+    shortcuts: "Raccourcis",
   },
   keys: {
     up: "Haut",

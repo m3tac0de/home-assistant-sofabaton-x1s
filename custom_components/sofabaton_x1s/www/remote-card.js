@@ -561,7 +561,11 @@ var DEFAULT_GROUP_ORDER = [
   "mid",
   "media",
   "colors",
-  "abc"
+  "abc",
+  // Device-mode-only Shortcuts row. Listed last so normalizedGroupOrder
+  // back-fills every stored group_order with it in last position; the
+  // activity side admits the key but never renders or lists the group.
+  "shortcuts"
 ];
 var DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
 var DEFAULT_ROW_VISIBLE_ROWS = 2;
@@ -611,7 +615,9 @@ var DEVICE_LAYOUT_KEYS = [
   "show_colors",
   "show_abc",
   "show_commands_button",
+  "show_power_button",
   "show_device_toggle",
+  "show_shortcuts",
   "c_as_rows",
   "c_row_visible_rows"
 ];
@@ -626,6 +632,13 @@ var DEVICE_LAYOUT_KEY_SET = new Set(DEVICE_LAYOUT_KEYS);
 function deviceModeBlock(config) {
   const block = config?.device_mode;
   return block && typeof block === "object" ? block : null;
+}
+function keyStyleFromConfig(config) {
+  const value = config?.key_style;
+  return value === "tinted" || value === "elevated" || value === "glossy" ? value : "flat";
+}
+function tintedPanelsFromConfig(config) {
+  return config?.tinted_panels === true || config?.key_style === "panel";
 }
 function deviceModeEnabledInConfig(config) {
   return deviceModeBlock(config)?.enabled !== false;
@@ -669,7 +682,9 @@ var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_colors: true,
   show_abc: true,
   show_commands_button: true,
+  show_power_button: true,
   show_device_toggle: true,
+  show_shortcuts: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
   group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
@@ -693,11 +708,43 @@ function commandsButtonEnabled(layout) {
   }
   return true;
 }
+function powerButtonEnabled(layout) {
+  if (typeof layout?.show_power_button === "boolean") {
+    return layout.show_power_button;
+  }
+  return true;
+}
 function deviceToggleEnabled(layout) {
   if (typeof layout?.show_device_toggle === "boolean") {
     return layout.show_device_toggle;
   }
   return true;
+}
+function shortcutsRowEnabled(layout) {
+  if (typeof layout?.show_shortcuts === "boolean") {
+    return layout.show_shortcuts;
+  }
+  return true;
+}
+var SHORTCUT_SLOTS = ["left", "middle", "right"];
+function normalizedShortcutSlot(value) {
+  if (!value || typeof value !== "object") return null;
+  const icon = String(value.icon ?? "").trim();
+  const commandId = Number(value.command_id);
+  if (!icon || !Number.isFinite(commandId)) return null;
+  return { icon, command_id: commandId };
+}
+function deviceShortcutsFromConfig(config, deviceId) {
+  const result = {};
+  if (deviceId == null) return result;
+  const shortcuts = deviceModeBlock(config)?.shortcuts;
+  const entry = shortcuts && typeof shortcuts === "object" ? shortcuts[String(deviceId)] : null;
+  if (!entry || typeof entry !== "object") return result;
+  for (const slot of SHORTCUT_SLOTS) {
+    const normalized = normalizedShortcutSlot(entry[slot]);
+    if (normalized) result[slot] = normalized;
+  }
+  return result;
 }
 function layoutBaseConfig(config) {
   const base = {};
@@ -796,7 +843,10 @@ var GROUP_VISIBILITY_KEYS = {
   mid: "show_mid",
   media: "show_media",
   colors: "show_colors",
-  abc: "show_abc"
+  abc: "show_abc",
+  // Device layouts only: the editor never lists the group for activity
+  // selections, so the key is never written on the activity side.
+  shortcuts: "show_shortcuts"
 };
 var ID = {
   UP: 174,
@@ -876,9 +926,10 @@ var REMOTE_CARD_STRINGS_EN = {
     noMacros: "No macros available",
     noFavorites: "No favorites available",
     noCommands: "No commands available",
-    macrosTab: "Macros >",
-    favoritesTab: "Favorites >",
-    commandsTab: "Commands >",
+    macrosTab: "Macros",
+    favoritesTab: "Favorites",
+    commandsTab: "Commands",
+    powerButton: "Toggle power",
     activitySelectLabel: "Activity",
     deviceSelectLabel: "Device",
     selectDevice: "Select device",
@@ -934,43 +985,51 @@ var REMOTE_CARD_STRINGS_EN = {
       eventOther: (label) => `Event: ${label}`,
       header: (activityName, eventLabel) => `**Activity: ${activityName} | ${eventLabel}**`,
       headerDevice: (deviceName, eventLabel) => `**Device: ${deviceName} | ${eventLabel}**`,
-      lovelaceHeading: "\u{1F4CB} **Lovelace Button Code**",
-      lovelaceCopy: "*Copy this to your Dashboard YAML:*",
-      serviceHeading: "\u2699\uFE0F **Service Call (Automation)**",
-      serviceCopy: "*Use this in your Scripts or Automations:*"
+      lovelaceHeading: "\u{1F4CB} **Lovelace button code**",
+      lovelaceCopy: "*Copy this to your dashboard YAML:*",
+      serviceHeading: "\u2699\uFE0F **Service call (automation)**",
+      serviceCopy: "*Use this in your scripts or automations:*"
     }
   },
   editor: {
     fieldLabels: {
-      entity: "Select a Sofabaton Remote Entity",
+      entity: "Select a Sofabaton remote entity",
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
-      background_override: "Select Background Color",
+      background_override: "Select background color",
       show_activity: "Activity/device selector",
-      show_dpad: "Direction Pad",
-      show_nav: "Back/Home/Menu Keys",
-      show_mid: "Volume/Channel Rockers",
-      show_media: "Media Playback Controls",
+      show_dpad: "Direction pad",
+      show_nav: "Back/Home/Menu keys",
+      show_mid: "Volume/Channel rockers",
+      show_media: "Playback",
       show_colors: "Red/Green/Yellow/Blue",
-      show_abc: "A/B/C Buttons",
-      show_macros_button: "Macros Button",
-      show_favorites_button: "Favorites Button",
-      max_width: "Maximum Card Width (px)",
-      group_order: "Group Order"
+      show_abc: "A/B/C buttons",
+      show_macros_button: "Macros button",
+      show_favorites_button: "Favorites button",
+      max_width: "Maximum card width (px)",
+      key_style: "Button style",
+      group_order: "Group order"
     },
-    generalOptionsTitle: "General Options",
+    generalOptionsTitle: "General options",
     keyCapture: "Key capture",
     keyCaptureDescription: "Send button presses to the hub: capture them to generate ready-to-use YAML for dashboard buttons and automations.",
     keyCaptureLearnMore: "Learn more about Key capture",
     keyCaptureDocsAria: "Key capture documentation",
-    stylingOptions: "Styling Options",
-    layoutOptions: "Layout Options",
+    stylingOptions: "Styling options",
+    keyStyleFlat: "Flat (matches the card background)",
+    keyStyleTinted: "Tinted (buttons stand out from the background)",
+    keyStyleElevated: "Elevated (tinted with a shadow)",
+    keyStyleGlossy: "Glossy (shiny, curved buttons)",
+    tintedPanels: "Tinted panels",
+    tintedPanelsDescription: "Show a tinted background behind each group of buttons.",
+    layoutOptions: "Layout options",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Default activity layout",
     allDevicesOption: "Default device layout",
     commands: "Commands",
+    power: "Power button",
     modeToggle: "Mode switch",
-    deviceModeDescription: "Control one device configured on the hub, using that device's button bindings and complete command list.",
+    deviceModeDescription: "Control one device configured on the hub, using that device's button assignments and complete command list.",
     longPress: "Enable hold-to-repeat",
     longPressDescription: "Hold a selected button to send its command repeatedly, as on the physical remote.",
     longPressButtons: "Buttons",
@@ -987,9 +1046,19 @@ var REMOTE_CARD_STRINGS_EN = {
     favorites: "Favorites",
     volume: "Volume",
     channel: "Channel",
-    mediaControls: "Media Controls",
+    mediaControls: "Playback",
     dvr: "DVR",
     resetDefaultLayout: "Reset layout",
+    shortcutSlotLeft: "Left shortcut",
+    shortcutSlotMiddle: "Middle shortcut",
+    shortcutSlotRight: "Right shortcut",
+    shortcutIcon: "Icon",
+    shortcutCommand: "Command",
+    shortcutReset: "Reset",
+    shortcutCommandMissing: (id) => `Command ${id} (missing)`,
+    shortcutsCommandsLoading: "Loading commands\u2026",
+    shortcutsCommandsUnavailable: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    shortcutsCommandsError: "Could not load this device's commands. Reload the dashboard and try again.",
     noteDefaultLayout: "Used for activities without their own layout",
     noteDeviceDefaultLayout: "Used for devices without their own layout",
     noteCustomActivityLayout: "Using custom activity layout",
@@ -1000,14 +1069,15 @@ var REMOTE_CARD_STRINGS_EN = {
   groups: {
     activity: "Activity/device",
     macro_favorites: "Macros/Favorites",
-    macros_row: "Macros Row",
-    favorites_row: "Favorites Row",
-    dpad: "Direction Pad",
+    macros_row: "Macros row",
+    favorites_row: "Favorites row",
+    dpad: "Direction pad",
     nav: "Back/Home/Menu",
     mid: "Volume/Channel",
-    media: "Media Controls",
-    colors: "Color Buttons",
-    abc: "A/B/C"
+    media: "Playback",
+    colors: "Color buttons",
+    abc: "A/B/C",
+    shortcuts: "Shortcuts"
   },
   keys: {
     up: "Up",
@@ -1029,7 +1099,7 @@ var REMOTE_CARD_STRINGS_EN = {
     exit: "Exit",
     rew: "Rewind",
     pause: "Pause",
-    fwd: "Fast Forward",
+    fwd: "Fast forward",
     red: "Red",
     green: "Green",
     yellow: "Yellow",
@@ -1282,6 +1352,33 @@ function commandsEnabled(config, selection) {
 function commandsTogglePatch(enabled) {
   return { show_commands_button: !!enabled };
 }
+function powerEnabled(config, selection) {
+  return powerButtonEnabled(layoutConfigForSelection(config, selection));
+}
+function powerTogglePatch(enabled) {
+  return { show_power_button: !!enabled };
+}
+function applyShortcutSlotPatch(config, deviceId, slot, value) {
+  const next = { ...config || {} };
+  const block = { ...next.device_mode || {} };
+  const shortcuts = {
+    ...block.shortcuts || {}
+  };
+  const key = String(deviceId);
+  const entry = {
+    ...shortcuts[key] || {}
+  };
+  const normalized = normalizedShortcutSlot(value);
+  if (normalized) {
+    entry[slot] = normalized;
+  } else {
+    delete entry[slot];
+  }
+  setOrDelete(shortcuts, key, entry);
+  setOrDelete(block, "shortcuts", shortcuts);
+  setOrDelete(next, "device_mode", block);
+  return { nextConfig: next };
+}
 function deviceToggleEnabledForEditor(config, selection) {
   return deviceToggleEnabled(layoutConfigForSelection(config, selection));
 }
@@ -1377,7 +1474,9 @@ var REMOTE_CARD_CSS = `
         --sb-group-radius: var(--ha-card-border-radius, 18px);
         --remote-max-width: 360px;
         --remote-zoom: 1;
-        --sb-overlay-rgb: var(--rgb-primary-text-color, 0, 0, 0);
+        /* Hover / press overlays for keys and drawer buttons, derived from
+           the theme's text colour (see sb-key-button.ts). Declared on
+           .wrap below so a card-level theme applied on ha-card is seen. */
 
         display: block;
       }
@@ -1396,7 +1495,153 @@ var REMOTE_CARD_CSS = `
         container-type: inline-size;
       }
 
+      /* Theme-resilience tokens, one level below ha-card (where a card-level
+         theme: config lands as inline variables) so both global and card-level
+         themes feed them. --secondary-text-color is floored toward primary
+         text: themes like Caule alias it to their disabled grey. */
+      ha-card { --sb-theme-secondary-text: var(--secondary-text-color); }
+      .wrap {
+        --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
+        /* Overlay/tint base: the text colour, unless a background override
+           contradicts the page theme, in which case _applyLocalTheme sets
+           --sb-overlay-base from the override's own luminance. */
+        --sb-tint-base: var(--sb-overlay-base, var(--primary-text-color));
+        --sb-overlay-hover: color-mix(in srgb, var(--sb-tint-base) 10%, transparent);
+        --sb-overlay-press: color-mix(in srgb, var(--sb-tint-base) 18%, transparent);
+        --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+        /* Raised-surface pair used by key_style tinted/elevated. Computed
+           here (not on the consumers) so redefining --ha-card-background on
+           a drawer button from it is not a self-reference. */
+        --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Glossy: a vertical curve of the same tint (bright top, dark
+           bottom) plus specular inset highlights. A gradient is legal here
+           because every consumer puts the token in a background shorthand. */
+        --sb-key-surface-glossy: linear-gradient(180deg,
+          color-mix(in srgb, var(--sb-tint-base) 18%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 0%,
+          color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 48%,
+          color-mix(in srgb, var(--sb-tint-base) 2%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 100%);
+        --sb-key-gloss-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.30),
+          inset 0 6px 10px -6px rgba(255, 255, 255, 0.18),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.22),
+          0 2px 6px rgba(0, 0, 0, 0.18);
+        /* Panel surface used by key_style "panel": the control panel's dock
+           recipe (card-styles.ts .card-topbar/.card-bottom-dock) \u2014 a subtle
+           8%\u21924% accent gradient into the card background with a softened
+           divider border \u2014 so both cards share one surface language. Subtle
+           enough that the theme's text and icon colours read on it
+           unchanged. A gradient is legal here because every consumer puts
+           the token in a background shorthand. */
+        --sb-panel-surface: linear-gradient(180deg,
+          color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))),
+          color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))));
+        --sb-panel-border: color-mix(in srgb, var(--divider-color) 82%, transparent);
+      }
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
+      /* key_style: raise the keys off the card. The tint is mixed from the
+         theme's TEXT colour, so it lands on the right side of any palette
+         (8% white over a true-black card is a clearly raised #141414; 8%
+         black over white a soft grey) and stays below the 10%/18% hover and
+         press overlays, which stack on top of it. The floored border keeps
+         a visible outline even where the theme's divider matches its
+         background. Colour keys and the Macros/Favorites tabs declare their
+         own --sb-control-* values closer to the element and are unaffected.
+         "Elevated" adds a shadow, which only reads on light surfaces
+         (nothing renders darker than a black card); the tint carries dark
+         themes. */
+      .wrap--keys-tinted,
+      .wrap--keys-elevated {
+        --sb-control-background: var(--sb-key-surface);
+        --sb-control-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy {
+        --sb-control-background: var(--sb-key-surface-glossy);
+        --sb-control-border-color: var(--sb-key-border);
+        --sb-control-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated {
+        --sb-control-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* The drawer headers (Macros/Favorites bar and the device-mode
+         Commands bar reuse .macroFavorites) and the buttons inside the
+         drawers ride along with key_style: same raised surface and floored
+         border as the keys. The drawer panel itself (.mf-overlay) stays on
+         the card background so the buttons read as raised on it. The tab
+         buttons inside the bar keep their transparent --sb-control-* (the
+         BAR is the surface). Drawer buttons are ha-cards, so their tokens
+         are redefined from the pair computed on .wrap. */
+      .wrap--keys-tinted .macroFavorites,
+      .wrap--keys-elevated .macroFavorites {
+        background: var(--sb-key-surface);
+        border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .macroFavorites {
+        background: var(--sb-key-surface-glossy);
+        border-color: var(--sb-key-border);
+        box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-tinted .drawer-btn,
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-background: var(--sb-key-surface);
+        --ha-card-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .drawer-btn {
+        --ha-card-background: var(--sb-key-surface-glossy);
+        --ha-card-border-color: var(--sb-key-border);
+        --ha-card-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated .macroFavorites {
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* Tinted panels (the former key_style "panel", an independent
+         switch since 0.3.0 so it combines with any key style): the
+         bordered group containers take the dock surface. With flat keys
+         the keys KEEP the card background and read as card-coloured
+         cutouts on a softly accent-tinted panel; with a tinted/elevated/
+         glossy key style the keys keep that style's raised surface and
+         the panels tint the ground behind them. The tint is subtle
+         enough that no text or icon colour needs to change. Container-
+         less keys (the nav .row3 and the device-mode power key) take
+         the panel surface directly, but only under flat keys - a real
+         key style owns their surface. These rules sit AFTER the
+         key-style .macroFavorites rules so the bar counts as a
+         container (panel surface) when both are on. */
+      .wrap--panels .dpad,
+      .wrap--panels .mid,
+      .wrap--panels .media,
+      .wrap--panels .colors,
+      .wrap--panels .abc {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .row3,
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .sb-power-key {
+        --sb-control-background: var(--sb-panel-surface);
+        --sb-control-border-color: var(--sb-panel-border);
+      }
+      .wrap--panels .macroFavorites {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--panels .macroFavoritesButton + .macroFavoritesButton {
+        border-left-color: var(--sb-panel-border);
+      }
+      .wrap--panels .macroFavoritesButton:first-child {
+        border-right-color: var(--sb-panel-border);
+      }
+      .wrap--panels .mf-overlay {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      /* drawer-up re-declares border-top with the divider colour at higher
+         specificity; keep it on the panel border. */
+      .wrap--panels .mf-container.drawer-up .mf-overlay {
+        border-top-color: var(--sb-panel-border);
+      }
       .layout-container { display: grid; gap: 12px; }
       .layout-overlay {
         position: absolute;
@@ -1417,6 +1662,55 @@ var REMOTE_CARD_CSS = `
          Override it here with theme-aware fallbacks so the field matches the theme. */
       .sb-activity-select {
         --ha-color-form-background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        /* Dropdown item text. HA declares these derived tokens on <html> as
+           var(--primary-text-color), where they resolve once against the
+           GLOBAL theme and descendants inherit the resolved color. A per-card
+           theme / background override rewrites --primary-text-color on the
+           card only, so the menu panel (which re-reads --card-background-color
+           locally) follows the card while the item text stays the global
+           theme's color: dark text on a dark panel. Re-declaring the tokens
+           here makes them resolve against the card-local text color. No-op
+           without a local override. Covers both dropdown generations:
+           ha-dropdown-item (wa) and mwc-list-item (mdc). */
+        --wa-color-text-normal: var(--primary-text-color);
+        --wa-color-text-quiet: var(--secondary-text-color);
+        --mdc-theme-text-primary-on-background: var(--primary-text-color);
+        --mdc-theme-text-secondary-on-background: var(--secondary-text-color);
+        /* Field label ("Activity" / "Device") and value. HA chains these to
+           --input-label-ink-color / --input-ink-color on <html>, so a
+           card-level theme never reaches them, and some themes (Caule) map
+           the label to their disabled grey. Derive both from the card's
+           own text colour instead. */
+        --mdc-select-label-ink-color: color-mix(in srgb, var(--primary-text-color) 85%, transparent);
+        --mdc-select-ink-color: var(--primary-text-color);
+        --mdc-select-dropdown-icon-color: color-mix(in srgb, var(--primary-text-color) 70%, transparent);
+        /* Menu item hover / selected fills. HA's ha-dropdown-item paints
+           --ha-color-fill-neutral-quiet-hover (light grey under any flat
+           theme, since flat themes run in light mode) behind item text that
+           is now the card's text colour: under Caule both are ~#e5e5e5.
+           Derive the fills from the card's own colours instead, as
+           translucent tints over the menu panel. The selected item's text
+           follows the accent-text rule (not pure primary colour). */
+        --ha-color-fill-neutral-quiet-resting: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
+        --ha-color-fill-neutral-quiet-hover: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+        --ha-color-fill-primary-quiet-resting: color-mix(in srgb, var(--primary-color) 14%, transparent);
+        --ha-color-fill-primary-quiet-hover: color-mix(in srgb, var(--primary-color) 24%, transparent);
+        /* wa-dropdown-item paints :host(:hover) and :focus-visible with
+           --wa-color-neutral-fill-normal (HA: --ha-color-fill-neutral-normal-resting). */
+        --ha-color-fill-neutral-normal-resting: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+        --ha-color-fill-neutral-normal-hover: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+        --wa-color-neutral-fill-normal: var(--ha-color-fill-neutral-normal-resting);
+        --wa-color-neutral-fill-quiet: var(--ha-color-fill-neutral-quiet-hover);
+        --wa-color-brand-fill-quiet: var(--ha-color-fill-primary-quiet-hover);
+        --mdc-ripple-color: var(--primary-text-color);
+        --sb-select-selected-text: var(--sb-accent-text, color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color)));
+      }
+      /* Outer-scope rule on the item host beats ha-dropdown-item's
+         :host([selected]) { color: var(--primary-color) }. */
+      .sb-activity-select ha-dropdown-item[selected],
+      .sb-activity-select mwc-list-item[selected],
+      .sb-activity-select mwc-list-item[activated] {
+        color: var(--sb-select-selected-text);
       }
 
       .activityRow {
@@ -1424,20 +1718,41 @@ var REMOTE_CARD_CSS = `
         grid-template-columns: 1fr;
         position: relative;
         z-index: 3;
+        /* One bottom line for the whole row. The select's field (HA's
+           ha-picker-field) paints 1px --ha-color-border-neutral-loud at rest
+           and 2px --mdc-theme-primary when focused; HA declares that chain on
+           <html>, so under a card-level theme it resolved to the PAGE's
+           primary (HA blue). Both tokens are re-declared below from these
+           row tokens, and the mode toggle draws the same line so the two
+           read as one control. */
+        --sb-field-line: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
+        --sb-field-line-active: var(--primary-color);
+      }
+      .activityRow .sb-activity-select {
+        --ha-color-border-neutral-loud: var(--sb-field-line);
+        --mdc-theme-primary: var(--sb-field-line-active);
+        --mdc-select-idle-line-color: var(--sb-field-line);
+        --mdc-select-hover-line-color: var(--sb-field-line);
       }
       /* Long activity/device names ellipsize inside the select instead of
-         pushing the card wider (grid items default to min-width auto). */
+         pushing the card wider (grid items default to min-width auto). The
+         same overflow clip also gives the field the theme's corner radius:
+         rounding the HOST and zeroing the inner mdc shape token works for
+         both ha-select generations (mdc and ha-picker-field) without
+         knowing their internal shape tokens. The host paints the form
+         background so any residual inner rounding never shows as notched
+         corners. */
       .activityRow .sb-activity-select {
         min-width: 0;
         overflow: hidden;
+        border-radius: var(--sb-group-radius);
+        --mdc-shape-small: 0px;
+        background: var(--ha-color-form-background);
       }
 
       /* Device mode: the toggle fuses to the select's left edge. */
       .activityRow--with-toggle {
         grid-template-columns: auto 1fr;
-      }
-      .activityRow--with-toggle .loadIndicator {
-        grid-column: 1 / -1;
       }
       .sb-mode-toggle {
         width: 48px;
@@ -1450,26 +1765,48 @@ var REMOTE_CARD_CSS = `
         color: var(--primary-text-color);
         background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
         border: none;
-        border-right: 1px solid var(--divider-color);
-        border-bottom: 1px solid var(--mdc-select-idle-line-color, var(--divider-color));
-        border-top-left-radius: var(--mdc-shape-small, 4px);
-        border-top-right-radius: 0;
-        border-bottom-left-radius: 0;
-        border-bottom-right-radius: 0;
+        border-inline-end: 1px solid var(--divider-color);
+        /* Same line as the field, drawn as an inset shadow so the 1px -> 2px
+           active state never shifts layout. */
+        box-shadow: inset 0 -1px 0 var(--sb-field-line);
+        transition: box-shadow 180ms ease-in-out, background 120ms ease;
+        /* One fused control with the select: the outer (inline-start) side
+           follows the theme radius, the side meeting the select stays
+           square. Logical corners keep the fused edge correct in RTL,
+           where the toggle sits visually on the right. */
+        border-start-start-radius: var(--sb-group-radius);
+        border-end-start-radius: var(--sb-group-radius);
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
         -webkit-tap-highlight-color: transparent;
       }
       .sb-mode-toggle:hover {
-        background: color-mix(in srgb, var(--primary-text-color) 8%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+        background: color-mix(in srgb, var(--primary-text-color) 10%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
       }
       .sb-mode-toggle:active {
         transform: scale(0.97);
+        background: color-mix(in srgb, var(--primary-text-color) 18%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
       }
       .sb-mode-toggle[disabled] {
         opacity: 0.5;
         cursor: default;
       }
+      .sb-mode-toggle:focus-visible {
+        outline: none;
+      }
+      /* The toggle's line follows the field: focused field (HA keeps the
+         field focused after the menu closes, so does this), open menu, or
+         keyboard focus on the toggle itself. */
+      .activityRow--with-toggle:has(.sb-activity-select:focus-within) .sb-mode-toggle,
+      .activityRow--with-toggle.activityRow--menu-open .sb-mode-toggle,
+      .sb-mode-toggle:focus-visible {
+        box-shadow: inset 0 -2px 0 var(--sb-field-line-active);
+      }
+      /* The select's corners on the fused edge go flat so toggle + select
+         read as one control. */
       .activityRow--with-toggle .sb-activity-select {
-        --mdc-shape-small: 0 4px 0 0;
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
       }
 
       /* Device mode: Commands drawer (one command per row + filter input).
@@ -1518,8 +1855,8 @@ var REMOTE_CARD_CSS = `
         gap: 4px;
         padding: 12px;
         border-radius: var(--sb-group-radius);
-        border: 1px solid rgba(var(--rgb-primary-color), 0.25);
-        background: rgba(var(--rgb-primary-color), 0.08);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 8%, transparent);
       }
 
       .automationAssist__header {
@@ -1542,8 +1879,8 @@ var REMOTE_CARD_CSS = `
 
       /* small pill button */
       .automationAssist__startBtn {
-        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
-        background: rgba(var(--rgb-primary-color), 0.10);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
         color: var(--primary-text-color);
         border-radius: 999px;
         padding: 2px 10px;
@@ -1554,8 +1891,8 @@ var REMOTE_CARD_CSS = `
       }
 
       .automationAssist__mqttBtn {
-        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
-        background: rgba(var(--rgb-primary-color), 0.10);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
         color: var(--primary-text-color);
         border-radius: 999px;
         margin:10px;
@@ -1567,7 +1904,7 @@ var REMOTE_CARD_CSS = `
       }
 
       .automationAssist__startBtn:hover {
-        background: rgba(var(--rgb-primary-color), 0.16);
+        background: color-mix(in srgb, var(--primary-color) 16%, transparent);
       }
 
       .automationAssist__startBtn:active {
@@ -1585,16 +1922,35 @@ var REMOTE_CARD_CSS = `
       }
 
 
- 	  .loadIndicator {
+ 	  /* Loading feedback lives INSIDE the control's silhouette: an overlay
+	     spanning the whole activity row (select alone, or the fused
+	     toggle+select pair), rounded and clipped like the control, painting
+	     only a bottom band. The band's ends follow the theme's curve, where
+	     the old detached full-width bar stuck out past the rounded corners.
+	     The row itself must never clip (the dropdown menu renders inside it
+	     on the mdc generation), so the overlay clips itself instead. */
+	  .loadIndicator {
 	    visibility: hidden;
-	    height: 4px;
-	    width: 100%;
-	    border-radius: 2px;
+	    position: absolute;
+	    inset: 0;
+	    border-radius: var(--sb-group-radius);
+	    overflow: hidden;
 	    pointer-events: none;
+	  }
+
+	  .loadIndicator::before {
+	    content: "";
+	    position: absolute;
+	    inset-inline: 0;
+	    bottom: 0;
+	    height: 4px;
 	  }
 
 	  .loadIndicator.is-loading {
 	    visibility: visible;
+	  }
+
+	  .loadIndicator.is-loading::before {
 	    background: var(--primary-color, #03a9f4);
 	    background-image: linear-gradient(
   		  90deg,
@@ -1645,7 +2001,16 @@ var REMOTE_CARD_CSS = `
       }
 			.macroFavoritesButton {
         cursor: pointer;
-        padding: 4px 0;
+        /* Tighter side padding than the default keys: at the 230px minimum
+           card width each tab's text budget is ~81px minus the chevron
+           reserve, and the longest tab labels (nl "Favorieten", en-GB
+           "Favourites", ~65px at 14px Roboto) need the extra 4px to render
+           without an ellipsis at the 14px font floor. */
+        --sb-control-padding-inline: 8px;
+        /* No padding: the inner control carries the hover/press overlay, so
+           it must fill the whole cell or the highlight renders as an inset
+           band instead of covering the full tab. */
+        padding: 0;
         box-sizing: border-box;
         height: var(--sb-tab-height);
         display: block !important;
@@ -1659,8 +2024,10 @@ var REMOTE_CARD_CSS = `
         --sb-control-radius: 0;
       }
       
+      /* Active tab: text stays the theme's text colour, the accent tints the
+         surface (primary colour as text is 1:1 on iOS-light orange). */
       .macroFavoritesButton.active-tab {
-        color: var(--primary-color);
+        color: var(--primary-text-color);
       }
 
       .macroFavoritesButton + .macroFavoritesButton {
@@ -1734,6 +2101,66 @@ var REMOTE_CARD_CSS = `
         pointer-events: auto;
       }
 
+      /* Device mode: power key sharing the commands strip row. The
+         wrapper becomes the positioned ancestor (its .mf-container goes
+         static), so the absolutely-positioned commands drawer overlay
+         spans the FULL row, bar column plus power column. */
+      .commands-row {
+        position: relative;
+        z-index: 2;
+      }
+      /* With the bar only 3/4 wide, the overlay's right shoulder sticks
+         out past it under the power key. Round that exposed corner with
+         the themed radius and restore the edge border there; the bar
+         overlaps the left 3/4 of that border (the -1px seam margin), so
+         the fused look under the bar is unchanged. */
+      .commands-row--power .mf-overlay {
+        border-top: 1px solid var(--divider-color);
+        border-top-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power .drawer-up .mf-overlay {
+        border-top-right-radius: var(--sb-group-radius);
+        border-bottom: 1px solid var(--divider-color);
+        border-bottom-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .commands-row--power .mf-container {
+        position: static;
+        min-width: 0;
+      }
+      .sb-power-key {
+        color: var(--sb-power-key-color, var(--primary-color, #03a9f4));
+      }
+      .commands-row--power-only .sb-power-key {
+        /* No sibling strip to stretch against: match the Commands bar
+           height (tab height plus its 1px borders). */
+        height: calc(var(--sb-tab-height) + 2px);
+      }
+      .sb-power-key--busy {
+        animation: sb-power-busy 1s ease-in-out infinite;
+      }
+      @keyframes sb-power-busy {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+
+      /* Commands-as-rows: the power key docks beside the pinned filter. */
+      .inline-filter-row {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+        margin-bottom: 8px;
+      }
+      .inline-filter-row .sb-commands-filter {
+        margin-bottom: 0;
+      }
+
       .mf-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1781,6 +2208,12 @@ var REMOTE_CARD_CSS = `
         overflow: hidden;
         -webkit-tap-highlight-color: transparent;
       }
+      /* Same colour language as the keys: names and icons both take the
+         icon accent (sb-key-button's label rule is the counterpart). */
+      .drawer-btn .name,
+      .drawer-btn__icon {
+        color: var(--sb-key-label-color, var(--primary-color));
+      }
 
       /* Hover/press overlay  */
       .drawer-btn::before {
@@ -1788,7 +2221,7 @@ var REMOTE_CARD_CSS = `
         position: absolute;
         inset: 0;
         border-radius: inherit;
-        background: rgba(var(--sb-overlay-rgb), 0.08);
+        background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
         opacity: 0;
         transition: opacity 120ms ease;
         pointer-events: none;
@@ -1800,11 +2233,11 @@ var REMOTE_CARD_CSS = `
 
       .drawer-btn:active::before {
         opacity: 1;
-        background: rgba(var(--sb-overlay-rgb), 0.16);
+        background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color) 18%, transparent));
       }
 
       .drawer-btn:focus-visible {
-        outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+        outline: 2px solid color-mix(in srgb, var(--primary-color) 55%, transparent);
         outline-offset: 2px;
       }
 
@@ -1854,8 +2287,8 @@ var REMOTE_CARD_CSS = `
 
       /* Active state for buttons */
       .macroFavoritesButton.active-tab {
-        background: rgba(var(--rgb-primary-color), 0.1);
-        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+        color: var(--primary-text-color);
       }
 
       /* D-pad cluster */
@@ -1986,6 +2419,19 @@ var REMOTE_CARD_CSS = `
         opacity: 0.35;
         pointer-events: none;
         filter: grayscale(0.2);
+      }
+
+      /* Shortcuts row (device mode): unconfigured slots keep their grid
+         cell. Live mode hides them entirely; the edit preview shows a
+         ghost outline so the row's position visualizes before any slot
+         is configured. */
+      .shortcut-spacer {
+        visibility: hidden;
+      }
+      .shortcut-ghost {
+        border: 1px dashed var(--divider-color);
+        border-radius: var(--sb-group-radius, var(--ha-card-border-radius, 18px));
+        opacity: 0.5;
       }
 
       /* sizing */
@@ -2161,6 +2607,7 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
+          .sb-layout-switch-item.is-disabled { opacity: 0.45; pointer-events: none; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
@@ -2176,6 +2623,24 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
+          /* Shortcuts slot editing on the group-order row: the three mini
+             slot buttons fill the row's second cell; the open slot's panel
+             drops out inside the row, spanning its grid (never a popover \u2014
+             the panel's icon picker and command select open popup menus of
+             their own, and nested popups fight outside-click detection).
+             The caret rides on the open slot, so it stays anchored to the
+             button that opened the panel. */
+          .sb-shortcut-strip { display: inline-flex; gap: 8px; min-width: 0; }
+          .sb-shortcut-slot { position: relative; width: 40px; height: 30px; border: 1px dashed var(--secondary-text-color, var(--divider-color)); border-radius: 8px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05); background: color-mix(in srgb, var(--primary-text-color) 5%, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--primary-color); flex: 0 1 auto; min-width: 26px; }
+          .sb-shortcut-slot.is-configured { background: var(--ha-card-background, transparent); }
+          .sb-shortcut-slot ha-icon { --mdc-icon-size: 18px; }
+          .sb-shortcut-slot.is-configured { border-style: solid; }
+          .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
+          .sb-shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--primary-color); pointer-events: none; }
+          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-shortcut-panel ha-form { display: block; }
+          .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
+          .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
           /* General Options rows: label + description with the switch at the
@@ -2308,7 +2773,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.1";
+var CARD_VERSION = "0.2.2";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -2418,6 +2883,23 @@ function longPressGroupsPatch(current, selected) {
     }
   }
   return next;
+}
+function hubLongPressBinding(attributes, scopeId, buttonId) {
+  if (scopeId == null || buttonId == null) return null;
+  const scope = Number(scopeId);
+  const button = Number(buttonId);
+  if (!Number.isFinite(scope) || !Number.isFinite(button)) return null;
+  const map = attributes?.long_press_keys;
+  if (!map || typeof map !== "object") return null;
+  const page = map[String(scope)];
+  if (!page || typeof page !== "object" || Array.isArray(page)) return null;
+  const raw = page[String(button)];
+  if (!raw || typeof raw !== "object") return null;
+  const device = Number(raw.device_id);
+  const command = Number(raw.command_id);
+  if (!Number.isFinite(device) || device < 1) return null;
+  if (!Number.isFinite(command) || command < 1) return null;
+  return { device_id: device, command_id: command };
 }
 
 // custom_components/sofabaton_x1s/www/src/editor-sections/expander.ts
@@ -2607,6 +3089,129 @@ function renderGeneralOptionsSection(params) {
   });
 }
 
+// custom_components/sofabaton_x1s/www/src/editor-sections/shortcuts.ts
+var SHORTCUT_ICON_FIELD = "icon";
+var SHORTCUT_COMMAND_FIELD = "command";
+function slotLabel(slot) {
+  if (slot === "left") return str().editor.shortcutSlotLeft;
+  if (slot === "middle") return str().editor.shortcutSlotMiddle;
+  return str().editor.shortcutSlotRight;
+}
+var computeShortcutFieldLabel = (schema) => {
+  if (schema.name === SHORTCUT_ICON_FIELD) return str().editor.shortcutIcon;
+  if (schema.name === SHORTCUT_COMMAND_FIELD) return str().editor.shortcutCommand;
+  return schema.name;
+};
+function renderShortcutsSlotStrip(params) {
+  return b2`
+    <div class="sb-shortcut-strip">
+      ${params.slots.map((view) => {
+    const isOpen = params.openSlot === view.slot;
+    const configured = view.icon != null;
+    const className = [
+      "sb-shortcut-slot",
+      ...configured ? ["is-configured"] : [],
+      ...isOpen ? ["is-open"] : []
+    ].join(" ");
+    return b2`
+          <button
+            type="button"
+            class=${className}
+            aria-label=${slotLabel(view.slot)}
+            aria-expanded=${isOpen ? "true" : "false"}
+            @click=${(ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      params.onToggleSlot(view.slot);
+    }}
+          >
+            ${configured ? b2`<ha-icon icon=${view.icon}></ha-icon>` : A}
+          </button>
+        `;
+  })}
+    </div>
+  `;
+}
+function renderShortcutsRowPanel(params) {
+  if (params.commandsStatus === "loading") {
+    return b2`
+      <div class="sb-shortcut-panel">
+        <div class="sb-shortcut-note">${str().editor.shortcutsCommandsLoading}</div>
+      </div>
+    `;
+  }
+  if (params.commandsStatus === "cache_miss") {
+    return b2`
+      <div class="sb-shortcut-panel">
+        <div class="sb-shortcut-note">${str().editor.shortcutsCommandsUnavailable}</div>
+      </div>
+    `;
+  }
+  if (params.commandsStatus === "error") {
+    return b2`
+      <div class="sb-shortcut-panel">
+        <div class="sb-shortcut-note">${str().editor.shortcutsCommandsError}</div>
+      </div>
+    `;
+  }
+  const options = params.commands.map((command) => ({
+    value: String(command.command_id),
+    label: command.name
+  }));
+  const draftCommand = params.draftCommandId != null ? String(params.draftCommandId) : "";
+  if (draftCommand && !options.some((option) => option.value === draftCommand)) {
+    options.push({
+      value: draftCommand,
+      label: str().editor.shortcutCommandMissing(draftCommand)
+    });
+  }
+  return b2`
+    <div class="sb-shortcut-panel">
+      <ha-form
+        .hass=${params.hass}
+        .schema=${[
+    {
+      name: SHORTCUT_ICON_FIELD,
+      required: true,
+      selector: { icon: {} }
+    },
+    {
+      name: SHORTCUT_COMMAND_FIELD,
+      required: true,
+      selector: { select: { mode: "dropdown", options } }
+    }
+  ]}
+        .data=${{
+    [SHORTCUT_ICON_FIELD]: params.draftIcon,
+    [SHORTCUT_COMMAND_FIELD]: draftCommand
+  }}
+        .computeLabel=${computeShortcutFieldLabel}
+        @value-changed=${(ev) => {
+    ev.stopPropagation();
+    const value = ev.detail?.value || {};
+    const icon = String(value[SHORTCUT_ICON_FIELD] ?? "");
+    const rawCommand = String(value[SHORTCUT_COMMAND_FIELD] ?? "");
+    const commandId = rawCommand !== "" && Number.isFinite(Number(rawCommand)) ? Number(rawCommand) : null;
+    params.onDraftChanged(icon, commandId);
+  }}
+      ></ha-form>
+      <div class="sb-shortcut-panel-footer">
+        <button
+          type="button"
+          class="sb-reset-btn"
+          @click=${(ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    params.onReset(params.openSlot);
+  }}
+        >
+          ${str().editor.shortcutReset}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 // custom_components/sofabaton_x1s/www/src/editor-sections/styling-options.ts
 var computeEditorFieldLabel = (schema) => str().editor.fieldLabels[schema.name] || schema.name;
 var DEFAULT_BACKGROUND_OVERRIDE = [255, 255, 255];
@@ -2642,6 +3247,54 @@ function renderStylingOptionsSection(params) {
     ),
     "sb-opt-max-width"
   );
+  const resolvedKeyStyle = keyStyleFromConfig(config);
+  const panelsOn = tintedPanelsFromConfig(config);
+  const legacyPanel = config.key_style === "panel";
+  const onKeyStyleChanged = (ev) => {
+    ev.stopPropagation();
+    const value = { ...ev.detail.value };
+    if (legacyPanel) value.tinted_panels = true;
+    params.onValueChanged(value);
+  };
+  const keyStyleRow = renderFormRow(
+    b2`
+      <ha-form
+        .hass=${params.hass}
+        .schema=${[
+      {
+        name: "key_style",
+        required: true,
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "flat", label: str().editor.keyStyleFlat },
+              { value: "tinted", label: str().editor.keyStyleTinted },
+              { value: "elevated", label: str().editor.keyStyleElevated },
+              { value: "glossy", label: str().editor.keyStyleGlossy }
+            ]
+          }
+        }
+      }
+    ]}
+        .data=${{ key_style: resolvedKeyStyle }}
+        .computeLabel=${computeEditorFieldLabel}
+        @value-changed=${onKeyStyleChanged}
+      ></ha-form>
+    `,
+    "sb-opt-key-style"
+  );
+  const panelsRow = renderOptionRow({
+    className: "sb-opt-tinted-panels",
+    label: str().editor.tintedPanels,
+    description: str().editor.tintedPanelsDescription,
+    checked: panelsOn,
+    onSet: (enabled) => {
+      params.onValueChanged(
+        legacyPanel ? { key_style: resolvedKeyStyle, tinted_panels: enabled } : { tinted_panels: enabled }
+      );
+    }
+  });
   const backgroundRow = renderOptionRow({
     className: "sb-opt-background",
     label: str().editor.fieldLabels.use_background_override,
@@ -2663,7 +3316,7 @@ function renderStylingOptionsSection(params) {
           </div>
         ` : A
   });
-  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${backgroundRow}</div>`;
+  const body = b2`<div class="sb-opt-list">${themeRow}${maxWidthRow}${keyStyleRow}${panelsRow}${backgroundRow}</div>`;
   return renderEditorExpander({
     expanded: params.expanded,
     icon: "mdi:palette",
@@ -2861,15 +3514,16 @@ var containSelectCloseEvents = (el) => {
     el.addEventListener(eventName, (ev) => ev.stopPropagation());
   });
 };
-function renderSwitchItem(text, checked, onSet) {
+function renderSwitchItem(text, checked, onSet, disabled = false) {
   const onChange = (ev) => {
     stopEvent(ev);
+    if (disabled) return;
     const target = ev.target;
     onSet(!!target.checked);
   };
   return b2`
-    <div class="sb-layout-switch-item">
-      <ha-switch .checked=${checked} @change=${onChange}></ha-switch>
+    <div class="sb-layout-switch-item${disabled ? " is-disabled" : ""}">
+      <ha-switch .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
       <div class="sb-layout-switch-label">${text}</div>
     </div>
   `;
@@ -3003,18 +3657,24 @@ function renderGroupOrderSection(params) {
   const orderRow = (key, index) => {
     let cells = A;
     if (key === "activity" && params.showDeviceModeSwitch) {
+      const activityOn = params.isGroupEnabled(key);
       cells = b2`
         ${renderSwitchItem(
         params.groupLabel(key),
-        params.isGroupEnabled(key),
+        activityOn,
         (val) => params.onSetGroupEnabled(key, val)
       )}
-        ${renderSwitchItem(str().editor.modeToggle, params.deviceModeEnabled, params.onSetDeviceMode)}
+        ${renderSwitchItem(
+        str().editor.modeToggle,
+        activityOn && params.deviceModeEnabled,
+        params.onSetDeviceMode,
+        !activityOn
+      )}
       `;
     } else if (params.isDeviceSelection && (key === "macro_favorites" || key === "macros_row")) {
       cells = b2`
         ${renderSwitchItem(str().editor.commands, params.commandsEnabled, params.onSetCommands)}
-        ${emptySlot}
+        ${renderSwitchItem(str().editor.power, params.powerEnabled, params.onSetPower)}
       `;
     } else if (key === "macro_favorites") {
       cells = b2`
@@ -3040,6 +3700,20 @@ function renderGroupOrderSection(params) {
       cells = b2`
         ${renderSwitchItem(str().editor.mediaControls, params.mediaEnabled, params.onSetMedia)}
         ${params.isEditorX2 ? renderSwitchItem(str().editor.dvr, params.dvrEnabled, params.onSetDvr) : emptySlot}
+      `;
+    } else if (key === "shortcuts") {
+      cells = b2`
+        ${renderSwitchItem(
+        params.groupLabel(key),
+        params.isGroupEnabled(key),
+        (val) => params.onSetGroupEnabled(key, val)
+      )}
+        ${params.shortcutsStrip === A ? emptySlot : params.shortcutsStrip}
+      `;
+      return b2`
+        <div class="sb-layout-row sb-layout-row-order">
+          ${cells}${moveControl(key, index)}${params.shortcutsPanel}
+        </div>
       `;
     } else {
       cells = b2`
@@ -3115,7 +3789,9 @@ var CARD_SETTING_DEFAULTS = {
   max_width: 360,
   shrink: 0,
   show_automation_assist: false,
-  background_override: null
+  background_override: null,
+  key_style: "flat",
+  tinted_panels: false
 };
 var ENTITY_FORM_SCHEMA = [
   {
@@ -3147,6 +3823,96 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this._editorIntegrationEntityId = null;
     this._editorIntegrationDetectingFor = null;
     this._sortableDefinePending = false;
+    // Shortcuts slot editor state (shortcuts-row-plan.md §4.2/§4.3). The open
+    // slot's draft lives here, NOT in config: a slot is written only once both
+    // icon and command are valid, so config never holds a half-configured slot.
+    this._shortcutOpenSlot = null;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+    /** Editor-lifetime keymap cache, keyed by device id. */
+    this._editorKeymaps = {};
+  }
+  // ---------- shortcuts (device selections only) ----------
+  /**
+   * Fetch one device's commands for the shortcut command select — the same
+   * cache-first WS the card uses; the editor never invalidates it.
+   */
+  _ensureEditorKeymap(deviceId) {
+    const key = String(deviceId);
+    if (this._editorKeymaps[key]) return;
+    const entityId = String(this._config?.entity || "");
+    const remoteState = entityId ? this._hass?.states?.[entityId] : null;
+    const entryId = String(
+      remoteState?.attributes?.entry_id ?? ""
+    );
+    if (!entryId || !this._hass?.callWS) return;
+    this._editorKeymaps[key] = { status: "loading", commands: [] };
+    void this._hass.callWS({
+      type: "sofabaton_x1s/device/keymap",
+      entry_id: entryId,
+      device_id: deviceId
+    }).then((response) => {
+      const keymap = response?.keymap;
+      if (!keymap) {
+        this._editorKeymaps[key] = { status: "cache_miss", commands: [] };
+        return;
+      }
+      const commands = (Array.isArray(keymap.commands) ? keymap.commands : []).map((command) => ({
+        command_id: Number(command?.command_id),
+        name: String(command?.name ?? "")
+      })).filter((command) => Number.isFinite(command.command_id) && command.name).sort((a4, b3) => a4.name.localeCompare(b3.name));
+      this._editorKeymaps[key] = { status: "ready", commands };
+    }).catch(() => {
+      this._editorKeymaps[key] = { status: "error", commands: [] };
+    }).then(() => this.requestUpdate());
+  }
+  _clearShortcutPanel() {
+    this._shortcutOpenSlot = null;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+  }
+  _toggleShortcutSlot(slot) {
+    if (this._shortcutOpenSlot === slot) {
+      this._clearShortcutPanel();
+    } else {
+      this._shortcutOpenSlot = slot;
+      const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+      const stored = deviceShortcutsFromConfig(this._config, deviceId)[slot];
+      this._shortcutDraftIcon = stored?.icon ?? "";
+      this._shortcutDraftCommand = stored?.command_id ?? null;
+    }
+    this.requestUpdate();
+  }
+  /**
+   * Draft edit: config is written (and the preview updates) the moment both
+   * fields are valid; an incomplete draft leaves the stored slot untouched.
+   */
+  _onShortcutDraftChanged(icon, commandId) {
+    this._shortcutDraftIcon = icon;
+    this._shortcutDraftCommand = commandId;
+    const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    const slot = this._shortcutOpenSlot;
+    if (deviceId != null && slot && icon.trim() && commandId != null) {
+      const { nextConfig } = applyShortcutSlotPatch(this._config, deviceId, slot, {
+        icon: icon.trim(),
+        command_id: commandId
+      });
+      if (JSON.stringify(nextConfig) !== JSON.stringify(this._config)) {
+        this._config = nextConfig;
+        this._fireChanged();
+      }
+    }
+    this.requestUpdate();
+  }
+  _resetShortcutSlot(slot) {
+    const deviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    if (deviceId == null) return;
+    const { nextConfig } = applyShortcutSlotPatch(this._config, deviceId, slot, null);
+    this._config = nextConfig;
+    this._shortcutDraftIcon = "";
+    this._shortcutDraftCommand = null;
+    this._fireChanged();
+    this.requestUpdate();
   }
   // ---------- integration detection (x1s vs hub) ----------
   async _ensureEditorIntegration() {
@@ -3311,6 +4077,8 @@ var SofabatonRemoteCardEditor = class extends i4 {
       this._editorIntegrationEntityId = null;
       this._editorIntegrationDomain = null;
       this._editorIntegrationDetectingFor = null;
+      this._editorKeymaps = {};
+      this._clearShortcutPanel();
     }
     if ("commands" in incomingConfig) delete incomingConfig.commands;
     const configUnchanged = !isInitialEditorConfig && JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
@@ -3409,6 +4177,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
   _onSelectLayout(selection) {
     if (selection === this._layoutSelectionKey()) return;
     this._layoutSelection = selection;
+    this._clearShortcutPanel();
     this._setPreviewActivityForSelection(selection);
     this.requestUpdate();
   }
@@ -3416,6 +4185,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
   _isEditorGroupVisible(key, isEditorX2) {
     if (!isEditorX2 && key === "abc") return false;
     const selection = this._layoutSelectionKey();
+    if (key === "shortcuts") return isDeviceLayoutKey(selection);
     const asRows = mfAsRowsForEditor(this._config, selection);
     if (isDeviceLayoutKey(selection)) {
       if (key === "macro_favorites") return !asRows;
@@ -3561,6 +4331,34 @@ var SofabatonRemoteCardEditor = class extends i4 {
         this.requestUpdate();
       });
     }
+    const shortcutDeviceId = parseDeviceLayoutKey(this._layoutSelectionKey());
+    let shortcutsStrip = A;
+    let shortcutsPanel = A;
+    if (shortcutDeviceId != null && devices.some((device) => Number(device.id) === shortcutDeviceId)) {
+      this._ensureEditorKeymap(shortcutDeviceId);
+      const keymap = this._editorKeymaps[String(shortcutDeviceId)];
+      const stored = deviceShortcutsFromConfig(this._config, shortcutDeviceId);
+      shortcutsStrip = renderShortcutsSlotStrip({
+        slots: SHORTCUT_SLOTS.map((slot) => ({
+          slot,
+          icon: stored[slot]?.icon ?? null
+        })),
+        openSlot: this._shortcutOpenSlot,
+        onToggleSlot: (slot) => this._toggleShortcutSlot(slot)
+      });
+      if (this._shortcutOpenSlot) {
+        shortcutsPanel = renderShortcutsRowPanel({
+          hass: this._hass,
+          openSlot: this._shortcutOpenSlot,
+          draftIcon: this._shortcutDraftIcon,
+          draftCommandId: this._shortcutDraftCommand,
+          commandsStatus: keymap?.status ?? "loading",
+          commands: keymap?.commands ?? [],
+          onDraftChanged: (icon, commandId) => this._onShortcutDraftChanged(icon, commandId),
+          onReset: (slot) => this._resetShortcutSlot(slot)
+        });
+      }
+    }
     const entityFormData = {
       entity: this._config.entity || ""
     };
@@ -3633,7 +4431,10 @@ var SofabatonRemoteCardEditor = class extends i4 {
       mediaEnabled: mediaGroupEnabled(layoutCfg),
       dvrEnabled: dvrGroupEnabled(layoutCfg),
       isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
+      shortcutsStrip,
+      shortcutsPanel,
       commandsEnabled: commandsEnabled(this._config, this._layoutSelectionKey()),
+      powerEnabled: powerEnabled(this._config, this._layoutSelectionKey()),
       showDeviceModeSwitch: devices.length > 0,
       deviceModeEnabled: deviceToggleEnabledForEditor(
         this._config,
@@ -3649,6 +4450,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
       onSetMacro: (v3) => this._updateLayoutConfig(macroTogglePatch(v3)),
       onSetFavorites: (v3) => this._updateLayoutConfig(favoritesTogglePatch(v3)),
       onSetCommands: (v3) => this._updateLayoutConfig(commandsTogglePatch(v3)),
+      onSetPower: (v3) => this._updateLayoutConfig(powerTogglePatch(v3)),
       onSetDeviceMode: (v3) => this._updateLayoutConfig(deviceTogglePatch(v3)),
       onSetVolume: (v3) => this._updateLayoutConfig(volumeTogglePatch(v3)),
       onSetChannel: (v3) => this._updateLayoutConfig(channelTogglePatch(v3)),
@@ -4028,6 +4830,59 @@ var HoldRepeatTimer = class {
     if (this.intervalHandle != null) {
       this.timers.clearInterval(this.intervalHandle);
       this.intervalHandle = null;
+    }
+  }
+};
+var LONG_PRESS_HOLD_MS = 500;
+var LONG_PRESS_EVENT_TYPE = "sb-long-press";
+function isLongPressEvent(ev) {
+  return Boolean(ev && ev.type === LONG_PRESS_EVENT_TYPE);
+}
+var LongPressTimer = class {
+  constructor(fire, options = {}) {
+    this.delayHandle = null;
+    this.fired = false;
+    this.fire = fire;
+    this.delayMs = options.delayMs ?? LONG_PRESS_HOLD_MS;
+    this.timers = {
+      setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
+      clearTimeout: options.clearTimeout ?? ((h6) => clearTimeout(h6))
+    };
+  }
+  /** True while a hold is armed (the fire has not happened or been cancelled). */
+  get active() {
+    return this.delayHandle != null;
+  }
+  start() {
+    this.clearTimer();
+    this.fired = false;
+    this.delayHandle = this.timers.setTimeout(() => {
+      this.delayHandle = null;
+      this.fired = true;
+      try {
+        this.fire();
+      } catch (e6) {
+      }
+    }, this.delayMs);
+  }
+  /** Cancel a pending hold. Returns whether this hold already fired. */
+  stop() {
+    this.clearTimer();
+    return this.fired;
+  }
+  /**
+   * Read-and-clear the "the hold fired" memory. The release tap that follows
+   * a fired hold calls this and skips its own send when it returns true.
+   */
+  consumeFired() {
+    const fired = this.fired;
+    this.fired = false;
+    return fired;
+  }
+  clearTimer() {
+    if (this.delayHandle != null) {
+      this.timers.clearTimeout(this.delayHandle);
+      this.delayHandle = null;
     }
   }
 };
@@ -4416,6 +5271,9 @@ function customFavoritesSignature(items) {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/remote-card-store.ts
+var POWER_ON_KEY_ID = 198;
+var POWER_OFF_KEY_ID = 199;
+var POWER_ASSUMPTION_TTL_MS = 15e3;
 var LAST_DEVICE_STORAGE_PREFIX = "sofabaton-remote:last-device:";
 function normalizeRemoteCardConfig(config) {
   return {
@@ -4490,6 +5348,10 @@ var RemoteCardStore = class {
     this.activityMenuOpen = false;
     // Update gating
     this.lastUpdateFingerprint = null;
+    /** True while a power click's read+fire round-trip is in flight. */
+    this.powerBusy = false;
+    /** Optimistic post-fire assumption; see POWER_ASSUMPTION_TTL_MS. */
+    this._powerAssumption = null;
     this.onChange = onChange;
     this.host = host;
   }
@@ -4722,6 +5584,68 @@ var RemoteCardStore = class {
     if (deviceId == null) return null;
     return this.deviceKeymaps[String(deviceId)] ?? null;
   }
+  /** Power button render gate: keymap ready AND backend says configured. */
+  devicePowerConfigured(deviceId = this._deviceId) {
+    const entry = this.deviceKeymapState(deviceId);
+    return entry?.status === "ready" && entry.powerConfigured === true;
+  }
+  async fetchDevicePowerState(deviceId) {
+    if (!this._hass?.callWS) return null;
+    const entryId = String(
+      this.remoteState()?.attributes?.entry_id ?? ""
+    );
+    if (!entryId) return null;
+    try {
+      const response = await this._hass.callWS({
+        type: "sofabaton_x1s/device/power_state",
+        entry_id: entryId,
+        device_id: deviceId
+      });
+      const raw = response?.power_state;
+      return raw === 1 ? 1 : raw === 0 ? 0 : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  /**
+   * Power button click: look up the device's current power state, then
+   * fire the opposite power macro (198 POWER_ON / 199 POWER_OFF) through
+   * the ordinary device-scope send path. The state read is skipped inside
+   * the optimistic window after our own fire (the hub's tracked byte
+   * commits only after the macro runs). An unreadable state aborts the
+   * click: firing blind would desync the hub's power bookkeeping.
+   */
+  async toggleDevicePower() {
+    if (this._editMode || this.powerBusy) return;
+    if (!this._hass || !this._config?.entity) return;
+    const deviceId = this._deviceId;
+    if (deviceId == null || !this.devicePowerConfigured(deviceId)) return;
+    this.powerBusy = true;
+    this.onChange();
+    try {
+      let state = null;
+      const assumption = this._powerAssumption;
+      if (assumption && assumption.deviceId === deviceId && Date.now() - assumption.at < POWER_ASSUMPTION_TTL_MS) {
+        state = assumption.state;
+      } else {
+        state = await this.fetchDevicePowerState(deviceId);
+      }
+      if (state == null) return;
+      const keyId = state === 1 ? POWER_OFF_KEY_ID : POWER_ON_KEY_ID;
+      const serviceData = remoteSendCommandData(this._config.entity, keyId, deviceId);
+      if (!serviceData) return;
+      this.triggerCommandPulse();
+      await this.callService("remote", "send_command", serviceData);
+      this._powerAssumption = {
+        deviceId,
+        state: state === 1 ? 0 : 1,
+        at: Date.now()
+      };
+    } finally {
+      this.powerBusy = false;
+      this.onChange();
+    }
+  }
   /** Commands for the current device, filtered and alphabetically sorted. */
   filteredCommands() {
     const entry = this.deviceKeymapState();
@@ -4770,7 +5694,8 @@ var RemoteCardStore = class {
           commands: (Array.isArray(keymap.commands) ? keymap.commands : []).map((command) => ({
             command_id: Number(command?.command_id),
             name: String(command?.name ?? "")
-          })).filter((command) => Number.isFinite(command.command_id) && command.name)
+          })).filter((command) => Number.isFinite(command.command_id) && command.name),
+          powerConfigured: keymap.power_configured === true
         };
       }
     } catch (_err) {
@@ -5121,6 +6046,44 @@ var RemoteCardStore = class {
       return;
     }
     const serviceData = remoteSendCommandData(this._config.entity, commandId, resolvedDevice);
+    if (!serviceData) return;
+    await this.callService("remote", "send_command", serviceData);
+  }
+  /**
+   * A button's hub long-press binding on one entity page, or null
+   * (docs/internal/long-press-plan.md). Gated on the x1s integration (the
+   * official sofabaton_hub integration has no keymap detail source) and on
+   * the `long_press_keys` attribute, which the backend publishes only
+   * while the persistent cache is enabled and only for pages whose keymap
+   * details are populated. Hold-repeat precedence is the caller's concern
+   * (it needs the key spec, not the button id).
+   */
+  longPressBindingForButton(buttonId, scopeId) {
+    if (String(this.integrationDomain || "") !== "sofabaton_x1s") return null;
+    const attrs = this.remoteState()?.attributes;
+    return hubLongPressBinding(attrs, scopeId, buttonId);
+  }
+  /** True when holding this hard button should fire its long-press binding. */
+  longPressAvailableForButton(buttonId, scopeId) {
+    return this.longPressBindingForButton(buttonId, scopeId) !== null;
+  }
+  /**
+   * Fire a button's hub long-press binding. The card resolves the pair and
+   * sends it exactly like a favorite (`send_command {command, device}`):
+   * the entity and its services have no long-press concept. Guarded like
+   * sendCommand; never reached for sofabaton_hub (the gate above stays
+   * null there).
+   */
+  async sendLongPress(buttonId, scopeId) {
+    if (this._editMode) return;
+    if (!this._hass || !this._config?.entity) return;
+    const binding = this.longPressBindingForButton(buttonId, scopeId);
+    if (!binding) return;
+    const serviceData = remoteSendCommandData(
+      this._config.entity,
+      binding.command_id,
+      binding.device_id
+    );
     if (!serviceData) return;
     await this.callService("remote", "send_command", serviceData);
   }
@@ -6254,7 +7217,7 @@ function renderActivityRow(params) {
       ` : A;
   return b2`
     <div
-      class="activityRow${params.modeToggle ? " activityRow--with-toggle" : ""}"
+      class="activityRow${params.modeToggle ? " activityRow--with-toggle" : ""}${params.menuOpen ? " activityRow--menu-open" : ""}"
       style=${params.visible ? "" : "display: none !important;"}
       ${params.rowRef ? n6(params.rowRef) : A}
     >
@@ -6301,7 +7264,7 @@ var CONTROL_CSS = `
     height: 100%;
     min-width: 0;
     min-height: 100%;
-    padding: 0 10px;
+    padding: 0 var(--sb-control-padding-inline, 10px);
     border-radius: var(
       --sb-control-radius,
       var(--sb-group-radius, var(--ha-card-border-radius, 18px))
@@ -6335,7 +7298,12 @@ var CONTROL_CSS = `
     inset: 0;
     z-index: 0;
     border-radius: inherit;
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.08);
+    /* Hover / press overlay derived from the theme's text colour via
+       color-mix: works for any colour syntax and for card-level themes.
+       The rgba(var(--rgb-primary-text-color)) form only worked for hex
+       themes, and HA's base hardcodes --rgb-primary-text-color to dark
+       (33,33,33), so dark themes got an invisible dark-on-dark overlay. */
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color, #000) 10%, transparent));
     opacity: 0;
     pointer-events: none;
     transition: opacity 120ms ease;
@@ -6348,12 +7316,12 @@ var CONTROL_CSS = `
   }
 
   .sb-key-control:not(:disabled):active::before {
-    background: rgba(var(--sb-overlay-rgb, var(--rgb-primary-text-color, 0, 0, 0)), 0.16);
+    background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color, #000) 18%, transparent));
     opacity: 1;
   }
 
   .sb-key-control:focus-visible {
-    outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+    outline: 2px solid color-mix(in srgb, var(--primary-color, #03a9f4) 55%, transparent);
     outline-offset: -2px;
   }
 
@@ -6361,7 +7329,8 @@ var CONTROL_CSS = `
     cursor: default;
   }
 
-  .sb-key-control__icon {
+  .sb-key-control__icon,
+  .sb-key-control__trailing-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -6370,17 +7339,37 @@ var CONTROL_CSS = `
     line-height: 1;
     flex: 0 0 auto;
     --mdc-icon-size: 1.2em;
-    color: var(--primary-color);
+    color: var(--sb-key-label-color, var(--primary-color));
     position: relative;
     z-index: 1;
   }
 
+  /* A trailing affordance must not take width away from the label. Keep it
+     pinned to the logical inline end (right in LTR, left in RTL), while the
+     label reserves only the icon's footprint inside its own full-width box. */
+  .sb-key-control__trailing-icon {
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
   .sb-key-control__label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     position: relative;
     z-index: 1;
+    /* Text on keys reads as part of the same control language as the
+       icons, so it shares their colour (the icon rule above). */
+    color: var(--sb-key-label-color, var(--primary-color));
+  }
+
+  .sb-key-control--with-trailing-icon .sb-key-control__label {
+    box-sizing: border-box;
+    width: 100%;
+    padding-inline-end: 1.2em;
   }
 
   [hidden] {
@@ -6401,20 +7390,25 @@ function installControlStyles(root) {
   style.textContent = CONTROL_CSS;
   root.appendChild(style);
 }
-var SbKeyButton = class extends HTMLElement {
+var BaseElement = globalThis.HTMLElement ?? class {
+};
+var SbKeyButton = class extends BaseElement {
   constructor() {
     super(...arguments);
     this._control = null;
     this._iconEl = null;
+    this._trailingIconEl = null;
     this._labelEl = null;
     this._label = "";
     this._icon = null;
+    this._trailingIcon = null;
     this._accessibilityLabel = "";
     this._color = null;
     this._sizeVar = null;
     this._disabled = false;
     this._wired = false;
     this._holdRepeat = false;
+    this._longPress = false;
     /**
      * Long press: while holdRepeat is on, pressing and holding repeats the
      * trigger (first after HOLD_REPEAT_DELAY_MS, then every
@@ -6422,6 +7416,14 @@ var SbKeyButton = class extends HTMLElement {
      * suppressed so letting go never sends one more command.
      */
     this._hold = new HoldRepeatTimer((repeatIndex) => this.repeatTrigger(repeatIndex));
+    /**
+     * Hub long-press binding: while longPress is on (and holdRepeat is not,
+     * hold-to-repeat wins that collision), holding fires the long-press
+     * trigger exactly once at LONG_PRESS_HOLD_MS. The release tap of a hold
+     * that fired is suppressed, so letting go never also sends the short
+     * press.
+     */
+    this._longHold = new LongPressTimer(() => this.longPressTrigger());
     /** Called on a primary pointer action, keyboard activation, or hold repeat. */
     this.onTrigger = null;
   }
@@ -6431,6 +7433,10 @@ var SbKeyButton = class extends HTMLElement {
   }
   set icon(value) {
     this._icon = value ? String(value) : null;
+    this.syncContent();
+  }
+  set trailingIcon(value) {
+    this._trailingIcon = value ? String(value) : null;
     this.syncContent();
   }
   set accessibilityLabel(value) {
@@ -6459,7 +7465,10 @@ var SbKeyButton = class extends HTMLElement {
   set disabled(value) {
     this._disabled = Boolean(value);
     if (this._control) this._control.disabled = this._disabled;
-    if (this._disabled) this._hold.stop();
+    if (this._disabled) {
+      this._hold.stop();
+      this._longHold.stop();
+    }
   }
   /** Enable long press (hold-to-repeat) on this control. */
   set holdRepeat(value) {
@@ -6468,6 +7477,18 @@ var SbKeyButton = class extends HTMLElement {
   }
   get holdRepeat() {
     return this._holdRepeat;
+  }
+  /**
+   * Enable the hub long-press binding on this control. Ignored while
+   * holdRepeat is on: a hold can only mean one thing, and the explicit
+   * hold-to-repeat opt-in beats the transparent binding.
+   */
+  set longPress(value) {
+    this._longPress = Boolean(value);
+    if (!this._longPress) this._longHold.stop();
+  }
+  get longPress() {
+    return this._longPress;
   }
   get disabled() {
     return this._disabled;
@@ -6484,6 +7505,7 @@ var SbKeyButton = class extends HTMLElement {
   trigger(ev) {
     if (this._disabled || this.classList.contains("disabled")) return;
     if (this._hold.consumeFired()) return;
+    if (this._longHold.consumeFired()) return;
     this.onTrigger?.(ev);
   }
   repeatTrigger(repeatIndex) {
@@ -6494,17 +7516,33 @@ var SbKeyButton = class extends HTMLElement {
     if (repeatIndex === 1) this.fireHaptic();
     this.onTrigger?.(new CustomEvent(HOLD_REPEAT_EVENT_TYPE, { detail: repeatIndex }));
   }
+  longPressTrigger() {
+    if (this._disabled || this.classList.contains("disabled")) {
+      this._longHold.stop();
+      return;
+    }
+    this.fireHaptic();
+    this.onTrigger?.(new CustomEvent(LONG_PRESS_EVENT_TYPE));
+  }
   onHoldPointerDown(ev) {
-    if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
+    if (this._disabled || this.classList.contains("disabled")) return;
     if (ev.isPrimary === false || typeof ev.button === "number" && ev.button !== 0) return;
-    this._hold.start();
+    if (this._holdRepeat) {
+      this._hold.start();
+    } else if (this._longPress) {
+      this._longHold.start();
+    }
   }
   onHoldPointerEnd(ev) {
     this._hold.stop();
-    if (ev.type !== "pointerup") this._hold.consumeFired();
+    this._longHold.stop();
+    if (ev.type !== "pointerup") {
+      this._hold.consumeFired();
+      this._longHold.consumeFired();
+    }
   }
   syncContent() {
-    if (!this._control || !this._iconEl || !this._labelEl) return;
+    if (!this._control || !this._iconEl || !this._trailingIconEl || !this._labelEl) return;
     if (this._icon) {
       this._iconEl.setAttribute("icon", this._icon);
       this._iconEl.hidden = false;
@@ -6512,6 +7550,17 @@ var SbKeyButton = class extends HTMLElement {
       this._iconEl.removeAttribute("icon");
       this._iconEl.hidden = true;
     }
+    if (this._trailingIcon) {
+      this._trailingIconEl.setAttribute("icon", this._trailingIcon);
+      this._trailingIconEl.hidden = false;
+    } else {
+      this._trailingIconEl.removeAttribute("icon");
+      this._trailingIconEl.hidden = true;
+    }
+    this._control.classList.toggle(
+      "sb-key-control--with-trailing-icon",
+      Boolean(this._trailingIcon)
+    );
     this._labelEl.textContent = this._label;
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
@@ -6532,10 +7581,13 @@ var SbKeyButton = class extends HTMLElement {
     icon.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
-    control.append(icon, label);
+    const trailingIcon = document.createElement("ha-icon");
+    trailingIcon.className = "sb-key-control__trailing-icon";
+    control.append(icon, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
     this._iconEl = icon;
+    this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
     this.addEventListener("pointerdown", (ev) => this.onHoldPointerDown(ev), {
@@ -6545,7 +7597,7 @@ var SbKeyButton = class extends HTMLElement {
       this.addEventListener(type, (ev) => this.onHoldPointerEnd(ev), { capture: true });
     }
     control.addEventListener("contextmenu", (ev) => {
-      if (this._holdRepeat) ev.preventDefault();
+      if (this._holdRepeat || this._longPress) ev.preventDefault();
     });
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
@@ -6558,6 +7610,7 @@ var SbKeyButton = class extends HTMLElement {
   }
   disconnectedCallback() {
     this._hold.stop();
+    this._longHold.stop();
   }
 };
 if (!customElements.get("sb-key-button")) {
@@ -6591,7 +7644,11 @@ var NAV_KEYS = [
 var MID_KEYS = [
   { key: "volup", id: ID.VOL_UP, cmd: ID.VOL_UP, label: "", icon: "mdi:volume-plus", extraClass: "mid-btn mid-btn-volup" },
   { key: "voldn", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN, label: "", icon: "mdi:volume-minus", extraClass: "mid-btn mid-btn-voldn" },
-  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "Guide", icon: "", extraClass: "mid-btn mid-btn-guide" },
+  // Language-neutral TV-guide glyph instead of the always-English "Guide"
+  // text, which was the one label in the icon-only mid cluster and clipped
+  // at narrow card widths. Like the OK key, the assist capture label still
+  // resolves to the localized str().keys.guide via the key fallback.
+  { key: "guide", id: ID.GUIDE, cmd: ID.GUIDE, label: "", icon: "mdi:television-guide", extraClass: "mid-btn mid-btn-guide" },
   { key: "mute", id: ID.MUTE, cmd: ID.MUTE, label: "", icon: "mdi:volume-mute", extraClass: "mid-btn mid-btn-mute" },
   { key: "chup", id: ID.CH_UP, cmd: ID.CH_UP, label: "", icon: "mdi:chevron-up", extraClass: "mid-btn mid-btn-chup" },
   { key: "chdn", id: ID.CH_DOWN, cmd: ID.CH_DOWN, label: "", icon: "mdi:chevron-down", extraClass: "mid-btn mid-btn-chdn" }
@@ -6636,6 +7693,7 @@ function renderKey(params, spec) {
       .sizeVar=${spec.color ? null : "--sb-key-font-size"}
       .disabled=${!enabled}
       .holdRepeat=${params.holdRepeatForKey(spec.key)}
+      .longPress=${params.longPressForKey(spec)}
       .onTrigger=${(ev) => params.onKeyPress(spec, ev)}
     ></sb-key-button>
   `;
@@ -6673,6 +7731,36 @@ function renderMedia(params, visible) {
     ...Object.entries(mediaState.classMap).filter(([, on]) => on).map(([name]) => name)
   ].join(" ");
   return b2`<div class=${className}>${MEDIA_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+}
+function renderShortcutsRow(params, visible) {
+  if (!visible) return A;
+  return b2`
+    <div class="row3 shortcuts">
+      ${params.slots.map((slot) => {
+    if (slot.icon == null) {
+      return b2`
+            <div
+              class="key key--normal ${params.editMode ? "shortcut-ghost" : "shortcut-spacer"}"
+              aria-hidden="true"
+            ></div>
+          `;
+    }
+    const enabled = !params.disableAll && (params.editMode || !slot.missing);
+    return b2`
+          <sb-key-button
+            class="key key--normal shortcut-key${enabled ? "" : " disabled"}"
+            .label=${""}
+            .icon=${slot.icon}
+            .accessibilityLabel=${slot.label}
+            .sizeVar=${"--sb-key-font-size"}
+            .disabled=${!enabled}
+            .holdRepeat=${false}
+            .onTrigger=${() => params.onPress(slot)}
+          ></sb-key-button>
+        `;
+  })}
+    </div>
+  `;
 }
 function renderColors(params, visible) {
   if (!visible) return A;
@@ -6803,12 +7891,16 @@ function renderTab(_params, label, visible, active, disabled, onClick) {
       class=${classes}
       .label=${label}
       .icon=${null}
+      .trailingIcon=${drawerTabChevronIcon()}
       .accessibilityLabel=${label}
       .sizeVar=${"--sb-tab-font-size"}
       .disabled=${disabled}
       .onTrigger=${onClick}
     ></sb-key-button>
   `;
+}
+function drawerTabChevronIcon() {
+  return remoteCardDirection() === "rtl" ? "mdi:chevron-left" : "mdi:chevron-right";
 }
 function rowRadiusStyle(anyOpen, up) {
   const r6 = "var(--sb-group-radius)";
@@ -6876,12 +7968,18 @@ function renderMacroFavorites(params) {
 }
 function renderInlineDrawerRow(params) {
   const gridClass = params.kind === "commands" ? "inline-drawer-row__grid mf-grid mf-grid--commands" : "inline-drawer-row__grid mf-grid";
+  const filterStrip = params.filter ? params.power ? b2`
+          <div class="inline-filter-row">
+            ${renderCommandsFilter(params.filter)}
+            ${renderPowerKey(params.power)}
+          </div>
+        ` : renderCommandsFilter(params.filter) : A;
   return b2`
     <div
       class="inline-drawer-row inline-drawer-row--${params.kind}"
       style=${params.visible ? "" : "display: none !important;"}
     >
-      ${params.filter ? renderCommandsFilter(params.filter) : A}
+      ${filterStrip}
       <div
         class="inline-drawer-row__scroller"
         style="--inline-row-visible-rows: ${params.visibleRows};"
@@ -6894,6 +7992,26 @@ function renderInlineDrawerRow(params) {
               `}
         </div>
       </div>
+    </div>
+  `;
+}
+function renderPowerKey(params) {
+  return b2`
+    <sb-key-button
+      class="sb-power-key${params.busy ? " sb-power-key--busy" : ""}"
+      .label=${null}
+      .icon=${"mdi:power"}
+      .accessibilityLabel=${params.label}
+      .disabled=${params.disabled || params.busy}
+      .onTrigger=${() => params.onToggle()}
+    ></sb-key-button>
+  `;
+}
+function renderPowerRow(power) {
+  return b2`
+    <div class="commands-row commands-row--power commands-row--power-only">
+      <div class="commands-row__spacer"></div>
+      ${renderPowerKey(power)}
     </div>
   `;
 }
@@ -6941,8 +8059,11 @@ function renderCommandsDrawer(params) {
   const setRef = (r6) => r6 ? n6(r6) : A;
   return b2`
     <div
-      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
+      class="commands-row${params.power ? " commands-row--power" : ""}"
       style=${params.visible ? "" : "display: none !important;"}
+    >
+    <div
+      class="mf-container${params.drawerUp ? " drawer-up" : ""}"
       ${setRef(params.containerRef)}
     >
       <div
@@ -6976,6 +8097,8 @@ function renderCommandsDrawer(params) {
               </div>
             ` : A}
       </div>
+    </div>
+    ${params.power ? renderPowerKey(params.power) : A}
     </div>
   `;
 }
@@ -7079,6 +8202,12 @@ function renderAssistModal(params) {
 }
 
 // custom_components/sofabaton_x1s/www/src/remote-card-element.ts
+function hexToRgbTriplet(value) {
+  const hex = value.trim().slice(1);
+  const full = hex.length === 3 ? hex.split("").map((c7) => c7 + c7).join("") : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  return [0, 2, 4].map((i7) => parseInt(full.slice(i7, i7 + 2), 16)).join(",");
+}
 var SofabatonRemoteCard = class extends i4 {
   constructor() {
     super();
@@ -7342,8 +8471,9 @@ var SofabatonRemoteCard = class extends i4 {
   }
   _syncLayering() {
     const activityRow = this._activityRowRef.value;
-    const mfContainer = this._mfContainerRef.value;
+    let mfContainer = this._mfContainerRef.value;
     if (!activityRow || !mfContainer) return;
+    mfContainer = mfContainer.closest(".commands-row") ?? mfContainer;
     const key = `${this._store.activityMenuOpen ? 1 : 0}:${this._store.activeDrawer || ""}`;
     const targets = [activityRow, mfContainer];
     if (this._lastLayeringKey === key && this._lastLayeringTargets[0] === targets[0] && this._lastLayeringTargets[1] === targets[1]) {
@@ -7449,10 +8579,28 @@ var SofabatonRemoteCard = class extends i4 {
           root.style.setProperty(cssVar, String(v3));
           this._appliedThemeVars.push(cssVar);
         }
+        for (const [k2, v3] of Object.entries(vars)) {
+          if (typeof v3 !== "string" || !v3.startsWith("#")) continue;
+          const key = k2.startsWith("--") ? k2.slice(2) : k2;
+          if (vars[`rgb-${key}`] !== void 0 || vars[`--rgb-${key}`] !== void 0) continue;
+          const triplet = hexToRgbTriplet(v3);
+          if (!triplet) continue;
+          const cssVar = `--rgb-${key}`;
+          root.style.setProperty(cssVar, triplet);
+          this._appliedThemeVars.push(cssVar);
+        }
       }
     }
     const themeBg = vars?.["ha-card-background"] ?? vars?.["card-background-color"] ?? vars?.["ha-card-background-color"] ?? vars?.["primary-background-color"] ?? null;
     const finalBg = bgOverrideCss || themeBg;
+    const override = this._store.config?.background_override;
+    if (bgOverrideCss && Array.isArray(override) && override.length === 3) {
+      const [r6, g2, b3] = override.map((v3) => Number(v3) / 255);
+      const lin = (c7) => c7 <= 0.03928 ? c7 / 12.92 : ((c7 + 0.055) / 1.055) ** 2.4;
+      const luminance = 0.2126 * lin(r6) + 0.7152 * lin(g2) + 0.0722 * lin(b3);
+      root.style.setProperty("--sb-overlay-base", luminance < 0.4 ? "#ffffff" : "#000000");
+      this._appliedThemeVars.push("--sb-overlay-base");
+    }
     if (finalBg) {
       root.style.setProperty("--ha-card-background", String(finalBg));
       root.style.setProperty("--card-background-color", String(finalBg));
@@ -7654,6 +8802,7 @@ var SofabatonRemoteCard = class extends i4 {
       isEnabled: (id) => store.isEnabled(id),
       onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
       holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
+      longPressForKey: (spec) => this._longPressForSpec(spec),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,
@@ -7711,6 +8860,35 @@ var SofabatonRemoteCard = class extends i4 {
         void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
       }
     };
+    const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && (this._editMode || store.devicePowerConfigured());
+    const powerParams = {
+      busy: store.powerBusy,
+      disabled: disableAll,
+      label: str().card.powerButton,
+      onToggle: () => {
+        void store.toggleDevicePower();
+      }
+    };
+    const shortcutConfigs = deviceMode ? deviceShortcutsFromConfig(store.config, derived.deviceId) : {};
+    const shortcutSlots = SHORTCUT_SLOTS.map((slot) => {
+      const config = shortcutConfigs[slot];
+      if (!config) {
+        return { slot, icon: null, label: "", commandId: null, missing: false };
+      }
+      const keymapCommands = derived.keymapEntry?.status === "ready" ? derived.keymapEntry.commands : null;
+      const match = keymapCommands?.find(
+        (command) => command.command_id === config.command_id
+      );
+      return {
+        slot,
+        icon: config.icon,
+        label: match?.name ?? str().assist.commandFallback(config.command_id),
+        commandId: config.command_id,
+        missing: keymapCommands != null && !match
+      };
+    });
+    const shortcutsConfigured = shortcutSlots.some((slot) => slot.icon != null);
+    const shortcutsVisible = deviceMode && shortcutsRowEnabled(layoutConfig) && (shortcutsConfigured || this._editMode);
     const commandsParams = {
       visible: showCommandsDrawer,
       open: store.activeDrawer === "commands",
@@ -7731,6 +8909,13 @@ var SofabatonRemoteCard = class extends i4 {
     const midEnabled = derived.showVolume || derived.showChannel;
     const mediaEnabled = derived.isX2 ? derived.showMedia || derived.showDvr : derived.showMedia;
     const order = normalizedGroupOrder(layoutConfig.group_order);
+    const keyStyle = keyStyleFromConfig(store.config);
+    const tintedPanels = tintedPanelsFromConfig(store.config);
+    const wrapClass = [
+      "wrap",
+      ...keyStyle === "flat" ? [] : [`wrap--keys-${keyStyle}`],
+      ...tintedPanels ? ["wrap--panels"] : []
+    ].join(" ");
     const groupTemplates = {
       activity: () => Boolean(layoutConfig.show_activity) ? renderActivityRow({
         hass: store.hass,
@@ -7750,19 +8935,25 @@ var SofabatonRemoteCard = class extends i4 {
           // switch is visualized in the preview.
           onToggle: () => this._handleModeToggle()
         } : null,
+        menuOpen: Boolean(store.activityMenuOpen),
         onSelect: (ev) => this._handleSelect(ev),
         onMenuOpened: () => {
           store.activityMenuOpen = true;
           this._syncLayering();
+          this.requestUpdate();
         },
         onMenuClosed: () => {
           store.activityMenuOpen = false;
           this._syncLayering();
+          this.requestUpdate();
         },
         rowRef: this._activityRowRef,
         loadIndicatorRef: this._loadIndicatorRef
       }) : A,
-      macro_favorites: () => deviceMode ? showCommandsDrawer ? renderCommandsDrawer(commandsParams) : A : drawerDisplayState?.showMF ? renderMacroFavorites(mfParams) : A,
+      macro_favorites: () => deviceMode ? showCommandsDrawer ? renderCommandsDrawer({
+        ...commandsParams,
+        power: powerVisible ? powerParams : null
+      }) : powerVisible && !commandsAsRow ? renderPowerRow(powerParams) : A : drawerDisplayState?.showMF ? renderMacroFavorites(mfParams) : A,
       macros_row: () => deviceMode ? commandsAsRow ? renderInlineDrawerRow({
         kind: "commands",
         visible: true,
@@ -7773,7 +8964,8 @@ var SofabatonRemoteCard = class extends i4 {
         }),
         itemCount: derived.commands.length,
         emptyText: str().card.noCommands,
-        filter: commandsFilter
+        filter: commandsFilter,
+        power: powerVisible ? powerParams : null
       }) : A : macrosRowOn ? renderInlineDrawerRow({
         kind: "macros",
         visible: true,
@@ -7795,14 +8987,23 @@ var SofabatonRemoteCard = class extends i4 {
       mid: () => renderMid(keyParams, midEnabled),
       media: () => renderMedia(keyParams, mediaEnabled),
       colors: () => renderColors(keyParams, Boolean(layoutConfig.show_colors)),
-      abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2)
+      abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2),
+      shortcuts: () => renderShortcutsRow(
+        {
+          editMode: this._editMode,
+          disableAll,
+          slots: shortcutSlots,
+          onPress: (slot) => this._onShortcutPress(slot)
+        },
+        shortcutsVisible
+      )
     };
     const warnText = derived.isUnavailable ? str().card.remoteUnavailable : derived.noActivitiesMessage;
     const assistEnabled = store.automationAssistEnabled();
     return b2`
       <ha-card ${n6(this._cardRef)}>
         ${assistEnabled ? renderAssistModal({ visible: true, controller: this._assist }) : A}
-        <div class="wrap" ${n6(this._wrapRef)}>
+        <div class=${wrapClass} ${n6(this._wrapRef)}>
           ${assistEnabled ? renderAssistRow({ visible: true, controller: this._assist }) : A}
           <div class="layout-container" ${n6(this._layoutContainerRef)}>
             ${c6(
@@ -7818,9 +9019,31 @@ var SofabatonRemoteCard = class extends i4 {
       </ha-card>
     `;
   }
+  /**
+   * Transparent hub long-press: arm the hold gesture on a hard button only
+   * when its keymap row carries a binding on the current scope (activity
+   * or device page) AND hold-to-repeat is not claiming the button (the
+   * explicit hold_repeat opt-in wins that collision; a hold can only mean
+   * one thing). Never armed in edit mode: sends are blocked there anyway.
+   */
+  _longPressForSpec(spec) {
+    if (this._editMode) return false;
+    const store = this._store;
+    if (longPressEnabledForKey(store.config, spec.key)) return false;
+    const scope = store.mode() === "device" ? store.currentDeviceId() : store.commandTarget(spec.id)?.activity_id ?? store.currentActivityId();
+    return store.longPressAvailableForButton(spec.id, scope);
+  }
   _onKeyPress(spec, ev) {
     const deviceMode = this._store.mode() === "device";
     const targetDeviceId = deviceMode ? this._store.currentDeviceId() : this._store.commandTarget(spec.id)?.activity_id ?? this._store.currentActivityId();
+    if (isLongPressEvent(ev)) {
+      if (this._assist.active) {
+        this._assist.setStatus(str().assist.notCaptured);
+      }
+      this._store.triggerCommandPulse();
+      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      return;
+    }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
         label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
@@ -7834,6 +9057,22 @@ var SofabatonRemoteCard = class extends i4 {
     }
     this._store.triggerCommandPulse();
     void this._store.sendCommand(spec.cmd, targetDeviceId);
+  }
+  _onShortcutPress(slot) {
+    if (slot.commandId == null) return;
+    const deviceId = this._store.currentDeviceId();
+    if (deviceId == null) return;
+    this._assist.recordClick({
+      label: slot.label,
+      commandId: slot.commandId,
+      deviceId,
+      commandType: "favorite",
+      icon: slot.icon,
+      deviceMode: true,
+      deviceName: this._store.deviceNameForId(deviceId)
+    });
+    this._store.triggerCommandPulse();
+    void this._store.sendCommand(slot.commandId, deviceId);
   }
   _onCommandItem(command) {
     const deviceId = this._store.currentDeviceId();
@@ -7893,9 +9132,12 @@ var REMOTE_CARD_STRINGS_AR = {
     noMacros: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0648\u062D\u062F\u0627\u062A \u0645\u0627\u0643\u0631\u0648",
     noFavorites: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0645\u0641\u0636\u0644\u0627\u062A",
     noCommands: "\u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0623\u064A \u0623\u0648\u0627\u0645\u0631",
-    macrosTab: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u2039",
-    favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u2039",
-    commandsTab: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u2039",
+    // Tab label only: the space-budgeted drawer tab keeps the short form
+    // (the longer "وحدات الماكرو" stays in the editor strings below).
+    macrosTab: "\u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    favoritesTab: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
+    commandsTab: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
+    powerButton: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062A\u0634\u063A\u064A\u0644/\u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     activitySelectLabel: "\u0627\u0644\u0646\u0634\u0627\u0637",
     deviceSelectLabel: "\u0627\u0644\u062C\u0647\u0627\u0632",
     selectDevice: "\u0627\u062E\u062A\u0631 \u062C\u0647\u0627\u0632\u064B\u0627",
@@ -7967,12 +9209,13 @@ var REMOTE_CARD_STRINGS_AR = {
       show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
       show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
       show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
-      show_media: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
+      show_media: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
       show_colors: "\u0623\u062D\u0645\u0631\u060C \u0623\u062E\u0636\u0631\u060C \u0623\u0635\u0641\u0631\u060C \u0623\u0632\u0631\u0642",
       show_abc: `\u0623\u0632\u0631\u0627\u0631 ${ABC}`,
       show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
       show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
+      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
       group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
     },
     generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
@@ -7981,11 +9224,18 @@ var REMOTE_CARD_STRINGS_AR = {
     keyCaptureLearnMore: "\u062A\u0639\u0631\u0651\u0641 \u0639\u0644\u0649 \u0627\u0644\u0645\u0632\u064A\u062F \u062D\u0648\u0644 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     keyCaptureDocsAria: "\u0648\u062B\u0627\u0626\u0642 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     stylingOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0645\u0638\u0647\u0631",
+    keyStyleFlat: "\u0645\u0633\u0637\u062D (\u0628\u0646\u0641\u0633 \u0644\u0648\u0646 \u062E\u0644\u0641\u064A\u0629 \u0627\u0644\u0628\u0637\u0627\u0642\u0629)",
+    keyStyleTinted: "\u0645\u0644\u0648\u0651\u0646 (\u062A\u062A\u0645\u064A\u0632 \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u0639\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629)",
+    keyStyleElevated: "\u0645\u0631\u062A\u0641\u0639 (\u0645\u0644\u0648\u0651\u0646 \u0645\u0639 \u0638\u0644)",
+    keyStyleGlossy: "\u0644\u0627\u0645\u0639 (\u0623\u0632\u0631\u0627\u0631 \u0644\u0627\u0645\u0639\u0629 \u0645\u0642\u0648\u0651\u0633\u0629)",
+    tintedPanels: "\u062E\u0644\u0641\u064A\u0627\u062A \u0645\u0644\u0648\u0651\u0646\u0629",
+    tintedPanelsDescription: "\u064A\u0639\u0631\u0636 \u062E\u0644\u0641\u064A\u0629 \u0645\u0644\u0648\u0651\u0646\u0629 \u062E\u0644\u0641 \u0643\u0644 \u0645\u062C\u0645\u0648\u0639\u0629 \u0623\u0632\u0631\u0627\u0631.",
     layoutOptions: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     layoutSelectLabel: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     defaultLayoutOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     allDevicesOption: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u062C\u0647\u0632\u0629",
     commands: "\u0627\u0644\u0623\u0648\u0627\u0645\u0631",
+    power: "\u0632\u0631 \u0627\u0644\u062A\u0634\u063A\u064A\u0644/\u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     modeToggle: "\u0632\u0631 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u0648\u0636\u0639",
     deviceModeDescription: `\u062A\u062D\u0643\u0651\u0645 \u0641\u064A \u062C\u0647\u0627\u0632 \u0648\u0627\u062D\u062F \u062A\u0645 \u0625\u0639\u062F\u0627\u062F\u0647 \u0639\u0644\u0649 \u062C\u0647\u0627\u0632 ${isolate("Hub")}\u060C \u0628\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u062A\u0639\u064A\u064A\u0646\u0627\u062A \u0623\u0632\u0631\u0627\u0631\u0647 \u0648\u0642\u0627\u0626\u0645\u0629 \u0623\u0648\u0627\u0645\u0631\u0647 \u0627\u0644\u0643\u0627\u0645\u0644\u0629.`,
     longPress: "\u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u062A\u0643\u0631\u0627\u0631 \u0639\u0646\u062F \u0627\u0644\u0636\u063A\u0637 \u0627\u0644\u0645\u0637\u0648\u0651\u0644",
@@ -8004,9 +9254,19 @@ var REMOTE_CARD_STRINGS_AR = {
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
     channel: "\u0627\u0644\u0642\u0646\u0627\u0629",
-    mediaControls: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
+    mediaControls: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
     dvr: DVR,
     resetDefaultLayout: "\u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
+    shortcutSlotLeft: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u064A\u0633\u0631",
+    shortcutSlotMiddle: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u0648\u0633\u0637",
+    shortcutSlotRight: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u064A\u0645\u0646",
+    shortcutIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
+    shortcutCommand: "\u0627\u0644\u0623\u0645\u0631",
+    shortcutReset: "\u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0636\u0628\u0637",
+    shortcutCommandMissing: (id) => `\u0627\u0644\u0623\u0645\u0631 ${isolate(id)} (\u0645\u0641\u0642\u0648\u062F)`,
+    shortcutsCommandsLoading: "\u062C\u0627\u0631\u064D \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0623\u0648\u0627\u0645\u0631\u2026",
+    shortcutsCommandsUnavailable: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
+    shortcutsCommandsError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632. \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A \u0648\u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627.",
     noteDefaultLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0644\u0644\u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u062A\u064A \u0644\u064A\u0633 \u0644\u0647\u0627 \u062A\u062E\u0637\u064A\u0637 \u062E\u0627\u0635",
     noteDeviceDefaultLayout: "\u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0644\u0644\u0623\u062C\u0647\u0632\u0629 \u0627\u0644\u062A\u064A \u0644\u064A\u0633 \u0644\u0647\u0627 \u062A\u062E\u0637\u064A\u0637 \u062E\u0627\u0635",
     noteCustomActivityLayout: "\u062A\u062E\u0637\u064A\u0637 \u0623\u0646\u0634\u0637\u0629 \u0645\u062E\u0635\u0651\u0635 \u0642\u064A\u062F \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645",
@@ -8022,9 +9282,10 @@ var REMOTE_CARD_STRINGS_AR = {
     dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
     nav: "\u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
     mid: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A/\u0627\u0644\u0642\u0646\u0627\u0629",
-    media: "\u0623\u0632\u0631\u0627\u0631 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0633\u0627\u0626\u0637",
+    media: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
     colors: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0623\u0644\u0648\u0627\u0646",
-    abc: ABC
+    abc: ABC,
+    shortcuts: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631\u0627\u062A"
   },
   keys: {
     up: "\u0623\u0639\u0644\u0649",
@@ -8061,22 +9322,22 @@ registerRemoteCardTranslation("ar", REMOTE_CARD_STRINGS_AR);
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/en-gb.ts
 registerRemoteCardTranslation("en-gb", {
   card: {
-    favoritesTab: "Favourites >",
+    favoritesTab: "Favourites",
     noFavorites: "No favourites available"
   },
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
-      background_override: "Select Background Colour",
-      show_favorites_button: "Favourites Button"
+      background_override: "Select background colour",
+      show_favorites_button: "Favourites button"
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows"
   },
   groups: {
     macro_favorites: "Macros/Favourites",
-    favorites_row: "Favourites Row",
-    colors: "Colour Buttons"
+    favorites_row: "Favourites row",
+    colors: "Colour buttons"
   }
 });
 
@@ -8089,9 +9350,10 @@ var REMOTE_CARD_STRINGS_DE = {
     noMacros: "Keine Makros verf\xFCgbar",
     noFavorites: "Keine Favoriten verf\xFCgbar",
     noCommands: "Keine Befehle verf\xFCgbar",
-    macrosTab: "Makros >",
-    favoritesTab: "Favoriten >",
-    commandsTab: "Befehle >",
+    macrosTab: "Makros",
+    favoritesTab: "Favoriten",
+    commandsTab: "Befehle",
+    powerButton: "Ein-/Ausschalten",
     activitySelectLabel: "Aktivit\xE4t",
     deviceSelectLabel: "Ger\xE4t",
     selectDevice: "Ger\xE4t ausw\xE4hlen",
@@ -8163,12 +9425,13 @@ var REMOTE_CARD_STRINGS_DE = {
       show_dpad: "Steuerkreuz",
       show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
       show_mid: "Lautst\xE4rke- und Kanalwippen",
-      show_media: "Mediensteuerung",
+      show_media: "Wiedergabe",
       show_colors: "Rot/Gr\xFCn/Gelb/Blau",
       show_abc: "A/B/C-Tasten",
       show_macros_button: "Makrotaste",
       show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
+      key_style: "Tastenstil",
       group_order: "Gruppenreihenfolge"
     },
     generalOptionsTitle: "Allgemeine Optionen",
@@ -8177,11 +9440,18 @@ var REMOTE_CARD_STRINGS_DE = {
     keyCaptureLearnMore: "Mehr \xFCber die Tastenerfassung erfahren",
     keyCaptureDocsAria: "Dokumentation zur Tastenerfassung",
     stylingOptions: "Stiloptionen",
+    keyStyleFlat: "Flach (wie der Kartenhintergrund)",
+    keyStyleTinted: "Get\xF6nt (Tasten heben sich vom Hintergrund ab)",
+    keyStyleElevated: "Erh\xF6ht (get\xF6nt mit Schatten)",
+    keyStyleGlossy: "Gl\xE4nzend (gl\xE4nzende, gew\xF6lbte Tasten)",
+    tintedPanels: "Get\xF6nte Panels",
+    tintedPanelsDescription: "Zeigt hinter jeder Tastengruppe einen get\xF6nten Hintergrund an.",
     layoutOptions: "Layoutoptionen",
     layoutSelectLabel: "Layout",
     defaultLayoutOption: "Standard-Aktivit\xE4tslayout",
     allDevicesOption: "Standard-Ger\xE4telayout",
     commands: "Befehle",
+    power: "Ein-/Aus-Taste",
     modeToggle: "Modusschalter",
     deviceModeDescription: "Steuere ein einzelnes, im Hub eingerichtetes Ger\xE4t mit dessen Tastenbelegungen und vollst\xE4ndiger Befehlsliste.",
     longPress: "Wiederholen beim Gedr\xFCckthalten aktivieren",
@@ -8200,9 +9470,19 @@ var REMOTE_CARD_STRINGS_DE = {
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
     channel: "Kanal",
-    mediaControls: "Mediensteuerung",
+    mediaControls: "Wiedergabe",
     dvr: "DVR",
     resetDefaultLayout: "Layout zur\xFCcksetzen",
+    shortcutSlotLeft: "Linke Verkn\xFCpfung",
+    shortcutSlotMiddle: "Mittlere Verkn\xFCpfung",
+    shortcutSlotRight: "Rechte Verkn\xFCpfung",
+    shortcutIcon: "Symbol",
+    shortcutCommand: "Befehl",
+    shortcutReset: "Zur\xFCcksetzen",
+    shortcutCommandMissing: (id) => `Befehl ${id} (fehlt)`,
+    shortcutsCommandsLoading: "Befehle werden geladen\u2026",
+    shortcutsCommandsUnavailable: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
+    shortcutsCommandsError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden. Lade das Dashboard neu und versuche es erneut.",
     noteDefaultLayout: "F\xFCr Aktivit\xE4ten ohne eigenes Layout",
     noteDeviceDefaultLayout: "F\xFCr Ger\xE4te ohne eigenes Layout",
     noteCustomActivityLayout: "Benutzerdefiniertes Aktivit\xE4tslayout aktiv",
@@ -8218,9 +9498,10 @@ var REMOTE_CARD_STRINGS_DE = {
     dpad: "Steuerkreuz",
     nav: "Zur\xFCck/Home/Men\xFC",
     mid: "Lautst\xE4rke/Kanal",
-    media: "Mediensteuerung",
+    media: "Wiedergabe",
     colors: "Farbtasten",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Verkn\xFCpfungen"
   },
   keys: {
     up: "Nach oben",
@@ -8264,9 +9545,10 @@ var REMOTE_CARD_STRINGS_ES = {
     noMacros: "No hay macros disponibles",
     noFavorites: "No hay favoritos disponibles",
     noCommands: "No hay comandos disponibles",
-    macrosTab: "Macros >",
-    favoritesTab: "Favoritos >",
-    commandsTab: "Comandos >",
+    macrosTab: "Macros",
+    favoritesTab: "Favoritos",
+    commandsTab: "Comandos",
+    powerButton: "Alternar encendido/apagado",
     activitySelectLabel: "Actividad",
     deviceSelectLabel: "Dispositivo",
     selectDevice: "Seleccionar dispositivo",
@@ -8338,12 +9620,13 @@ var REMOTE_CARD_STRINGS_ES = {
       show_dpad: "Control direccional",
       show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
       show_mid: "Controles de volumen y canal",
-      show_media: "Controles de reproducci\xF3n multimedia",
+      show_media: "Reproducci\xF3n",
       show_colors: "Rojo/Verde/Amarillo/Azul",
       show_abc: "Botones A/B/C",
       show_macros_button: "Bot\xF3n de macros",
       show_favorites_button: "Bot\xF3n de favoritos",
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
+      key_style: "Estilo de los botones",
       group_order: "Orden de los grupos"
     },
     generalOptionsTitle: "Opciones generales",
@@ -8352,11 +9635,18 @@ var REMOTE_CARD_STRINGS_ES = {
     keyCaptureLearnMore: "M\xE1s informaci\xF3n sobre la captura de botones",
     keyCaptureDocsAria: "Documentaci\xF3n sobre la captura de botones",
     stylingOptions: "Opciones de estilo",
+    keyStyleFlat: "Plano (igual que el fondo de la tarjeta)",
+    keyStyleTinted: "Tintado (los botones destacan sobre el fondo)",
+    keyStyleElevated: "Elevado (tintado con sombra)",
+    keyStyleGlossy: "Brillante (botones curvos y brillantes)",
+    tintedPanels: "Paneles tintados",
+    tintedPanelsDescription: "Muestra un fondo tintado detr\xE1s de cada grupo de botones.",
     layoutOptions: "Opciones de dise\xF1o",
     layoutSelectLabel: "Dise\xF1o",
     defaultLayoutOption: "Dise\xF1o predeterminado de actividades",
     allDevicesOption: "Dise\xF1o predeterminado de dispositivos",
     commands: "Comandos",
+    power: "Bot\xF3n de encendido/apagado",
     modeToggle: "Bot\xF3n de modo",
     deviceModeDescription: "Controla un \xFAnico dispositivo configurado en el hub mediante sus asignaciones de botones y su lista completa de comandos.",
     longPress: "Activar la repetici\xF3n al mantener pulsado un bot\xF3n",
@@ -8375,9 +9665,19 @@ var REMOTE_CARD_STRINGS_ES = {
     favorites: "Favoritos",
     volume: "Volumen",
     channel: "Canal",
-    mediaControls: "Controles multimedia",
+    mediaControls: "Reproducci\xF3n",
     dvr: "DVR",
     resetDefaultLayout: "Restablecer dise\xF1o",
+    shortcutSlotLeft: "Acceso directo izquierdo",
+    shortcutSlotMiddle: "Acceso directo central",
+    shortcutSlotRight: "Acceso directo derecho",
+    shortcutIcon: "Icono",
+    shortcutCommand: "Comando",
+    shortcutReset: "Restablecer",
+    shortcutCommandMissing: (id) => `Comando ${id} (no encontrado)`,
+    shortcutsCommandsLoading: "Cargando comandos\u2026",
+    shortcutsCommandsUnavailable: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
+    shortcutsCommandsError: "No se pudieron cargar los comandos de este dispositivo. Vuelve a cargar el panel de Home Assistant e int\xE9ntalo de nuevo.",
     noteDefaultLayout: "Se usa para actividades sin un dise\xF1o propio",
     noteDeviceDefaultLayout: "Se usa para dispositivos sin un dise\xF1o propio",
     noteCustomActivityLayout: "Se est\xE1 usando un dise\xF1o de actividad personalizado",
@@ -8393,9 +9693,10 @@ var REMOTE_CARD_STRINGS_ES = {
     dpad: "Control direccional",
     nav: "Atr\xE1s/Inicio/Men\xFA",
     mid: "Volumen/Canal",
-    media: "Controles multimedia",
+    media: "Reproducci\xF3n",
     colors: "Botones de colores",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Accesos directos"
   },
   keys: {
     up: "Arriba",
@@ -8411,7 +9712,7 @@ var REMOTE_CARD_STRINGS_ES = {
     mute: "Silencio",
     chup: "Canal +",
     chdn: "Canal -",
-    guide: "Gu\xEDa de programas",
+    guide: "Gu\xEDa",
     dvr: "DVR",
     play: "Reproducir",
     exit: "Salir",
@@ -8430,7 +9731,7 @@ var REMOTE_CARD_STRINGS_ES = {
 registerRemoteCardTranslation("es", REMOTE_CARD_STRINGS_ES);
 
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/fr.ts
-var plural2 = (count, singular, pluralForm = `${singular}s`) => count === 1 ? singular : pluralForm;
+var plural2 = (count, singular, pluralForm = `${singular}s`) => count > 1 ? pluralForm : singular;
 var REMOTE_CARD_STRINGS_FR = {
   card: {
     selectEntityError: "S\xE9lectionnez une entit\xE9 de t\xE9l\xE9commande Sofabaton",
@@ -8439,9 +9740,10 @@ var REMOTE_CARD_STRINGS_FR = {
     noMacros: "Aucune macro disponible",
     noFavorites: "Aucun favori disponible",
     noCommands: "Aucune commande disponible",
-    macrosTab: "Macros >",
-    favoritesTab: "Favoris >",
-    commandsTab: "Commandes >",
+    macrosTab: "Macros",
+    favoritesTab: "Favoris",
+    commandsTab: "Commandes",
+    powerButton: "Basculer marche/arr\xEAt",
     activitySelectLabel: "Activit\xE9",
     deviceSelectLabel: "Appareil",
     selectDevice: "S\xE9lectionner un appareil",
@@ -8513,12 +9815,13 @@ var REMOTE_CARD_STRINGS_FR = {
       show_dpad: "Pav\xE9 directionnel",
       show_nav: "Touches Retour/Accueil/Menu",
       show_mid: "Touches de volume et de cha\xEEne",
-      show_media: "Commandes de lecture multim\xE9dia",
+      show_media: "Lecture",
       show_colors: "Rouge/Vert/Jaune/Bleu",
       show_abc: "Touches A/B/C",
       show_macros_button: "Bouton des macros",
       show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
+      key_style: "Style des touches",
       group_order: "Ordre des groupes"
     },
     generalOptionsTitle: "Options g\xE9n\xE9rales",
@@ -8527,13 +9830,20 @@ var REMOTE_CARD_STRINGS_FR = {
     keyCaptureLearnMore: "En savoir plus sur la capture de touches",
     keyCaptureDocsAria: "Documentation sur la capture de touches",
     stylingOptions: "Options de style",
+    keyStyleFlat: "Plat (m\xEAme couleur que la carte)",
+    keyStyleTinted: "Teint\xE9 (les touches se d\xE9tachent du fond)",
+    keyStyleElevated: "Sur\xE9lev\xE9 (teint\xE9 avec ombre)",
+    keyStyleGlossy: "Brillant (touches bomb\xE9es et brillantes)",
+    tintedPanels: "Panneaux teint\xE9s",
+    tintedPanelsDescription: "Affiche un fond teint\xE9 derri\xE8re chaque groupe de touches.",
     layoutOptions: "Options de disposition",
     layoutSelectLabel: "Disposition",
     defaultLayoutOption: "Disposition par d\xE9faut des activit\xE9s",
     allDevicesOption: "Disposition par d\xE9faut des appareils",
     commands: "Commandes",
+    power: "Bouton Marche/Arr\xEAt",
     modeToggle: "Bouton de mode",
-    deviceModeDescription: "Contr\xF4lez un seul appareil configur\xE9 sur le hub, avec ses propres affectations de touches et sa liste compl\xE8te de commandes.",
+    deviceModeDescription: "Contr\xF4lez un seul appareil configur\xE9 sur le hub, avec ses propres attributions de touches et sa liste compl\xE8te de commandes.",
     longPress: "Activer la r\xE9p\xE9tition par appui prolong\xE9",
     longPressDescription: "Maintenez une touche s\xE9lectionn\xE9e pour envoyer sa commande de fa\xE7on r\xE9p\xE9t\xE9e, comme sur la t\xE9l\xE9commande physique.",
     longPressButtons: "Touches",
@@ -8550,9 +9860,19 @@ var REMOTE_CARD_STRINGS_FR = {
     favorites: "Favoris",
     volume: "Volume",
     channel: "Cha\xEEne",
-    mediaControls: "Commandes multim\xE9dias",
+    mediaControls: "Lecture",
     dvr: "DVR",
     resetDefaultLayout: "R\xE9initialiser",
+    shortcutSlotLeft: "Raccourci gauche",
+    shortcutSlotMiddle: "Raccourci central",
+    shortcutSlotRight: "Raccourci droit",
+    shortcutIcon: "Ic\xF4ne",
+    shortcutCommand: "Commande",
+    shortcutReset: "R\xE9initialiser",
+    shortcutCommandMissing: (id) => `Commande ${id} (manquante)`,
+    shortcutsCommandsLoading: "Chargement des commandes\u2026",
+    shortcutsCommandsUnavailable: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
+    shortcutsCommandsError: "Impossible de charger les commandes de cet appareil. Rechargez le tableau de bord et r\xE9essayez.",
     noteDefaultLayout: "Utilis\xE9e pour les activit\xE9s sans disposition propre",
     noteDeviceDefaultLayout: "Utilis\xE9e pour les appareils sans disposition propre",
     noteCustomActivityLayout: "Disposition d\u2019activit\xE9 personnalis\xE9e utilis\xE9e",
@@ -8568,9 +9888,10 @@ var REMOTE_CARD_STRINGS_FR = {
     dpad: "Pav\xE9 directionnel",
     nav: "Retour/Accueil/Menu",
     mid: "Volume/Cha\xEEne",
-    media: "Commandes multim\xE9dias",
+    media: "Lecture",
     colors: "Touches de couleur",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Raccourcis"
   },
   keys: {
     up: "Haut",
@@ -8613,20 +9934,21 @@ var REMOTE_CARD_STRINGS_NL = {
     noMacros: "Geen macro's beschikbaar",
     noFavorites: "Geen favorieten beschikbaar",
     noCommands: "Geen commando's beschikbaar",
-    macrosTab: "Macro's >",
-    favoritesTab: "Favorieten >",
-    commandsTab: "Commando's >",
+    macrosTab: "Macro's",
+    favoritesTab: "Favorieten",
+    commandsTab: "Commando's",
+    powerButton: "In-/uitschakelen",
     activitySelectLabel: "Activiteit",
     deviceSelectLabel: "Apparaat",
     selectDevice: "Selecteer apparaat",
-    allDevicesLayout: "Standaard voor apparaten",
+    allDevicesLayout: "Standaardindeling voor apparaten",
     filterCommands: "Commando's filteren",
     switchToDeviceMode: "Naar apparaatmodus schakelen",
     switchToActivityMode: "Naar activiteitsmodus schakelen",
     deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
     poweredOff: "Uitgeschakeld",
-    defaultLayout: "Standaard voor activiteiten",
+    defaultLayout: "Standaardindeling voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
     deviceFallback: (id) => `Apparaat ${id}`,
     pickerName: "Sofabaton virtuele afstandsbediening",
@@ -8687,12 +10009,13 @@ var REMOTE_CARD_STRINGS_NL = {
       show_dpad: "Richtingsknoppen",
       show_nav: "Terug/Home/Menu-knoppen",
       show_mid: "Volume-/kanaalknoppen",
-      show_media: "Mediabediening",
+      show_media: "Afspelen",
       show_colors: "Rood/groen/geel/blauw",
       show_abc: "A/B/C-knoppen",
       show_macros_button: "Macroknop",
       show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
+      key_style: "Knopstijl",
       group_order: "Groepsvolgorde"
     },
     generalOptionsTitle: "Algemene opties",
@@ -8701,13 +10024,20 @@ var REMOTE_CARD_STRINGS_NL = {
     keyCaptureLearnMore: "Meer informatie over Knopdrukken registreren",
     keyCaptureDocsAria: "Documentatie over Knopdrukken registreren",
     stylingOptions: "Stijlopties",
+    keyStyleFlat: "Vlak (zelfde kleur als de kaart)",
+    keyStyleTinted: "Getint (knoppen steken af tegen de achtergrond)",
+    keyStyleElevated: "Verhoogd (getint met schaduw)",
+    keyStyleGlossy: "Glanzend (glimmende, bolle knoppen)",
+    tintedPanels: "Getinte panelen",
+    tintedPanelsDescription: "Toont een getinte achtergrond achter elke groep knoppen.",
     layoutOptions: "Indelingsopties",
     layoutSelectLabel: "Indeling",
-    defaultLayoutOption: "Standaard voor activiteiten",
-    allDevicesOption: "Standaard voor apparaten",
+    defaultLayoutOption: "Standaardindeling voor activiteiten",
+    allDevicesOption: "Standaardindeling voor apparaten",
     commands: "Commando's",
+    power: "Aan/uit-knop",
     modeToggle: "Modusknop",
-    deviceModeDescription: "Bedien \xE9\xE9n apparaat dat op de hub is ingesteld met de knopkoppelingen en volledige lijst met commando's van dat apparaat.",
+    deviceModeDescription: "Bedien \xE9\xE9n apparaat dat op de hub is ingesteld met de knoptoewijzingen en volledige lijst met commando's van dat apparaat.",
     longPress: "Herhalen bij ingedrukt houden inschakelen",
     longPressDescription: "Houd een geselecteerde knop ingedrukt om het bijbehorende commando te herhalen, net als op de fysieke afstandsbediening.",
     longPressButtons: "Knoppen",
@@ -8724,15 +10054,25 @@ var REMOTE_CARD_STRINGS_NL = {
     favorites: "Favorieten",
     volume: "Volume",
     channel: "Kanaal",
-    mediaControls: "Mediabediening",
+    mediaControls: "Afspelen",
     dvr: "DVR",
     resetDefaultLayout: "Indeling resetten",
+    shortcutSlotLeft: "Linker snelkoppeling",
+    shortcutSlotMiddle: "Middelste snelkoppeling",
+    shortcutSlotRight: "Rechter snelkoppeling",
+    shortcutIcon: "Pictogram",
+    shortcutCommand: "Commando",
+    shortcutReset: "Resetten",
+    shortcutCommandMissing: (id) => `Commando ${id} (ontbreekt)`,
+    shortcutsCommandsLoading: "Commando's laden\u2026",
+    shortcutsCommandsUnavailable: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
+    shortcutsCommandsError: "Kan de commando's van dit apparaat niet laden. Laad het dashboard opnieuw en probeer het nogmaals.",
     noteDefaultLayout: "Gebruikt voor activiteiten zonder eigen indeling",
     noteDeviceDefaultLayout: "Gebruikt voor apparaten zonder eigen indeling",
     noteCustomActivityLayout: "Aangepaste activiteitenindeling in gebruik",
     noteCustomDeviceLayout: "Aangepaste apparaatindeling in gebruik",
-    noteUsingActivityDefault: "Standaard activiteitenindeling in gebruik",
-    noteUsingDeviceDefault: "Standaard apparaatindeling in gebruik"
+    noteUsingActivityDefault: "Standaardindeling voor activiteiten in gebruik",
+    noteUsingDeviceDefault: "Standaardindeling voor apparaten in gebruik"
   },
   groups: {
     activity: "Activiteit/apparaat",
@@ -8742,9 +10082,10 @@ var REMOTE_CARD_STRINGS_NL = {
     dpad: "Richtingsknoppen",
     nav: "Terug/Home/Menu",
     mid: "Volume/kanaal",
-    media: "Mediabediening",
+    media: "Afspelen",
     colors: "Kleurknoppen",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "Snelkoppelingen"
   },
   keys: {
     up: "Omhoog",
@@ -8787,9 +10128,10 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     noMacros: "\u6CA1\u6709\u53EF\u7528\u7684\u5B8F",
     noFavorites: "\u6CA1\u6709\u53EF\u7528\u7684\u6536\u85CF",
     noCommands: "\u6CA1\u6709\u53EF\u7528\u547D\u4EE4",
-    macrosTab: "\u5B8F >",
-    favoritesTab: "\u6536\u85CF >",
-    commandsTab: "\u547D\u4EE4 >",
+    macrosTab: "\u5B8F",
+    favoritesTab: "\u6536\u85CF",
+    commandsTab: "\u547D\u4EE4",
+    powerButton: "\u5207\u6362\u7535\u6E90",
     activitySelectLabel: "\u6D3B\u52A8",
     deviceSelectLabel: "\u8BBE\u5907",
     selectDevice: "\u9009\u62E9\u8BBE\u5907",
@@ -8861,12 +10203,13 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       show_dpad: "\u65B9\u5411\u952E",
       show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
       show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
-      show_media: "\u5A92\u4F53\u64AD\u653E\u63A7\u4EF6",
+      show_media: "\u64AD\u653E",
       show_colors: "\u7EA2/\u7EFF/\u9EC4/\u84DD",
       show_abc: "A/B/C \u6309\u952E",
       show_macros_button: "\u5B8F\u6309\u94AE",
       show_favorites_button: "\u6536\u85CF\u6309\u94AE",
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
+      key_style: "\u6309\u952E\u6837\u5F0F",
       group_order: "\u5206\u7EC4\u987A\u5E8F"
     },
     generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
@@ -8875,11 +10218,18 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     keyCaptureLearnMore: "\u8BE6\u7EC6\u4E86\u89E3\u6309\u952E\u6355\u83B7",
     keyCaptureDocsAria: "\u6309\u952E\u6355\u83B7\u6587\u6863",
     stylingOptions: "\u6837\u5F0F\u9009\u9879",
+    keyStyleFlat: "\u6241\u5E73\uFF08\u4E0E\u5361\u7247\u80CC\u666F\u76F8\u540C\uFF09",
+    keyStyleTinted: "\u7740\u8272\uFF08\u6309\u952E\u4E0E\u80CC\u666F\u533A\u5206\u5F00\uFF09",
+    keyStyleElevated: "\u60AC\u6D6E\uFF08\u7740\u8272\u5E76\u5E26\u9634\u5F71\uFF09",
+    keyStyleGlossy: "\u5149\u6CFD\uFF08\u6709\u5149\u6CFD\u7684\u7ACB\u4F53\u6309\u952E\uFF09",
+    tintedPanels: "\u7740\u8272\u9762\u677F",
+    tintedPanelsDescription: "\u5728\u6BCF\u7EC4\u6309\u952E\u540E\u65B9\u663E\u793A\u7740\u8272\u80CC\u666F\u3002",
     layoutOptions: "\u5E03\u5C40\u9009\u9879",
     layoutSelectLabel: "\u5E03\u5C40",
     defaultLayoutOption: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     allDevicesOption: "\u9ED8\u8BA4\u8BBE\u5907\u5E03\u5C40",
     commands: "\u547D\u4EE4",
+    power: "\u7535\u6E90\u6309\u94AE",
     modeToggle: "\u6A21\u5F0F\u5207\u6362",
     deviceModeDescription: "\u63A7\u5236 Hub \u4E2D\u914D\u7F6E\u7684\u5355\u4E2A\u8BBE\u5907\uFF0C\u5E76\u4F7F\u7528\u8BE5\u8BBE\u5907\u81EA\u5DF1\u7684\u6309\u952E\u5206\u914D\u548C\u5B8C\u6574\u547D\u4EE4\u5217\u8868\u3002",
     longPress: "\u542F\u7528\u957F\u6309\u91CD\u590D\u53D1\u9001",
@@ -8898,9 +10248,19 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",
     channel: "\u9891\u9053",
-    mediaControls: "\u5A92\u4F53\u63A7\u4EF6",
+    mediaControls: "\u64AD\u653E",
     dvr: "DVR",
     resetDefaultLayout: "\u91CD\u7F6E\u5E03\u5C40",
+    shortcutSlotLeft: "\u5DE6\u4FA7\u5FEB\u6377\u6309\u952E",
+    shortcutSlotMiddle: "\u4E2D\u95F4\u5FEB\u6377\u6309\u952E",
+    shortcutSlotRight: "\u53F3\u4FA7\u5FEB\u6377\u6309\u952E",
+    shortcutIcon: "\u56FE\u6807",
+    shortcutCommand: "\u547D\u4EE4",
+    shortcutReset: "\u91CD\u7F6E",
+    shortcutCommandMissing: (id) => `\u547D\u4EE4 ${id}\uFF08\u7F3A\u5931\uFF09`,
+    shortcutsCommandsLoading: "\u6B63\u5728\u52A0\u8F7D\u547D\u4EE4\u2026",
+    shortcutsCommandsUnavailable: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
+    shortcutsCommandsError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002\u8BF7\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\uFF0C\u7136\u540E\u91CD\u8BD5\u3002",
     noteDefaultLayout: "\u7528\u4E8E\u6CA1\u6709\u5355\u72EC\u5E03\u5C40\u7684\u6D3B\u52A8",
     noteDeviceDefaultLayout: "\u7528\u4E8E\u6CA1\u6709\u5355\u72EC\u5E03\u5C40\u7684\u8BBE\u5907",
     noteCustomActivityLayout: "\u6B63\u5728\u4F7F\u7528\u81EA\u5B9A\u4E49\u6D3B\u52A8\u5E03\u5C40",
@@ -8916,9 +10276,10 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     dpad: "\u65B9\u5411\u952E",
     nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355",
     mid: "\u97F3\u91CF/\u9891\u9053",
-    media: "\u5A92\u4F53\u63A7\u4EF6",
+    media: "\u64AD\u653E",
     colors: "\u5F69\u8272\u6309\u952E",
-    abc: "A/B/C"
+    abc: "A/B/C",
+    shortcuts: "\u5FEB\u6377\u6309\u952E"
   },
   keys: {
     up: "\u4E0A",

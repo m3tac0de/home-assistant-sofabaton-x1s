@@ -164,7 +164,9 @@ def _index_bundle(
         strict = strict_for(device_id)
         if strict:
             _validate_name(block.get("name"), f"{item_path}.device.name", model, grandfathered=grandfathered_names)
-            idle = block.get("idle_behavior", block.get("power_mode"))
+            # power_mode is the record-tail byte, not an idle spelling;
+            # bundles without idle_behavior simply have nothing to check.
+            idle = block.get("idle_behavior")
             if idle is not None and idle not in {1, 2, 3, 4}:
                 # Hubs report idle values outside the vendor-app range (0 on
                 # Wifi devices, observed in the wild); an unchanged value is
@@ -792,7 +794,7 @@ def _collect_baseline_idle(bundle: Any) -> dict[int, Any]:
         block = entry["device"]
         device_id = block.get("device_id")
         if isinstance(device_id, int):
-            out[device_id] = block.get("idle_behavior", block.get("power_mode"))
+            out[device_id] = block.get("idle_behavior")
     return out
 
 

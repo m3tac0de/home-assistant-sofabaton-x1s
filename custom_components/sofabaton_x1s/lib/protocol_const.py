@@ -93,7 +93,17 @@ OP_REMOTE_SYNC = 0x0064  # payload: empty; force remote<->hub sync on X1/X1S
 OP_X2_REMOTE_LIST = 0x012E  # payload: [0x00]; request connected remotes on X2
 OP_REQ_REMOTE_STATUS = OP_X2_REMOTE_LIST  # X2: remote status rows; replies family 0x2F
 OP_X2_REMOTE_LIST_ROW = 0x332F  # payload includes 3-byte remote id and remote metadata
-OP_X2_REMOTE_SYNC = 0x0464  # payload: [remote_id:3][0x01]; force sync for selected remote
+# Historical constant from early captures. Bench 2026-08-27 (live X2):
+# this form is ACKed with STATUS_ACK 0x00 but starts NO sync -- an
+# accepted no-op. Kept for capture decoding only; senders must use
+# OP_X2_REMOTE_SYNC_ALL.
+OP_X2_REMOTE_SYNC = 0x0464  # payload: [remote_id:3][0x01]; accepted no-op (see above)
+# The working X2 sync trigger (bench-validated live 2026-08-27): payload
+# FF FF FF = all paired remotes. Instant STATUS_ACK 0x00 means queued,
+# not completed; the hub SERIALIZES triggers (a second one runs after
+# the current pass ends; ~5 min full sync observed) and emits no
+# TCP-visible completion or busy signal.
+OP_X2_REMOTE_SYNC_ALL = 0x0364  # payload: [0xFF, 0xFF, 0xFF]; sync all remotes
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
 OP_DEFINE_IP_CMD = 0x0ED3  # payload includes HTTP method/URL/headers
 OP_DEFINE_IP_CMD_EXISTING = 0x0EAE  # payload defines IP command for an existing device
@@ -246,6 +256,7 @@ OPNAMES: Dict[int, str] = {
     OP_X2_REMOTE_LIST: "X2_REMOTE_LIST",
     OP_X2_REMOTE_LIST_ROW: "X2_REMOTE_LIST_ROW",
     OP_X2_REMOTE_SYNC: "X2_REMOTE_SYNC",
+    OP_X2_REMOTE_SYNC_ALL: "X2_REMOTE_SYNC_ALL",
     OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
     OP_DEFINE_IP_CMD: "DEFINE_IP_CMD",
     OP_DEFINE_IP_CMD_EXISTING: "DEFINE_IP_CMD_EXISTING",
@@ -576,6 +587,7 @@ __all__ = [
     "OP_REQ_REMOTE_STATUS",
     "OP_X2_REMOTE_LIST_ROW",
     "OP_X2_REMOTE_SYNC",
+    "OP_X2_REMOTE_SYNC_ALL",
     "OP_CREATE_DEVICE_HEAD",
     "OP_DEFINE_IP_CMD",
     "OP_DEFINE_IP_CMD_EXISTING",

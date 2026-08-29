@@ -26,12 +26,12 @@ var TOOLS_CARD_STRINGS_EN_GB = {
     }
   },
   backup: {
-    powerNoDevices: "No devices yet. Add a favourite, binding, or macro that uses one.",
+    powerNoDevices: "No devices yet. Add a favourite, assignment, or macro that uses one.",
     activityMeta: (favourites, macros) => `${favourites} ${favourites === 1 ? "favourite" : "favourites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",
-    renameFavorite: "Rename Favourite",
+    renameFavorite: "Rename favourite",
     buttonCatalog: {
       colour: "Colour"
     }

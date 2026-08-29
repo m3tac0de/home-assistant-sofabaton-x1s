@@ -9,11 +9,17 @@ import { LitElement, html, nothing, css, unsafeCSS, type PropertyValues } from "
 import { repeat } from "lit/directives/repeat.js";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import {
+  SHORTCUT_SLOTS,
+  deviceShortcutsFromConfig,
   favoritesButtonEnabled,
   macrosButtonEnabled,
   mfAsRows,
   mfRowVisibleRows,
   normalizedGroupOrder,
+  keyStyleFromConfig,
+  powerButtonEnabled,
+  shortcutsRowEnabled,
+  tintedPanelsFromConfig,
 } from "./remote-card-layout";
 import { ensureHaElements } from "./remote-card-compat";
 import {
@@ -33,6 +39,7 @@ import {
   drawerDesiredHeight,
   drawerDirection,
   holdRepeatIndexOf,
+  isLongPressEvent,
   layeringZIndexes,
 } from "./remote-card-gestures";
 import { RemoteCardStore } from "./state/remote-card-store";
@@ -47,8 +54,10 @@ import {
   renderMedia,
   renderMid,
   renderNavRow,
+  renderShortcutsRow,
   type KeyGroupsParams,
   type KeySpec,
+  type ShortcutsRowSlot,
 } from "./sections/key-groups";
 import {
   renderCommandsDrawer,
@@ -57,10 +66,20 @@ import {
   renderFavoritesItems,
   renderInlineDrawerRow,
   renderMacroFavorites,
+  renderPowerRow,
   type CommandsFilterParams,
   type MacroFavoritesParams,
+  type PowerKeyParams,
 } from "./sections/macro-favorites";
 import { renderAssistModal, renderAssistRow } from "./sections/assist";
+
+/** "#rgb" / "#rrggbb" -> "r,g,b" (HA's hex2rgb for --rgb-* companions). */
+function hexToRgbTriplet(value: string): string | null {
+  const hex = value.trim().slice(1);
+  const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)).join(",");
+}
 
 export class SofabatonRemoteCard extends LitElement {
   static styles = [
@@ -407,8 +426,16 @@ export class SofabatonRemoteCard extends LitElement {
 
   private _syncLayering(): void {
     const activityRow = this._activityRowRef.value;
-    const mfContainer = this._mfContainerRef.value;
+    let mfContainer = this._mfContainerRef.value;
     if (!activityRow || !mfContainer) return;
+
+    // Device mode wraps the container in .commands-row (the power key's
+    // row grid), which is the positioned ancestor and stacking context;
+    // a z-index on the now-static container inside it is inert, so the
+    // raise must land on the wrapper or an open drawer stays underneath
+    // the selector whenever its group is ordered above the activity row.
+    mfContainer =
+      (mfContainer.closest(".commands-row") as HTMLElement | null) ?? mfContainer;
 
     const key = `${this._store.activityMenuOpen ? 1 : 0}:${this._store.activeDrawer || ""}`;
     const targets: [HTMLElement | null, HTMLElement | null] = [activityRow, mfContainer];
@@ -553,6 +580,20 @@ export class SofabatonRemoteCard extends LitElement {
           root.style.setProperty(cssVar, String(v));
           this._appliedThemeVars.push(cssVar);
         }
+        // HA parity (applyThemesOnElement/processTheme): every hex value
+        // also gets an --rgb-<key> companion unless the theme ships one, so
+        // rgba(var(--rgb-primary-color), …) rules follow the card theme
+        // instead of the page theme.
+        for (const [k, v] of Object.entries(vars)) {
+          if (typeof v !== "string" || !v.startsWith("#")) continue;
+          const key = k.startsWith("--") ? k.slice(2) : k;
+          if (vars[`rgb-${key}`] !== undefined || vars[`--rgb-${key}`] !== undefined) continue;
+          const triplet = hexToRgbTriplet(v);
+          if (!triplet) continue;
+          const cssVar = `--rgb-${key}`;
+          root.style.setProperty(cssVar, triplet);
+          this._appliedThemeVars.push(cssVar);
+        }
       }
     }
 
@@ -564,6 +605,21 @@ export class SofabatonRemoteCard extends LitElement {
       null;
 
     const finalBg = bgOverrideCss || themeBg;
+
+    // A background override can contradict the page theme's text colour
+    // (black card on a light dashboard): the overlay/tint base derived from
+    // --primary-text-color would land on the wrong side. The override is a
+    // known RGB triple, so pick the base from its luminance; key tints,
+    // hover/press overlays and the tinted key style read --sb-overlay-base
+    // first (see remote-card-styles.ts).
+    const override = this._store.config?.background_override;
+    if (bgOverrideCss && Array.isArray(override) && override.length === 3) {
+      const [r, g, b] = override.map((v) => Number(v) / 255);
+      const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      root.style.setProperty("--sb-overlay-base", luminance < 0.4 ? "#ffffff" : "#000000");
+      this._appliedThemeVars.push("--sb-overlay-base");
+    }
 
     if (finalBg) {
       root.style.setProperty("--ha-card-background", String(finalBg));
@@ -829,6 +885,7 @@ export class SofabatonRemoteCard extends LitElement {
       isEnabled: (id) => store.isEnabled(id),
       onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
       holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
+      longPressForKey: (spec) => this._longPressForSpec(spec),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,
@@ -891,6 +948,59 @@ export class SofabatonRemoteCard extends LitElement {
       },
     };
 
+    // Device-mode power key (plan §8.1): rendered only when the selected
+    // device has power configured (backend gate, fail-closed) and the
+    // layout has not hidden it. It docks on the commands strip: beside
+    // the drawer bar, beside the filter in commands-as-rows mode, and
+    // alone right-docked when the Commands strip is hidden. The edit
+    // preview drops the data gate: previewing a device layout has no
+    // real device selected, and the Power switch should visualize like
+    // every other layout toggle (the key is inert in edit mode anyway).
+    const powerVisible =
+      deviceMode &&
+      powerButtonEnabled(layoutConfig) &&
+      (this._editMode || store.devicePowerConfigured());
+    const powerParams: PowerKeyParams = {
+      busy: store.powerBusy,
+      disabled: disableAll,
+      label: str().card.powerButton,
+      onToggle: () => {
+        void store.toggleDevicePower();
+      },
+    };
+
+    // Shortcuts row (shortcuts-row-plan.md): per-device configured slots.
+    // Live mode renders only when at least one slot is configured; the edit
+    // preview always renders it (ghost slots) so the group's position and
+    // toggle visualize like every other layout row. A configured command id
+    // that has vanished from the keymap renders disabled, not hidden.
+    const shortcutConfigs = deviceMode
+      ? deviceShortcutsFromConfig(store.config, derived.deviceId)
+      : {};
+    const shortcutSlots: ShortcutsRowSlot[] = SHORTCUT_SLOTS.map((slot) => {
+      const config = shortcutConfigs[slot];
+      if (!config) {
+        return { slot, icon: null, label: "", commandId: null, missing: false };
+      }
+      const keymapCommands =
+        derived.keymapEntry?.status === "ready" ? derived.keymapEntry.commands : null;
+      const match = keymapCommands?.find(
+        (command) => command.command_id === config.command_id,
+      );
+      return {
+        slot,
+        icon: config.icon,
+        label: match?.name ?? str().assist.commandFallback(config.command_id),
+        commandId: config.command_id,
+        missing: keymapCommands != null && !match,
+      };
+    });
+    const shortcutsConfigured = shortcutSlots.some((slot) => slot.icon != null);
+    const shortcutsVisible =
+      deviceMode &&
+      shortcutsRowEnabled(layoutConfig) &&
+      (shortcutsConfigured || this._editMode);
+
     const commandsParams = {
       visible: showCommandsDrawer,
       open: store.activeDrawer === "commands",
@@ -922,6 +1032,13 @@ export class SofabatonRemoteCard extends LitElement {
     // through the device chain, which store.groupOrderList (activity-keyed)
     // must not re-resolve.
     const order = normalizedGroupOrder(layoutConfig.group_order);
+    const keyStyle = keyStyleFromConfig(store.config);
+    const tintedPanels = tintedPanelsFromConfig(store.config);
+    const wrapClass = [
+      "wrap",
+      ...(keyStyle === "flat" ? [] : [`wrap--keys-${keyStyle}`]),
+      ...(tintedPanels ? ["wrap--panels"] : []),
+    ].join(" ");
     const groupTemplates: Record<string, () => unknown> = {
       activity: () =>
         Boolean(layoutConfig.show_activity) ? renderActivityRow({
@@ -954,14 +1071,17 @@ export class SofabatonRemoteCard extends LitElement {
                 onToggle: () => this._handleModeToggle(),
               }
             : null,
+          menuOpen: Boolean(store.activityMenuOpen),
           onSelect: (ev) => this._handleSelect(ev),
           onMenuOpened: () => {
             store.activityMenuOpen = true;
             this._syncLayering();
+            this.requestUpdate(); // row class mirrors the open menu
           },
           onMenuClosed: () => {
             store.activityMenuOpen = false;
             this._syncLayering();
+            this.requestUpdate();
           },
           rowRef: this._activityRowRef,
           loadIndicatorRef: this._loadIndicatorRef,
@@ -969,8 +1089,13 @@ export class SofabatonRemoteCard extends LitElement {
       macro_favorites: () =>
         deviceMode
           ? showCommandsDrawer
-            ? renderCommandsDrawer(commandsParams)
-            : nothing
+            ? renderCommandsDrawer({
+                ...commandsParams,
+                power: powerVisible ? powerParams : null,
+              })
+            : powerVisible && !commandsAsRow
+              ? renderPowerRow(powerParams)
+              : nothing
           : drawerDisplayState?.showMF
             ? renderMacroFavorites(mfParams)
             : nothing,
@@ -988,6 +1113,7 @@ export class SofabatonRemoteCard extends LitElement {
                 itemCount: derived.commands.length,
                 emptyText: str().card.noCommands,
                 filter: commandsFilter,
+                power: powerVisible ? powerParams : null,
               })
             : nothing
           : macrosRowOn
@@ -1015,6 +1141,16 @@ export class SofabatonRemoteCard extends LitElement {
       media: () => renderMedia(keyParams, mediaEnabled),
       colors: () => renderColors(keyParams, Boolean(layoutConfig.show_colors)),
       abc: () => renderAbc(keyParams, Boolean(layoutConfig.show_abc) && derived.isX2),
+      shortcuts: () =>
+        renderShortcutsRow(
+          {
+            editMode: this._editMode,
+            disableAll,
+            slots: shortcutSlots,
+            onPress: (slot) => this._onShortcutPress(slot),
+          },
+          shortcutsVisible,
+        ),
     };
 
     const warnText = derived.isUnavailable
@@ -1027,7 +1163,7 @@ export class SofabatonRemoteCard extends LitElement {
         ${assistEnabled
           ? renderAssistModal({ visible: true, controller: this._assist })
           : nothing}
-        <div class="wrap" ${ref(this._wrapRef)}>
+        <div class=${wrapClass} ${ref(this._wrapRef)}>
           ${assistEnabled
             ? renderAssistRow({ visible: true, controller: this._assist })
             : nothing}
@@ -1046,12 +1182,42 @@ export class SofabatonRemoteCard extends LitElement {
     `;
   }
 
+  /**
+   * Transparent hub long-press: arm the hold gesture on a hard button only
+   * when its keymap row carries a binding on the current scope (activity
+   * or device page) AND hold-to-repeat is not claiming the button (the
+   * explicit hold_repeat opt-in wins that collision; a hold can only mean
+   * one thing). Never armed in edit mode: sends are blocked there anyway.
+   */
+  private _longPressForSpec(spec: KeySpec): boolean {
+    if (this._editMode) return false;
+    const store = this._store;
+    if (longPressEnabledForKey(store.config, spec.key)) return false;
+    const scope =
+      store.mode() === "device"
+        ? store.currentDeviceId()
+        : (store.commandTarget(spec.id)?.activity_id ?? store.currentActivityId());
+    return store.longPressAvailableForButton(spec.id, scope);
+  }
+
   private _onKeyPress(spec: KeySpec, ev?: Event): void {
     const deviceMode = this._store.mode() === "device";
     const targetDeviceId = deviceMode
       ? this._store.currentDeviceId()
       : (this._store.commandTarget(spec.id)?.activity_id ??
         this._store.currentActivityId());
+    // Hub long-press fire: the card resolves the row's configured
+    // (device, command) pair and sends it favorites-style, so this is not
+    // the button's short command and must not be captured as one by
+    // Automation Assist.
+    if (isLongPressEvent(ev)) {
+      if (this._assist.active) {
+        this._assist.setStatus(str().assist.notCaptured);
+      }
+      this._store.triggerCommandPulse();
+      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      return;
+    }
     // A hold is one press for Key capture: record it on the first repeat
     // (the release tap of a hold that repeated is suppressed) and let the
     // later repeats only send, or every tick would create another
@@ -1071,6 +1237,23 @@ export class SofabatonRemoteCard extends LitElement {
     }
     this._store.triggerCommandPulse();
     void this._store.sendCommand(spec.cmd, targetDeviceId);
+  }
+
+  private _onShortcutPress(slot: ShortcutsRowSlot): void {
+    if (slot.commandId == null) return;
+    const deviceId = this._store.currentDeviceId();
+    if (deviceId == null) return;
+    this._assist.recordClick({
+      label: slot.label,
+      commandId: slot.commandId,
+      deviceId,
+      commandType: "favorite",
+      icon: slot.icon,
+      deviceMode: true,
+      deviceName: this._store.deviceNameForId(deviceId),
+    });
+    this._store.triggerCommandPulse();
+    void this._store.sendCommand(slot.commandId, deviceId);
   }
 
   private _onCommandItem(command: { command_id: number; name: string }): void {

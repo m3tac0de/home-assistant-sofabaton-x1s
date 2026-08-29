@@ -626,12 +626,17 @@ class WifiDeviceMixin:
         power_on_command_id: int | None = None,
         power_off_command_id: int | None = None,
         input_command_ids: list[int] | None = None,
+        send_remote_sync: bool = True,
     ) -> dict[str, Any] | None:
         """Build a network-callback :class:`DeviceCreateRequest` and run it.
 
         Thin adapter over :func:`run_device_create`; the dict return
         value preserves the legacy contract used by service / WS
-        callers.
+        callers. ``send_remote_sync=False`` skips the pipeline's
+        app-parity remote-sync tail -- batch orchestrators that keep
+        writing after the create pass this and send one terminal
+        trigger themselves (bench 2026-08-27: mid-batch triggers
+        abort/restart the remote's multi-minute full sync).
         """
 
         if not self.can_issue_commands():
@@ -651,6 +656,7 @@ class WifiDeviceMixin:
                 "input_command_ids": _validate_wifi_input_ids(
                     input_command_ids, max_command_id=len(normalized_commands)
                 ),
+                "send_remote_sync": bool(send_remote_sync),
             },
         )
         result = run_device_create(self, request)
@@ -931,14 +937,20 @@ class WifiDeviceMixin:
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name="save-tail-0064",
-            family=0x64,
-            payload=b"",
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
-            return None
+        # App-parity save tail: skipped when the deploy pipeline owns the
+        # batch -- a mid-batch remote-sync trigger aborts and restarts
+        # the remote's multi-minute full sync (bench 2026-08-27); the
+        # pipeline sends its own single terminal trigger after all
+        # writes.
+        if profile.get("send_remote_sync", True):
+            _step = self._send_step(
+                step_name="save-tail-0064",
+                family=0x64,
+                payload=b"",
+                ack_opcode=0x0103,
+            )
+            if not _step.ok:
+                return None
 
         self._cache_created_wifi_device(
             device_id=device_id,
@@ -1101,14 +1113,17 @@ class WifiDeviceMixin:
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name="save-tail-0064",
-            family=0x64,
-            payload=b"",
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
-            return None
+        # App-parity save tail: skipped when the deploy pipeline owns the
+        # batch -- see the note in :meth:`_run_wifi_create_x1_roku`.
+        if profile.get("send_remote_sync", True):
+            _step = self._send_step(
+                step_name="save-tail-0064",
+                family=0x64,
+                payload=b"",
+                ack_opcode=0x0103,
+            )
+            if not _step.ok:
+                return None
 
         self._cache_created_wifi_device(
             device_id=device_id,

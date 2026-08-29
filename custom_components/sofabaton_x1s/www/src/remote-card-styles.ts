@@ -8,7 +8,9 @@ export const REMOTE_CARD_CSS = `
         --sb-group-radius: var(--ha-card-border-radius, 18px);
         --remote-max-width: 360px;
         --remote-zoom: 1;
-        --sb-overlay-rgb: var(--rgb-primary-text-color, 0, 0, 0);
+        /* Hover / press overlays for keys and drawer buttons, derived from
+           the theme's text colour (see sb-key-button.ts). Declared on
+           .wrap below so a card-level theme applied on ha-card is seen. */
 
         display: block;
       }
@@ -27,7 +29,153 @@ export const REMOTE_CARD_CSS = `
         container-type: inline-size;
       }
 
+      /* Theme-resilience tokens, one level below ha-card (where a card-level
+         theme: config lands as inline variables) so both global and card-level
+         themes feed them. --secondary-text-color is floored toward primary
+         text: themes like Caule alias it to their disabled grey. */
+      ha-card { --sb-theme-secondary-text: var(--secondary-text-color); }
+      .wrap {
+        --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
+        /* Overlay/tint base: the text colour, unless a background override
+           contradicts the page theme, in which case _applyLocalTheme sets
+           --sb-overlay-base from the override's own luminance. */
+        --sb-tint-base: var(--sb-overlay-base, var(--primary-text-color));
+        --sb-overlay-hover: color-mix(in srgb, var(--sb-tint-base) 10%, transparent);
+        --sb-overlay-press: color-mix(in srgb, var(--sb-tint-base) 18%, transparent);
+        --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+        /* Raised-surface pair used by key_style tinted/elevated. Computed
+           here (not on the consumers) so redefining --ha-card-background on
+           a drawer button from it is not a self-reference. */
+        --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Glossy: a vertical curve of the same tint (bright top, dark
+           bottom) plus specular inset highlights. A gradient is legal here
+           because every consumer puts the token in a background shorthand. */
+        --sb-key-surface-glossy: linear-gradient(180deg,
+          color-mix(in srgb, var(--sb-tint-base) 18%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 0%,
+          color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 48%,
+          color-mix(in srgb, var(--sb-tint-base) 2%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))) 100%);
+        --sb-key-gloss-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.30),
+          inset 0 6px 10px -6px rgba(255, 255, 255, 0.18),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.22),
+          0 2px 6px rgba(0, 0, 0, 0.18);
+        /* Panel surface used by key_style "panel": the control panel's dock
+           recipe (card-styles.ts .card-topbar/.card-bottom-dock) — a subtle
+           8%→4% accent gradient into the card background with a softened
+           divider border — so both cards share one surface language. Subtle
+           enough that the theme's text and icon colours read on it
+           unchanged. A gradient is legal here because every consumer puts
+           the token in a background shorthand. */
+        --sb-panel-surface: linear-gradient(180deg,
+          color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))),
+          color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color)))));
+        --sb-panel-border: color-mix(in srgb, var(--divider-color) 82%, transparent);
+      }
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
+      /* key_style: raise the keys off the card. The tint is mixed from the
+         theme's TEXT colour, so it lands on the right side of any palette
+         (8% white over a true-black card is a clearly raised #141414; 8%
+         black over white a soft grey) and stays below the 10%/18% hover and
+         press overlays, which stack on top of it. The floored border keeps
+         a visible outline even where the theme's divider matches its
+         background. Colour keys and the Macros/Favorites tabs declare their
+         own --sb-control-* values closer to the element and are unaffected.
+         "Elevated" adds a shadow, which only reads on light surfaces
+         (nothing renders darker than a black card); the tint carries dark
+         themes. */
+      .wrap--keys-tinted,
+      .wrap--keys-elevated {
+        --sb-control-background: var(--sb-key-surface);
+        --sb-control-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy {
+        --sb-control-background: var(--sb-key-surface-glossy);
+        --sb-control-border-color: var(--sb-key-border);
+        --sb-control-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated {
+        --sb-control-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* The drawer headers (Macros/Favorites bar and the device-mode
+         Commands bar reuse .macroFavorites) and the buttons inside the
+         drawers ride along with key_style: same raised surface and floored
+         border as the keys. The drawer panel itself (.mf-overlay) stays on
+         the card background so the buttons read as raised on it. The tab
+         buttons inside the bar keep their transparent --sb-control-* (the
+         BAR is the surface). Drawer buttons are ha-cards, so their tokens
+         are redefined from the pair computed on .wrap. */
+      .wrap--keys-tinted .macroFavorites,
+      .wrap--keys-elevated .macroFavorites {
+        background: var(--sb-key-surface);
+        border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .macroFavorites {
+        background: var(--sb-key-surface-glossy);
+        border-color: var(--sb-key-border);
+        box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-tinted .drawer-btn,
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-background: var(--sb-key-surface);
+        --ha-card-border-color: var(--sb-key-border);
+      }
+      .wrap--keys-glossy .drawer-btn {
+        --ha-card-background: var(--sb-key-surface-glossy);
+        --ha-card-border-color: var(--sb-key-border);
+        --ha-card-box-shadow: var(--sb-key-gloss-shadow);
+      }
+      .wrap--keys-elevated .macroFavorites {
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      .wrap--keys-elevated .drawer-btn {
+        --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
+      }
+      /* Tinted panels (the former key_style "panel", an independent
+         switch since 0.3.0 so it combines with any key style): the
+         bordered group containers take the dock surface. With flat keys
+         the keys KEEP the card background and read as card-coloured
+         cutouts on a softly accent-tinted panel; with a tinted/elevated/
+         glossy key style the keys keep that style's raised surface and
+         the panels tint the ground behind them. The tint is subtle
+         enough that no text or icon colour needs to change. Container-
+         less keys (the nav .row3 and the device-mode power key) take
+         the panel surface directly, but only under flat keys - a real
+         key style owns their surface. These rules sit AFTER the
+         key-style .macroFavorites rules so the bar counts as a
+         container (panel surface) when both are on. */
+      .wrap--panels .dpad,
+      .wrap--panels .mid,
+      .wrap--panels .media,
+      .wrap--panels .colors,
+      .wrap--panels .abc {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .row3,
+      .wrap--panels:not(.wrap--keys-tinted):not(.wrap--keys-elevated):not(.wrap--keys-glossy) .sb-power-key {
+        --sb-control-background: var(--sb-panel-surface);
+        --sb-control-border-color: var(--sb-panel-border);
+      }
+      .wrap--panels .macroFavorites {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      .wrap--panels .macroFavoritesButton + .macroFavoritesButton {
+        border-left-color: var(--sb-panel-border);
+      }
+      .wrap--panels .macroFavoritesButton:first-child {
+        border-right-color: var(--sb-panel-border);
+      }
+      .wrap--panels .mf-overlay {
+        background: var(--sb-panel-surface);
+        border-color: var(--sb-panel-border);
+      }
+      /* drawer-up re-declares border-top with the divider colour at higher
+         specificity; keep it on the panel border. */
+      .wrap--panels .mf-container.drawer-up .mf-overlay {
+        border-top-color: var(--sb-panel-border);
+      }
       .layout-container { display: grid; gap: 12px; }
       .layout-overlay {
         position: absolute;
@@ -48,6 +196,55 @@ export const REMOTE_CARD_CSS = `
          Override it here with theme-aware fallbacks so the field matches the theme. */
       .sb-activity-select {
         --ha-color-form-background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+        /* Dropdown item text. HA declares these derived tokens on <html> as
+           var(--primary-text-color), where they resolve once against the
+           GLOBAL theme and descendants inherit the resolved color. A per-card
+           theme / background override rewrites --primary-text-color on the
+           card only, so the menu panel (which re-reads --card-background-color
+           locally) follows the card while the item text stays the global
+           theme's color: dark text on a dark panel. Re-declaring the tokens
+           here makes them resolve against the card-local text color. No-op
+           without a local override. Covers both dropdown generations:
+           ha-dropdown-item (wa) and mwc-list-item (mdc). */
+        --wa-color-text-normal: var(--primary-text-color);
+        --wa-color-text-quiet: var(--secondary-text-color);
+        --mdc-theme-text-primary-on-background: var(--primary-text-color);
+        --mdc-theme-text-secondary-on-background: var(--secondary-text-color);
+        /* Field label ("Activity" / "Device") and value. HA chains these to
+           --input-label-ink-color / --input-ink-color on <html>, so a
+           card-level theme never reaches them, and some themes (Caule) map
+           the label to their disabled grey. Derive both from the card's
+           own text colour instead. */
+        --mdc-select-label-ink-color: color-mix(in srgb, var(--primary-text-color) 85%, transparent);
+        --mdc-select-ink-color: var(--primary-text-color);
+        --mdc-select-dropdown-icon-color: color-mix(in srgb, var(--primary-text-color) 70%, transparent);
+        /* Menu item hover / selected fills. HA's ha-dropdown-item paints
+           --ha-color-fill-neutral-quiet-hover (light grey under any flat
+           theme, since flat themes run in light mode) behind item text that
+           is now the card's text colour: under Caule both are ~#e5e5e5.
+           Derive the fills from the card's own colours instead, as
+           translucent tints over the menu panel. The selected item's text
+           follows the accent-text rule (not pure primary colour). */
+        --ha-color-fill-neutral-quiet-resting: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
+        --ha-color-fill-neutral-quiet-hover: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+        --ha-color-fill-primary-quiet-resting: color-mix(in srgb, var(--primary-color) 14%, transparent);
+        --ha-color-fill-primary-quiet-hover: color-mix(in srgb, var(--primary-color) 24%, transparent);
+        /* wa-dropdown-item paints :host(:hover) and :focus-visible with
+           --wa-color-neutral-fill-normal (HA: --ha-color-fill-neutral-normal-resting). */
+        --ha-color-fill-neutral-normal-resting: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+        --ha-color-fill-neutral-normal-hover: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+        --wa-color-neutral-fill-normal: var(--ha-color-fill-neutral-normal-resting);
+        --wa-color-neutral-fill-quiet: var(--ha-color-fill-neutral-quiet-hover);
+        --wa-color-brand-fill-quiet: var(--ha-color-fill-primary-quiet-hover);
+        --mdc-ripple-color: var(--primary-text-color);
+        --sb-select-selected-text: var(--sb-accent-text, color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color)));
+      }
+      /* Outer-scope rule on the item host beats ha-dropdown-item's
+         :host([selected]) { color: var(--primary-color) }. */
+      .sb-activity-select ha-dropdown-item[selected],
+      .sb-activity-select mwc-list-item[selected],
+      .sb-activity-select mwc-list-item[activated] {
+        color: var(--sb-select-selected-text);
       }
 
       .activityRow {
@@ -55,20 +252,41 @@ export const REMOTE_CARD_CSS = `
         grid-template-columns: 1fr;
         position: relative;
         z-index: 3;
+        /* One bottom line for the whole row. The select's field (HA's
+           ha-picker-field) paints 1px --ha-color-border-neutral-loud at rest
+           and 2px --mdc-theme-primary when focused; HA declares that chain on
+           <html>, so under a card-level theme it resolved to the PAGE's
+           primary (HA blue). Both tokens are re-declared below from these
+           row tokens, and the mode toggle draws the same line so the two
+           read as one control. */
+        --sb-field-line: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
+        --sb-field-line-active: var(--primary-color);
+      }
+      .activityRow .sb-activity-select {
+        --ha-color-border-neutral-loud: var(--sb-field-line);
+        --mdc-theme-primary: var(--sb-field-line-active);
+        --mdc-select-idle-line-color: var(--sb-field-line);
+        --mdc-select-hover-line-color: var(--sb-field-line);
       }
       /* Long activity/device names ellipsize inside the select instead of
-         pushing the card wider (grid items default to min-width auto). */
+         pushing the card wider (grid items default to min-width auto). The
+         same overflow clip also gives the field the theme's corner radius:
+         rounding the HOST and zeroing the inner mdc shape token works for
+         both ha-select generations (mdc and ha-picker-field) without
+         knowing their internal shape tokens. The host paints the form
+         background so any residual inner rounding never shows as notched
+         corners. */
       .activityRow .sb-activity-select {
         min-width: 0;
         overflow: hidden;
+        border-radius: var(--sb-group-radius);
+        --mdc-shape-small: 0px;
+        background: var(--ha-color-form-background);
       }
 
       /* Device mode: the toggle fuses to the select's left edge. */
       .activityRow--with-toggle {
         grid-template-columns: auto 1fr;
-      }
-      .activityRow--with-toggle .loadIndicator {
-        grid-column: 1 / -1;
       }
       .sb-mode-toggle {
         width: 48px;
@@ -81,26 +299,48 @@ export const REMOTE_CARD_CSS = `
         color: var(--primary-text-color);
         background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
         border: none;
-        border-right: 1px solid var(--divider-color);
-        border-bottom: 1px solid var(--mdc-select-idle-line-color, var(--divider-color));
-        border-top-left-radius: var(--mdc-shape-small, 4px);
-        border-top-right-radius: 0;
-        border-bottom-left-radius: 0;
-        border-bottom-right-radius: 0;
+        border-inline-end: 1px solid var(--divider-color);
+        /* Same line as the field, drawn as an inset shadow so the 1px -> 2px
+           active state never shifts layout. */
+        box-shadow: inset 0 -1px 0 var(--sb-field-line);
+        transition: box-shadow 180ms ease-in-out, background 120ms ease;
+        /* One fused control with the select: the outer (inline-start) side
+           follows the theme radius, the side meeting the select stays
+           square. Logical corners keep the fused edge correct in RTL,
+           where the toggle sits visually on the right. */
+        border-start-start-radius: var(--sb-group-radius);
+        border-end-start-radius: var(--sb-group-radius);
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
         -webkit-tap-highlight-color: transparent;
       }
       .sb-mode-toggle:hover {
-        background: color-mix(in srgb, var(--primary-text-color) 8%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+        background: color-mix(in srgb, var(--primary-text-color) 10%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
       }
       .sb-mode-toggle:active {
         transform: scale(0.97);
+        background: color-mix(in srgb, var(--primary-text-color) 18%, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
       }
       .sb-mode-toggle[disabled] {
         opacity: 0.5;
         cursor: default;
       }
+      .sb-mode-toggle:focus-visible {
+        outline: none;
+      }
+      /* The toggle's line follows the field: focused field (HA keeps the
+         field focused after the menu closes, so does this), open menu, or
+         keyboard focus on the toggle itself. */
+      .activityRow--with-toggle:has(.sb-activity-select:focus-within) .sb-mode-toggle,
+      .activityRow--with-toggle.activityRow--menu-open .sb-mode-toggle,
+      .sb-mode-toggle:focus-visible {
+        box-shadow: inset 0 -2px 0 var(--sb-field-line-active);
+      }
+      /* The select's corners on the fused edge go flat so toggle + select
+         read as one control. */
       .activityRow--with-toggle .sb-activity-select {
-        --mdc-shape-small: 0 4px 0 0;
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
       }
 
       /* Device mode: Commands drawer (one command per row + filter input).
@@ -149,8 +389,8 @@ export const REMOTE_CARD_CSS = `
         gap: 4px;
         padding: 12px;
         border-radius: var(--sb-group-radius);
-        border: 1px solid rgba(var(--rgb-primary-color), 0.25);
-        background: rgba(var(--rgb-primary-color), 0.08);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 8%, transparent);
       }
 
       .automationAssist__header {
@@ -173,8 +413,8 @@ export const REMOTE_CARD_CSS = `
 
       /* small pill button */
       .automationAssist__startBtn {
-        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
-        background: rgba(var(--rgb-primary-color), 0.10);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
         color: var(--primary-text-color);
         border-radius: 999px;
         padding: 2px 10px;
@@ -185,8 +425,8 @@ export const REMOTE_CARD_CSS = `
       }
 
       .automationAssist__mqttBtn {
-        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
-        background: rgba(var(--rgb-primary-color), 0.10);
+        border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
         color: var(--primary-text-color);
         border-radius: 999px;
         margin:10px;
@@ -198,7 +438,7 @@ export const REMOTE_CARD_CSS = `
       }
 
       .automationAssist__startBtn:hover {
-        background: rgba(var(--rgb-primary-color), 0.16);
+        background: color-mix(in srgb, var(--primary-color) 16%, transparent);
       }
 
       .automationAssist__startBtn:active {
@@ -216,16 +456,35 @@ export const REMOTE_CARD_CSS = `
       }
 
 
- 	  .loadIndicator {
+ 	  /* Loading feedback lives INSIDE the control's silhouette: an overlay
+	     spanning the whole activity row (select alone, or the fused
+	     toggle+select pair), rounded and clipped like the control, painting
+	     only a bottom band. The band's ends follow the theme's curve, where
+	     the old detached full-width bar stuck out past the rounded corners.
+	     The row itself must never clip (the dropdown menu renders inside it
+	     on the mdc generation), so the overlay clips itself instead. */
+	  .loadIndicator {
 	    visibility: hidden;
-	    height: 4px;
-	    width: 100%;
-	    border-radius: 2px;
+	    position: absolute;
+	    inset: 0;
+	    border-radius: var(--sb-group-radius);
+	    overflow: hidden;
 	    pointer-events: none;
+	  }
+
+	  .loadIndicator::before {
+	    content: "";
+	    position: absolute;
+	    inset-inline: 0;
+	    bottom: 0;
+	    height: 4px;
 	  }
 
 	  .loadIndicator.is-loading {
 	    visibility: visible;
+	  }
+
+	  .loadIndicator.is-loading::before {
 	    background: var(--primary-color, #03a9f4);
 	    background-image: linear-gradient(
   		  90deg,
@@ -276,7 +535,16 @@ export const REMOTE_CARD_CSS = `
       }
 			.macroFavoritesButton {
         cursor: pointer;
-        padding: 4px 0;
+        /* Tighter side padding than the default keys: at the 230px minimum
+           card width each tab's text budget is ~81px minus the chevron
+           reserve, and the longest tab labels (nl "Favorieten", en-GB
+           "Favourites", ~65px at 14px Roboto) need the extra 4px to render
+           without an ellipsis at the 14px font floor. */
+        --sb-control-padding-inline: 8px;
+        /* No padding: the inner control carries the hover/press overlay, so
+           it must fill the whole cell or the highlight renders as an inset
+           band instead of covering the full tab. */
+        padding: 0;
         box-sizing: border-box;
         height: var(--sb-tab-height);
         display: block !important;
@@ -290,8 +558,10 @@ export const REMOTE_CARD_CSS = `
         --sb-control-radius: 0;
       }
       
+      /* Active tab: text stays the theme's text colour, the accent tints the
+         surface (primary colour as text is 1:1 on iOS-light orange). */
       .macroFavoritesButton.active-tab {
-        color: var(--primary-color);
+        color: var(--primary-text-color);
       }
 
       .macroFavoritesButton + .macroFavoritesButton {
@@ -365,6 +635,66 @@ export const REMOTE_CARD_CSS = `
         pointer-events: auto;
       }
 
+      /* Device mode: power key sharing the commands strip row. The
+         wrapper becomes the positioned ancestor (its .mf-container goes
+         static), so the absolutely-positioned commands drawer overlay
+         spans the FULL row, bar column plus power column. */
+      .commands-row {
+        position: relative;
+        z-index: 2;
+      }
+      /* With the bar only 3/4 wide, the overlay's right shoulder sticks
+         out past it under the power key. Round that exposed corner with
+         the themed radius and restore the edge border there; the bar
+         overlaps the left 3/4 of that border (the -1px seam margin), so
+         the fused look under the bar is unchanged. */
+      .commands-row--power .mf-overlay {
+        border-top: 1px solid var(--divider-color);
+        border-top-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power .drawer-up .mf-overlay {
+        border-top-right-radius: var(--sb-group-radius);
+        border-bottom: 1px solid var(--divider-color);
+        border-bottom-right-radius: var(--sb-group-radius);
+      }
+      .commands-row--power {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .commands-row--power .mf-container {
+        position: static;
+        min-width: 0;
+      }
+      .sb-power-key {
+        color: var(--sb-power-key-color, var(--primary-color, #03a9f4));
+      }
+      .commands-row--power-only .sb-power-key {
+        /* No sibling strip to stretch against: match the Commands bar
+           height (tab height plus its 1px borders). */
+        height: calc(var(--sb-tab-height) + 2px);
+      }
+      .sb-power-key--busy {
+        animation: sb-power-busy 1s ease-in-out infinite;
+      }
+      @keyframes sb-power-busy {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+
+      /* Commands-as-rows: the power key docks beside the pinned filter. */
+      .inline-filter-row {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 8px;
+        align-items: stretch;
+        margin-bottom: 8px;
+      }
+      .inline-filter-row .sb-commands-filter {
+        margin-bottom: 0;
+      }
+
       .mf-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -412,6 +742,12 @@ export const REMOTE_CARD_CSS = `
         overflow: hidden;
         -webkit-tap-highlight-color: transparent;
       }
+      /* Same colour language as the keys: names and icons both take the
+         icon accent (sb-key-button's label rule is the counterpart). */
+      .drawer-btn .name,
+      .drawer-btn__icon {
+        color: var(--sb-key-label-color, var(--primary-color));
+      }
 
       /* Hover/press overlay  */
       .drawer-btn::before {
@@ -419,7 +755,7 @@ export const REMOTE_CARD_CSS = `
         position: absolute;
         inset: 0;
         border-radius: inherit;
-        background: rgba(var(--sb-overlay-rgb), 0.08);
+        background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
         opacity: 0;
         transition: opacity 120ms ease;
         pointer-events: none;
@@ -431,11 +767,11 @@ export const REMOTE_CARD_CSS = `
 
       .drawer-btn:active::before {
         opacity: 1;
-        background: rgba(var(--sb-overlay-rgb), 0.16);
+        background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color) 18%, transparent));
       }
 
       .drawer-btn:focus-visible {
-        outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+        outline: 2px solid color-mix(in srgb, var(--primary-color) 55%, transparent);
         outline-offset: 2px;
       }
 
@@ -485,8 +821,8 @@ export const REMOTE_CARD_CSS = `
 
       /* Active state for buttons */
       .macroFavoritesButton.active-tab {
-        background: rgba(var(--rgb-primary-color), 0.1);
-        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+        color: var(--primary-text-color);
       }
 
       /* D-pad cluster */
@@ -617,6 +953,19 @@ export const REMOTE_CARD_CSS = `
         opacity: 0.35;
         pointer-events: none;
         filter: grayscale(0.2);
+      }
+
+      /* Shortcuts row (device mode): unconfigured slots keep their grid
+         cell. Live mode hides them entirely; the edit preview shows a
+         ghost outline so the row's position visualizes before any slot
+         is configured. */
+      .shortcut-spacer {
+        visibility: hidden;
+      }
+      .shortcut-ghost {
+        border: 1px dashed var(--divider-color);
+        border-radius: var(--sb-group-radius, var(--ha-card-border-radius, 18px));
+        opacity: 0.5;
       }
 
       /* sizing */
@@ -793,6 +1142,7 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-switch { display:flex; align-items:center; }
           .sb-styling-wrap { padding: 0 0 12px 0; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
+          .sb-layout-switch-item.is-disabled { opacity: 0.45; pointer-events: none; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
@@ -808,6 +1158,24 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
+          /* Shortcuts slot editing on the group-order row: the three mini
+             slot buttons fill the row's second cell; the open slot's panel
+             drops out inside the row, spanning its grid (never a popover —
+             the panel's icon picker and command select open popup menus of
+             their own, and nested popups fight outside-click detection).
+             The caret rides on the open slot, so it stays anchored to the
+             button that opened the panel. */
+          .sb-shortcut-strip { display: inline-flex; gap: 8px; min-width: 0; }
+          .sb-shortcut-slot { position: relative; width: 40px; height: 30px; border: 1px dashed var(--secondary-text-color, var(--divider-color)); border-radius: 8px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05); background: color-mix(in srgb, var(--primary-text-color) 5%, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--primary-color); flex: 0 1 auto; min-width: 26px; }
+          .sb-shortcut-slot.is-configured { background: var(--ha-card-background, transparent); }
+          .sb-shortcut-slot ha-icon { --mdc-icon-size: 18px; }
+          .sb-shortcut-slot.is-configured { border-style: solid; }
+          .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
+          .sb-shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--primary-color); pointer-events: none; }
+          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-shortcut-panel ha-form { display: block; }
+          .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
+          .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }
           .sb-layout-row-order.sortable-ghost { opacity: 0.35; }
           .sb-layout-row-order.sortable-chosen { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06); background: color-mix(in srgb, var(--primary-color) 6%, transparent); }
           /* General Options rows: label + description with the switch at the

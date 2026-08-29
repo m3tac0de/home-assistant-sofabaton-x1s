@@ -23,8 +23,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_FIND_REMOTE_X2,
     OP_REMOTE_SYNC,
     OP_SET_HUB_NAME,
-    OP_X2_REMOTE_LIST,
-    OP_X2_REMOTE_SYNC,
+    OP_X2_REMOTE_SYNC_ALL,
     OP_REQ_COMMANDS,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     known_public_device_classes,
@@ -959,7 +958,15 @@ def test_resync_remote_uses_classic_opcode(monkeypatch) -> None:
     assert sent == [(OP_REMOTE_SYNC, b"")]
 
 
-def test_resync_remote_x2_fetches_id_then_sync(monkeypatch) -> None:
+def test_resync_remote_x2_sends_all_remotes_broadcast(monkeypatch) -> None:
+    """X2 resync sends the FF FF FF broadcast (bench-validated 2026-08-27).
+
+    The historical remote-list + OP_X2_REMOTE_SYNC [id:3][0x01] flow is an
+    accepted no-op on the hub (ACK 0x00, no sync starts); the broadcast
+    form is the one the hub actually acts on, and it queues behind any
+    sync already running.
+    """
+
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -975,35 +982,9 @@ def test_resync_remote_x2_fetches_id_then_sync(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(proxy, "enqueue_cmd", _enqueue)
-    monkeypatch.setattr(proxy, "wait_for_x2_remote_sync_id", lambda timeout=2.0: b"\x00\x08\x5e")
 
     assert proxy.resync_remote() is True
-    assert sent == [
-        (OP_X2_REMOTE_LIST, b"\x00"),
-        (OP_X2_REMOTE_SYNC, b"\x00\x08\x5e\x01"),
-    ]
-
-
-def test_resync_remote_x2_returns_false_without_remote_id(monkeypatch) -> None:
-    proxy = X1Proxy(
-        "127.0.0.1",
-        proxy_enabled=False,
-        diag_dump=False,
-        diag_parse=False,
-        hub_version=HUB_VERSION_X2,
-    )
-
-    sent: list[tuple[int, bytes]] = []
-
-    def _enqueue(opcode, payload=b"", **_kwargs):
-        sent.append((opcode, payload))
-        return True
-
-    monkeypatch.setattr(proxy, "enqueue_cmd", _enqueue)
-    monkeypatch.setattr(proxy, "wait_for_x2_remote_sync_id", lambda timeout=2.0: None)
-
-    assert proxy.resync_remote() is False
-    assert sent == [(OP_X2_REMOTE_LIST, b"\x00")]
+    assert sent == [(OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")]
 
 
 def test_send_family_frame_sets_length_in_opcode(monkeypatch) -> None:
@@ -1121,6 +1102,7 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
             "input_mode": 1,
             "inputs_configured": True,
             "power_mode": 1,
+            "idle_behavior": 1,
             "power_style": 3,
             "power_configured": True,
             "share_mode": 0,
@@ -1305,6 +1287,7 @@ def test_restore_device_x1s_keeps_restore_style_sequence(monkeypatch) -> None:
             "input_mode": 1,
             "inputs_configured": True,
             "power_mode": 1,
+            "idle_behavior": 1,
             "power_style": 3,
             "power_configured": True,
             "share_mode": 0,

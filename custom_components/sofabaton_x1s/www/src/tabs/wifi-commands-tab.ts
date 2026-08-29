@@ -259,8 +259,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     _confirmClearSlot: { state: true },
     _commandSaveError: { state: true },
     _activeCommandActionTab: { state: true },
-    _syncWarningOpen: { state: true },
-    _syncWarningOptOut: { state: true },
     _advancedOptionsOpen: { state: true },
     _commandEditorDrafts: { state: true },
     _shortSelectorVersion: { state: true },
@@ -370,10 +368,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     .device-card-name { display: block; font-size: 13px; font-weight: 700; line-height: 1.15; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin-left: auto; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
-    .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
-    .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: var(--error-color, #db4437); }
-    .status-pill.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); color: var(--primary-color); }
-    .status-pill.sync-pending { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 40%, var(--divider-color)); color: var(--warning-color, #f59e0b); }
+    /* Tone text is mixed toward the theme's primary text so it follows the
+       theme's polarity; the pure tone stays on border and tint. */
+    .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color)); }
+    .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: color-mix(in srgb, var(--error-color, #db4437) 40%, var(--primary-text-color)); }
+    .status-pill.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); color: color-mix(in srgb, var(--primary-color) 40%, var(--primary-text-color)); }
+    .status-pill.sync-pending { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 40%, var(--divider-color)); color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); }
     .status-pill.sync-ok { background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color))); }
     .status-pill.sync-error { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .status-pill.sync-running { background: color-mix(in srgb, var(--primary-color) 12%, var(--ha-card-background, var(--card-background-color))); }
@@ -448,7 +448,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .device-power-option.active {
       border-color: var(--primary-color);
       background: color-mix(in srgb, var(--primary-color) 14%, transparent);
-      color: var(--primary-color);
+      color: var(--primary-text-color);
     }
     .hub-events { display: grid; gap: 6px; margin-top: 6px; }
     .hub-event-lines { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -474,7 +474,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       text-decoration: underline dotted;
       text-underline-offset: 3px;
     }
-    .hub-event-action-link:hover { color: var(--primary-color); }
+    .hub-event-action-link:hover { color: var(--primary-text-color); text-decoration-color: var(--primary-color); }
     /* Positioning anchor for the event-fired glow: the flash overlay hugs
        just the action link instead of the whole sentence row, so combined
        rows (start + stop in one line) show which hook actually fired.
@@ -617,8 +617,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       text-decoration: underline dotted;
       text-underline-offset: 3px;
     }
-    .show-unconfigured:hover { color: var(--primary-color); }
-    .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
+    .show-unconfigured:hover { color: var(--primary-text-color); text-decoration-color: var(--primary-color); }
+    .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
     .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
     .sync-row.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); }
@@ -626,7 +626,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
     .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
     .sync-message { font-size: 13px; line-height: 1.4; }
-    .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
+    .sync-doc-link { color: var(--sb-accent-text, var(--primary-color)); font-weight: 600; text-decoration: underline; text-decoration-color: var(--primary-color); }
     .sync-doc-link:hover { text-decoration: underline; }
     .list-view .sticky-footer { border-top: none; }
     .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
@@ -806,7 +806,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     .action-tab { border: 1px solid var(--divider-color); border-radius: 999px; padding: 7px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .action-selector-wrap[hidden] { display: none; }
     .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
-    .warning-optout { display: flex; align-items: center; gap: 10px; }
     .dialog-body ha-input,
     .dialog-body ha-textfield,
     .dialog-body ha-selector {
@@ -882,8 +881,6 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _confirmClearSlot: number | null = null;
   private _commandSaveError = "";
   private _activeCommandActionTab: PressType = "short";
-  private _syncWarningOpen = false;
-  private _syncWarningOptOut = false;
   private _advancedOptionsOpen = false;
   private _commandEditorDrafts: Record<number, WifiCommandSlot> = {};
   private _shortSelectorVersion = 0;
@@ -1041,7 +1038,6 @@ class SofabatonWifiCommandsTab extends LitElement {
           })}
           ${this._renderDetailsModal()}
           ${this._renderActionModal()}
-          ${this._renderSyncWarningModal()}
           ${this._renderCreateDeviceModal()}
           ${this._renderDeleteDeviceModal()}
         </div>
@@ -1106,7 +1102,6 @@ class SofabatonWifiCommandsTab extends LitElement {
         </div>
         ${this._renderDetailsModal()}
         ${this._renderActionModal()}
-        ${this._renderSyncWarningModal()}
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
@@ -2319,38 +2314,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     `;
   }
 
-  private _renderSyncWarningModal() {
-    if (!this._syncWarningOpen) return nothing;
-    return html`
-      <div class="modal-backdrop" @click=${() => { this._syncWarningOpen = false; }}>
-        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.syncWarningTitle}</div>
-            <button class="dialog-close" @click=${() => { this._syncWarningOpen = false; }}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="dialog-text sync-warning-text">
-              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody}<br /><br />
-              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody2}
-            </div>
-            <label class="warning-optout">
-              <input type="checkbox" .checked=${this._syncWarningOptOut} @change=${(event: Event) => { this._syncWarningOptOut = (event.currentTarget as HTMLInputElement).checked; }} />
-              <span>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningOptOut}</span>
-            </label>
-          </div>
-          <div class="dialog-footer">
-            <div></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => { this._syncWarningOpen = false; }}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._confirmSyncWarning}>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningStart}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-
   private async _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass?.callWS) return;
@@ -3051,9 +3014,6 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _commandSlotMetaLabel(command: WifiCommandSlot) {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
-    const activitiesLabel = activityCount === 1
-      ? TOOLS_CARD_STRINGS.wifiCommands.activitySingular
-      : TOOLS_CARD_STRINGS.wifiCommands.activityPlural;
     const assignmentEnabled = this._activitySelectionEnabled(command);
     const powerInput = this._supportsPowerInputConfig();
     if (this._isUnconfiguredCommand(command)) return TOOLS_CARD_STRINGS.wifiCommands.unconfiguredCommand;
@@ -3071,7 +3031,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         this._activityName(command.input_activity_id),
       );
     }
-    return `in ${activityCount} ${activitiesLabel}`;
+    return TOOLS_CARD_STRINGS.wifiCommands.inActivities(activityCount);
   }
 
   private _toggleFavoriteRow() {
@@ -3578,46 +3538,13 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
   };
 
-  private _commandSyncWarningStorageKey(entityId: string) {
-    return `sofabaton_x1s:sync_warning_optout:${String(entityId || "").trim()}`;
-  }
-
-  private _commandSyncWarningOptedOut(entityId: string) {
-    try {
-      return window.localStorage?.getItem(this._commandSyncWarningStorageKey(entityId)) === "1";
-    } catch (_error) {
-      return false;
-    }
-  }
-
-  private _setCommandSyncWarningOptOut(entityId: string, optedOut: boolean) {
-    try {
-      if (optedOut) window.localStorage?.setItem(this._commandSyncWarningStorageKey(entityId), "1");
-      else window.localStorage?.removeItem(this._commandSyncWarningStorageKey(entityId));
-    } catch (_error) {
-      // Ignore storage failures.
-    }
-  }
-
-  private _confirmSyncWarning = async () => {
-    const entityId = String(this._entityId() || "").trim();
-    if (entityId && this._syncWarningOptOut) this._setCommandSyncWarningOptOut(entityId, true);
-    this._syncWarningOpen = false;
-    await this._startCommandConfigSync();
-  };
-
   private _runCommandConfigSync = async () => {
     if (this._commandSyncRunning || this._hubCommandLocked()) return;
     const entityId = String(this._entityId() || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!entityId) return;
     if (!deviceKey) return;
-    if (this._commandSyncWarningOptedOut(entityId)) {
-      await this._startCommandConfigSync();
-      return;
-    }
-    this._syncWarningOptOut = false;
-    this._syncWarningOpen = true;
+    await this._startCommandConfigSync();
   };
 
   private async _startCommandConfigSync() {
