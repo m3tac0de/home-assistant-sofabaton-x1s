@@ -5260,7 +5260,7 @@ class SofabatonHub:
         - We do NOT remap/rename button names: you must use the names from ButtonName.
           So "VOL_UP", "VOL_DOWN", "MUTE", etc.
         """
-        
+
         self._log.debug("Trying to send command %s to device %s", key, device)
 
         # advanced path: user specified the target entity

@@ -396,6 +396,9 @@ class _AttrHub:
     def get_ui_device_list(self):
         return [{"id": 3, "name": "TV", "sort": 0}]
 
+    def get_all_cached_button_details(self):
+        return {}
+
 
 def _remote_entity():
     remote_mod = importlib.import_module("custom_components.sofabaton_x1s.remote")

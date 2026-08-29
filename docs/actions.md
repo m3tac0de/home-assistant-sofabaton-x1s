@@ -758,3 +758,4 @@ action: sofabaton_x1s.sync_command_config
 data:
   device: <hub_device_id>
 ```
+

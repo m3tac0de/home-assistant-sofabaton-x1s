@@ -39,6 +39,7 @@ import {
   drawerDesiredHeight,
   drawerDirection,
   holdRepeatIndexOf,
+  isLongPressEvent,
   layeringZIndexes,
 } from "./remote-card-gestures";
 import { RemoteCardStore } from "./state/remote-card-store";
@@ -884,6 +885,7 @@ export class SofabatonRemoteCard extends LitElement {
       isEnabled: (id) => store.isEnabled(id),
       onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
       holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
+      longPressForKey: (spec) => this._longPressForSpec(spec),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,
@@ -1180,12 +1182,42 @@ export class SofabatonRemoteCard extends LitElement {
     `;
   }
 
+  /**
+   * Transparent hub long-press: arm the hold gesture on a hard button only
+   * when its keymap row carries a binding on the current scope (activity
+   * or device page) AND hold-to-repeat is not claiming the button (the
+   * explicit hold_repeat opt-in wins that collision; a hold can only mean
+   * one thing). Never armed in edit mode: sends are blocked there anyway.
+   */
+  private _longPressForSpec(spec: KeySpec): boolean {
+    if (this._editMode) return false;
+    const store = this._store;
+    if (longPressEnabledForKey(store.config, spec.key)) return false;
+    const scope =
+      store.mode() === "device"
+        ? store.currentDeviceId()
+        : (store.commandTarget(spec.id)?.activity_id ?? store.currentActivityId());
+    return store.longPressAvailableForButton(spec.id, scope);
+  }
+
   private _onKeyPress(spec: KeySpec, ev?: Event): void {
     const deviceMode = this._store.mode() === "device";
     const targetDeviceId = deviceMode
       ? this._store.currentDeviceId()
       : (this._store.commandTarget(spec.id)?.activity_id ??
         this._store.currentActivityId());
+    // Hub long-press fire: the card resolves the row's configured
+    // (device, command) pair and sends it favorites-style, so this is not
+    // the button's short command and must not be captured as one by
+    // Automation Assist.
+    if (isLongPressEvent(ev)) {
+      if (this._assist.active) {
+        this._assist.setStatus(str().assist.notCaptured);
+      }
+      this._store.triggerCommandPulse();
+      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      return;
+    }
     // A hold is one press for Key capture: record it on the first repeat
     // (the release tap of a hold that repeated is suppressed) and let the
     // later repeats only send, or every tick would create another

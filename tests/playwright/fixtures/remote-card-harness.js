@@ -770,6 +770,31 @@ scenarios.device_mode = (() => {
   return base;
 })();
 
+// Transparent hub long-press: the device_mode picture plus the
+// `long_press_keys` attribute (published only while the persistent cache is
+// enabled), carrying each bound button's resolved (device_id, command_id)
+// pair. OK (176) and VOL_UP (182) carry bindings on activity 101; OK also
+// on device page 1 (activity and device ids share the namespace).
+scenarios.long_press = (() => {
+  const base = clone(scenarios.device_mode);
+  base.states[remoteEntityId].attributes.long_press_keys = {
+    101: {
+      176: { device_id: 4, command_id: 9 },
+      182: { device_id: 3, command_id: 6 },
+    },
+    1: {
+      176: { device_id: 1, command_id: 21 },
+    },
+  };
+  return base;
+})();
+
+// The official integration must ignore the attribute even when present:
+// long-press is gated on the sofabaton_x1s platform, not just on the data.
+scenarios.hub_x2.states[remoteEntityId].attributes.long_press_keys = {
+  201: { 176: { device_id: 8, command_id: 9 } },
+};
+
 const harnessState = {
   card: null,
   config: null,

@@ -65,6 +65,7 @@ import {
   hubMacroKeyCommand,
   remoteSendCommandData,
 } from "../remote-card-actions";
+import { hubLongPressBinding } from "../remote-card-long-press";
 import {
   customFavoritesSignature,
   normalizeCustomFavorite,
@@ -1137,6 +1138,52 @@ export class RemoteCardStore {
 
     // X1S/X1 style
     const serviceData = remoteSendCommandData(this._config.entity, commandId, resolvedDevice);
+    if (!serviceData) return;
+    await this.callService("remote", "send_command", serviceData);
+  }
+
+  /**
+   * A button's hub long-press binding on one entity page, or null
+   * (docs/internal/long-press-plan.md). Gated on the x1s integration (the
+   * official sofabaton_hub integration has no keymap detail source) and on
+   * the `long_press_keys` attribute, which the backend publishes only
+   * while the persistent cache is enabled and only for pages whose keymap
+   * details are populated. Hold-repeat precedence is the caller's concern
+   * (it needs the key spec, not the button id).
+   */
+  longPressBindingForButton(
+    buttonId: unknown,
+    scopeId: unknown,
+  ): { device_id: number; command_id: number } | null {
+    if (String(this.integrationDomain || "") !== "sofabaton_x1s") return null;
+    const attrs = this.remoteState()?.attributes as
+      | { long_press_keys?: unknown }
+      | undefined;
+    return hubLongPressBinding(attrs, scopeId, buttonId);
+  }
+
+  /** True when holding this hard button should fire its long-press binding. */
+  longPressAvailableForButton(buttonId: unknown, scopeId: unknown): boolean {
+    return this.longPressBindingForButton(buttonId, scopeId) !== null;
+  }
+
+  /**
+   * Fire a button's hub long-press binding. The card resolves the pair and
+   * sends it exactly like a favorite (`send_command {command, device}`):
+   * the entity and its services have no long-press concept. Guarded like
+   * sendCommand; never reached for sofabaton_hub (the gate above stays
+   * null there).
+   */
+  async sendLongPress(buttonId: unknown, scopeId: unknown): Promise<void> {
+    if (this._editMode) return;
+    if (!this._hass || !this._config?.entity) return;
+    const binding = this.longPressBindingForButton(buttonId, scopeId);
+    if (!binding) return;
+    const serviceData = remoteSendCommandData(
+      this._config.entity,
+      binding.command_id,
+      binding.device_id,
+    );
     if (!serviceData) return;
     await this.callService("remote", "send_command", serviceData);
   }

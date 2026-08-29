@@ -330,3 +330,91 @@ export class HoldRepeatTimer {
     }
   }
 }
+
+// ---------- long press (hub keymap binding) ----------
+
+/** Hold this long before a hub long-press binding fires (once). */
+export const LONG_PRESS_HOLD_MS = 500;
+
+/** Event type an sb-key-button hands to onTrigger when a hub long-press fires. */
+export const LONG_PRESS_EVENT_TYPE = "sb-long-press";
+
+/** True when the trigger event is a hub long-press fire (not a tap/repeat). */
+export function isLongPressEvent(ev: Event | null | undefined): boolean {
+  return Boolean(ev && ev.type === LONG_PRESS_EVENT_TYPE);
+}
+
+export interface LongPressTimerOptions {
+  delayMs?: number;
+  /** Injected timer functions (tests); default to the globals. */
+  setTimeout?: (fn: () => void, ms: number) => unknown;
+  clearTimeout?: (handle: unknown) => void;
+}
+
+/**
+ * Single-fire hold state for one button with a hub long-press binding.
+ * start() on pointerdown arms the delay; once it elapses `fire` runs exactly
+ * once. Like HoldRepeatTimer, whether the hold fired is remembered until
+ * consumeFired() reads it, so the release tap of a hold that fired can be
+ * suppressed instead of also sending the short press.
+ */
+export class LongPressTimer {
+  private readonly fire: () => void;
+  private readonly delayMs: number;
+  private readonly timers: Required<
+    Pick<LongPressTimerOptions, "setTimeout" | "clearTimeout">
+  >;
+  private delayHandle: unknown = null;
+  private fired = false;
+
+  constructor(fire: () => void, options: LongPressTimerOptions = {}) {
+    this.fire = fire;
+    this.delayMs = options.delayMs ?? LONG_PRESS_HOLD_MS;
+    this.timers = {
+      setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
+      clearTimeout: options.clearTimeout ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>)),
+    };
+  }
+
+  /** True while a hold is armed (the fire has not happened or been cancelled). */
+  get active(): boolean {
+    return this.delayHandle != null;
+  }
+
+  start(): void {
+    this.clearTimer();
+    this.fired = false;
+    this.delayHandle = this.timers.setTimeout(() => {
+      this.delayHandle = null;
+      this.fired = true;
+      try {
+        this.fire();
+      } catch (e) {
+        /* no-op: a failing send must not break the gesture state */
+      }
+    }, this.delayMs);
+  }
+
+  /** Cancel a pending hold. Returns whether this hold already fired. */
+  stop(): boolean {
+    this.clearTimer();
+    return this.fired;
+  }
+
+  /**
+   * Read-and-clear the "the hold fired" memory. The release tap that follows
+   * a fired hold calls this and skips its own send when it returns true.
+   */
+  consumeFired(): boolean {
+    const fired = this.fired;
+    this.fired = false;
+    return fired;
+  }
+
+  private clearTimer(): void {
+    if (this.delayHandle != null) {
+      this.timers.clearTimeout(this.delayHandle);
+      this.delayHandle = null;
+    }
+  }
+}

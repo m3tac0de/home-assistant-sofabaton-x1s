@@ -214,6 +214,14 @@ export interface RemoteEntityAttributes {
   activities?: RemoteActivityAttribute[];
   devices?: RemoteDeviceAttribute[];
   assigned_keys?: Record<string, number[]>;
+  /**
+   * The resolved long-press pair per bound hard button, per entity page
+   * (activity and device ids share the namespace). Published only while
+   * the persistent cache is enabled — its absence keeps long-press dark.
+   * The card fires a pair itself via the favorites-style send; the entity
+   * and its services have no long-press concept.
+   */
+  long_press_keys?: Record<string, Record<string, { device_id: number; command_id: number }>>;
   macro_keys?: Record<string, Array<Record<string, unknown>>>;
   favorite_keys?: Record<string, Array<Record<string, unknown>>>;
   [key: string]: unknown;

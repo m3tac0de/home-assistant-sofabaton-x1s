@@ -864,4 +864,94 @@ test.describe("remote card playwright harness", () => {
     await page.waitForTimeout(300);
     expect(await sendCommandCount(page)).toBe(afterDrift + 1);
   });
+
+  // ---------- hub long-press bindings (transparent, cache-gated) ----------
+
+  async function sendCommandCalls(page) {
+    return page.evaluate(() =>
+      window.__remoteCardHarness
+        .getServiceCalls()
+        .filter((call) => call.domain === "remote" && call.service === "send_command")
+        .map((call) => call.data),
+    );
+  }
+
+  test("hub binding: holding OK fires the long press once; a tap stays a short press", async ({ page }) => {
+    await mountCard(page, "long_press");
+
+    // The binding fires mid-hold (500ms) as the resolved pair, sent
+    // favorites-style; the release must not add the short press on top.
+    await holdKey(page, ".dpad sb-key-button.area-ok", 900);
+    await page.waitForTimeout(300);
+    let calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ entity_id: "remote.living_room", command: 9, device: 4 });
+
+    // A quick tap on the same button stays the plain short-press payload.
+    // (Past the 450ms duplicate-event gate that follows the hold's release.)
+    await page.waitForTimeout(400);
+    await holdKey(page, ".dpad sb-key-button.area-ok", 100);
+    await page.waitForTimeout(300);
+    calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toMatchObject({ command: 176, device: 101 });
+  });
+
+  test("holding a key without a binding stays one plain press on release", async ({ page }) => {
+    await mountCard(page, "long_press");
+
+    await holdKey(page, ".dpad sb-key-button.area-up", 900);
+    await page.waitForTimeout(300);
+    const calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ command: 174, device: 101 });
+  });
+
+  test("hold-to-repeat beats the hub binding on the same button", async ({ page }) => {
+    await mountCard(page, "long_press", { hold_repeat: { enabled: true } });
+
+    // VOL_UP carries a binding AND hold_repeat claims the volume group:
+    // the explicit opt-in wins, so the hold repeats the plain short press
+    // and the bound pair (command 6 on device 3) never goes out.
+    await holdKey(page, "sb-key-button.mid-btn-volup", 1200);
+    await page.waitForTimeout(300);
+    const calls = await sendCommandCalls(page);
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (const call of calls) expect(call).toMatchObject({ command: 182, device: 101 });
+  });
+
+  test("device mode: holding OK fires the device page's binding", async ({ page }) => {
+    await mountCard(page, "long_press", { device_mode: { open_device: 1 } });
+    await expect(page.locator(".dpad sb-key-button.area-ok")).toBeVisible();
+
+    await holdKey(page, ".dpad sb-key-button.area-ok", 900);
+    await page.waitForTimeout(300);
+    const calls = await sendCommandCalls(page);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ command: 21, device: 1 });
+  });
+
+  test("official hub integration ignores the attribute: a hold stays a short press", async ({ page }) => {
+    await mountCard(page, "hub_x2");
+
+    // hub_x2 publishes long_press_keys for OK on purpose; the platform
+    // gate must keep the feature dark anyway. The hub path also emits
+    // request_* bootstrap traffic through send_command, so assert on the
+    // send_assigned_key calls.
+    await holdKey(page, ".dpad sb-key-button.area-ok", 900);
+    // The hub command queue serializes the press behind the bootstrap
+    // request_* traffic; poll until it drains.
+    await expect
+      .poll(async () => {
+        const calls = await sendCommandCalls(page);
+        return calls.filter(
+          (call) => Array.isArray(call?.command) && call.command[0] === "type:send_assigned_key",
+        ).length;
+      })
+      .toBe(1);
+    // Every hub-path send carries a command LIST; the bound pair's numeric
+    // favorites-style payload (command 9, device 8) must never appear.
+    const calls = await sendCommandCalls(page);
+    for (const call of calls) expect(Array.isArray(call.command)).toBe(true);
+  });
 });

@@ -1754,9 +1754,6 @@ var REMOTE_CARD_CSS = `
       .activityRow--with-toggle {
         grid-template-columns: auto 1fr;
       }
-      .activityRow--with-toggle .loadIndicator {
-        grid-column: 1 / -1;
-      }
       .sb-mode-toggle {
         width: 48px;
         align-self: stretch;
@@ -1925,16 +1922,35 @@ var REMOTE_CARD_CSS = `
       }
 
 
- 	  .loadIndicator {
+ 	  /* Loading feedback lives INSIDE the control's silhouette: an overlay
+	     spanning the whole activity row (select alone, or the fused
+	     toggle+select pair), rounded and clipped like the control, painting
+	     only a bottom band. The band's ends follow the theme's curve, where
+	     the old detached full-width bar stuck out past the rounded corners.
+	     The row itself must never clip (the dropdown menu renders inside it
+	     on the mdc generation), so the overlay clips itself instead. */
+	  .loadIndicator {
 	    visibility: hidden;
-	    height: 4px;
-	    width: 100%;
-	    border-radius: 2px;
+	    position: absolute;
+	    inset: 0;
+	    border-radius: var(--sb-group-radius);
+	    overflow: hidden;
 	    pointer-events: none;
+	  }
+
+	  .loadIndicator::before {
+	    content: "";
+	    position: absolute;
+	    inset-inline: 0;
+	    bottom: 0;
+	    height: 4px;
 	  }
 
 	  .loadIndicator.is-loading {
 	    visibility: visible;
+	  }
+
+	  .loadIndicator.is-loading::before {
 	    background: var(--primary-color, #03a9f4);
 	    background-image: linear-gradient(
   		  90deg,
@@ -2757,7 +2773,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // custom_components/sofabaton_x1s/www/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.3.0";
+var CARD_VERSION = "0.4.0";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -2867,6 +2883,23 @@ function longPressGroupsPatch(current, selected) {
     }
   }
   return next;
+}
+function hubLongPressBinding(attributes, scopeId, buttonId) {
+  if (scopeId == null || buttonId == null) return null;
+  const scope = Number(scopeId);
+  const button = Number(buttonId);
+  if (!Number.isFinite(scope) || !Number.isFinite(button)) return null;
+  const map = attributes?.long_press_keys;
+  if (!map || typeof map !== "object") return null;
+  const page = map[String(scope)];
+  if (!page || typeof page !== "object" || Array.isArray(page)) return null;
+  const raw = page[String(button)];
+  if (!raw || typeof raw !== "object") return null;
+  const device = Number(raw.device_id);
+  const command = Number(raw.command_id);
+  if (!Number.isFinite(device) || device < 1) return null;
+  if (!Number.isFinite(command) || command < 1) return null;
+  return { device_id: device, command_id: command };
 }
 
 // custom_components/sofabaton_x1s/www/src/editor-sections/expander.ts
@@ -4800,6 +4833,59 @@ var HoldRepeatTimer = class {
     }
   }
 };
+var LONG_PRESS_HOLD_MS = 500;
+var LONG_PRESS_EVENT_TYPE = "sb-long-press";
+function isLongPressEvent(ev) {
+  return Boolean(ev && ev.type === LONG_PRESS_EVENT_TYPE);
+}
+var LongPressTimer = class {
+  constructor(fire, options = {}) {
+    this.delayHandle = null;
+    this.fired = false;
+    this.fire = fire;
+    this.delayMs = options.delayMs ?? LONG_PRESS_HOLD_MS;
+    this.timers = {
+      setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
+      clearTimeout: options.clearTimeout ?? ((h6) => clearTimeout(h6))
+    };
+  }
+  /** True while a hold is armed (the fire has not happened or been cancelled). */
+  get active() {
+    return this.delayHandle != null;
+  }
+  start() {
+    this.clearTimer();
+    this.fired = false;
+    this.delayHandle = this.timers.setTimeout(() => {
+      this.delayHandle = null;
+      this.fired = true;
+      try {
+        this.fire();
+      } catch (e6) {
+      }
+    }, this.delayMs);
+  }
+  /** Cancel a pending hold. Returns whether this hold already fired. */
+  stop() {
+    this.clearTimer();
+    return this.fired;
+  }
+  /**
+   * Read-and-clear the "the hold fired" memory. The release tap that follows
+   * a fired hold calls this and skips its own send when it returns true.
+   */
+  consumeFired() {
+    const fired = this.fired;
+    this.fired = false;
+    return fired;
+  }
+  clearTimer() {
+    if (this.delayHandle != null) {
+      this.timers.clearTimeout(this.delayHandle);
+      this.delayHandle = null;
+    }
+  }
+};
 
 // custom_components/sofabaton_x1s/www/src/remote-card-state.ts
 function hasOwn(obj, key) {
@@ -5960,6 +6046,44 @@ var RemoteCardStore = class {
       return;
     }
     const serviceData = remoteSendCommandData(this._config.entity, commandId, resolvedDevice);
+    if (!serviceData) return;
+    await this.callService("remote", "send_command", serviceData);
+  }
+  /**
+   * A button's hub long-press binding on one entity page, or null
+   * (docs/internal/long-press-plan.md). Gated on the x1s integration (the
+   * official sofabaton_hub integration has no keymap detail source) and on
+   * the `long_press_keys` attribute, which the backend publishes only
+   * while the persistent cache is enabled and only for pages whose keymap
+   * details are populated. Hold-repeat precedence is the caller's concern
+   * (it needs the key spec, not the button id).
+   */
+  longPressBindingForButton(buttonId, scopeId) {
+    if (String(this.integrationDomain || "") !== "sofabaton_x1s") return null;
+    const attrs = this.remoteState()?.attributes;
+    return hubLongPressBinding(attrs, scopeId, buttonId);
+  }
+  /** True when holding this hard button should fire its long-press binding. */
+  longPressAvailableForButton(buttonId, scopeId) {
+    return this.longPressBindingForButton(buttonId, scopeId) !== null;
+  }
+  /**
+   * Fire a button's hub long-press binding. The card resolves the pair and
+   * sends it exactly like a favorite (`send_command {command, device}`):
+   * the entity and its services have no long-press concept. Guarded like
+   * sendCommand; never reached for sofabaton_hub (the gate above stays
+   * null there).
+   */
+  async sendLongPress(buttonId, scopeId) {
+    if (this._editMode) return;
+    if (!this._hass || !this._config?.entity) return;
+    const binding = this.longPressBindingForButton(buttonId, scopeId);
+    if (!binding) return;
+    const serviceData = remoteSendCommandData(
+      this._config.entity,
+      binding.command_id,
+      binding.device_id
+    );
     if (!serviceData) return;
     await this.callService("remote", "send_command", serviceData);
   }
@@ -7284,6 +7408,7 @@ var SbKeyButton = class extends BaseElement {
     this._disabled = false;
     this._wired = false;
     this._holdRepeat = false;
+    this._longPress = false;
     /**
      * Long press: while holdRepeat is on, pressing and holding repeats the
      * trigger (first after HOLD_REPEAT_DELAY_MS, then every
@@ -7291,6 +7416,14 @@ var SbKeyButton = class extends BaseElement {
      * suppressed so letting go never sends one more command.
      */
     this._hold = new HoldRepeatTimer((repeatIndex) => this.repeatTrigger(repeatIndex));
+    /**
+     * Hub long-press binding: while longPress is on (and holdRepeat is not,
+     * hold-to-repeat wins that collision), holding fires the long-press
+     * trigger exactly once at LONG_PRESS_HOLD_MS. The release tap of a hold
+     * that fired is suppressed, so letting go never also sends the short
+     * press.
+     */
+    this._longHold = new LongPressTimer(() => this.longPressTrigger());
     /** Called on a primary pointer action, keyboard activation, or hold repeat. */
     this.onTrigger = null;
   }
@@ -7332,7 +7465,10 @@ var SbKeyButton = class extends BaseElement {
   set disabled(value) {
     this._disabled = Boolean(value);
     if (this._control) this._control.disabled = this._disabled;
-    if (this._disabled) this._hold.stop();
+    if (this._disabled) {
+      this._hold.stop();
+      this._longHold.stop();
+    }
   }
   /** Enable long press (hold-to-repeat) on this control. */
   set holdRepeat(value) {
@@ -7341,6 +7477,18 @@ var SbKeyButton = class extends BaseElement {
   }
   get holdRepeat() {
     return this._holdRepeat;
+  }
+  /**
+   * Enable the hub long-press binding on this control. Ignored while
+   * holdRepeat is on: a hold can only mean one thing, and the explicit
+   * hold-to-repeat opt-in beats the transparent binding.
+   */
+  set longPress(value) {
+    this._longPress = Boolean(value);
+    if (!this._longPress) this._longHold.stop();
+  }
+  get longPress() {
+    return this._longPress;
   }
   get disabled() {
     return this._disabled;
@@ -7357,6 +7505,7 @@ var SbKeyButton = class extends BaseElement {
   trigger(ev) {
     if (this._disabled || this.classList.contains("disabled")) return;
     if (this._hold.consumeFired()) return;
+    if (this._longHold.consumeFired()) return;
     this.onTrigger?.(ev);
   }
   repeatTrigger(repeatIndex) {
@@ -7367,14 +7516,30 @@ var SbKeyButton = class extends BaseElement {
     if (repeatIndex === 1) this.fireHaptic();
     this.onTrigger?.(new CustomEvent(HOLD_REPEAT_EVENT_TYPE, { detail: repeatIndex }));
   }
+  longPressTrigger() {
+    if (this._disabled || this.classList.contains("disabled")) {
+      this._longHold.stop();
+      return;
+    }
+    this.fireHaptic();
+    this.onTrigger?.(new CustomEvent(LONG_PRESS_EVENT_TYPE));
+  }
   onHoldPointerDown(ev) {
-    if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
+    if (this._disabled || this.classList.contains("disabled")) return;
     if (ev.isPrimary === false || typeof ev.button === "number" && ev.button !== 0) return;
-    this._hold.start();
+    if (this._holdRepeat) {
+      this._hold.start();
+    } else if (this._longPress) {
+      this._longHold.start();
+    }
   }
   onHoldPointerEnd(ev) {
     this._hold.stop();
-    if (ev.type !== "pointerup") this._hold.consumeFired();
+    this._longHold.stop();
+    if (ev.type !== "pointerup") {
+      this._hold.consumeFired();
+      this._longHold.consumeFired();
+    }
   }
   syncContent() {
     if (!this._control || !this._iconEl || !this._trailingIconEl || !this._labelEl) return;
@@ -7432,7 +7597,7 @@ var SbKeyButton = class extends BaseElement {
       this.addEventListener(type, (ev) => this.onHoldPointerEnd(ev), { capture: true });
     }
     control.addEventListener("contextmenu", (ev) => {
-      if (this._holdRepeat) ev.preventDefault();
+      if (this._holdRepeat || this._longPress) ev.preventDefault();
     });
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
@@ -7445,6 +7610,7 @@ var SbKeyButton = class extends BaseElement {
   }
   disconnectedCallback() {
     this._hold.stop();
+    this._longHold.stop();
   }
 };
 if (!customElements.get("sb-key-button")) {
@@ -7527,6 +7693,7 @@ function renderKey(params, spec) {
       .sizeVar=${spec.color ? null : "--sb-key-font-size"}
       .disabled=${!enabled}
       .holdRepeat=${params.holdRepeatForKey(spec.key)}
+      .longPress=${params.longPressForKey(spec)}
       .onTrigger=${(ev) => params.onKeyPress(spec, ev)}
     ></sb-key-button>
   `;
@@ -8635,6 +8802,7 @@ var SofabatonRemoteCard = class extends i4 {
       isEnabled: (id) => store.isEnabled(id),
       onKeyPress: (spec, ev) => this._onKeyPress(spec, ev),
       holdRepeatForKey: (key) => longPressEnabledForKey(store.config, key),
+      longPressForKey: (spec) => this._longPressForSpec(spec),
       showVolume: derived.showVolume,
       showChannel: derived.showChannel,
       showMedia: derived.showMedia,
@@ -8851,9 +9019,31 @@ var SofabatonRemoteCard = class extends i4 {
       </ha-card>
     `;
   }
+  /**
+   * Transparent hub long-press: arm the hold gesture on a hard button only
+   * when its keymap row carries a binding on the current scope (activity
+   * or device page) AND hold-to-repeat is not claiming the button (the
+   * explicit hold_repeat opt-in wins that collision; a hold can only mean
+   * one thing). Never armed in edit mode: sends are blocked there anyway.
+   */
+  _longPressForSpec(spec) {
+    if (this._editMode) return false;
+    const store = this._store;
+    if (longPressEnabledForKey(store.config, spec.key)) return false;
+    const scope = store.mode() === "device" ? store.currentDeviceId() : store.commandTarget(spec.id)?.activity_id ?? store.currentActivityId();
+    return store.longPressAvailableForButton(spec.id, scope);
+  }
   _onKeyPress(spec, ev) {
     const deviceMode = this._store.mode() === "device";
     const targetDeviceId = deviceMode ? this._store.currentDeviceId() : this._store.commandTarget(spec.id)?.activity_id ?? this._store.currentActivityId();
+    if (isLongPressEvent(ev)) {
+      if (this._assist.active) {
+        this._assist.setStatus(str().assist.notCaptured);
+      }
+      this._store.triggerCommandPulse();
+      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      return;
+    }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
         label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),

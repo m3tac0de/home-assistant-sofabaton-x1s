@@ -288,9 +288,6 @@ export const REMOTE_CARD_CSS = `
       .activityRow--with-toggle {
         grid-template-columns: auto 1fr;
       }
-      .activityRow--with-toggle .loadIndicator {
-        grid-column: 1 / -1;
-      }
       .sb-mode-toggle {
         width: 48px;
         align-self: stretch;
@@ -459,16 +456,35 @@ export const REMOTE_CARD_CSS = `
       }
 
 
- 	  .loadIndicator {
+ 	  /* Loading feedback lives INSIDE the control's silhouette: an overlay
+	     spanning the whole activity row (select alone, or the fused
+	     toggle+select pair), rounded and clipped like the control, painting
+	     only a bottom band. The band's ends follow the theme's curve, where
+	     the old detached full-width bar stuck out past the rounded corners.
+	     The row itself must never clip (the dropdown menu renders inside it
+	     on the mdc generation), so the overlay clips itself instead. */
+	  .loadIndicator {
 	    visibility: hidden;
-	    height: 4px;
-	    width: 100%;
-	    border-radius: 2px;
+	    position: absolute;
+	    inset: 0;
+	    border-radius: var(--sb-group-radius);
+	    overflow: hidden;
 	    pointer-events: none;
+	  }
+
+	  .loadIndicator::before {
+	    content: "";
+	    position: absolute;
+	    inset-inline: 0;
+	    bottom: 0;
+	    height: 4px;
 	  }
 
 	  .loadIndicator.is-loading {
 	    visibility: visible;
+	  }
+
+	  .loadIndicator.is-loading::before {
 	    background: var(--primary-color, #03a9f4);
 	    background-image: linear-gradient(
   		  90deg,

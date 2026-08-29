@@ -5,6 +5,8 @@
 import {
   HOLD_REPEAT_EVENT_TYPE,
   HoldRepeatTimer,
+  LONG_PRESS_EVENT_TYPE,
+  LongPressTimer,
   attachPrimaryAction,
 } from "../remote-card-gestures";
 
@@ -181,6 +183,7 @@ export class SbKeyButton extends BaseElement {
   private _disabled = false;
   private _wired = false;
   private _holdRepeat = false;
+  private _longPress = false;
   /**
    * Long press: while holdRepeat is on, pressing and holding repeats the
    * trigger (first after HOLD_REPEAT_DELAY_MS, then every
@@ -188,6 +191,14 @@ export class SbKeyButton extends BaseElement {
    * suppressed so letting go never sends one more command.
    */
   private readonly _hold = new HoldRepeatTimer((repeatIndex) => this.repeatTrigger(repeatIndex));
+  /**
+   * Hub long-press binding: while longPress is on (and holdRepeat is not,
+   * hold-to-repeat wins that collision), holding fires the long-press
+   * trigger exactly once at LONG_PRESS_HOLD_MS. The release tap of a hold
+   * that fired is suppressed, so letting go never also sends the short
+   * press.
+   */
+  private readonly _longHold = new LongPressTimer(() => this.longPressTrigger());
 
   /** Called on a primary pointer action, keyboard activation, or hold repeat. */
   onTrigger: ((ev: Event) => void) | null = null;
@@ -236,7 +247,10 @@ export class SbKeyButton extends BaseElement {
   set disabled(value: boolean) {
     this._disabled = Boolean(value);
     if (this._control) this._control.disabled = this._disabled;
-    if (this._disabled) this._hold.stop();
+    if (this._disabled) {
+      this._hold.stop();
+      this._longHold.stop();
+    }
   }
 
   /** Enable long press (hold-to-repeat) on this control. */
@@ -247,6 +261,20 @@ export class SbKeyButton extends BaseElement {
 
   get holdRepeat(): boolean {
     return this._holdRepeat;
+  }
+
+  /**
+   * Enable the hub long-press binding on this control. Ignored while
+   * holdRepeat is on: a hold can only mean one thing, and the explicit
+   * hold-to-repeat opt-in beats the transparent binding.
+   */
+  set longPress(value: boolean) {
+    this._longPress = Boolean(value);
+    if (!this._longPress) this._longHold.stop();
+  }
+
+  get longPress(): boolean {
+    return this._longPress;
   }
 
   get disabled(): boolean {
@@ -265,8 +293,10 @@ export class SbKeyButton extends BaseElement {
 
   private trigger(ev: Event): void {
     if (this._disabled || this.classList.contains("disabled")) return;
-    // The pointerup that ends a hold which already repeated is not a tap.
+    // The pointerup that ends a hold which already repeated (or already
+    // fired its long-press binding) is not a tap.
     if (this._hold.consumeFired()) return;
+    if (this._longHold.consumeFired()) return;
     this.onTrigger?.(ev);
   }
 
@@ -280,20 +310,40 @@ export class SbKeyButton extends BaseElement {
     this.onTrigger?.(new CustomEvent(HOLD_REPEAT_EVENT_TYPE, { detail: repeatIndex }));
   }
 
+  private longPressTrigger(): void {
+    if (this._disabled || this.classList.contains("disabled")) {
+      this._longHold.stop();
+      return;
+    }
+    this.fireHaptic();
+    this.onTrigger?.(new CustomEvent(LONG_PRESS_EVENT_TYPE));
+  }
+
   private onHoldPointerDown(ev: PointerEvent): void {
-    if (!this._holdRepeat || this._disabled || this.classList.contains("disabled")) return;
+    if (this._disabled || this.classList.contains("disabled")) return;
     if (ev.isPrimary === false || (typeof ev.button === "number" && ev.button !== 0)) return;
-    this._hold.start();
+    // Exactly one hold meaning per button: hold-to-repeat wins the
+    // collision with a hub long-press binding (explicit config opt-in
+    // beats the transparent feature).
+    if (this._holdRepeat) {
+      this._hold.start();
+    } else if (this._longPress) {
+      this._longHold.start();
+    }
   }
 
   private onHoldPointerEnd(ev: Event): void {
     this._hold.stop();
+    this._longHold.stop();
     // Only a pointerup on the button goes on to trigger(), which consumes
     // the "a repeat fired" memory while suppressing the release tap. The
     // other endings (the mouse drifting off the button, pointercancel,
     // lost capture) never reach trigger(), so clear the memory here or the
     // next keyboard activation of this button would be swallowed.
-    if (ev.type !== "pointerup") this._hold.consumeFired();
+    if (ev.type !== "pointerup") {
+      this._hold.consumeFired();
+      this._longHold.consumeFired();
+    }
   }
 
   private syncContent(): void {
@@ -370,7 +420,7 @@ export class SbKeyButton extends BaseElement {
     // A long press on touch devices would otherwise open the context menu
     // (and cancel the pointer sequence).
     control.addEventListener("contextmenu", (ev) => {
-      if (this._holdRepeat) ev.preventDefault();
+      if (this._holdRepeat || this._longPress) ev.preventDefault();
     });
 
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
@@ -389,6 +439,7 @@ export class SbKeyButton extends BaseElement {
 
   disconnectedCallback(): void {
     this._hold.stop();
+    this._longHold.stop();
   }
 }
 

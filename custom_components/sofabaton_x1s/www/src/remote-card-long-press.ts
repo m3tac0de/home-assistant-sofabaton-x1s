@@ -1,10 +1,17 @@
-// Long press (hold-to-repeat) configuration helpers for the remote card.
+// Long press helpers for the remote card: the `hold_repeat` config block
+// (hold-to-repeat) and the transparent hub long-press bindings.
 //
 // `hold_repeat` is a card-level block (not per layout): holding one of the
 // selected buttons repeats its command, like on the physical remote. The
 // feature is off unless `hold_repeat.enabled` is true; once enabled, every
 // button group defaults to on and only explicit `false` values opt out.
 // Pure functions over the stored config, shared by the card and its editor.
+//
+// Hub long-press bindings (docs/internal/long-press-plan.md) arrive through
+// the remote entity's `long_press_keys` attribute: per entity page (activity
+// or device id), the resolved (device_id, command_id) pair of every bound
+// hard button. Pure functions over the attributes; the store composes them
+// with the integration gate.
 
 import type { HoldRepeatConfig, RemoteCardConfig } from "./remote-card-types";
 
@@ -107,4 +114,54 @@ export function longPressGroupsPatch(
     }
   }
   return next;
+}
+
+// ---------- hub long-press bindings ----------
+
+/** The resolved long-press target of one bound hard button. */
+export interface HubLongPressBinding {
+  device_id: number;
+  command_id: number;
+}
+
+/**
+ * The long-press binding of one hard button on one entity page (activity
+ * and device ids share the attribute's namespace), or null. Absent
+ * attribute (persistent cache off, official sofabaton_hub integration,
+ * older backend), unknown scope, or a malformed entry all mean null,
+ * which keeps the feature transparently dark. The card fires the pair
+ * itself through the ordinary `send_command {command, device}` payload:
+ * long-press exists only here, never in the entity or its services.
+ */
+export function hubLongPressBinding(
+  attributes: { long_press_keys?: unknown } | null | undefined,
+  scopeId: unknown,
+  buttonId: unknown,
+): HubLongPressBinding | null {
+  if (scopeId == null || buttonId == null) return null;
+  const scope = Number(scopeId);
+  const button = Number(buttonId);
+  if (!Number.isFinite(scope) || !Number.isFinite(button)) return null;
+  const map = attributes?.long_press_keys;
+  if (!map || typeof map !== "object") return null;
+  const page = (map as Record<string, unknown>)[String(scope)];
+  if (!page || typeof page !== "object" || Array.isArray(page)) return null;
+  const raw = (page as Record<string, unknown>)[String(button)];
+  if (!raw || typeof raw !== "object") return null;
+  const device = Number((raw as Record<string, unknown>).device_id);
+  const command = Number((raw as Record<string, unknown>).command_id);
+  // Entity ids are 1-255; 0 is the wire's "no long press" sentinel and
+  // Number(null) is 0, so both must fail this check.
+  if (!Number.isFinite(device) || device < 1) return null;
+  if (!Number.isFinite(command) || command < 1) return null;
+  return { device_id: device, command_id: command };
+}
+
+/** True when this hard button carries a hub long-press binding on the scope. */
+export function hubLongPressAvailable(
+  attributes: { long_press_keys?: unknown } | null | undefined,
+  scopeId: unknown,
+  buttonId: unknown,
+): boolean {
+  return hubLongPressBinding(attributes, scopeId, buttonId) !== null;
 }

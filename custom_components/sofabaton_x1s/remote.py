@@ -128,11 +128,33 @@ class SofabatonRemote(RemoteEntity):
         # card's capability signal. Wifi Events is filtered inside
         # get_ui_device_list (presentation layer only).
         devices: list[dict[str, Any]] | None = None
+        # Transparent long-press (docs/internal/long-press-plan.md): the
+        # resolved long-press pair per bound hard button, per entity page
+        # (activity ids and device ids share one keymap-detail namespace).
+        # The card fires a pair through the ordinary favorites-style
+        # `send_command {command, device}` — long-press exists ONLY in the
+        # card, never in the remote entity or its services. Published only
+        # while the persistent cache is enabled, mirroring `devices`, so
+        # its absence doubles as the card's capability signal.
+        long_press_keys: dict[str, dict[str, dict[str, int]]] | None = None
         hass = getattr(self, "hass", None)
         if hass is not None:
             cache_store = hass.data.get(DOMAIN, {}).get("persistent_cache_store")
             if bool(getattr(cache_store, "enabled", False)):
                 devices = self._hub.get_ui_device_list()
+                long_press_keys = {}
+                for ent_id, details in self._hub.get_all_cached_button_details().items():
+                    bindings: dict[str, dict[str, int]] = {}
+                    for button_id, row in details.items():
+                        lp_device = row.get("long_press_device_id")
+                        lp_command = row.get("long_press_command_id")
+                        if lp_device and lp_command is not None:
+                            bindings[str(int(button_id))] = {
+                                "device_id": int(lp_device),
+                                "command_id": int(lp_command),
+                            }
+                    if bindings:
+                        long_press_keys[str(ent_id)] = bindings
 
         mdns_txt = self._entry.data.get("mdns_txt", {})
         hub_version_confident = (
@@ -154,6 +176,8 @@ class SofabatonRemote(RemoteEntity):
         }
         if devices is not None:
             attrs["devices"] = devices
+        if long_press_keys is not None:
+            attrs["long_press_keys"] = long_press_keys
         return attrs
 
     @property
