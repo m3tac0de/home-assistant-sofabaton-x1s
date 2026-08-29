@@ -218,7 +218,17 @@ test.describe("remote card playwright harness", () => {
         textRange.selectNodeContents(label);
         const text = textRange.getBoundingClientRect();
         const iconRect = icon.getBoundingClientRect();
+        const cellRect = host.getBoundingClientRect();
+        const controlRect = control.getBoundingClientRect();
         return {
+          // The control carries the hover/press overlay, so it must fill the
+          // whole tab cell (up to the 1px divider) or the highlight renders
+          // as an inset band instead of covering the full button.
+          controlCoversCell:
+            Math.abs(controlRect.top - cellRect.top) <= 0.5 &&
+            Math.abs(cellRect.bottom - controlRect.bottom) <= 0.5 &&
+            Math.abs(controlRect.left - cellRect.left) <= 1.5 &&
+            Math.abs(cellRect.right - controlRect.right) <= 1.5,
           direction: getComputedStyle(control).direction,
           text: label.textContent,
           labelClipped: label.scrollWidth > label.clientWidth + 0.5,
@@ -269,6 +279,7 @@ test.describe("remote card playwright harness", () => {
       await expect(tabLabels).toHaveText(expectedLabels);
       for (const tab of await tabGeometry()) {
         expect(tab.labelClipped, `${locale} tab "${tab.text}" fits unclipped`).toBe(false);
+        expect(tab.controlCoversCell, `${locale} tab "${tab.text}" hover surface fills the cell`).toBe(true);
       }
     }
   });

@@ -509,7 +509,10 @@ export const REMOTE_CARD_CSS = `
            "Favourites", ~65px at 14px Roboto) need the extra 4px to render
            without an ellipsis at the 14px font floor. */
         --sb-control-padding-inline: 8px;
-        padding: 4px 0;
+        /* No padding: the inner control carries the hover/press overlay, so
+           it must fill the whole cell or the highlight renders as an inset
+           band instead of covering the full tab. */
+        padding: 0;
         box-sizing: border-box;
         height: var(--sb-tab-height);
         display: block !important;
