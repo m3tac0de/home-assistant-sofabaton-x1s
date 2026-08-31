@@ -147,78 +147,67 @@ def test_supported_platforms_degrades_without_infrared(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# send_pronto entity service
+# send_pronto entity service (self-parsed, library-version-independent)
 # ---------------------------------------------------------------------------
 
 
-def _install_pronto_stub(monkeypatch, *, decode_error=None):
-    import types
-
-    commands_pkg = types.ModuleType("infrared_protocols.commands")
-    pronto_mod = types.ModuleType("infrared_protocols.commands.pronto")
-    root_pkg = types.ModuleType("infrared_protocols")
-
-    class ProntoCommand:
-        def __init__(self):
-            self.modulation = 38029
-
-        @classmethod
-        def from_pronto_hex(cls, text: str):
-            if decode_error is not None:
-                raise decode_error
-            command = cls()
-            command.source = text
-            return command
-
-        def get_raw_timings(self):
-            return [4500, -4500, 560, -45000]
-
-    pronto_mod.ProntoCommand = ProntoCommand
-    monkeypatch.setitem(sys.modules, "infrared_protocols", root_pkg)
-    monkeypatch.setitem(sys.modules, "infrared_protocols.commands", commands_pkg)
-    monkeypatch.setitem(sys.modules, "infrared_protocols.commands.pronto", pronto_mod)
-    return ProntoCommand
+def test_send_pronto_module_does_not_import_infrared_protocols():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "custom_components"
+        / "sofabaton_x1s"
+        / "infrared.py"
+    ).read_text(encoding="utf-8")
+    # The TYPE_CHECKING type alias is the only permitted reference; the
+    # runtime path (send_pronto included) must not import the library.
+    references = [
+        line.strip()
+        for line in source.splitlines()
+        if "infrared_protocols" in line
+    ]
+    assert references == [
+        "from infrared_protocols.commands import Command as InfraredCommand"
+    ]
 
 
-def test_send_pronto_routes_through_full_emission_path(monkeypatch):
-    _install_pronto_stub(monkeypatch)
+def test_send_pronto_routes_through_full_emission_path():
     entity, hub = _make_entity()
     recorded = []
     hub.record_ir_emission = lambda **kwargs: recorded.append(kwargs)
+    # 0x006D -> 38029 Hz; one pair: 0x00AB=171 cycles, 0x06AE=1710 cycles
     _run(entity.async_send_pronto("  0000 006D 0002 0000 00AB 00AB 0015 06AE  "))
     assert len(hub.play_calls) == 1
     blob = hub.play_calls[0]
     assert blob[6:8] == (38029).to_bytes(2, "big")
-    # intercept recorder saw the send (the sensor path)
     assert len(recorded) == 1
     assert recorded[0]["carrier_hz"] == 38029
-    # whitespace was trimmed before decode
-    assert recorded[0]["command"].source == "0000 006D 0002 0000 00AB 00AB 0015 06AE"
+    assert repr(recorded[0]["command"]).startswith("ProntoHexCommand(")
+    # 171 cycles at 38029 Hz -> 4497 us leader mark
+    assert recorded[0]["timings"][0] == 4497
 
 
-def test_send_pronto_invalid_hex_raises(monkeypatch):
-    _install_pronto_stub(monkeypatch, decode_error=ValueError("bad preamble"))
+@pytest.mark.parametrize(
+    "pronto",
+    [
+        "garbage",
+        "0100 006D 0001 0000 00AB 00AB",  # non-learned format
+        "0000 0000 0001 0000 00AB 00AB",  # zero frequency word
+        "0000 006D 0002 0000 00AB 00AB",  # count mismatch
+        "0000 006D 0000 0000",  # no pairs at all
+        "0000 006D 0001 0000 0000 00AB",  # zero timing word
+    ],
+)
+def test_send_pronto_invalid_hex_raises(pronto):
     entity, hub = _make_entity()
     with pytest.raises(HomeAssistantError, match="Invalid pronto hex"):
-        _run(entity.async_send_pronto("garbage"))
+        _run(entity.async_send_pronto(pronto))
     assert hub.play_calls == []
 
 
-def test_send_pronto_without_library_pronto_module(monkeypatch):
-    for name in list(sys.modules):
-        if name.startswith("infrared_protocols"):
-            monkeypatch.delitem(sys.modules, name)
+def test_send_pronto_uses_repeat_section_when_once_is_empty():
     entity, hub = _make_entity()
-    try:
-        import infrared_protocols.commands.pronto  # noqa: F401
-        has_real = True
-    except ImportError:
-        has_real = False
-    if has_real:
-        pytest.skip("real infrared-protocols with pronto present in this env")
-    with pytest.raises(HomeAssistantError, match="Pronto support"):
-        _run(entity.async_send_pronto("0000 006D 0001 0000 00AB 00AB"))
-    assert hub.play_calls == []
+    _run(entity.async_send_pronto("0000 006D 0000 0001 00AB 06AE"))
+    assert len(hub.play_calls) == 1
 
 
 def test_setup_entry_registers_send_pronto_service():

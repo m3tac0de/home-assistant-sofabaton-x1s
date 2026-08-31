@@ -660,6 +660,61 @@ _RAW_IR_TERMINATOR = b"\x00\x00\x00\x00"
 RAW_IR_DEFAULT_TRAILING_GAP_US = 40_000
 
 
+#: Pronto reference oscillator: carrier Hz = PRONTO_REFERENCE_HZ / freq_word.
+_PRONTO_REFERENCE_HZ = 4_145_146
+
+
+def parse_pronto_hex(text: str) -> tuple[list[int], int]:
+    """Parse a learned-format (``0000``) pronto hex string.
+
+    Returns ``(timings_us, carrier_hz)`` where timings alternate
+    mark/space in microseconds, mark first - ready for
+    :func:`build_raw_ir_blob_body`. The once-burst section is used;
+    when it is empty the repeat section is emitted once instead (many
+    published codes carry the whole signal in the repeat section).
+
+    Implemented locally on purpose: the ``infrared-protocols`` library's
+    pronto API differs between the versions HA cores pin (no hex parser
+    at all in 8.x, ``from_pronto_hex`` in 9.x), and the arithmetic is
+    small enough to own outright.
+    """
+
+    try:
+        words = [int(token, 16) for token in text.split()]
+    except ValueError as exc:
+        raise ValueError(f"not hex words: {exc}") from exc
+    if len(words) < 6:
+        raise ValueError("pronto code too short (needs preamble + one pair)")
+    if any(not 0 <= word <= 0xFFFF for word in words):
+        raise ValueError("pronto words must be 16-bit values")
+    preamble, freq_word, once_pairs, repeat_pairs = words[:4]
+    if preamble != 0x0000:
+        raise ValueError(
+            f"unsupported pronto format 0x{preamble:04X} (only learned/0000)"
+        )
+    if freq_word == 0:
+        raise ValueError("pronto frequency word is zero")
+    expected = 4 + 2 * (once_pairs + repeat_pairs)
+    if len(words) != expected:
+        raise ValueError(
+            f"pronto word count mismatch: preamble declares {expected}, got {len(words)}"
+        )
+    carrier_hz = round(_PRONTO_REFERENCE_HZ / freq_word)
+    if once_pairs:
+        start, count = 4, 2 * once_pairs
+    else:
+        if not repeat_pairs:
+            raise ValueError("pronto code has neither once nor repeat pairs")
+        start, count = 4, 2 * repeat_pairs
+    cycle_us = 1_000_000 / carrier_hz
+    timings = [
+        max(1, round(word * cycle_us)) for word in words[start : start + count]
+    ]
+    if any(word == 0 for word in words[start : start + count]):
+        raise ValueError("pronto timing word is zero")
+    return timings, carrier_hz
+
+
 def build_raw_ir_blob_body(
     timings_us: Sequence[int],
     carrier_hz: int,

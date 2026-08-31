@@ -32,6 +32,7 @@ from custom_components.sofabaton_x1s.lib.blob_decoders import (  # noqa: E402
     DECODABLE_CLASSES,
     RAW_IR_DEFAULT_TRAILING_GAP_US,
     build_raw_ir_blob_body,
+    parse_pronto_hex,
     encode_decoded_blob,
     format_decoded_for_display,
     is_decodable_class,
@@ -745,3 +746,53 @@ def test_raw_ir_blob_is_play_ir_blob_sized():
     # sequence (one mark, padded to a pair) must clear that floor.
     blob = build_raw_ir_blob_body([560], 38000)
     assert len(blob) >= 10
+
+
+# ---------------------------------------------------------------------------
+# Pronto hex parser (learned format, owned locally - see parse_pronto_hex)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_pronto_hex_basic_pair():
+    timings, carrier = parse_pronto_hex("0000 006D 0002 0000 00AB 00AB 0015 0040")
+    assert carrier == 38029
+    # 171 cycles * (1e6/38029) us -> 4497; 21 -> 552; 64 -> 1683
+    assert timings == [4497, 4497, 552, 1683]
+
+
+def test_parse_pronto_hex_round_trips_with_blob_builder():
+    timings, carrier = parse_pronto_hex("0000 006D 0001 0000 00AB 06AE")
+    blob = build_raw_ir_blob_body(timings, carrier)
+    assert blob[6:8] == carrier.to_bytes(2, "big")
+    assert int.from_bytes(blob[8:12], "big") == timings[0]
+
+
+def test_parse_pronto_hex_prefers_once_ignores_repeat():
+    timings, _carrier = parse_pronto_hex(
+        "0000 006D 0001 0001 00AB 06AE 0015 0040"
+    )
+    assert len(timings) == 2  # once section only
+
+
+def test_parse_pronto_hex_uses_repeat_when_once_empty():
+    timings, _carrier = parse_pronto_hex("0000 006D 0000 0001 0015 0040")
+    assert len(timings) == 2
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "zz not hex",
+        "0000 006D 0001 0000",  # too short for declared pair
+        "0100 006D 0001 0000 00AB 00AB",  # predefined format
+        "0000 0000 0001 0000 00AB 00AB",  # zero freq word
+        "0000 006D 0000 0000",  # no sections
+        "0000 006D 0001 0000 00AB 00AB 0015",  # count mismatch
+        "0000 006D 0001 0000 0000 00AB",  # zero timing
+        "10000 006D 0001 0000 00AB 00AB",  # >16-bit word
+    ],
+)
+def test_parse_pronto_hex_rejects_bad_input(text):
+    with pytest.raises(ValueError):
+        parse_pronto_hex(text)

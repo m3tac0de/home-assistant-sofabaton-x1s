@@ -33,7 +33,7 @@ from homeassistant.helpers.entity import DeviceInfo
 
 from .const import CONF_MAC, DOMAIN, signal_client, signal_hub
 from .hub import get_hub_display_name, get_hub_model
-from .lib.blob_decoders import build_raw_ir_blob_body
+from .lib.blob_decoders import build_raw_ir_blob_body, parse_pronto_hex
 
 if TYPE_CHECKING:
     from infrared_protocols.commands import Command as InfraredCommand
@@ -41,6 +41,33 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SEND_PRONTO = "send_pronto"
+
+
+class ProntoHexCommand:
+    """A user-pasted pronto code, shaped like an infrared command.
+
+    Satisfies the emitter contract (``modulation`` +
+    ``get_raw_timings``) without importing infrared-protocols, so
+    ``send_pronto`` is library-version-independent. The class name and
+    repr are what the intercept sensor shows.
+    """
+
+    def __init__(self, *, timings: list[int], carrier_hz: int) -> None:
+        self.modulation = int(carrier_hz)
+        self._timings = list(timings)
+
+    def get_raw_timings(self) -> list[int]:
+        # Positional alternation; signs are informational only.
+        return [
+            value if index % 2 == 0 else -value
+            for index, value in enumerate(self._timings)
+        ]
+
+    def __repr__(self) -> str:
+        return (
+            f"ProntoHexCommand({len(self._timings)} timings, "
+            f"{self.modulation} Hz)"
+        )
 
 
 async def async_setup_entry(
@@ -103,23 +130,22 @@ class SofabatonInfraredEmitter(InfraredEmitterEntity):
     async def async_send_pronto(self, pronto: str) -> None:
         """Entity service: decode a pronto hex string and emit it.
 
+        The pronto arithmetic is parsed by our own
+        ``parse_pronto_hex`` (lib), NOT the infrared-protocols library -
+        its pronto API differs between the versions HA cores pin, so the
+        action works identically on every core the emitter exists on.
         Routes through ``async_send_command_internal`` so the send is
         indistinguishable from a consumer integration's - the emitter
         timestamp updates and the intercept sensor records it.
         """
 
         try:
-            from infrared_protocols.commands.pronto import ProntoCommand
-        except ImportError as err:
-            raise HomeAssistantError(
-                "Pronto support needs a newer infrared-protocols library "
-                "than this Home Assistant provides"
-            ) from err
-        try:
-            command = ProntoCommand.from_pronto_hex(str(pronto).strip())
-        except Exception as err:  # noqa: BLE001 - user input, surface the reason
+            timings, carrier_hz = parse_pronto_hex(str(pronto).strip())
+        except ValueError as err:
             raise HomeAssistantError(f"Invalid pronto hex: {err}") from err
-        await self.async_send_command_internal(command)
+        await self.async_send_command_internal(
+            ProntoHexCommand(timings=timings, carrier_hz=carrier_hz)
+        )
 
     async def async_send_command(self, command: "InfraredCommand") -> None:
         try:
