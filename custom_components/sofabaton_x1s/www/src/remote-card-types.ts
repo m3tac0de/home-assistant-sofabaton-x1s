@@ -56,6 +56,8 @@ export interface DeviceLayoutConfig {
   show_abc?: boolean;
   /** Toggles the Commands drawer (default shown). */
   show_commands_button?: boolean;
+  /** Toggles the device Power button when power control is configured (default shown). */
+  show_power_button?: boolean;
   /** Toggles the activity/device mode toggle button (default shown). */
   show_device_toggle?: boolean;
   /** Toggles the Shortcuts row (default shown; renders only with configured slots). */

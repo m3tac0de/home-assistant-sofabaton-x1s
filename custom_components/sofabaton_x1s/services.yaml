@@ -397,3 +397,15 @@ sync_from_snapshot:
       required: true
       selector:
         object:
+
+send_pronto:
+  target:
+    entity:
+      integration: sofabaton_x1s
+      domain: infrared
+  fields:
+    pronto:
+      required: true
+      selector:
+        text:
+          multiline: true

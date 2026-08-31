@@ -64,8 +64,8 @@ export function renderStylingOptionsSection(params: {
     "sb-opt-max-width",
   );
 
-  // Panels moved out of the key-style dropdown into their own switch
-  // (0.3.0): resolve legacy `key_style: "panel"` configs through the
+  // Panels moved out of the key-style dropdown into their own switch:
+  // resolve legacy `key_style: "panel"` configs through the
   // shared readers, and normalize them away on the first styling write
   // so the two settings stay independent from then on.
   const resolvedKeyStyle = keyStyleFromConfig(config);

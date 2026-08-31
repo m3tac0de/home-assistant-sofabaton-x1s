@@ -131,8 +131,8 @@ export const REMOTE_CARD_CSS = `
       .wrap--keys-elevated .drawer-btn {
         --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
       }
-      /* Tinted panels (the former key_style "panel", an independent
-         switch since 0.3.0 so it combines with any key style): the
+      /* Tinted panels (the former key_style "panel", now an independent
+         switch so it combines with any key style): the
          bordered group containers take the dock surface. With flat keys
          the keys KEEP the card background and read as card-coloured
          cutouts on a softly accent-tinted panel; with a tinted/elevated/

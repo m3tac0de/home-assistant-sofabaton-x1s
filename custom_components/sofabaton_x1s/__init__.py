@@ -26,6 +26,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
 from .const import (
+    infrared_platform_available,
     DOMAIN,
     PLATFORMS,
     DEFAULT_PROXY_UDP_PORT,
@@ -77,6 +78,7 @@ from .command_config import (
     WIFI_TRANSPORT_MQTT,
     wifi_device_requires_listener,
 )
+from . import ir_library
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
@@ -2107,6 +2109,51 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/ir_library/catalog",
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_library_catalog(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Browsable infrared-protocols catalog (no hub interaction).
+
+    The first call scans and imports the library's code modules, so it
+    runs in the executor; later calls hit the module-level cache.
+    """
+
+    result = await hass.async_add_executor_job(ir_library.catalog)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_library/commands",
+        vol.Required("brand"): str,
+        vol.Required("device_type"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_library_commands(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Rendered commands for one code set: labels + playable payload hex."""
+
+    try:
+        result = await hass.async_add_executor_job(
+            ir_library.commands, msg["brand"], msg["device_type"]
+        )
+    except LookupError as err:
+        connection.send_error(msg["id"], "not_found", str(err))
+        return
+    except RuntimeError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+    connection.send_result(msg["id"], {"commands": result})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/backup/export",
         vol.Required("entry_id"): str,
         vol.Optional("device_ids"): [vol.All(int, vol.Range(min=1, max=255))],
@@ -3811,6 +3858,8 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
     websocket_api.async_register_command(hass, _ws_fetch_blob)
     websocket_api.async_register_command(hass, _ws_play_ir_blob)
+    websocket_api.async_register_command(hass, _ws_ir_library_catalog)
+    websocket_api.async_register_command(hass, _ws_ir_library_commands)
     websocket_api.async_register_command(hass, _ws_backup_export)
     websocket_api.async_register_command(hass, _ws_backup_restore)
     websocket_api.async_register_command(hass, _ws_backup_stash_edited)
@@ -4177,9 +4226,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.add_update_listener(async_update_options)
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(
+        entry, _supported_platforms()
+    )
     await _async_ensure_storage_mode_frontend_resources(hass)
     return True
+
+
+def _supported_platforms() -> list[str]:
+    """PLATFORMS plus ``infrared`` when this HA core ships the domain.
+
+    Setup and unload must both use this so the forward/unload platform
+    lists match.
+    """
+
+    platforms = list(PLATFORMS)
+    if not infrared_platform_available():
+        _LOGGER.info(
+            "This Home Assistant core has no infrared platform; "
+            "skipping the IR emitter entity"
+        )
+        return platforms
+    platforms.append("infrared")
+    return platforms
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -4202,7 +4271,9 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await roku_listener.async_set_listen_port(int(roku_listen_port))
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, _supported_platforms()
+    )
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
         if not _get_hubs(hass.data[DOMAIN]):
