@@ -26,6 +26,35 @@ play_ir_blob:
         text:
           multiline: true
 
+set_ir_learn_mode:
+  fields:
+    device:
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    enabled:
+      required: true
+      selector:
+        boolean:
+
+ir_learn_command:
+  fields:
+    device:
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    timeout:
+      required: false
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: seconds
+          mode: box
+
 persist_ir_blob:
   fields:
     device:

@@ -954,6 +954,54 @@ def extract_ir_dump_label_field(payload: bytes) -> bytes | None:
     return payload[13:15] if len(payload) >= 15 else None
 
 
+# Learn records (reassembled family-0x06 pages, page headers stripped) use
+# the same layout as dump/save pages, so the blob starts 3 bytes earlier
+# than the page-payload constants above.
+_LEARN_RECORD_BLOB_START_X1 = _IR_DUMP_PAGE_ONE_BLOB_START_X1 - 3
+_LEARN_RECORD_BLOB_START_X1S = _IR_DUMP_PAGE_ONE_BLOB_START_X1S - 3
+
+
+def extract_learned_ir_blob(record: bytes, *, hub_version: str | None = None) -> bytes | None:
+    """Return the raw blob body from a reassembled family-0x06 learn record.
+
+    ``record`` is the concatenation of the learn pages' slices (each page
+    payload minus its 3-byte ``[key_idx, page BE16]`` header): fixed
+    header, an all-zero fixed-width label slot (30B on X1, 60B on
+    X1S/X2), the raw learned blob, and a trailing persist byte. Because
+    the label slot is empty, the dump path's content sniff cannot pick
+    the layout; instead each candidate start is validated against the
+    raw blob's self-describing shape (declared timing byte-length BE16,
+    4 zero format bytes, 8-byte header + timings + 4-zero terminator),
+    with ``hub_version`` as the tiebreak when validation is inconclusive.
+    """
+
+    if not isinstance(record, (bytes, bytearray)) or len(record) < 16:
+        return None
+    data = bytes(record)
+
+    for start in (_LEARN_RECORD_BLOB_START_X1S, _LEARN_RECORD_BLOB_START_X1):
+        candidate = data[start:]
+        if len(candidate) < 14:
+            continue
+        body = candidate[:-1]
+        declared_timing_bytes = int.from_bytes(body[0:2], "big")
+        if (
+            declared_timing_bytes > 0
+            and body[2:6] == b"\x00\x00\x00\x00"
+            and len(body) == 8 + declared_timing_bytes + 4
+        ):
+            return body
+
+    start = (
+        _LEARN_RECORD_BLOB_START_X1
+        if hub_version == HUB_VERSION_X1
+        else _LEARN_RECORD_BLOB_START_X1S
+    )
+    if len(data) <= start + 1:
+        return None
+    return data[start:-1] or None
+
+
 def _extract_ir_dump_label(payload: bytes) -> str | None:
     if len(payload) <= _IR_DUMP_LABEL_START:
         return None

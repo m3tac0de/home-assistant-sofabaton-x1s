@@ -2152,6 +2152,20 @@ class SofabatonHub:
             )
         )
 
+    async def async_set_ir_learn_mode(self, enabled: bool) -> bool:
+        """Arm or disarm the hub's IR learn mode (toggle only, no capture wait)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.set_ir_learn_mode, enabled)
+        )
+
+    async def async_ir_learn_command(self, *, timeout: float = 60.0) -> dict[str, Any] | None:
+        """Arm learn mode and wait for one captured IR command (or timeout/interrupt)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.ir_learn_command, timeout=timeout)
+        )
+
     async def async_persist_ir_blob(
         self,
         *,

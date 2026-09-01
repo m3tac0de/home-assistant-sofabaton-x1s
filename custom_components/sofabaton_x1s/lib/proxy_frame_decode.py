@@ -65,9 +65,10 @@ class FrameDecodeMixin:
                 self._begin_activity_request()
 
     def _handle_hub_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
-        for opcode, _raw, _payload, _scid, _ecid in frames:
+        for opcode, _raw, payload, _scid, _ecid in frames:
             if opcode == OP_CATALOG_ROW_DEVICE:
                 self._clear_app_device_retry()
+            self._ingest_ir_learn_frame(opcode, payload)
 
     def _clear_app_device_retry(self) -> None:
         self._app_devices_deadline = None

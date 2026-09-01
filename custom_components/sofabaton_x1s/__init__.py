@@ -4167,6 +4167,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     if not hass.services.has_service(DOMAIN, "play_ir_blob"):
         hass.services.async_register(DOMAIN, "play_ir_blob", _async_handle_play_ir_blob)
+    if not hass.services.has_service(DOMAIN, "set_ir_learn_mode"):
+        hass.services.async_register(DOMAIN, "set_ir_learn_mode", _async_handle_set_ir_learn_mode)
+    if not hass.services.has_service(DOMAIN, "ir_learn_command"):
+        hass.services.async_register(
+            DOMAIN,
+            "ir_learn_command",
+            _async_handle_ir_learn_command,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     if not hass.services.has_service(DOMAIN, "persist_ir_blob"):
         hass.services.async_register(
             DOMAIN,
@@ -4283,6 +4292,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "backup_bundle")
             hass.services.async_remove(DOMAIN, "restore_backup")
             hass.services.async_remove(DOMAIN, "play_ir_blob")
+            hass.services.async_remove(DOMAIN, "set_ir_learn_mode")
+            hass.services.async_remove(DOMAIN, "ir_learn_command")
             hass.services.async_remove(DOMAIN, "persist_ir_blob")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
@@ -4524,6 +4535,49 @@ async def _async_handle_play_ir_blob(call: ServiceCall):
     ok = await hub.async_play_ir_blob(blob_bytes)
     if not ok:
         raise HomeAssistantError("Hub is not ready to play IR blob (proxy client connected?)")
+
+
+async def _async_handle_set_ir_learn_mode(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_set_ir_learn_mode")
+
+    enabled = call.data.get("enabled")
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be a boolean")
+
+    ok = await hub.async_set_ir_learn_mode(enabled)
+    if not ok:
+        raise HomeAssistantError(
+            "Hub did not accept the IR learn-mode toggle (proxy client connected?)"
+        )
+
+
+async def _async_handle_ir_learn_command(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_ir_learn_command")
+
+    timeout = call.data.get("timeout", 60)
+    try:
+        timeout = float(timeout)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("timeout must be a number of seconds") from exc
+    if timeout < 5 or timeout > 120:
+        raise ValueError("timeout must be between 5 and 120 seconds")
+
+    result = await hub.async_ir_learn_command(timeout=timeout)
+    if result is None:
+        raise HomeAssistantError(
+            "Hub did not accept the IR learn-mode arm (proxy client connected?)"
+        )
+    return result
 
 
 async def _async_handle_persist_ir_blob(call: ServiceCall):

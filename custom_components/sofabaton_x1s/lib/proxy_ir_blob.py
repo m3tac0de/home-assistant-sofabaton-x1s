@@ -17,21 +17,34 @@ single-command save path (family-0x0E paged writes):
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
-from .commands import descriptive_play_blob_text, looks_like_descriptive_play_blob
+from .commands import (
+    descriptive_play_blob_text,
+    extract_learned_ir_blob,
+    looks_like_descriptive_play_blob,
+)
 from .device_create import (
     build_command_write_steps,
     build_key_sort_steps,
     encode_command_sort_body,
 )
 from .protocol_const import (
+    FAMILY_IR_LEARN_DATA,
     FAMILY_PLAY_BLOB,
+    FAMILY_STATUS_ACK,
+    OP_IR_LEARN_ENTER,
+    OP_IR_LEARN_EXIT,
+    OP_STATUS_ACK,
+    OPNAMES,
     PLAY_BLOB_BODY_HEADER_LEN,
     PLAY_BLOB_CHUNK_SIZE,
     PLAY_BLOB_MAX_PAYLOAD,
     PLAY_BLOB_PAGE_HEADER_LEN,
+    opcode_family,
+    opcode_family_name,
 )
 
 
@@ -82,6 +95,211 @@ class IrBlobMixin:
         if ok:
             return True
         return False
+
+    def _send_ir_learn_toggle(self, opcode: int, *, ack_timeout: float) -> bool:
+        """Send one zero-payload learn-mode toggle and wait for STATUS_ACK 0x00.
+
+        Must run inside an ``exchange()`` scope (see
+        tests/lib/test_sequencer_boundary.py).
+        """
+
+        send_ts = time.monotonic()
+        self._send_cmd_frame(opcode, b"")
+        ack = self.wait_for_ack_any(
+            [(OP_STATUS_ACK, None)], timeout=ack_timeout, not_before=send_ts
+        )
+        if ack is None:
+            return False
+        return ack[1][:1] == b"\x00"
+
+    def set_ir_learn_mode(self, enabled: bool, *, ack_timeout: float = 2.0) -> bool:
+        """Arm or disarm the hub's IR learn mode (toggle only, no capture wait).
+
+        Live-bench finding (two-hub rig, 2026-09-01): the hub can believe
+        it is in learn mode while its receiver is not actually armed, and
+        in that state a bare ENTER is accepted but inert. Arming therefore
+        ALWAYS sends EXIT first and then ENTER, mirroring the official
+        app. The hub never signals leaving learn mode on its own; it
+        exits silently after ~60 s or on any wire traffic in either
+        direction (HTTP/MQTT traffic excluded).
+
+        Returns True when the hub ACKed the (final) toggle with status 0x00.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[IR_LEARN] ignored: proxy client is connected")
+            return False
+
+        with self.exchange("ir_learn_mode"):
+            self.clear_ack_queue()
+            if enabled:
+                if not self._send_ir_learn_toggle(
+                    OP_IR_LEARN_EXIT, ack_timeout=ack_timeout
+                ):
+                    self._log.info("[IR_LEARN] pre-arm exit not acked; arming anyway")
+                ok = self._send_ir_learn_toggle(
+                    OP_IR_LEARN_ENTER, ack_timeout=ack_timeout
+                )
+            else:
+                ok = self._send_ir_learn_toggle(
+                    OP_IR_LEARN_EXIT, ack_timeout=ack_timeout
+                )
+
+        if not ok:
+            self._log.warning(
+                "[IR_LEARN] hub did not accept learn-mode %s",
+                "arm" if enabled else "exit",
+            )
+            return False
+        self._log.info("[IR_LEARN] learn mode %s", "armed" if enabled else "exited")
+        return True
+
+    def ir_learn_command(
+        self, *, timeout: float = 60.0, ack_timeout: float = 2.0
+    ) -> dict[str, Any] | None:
+        """Arm learn mode and wait for one captured IR command.
+
+        Standalone flow: EXIT + ENTER (see :meth:`set_ir_learn_mode` for
+        why the exit comes first), then block until one of three things
+        ends the learn window:
+
+        * the hub streams a captured code (paged family 0x06) -- state
+          ``learned``, with the extracted blob body;
+        * any other hub frame arrives -- state ``interrupted`` (any wire
+          traffic knocks the hub out of learn mode, and while this
+          exchange holds the wire the only possible traffic is
+          hub-initiated pushes such as remote presses);
+        * nothing arrives within ``timeout`` -- state ``timed_out`` (the
+          hub exits silently after ~60 s; an explicit EXIT is sent anyway
+          because that traffic also clears a stuck armed state).
+
+        Returns None when the proxy cannot issue commands or the hub
+        refuses to arm.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[IR_LEARN] ignored: proxy client is connected")
+            return None
+
+        pending: dict[str, Any] = {
+            "event": threading.Event(),
+            "pages": {},
+            "total_pages": None,
+            "state": None,
+            "interrupt_opcode": None,
+        }
+
+        with self.exchange("ir_learn"):
+            self.clear_ack_queue()
+            with self._ir_learn_lock:
+                self._ir_learn_pending = pending
+            try:
+                if not self._send_ir_learn_toggle(
+                    OP_IR_LEARN_EXIT, ack_timeout=ack_timeout
+                ):
+                    self._log.info("[IR_LEARN] pre-arm exit not acked; arming anyway")
+                if not self._send_ir_learn_toggle(
+                    OP_IR_LEARN_ENTER, ack_timeout=ack_timeout
+                ):
+                    self._log.warning("[IR_LEARN] hub did not accept learn-mode arm")
+                    return None
+
+                self._log.info(
+                    "[IR_LEARN] armed; waiting up to %.0fs for a capture", timeout
+                )
+                pending["event"].wait(timeout)
+                state = pending["state"]
+                if state is None:
+                    got_pages = len(pending["pages"])
+                    if got_pages:
+                        self._log.warning(
+                            "[IR_LEARN] capture incomplete at timeout (%d page(s))",
+                            got_pages,
+                        )
+                    self._send_ir_learn_toggle(
+                        OP_IR_LEARN_EXIT, ack_timeout=ack_timeout
+                    )
+                    return {"state": "timed_out", "timeout_s": timeout}
+            finally:
+                with self._ir_learn_lock:
+                    self._ir_learn_pending = None
+
+        if state == "interrupted":
+            interrupt_opcode = int(pending["interrupt_opcode"] or 0)
+            name = (
+                OPNAMES.get(interrupt_opcode)
+                or opcode_family_name(interrupt_opcode)
+                or "unknown"
+            )
+            self._log.info(
+                "[IR_LEARN] interrupted by wire traffic: %s (0x%04X)",
+                name,
+                interrupt_opcode,
+            )
+            return {
+                "state": "interrupted",
+                "interrupted_by": f"{name} (0x{interrupt_opcode:04X})",
+            }
+
+        total_pages = int(pending["total_pages"] or 0)
+        record = b"".join(
+            pending["pages"][page_no] for page_no in range(1, total_pages + 1)
+        )
+        blob = extract_learned_ir_blob(record, hub_version=self.hub_version)
+        if blob is None:
+            self._log.warning(
+                "[IR_LEARN] capture received but blob extraction failed (%dB record)",
+                len(record),
+            )
+            return {
+                "state": "learned",
+                "payload_hex": None,
+                "record_hex": record.hex(" "),
+            }
+
+        self._log.info("[IR_LEARN] learned a %dB payload", len(blob))
+        result: dict[str, Any] = {"state": "learned", "payload_hex": blob.hex(" ")}
+        if len(blob) >= 8:
+            result["carrier_hz"] = int.from_bytes(blob[6:8], "big")
+            result["duration_count"] = int.from_bytes(blob[0:2], "big") // 4
+        return result
+
+    def _ingest_ir_learn_frame(self, opcode: int, payload: bytes) -> None:
+        """Feed one H→A frame into an in-flight learn capture, if any.
+
+        Called from the frame-processing thread for every hub frame.
+        STATUS_ACKs are our own arm/exit acks and are ignored; family-0x06
+        pages accumulate into the capture; anything else is evidence of
+        wire traffic, which ends the hub's learn window (live-bench
+        finding, 2026-09-01).
+        """
+
+        with self._ir_learn_lock:
+            pending = self._ir_learn_pending
+        if pending is None or pending["event"].is_set():
+            return
+
+        family = opcode_family(opcode)
+        if family == FAMILY_STATUS_ACK:
+            return
+        if family == FAMILY_IR_LEARN_DATA:
+            if len(payload) < 4:
+                return
+            page_no = int.from_bytes(payload[1:3], "big")
+            pending["pages"][page_no] = bytes(payload[3:])
+            if page_no == 1 and len(payload) >= 6:
+                pending["total_pages"] = int.from_bytes(payload[4:6], "big")
+            total_pages = pending["total_pages"]
+            if total_pages and all(
+                page in pending["pages"] for page in range(1, total_pages + 1)
+            ):
+                pending["state"] = "learned"
+                pending["event"].set()
+            return
+
+        pending["state"] = "interrupted"
+        pending["interrupt_opcode"] = opcode
+        pending["event"].set()
 
     @staticmethod
     def _next_available_command_id(existing_command_ids: list[int]) -> int:

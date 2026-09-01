@@ -62,6 +62,7 @@ ALLOWED: set[tuple[str, str]] = {
     ("proxy_backup.py", "erase_configuration"),
     ("proxy_exchange.py", "_execute_exchange_attempt"),
     ("proxy_ir_blob.py", "_send_family_play_frame"),
+    ("proxy_ir_blob.py", "_send_ir_learn_toggle"),
     ("proxy_wifi_device.py", "_send_virtual_ip_wifi_publish_finalize"),
     ("proxy_wifi_device.py", "_apply_wifi_input_configuration"),
     ("x1_proxy.py", "_send_family_frame"),

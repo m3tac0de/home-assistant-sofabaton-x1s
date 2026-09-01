@@ -455,6 +455,34 @@
         }
       }
     },
+    "set_ir_learn_mode": {
+      "name": "Set IR learn mode",
+      "description": "Arms or disarms the hub's IR learning mode. While armed, the hub's IR receiver waits for a button press from a physical remote. Arming always exits any previous learning session first. This action only toggles the mode; it does not wait for a captured code. Use Learn IR command for the full learn flow.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub on which to toggle IR learning mode."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "True to arm learning mode, false to exit it."
+        }
+      }
+    },
+    "ir_learn_command": {
+      "name": "Learn IR command",
+      "description": "Arms the hub's IR learning mode and waits for one code from a physical remote. The response reports what happened: `learned` (with the captured payload), `timed_out` (nothing was received), or `interrupted` (other hub traffic ended the learning window). No manual mode switching is needed.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub that should learn the command."
+        },
+        "timeout": {
+          "name": "Timeout",
+          "description": "How long to wait for a button press, in seconds. The hub's own learning window closes after about 60 seconds."
+        }
+      }
+    },
     "play_ir_blob": {
       "name": "Play IR blob",
       "description": "Streams a command blob to the hub for one-time playback without saving it. Accepts a canonical blob body without its final replay-tail checksum byte or a descriptive protocol string such as `P:Sony12 R:40000 D:1 F:18 MUL:2`.",
