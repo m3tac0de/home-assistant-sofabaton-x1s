@@ -1,5 +1,17 @@
+import logging
+import selectors
+import socket
+import threading
+import time
+
 from custom_components.sofabaton_x1s.lib import transport_bridge
 from custom_components.sofabaton_x1s.lib.transport_bridge import TransportBridge
+
+
+def _make_bridge() -> TransportBridge:
+    return TransportBridge(
+        "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+    )
 
 
 def test_connect_beacon_is_intentionally_disabled(monkeypatch):
@@ -252,6 +264,185 @@ def test_drain_wake_socket_reads_until_blocking():
     bridge._drain_wake_socket(reader)
 
     assert reader.calls == 2
+
+
+def test_bridge_loop_moves_hub_bytes_and_counts_stats():
+    """End-to-end pass over the selectors-based loop (issue #279 regression):
+    hub bytes reach the frame callbacks, local sends reach the hub socket,
+    and the diagnostics counters track both directions."""
+    bridge = _make_bridge()
+    bridge._init_wake_channel()
+    hub_side, peer = socket.socketpair()
+    hub_side.setblocking(False)
+
+    received: list[bytes] = []
+    got_frame = threading.Event()
+
+    def on_frame(data: bytes, _cid: int) -> None:
+        received.append(bytes(data))
+        got_frame.set()
+
+    bridge.on_hub_frame(on_frame)
+    bridge._hub_sock = hub_side
+
+    thr = threading.Thread(target=bridge._bridge_forever, daemon=True)
+    thr.start()
+    try:
+        peer.sendall(b"hello")
+        assert got_frame.wait(5.0)
+
+        bridge.send_local(b"cmd-bytes")
+        peer.settimeout(5.0)
+        assert peer.recv(1024) == b"cmd-bytes"
+
+        deadline = time.monotonic() + 5.0
+        while (
+            bridge.get_bridge_stats()["hub_tx_bytes"] < len(b"cmd-bytes")
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.01)
+    finally:
+        bridge.stop()
+        thr.join(5.0)
+        try:
+            peer.close()
+        except OSError:
+            pass
+
+    assert received[0] == b"hello"
+    stats = bridge.get_bridge_stats()
+    assert stats["hub_rx_bytes"] == len(b"hello")
+    assert stats["hub_tx_bytes"] == len(b"cmd-bytes")
+    assert stats["hub_last_rx"] is not None
+    assert stats["select_errors"] == 0
+
+
+def test_sync_selector_registers_modifies_and_unregisters():
+    a, b = socket.socketpair()
+    c, d = socket.socketpair()
+    sel = selectors.DefaultSelector()
+    try:
+        TransportBridge._sync_selector(sel, {a: selectors.EVENT_READ})
+        assert sel.get_key(a).events == selectors.EVENT_READ
+
+        both = selectors.EVENT_READ | selectors.EVENT_WRITE
+        TransportBridge._sync_selector(sel, {a: both, c: selectors.EVENT_READ})
+        assert sel.get_key(a).events == both
+        assert sel.get_key(c).events == selectors.EVENT_READ
+
+        TransportBridge._sync_selector(sel, {c: selectors.EVENT_READ})
+        assert a not in sel.get_map()
+        assert c in sel.get_map()
+    finally:
+        sel.close()
+        for s in (a, b, c, d):
+            s.close()
+
+
+def test_sync_selector_tolerates_concurrently_closed_stale_socket():
+    a, b = socket.socketpair()
+    sel = selectors.DefaultSelector()
+    try:
+        TransportBridge._sync_selector(sel, {a: selectors.EVENT_READ})
+        a.close()
+        # Stale registration for a closed socket must not raise.
+        TransportBridge._sync_selector(sel, {})
+        assert not dict(sel.get_map())
+    finally:
+        sel.close()
+        b.close()
+
+
+def test_select_failure_drops_closed_hub_socket():
+    bridge = _make_bridge()
+    hub_side, peer = socket.socketpair()
+    hub_side.close()
+    bridge._hub_sock = hub_side
+
+    states: list[bool] = []
+    bridge.on_hub_state(states.append)
+    assert states == [True]
+
+    app_to_hub = bytearray(b"pending")
+    bridge._handle_select_failure(
+        ValueError("filedescriptor out of range in select()"),
+        hub_side,
+        None,
+        None,
+        app_to_hub,
+        bytearray(),
+        bytearray(),
+    )
+
+    assert bridge._hub_sock is None
+    assert states[-1] is False
+    assert app_to_hub == bytearray()
+    stats = bridge.get_bridge_stats()
+    assert stats["select_errors"] == 1
+    assert "filedescriptor out of range" in stats["last_select_error"]
+    assert stats["last_select_error_at"] is not None
+    peer.close()
+
+
+def test_select_failure_force_drops_after_persistent_streak():
+    bridge = _make_bridge()
+    hub_side, peer = socket.socketpair()
+    bridge._hub_sock = hub_side
+    try:
+        args = (OSError("boom"), hub_side, None, None, bytearray(), bytearray(), bytearray())
+        for _ in range(19):
+            bridge._handle_select_failure(*args)
+        # A healthy socket survives isolated select failures...
+        assert bridge._hub_sock is hub_side
+
+        # ...but a persistent streak forces a reconnect so the loop can
+        # never wedge silently again.
+        bridge._handle_select_failure(*args)
+        assert bridge._hub_sock is None
+        assert bridge.get_bridge_stats()["select_errors"] == 20
+    finally:
+        peer.close()
+
+
+def test_select_failure_recreates_broken_wake_channel():
+    bridge = _make_bridge()
+    bridge._init_wake_channel()
+    old_reader = bridge._wake_reader
+    assert old_reader is not None
+    old_reader.close()
+
+    bridge._handle_select_failure(
+        OSError("boom"), None, None, old_reader, bytearray(), bytearray(), bytearray()
+    )
+
+    assert bridge._wake_reader is not None
+    assert bridge._wake_reader is not old_reader
+    bridge._close_wake_channel()
+
+
+def test_select_failure_logging_is_throttled(caplog):
+    bridge = _make_bridge()
+    with caplog.at_level(logging.WARNING, logger="x1proxy.transport"):
+        for _ in range(5):
+            bridge._handle_select_failure(
+                OSError("boom"), None, None, None, bytearray(), bytearray(), bytearray()
+            )
+    warnings = [r for r in caplog.records if "bridge select failed" in r.getMessage()]
+    assert len(warnings) == 1
+
+
+def test_get_bridge_stats_defaults():
+    bridge = _make_bridge()
+    stats = bridge.get_bridge_stats()
+    assert stats == {
+        "hub_rx_bytes": 0,
+        "hub_tx_bytes": 0,
+        "hub_last_rx": None,
+        "hub_last_rx_age_s": None,
+        "select_errors": 0,
+        "last_select_error": None,
+        "last_select_error_at": None,
+    }
 
 
 def test_stop_closes_wake_channel_safely():

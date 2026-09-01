@@ -310,6 +310,15 @@ class SofabatonHub:
     def cache_generation(self) -> int:
         return self._cache_generation
 
+    @property
+    def bridge_stats(self) -> dict[str, Any] | None:
+        """Bridge-loop health counters for diagnostics (issue #279)."""
+
+        try:
+            return self._proxy.transport.get_bridge_stats()
+        except Exception:
+            return None
+
     def _bump_cache_generation(self) -> int:
         self._cache_generation += 1
         return self._cache_generation
