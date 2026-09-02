@@ -113,6 +113,11 @@ You can use:
 - IR data converted from an online database with
   [IrScrutinizer](../IrScrutinizer/README.md).
 
+> **Note:** payloads exported with the Sofabaton X-series IrScrutinizer
+> exporter before its 2026-08-31 layout fix are accepted by the hub but emit
+> no IR. They start with `00 00 03 20 00 00`; re-export them with the fixed
+> exporter. See the [exporter README](../IrScrutinizer/README.md) for details.
+
 For an imported payload, paste it into the editor, Test it, Save it, and then
 Sync the Device. When sharing a payload, include the Device brand and model,
 the command's purpose, and whether the payload was learned, generated, or taken
@@ -152,7 +157,10 @@ fields, response data, and examples.
   support other Device classes.
 - A payload Save in the live editor is staged; use the Device's **Sync** button
   to write it to the hub.
-- Test an IR payload before syncing it whenever possible.
+- Test an IR payload before syncing it whenever possible, and confirm the
+  target device actually reacts. The hub accepts a malformed IR payload
+  without any error and then emits nothing, so a Test that "succeeds" in the
+  editor is not proof of IR output.
 - Editing and syncing are unavailable while the Sofabaton app or another hub
   operation holds the connection.
 - If the editor asks for a cache refresh, refresh that Device and reopen it.

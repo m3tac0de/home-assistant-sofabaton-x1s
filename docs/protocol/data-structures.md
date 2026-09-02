@@ -764,22 +764,45 @@ Observed behavior:
 - page boundaries are transport artifacts; the replay source is the assembled
   blob body
 
-### Declared-length header in dumped blobs
+### Raw-timing blob layout
 
-Many dumped replay blobs begin with a small blob-local header. Two observed
-families are:
+Raw timing blobs begin with an 8-byte blob-local header. The layout was
+validated on 2026-08-31 by diffing a vendor-cloud command deploy fetched from
+an X1 against synthesized bodies and observing the target device physically
+respond:
 
 ```
-00 00 <declared_len_be16> 00 00 00 00 94 cf ...
-00 00 <declared_len_be16> 00 00 00 00 9c 40 ...
-00 00 <declared_len_be16> 00 00 00 00 94 74 ...
+blob[0:2] = timing-section byte length, big-endian
+            (4 bytes per timing word; terminator and any persist tail
+            excluded)
+blob[2:6] = format field
+blob[6:8] = carrier frequency in Hz, big-endian
+blob[8:]  = alternating mark/space durations in microseconds, each one
+            big-endian 4 bytes, mark first
+blob[-4:] = terminator 00 00 00 00 (a persisted record's tail byte
+            follows it)
 ```
 
-Observed behavior:
-- the first four bytes are commonly `00 00 <len_hi> <len_lo>`
-- for those blobs, the declared body length often excludes the final trailing
-  checksum/tail byte
-- the blob body itself is replayed across one or more family-`0x0F` pages
+Observed format-field variants:
+- `00 00 00 00` on vendor-cloud deploys; the declared length exactly matches
+  the timing bytes. This is the only variant validated by a physical device
+  response.
+- `00 10 01 00` on an X1S learned capture; its declared length
+  (`0x0130` = 304) does not match its timing bytes (320), so the format field
+  evidently changes the length semantics.
+
+> **Caution:** the hub ACKs (`0x0103`/`00`) bodies that do not parse under
+> this layout and then emits nothing. An accepted save or replay is not
+> evidence of IR emission; only a physically observed device response
+> validates a framing. (A misframed body that put four zero bytes first was
+> acked cleanly while parsing as a zero-length timing section with a 0 Hz
+> carrier.)
+
+An earlier revision of this section read the same captures with the declared
+length at bytes `[2:4]` behind two fixed zero bytes; that alignment was
+wrong. The page-1 blob prefixes listed in the dump section above
+(`01 20 00 10`, `03 20 00 00`, ...) are the declared length followed by the
+first format-field bytes.
 
 ### Two broad blob classes
 
@@ -800,12 +823,16 @@ P:NEC R:38400 D:0 S:206 F:11
 ```
 
 Observed behavior:
-- the blob begins with a compact descriptor-style header such as:
+- the blob begins with a compact descriptor-style header:
 
 ```
-00 00 <declared_len_be16> 00 00 11 00 94 70 ...
+<declared_len_be16> 00 00 11 00 94 70 ...
 ```
 
+- the first two bytes are the declared descriptor byte length, followed by
+  the fixed 6-byte magic `00 00 11 00 94 70` that marks the descriptive
+  variant, then the ASCII text; the declared length counts the descriptor
+  text only
 - the ASCII text begins with `P:` and then carries protocol-specific fields
 - different descriptive protocols expose different field sets
 - `CHECKSUM:` is **not** what makes a blob descriptive; it is just one field
@@ -819,12 +846,15 @@ protocol records.
 Observed examples include:
 
 ```
-00 00 <declared_len_be16> 00 00 00 00 94 cf ...
-00 00 <declared_len_be16> 00 00 00 00 9c 40 ...
-00 00 <declared_len_be16> 00 00 00 00 94 74 ...
+<declared_len_be16> 00 00 00 00 94 cf ...
+<declared_len_be16> 00 00 00 00 9c 40 ...
+<declared_len_be16> 00 00 00 00 94 74 ...
 ```
 
 Observed behavior:
+- these follow the raw-timing blob layout above: the bytes after the
+  zero format field are the big-endian carrier in Hz (`94 cf` = 38095,
+  `9c 40` = 40000, `94 74` = 38004)
 - these commonly contain pulse/codeset data rather than text
 - they may be one-frame or multi-frame replays
 - page boundaries are transport artifacts; the replay source is still the
@@ -839,8 +869,8 @@ final blob byte to be rewritten before the hub accepts playback.
 Validated observed replay-tail rule so far:
 
 1. `DenonK`-style descriptive blobs containing embedded `CHECKSUM:` text
-2. Non-descriptor X1/X1S database-style blobs with headers such as `9c40`,
-   `94cf`, or `9474`
+2. Non-descriptor X1/X1S database-style blobs with header carriers such as
+   `9c40`, `94cf`, or `9474`
 
 ```
 tail = (sum8(blob[:-1]) + total_frames + 1) & 0xFF

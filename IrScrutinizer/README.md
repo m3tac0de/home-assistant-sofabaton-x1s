@@ -14,6 +14,15 @@ If you are new to command payloads, read
 
 With these exporters users convert IR signals into Sofabaton hub-compatible command payloads.
 
+> ⚠️ **Re-export required for older payloads.** Versions of `sofabaton-x.xml`
+> before the 2026-08-31 layout fix emitted an incorrect byte layout. The hub
+> **accepts** those payloads without an error, but **emits no IR** when the
+> command runs. Old exports are easy to spot: the payload begins with
+> `00 00 03 20 00 00`. If any of your saved `.sbx` payloads start with those
+> bytes, update the exporter and re-export them. A payload only counts as
+> working when the target device physically responds; a successful Test send
+> alone proves nothing.
+
 ## ◇ Files in this directory
 
 - [sofabaton-x.xml](sofabaton-x.xml)
@@ -32,11 +41,11 @@ There are 2 ways that a Sofabaton hub stores IR command payloads:
 - The **raw IR format** describes the signal by its actual transmitted timings: carrier frequency plus the sequence of mark/space durations. It is a low-level recording of what the hub should send. The **raw IR format** is supported on **all hubs**.
 - The **descriptive format** describes the same signal by its decoded protocol and parameter values, like `P:Sony12 R:40000 D:1 F:18 MUL:2`. It is a higher-level, human-readable representation of what the signal means. The **descriptive format** is supported on the **X2 hub only**.
 
-Both payload types appear to require an IR Protocol identifier. In the descriptive format that is very obvious, and making a mistake there will render the payload useless.  
-In the raw format there also appears to be a Protocol identifier. For this the hub doesn't seem to care which one is used, as long as it's a valid one. This would make sense, as the raw format is by its very nature protocol agnostic. It's very possible that the protocol identifier is just there as metadata.
+The descriptive format requires an IR Protocol identifier. Making a mistake there will render the payload useless.  
+The raw format needs no protocol knowledge at all: its header is just a declared timing length, a format field, and the carrier frequency, followed by the timing words themselves.
 What that means for these exporters:
 
-- The raw format exporter uses a hardcoded identifier. This has been observed to work across a range of different devices and protocols. If it turns out that some commands do not work the exporter will have to be extended. If you're interested, open an exporter in a text editor.
+- The raw format exporter is protocol agnostic and should handle any signal IrScrutinizer can render as raw timings. If you're interested in the exact byte layout, open the exporter in a text editor.
 - The descriptive exporter implements a mapping between Protocol naming conventions of the Sofabaton hub and those used in IrScrutinizer, and generates checksums when required. This mapping is incomplete! A fair amount of protocols have been mapped, but certainly this is not exhaustive.
 
 All known IR commands can be converted into Sofabaton compatible payloads, it is a matter of mapping protocol labels.
@@ -64,12 +73,21 @@ spaces between bytes.
 
 The current implementation:
 
-- uses a fixed 6-byte header: `00 00 03 20 00 00`
-- writes the carrier frequency as a 4-byte big-endian integer in Hz
+- declares the timing-section byte length as a 2-byte big-endian integer
+  (4 bytes per `flash`/`gap` duration; the terminator is not counted)
+- writes a 4-byte format field: `00 00 00 00`
+- writes the carrier frequency as a 2-byte big-endian integer in Hz
 - writes every `flash` and `gap` duration as 4-byte big-endian microseconds
 - preserves the signal structure already present in Girr:
   intro, repeat, and ending are emitted in order
 - terminates with `00 00 00 00`
+
+This layout was validated on 2026-08-31 by a physically observed device
+response (a Samsung TV driven through an X1 hub) and matches vendor-cloud
+command deploys fetched back from a hub. Earlier versions of this exporter
+used a different framing (a fixed `00 00 03 20 00 00` header plus a 4-byte
+carrier) that the hub accepted but never emitted; see the warning at the top
+of this document.
 
 This format is intended for:
 
