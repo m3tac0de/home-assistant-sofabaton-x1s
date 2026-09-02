@@ -864,8 +864,14 @@ class SofabatonHub:
             return self._proxy.get_activities()
 
     def _on_activities_burst(self, key: str) -> None:
+        if not self._proxy._last_activities_burst_complete:
+            return
+        # Capture this burst before crossing into the HA event loop; a later
+        # burst can finish before _inner runs. Cached readiness alone cannot
+        # establish that the current refresh succeeded.
+        acts, ready = self._get_activities_cached()
+
         def _inner() -> None:
-            acts, ready = self._get_activities_cached()
             self._log.debug(
                 "[%s] on_burst_end('activities'): ready=%s, count=%s",
                 self.entry_id,
@@ -3542,38 +3548,38 @@ class SofabatonHub:
 
         Returns the raw ``state.entities("activity")`` view (``raw_body``
         included); the JSON-export boundary is the only place that
-        strips it via :func:`to_export_view`.
+        strips it via :func:`to_export_view`. Raises ``TimeoutError`` if no
+        complete snapshot arrives; the last committed catalog stays usable.
         """
 
         previous_generation = self._activities_generation
+        previous_snapshot = self._proxy._activities_snapshot_generation
         await self.hass.async_add_executor_job(self._proxy.request_activities)
 
         deadline = monotonic() + timeout_seconds
-        while monotonic() < deadline:
-            if self._activities_generation > previous_generation:
-                return dict(self._proxy.state.entities("activity"))
-            await asyncio.sleep(0.1)
+        # A prior commit may still have its HA callback queued when this
+        # request starts. Require a new proxy commit as well as HA delivery.
+        while (
+            self._proxy._activities_snapshot_generation <= previous_snapshot
+            or self._activities_generation <= previous_generation
+        ):
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Timed out waiting for a complete activities catalog from the hub")
+            await asyncio.sleep(min(0.1, remaining))
 
         return dict(self._proxy.state.entities("activity"))
 
     async def async_request_catalog(self, kind: str, timeout_seconds: float = 30.0) -> None:
         """Send REQ_ACTIVITIES or REQ_DEVICES to the hub and wait for the burst to complete.
 
-        Uses a snapshot-clear-fetch-prune strategy: the name catalog is cleared before
-        the request so deleted entries don't persist, and per-entity detail data
-        (commands, macros) is preserved for entities that still exist and pruned only
-        for entities that were removed from the catalog.
+        Activity refreshes preserve the last committed catalog and active state
+        until a complete replacement arrives. Per-entity detail data is pruned
+        only after a successful refresh confirms an entity was removed.
         """
         if kind == "activities":
             old_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
-            await self.hass.async_add_executor_job(self._proxy.clear_activities_catalog)
-            previous_generation = self._activities_generation
-            await self.hass.async_add_executor_job(self._proxy.request_activities)
-            deadline = monotonic() + timeout_seconds
-            while monotonic() < deadline:
-                if self._activities_generation > previous_generation:
-                    break
-                await asyncio.sleep(0.1)
+            await self._async_refresh_activities_snapshot(timeout_seconds=timeout_seconds)
             new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
             cached_detail_ids = await self.hass.async_add_executor_job(
                 self._proxy.get_cached_activity_detail_ids

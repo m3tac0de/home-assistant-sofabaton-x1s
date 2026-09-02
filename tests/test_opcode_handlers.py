@@ -1664,6 +1664,8 @@ def _redundant_off_proxy() -> tuple[X1Proxy, list[str]]:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     proxy.enqueue_cmd = lambda *args, **kwargs: True  # type: ignore[assignment]
+    # Direct handle_active_state calls below simulate a committed burst.
+    proxy._last_activities_burst_complete = True
     fired: list[str] = []
     proxy.on_redundant_off_press(lambda: fired.append("off"))
     return proxy, fired
@@ -1740,6 +1742,7 @@ def _external_state_proxy() -> tuple[X1Proxy, list[tuple]]:
     )
     proxy.enqueue_cmd = lambda *args, **kwargs: True  # type: ignore[assignment]
     proxy._activities_catalog_ready = True
+    proxy._last_activities_burst_complete = True
     proxy.state.activities = {0x67: {"name": "Music"}, 0x68: {"name": "Movie"}}
     changes: list[tuple] = []
     proxy.on_activity_change(lambda new_id, old_id, name: changes.append((new_id, old_id, name)))

@@ -465,6 +465,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._activity_request_serial = 0
         self._activity_request_inflight: int | None = None
         self._activities_catalog_ready = False
+        self._last_activities_burst_complete = False
+        self._activities_snapshot_generation = 0
         self._activity_retry_count = 0
         self._activity_retry_due_at: float | None = None
         self._activity_retry_send_pending = False
@@ -669,8 +671,10 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
     def handle_active_state(self, trigger: str) -> None:
         if trigger == "activities":
-            # Whatever triggered this burst, state now mirrors hub rows:
-            # an ACK_READY refresh, if one was in flight, has landed.
+            # A scheduler timeout also ends a burst. Only a committed
+            # snapshot can confirm a state change or a redundant OFF press.
+            if not self._last_activities_burst_complete:
+                return
             self._ack_ready_refresh_pending = False
         new_id, old_id = self.state.update_activity_state()
         pending_redundant_off = self._pending_redundant_off_check

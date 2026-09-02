@@ -82,6 +82,30 @@ Guards:
 
 ---
 
+## ◇ Activity catalog refreshes
+
+`REQ_ACTIVITIES` collects rows in a pending snapshot. The committed catalog,
+active-activity hint, and cache readiness remain available during a refresh.
+Only a complete row set, or an explicit empty-catalog `STATUS_ACK 0x07`,
+replaces them. A silent or partial burst is discarded without publishing
+activity changes or confirming a pending redundant-OFF event.
+
+The burst scheduler also invokes end listeners on timeout, so its notification
+alone is not proof of success. `X1Proxy` records whether that burst committed a
+snapshot; both active-state evaluation and the HA catalog listener require
+that proof. The HA listener captures it before scheduling work on its event
+loop, so a later burst cannot turn a discarded refresh into a successful one.
+
+The HA activity catalog refresh requires the proxy's committed generation to
+advance after the request starts, so delivery of an old queued HA callback
+cannot satisfy it. It raises `TimeoutError` when no complete snapshot arrives
+before its deadline. The websocket API returns a `timeout`
+error and does not persist the cache. Removed activity details are pruned only
+after a successful refresh. A complete snapshot with no active row still
+reports Powered Off normally; retaining the cache does not debounce Off.
+
+---
+
 ## ◇ Unified create / restore orchestrator
 
 The user-driven "create WiFi device" path and the backup-driven

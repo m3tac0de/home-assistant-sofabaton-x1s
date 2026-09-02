@@ -546,7 +546,10 @@ class CacheBackupMixin:
         self._devices_catalog_ready = False
 
     def clear_activities_catalog(self) -> None:
-        """Clear only the activity name catalog before a fresh activity list fetch.
+        """Explicitly invalidate the activity catalog, for example after an erase.
+
+        Ordinary refreshes must preserve the committed catalog and active hint
+        until a complete replacement arrives; do not clear them before a read.
 
         Deliberately does NOT clear per-activity keymaps, favorites, keybindings,
         or macros — those are not returned by OP_REQ_ACTIVITIES and would not be

@@ -741,9 +741,13 @@ class CatalogMixin:
     def _on_activities_burst_end(self, key: str) -> None:
         generation = self._activity_request_inflight
         complete = generation is not None and self._activity_pending_generation == generation and self._activity_snapshot_complete()
+        # Cache readiness describes the last good catalog, not this burst.
+        # Later listeners must distinguish a fresh commit from a timeout.
+        self._last_activities_burst_complete = complete
 
         if complete:
             self._commit_pending_activity_snapshot()
+            self._activities_snapshot_generation += 1
             self._log.info(
                 "[ACT] committed complete activities snapshot rows=%d request=%s",
                 len(self._activity_pending_rows),

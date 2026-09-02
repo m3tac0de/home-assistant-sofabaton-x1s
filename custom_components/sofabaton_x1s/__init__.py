@@ -3823,7 +3823,11 @@ async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, An
         connection.send_error(msg["id"], "unavailable", str(err))
         return
 
-    await hub.async_request_catalog(msg["kind"])
+    try:
+        await hub.async_request_catalog(msg["kind"])
+    except TimeoutError as err:
+        connection.send_error(msg["id"], "timeout", str(err))
+        return
     store = await _async_get_persistent_cache_store(hass)
     if store.enabled:
         payload = await hub.async_export_cache_state()

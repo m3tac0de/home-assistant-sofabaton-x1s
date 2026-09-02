@@ -1746,6 +1746,7 @@ def test_identical_activity_refresh_does_not_bump_cache_generation(monkeypatch):
         lambda: ({101: {"name": "Watch TV", "active": False, "needs_confirm": False}}, True),
     )
 
+    hub._proxy._last_activities_burst_complete = True
     hub._on_activities_burst("activities")
     loop.run_until_complete(asyncio.sleep(0))
 
@@ -1782,6 +1783,7 @@ def test_activity_active_flag_changes_without_bumping_cache_generation(monkeypat
         lambda: ({101: {"name": "Watch TV", "active": True, "needs_confirm": False}}, True),
     )
 
+    hub._proxy._last_activities_burst_complete = True
     hub._on_activities_burst("activities")
     loop.run_until_complete(asyncio.sleep(0))
 
@@ -1818,6 +1820,7 @@ def test_activity_catalog_name_change_bumps_cache_generation(monkeypatch):
         lambda: ({101: {"name": "New Name", "active": False, "needs_confirm": False}}, True),
     )
 
+    hub._proxy._last_activities_burst_complete = True
     hub._on_activities_burst("activities")
     loop.run_until_complete(asyncio.sleep(0))
 
@@ -2688,6 +2691,7 @@ def test_on_activities_burst_syncs_current_activity_from_active_flag(monkeypatch
     )
 
     hub.current_activity = None
+    hub._proxy._last_activities_burst_complete = True
     hub._on_activities_burst("activities")
     loop.run_until_complete(asyncio.sleep(0))
 
@@ -2800,6 +2804,7 @@ def test_activities_burst_can_clear_current_when_no_activity_active(monkeypatch)
         lambda: ({101: {"name": "Watch a movie", "active": False}}, True),
     )
 
+    hub._proxy._last_activities_burst_complete = True
     hub._on_activities_burst("activities")
     loop.run_until_complete(asyncio.sleep(0))
 
@@ -5130,7 +5135,6 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     hub._activities_generation = 2
     hub._proxy.get_known_activity_ids = lambda: {101, 102}  # type: ignore[method-assign]
     hub._proxy.get_cached_activity_detail_ids = lambda: {5, 6, 101, 102}  # type: ignore[method-assign]
-    hub._proxy.clear_activities_catalog = lambda: None  # type: ignore[method-assign]
     hub._proxy.request_activities = lambda: None  # type: ignore[method-assign]
 
     cleared: list[tuple[int, str]] = []
@@ -5148,6 +5152,7 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     hub._proxy.get_known_activity_ids = _fake_get_known_activity_ids  # type: ignore[method-assign]
 
     async def _fake_sleep(_delay):
+        hub._proxy._activities_snapshot_generation = 1
         hub._activities_generation = 3
 
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
@@ -5575,6 +5580,7 @@ def test_hub_event_actions_fire_on_first_transition_after_powered_off_startup(mo
     hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
     try:
         monkeypatch.setattr(hub, "_get_activities_cached", lambda: ({}, True))
+        hub._proxy._last_activities_burst_complete = True
         hub._on_activities_burst("activities")
         drain()
         assert executed == []
@@ -5748,6 +5754,7 @@ def test_activities_burst_prunes_stale_activity_event_actions(monkeypatch):
         lambda: ({102: {"name": "Music", "active": False, "needs_confirm": False}}, True),
     )
 
+    hub._proxy._last_activities_burst_complete = True
     hub._on_activities_burst("activities")
     loop.run_until_complete(asyncio.sleep(0))
     loop.run_until_complete(asyncio.sleep(0))
