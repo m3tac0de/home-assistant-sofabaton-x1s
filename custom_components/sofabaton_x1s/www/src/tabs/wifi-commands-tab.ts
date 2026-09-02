@@ -720,10 +720,12 @@ class SofabatonWifiCommandsTab extends LitElement {
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
-      /* Match the remote card's HA form theming fix. HA frontend controls can
-         fall back to a light default when --ha-color-form-background is absent. */
+      /* Fields in dialogs share the card's field surface (card-styles.ts);
+         the theme's own input fill is not trusted (Caule aliases it to the
+         primary colour) and HA controls fall back to a light default when
+         --ha-color-form-background is absent. */
       --ha-color-form-background: var(
-        --input-fill-color,
+        --sb-field-surface,
         var(
           --secondary-background-color,
           color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)

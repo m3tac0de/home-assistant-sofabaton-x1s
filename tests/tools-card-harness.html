@@ -2399,6 +2399,30 @@
         },
       },
       {
+        id: "payload-editor-ir", group: "Activity Editor",
+        label: "Device editor — IR payload dialog open",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: clone(EDIT_BACKUP_BUNDLE), generation: 1 }),
+        },
+        async postLoad(card) {
+          const editor = await openLiveEditor(card, "Devices", "Television");
+          const detail = editor.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+          if (!detail) throw new Error("payload-editor-ir: detail view did not open");
+          await detail.updateComplete;
+          // Same entry point the per-command pencil uses once its blob fetch
+          // returns. The blob is the synthetic NEC vector from
+          // tests/fixtures/ir-format-vectors.json (raw layout, so the Pronto
+          // tab is available and selected).
+          detail._openLivePayloadDialog(1, 10, {
+            dataHex: "00180000000094700000232800001194000002300000069a0000023000009c4000000000",
+            decoded: null,
+          });
+          detail.requestUpdate();
+          await detail.updateComplete;
+        },
+      },
+      {
         id: "activities-needs-refresh", group: "Activity Editor",
         label: "Activity editor — needs cache refresh",
         states: STATES_CONNECTED,
@@ -2493,6 +2517,34 @@
           tab._openEditDetail("activity", 101, "Watch TV");
           tab.requestUpdate();
           await tab.updateComplete;
+        },
+      },
+      {
+        id: "macro-add-step", group: "Backup / Restore",
+        label: "Edit — macro step dialog open",
+        states: STATES_CONNECTED,
+        async postLoad(card) {
+          const tab = await openBackupTab(card, "edit");
+          if (!tab) return;
+          tab._editBundle = clone(EDIT_BACKUP_BUNDLE);
+          tab._editFilename = "living-room-backup.json";
+          tab._editBundleDirty = false;
+          tab.requestUpdate();
+          await tab.updateComplete;
+          tab._openEditDetail("activity", 101, "Watch TV");
+          tab.requestUpdate();
+          await tab.updateComplete;
+          const detail = tab.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+          if (!detail) throw new Error("macro-add-step: detail view did not open");
+          await detail.updateComplete;
+          // The "Volume Combo" macro (button 3) of activity 101, then its Add
+          // step dialog: native device / command selects plus the hold input.
+          detail._openMacroEditor("activity", 101, 3, "Volume Combo");
+          detail.requestUpdate();
+          await detail.updateComplete;
+          detail._openAddStepDialog();
+          detail.requestUpdate();
+          await detail.updateComplete;
         },
       },
       {

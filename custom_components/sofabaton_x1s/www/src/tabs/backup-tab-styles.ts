@@ -892,9 +892,9 @@ export const backupTabStyles = css`
       align-items: baseline;
       gap: 3px;
       padding: 1px 6px 2px;
-      border: 1px solid var(--divider-color);
+      border: 1px solid var(--sb-field-border, var(--divider-color));
       border-radius: var(--backup-radius-sm);
-      background: var(--ha-card-background, var(--card-background-color));
+      background: var(--sb-field-surface, var(--ha-card-background, var(--card-background-color)));
     }
     .step-wait-field:focus-within {
       border-color: var(--primary-color);
@@ -999,6 +999,14 @@ export const backupTabStyles = css`
     }
     .delete-replace-note ha-icon { --mdc-icon-size: 16px; flex: 0 0 auto; }
     select.decoded-field-input { cursor: pointer; }
+    /* Native select popups: Chromium draws the option rows from these
+       computed values. The row colour must be opaque (the host measures the
+       theme and writes --sb-popup-surface; shared/styles/theme-polarity.ts)
+       or a glass theme gets white-on-white options. */
+    select.decoded-field-input option {
+      background-color: var(--sb-popup-surface, var(--sb-field-surface, var(--secondary-background-color)));
+      color: var(--primary-text-color);
+    }
     .binding-toggle-row {
       display: flex;
       align-items: center;
@@ -1097,12 +1105,18 @@ export const backupTabStyles = css`
       border-radius: 4px 4px 0 0;
       cursor: pointer;
     }
+    /* Hover paints the card's own overlay, not HA's neutral fill: that
+       token is opaque light grey under every light-mode theme, glass
+       themes with white text included. */
     .payload-format-tab:hover:not(:disabled):not(.active) {
       color: var(--primary-text-color);
-      background: var(--ha-color-fill-neutral-quiet-resting, rgba(127, 127, 127, 0.08));
+      background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
+    }
+    .payload-format-tab:active:not(:disabled):not(.active) {
+      background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color) 18%, transparent));
     }
     .payload-format-tab.active {
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       border-bottom-color: var(--primary-color);
       cursor: default;
     }
@@ -1139,8 +1153,8 @@ export const backupTabStyles = css`
       font: inherit;
       font-size: 13px;
       color: var(--primary-text-color);
-      background: var(--ha-color-form-background, var(--secondary-background-color));
-      border: 1px solid var(--divider-color);
+      background: var(--sb-field-surface, var(--ha-color-form-background, var(--secondary-background-color)));
+      border: 1px solid var(--sb-field-border, var(--divider-color));
       border-radius: var(--backup-radius-sm);
       padding: 8px 10px;
     }
@@ -1180,8 +1194,11 @@ export const backupTabStyles = css`
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
+      /* Fields in dialogs, native and HA (ha-input / ha-textfield), share
+         the card's field surface; the theme's own input fill is not trusted
+         (Caule aliases it to the primary colour). */
       --ha-color-form-background: var(
-        --input-fill-color,
+        --sb-field-surface,
         var(
           --secondary-background-color,
           color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)

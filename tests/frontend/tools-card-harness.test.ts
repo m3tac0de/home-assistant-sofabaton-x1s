@@ -63,3 +63,15 @@ test("harness frontend version follows its script URL instead of duplicating a r
     /const TOOLS_FRONTEND_VERSION = "\d+"/,
   );
 });
+
+test("harness carries every scenario the contrast audit measures by default", () => {
+  const audit = readFileSync(path.join(ROOT, "scripts", "audit-contrast.mjs"), "utf8");
+  const block = audit.match(/const DEFAULT_SCENARIOS = \[([\s\S]*?)\];/)?.[1];
+  assert.ok(block, "audit declares DEFAULT_SCENARIOS");
+  const wanted = [...block.matchAll(/^\s*"([^"]+)"/gm)].map((match) => match[1]);
+  assert.ok(wanted.length > 0);
+  const declared = new Set([...HARNESS.matchAll(/id:\s*"([^"]+)",\s*group:/g)].map((match) => match[1]));
+  const numeric = new Set([...HARNESS.matchAll(/id:\s*(\d+),\s*group:/g)].map((match) => match[1]));
+  const missing = wanted.filter((id) => !declared.has(id) && !numeric.has(id));
+  assert.deepEqual(missing, [], `audit default scenarios missing from the harness: ${missing.join(", ")}`);
+});

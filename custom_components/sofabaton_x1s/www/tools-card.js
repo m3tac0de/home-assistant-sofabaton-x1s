@@ -945,10 +945,57 @@ var cardStyles = [secondaryTabStyles, i`
        on the indicator (underline, border, icon, fill). Sub-components
        inherit it; they spell the fallback for standalone use. */
     --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+    /* Form fields. The theme's own input fill is never trusted alone: Caule
+       aliases --input-fill-color to its primary colour (saturated purple or
+       green behind grey text) and the glass themes set it transparent. A
+       field is the card surface with a 6% tint of the text colour (HA
+       default light: #f2f2f2, dark: #282828, i.e. HA's own field fills)
+       and a border from the text colour, so text on a field contrasts like
+       text on the card, on opaque and glass themes alike. */
+    --sb-field-surface: color-mix(in srgb, var(--primary-text-color) 6%, var(--sb-card-surface));
+    --sb-field-border: color-mix(in srgb, var(--primary-text-color) 24%, transparent);
+    /* Hover / pressed overlays from the text colour, never from HA's
+       neutral fills: those are opaque light grey under any theme that runs
+       in light mode, the glass themes with white text included. */
+    --sb-overlay-hover: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
+    --sb-overlay-press: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+    /* Native <select> popups need an OPAQUE row colour and a matching
+       color-scheme. tools-card.ts measures the theme's polarity through
+       .sb-theme-probe (shared/styles/theme-polarity.ts) and writes
+       color-scheme, --sb-scheme-ground and --sb-popup-surface inline on the
+       host, which wins over these no-JS fallbacks. */
+    --sb-scheme-ground: #fff;
+    --sb-popup-surface: var(--sb-field-surface);
   }
   ha-card {
     --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
     --ha-card-background: var(--sb-card-surface);
+    /* HA's own form components inside the card (ha-textfield, ha-input)
+       paint their fill from these; point them at the field surface so every
+       field in a dialog looks alike, native or HA. */
+    --ha-color-form-background: var(--sb-field-surface);
+    --ha-color-form-background-hover: var(--sb-field-surface);
+    --input-fill-color: var(--sb-field-surface);
+    --mdc-text-field-fill-color: var(--sb-field-surface);
+  }
+  /* Polarity probe, appended to the shadow root by tools-card.ts: resolves
+     the theme's text colour and card surface to concrete rgb values. */
+  .sb-theme-probe {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+    color: var(--primary-text-color);
+    background-color: var(--sb-card-surface);
+  }
+  /* Native select popups: Chromium paints option rows from these computed
+     values; the row colour has to be opaque or a glass theme gets
+     white-on-white options (see theme-polarity.ts). */
+  select option {
+    background-color: var(--sb-popup-surface);
+    color: var(--primary-text-color);
   }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
@@ -1345,8 +1392,8 @@ var cardStyles = [secondaryTabStyles, i`
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
   .setting-select {
     max-width: 180px; padding: 6px 10px;
-    border: 1px solid var(--divider-color); border-radius: 8px;
-    background: var(--card-background-color, var(--ha-card-background, #fff));
+    border: 1px solid var(--sb-field-border); border-radius: 8px;
+    background: var(--sb-field-surface);
     color: var(--primary-text-color);
     font: inherit; font-size: 12.5px; font-weight: 600;
     cursor: pointer;
@@ -1459,9 +1506,9 @@ var cardStyles = [secondaryTabStyles, i`
   .cache-dialog-input {
     width: 100%; box-sizing: border-box;
     padding: 9px 10px;
-    border: 1px solid var(--divider-color);
+    border: 1px solid var(--sb-field-border);
     border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
-    background: var(--card-background-color, var(--primary-background-color));
+    background: var(--sb-field-surface);
     color: var(--primary-text-color);
     font: inherit; font-size: 13.5px;
   }
@@ -1470,7 +1517,7 @@ var cardStyles = [secondaryTabStyles, i`
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
-  .inner-row:hover { background: rgba(0, 0, 0, 0.03); }
+  .inner-row:hover { background: var(--sb-overlay-hover); }
   .inner-row--clickable { cursor: pointer; }
   .inner-row--clickable:hover { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
   .inner-row--clickable:active { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
@@ -1567,6 +1614,85 @@ var cardStyles = [secondaryTabStyles, i`
     }
   }
 `];
+
+// custom_components/sofabaton_x1s/www/src/shared/styles/theme-polarity.ts
+var BLACK = { r: 0, g: 0, b: 0, a: 1 };
+var WHITE = { r: 255, g: 255, b: 255, a: 1 };
+function parseCssColor(value) {
+  const text = String(value ?? "").trim();
+  let match = text.match(/^rgba?\(([^)]+)\)$/i);
+  if (match) {
+    const parts = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    if (parts.length < 3 || parts.some((n4) => Number.isNaN(n4))) return null;
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+  }
+  match = text.match(/^color\(srgb\s+([^)]+)\)$/i);
+  if (match) {
+    const parts = match[1].split(/[\s/]+/).filter(Boolean).map(Number);
+    if (parts.length < 3 || parts.some((n4) => Number.isNaN(n4))) return null;
+    return { r: parts[0] * 255, g: parts[1] * 255, b: parts[2] * 255, a: parts.length > 3 ? parts[3] : 1 };
+  }
+  return null;
+}
+function relativeLuminance({ r: r4, g: g2, b: b3 }) {
+  const lin = (v2) => {
+    const c4 = v2 / 255;
+    return c4 <= 0.03928 ? c4 / 12.92 : ((c4 + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r4) + 0.7152 * lin(g2) + 0.0722 * lin(b3);
+}
+function contrastRatio(a3, b3) {
+  const l1 = relativeLuminance(a3);
+  const l22 = relativeLuminance(b3);
+  return (Math.max(l1, l22) + 0.05) / (Math.min(l1, l22) + 0.05);
+}
+function compositeOver(top, bottom) {
+  const a3 = top.a + bottom.a * (1 - top.a);
+  if (a3 === 0) return { r: 0, g: 0, b: 0, a: 0 };
+  const mix = (c4) => (top[c4] * top.a + bottom[c4] * bottom.a * (1 - top.a)) / a3;
+  return { r: mix("r"), g: mix("g"), b: mix("b"), a: a3 };
+}
+function formatRgb({ r: r4, g: g2, b: b3 }) {
+  const clamp = (v2) => Math.max(0, Math.min(255, Math.round(v2)));
+  return `rgb(${clamp(r4)}, ${clamp(g2)}, ${clamp(b3)})`;
+}
+function resolveThemePolarity(text, surface) {
+  const base = surface ?? { r: 255, g: 255, b: 255, a: 0 };
+  const overBlack = compositeOver(base, BLACK);
+  const overWhite = compositeOver(base, WHITE);
+  let scheme;
+  if (base.a >= 0.9) {
+    scheme = relativeLuminance(overWhite) < 0.4 ? "dark" : "light";
+  } else {
+    scheme = contrastRatio(text, overBlack) > contrastRatio(text, overWhite) ? "dark" : "light";
+  }
+  const popup = scheme === "dark" ? overBlack : overWhite;
+  return {
+    scheme,
+    ground: scheme === "dark" ? "#000000" : "#ffffff",
+    popupSurface: formatRgb({ ...popup, a: 1 })
+  };
+}
+function applyThemePolarity(host, probe) {
+  const view = probe.ownerDocument?.defaultView;
+  if (!view?.getComputedStyle) return false;
+  const computed = view.getComputedStyle(probe);
+  const text = parseCssColor(computed.color);
+  if (!text) return false;
+  const surface = parseCssColor(computed.backgroundColor);
+  const polarity = resolveThemePolarity(text, surface);
+  const style = host.style;
+  let changed = false;
+  const set = (name, value) => {
+    if (style.getPropertyValue(name) === value) return;
+    style.setProperty(name, value);
+    changed = true;
+  };
+  set("color-scheme", polarity.scheme);
+  set("--sb-scheme-ground", polarity.ground);
+  set("--sb-popup-surface", polarity.popupSurface);
+  return changed;
+}
 
 // custom_components/sofabaton_x1s/www/src/strings.ts
 var TOOLS_CARD_STRINGS_EN = {
@@ -6588,9 +6714,9 @@ var backupTabStyles = i`
       align-items: baseline;
       gap: 3px;
       padding: 1px 6px 2px;
-      border: 1px solid var(--divider-color);
+      border: 1px solid var(--sb-field-border, var(--divider-color));
       border-radius: var(--backup-radius-sm);
-      background: var(--ha-card-background, var(--card-background-color));
+      background: var(--sb-field-surface, var(--ha-card-background, var(--card-background-color)));
     }
     .step-wait-field:focus-within {
       border-color: var(--primary-color);
@@ -6695,6 +6821,14 @@ var backupTabStyles = i`
     }
     .delete-replace-note ha-icon { --mdc-icon-size: 16px; flex: 0 0 auto; }
     select.decoded-field-input { cursor: pointer; }
+    /* Native select popups: Chromium draws the option rows from these
+       computed values. The row colour must be opaque (the host measures the
+       theme and writes --sb-popup-surface; shared/styles/theme-polarity.ts)
+       or a glass theme gets white-on-white options. */
+    select.decoded-field-input option {
+      background-color: var(--sb-popup-surface, var(--sb-field-surface, var(--secondary-background-color)));
+      color: var(--primary-text-color);
+    }
     .binding-toggle-row {
       display: flex;
       align-items: center;
@@ -6793,12 +6927,18 @@ var backupTabStyles = i`
       border-radius: 4px 4px 0 0;
       cursor: pointer;
     }
+    /* Hover paints the card's own overlay, not HA's neutral fill: that
+       token is opaque light grey under every light-mode theme, glass
+       themes with white text included. */
     .payload-format-tab:hover:not(:disabled):not(.active) {
       color: var(--primary-text-color);
-      background: var(--ha-color-fill-neutral-quiet-resting, rgba(127, 127, 127, 0.08));
+      background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
+    }
+    .payload-format-tab:active:not(:disabled):not(.active) {
+      background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color) 18%, transparent));
     }
     .payload-format-tab.active {
-      color: var(--primary-color);
+      color: var(--sb-accent-text, var(--primary-color));
       border-bottom-color: var(--primary-color);
       cursor: default;
     }
@@ -6835,8 +6975,8 @@ var backupTabStyles = i`
       font: inherit;
       font-size: 13px;
       color: var(--primary-text-color);
-      background: var(--ha-color-form-background, var(--secondary-background-color));
-      border: 1px solid var(--divider-color);
+      background: var(--sb-field-surface, var(--ha-color-form-background, var(--secondary-background-color)));
+      border: 1px solid var(--sb-field-border, var(--divider-color));
       border-radius: var(--backup-radius-sm);
       padding: 8px 10px;
     }
@@ -6876,8 +7016,11 @@ var backupTabStyles = i`
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
+      /* Fields in dialogs, native and HA (ha-input / ha-textfield), share
+         the card's field surface; the theme's own input fill is not trusted
+         (Caule aliases it to the primary colour). */
       --ha-color-form-background: var(
-        --input-fill-color,
+        --sb-field-surface,
         var(
           --secondary-background-color,
           color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
@@ -7359,7 +7502,7 @@ var activityEditorStyles = i`
     cursor: pointer;
   }
   .member-add-option:hover {
-    background: var(--secondary-background-color);
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
   }
   .member-add-empty {
     padding: 8px 10px;
@@ -18714,10 +18857,12 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
-      /* Match the remote card's HA form theming fix. HA frontend controls can
-         fall back to a light default when --ha-color-form-background is absent. */
+      /* Fields in dialogs share the card's field surface (card-styles.ts);
+         the theme's own input fill is not trusted (Caule aliases it to the
+         primary colour) and HA controls fall back to a light default when
+         --ha-color-form-background is absent. */
       --ha-color-form-background: var(
-        --input-fill-color,
+        --sb-field-surface,
         var(
           --secondary-background-color,
           color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
@@ -20054,6 +20199,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._boundHandleDocumentPointerDown = (event) => {
       this.handleDocumentPointerDown(event);
     };
+    // Theme polarity probe (shared/styles/theme-polarity.ts): a hidden span in
+    // the shadow root whose computed colour / background resolve the theme's
+    // text colour and card surface. Read after every render.
+    this._themeProbe = null;
+    this._lastThemesRef = void 0;
     this._handleEditorDirtyChanged = (event) => {
       const dirty = Boolean(event.detail?.dirty);
       const kind = event.detail?.kind === "download" ? "download" : "sync";
@@ -20081,7 +20231,30 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       value?.locale?.language ?? value?.language
     );
     this._store.setHass(value);
-    if (languageChanged) this.requestUpdate();
+    const themes = value?.themes;
+    const themesChanged = themes !== this._lastThemesRef;
+    this._lastThemesRef = themes;
+    if (languageChanged || themesChanged) this.requestUpdate();
+  }
+  /**
+   * Native <select> popups and scrollbars follow `color-scheme`, which no
+   * theme variable carries; measure the theme instead and write the scheme
+   * plus an opaque popup surface onto the host (card-styles.ts declares the
+   * tokens' no-JS fallbacks). Runs after every render because the theme can
+   * change without any hass update reaching the store (dark-mode toggle,
+   * card-level `theme:`).
+   */
+  syncThemePolarity() {
+    const root = this.renderRoot;
+    if (!(root instanceof ShadowRoot)) return;
+    if (!this._themeProbe || !this._themeProbe.isConnected) {
+      const probe = document.createElement("span");
+      probe.className = "sb-theme-probe";
+      probe.setAttribute("aria-hidden", "true");
+      root.appendChild(probe);
+      this._themeProbe = probe;
+    }
+    applyThemePolarity(this, this._themeProbe);
   }
   selectLanguage(language) {
     const languageChanged = setToolsCardLanguage(language);
@@ -20150,6 +20323,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     }
   }
   updated() {
+    this.syncThemePolarity();
     const pendingEntityKey = this._snapshot.pendingScrollEntityKey;
     if (this._snapshot.selectedTab === "cache") {
       this.restoreCacheScrollState(this._pendingCacheScrollSnapshot, pendingEntityKey);

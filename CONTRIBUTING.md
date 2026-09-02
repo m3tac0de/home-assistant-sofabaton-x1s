@@ -140,6 +140,17 @@ measured but never counted; deliberate exceptions go in
 `tests/fixtures/contrast-allowlist.json` with the reason documented next
 to the style rule.
 
+Form fields are measured like text (their value, or their placeholder,
+marked `::placeholder`), and every native `<select>` gets a row per distinct
+option styling marked `@popup`: Chromium paints the popup from the
+options' computed colours and the select's `color-scheme`, so the row tells
+you what the opened dropdown will look like without opening it. The
+`payload-editor-ir` and `macro-add-step` scenarios exist for those probes
+(IR payload editor with its Pronto / Sofabaton tabs; the macro editor's
+Add step dialog with its native selects) and are part of the default set.
+A test in `tests/frontend/tools-card-harness.test.ts` keeps the audit's
+default scenario list and the harness in sync.
+
 ## ◇ Documentation
 
 - User docs live in `docs/`; keep links **relative** (they are read on GitHub).

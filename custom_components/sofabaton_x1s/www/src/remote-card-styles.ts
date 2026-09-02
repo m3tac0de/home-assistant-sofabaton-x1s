@@ -43,6 +43,11 @@ export const REMOTE_CARD_CSS = `
         --sb-overlay-hover: color-mix(in srgb, var(--sb-tint-base) 10%, transparent);
         --sb-overlay-press: color-mix(in srgb, var(--sb-tint-base) 18%, transparent);
         --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+        /* Field surface for native inputs (the commands filter): the card
+           surface with a 6% text tint, same recipe as the control panel.
+           The theme's input fill is not trusted (Caule aliases it to the
+           primary colour, glass themes set it transparent). */
+        --sb-field-surface: color-mix(in srgb, var(--sb-tint-base) 6%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
         /* Raised-surface pair used by key_style tinted/elevated. Computed
            here (not on the consumers) so redefining --ha-card-background on
            a drawer button from it is not a self-reference. */
@@ -364,8 +369,8 @@ export const REMOTE_CARD_CSS = `
         font: inherit;
         font-size: 13px;
         color: var(--primary-text-color);
-        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
-        border: 1px solid var(--divider-color);
+        background: var(--sb-field-surface, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+        border: 1px solid var(--sb-key-border, var(--divider-color));
         border-radius: var(--sb-group-radius);
         outline: none;
       }
