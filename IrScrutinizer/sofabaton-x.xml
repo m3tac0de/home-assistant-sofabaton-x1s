@@ -3,23 +3,39 @@
   Sofabaton X-series IR Export Format for IrScrutinizer
   =====================================================
 
-  Format reverse-engineered from a Denon AVR "Menu" capture.
+  Wire format (validated 2026-08-31 by a physically observed device
+  response: a Samsung TV driven through an X1 hub; matches vendor-cloud
+  command deploys fetched back from a hub):
 
-  Wire format:
-    [6-byte fixed header]   00 00 03 20 00 00
-    [4-byte BE uint]        carrier frequency in Hz
-    [N x 4-byte BE uint]    alternating mark/space durations in microseconds,
-                            walking each <girr:flash>/<girr:gap> in order
-                            (intro -> repeat -> ending), preserving whatever
-                            structure the Girr signal carries.
-    [4-byte BE uint]        00 00 00 00 (terminator)
+    [0:2]   timing-section byte length, 2-byte BE uint
+            (4 bytes per flash/gap timing word; terminator excluded)
+    [2:6]   format field  00 00 00 00
+    [6:8]   carrier frequency in Hz, 2-byte BE uint
+    [8:]    alternating mark/space durations in microseconds, one 4-byte
+            BE uint per <girr:flash>/<girr:gap>, walking each sequence in
+            order (intro -> repeat -> ending), preserving whatever
+            structure the Girr signal carries.
+    [-4:]   terminator  00 00 00 00
 
   Each <girr:gap> at the end of the intro and end of the repeat naturally
   becomes the inter-burst gap (typically ~73ms for Denon). The exporter
-  doesn't need to inject artificial trailer gaps — Girr already has them.
+  doesn't need to inject artificial trailer gaps; Girr already has them.
+
+  CAUTION: the hub ACKs malformed bodies and then emits nothing, so a
+  layout claim only counts as verified when the target device physically
+  responds. Earlier revisions of this exporter emitted a different
+  framing (fixed header 00 00 03 20 00 00 followed by a 4-byte BE
+  carrier); under the real layout that declares a zero-length timing
+  section and a 0 Hz carrier, and the hub accepted those payloads while
+  emitting no IR. Payloads exported with the old framing must be
+  re-exported.
+
+  The live-validated reference implementation of this layout is
+  build_raw_ir_blob_body in
+  custom_components/sofabaton_x1s/lib/blob_decoders.py.
 
   Output is a hex string with spaces, ready to paste into the Sofabaton HA
-  integration's raw-IR injection.
+  integration's command payload editor.
 
 -->
 
@@ -40,6 +56,10 @@
             Sofabaton-native IR blob. The signal's intro, repeat, and ending sequences are
             emitted in order, preserving the structure of the source signal (so e.g. a
             Denon "double-burst" code keeps both halves).
+
+            Note: exports made with versions of this format that emitted the fixed
+            header 00 00 03 20 00 00 used an incorrect byte layout; the hub accepts
+            those payloads without error but emits no IR. Re-export affected commands.
         </div>
     </exportformats:documentation>
 
@@ -49,12 +69,15 @@
 
         <xsl:output method="text"/>
 
-        <!-- Fixed 6-byte file header observed on various captures.
-             This appears to be TVMao SDK formateParam, likely indicating remote protocol.
-		     The header used is for the DenonK protocol but has been observed to work generally. -->
-        <xsl:param name="HEADER">00 00 03 20 00 00</xsl:param>
+        <!-- 4-byte format field between the declared length and the carrier.
+             Vendor-cloud deploys carry zeros here, and zeros is the variant
+             validated by a physical device response. Other observed values
+             (e.g. 00 10 01 00 on a learned capture) change the length
+             semantics and are not emitted. -->
+        <xsl:param name="FORMAT">00 00 00 00</xsl:param>
 
-        <!-- 4-byte terminator after the last burst. -->
+        <!-- 4-byte terminator after the last timing word. Not counted in the
+             declared timing-section length. -->
         <xsl:param name="TERMINATOR">00 00 00 00</xsl:param>
 
         <!-- Entry point: emit the first signal of the first command of the
@@ -65,19 +88,28 @@
         </xsl:template>
 
         <xsl:template match="girr:raw">
-            <!-- Header -->
-            <xsl:value-of select="$HEADER"/>
-            <xsl:text> </xsl:text>
+            <!-- Every flash/gap in document order (intro -> repeat -> ending) -->
+            <xsl:variable name="words" select="girr:intro/girr:flash | girr:intro/girr:gap
+                                             | girr:repeat/girr:flash | girr:repeat/girr:gap
+                                             | girr:ending/girr:flash | girr:ending/girr:gap"/>
 
-            <!-- Carrier frequency in Hz, as one 4-byte BE word -->
-            <xsl:call-template name="sb-word">
-                <xsl:with-param name="value" select="number(@frequency)"/>
+            <!-- [0:2] timing-section byte length: 4 bytes per timing word,
+                 terminator excluded -->
+            <xsl:call-template name="sb-word16">
+                <xsl:with-param name="value" select="4 * count($words)"/>
             </xsl:call-template>
 
-            <!-- Body: every flash/gap in document order, in μs, as 4-byte BE words -->
-            <xsl:apply-templates select="girr:intro/girr:flash | girr:intro/girr:gap
-                                       | girr:repeat/girr:flash | girr:repeat/girr:gap
-                                       | girr:ending/girr:flash | girr:ending/girr:gap"/>
+            <!-- [2:6] format field -->
+            <xsl:value-of select="$FORMAT"/>
+            <xsl:text> </xsl:text>
+
+            <!-- [6:8] carrier frequency in Hz, as one 2-byte BE word -->
+            <xsl:call-template name="sb-word16">
+                <xsl:with-param name="value" select="round(number(@frequency))"/>
+            </xsl:call-template>
+
+            <!-- [8:] timing words, in microseconds, as 4-byte BE words -->
+            <xsl:apply-templates select="$words"/>
 
             <!-- Terminator -->
             <xsl:value-of select="$TERMINATOR"/>
@@ -101,6 +133,19 @@
                 <xsl:with-param name="value" select="floor($value div 65536) mod 256"/>
             </xsl:call-template>
             <xsl:text> </xsl:text>
+            <xsl:call-template name="sb-byte">
+                <xsl:with-param name="value" select="floor($value div 256) mod 256"/>
+            </xsl:call-template>
+            <xsl:text> </xsl:text>
+            <xsl:call-template name="sb-byte">
+                <xsl:with-param name="value" select="$value mod 256"/>
+            </xsl:call-template>
+            <xsl:text> </xsl:text>
+        </xsl:template>
+
+        <!-- Emit one 16-bit big-endian unsigned int as "XX XX " (note trailing space). -->
+        <xsl:template name="sb-word16">
+            <xsl:param name="value"/>
             <xsl:call-template name="sb-byte">
                 <xsl:with-param name="value" select="floor($value div 256) mod 256"/>
             </xsl:call-template>
