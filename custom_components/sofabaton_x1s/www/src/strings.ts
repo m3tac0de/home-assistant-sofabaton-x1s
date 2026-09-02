@@ -768,6 +768,15 @@ export const TOOLS_CARD_STRINGS_EN = {
       "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
     payloadHex: "Payload (hex bytes)",
     payloadHexHelper: "Byte pairs like \"0a 4f 22\"; whitespace and 0x prefixes are tolerated.",
+    prontoHexTab: "PRONTO HEX",
+    sofabatonHexTab: "SOFABATON HEX",
+    descriptorTab: "DESCRIPTOR",
+    prontoHexHelper:
+      "Learned-format pronto words like \"0000 006D 0022 0000 00AB …\"; converted to Sofabaton bytes automatically.",
+    prontoUnavailable:
+      "This payload does not parse as raw IR timings, so it cannot be shown as pronto hex.",
+    invalidProntoHex: "This is not a valid learned-format pronto code.",
+    descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",

@@ -624,3 +624,100 @@ test("the offline backup editor never locks a managed Wifi Device", () => {
   assert.equal(element._isManagedWifiLiveDevice(), false);
   assert.ok(element._editDetailSectionItems("device").length > 0);
 });
+
+// ── IR8: payload editor format tabs ────────────────────────────────────
+
+function irLiveEditor(model: "X1" | "X1S" | "X2" = "X1S"): EditorElement {
+  const element = createEditor(model, "device");
+  element.mode = "live";
+  element.entityId = 1; // IR device
+  return element;
+}
+
+// A real Sofabaton blob (Samsung VOLUME_UP double frame is overkill here;
+// a short NEC fragment suffices) and its pronto rendering, produced by the
+// shared converter so the test tracks the golden layout.
+const IR_BLOB_HEX = "0010 000000009470 0000232800001194000002300000069a 00000000".replace(/\s/g, "");
+
+test("IR payload opens on the pronto tab and renders pronto text", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  assert.equal(element._payloadDialogProntoAvailable, true);
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.match(element._payloadDialogProntoDraft, /^0000 /);
+  // sofabaton bytes remain the source of truth for Test/Save
+  assert.match(element._payloadDialogRawDraft.replace(/\s/g, ""), /^0010000000009470/);
+});
+
+test("editing pronto writes through to the sofabaton bytes", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  const pronto = element._payloadDialogProntoDraft;
+  // round-trip: feed the same pronto back through the pronto handler
+  element._handleProntoPayloadInput(controlEvent(pronto));
+  assert.equal(element._payloadDialogFormatError, "");
+  // declared length (0010) + zero format field survive; the carrier
+  // re-quantizes through the pronto frequency word (38000 -> 38029), so
+  // assert the structural prefix, not the exact carrier bytes.
+  assert.match(element._payloadDialogRawDraft.replace(/\s/g, ""), /^001000000000[0-9a-f]{4}/);
+});
+
+test("invalid pronto sets a format error and blocks save", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._handleProntoPayloadInput(controlEvent("0000 006D 0002 0000 00AB"));
+  assert.notEqual(element._payloadDialogFormatError, "");
+  const changes = collectBundleChanges(element);
+  element._applyCommandPayloadDialog();
+  assert.equal(changes.length, 0); // save refused while format error stands
+});
+
+test("pasting pronto into the sofabaton tab morphs to the pronto tab", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payloadDialogHexTab = "sofabaton";
+  const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
+  element._handleRawPayloadInput(controlEvent(pronto));
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.equal(element._payloadDialogProntoDraft, pronto);
+});
+
+test("a non-timing blob disables the pronto tab (sofabaton passthrough)", () => {
+  const element = irLiveEditor();
+  // descriptive P: blob body -> parseSofabatonBlob throws -> pronto off
+  element._openLivePayloadDialog(1, 10, { dataHex: "00 11", decoded: null });
+  assert.equal(element._payloadDialogProntoAvailable, false);
+  assert.equal(element._payloadDialogHexTab, "sofabaton");
+});
+
+test("pasting a descriptor into an X2 IR payload morphs to descriptor mode", () => {
+  const element = irLiveEditor("X2");
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._handleProntoPayloadInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
+  assert.ok(element._payloadDialogDecodedSnapshot);
+  assert.equal(element._payloadDialogDecodedSnapshot.className, "ir");
+  assert.equal(element._payloadDialogDecodedDrafts.descriptor, "P:Sony12 R:40000 D:1 F:18 MUL:2");
+});
+
+test("a descriptor paste on a non-X2 hub is rejected, not applied", () => {
+  const element = irLiveEditor("X1S");
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._handleProntoPayloadInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
+  assert.equal(element._payloadDialogDecodedSnapshot, null); // stayed in hex mode
+  assert.notEqual(element._payloadDialogFormatError, "");
+});
+
+test("add-command on a non-X2 IR device opens the hex tabs, not the descriptor", async () => {
+  const element = irLiveEditor("X1S");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.equal(element._payloadDialogDecodedSnapshot, null); // hex mode
+});
+
+test("add-command on an X2 IR device opens the descriptor form", async () => {
+  const element = irLiveEditor("X2");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.ok(element._payloadDialogDecodedSnapshot);
+  assert.equal(element._payloadDialogDecodedSnapshot.className, "ir");
+});

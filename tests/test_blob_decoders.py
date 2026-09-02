@@ -33,6 +33,8 @@ from custom_components.sofabaton_x1s.lib.blob_decoders import (  # noqa: E402
     RAW_IR_DEFAULT_TRAILING_GAP_US,
     build_raw_ir_blob_body,
     parse_pronto_hex,
+    parse_raw_ir_blob_body,
+    render_pronto_hex,
     encode_decoded_blob,
     format_decoded_for_display,
     is_decodable_class,
@@ -796,3 +798,75 @@ def test_parse_pronto_hex_uses_repeat_when_once_empty():
 def test_parse_pronto_hex_rejects_bad_input(text):
     with pytest.raises(ValueError):
         parse_pronto_hex(text)
+
+
+# ---------------------------------------------------------------------------
+# Raw-blob parser + pronto renderer (IR8) against the shared golden vectors
+# ---------------------------------------------------------------------------
+#
+# tests/fixtures/ir-format-vectors.json is consumed by BOTH this suite and
+# the frontend ir-format tests; converter divergence fails one of them.
+
+import json as _json
+
+_VECTORS = _json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "ir-format-vectors.json").read_text(
+        encoding="utf-8"
+    )
+)["vectors"]
+
+
+@pytest.mark.parametrize("vector", _VECTORS, ids=lambda v: v["name"])
+def test_ir_format_vector_parse_and_render(vector):
+    timings, carrier = parse_raw_ir_blob_body(bytes.fromhex(vector["stored_hex"]))
+    assert timings == vector["timings_us"]
+    assert carrier == vector["carrier_hz"]
+    assert build_raw_ir_blob_body(timings, carrier).hex() == vector["rebuilt_hex"]
+    assert render_pronto_hex(timings, carrier) == vector["pronto_hex"]
+
+
+@pytest.mark.parametrize("vector", _VECTORS, ids=lambda v: v["name"])
+def test_ir_format_vector_pronto_round_trip(vector):
+    timings, carrier = parse_pronto_hex(vector["pronto_hex"])
+    # carrier re-quantizes through the pronto frequency word; timings must
+    # agree within 0.5% of each value (plus the odd-count closing gap).
+    assert abs(carrier - vector["carrier_hz"]) <= vector["carrier_hz"] * 0.005
+    assert len(timings) in (len(vector["timings_us"]), len(vector["timings_us"]) + 1)
+    # tolerance: one carrier cycle (~26 us at 38 kHz) or 0.5%, whichever
+    # is larger - both are inherent pronto quantization, not converter bugs
+    cycle_us = 1_000_000 / vector["carrier_hz"]
+    for ours, reference in zip(vector["timings_us"], timings):
+        assert abs(ours - reference) <= max(cycle_us + 1, reference * 0.005)
+
+
+def test_parse_raw_ir_blob_rejects_descriptive_payload():
+    body = render_ir_descriptive_blob_body("P:Sony12 R:40000 D:1 F:18 MUL:2")
+    with pytest.raises(ValueError, match="descriptive"):
+        parse_raw_ir_blob_body(body + b"\x00\x00\x00\x00" + b"\x00" * 20)
+
+
+def test_parse_raw_ir_blob_rejects_legacy_exporter_framing():
+    # Pre-2026-08-31 framing: fixed header + BE32 carrier -> carrier field
+    # at [6:8] reads zero, which the parser must refuse (those blobs are
+    # silently dead on the hub).
+    legacy = bytes.fromhex("000003200000") + (38000).to_bytes(4, "big")
+    legacy += (9000).to_bytes(4, "big") + (4500).to_bytes(4, "big") + bytes(4)
+    with pytest.raises(ValueError, match="carrier"):
+        parse_raw_ir_blob_body(legacy)
+
+
+def test_parse_raw_ir_blob_rejects_unterminated_and_short():
+    with pytest.raises(ValueError):
+        parse_raw_ir_blob_body(b"\x00\x10\x00\x00\x00\x00\x94\x70")
+    unterminated = bytes.fromhex("0010000000009470") + (560).to_bytes(4, "big") * 4
+    with pytest.raises(ValueError, match="terminator"):
+        parse_raw_ir_blob_body(unterminated)
+
+
+def test_render_pronto_hex_clamps_and_pads():
+    # odd count -> closing gap; huge gap clamps to 0xFFFF cycles
+    pronto = render_pronto_hex([9000, 2_000_000, 560], 38000)
+    words = pronto.split()
+    assert words[0] == "0000"
+    assert int(words[2], 16) == 2  # two pairs after padding
+    assert "FFFF" in words[4:]

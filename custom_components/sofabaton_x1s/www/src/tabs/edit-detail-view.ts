@@ -26,6 +26,15 @@ import {
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
+import {
+  IrFormatError,
+  buildSofabatonBlob,
+  detectIrPayloadFormat,
+  formatHexForDisplay,
+  parseProntoHex,
+  parseSofabatonBlob,
+  renderProntoHex,
+} from "../shared/ir-format";
 import type { BackupBundlePayload, BlobFetchDecodedBlock, WifiEvent } from "../shared/ha-context";
 import {
   activityAddableDevices,
@@ -181,6 +190,11 @@ export function bundleSupportsUnicodeNames(bundle: BackupBundlePayload | null): 
   return version.includes("X2") || version.includes("X1S");
 }
 
+/** Descriptive (`P:`) IR payloads are an X2-only hub capability. */
+export function bundleIsX2(bundle: BackupBundlePayload | null): boolean {
+  return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
+}
+
 export function sanitizeBundleName(bundle: BackupBundlePayload | null, value: unknown): string {
   const pattern = bundleSupportsUnicodeNames(bundle)
     ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu
@@ -216,6 +230,10 @@ export class SofabatonEditDetailView extends LitElement {
     _payloadDialogDecodedDrafts: { state: true },
     _payloadDialogDecodedSnapshot: { state: true },
     _payloadDialogRawDraft: { state: true },
+    _payloadDialogHexTab: { state: true },
+    _payloadDialogProntoDraft: { state: true },
+    _payloadDialogProntoAvailable: { state: true },
+    _payloadDialogFormatError: { state: true },
     _payloadDialogError: { state: true },
     fetchCommandPayload: { attribute: false },
     testCommandPayload: { attribute: false },
@@ -417,6 +435,17 @@ export class SofabatonEditDetailView extends LitElement {
   private _payloadDialogDecodedSnapshot: BackupCommandDecodedBlock | null = null;
   private _payloadDialogRawSnapshot = "";
   private _payloadDialogRawDraft = "";
+  // ── IR hex format tabs (IR8) ───────────────────────────────────────
+  // For IR devices the raw-payload textarea carries two projections of
+  // one canonical signal: the Sofabaton blob (always the byte source of
+  // truth for Test/Save via _payloadDialogRawDraft) and its pronto hex
+  // rendering. Pronto is the default view; it is unavailable when the
+  // stored bytes do not parse as raw timings (descriptive payloads,
+  // unknown variants) and the sofabaton tab then acts as passthrough.
+  private _payloadDialogHexTab: "pronto" | "sofabaton" = "pronto";
+  private _payloadDialogProntoDraft = "";
+  private _payloadDialogProntoAvailable = true;
+  private _payloadDialogFormatError = "";
   private _payloadDialogError = "";
   // ── Live payload editing (host-provided I/O) ───────────────────────
   // The detail view is hass-free; the live Activities host injects these
@@ -1481,7 +1510,9 @@ export class SofabatonEditDetailView extends LitElement {
               : nothing}
             ${decoded
               ? this._renderDecodedPayloadForm(decoded.className)
-              : this._renderRawPayloadForm()}
+              : this._liveDeviceIsIr()
+                ? this._renderIrHexPayloadForm()
+                : this._renderRawPayloadForm()}
             ${this._liveDeviceIsIr()
               ? html`
                   <div class="payload-test-note">
@@ -1564,6 +1595,157 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
+  /**
+   * IR payload entry with format tabs (IR8): PRONTO HEX (default) and
+   * SOFABATON HEX are two views of the same signal. Sofabaton bytes in
+   * `_payloadDialogRawDraft` stay the source of truth for Test/Save;
+   * pronto edits write through via conversion. Pasting a descriptive
+   * `P:` payload morphs the dialog into descriptor mode (X2 only).
+   */
+  private _renderIrHexPayloadForm() {
+    const S = TOOLS_CARD_STRINGS.backup;
+    const tab = this._payloadDialogProntoAvailable ? this._payloadDialogHexTab : "sofabaton";
+    const prontoActive = tab === "pronto";
+    return html`
+      <div class="decoded-form">
+        <div class="payload-format-tabs" role="tablist">
+          <button
+            class="payload-format-tab ${prontoActive ? "active" : ""}"
+            role="tab"
+            aria-selected=${prontoActive ? "true" : "false"}
+            ?disabled=${!this._payloadDialogProntoAvailable}
+            title=${this._payloadDialogProntoAvailable ? "" : S.prontoUnavailable}
+            @click=${() => this._selectHexTab("pronto")}
+          >${S.prontoHexTab}</button>
+          <button
+            class="payload-format-tab ${prontoActive ? "" : "active"}"
+            role="tab"
+            aria-selected=${prontoActive ? "false" : "true"}
+            @click=${() => this._selectHexTab("sofabaton")}
+          >${S.sofabatonHexTab}</button>
+        </div>
+        <label class="decoded-field">
+          <textarea
+            class="decoded-field-input decoded-field-input--multiline"
+            rows="6"
+            spellcheck="false"
+            .value=${prontoActive ? this._payloadDialogProntoDraft : this._payloadDialogRawDraft}
+            @input=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
+            @change=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
+          ></textarea>
+          <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
+            ${this._payloadDialogFormatError
+              || (prontoActive ? S.prontoHexHelper : S.payloadHexHelper)}
+          </span>
+        </label>
+      </div>
+    `;
+  }
+
+  private _selectHexTab(tab: "pronto" | "sofabaton") {
+    if (tab === "pronto" && !this._payloadDialogProntoAvailable) return;
+    this._payloadDialogHexTab = tab;
+    this._payloadDialogFormatError = "";
+  }
+
+  /** Map an IrFormatError to a user string; anything else falls through. */
+  private _irFormatMessage(error: unknown, fallback: string): string {
+    if (error instanceof IrFormatError) return `${fallback} (${error.code})`;
+    return fallback;
+  }
+
+  /**
+   * Re-derive the pronto projection after the sofabaton draft changed.
+   * Unparseable bytes are legal (passthrough for unknown variants); they
+   * only disable the pronto tab.
+   */
+  private _syncProntoFromRaw() {
+    try {
+      const signal = parseSofabatonBlob(this._payloadDialogRawDraft);
+      this._payloadDialogProntoDraft = renderProntoHex(signal);
+      this._payloadDialogProntoAvailable = true;
+    } catch {
+      this._payloadDialogProntoDraft = "";
+      this._payloadDialogProntoAvailable = false;
+    }
+  }
+
+  /** Morph the open dialog to descriptor mode from pasted `P:` text. */
+  private _morphToDescriptor(text: string) {
+    this._payloadDialogDecodedSnapshot = {
+      className: "ir",
+      fields: { descriptor: "" },
+      trailerHex: "",
+      edited: false,
+    };
+    this._payloadDialogDecodedDrafts = { descriptor: text.trim() };
+    this._payloadDialogFormatError = "";
+  }
+
+  /** Morph the open dialog from descriptor mode to the hex tabs. */
+  private _morphToHex(text: string, format: "pronto" | "sofabaton") {
+    this._payloadDialogDecodedSnapshot = null;
+    this._payloadDialogDecodedDrafts = {};
+    this._payloadDialogFormatError = "";
+    if (format === "pronto") {
+      this._payloadDialogHexTab = "pronto";
+      this._payloadDialogProntoDraft = text.trim();
+      this._applyProntoDraft(text.trim());
+    } else {
+      this._payloadDialogHexTab = "sofabaton";
+      this._payloadDialogRawDraft = text.trim();
+      this._syncProntoFromRaw();
+    }
+  }
+
+  /** Parse a pronto draft and write the sofabaton bytes through. */
+  private _applyProntoDraft(text: string) {
+    if (!text.trim()) {
+      this._payloadDialogFormatError = "";
+      return;
+    }
+    try {
+      const signal = parseProntoHex(text);
+      this._payloadDialogRawDraft = formatHexForDisplay(buildSofabatonBlob(signal));
+      this._payloadDialogProntoAvailable = true;
+      this._payloadDialogFormatError = "";
+    } catch (error) {
+      this._payloadDialogFormatError = this._irFormatMessage(
+        error,
+        TOOLS_CARD_STRINGS.backup.invalidProntoHex,
+      );
+    }
+  }
+
+  private _handleProntoPayloadInput = (event: Event) => {
+    const input = event.currentTarget as HTMLTextAreaElement;
+    const text = input.value;
+    this._payloadDialogError = "";
+    const detected = detectIrPayloadFormat(text);
+    if (detected === "descriptor") {
+      if (bundleIsX2(this.bundle)) {
+        this._morphToDescriptor(text);
+        return;
+      }
+      this._payloadDialogProntoDraft = text;
+      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+      return;
+    }
+    if (detected === "sofabaton") {
+      // Only steal the paste when it is a complete, parseable blob -
+      // partial pronto typing also looks hex-ish and must stay put.
+      try {
+        parseSofabatonBlob(text);
+        this._morphToHex(text, "sofabaton");
+        return;
+      } catch {
+        // fall through: treat as in-progress pronto input
+      }
+    }
+    this._payloadDialogProntoDraft = text;
+    this._applyProntoDraft(text);
+  };
+
   private _handleAddCommandNameInput = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement;
     const value = sanitizeBundleName(this.bundle, input.value);
@@ -1574,19 +1756,55 @@ export class SofabatonEditDetailView extends LitElement {
 
   private _handleRawPayloadInput = (event: Event) => {
     const input = event.currentTarget as HTMLTextAreaElement;
-    this._payloadDialogRawDraft = input.value;
+    const text = input.value;
     this._payloadDialogError = "";
+    if (this._liveDeviceIsIr()) {
+      const detected = detectIrPayloadFormat(text);
+      if (detected === "pronto") {
+        this._morphToHex(text, "pronto");
+        return;
+      }
+      if (detected === "descriptor") {
+        if (bundleIsX2(this.bundle)) {
+          this._morphToDescriptor(text);
+          return;
+        }
+        this._payloadDialogRawDraft = text;
+        this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+        return;
+      }
+      this._payloadDialogRawDraft = text;
+      this._payloadDialogFormatError = "";
+      this._syncProntoFromRaw();
+      return;
+    }
+    this._payloadDialogRawDraft = text;
   };
 
   private _renderDecodedPayloadForm(className: DecodableCommandClass) {
     const spec = DECODED_CLASS_FORM_SPECS[className];
     if (!spec) return nothing;
+    // IR descriptor mode shows a single DESCRIPTOR tab in place of the
+    // form title, mirroring the hex-mode tab row (IR8); pasting hex into
+    // the field switches back to the hex tabs.
+    const head = className === "ir"
+      ? html`
+          <div class="payload-format-tabs" role="tablist">
+            <button class="payload-format-tab active" role="tab" aria-selected="true">
+              ${TOOLS_CARD_STRINGS.backup.descriptorTab}
+            </button>
+          </div>
+          ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
+        `
+      : html`
+          <div class="decoded-form-head">
+            <div class="decoded-form-title">${spec.title}</div>
+            ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
+          </div>
+        `;
     return html`
       <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${spec.title}</div>
-          ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
-        </div>
+        ${head}
         ${spec.fields.map((field) => this._renderDecodedField(field))}
       </div>
     `;
@@ -1712,6 +1930,28 @@ export class SofabatonEditDetailView extends LitElement {
 
   private _handleDecodedFieldInput = (event: Event, fieldKey: string) => {
     const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement;
+    // IR descriptor field: pasting hex flips the dialog to the hex tabs
+    // (IR8 format auto-recognition). Complete blobs only, so typing a
+    // descriptor with digits never gets hijacked.
+    if (
+      fieldKey === "descriptor" &&
+      this._payloadDialogDecodedSnapshot?.className === "ir"
+    ) {
+      const detected = detectIrPayloadFormat(input.value);
+      if (detected === "pronto") {
+        this._morphToHex(input.value, "pronto");
+        return;
+      }
+      if (detected === "sofabaton") {
+        try {
+          parseSofabatonBlob(input.value);
+          this._morphToHex(input.value, "sofabaton");
+          return;
+        } catch {
+          // not a complete blob: keep treating it as descriptor text
+        }
+      }
+    }
     this._payloadDialogDecodedDrafts = {
       ...this._payloadDialogDecodedDrafts,
       [fieldKey]: input.value,
@@ -1852,7 +2092,24 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadDialogError = "";
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
+  }
+
+  /**
+   * Seed the IR hex-tab state after the raw draft was (re)set: pronto is
+   * the default view when the blob parses as raw timings (IR8).
+   */
+  private _resetIrHexTabState() {
+    this._payloadDialogFormatError = "";
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoDraft = "";
+    this._payloadDialogProntoAvailable = true;
+    if (!this._liveDeviceIsIr()) return;
+    if (String(this._payloadDialogRawDraft ?? "").trim()) {
+      this._syncProntoFromRaw();
+      if (!this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "sofabaton";
+    }
   }
 
   /**
@@ -1879,12 +2136,14 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadFetchError = "";
 
     if (deviceClass === "ir") {
-      this._openAddDialogWithSnapshot(deviceId, {
-        className: "ir",
-        fields: { descriptor: "" },
-        trailerHex: "",
-        edited: false,
-      });
+      // Descriptive synthesis is X2-only (IR8 decision 5); other hubs
+      // open straight in the hex tabs, pronto view, empty.
+      this._openAddDialogWithSnapshot(
+        deviceId,
+        bundleIsX2(this.bundle)
+          ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false }
+          : null,
+      );
       return;
     }
 
@@ -1928,6 +2187,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadDialogError = "";
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
   }
 
@@ -2047,6 +2307,13 @@ export class SofabatonEditDetailView extends LitElement {
   /** Test the current draft on the hub (IR only), via the host's callback. */
   private async _runLivePayloadTest() {
     if (!this.testCommandPayload) return;
+    if (this._payloadDialogFormatError) {
+      // The active hex tab holds unparseable text; the sofabaton bytes
+      // behind Test/Save would be stale.
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = this._payloadDialogFormatError;
+      return;
+    }
     const value = this._payloadDialogDecodedSnapshot
       ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim()
       : String(this._payloadDialogRawDraft ?? "").trim();
@@ -2085,6 +2352,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadDialogRawSnapshot = rawHex ?? "";
     this._payloadDialogRawDraft = rawHex ?? "";
     this._payloadDialogError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
   }
 
@@ -2101,11 +2369,19 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadDialogTestError = "";
     this._payloadDialogAddMode = false;
     this._payloadDialogNameDraft = "";
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoDraft = "";
+    this._payloadDialogProntoAvailable = true;
+    this._payloadDialogFormatError = "";
   };
 
   private _applyCommandPayloadDialog = () => {
     const target = this._payloadDialogTarget;
     if (!target || !this.bundle) return;
+    if (this._payloadDialogFormatError) {
+      this._payloadDialogError = this._payloadDialogFormatError;
+      return;
+    }
     if (this._payloadDialogAddMode) {
       this._applyAddCommandDialog(target);
       return;

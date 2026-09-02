@@ -1078,6 +1078,39 @@ export const backupTabStyles = css`
       gap: 10px;
     }
     .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
+    .payload-format-tabs {
+      display: flex;
+      gap: 2px;
+      align-items: flex-end;
+    }
+    .payload-format-tab {
+      appearance: none;
+      border: none;
+      background: none;
+      padding: 4px 10px 5px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+      border-bottom: 2px solid transparent;
+      border-radius: 4px 4px 0 0;
+      cursor: pointer;
+    }
+    .payload-format-tab:hover:not(:disabled):not(.active) {
+      color: var(--primary-text-color);
+      background: var(--ha-color-fill-neutral-quiet-resting, rgba(127, 127, 127, 0.08));
+    }
+    .payload-format-tab.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+      cursor: default;
+    }
+    .payload-format-tab:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .payload-format-error { color: var(--error-color, #b3261e); }
     .decoded-form-title {
       font-size: 13px;
       font-weight: 600;

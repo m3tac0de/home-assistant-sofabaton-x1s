@@ -271,6 +271,15 @@ export const TOOLS_CARD_STRINGS_ES = {
     test: "Probar", sendingToHub: "Enviando al hub…", sentToHub: "Enviado al hub para una reproducción única.", testFailed: "Error en la prueba.", rawPayload: "Carga útil sin procesar",
     rawPayloadDescription: "No existe un editor estructurado para esta clase de dispositivo; los bytes siguientes se reproducen sin cambios en el hub durante la restauración.", payloadHex: "Carga útil (bytes hexadecimales)",
     payloadHexHelper: "Pares de bytes como «0a 4f 22»; se permiten espacios y prefijos 0x.", rename: "Cambiar nombre", renameActivity: "Cambiar nombre de la actividad", renameDevice: "Cambiar nombre del dispositivo", renameMacro: "Cambiar nombre de la macro",
+    prontoHexTab: "PRONTO HEX",
+    sofabatonHexTab: "SOFABATON HEX",
+    descriptorTab: "DESCRIPTOR",
+    prontoHexHelper:
+      'Palabras pronto en formato aprendido como "0000 006D 0022 0000 00AB …"; se convierten automÃ¡ticamente en bytes Sofabaton.',
+    prontoUnavailable:
+      "Esta carga Ãºtil no se puede leer como tiempos IR sin procesar, por lo que no puede mostrarse como pronto hex.",
+    invalidProntoHex: "Este no es un cÃ³digo pronto vÃ¡lido en formato aprendido.",
+    descriptorX2Only: "Las cargas Ãºtiles IR descriptivas solo se admiten en hubs X2.",
     renameFavorite: "Cambiar nombre del favorito", renameCommand: "Cambiar nombre del comando", ipAddress: "Dirección IP", noPayloadReturned: "El hub no devolvió ninguna carga útil para este comando.",
     noTemplateCommand: "Este dispositivo no tiene comandos para usar como plantilla — añade el primero con la aplicación Sofabaton.", newCommandNameRequired: "Introduce un nombre para el comando nuevo.",
     descriptiveIrRequired: "Introduce una carga útil IR descriptiva que empiece por P: (p. ej., P:Sony12 R:40000 D:1 F:18).", payloadHexRequired: "Introduce la carga útil como bytes hexadecimales (un número par de dígitos hexadecimales; se permiten espacios).",

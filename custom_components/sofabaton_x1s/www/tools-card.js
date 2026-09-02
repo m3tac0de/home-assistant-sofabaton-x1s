@@ -2286,6 +2286,13 @@ var TOOLS_CARD_STRINGS_EN = {
     rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
     payloadHex: "Payload (hex bytes)",
     payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
+    prontoHexTab: "PRONTO HEX",
+    sofabatonHexTab: "SOFABATON HEX",
+    descriptorTab: "DESCRIPTOR",
+    prontoHexHelper: 'Learned-format pronto words like "0000 006D 0022 0000 00AB \u2026"; converted to Sofabaton bytes automatically.',
+    prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as pronto hex.",
+    invalidProntoHex: "This is not a valid learned-format pronto code.",
+    descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",
@@ -6702,6 +6709,39 @@ var backupTabStyles = i`
       gap: 10px;
     }
     .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
+    .payload-format-tabs {
+      display: flex;
+      gap: 2px;
+      align-items: flex-end;
+    }
+    .payload-format-tab {
+      appearance: none;
+      border: none;
+      background: none;
+      padding: 4px 10px 5px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+      border-bottom: 2px solid transparent;
+      border-radius: 4px 4px 0 0;
+      cursor: pointer;
+    }
+    .payload-format-tab:hover:not(:disabled):not(.active) {
+      color: var(--primary-text-color);
+      background: var(--ha-color-fill-neutral-quiet-resting, rgba(127, 127, 127, 0.08));
+    }
+    .payload-format-tab.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+      cursor: default;
+    }
+    .payload-format-tab:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .payload-format-error { color: var(--error-color, #b3261e); }
     .decoded-form-title {
       font-size: 13px;
       font-weight: 600;
@@ -7369,6 +7409,173 @@ var addButtonStyles = i`
   .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
   .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; color: var(--primary-color); }
 `;
+
+// custom_components/sofabaton_x1s/www/src/shared/ir-format.ts
+var IrFormatError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "IrFormatError";
+  }
+};
+var RAW_IR_DEFAULT_TRAILING_GAP_US = 4e4;
+var PRONTO_REFERENCE_HZ = 4145146;
+var PRONTO_MAX_WORD = 65535;
+function roundHalfEven(value) {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (diff > 0.5) return floor + 1;
+  if (diff < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+function parseProntoHex(text) {
+  const tokens = text.trim().split(/\s+/).filter((t4) => t4.length > 0);
+  const words = tokens.map((token) => {
+    const value = /^[0-9a-fA-F]+$/.test(token) ? parseInt(token, 16) : NaN;
+    if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
+    return value;
+  });
+  if (words.length < 6) {
+    throw new IrFormatError("ir-format/pronto-too-short");
+  }
+  if (words.some((w2) => w2 < 0 || w2 > 65535)) {
+    throw new IrFormatError("ir-format/pronto-word-range");
+  }
+  const [preamble, freqWord, oncePairs, repeatPairs] = words;
+  if (preamble !== 0) {
+    throw new IrFormatError("ir-format/pronto-not-learned-format");
+  }
+  if (freqWord === 0) throw new IrFormatError("ir-format/pronto-zero-frequency");
+  const expected = 4 + 2 * (oncePairs + repeatPairs);
+  if (words.length !== expected) {
+    throw new IrFormatError("ir-format/pronto-count-mismatch");
+  }
+  const carrierHz = roundHalfEven(PRONTO_REFERENCE_HZ / freqWord);
+  let count;
+  if (oncePairs > 0) {
+    count = 2 * oncePairs;
+  } else if (repeatPairs > 0) {
+    count = 2 * repeatPairs;
+  } else {
+    throw new IrFormatError("ir-format/pronto-empty");
+  }
+  const section = words.slice(4, 4 + count);
+  if (section.some((w2) => w2 === 0)) throw new IrFormatError("ir-format/pronto-zero-timing");
+  const cycleUs = 1e6 / carrierHz;
+  const timingsUs = section.map((w2) => Math.max(1, roundHalfEven(w2 * cycleUs)));
+  return { timingsUs, carrierHz };
+}
+function renderProntoHex(signal) {
+  const { carrierHz } = signal;
+  const durations = normalizeTimings(signal);
+  const freqWord = Math.max(
+    1,
+    Math.min(PRONTO_MAX_WORD, roundHalfEven(PRONTO_REFERENCE_HZ / carrierHz))
+  );
+  const cyclesPerUs = carrierHz / 1e6;
+  const words = [0, freqWord, durations.length / 2, 0];
+  for (const value of durations) {
+    words.push(Math.max(1, Math.min(PRONTO_MAX_WORD, roundHalfEven(value * cyclesPerUs))));
+  }
+  return words.map((w2) => w2.toString(16).toUpperCase().padStart(4, "0")).join(" ");
+}
+function parseSofabatonBlob(hexText) {
+  const blob = hexToBytes(hexText);
+  if (blob.length < 8 + 2 * 4 + 4) {
+    throw new IrFormatError("ir-format/blob-too-short");
+  }
+  if (looksLikeDescriptorBlob(blob)) {
+    throw new IrFormatError("ir-format/blob-descriptive");
+  }
+  const carrierHz = blob[6] << 8 | blob[7];
+  if (carrierHz < 1e4 || carrierHz > 5e5) {
+    throw new IrFormatError("ir-format/blob-carrier");
+  }
+  const timingsUs = [];
+  let terminated = false;
+  for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
+    const word = blob[pos] * 16777216 + blob[pos + 1] * 65536 + blob[pos + 2] * 256 + blob[pos + 3];
+    if (word === 0) {
+      terminated = true;
+      break;
+    }
+    timingsUs.push(word);
+  }
+  if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  if (timingsUs.length < 2) {
+    throw new IrFormatError("ir-format/blob-too-few-timings");
+  }
+  if (timingsUs.some((v2) => v2 < 20 || v2 > 2e6)) {
+    throw new IrFormatError("ir-format/blob-timing-range");
+  }
+  return { timingsUs, carrierHz };
+}
+function buildSofabatonBlob(signal) {
+  const { carrierHz } = signal;
+  if (!(carrierHz > 0 && carrierHz < 65536)) {
+    throw new IrFormatError("ir-format/carrier-range");
+  }
+  const durations = normalizeTimings(signal);
+  if (4 * durations.length >= 65536) {
+    throw new IrFormatError("ir-format/too-many-timings");
+  }
+  const bytes = [];
+  pushBe16(bytes, 4 * durations.length);
+  bytes.push(0, 0, 0, 0);
+  pushBe16(bytes, carrierHz);
+  for (const value of durations) {
+    if (value >= 4294967296) throw new IrFormatError("ir-format/timing-range");
+    bytes.push(value >>> 24 & 255, value >>> 16 & 255, value >>> 8 & 255, value & 255);
+  }
+  bytes.push(0, 0, 0, 0);
+  return bytes.map((b3) => b3.toString(16).padStart(2, "0")).join("");
+}
+function detectIrPayloadFormat(text) {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return "unknown";
+  if (/^P:/i.test(trimmed)) return "descriptor";
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length >= 6 && tokens.every((t4) => /^[0-9a-fA-F]{4}$/.test(t4)) && parseInt(tokens[0], 16) === 0) {
+    const once = parseInt(tokens[2], 16);
+    const repeat = parseInt(tokens[3], 16);
+    if (tokens.length === 4 + 2 * (once + repeat)) return "pronto";
+  }
+  if (/^[0-9a-fA-F\s]+$/.test(trimmed)) return "sofabaton";
+  return "unknown";
+}
+function normalizeTimings(signal) {
+  if (signal.timingsUs.length === 0) {
+    throw new IrFormatError("ir-format/empty");
+  }
+  const durations = signal.timingsUs.map((v2) => Math.abs(Math.trunc(v2)));
+  if (durations.some((v2) => v2 === 0)) {
+    throw new IrFormatError("ir-format/zero-timing");
+  }
+  if (durations.length % 2 === 1) durations.push(RAW_IR_DEFAULT_TRAILING_GAP_US);
+  return durations;
+}
+function looksLikeDescriptorBlob(blob) {
+  const magic = [0, 0, 17, 0, 148, 112];
+  return blob.length >= 8 && magic.every((b3, i7) => blob[2 + i7] === b3);
+}
+function pushBe16(bytes, value) {
+  bytes.push(value >>> 8 & 255, value & 255);
+}
+function hexToBytes(hexText) {
+  const clean = hexText.replace(/\s+/g, "");
+  if (clean.length === 0 || clean.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(clean)) {
+    throw new IrFormatError("ir-format/not-hex-bytes");
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i7 = 0; i7 < out.length; i7 += 1) {
+    out[i7] = parseInt(clean.slice(2 * i7, 2 * i7 + 2), 16);
+  }
+  return out;
+}
+function formatHexForDisplay(hexText) {
+  const clean = hexText.replace(/\s+/g, "").toLowerCase();
+  return clean.replace(/(..)/g, "$1 ").trim();
+}
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
@@ -9480,6 +9687,9 @@ function bundleSupportsUnicodeNames(bundle) {
   const version = String(bundle?.hub?.version || "").toUpperCase();
   return version.includes("X2") || version.includes("X1S");
 }
+function bundleIsX2(bundle) {
+  return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
+}
 function sanitizeBundleName(bundle, value) {
   const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
   return String(value ?? "").replace(pattern, "").slice(0, 30);
@@ -9535,6 +9745,17 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogDecodedSnapshot = null;
     this._payloadDialogRawSnapshot = "";
     this._payloadDialogRawDraft = "";
+    // ── IR hex format tabs (IR8) ───────────────────────────────────────
+    // For IR devices the raw-payload textarea carries two projections of
+    // one canonical signal: the Sofabaton blob (always the byte source of
+    // truth for Test/Save via _payloadDialogRawDraft) and its pronto hex
+    // rendering. Pronto is the default view; it is unavailable when the
+    // stored bytes do not parse as raw timings (descriptive payloads,
+    // unknown variants) and the sofabaton tab then acts as passthrough.
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoDraft = "";
+    this._payloadDialogProntoAvailable = true;
+    this._payloadDialogFormatError = "";
     this._payloadDialogError = "";
     // ── Live payload editing (host-provided I/O) ───────────────────────
     // The detail view is hass-free; the live Activities host injects these
@@ -9659,6 +9880,31 @@ var SofabatonEditDetailView = class extends i4 {
       if (!pending) return;
       this._applyRoleAssign(pending.group, pending.deviceId);
     };
+    this._handleProntoPayloadInput = (event) => {
+      const input = event.currentTarget;
+      const text = input.value;
+      this._payloadDialogError = "";
+      const detected = detectIrPayloadFormat(text);
+      if (detected === "descriptor") {
+        if (bundleIsX2(this.bundle)) {
+          this._morphToDescriptor(text);
+          return;
+        }
+        this._payloadDialogProntoDraft = text;
+        this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+        return;
+      }
+      if (detected === "sofabaton") {
+        try {
+          parseSofabatonBlob(text);
+          this._morphToHex(text, "sofabaton");
+          return;
+        } catch {
+        }
+      }
+      this._payloadDialogProntoDraft = text;
+      this._applyProntoDraft(text);
+    };
     this._handleAddCommandNameInput = (event) => {
       const input = event.currentTarget;
       const value = sanitizeBundleName(this.bundle, input.value);
@@ -9668,11 +9914,47 @@ var SofabatonEditDetailView = class extends i4 {
     };
     this._handleRawPayloadInput = (event) => {
       const input = event.currentTarget;
-      this._payloadDialogRawDraft = input.value;
+      const text = input.value;
       this._payloadDialogError = "";
+      if (this._liveDeviceIsIr()) {
+        const detected = detectIrPayloadFormat(text);
+        if (detected === "pronto") {
+          this._morphToHex(text, "pronto");
+          return;
+        }
+        if (detected === "descriptor") {
+          if (bundleIsX2(this.bundle)) {
+            this._morphToDescriptor(text);
+            return;
+          }
+          this._payloadDialogRawDraft = text;
+          this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+          return;
+        }
+        this._payloadDialogRawDraft = text;
+        this._payloadDialogFormatError = "";
+        this._syncProntoFromRaw();
+        return;
+      }
+      this._payloadDialogRawDraft = text;
     };
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
+      if (fieldKey === "descriptor" && this._payloadDialogDecodedSnapshot?.className === "ir") {
+        const detected = detectIrPayloadFormat(input.value);
+        if (detected === "pronto") {
+          this._morphToHex(input.value, "pronto");
+          return;
+        }
+        if (detected === "sofabaton") {
+          try {
+            parseSofabatonBlob(input.value);
+            this._morphToHex(input.value, "sofabaton");
+            return;
+          } catch {
+          }
+        }
+      }
       this._payloadDialogDecodedDrafts = {
         ...this._payloadDialogDecodedDrafts,
         [fieldKey]: input.value
@@ -9720,10 +10002,18 @@ var SofabatonEditDetailView = class extends i4 {
       this._payloadDialogTestError = "";
       this._payloadDialogAddMode = false;
       this._payloadDialogNameDraft = "";
+      this._payloadDialogHexTab = "pronto";
+      this._payloadDialogProntoDraft = "";
+      this._payloadDialogProntoAvailable = true;
+      this._payloadDialogFormatError = "";
     };
     this._applyCommandPayloadDialog = () => {
       const target = this._payloadDialogTarget;
       if (!target || !this.bundle) return;
+      if (this._payloadDialogFormatError) {
+        this._payloadDialogError = this._payloadDialogFormatError;
+        return;
+      }
       if (this._payloadDialogAddMode) {
         this._applyAddCommandDialog(target);
         return;
@@ -11170,7 +11460,7 @@ var SofabatonEditDetailView = class extends i4 {
                     <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
                   </label>
                 ` : A}
-            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._renderRawPayloadForm()}
+            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._liveDeviceIsIr() ? this._renderIrHexPayloadForm() : this._renderRawPayloadForm()}
             ${this._liveDeviceIsIr() ? b2`
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
@@ -11235,15 +11525,139 @@ var SofabatonEditDetailView = class extends i4 {
       </div>
     `;
   }
+  /**
+   * IR payload entry with format tabs (IR8): PRONTO HEX (default) and
+   * SOFABATON HEX are two views of the same signal. Sofabaton bytes in
+   * `_payloadDialogRawDraft` stay the source of truth for Test/Save;
+   * pronto edits write through via conversion. Pasting a descriptive
+   * `P:` payload morphs the dialog into descriptor mode (X2 only).
+   */
+  _renderIrHexPayloadForm() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const tab = this._payloadDialogProntoAvailable ? this._payloadDialogHexTab : "sofabaton";
+    const prontoActive = tab === "pronto";
+    return b2`
+      <div class="decoded-form">
+        <div class="payload-format-tabs" role="tablist">
+          <button
+            class="payload-format-tab ${prontoActive ? "active" : ""}"
+            role="tab"
+            aria-selected=${prontoActive ? "true" : "false"}
+            ?disabled=${!this._payloadDialogProntoAvailable}
+            title=${this._payloadDialogProntoAvailable ? "" : S5.prontoUnavailable}
+            @click=${() => this._selectHexTab("pronto")}
+          >${S5.prontoHexTab}</button>
+          <button
+            class="payload-format-tab ${prontoActive ? "" : "active"}"
+            role="tab"
+            aria-selected=${prontoActive ? "false" : "true"}
+            @click=${() => this._selectHexTab("sofabaton")}
+          >${S5.sofabatonHexTab}</button>
+        </div>
+        <label class="decoded-field">
+          <textarea
+            class="decoded-field-input decoded-field-input--multiline"
+            rows="6"
+            spellcheck="false"
+            .value=${prontoActive ? this._payloadDialogProntoDraft : this._payloadDialogRawDraft}
+            @input=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
+            @change=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
+          ></textarea>
+          <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
+            ${this._payloadDialogFormatError || (prontoActive ? S5.prontoHexHelper : S5.payloadHexHelper)}
+          </span>
+        </label>
+      </div>
+    `;
+  }
+  _selectHexTab(tab) {
+    if (tab === "pronto" && !this._payloadDialogProntoAvailable) return;
+    this._payloadDialogHexTab = tab;
+    this._payloadDialogFormatError = "";
+  }
+  /** Map an IrFormatError to a user string; anything else falls through. */
+  _irFormatMessage(error, fallback) {
+    if (error instanceof IrFormatError) return `${fallback} (${error.code})`;
+    return fallback;
+  }
+  /**
+   * Re-derive the pronto projection after the sofabaton draft changed.
+   * Unparseable bytes are legal (passthrough for unknown variants); they
+   * only disable the pronto tab.
+   */
+  _syncProntoFromRaw() {
+    try {
+      const signal = parseSofabatonBlob(this._payloadDialogRawDraft);
+      this._payloadDialogProntoDraft = renderProntoHex(signal);
+      this._payloadDialogProntoAvailable = true;
+    } catch {
+      this._payloadDialogProntoDraft = "";
+      this._payloadDialogProntoAvailable = false;
+    }
+  }
+  /** Morph the open dialog to descriptor mode from pasted `P:` text. */
+  _morphToDescriptor(text) {
+    this._payloadDialogDecodedSnapshot = {
+      className: "ir",
+      fields: { descriptor: "" },
+      trailerHex: "",
+      edited: false
+    };
+    this._payloadDialogDecodedDrafts = { descriptor: text.trim() };
+    this._payloadDialogFormatError = "";
+  }
+  /** Morph the open dialog from descriptor mode to the hex tabs. */
+  _morphToHex(text, format) {
+    this._payloadDialogDecodedSnapshot = null;
+    this._payloadDialogDecodedDrafts = {};
+    this._payloadDialogFormatError = "";
+    if (format === "pronto") {
+      this._payloadDialogHexTab = "pronto";
+      this._payloadDialogProntoDraft = text.trim();
+      this._applyProntoDraft(text.trim());
+    } else {
+      this._payloadDialogHexTab = "sofabaton";
+      this._payloadDialogRawDraft = text.trim();
+      this._syncProntoFromRaw();
+    }
+  }
+  /** Parse a pronto draft and write the sofabaton bytes through. */
+  _applyProntoDraft(text) {
+    if (!text.trim()) {
+      this._payloadDialogFormatError = "";
+      return;
+    }
+    try {
+      const signal = parseProntoHex(text);
+      this._payloadDialogRawDraft = formatHexForDisplay(buildSofabatonBlob(signal));
+      this._payloadDialogProntoAvailable = true;
+      this._payloadDialogFormatError = "";
+    } catch (error) {
+      this._payloadDialogFormatError = this._irFormatMessage(
+        error,
+        TOOLS_CARD_STRINGS.backup.invalidProntoHex
+      );
+    }
+  }
   _renderDecodedPayloadForm(className) {
     const spec = DECODED_CLASS_FORM_SPECS[className];
     if (!spec) return A;
+    const head = className === "ir" ? b2`
+          <div class="payload-format-tabs" role="tablist">
+            <button class="payload-format-tab active" role="tab" aria-selected="true">
+              ${TOOLS_CARD_STRINGS.backup.descriptorTab}
+            </button>
+          </div>
+          ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
+        ` : b2`
+          <div class="decoded-form-head">
+            <div class="decoded-form-title">${spec.title}</div>
+            ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
+          </div>
+        `;
     return b2`
       <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${spec.title}</div>
-          ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
-        </div>
+        ${head}
         ${spec.fields.map((field) => this._renderDecodedField(field))}
       </div>
     `;
@@ -11429,7 +11843,23 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogError = "";
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
+  }
+  /**
+   * Seed the IR hex-tab state after the raw draft was (re)set: pronto is
+   * the default view when the blob parses as raw timings (IR8).
+   */
+  _resetIrHexTabState() {
+    this._payloadDialogFormatError = "";
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoDraft = "";
+    this._payloadDialogProntoAvailable = true;
+    if (!this._liveDeviceIsIr()) return;
+    if (String(this._payloadDialogRawDraft ?? "").trim()) {
+      this._syncProntoFromRaw();
+      if (!this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "sofabaton";
+    }
   }
   /**
    * Open the payload dialog in add-command mode (live only). The controls
@@ -11454,12 +11884,10 @@ var SofabatonEditDetailView = class extends i4 {
     const deviceClass = String(bundleDeviceClass(this.bundle, deviceId) || "").trim().toLowerCase();
     this._payloadFetchError = "";
     if (deviceClass === "ir") {
-      this._openAddDialogWithSnapshot(deviceId, {
-        className: "ir",
-        fields: { descriptor: "" },
-        trailerHex: "",
-        edited: false
-      });
+      this._openAddDialogWithSnapshot(
+        deviceId,
+        bundleIsX2(this.bundle) ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false } : null
+      );
       return;
     }
     const existing = deviceCommandItems(this.bundle, deviceId);
@@ -11497,6 +11925,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogError = "";
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
   }
   /**
@@ -11612,6 +12041,11 @@ var SofabatonEditDetailView = class extends i4 {
   /** Test the current draft on the hub (IR only), via the host's callback. */
   async _runLivePayloadTest() {
     if (!this.testCommandPayload) return;
+    if (this._payloadDialogFormatError) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = this._payloadDialogFormatError;
+      return;
+    }
     const value = this._payloadDialogDecodedSnapshot ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim() : String(this._payloadDialogRawDraft ?? "").trim();
     if (!value) {
       this._payloadDialogTestStatus = "error";
@@ -11642,6 +12076,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogRawSnapshot = rawHex ?? "";
     this._payloadDialogRawDraft = rawHex ?? "";
     this._payloadDialogError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
   }
   _initialDecodedDrafts(decoded) {
@@ -12998,6 +13433,10 @@ SofabatonEditDetailView.properties = {
   _payloadDialogDecodedDrafts: { state: true },
   _payloadDialogDecodedSnapshot: { state: true },
   _payloadDialogRawDraft: { state: true },
+  _payloadDialogHexTab: { state: true },
+  _payloadDialogProntoDraft: { state: true },
+  _payloadDialogProntoAvailable: { state: true },
+  _payloadDialogFormatError: { state: true },
   _payloadDialogError: { state: true },
   fetchCommandPayload: { attribute: false },
   testCommandPayload: { attribute: false },

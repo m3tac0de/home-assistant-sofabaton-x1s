@@ -275,6 +275,15 @@ export const TOOLS_CARD_STRINGS_FR = {
     test: "Tester", sendingToHub: "Envoi au hub…", sentToHub: "Envoyé au hub pour une lecture unique.", testFailed: "Échec du test.", rawPayload: "Données utiles brutes",
     rawPayloadDescription: "Aucun éditeur structuré n’existe pour cette classe d’appareil ; les octets ci-dessous seront rejoués tels quels sur le hub lors de la restauration.", payloadHex: "Données utiles (octets hexadécimaux)",
     payloadHexHelper: "Paires d’octets comme « 0a 4f 22 » ; les espaces et les préfixes 0x sont acceptés.", rename: "Renommer", renameActivity: "Renommer l’activité", renameDevice: "Renommer l’appareil", renameMacro: "Renommer la macro",
+    prontoHexTab: "PRONTO HEX",
+    sofabatonHexTab: "SOFABATON HEX",
+    descriptorTab: "DESCRIPTEUR",
+    prontoHexHelper:
+      'Mots pronto au format appris comme "0000 006D 0022 0000 00AB …" ; convertis automatiquement en octets Sofabaton.',
+    prontoUnavailable:
+      "Cette charge utile ne se lit pas comme des timings IR bruts et ne peut donc pas Ãªtre affichÃ©e en pronto hex.",
+    invalidProntoHex: "Ceci n'est pas un code pronto valide au format appris.",
+    descriptorX2Only: "Les charges utiles IR descriptives ne sont prises en charge que sur les hubs X2.",
     renameFavorite: "Renommer le favori", renameCommand: "Renommer la commande", ipAddress: "Adresse IP", noPayloadReturned: "Le hub n’a renvoyé aucune donnée utile pour cette commande.",
     noTemplateCommand: "Cet appareil ne comporte aucune commande pouvant servir de modèle — ajoutez sa première commande avec l’application Sofabaton.", newCommandNameRequired: "Saisissez un nom pour la nouvelle commande.",
     descriptiveIrRequired: "Saisissez des données utiles IR descriptives commençant par P: (p. ex. P:Sony12 R:40000 D:1 F:18).", payloadHexRequired: "Saisissez les données utiles sous forme d’octets hexadécimaux (nombre pair de chiffres hexadécimaux ; les espaces sont acceptés).",

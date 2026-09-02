@@ -332,6 +332,15 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     test: "测试", sendingToHub: "正在发送到 Hub…", sentToHub: "已发送到 Hub 并执行一次。", testFailed: "测试失败。", rawPayload: "原始有效载荷",
     rawPayloadDescription: "此设备类别没有结构化编辑器；恢复时会将下方字节原样写入 Hub。",
     payloadHex: "有效载荷（十六进制字节）", payloadHexHelper: "字节对示例：“0a 4f 22”；允许空格和 0x 前缀。", rename: "重命名",
+    prontoHexTab: "PRONTO HEX",
+    sofabatonHexTab: "SOFABATON HEX",
+    descriptorTab: "æè¿°ç¬¦",
+    prontoHexHelper:
+      'å­¦ä¹ æ ¼å¼ç pronto å­è¯ï¼ä¾å¦ "0000 006D 0022 0000 00AB …"ï¼ä¼èªå¨è½¬æ¢ä¸º Sofabaton å­èã',
+    prontoUnavailable:
+      "æ­¤è½½è·æ æ³è§£æä¸ºåå§çº¢å¤æ¶åºï¼å æ­¤æ æ³ä»¥ pronto åå­è¿å¶æ¾ç¤ºã",
+    invalidProntoHex: "è¿ä¸æ¯ææçå­¦ä¹ æ ¼å¼ pronto ä»£ç ã",
+    descriptorX2Only: "æè¿°æ§çº¢å¤è½½è·ä»æ¯æ X2 éçº¿å¨ã",
     renameActivity: "重命名活动", renameDevice: "重命名设备", renameMacro: "重命名宏", renameFavorite: "重命名收藏", renameCommand: "重命名命令",
     ipAddress: "IP 地址", noPayloadReturned: "Hub 未返回此命令的有效载荷。", noTemplateCommand: "此设备没有可用作模板的命令；请使用 Sofabaton 应用添加第一条命令。",
     newCommandNameRequired: "请输入新命令的名称。", descriptiveIrRequired: "请输入以 P: 开头的描述性红外有效载荷（例如 P:Sony12 R:40000 D:1 F:18）。",

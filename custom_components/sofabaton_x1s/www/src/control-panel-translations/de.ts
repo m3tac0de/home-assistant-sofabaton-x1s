@@ -287,6 +287,15 @@ export const TOOLS_CARD_STRINGS_DE = {
     test: "Testen", sendingToHub: "Wird an den Hub gesendet…", sentToHub: "Zur einmaligen Wiedergabe an den Hub gesendet.", testFailed: "Test fehlgeschlagen.", rawPayload: "Unformatierte Nutzdaten",
     rawPayloadDescription: "Für diese Geräteklasse gibt es keinen strukturierten Editor; die folgenden Bytes werden bei der Wiederherstellung unverändert auf dem Hub wiedergegeben.", payloadHex: "Nutzdaten (Hex-Bytes)",
     payloadHexHelper: "Bytepaare wie \"0a 4f 22\"; Leerzeichen und 0x-Präfixe sind zulässig.", rename: "Umbenennen", renameActivity: "Aktivität umbenennen", renameDevice: "Gerät umbenennen", renameMacro: "Makro umbenennen",
+    prontoHexTab: "PRONTO HEX",
+    sofabatonHexTab: "SOFABATON HEX",
+    descriptorTab: "DESKRIPTOR",
+    prontoHexHelper:
+      'Pronto-WÃ¶rter im Learned-Format wie "0000 006D 0022 0000 00AB …"; wird automatisch in Sofabaton-Bytes umgewandelt.',
+    prontoUnavailable:
+      "Diese Payload lÃ¤sst sich nicht als rohe IR-Timings lesen und kann daher nicht als Pronto-Hex angezeigt werden.",
+    invalidProntoHex: "Dies ist kein gÃ¼ltiger Pronto-Code im Learned-Format.",
+    descriptorX2Only: "Deskriptive IR-Payloads werden nur auf X2-Hubs unterstÃ¼tzt.",
     renameFavorite: "Favorit umbenennen", renameCommand: "Befehl umbenennen", ipAddress: "IP-Adresse", noPayloadReturned: "Der Hub hat keine Nutzdaten für diesen Befehl zurückgegeben.",
     noTemplateCommand: "Dieses Gerät hat keine Befehle, die als Vorlage dienen können — füge den ersten Befehl mit der Sofabaton-App hinzu.", newCommandNameRequired: "Gib einen Namen für den neuen Befehl ein.",
     descriptiveIrRequired: "Gib beschreibende IR-Nutzdaten ein, die mit P: beginnen (z. B. P:Sony12 R:40000 D:1 F:18).", payloadHexRequired: "Gib die Nutzdaten als Hex-Bytes ein (eine gerade Anzahl von Hex-Ziffern; Leerzeichen sind zulässig).",

@@ -334,6 +334,15 @@ export const TOOLS_CARD_STRINGS_NL = {
     test: "Testen", sendingToHub: "Naar de hub sturen…", sentToHub: "Naar de hub gestuurd voor eenmalig afspelen.", testFailed: "Test mislukt.", rawPayload: "Onbewerkte payload",
     rawPayloadDescription: "Voor deze apparaatklasse bestaat geen gestructureerde editor; de onderstaande bytes worden bij het herstellen ongewijzigd naar de hub afgespeeld.",
     payloadHex: "Payload (hex-bytes)", payloadHexHelper: "Byteparen zoals \"0a 4f 22\"; witruimte en 0x-voorvoegsels zijn toegestaan.", rename: "Hernoemen",
+    prontoHexTab: "PRONTO HEX",
+    sofabatonHexTab: "SOFABATON HEX",
+    descriptorTab: "DESCRIPTOR",
+    prontoHexHelper:
+      'Pronto-woorden in learned-formaat zoals "0000 006D 0022 0000 00AB …"; worden automatisch omgezet naar Sofabaton-bytes.',
+    prontoUnavailable:
+      "Deze payload is niet leesbaar als ruwe IR-timings en kan daarom niet als pronto-hex worden getoond.",
+    invalidProntoHex: "Dit is geen geldige pronto-code in learned-formaat.",
+    descriptorX2Only: "Beschrijvende IR-payloads worden alleen op X2-hubs ondersteund.",
     renameActivity: "Activiteit hernoemen", renameDevice: "Apparaat hernoemen", renameMacro: "Macro hernoemen", renameFavorite: "Favoriet hernoemen", renameCommand: "Commando hernoemen",
     ipAddress: "IP-adres", noPayloadReturned: "De hub heeft geen payload voor dit commando teruggegeven.", noTemplateCommand: "Dit apparaat heeft geen commando's om als sjabloon te gebruiken — voeg het eerste commando toe met de Sofabaton-app.",
     newCommandNameRequired: "Voer een naam voor het nieuwe commando in.", descriptiveIrRequired: "Voer een beschrijvende IR-payload in die begint met P: (bijv. P:Sony12 R:40000 D:1 F:18).",
