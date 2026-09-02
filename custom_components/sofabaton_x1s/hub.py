@@ -4563,13 +4563,13 @@ class SofabatonHub:
                         phase="validating_activities",
                         message="Validating Activities against the hub",
                     )
-                    previous_activities_generation = self._activities_generation
-                    await self.async_request_catalog("activities")
-                    if self._activities_generation == previous_activities_generation:
+                    try:
+                        await self.async_request_catalog("activities")
+                    except TimeoutError as err:
                         raise HomeAssistantError(
                             "Failed to refresh the Activity list from the hub; "
                             "sync aborted rather than deploying against a stale catalog"
-                        )
+                        ) from err
                     stored_activity_labels = command_payload.get("activity_labels")
                     if isinstance(stored_activity_labels, dict):
                         label_mismatches: list[str] = []

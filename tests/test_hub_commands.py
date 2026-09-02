@@ -5233,7 +5233,7 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
 
 def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
     """If the fresh activity read never lands, abort instead of deploying
-    against a stale (now cleared) catalog."""
+    against the preserved but stale catalog."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -5255,7 +5255,7 @@ def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
     monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
 
     async def _request_catalog(kind, timeout_seconds=30.0):
-        return None  # no generation bump: the burst never arrived
+        raise TimeoutError("Timed out waiting for a complete activities catalog from the hub")
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5275,12 +5275,16 @@ def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
 
     from homeassistant.exceptions import HomeAssistantError
 
-    with pytest.raises(HomeAssistantError, match="Failed to refresh the Activity list"):
+    with pytest.raises(HomeAssistantError, match="Failed to refresh the Activity list") as err:
         loop.run_until_complete(
             hub.async_sync_command_config(command_payload=payload, request_port=8060)
         )
 
     assert delete_calls == []
+    assert isinstance(err.value.__cause__, TimeoutError)
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "failed"
+    assert "Failed to refresh the Activity list" in progress["message"]
 
     loop.close()
 

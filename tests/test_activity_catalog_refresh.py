@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.sofabaton_x1s import hub as hub_module
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X2
 from custom_components.sofabaton_x1s.hub import SofabatonHub
+from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
+from custom_components.sofabaton_x1s.lib.opcode_handlers import AckReadyHandler
+from custom_components.sofabaton_x1s.lib.protocol_const import OP_ACK_READY
 
 
 class _Hass:
@@ -194,7 +198,7 @@ def test_incomplete_burst_does_not_confirm_pending_redundant_off(catalog):
     _expire(proxy)
     catalog.loop.run_until_complete(_drain())
     assert proxy._pending_redundant_off_check
-    assert proxy._ack_ready_refresh_pending
+    assert not proxy._ack_ready_refresh_pending
     assert hub._activities_generation == generation
     catalog.hub_actions.assert_not_awaited()
 
@@ -253,3 +257,46 @@ def test_external_off_still_applies_after_a_failed_tcp_refresh(catalog):
     assert [call.args for call in catalog.hub_actions.await_args_list] == [
         ("activity_stop",), ("power_off",)
     ]
+
+
+def test_external_off_after_failed_ack_refresh_is_not_redundant(catalog):
+    proxy = catalog.proxy
+    proxy.hub_version = HUB_VERSION_X2
+    proxy.state.buttons[101] = set()
+    handler = AckReadyHandler()
+    frame = FrameContext(
+        proxy=proxy, opcode=OP_ACK_READY, direction="H→A",
+        payload=b"\x00", raw=b"", name="ACK_READY",
+    )
+
+    # An earlier transition's ACK refresh and its one X2 retry both time out.
+    handler.handle(frame)
+    assert proxy._ack_ready_refresh_pending
+    _expire(proxy)
+    assert proxy._activity_retry_due_at is not None
+    proxy._handle_idle(proxy._activity_retry_due_at)
+    _expire(proxy)
+    assert proxy._activity_retry_due_at is None
+    catalog.loop.run_until_complete(_drain())
+    assert catalog.hub.current_activity == 101
+
+    # The next real Off arrives over MQTT before its ACK. It must arm the
+    # settling gate so that ACK is recognized as part of this transition.
+    assert proxy.apply_external_activity_state(None)
+    assert not proxy._external_settle_event.is_set()
+    handler.handle(frame)
+    assert proxy._external_settle_event.is_set()
+    _reply(proxy, [(101, "TV", False), (102, "Music", False)])
+    catalog.loop.run_until_complete(_drain())
+    assert catalog.changes == [(None, 101)]
+    assert [call.args for call in catalog.hub_actions.await_args_list] == [
+        ("activity_stop",), ("power_off",)
+    ]
+    assert not proxy._ack_ready_refresh_pending
+
+    # A later Off press while already Off still fires exactly once.
+    catalog.hub_actions.reset_mock()
+    handler.handle(frame)
+    _reply(proxy, [(101, "TV", False), (102, "Music", False)])
+    catalog.loop.run_until_complete(_drain())
+    catalog.hub_actions.assert_awaited_once_with("redundant_off")

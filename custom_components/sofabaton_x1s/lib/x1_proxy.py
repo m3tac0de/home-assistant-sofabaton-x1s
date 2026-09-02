@@ -671,11 +671,13 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
     def handle_active_state(self, trigger: str) -> None:
         if trigger == "activities":
+            # The ACK refresh is no longer in flight, even on timeout. A
+            # later external transition must arm its own settling gate.
+            self._ack_ready_refresh_pending = False
             # A scheduler timeout also ends a burst. Only a committed
             # snapshot can confirm a state change or a redundant OFF press.
             if not self._last_activities_burst_complete:
                 return
-            self._ack_ready_refresh_pending = False
         new_id, old_id = self.state.update_activity_state()
         pending_redundant_off = self._pending_redundant_off_check
         self._pending_redundant_off_check = False
