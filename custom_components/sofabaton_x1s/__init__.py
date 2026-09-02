@@ -44,6 +44,7 @@ from .const import (
     signal_command_sync,
     signal_hub_events,
     signal_ip_commands,
+    signal_ir_intercept,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
     HUB_VERSION_X2,
@@ -2107,6 +2108,217 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
     connection.send_result(msg["id"], {"ok": True})
 
 
+# ── Payload-editor learn mode (IR9) ─────────────────────────────────────
+# Two capture sources feed the control panel's payload editor:
+#
+# * the hub's own IR receiver, driven as a *listener*: one learn window
+#   per subscription, ended by a capture, a timeout, wire traffic, or the
+#   card giving up (unsubscribe / socket close => cancel);
+# * the HA infrared emitter's intercept ring, exposed as an *inbox*: a
+#   subscription that replays the ring on connect and again on every
+#   emitter send, so nothing has to stay "running" while the user walks
+#   off to press a button on a consumer integration's entity.
+#
+# Consumer discovery is by config-entry inspection: HA core keeps no
+# registry of which integrations use which emitter, but every consumer
+# stores the emitter entity id as a plain string in its entry data or
+# options (Samsung/LG Infrared, AC climate, ...), which is enough to
+# gate the HA option and name the entities the user can poke.
+
+_IR_LEARN_TIMEOUT_DEFAULT = 60.0
+_IR_LEARN_TIMEOUT_MIN = 5.0
+_IR_LEARN_TIMEOUT_MAX = 120.0
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_learn/subscribe",
+        vol.Required("entry_id"): str,
+        vol.Optional("timeout"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Run one hub learn window and push its outcome as a subscription event.
+
+    Event ``state`` values: ``listening`` (window armed) then exactly one
+    terminal state - ``learned`` (with ``payload_hex``), ``timed_out``,
+    ``interrupted`` (``interrupted_by`` names the frame), ``cancelled``,
+    ``refused`` (hub would not arm) or ``error``. Unsubscribing before the
+    terminal event - including the socket closing - cancels the window so
+    the hub is never left armed behind a closed card.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_ir_learn_subscribe")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
+    timeout = float(msg.get("timeout", _IR_LEARN_TIMEOUT_DEFAULT))
+    timeout = min(max(timeout, _IR_LEARN_TIMEOUT_MIN), _IR_LEARN_TIMEOUT_MAX)
+    finished = False
+
+    @callback
+    def _cancel() -> None:
+        if not finished:
+            hub.cancel_ir_learn()
+
+    def _push(payload: dict[str, Any]) -> None:
+        try:
+            connection.send_message(websocket_api.event_message(msg["id"], payload))
+        except Exception:  # noqa: BLE001 - socket gone; nothing left to tell
+            _LOGGER.debug("IR learn: could not push %s (connection closed?)", payload.get("state"))
+
+    connection.subscriptions[msg["id"]] = _cancel
+    connection.send_result(msg["id"])
+    _push({"state": "listening", "timeout_s": timeout})
+
+    try:
+        result = await hub.async_ir_learn_command(timeout=timeout)
+    except Exception as err:  # noqa: BLE001 - surfaced to the card verbatim
+        _LOGGER.warning("IR learn window failed: %s", err)
+        result = {"state": "error", "message": str(err)}
+    finally:
+        finished = True
+
+    if result is None:
+        result = {
+            "state": "refused",
+            "message": "Hub did not accept the IR learn-mode arm (proxy client connected?)",
+        }
+    _push(result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_emissions/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_emissions_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Replay the emitter intercept ring now and on every emitter send.
+
+    Each event carries the whole ring (oldest first, at most 20 entries)
+    so the card never has to merge deltas; the ring is the same one the
+    IR intercept sensor reads, fanned out via ``signal_ir_intercept``.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    @callback
+    def _forward() -> None:
+        connection.send_message(
+            websocket_api.event_message(msg["id"], {"emissions": hub.get_ir_emissions()})
+        )
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(
+        hass, signal_ir_intercept(hub.entry_id), _forward
+    )
+    connection.send_result(msg["id"])
+    _forward()
+
+
+def _ir_emitter_entity_id(hass: HomeAssistant, hub: SofabatonHub) -> str | None:
+    """The hub's infrared emitter entity id, or None when it does not exist."""
+
+    if not infrared_platform_available():
+        return None
+    registry = er.async_get(hass)
+    if registry is None:
+        return None
+    for entry in er.async_entries_for_config_entry(registry, hub.entry_id):
+        if entry.domain == "infrared":
+            return entry.entity_id
+    return None
+
+
+def _value_references_entity(value: Any, entity_id: str) -> bool:
+    """Deep string match over a config entry's data/options mapping.
+
+    ``ConfigEntry.data``/``options`` are read-only ``MappingProxyType``
+    views, not dicts, so match on the Mapping ABC (live-HA finding
+    2026-09-02: a dict check silently found zero consumers).
+    """
+
+    if isinstance(value, str):
+        return value == entity_id
+    if isinstance(value, Mapping):
+        return any(_value_references_entity(item, entity_id) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_value_references_entity(item, entity_id) for item in value)
+    return False
+
+
+def build_ir_emitter_consumers(hass: HomeAssistant, hub: SofabatonHub) -> dict[str, Any]:
+    """Which config entries point at this hub's emitter, and their entities.
+
+    ``available`` is False when the emitter entity does not exist (older
+    HA core, or the entity was removed), in which case the card hides the
+    "from Home Assistant" learn option entirely.
+    """
+
+    emitter_entity_id = _ir_emitter_entity_id(hass, hub)
+    if emitter_entity_id is None:
+        return {"available": False, "emitter_entity_id": None, "consumers": []}
+
+    registry = er.async_get(hass)
+    consumers: list[dict[str, Any]] = []
+    for entry in hass.config_entries.async_entries():
+        if entry.domain == DOMAIN:
+            continue
+        if not (
+            _value_references_entity(getattr(entry, "data", None), emitter_entity_id)
+            or _value_references_entity(getattr(entry, "options", None), emitter_entity_id)
+        ):
+            continue
+        entities: list[dict[str, Any]] = []
+        for ent in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if getattr(ent, "disabled_by", None) is not None:
+                continue
+            state = hass.states.get(ent.entity_id)
+            friendly = state.attributes.get("friendly_name") if state is not None else None
+            name = friendly or ent.name or getattr(ent, "original_name", None) or ent.entity_id
+            entities.append({"entity_id": ent.entity_id, "name": str(name)})
+        consumers.append(
+            {
+                "entry_id": entry.entry_id,
+                "domain": entry.domain,
+                "title": str(getattr(entry, "title", "") or entry.domain),
+                "entities": entities,
+            }
+        )
+    return {
+        "available": True,
+        "emitter_entity_id": emitter_entity_id,
+        "consumers": consumers,
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_emitter/consumers",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_emitter_consumers(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    connection.send_result(msg["id"], build_ir_emitter_consumers(hass, hub))
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/ir_library/catalog",
@@ -3858,6 +4070,9 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
     websocket_api.async_register_command(hass, _ws_fetch_blob)
     websocket_api.async_register_command(hass, _ws_play_ir_blob)
+    websocket_api.async_register_command(hass, _ws_ir_learn_subscribe)
+    websocket_api.async_register_command(hass, _ws_ir_emissions_subscribe)
+    websocket_api.async_register_command(hass, _ws_ir_emitter_consumers)
     websocket_api.async_register_command(hass, _ws_ir_library_catalog)
     websocket_api.async_register_command(hass, _ws_ir_library_commands)
     websocket_api.async_register_command(hass, _ws_backup_export)

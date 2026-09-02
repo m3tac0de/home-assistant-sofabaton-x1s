@@ -31,7 +31,7 @@ import {
   removeBundleDevice,
   rewriteWifiEventPlaceholderRefs,
 } from "./backup-state";
-import type { WifiEventsHost } from "./edit-detail-view";
+import type { IrLearnHost, WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 
@@ -343,6 +343,28 @@ class SofabatonActivitiesTab extends LitElement {
   private _testCommandPayload = async (hex: string) => {
     if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
     await this.api().playIrBlob(this.hub.entry_id, hex);
+  };
+
+  // ── Payload-editor learn mode (IR9) ─────────────────────────────────
+  // Hub learn = one WS subscription per attempt (unsubscribe cancels the
+  // hub window); the HA inbox = a subscription onto the emitter intercept
+  // ring; consumer discovery = a one-shot lookup that gates the HA option.
+  private _irLearnFacade: IrLearnHost = {
+    learnFromHub: async (onEvent, timeoutS) => {
+      if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+      return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent);
+    },
+    subscribeEmissions: async (onEvent) => {
+      if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+      return this.api().subscribeIrEmissions(
+        this.hub.entry_id,
+        (event) => onEvent(Array.isArray(event?.emissions) ? event.emissions : []),
+      );
+    },
+    consumers: async () => {
+      if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+      return this.api().getIrEmitterConsumers(this.hub.entry_id);
+    },
   };
 
   // ── Capture flow (§4.2) — sourced from the blob-free structural cache ──
@@ -903,6 +925,7 @@ class SofabatonActivitiesTab extends LitElement {
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
+          .irLearn=${this._irLearnFacade}
           .wifiEvents=${this._wifiEventsFacade}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}

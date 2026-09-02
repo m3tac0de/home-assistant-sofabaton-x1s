@@ -1502,6 +1502,8 @@
             const type = String(message?.type ?? "");
             structuredCalls.push({ channel: "subscription", message: clone(message) });
             wsLog(type, "req");
+            const learnSubscription = learnModeSubscription();
+            if (learnSubscription) return learnSubscription;
             if (scenario.subscribe) {
               try {
                 return Promise.resolve(scenario.subscribe(callback, message))
@@ -1513,6 +1515,41 @@
                 wsLog(type, "err");
                 return Promise.reject(error);
               }
+            }
+            // Payload-editor learn mode (IR9): the hub listener plays out
+            // as listening -> learned after a beat; the emitter inbox
+            // replays a small ring and grows by one a little later.
+            // Hoisted declaration: runs ahead of any scenario-level
+            // subscribe stub so every scenario gets the simulated flows.
+            function learnModeSubscription() {
+              if (type === "sofabaton_x1s/ir_learn/subscribe") {
+              wsLog(type, "res");
+              const timers = [
+                setTimeout(() => callback({ state: "listening", timeout_s: Number(message.timeout ?? 60) }), 100),
+                setTimeout(() => callback({
+                  state: "learned",
+                  payload_hex: "02 20 00 00 00 00 96 07 00 00 11 b4 00 00 11 71 00 00 02 64 00 00 06 66 00 00 02 64 00 03 0d 40 00 00 00 00",
+                  carrier_hz: 38407,
+                  duration_count: 136,
+                }), 2800),
+              ];
+              return Promise.resolve(() => timers.forEach((timer) => clearTimeout(timer)));
+            }
+            if (type === "sofabaton_x1s/ir_emissions/subscribe") {
+              wsLog(type, "res");
+              const ring = [
+                { label: "Samsung32Command (0123abcd)", command_repr: "Samsung32Command(address=7, command=2)", carrier_hz: 38000, timing_count: 68, payload_hex: "aabbccdd", when: new Date(Date.now() - 95_000).toISOString(), count: 3 },
+                { label: "ProntoHexCommand (deadbeef)", command_repr: "ProntoHexCommand(68 timings, 38000 Hz)", carrier_hz: 38000, timing_count: 68, payload_hex: "eeff0011", when: new Date(Date.now() - 12_000).toISOString(), count: 1 },
+              ];
+              const timers = [
+                setTimeout(() => callback({ emissions: ring.slice() }), 60),
+                setTimeout(() => callback({
+                  emissions: [...ring, { label: "Samsung32Command (89abcdef)", command_repr: "Samsung32Command(address=7, command=15)", carrier_hz: 38000, timing_count: 68, payload_hex: "22334455", when: new Date().toISOString(), count: 1 }],
+                }), 4000),
+              ];
+              return Promise.resolve(() => timers.forEach((timer) => clearTimeout(timer)));
+              }
+              return null;
             }
             const known = [
               "sofabaton_x1s/backup/progress_subscribe",
@@ -1641,6 +1678,15 @@
               });
             case "sofabaton_x1s/blobs/play":
               return respond(type, { ok: true });
+            case "sofabaton_x1s/ir_emitter/consumers":
+              return respond(type, scenario.irEmitterConsumers ?? {
+                available: true,
+                emitter_entity_id: "infrared.x1_hub_ir_emitter",
+                consumers: [
+                  { entry_id: "samsung-1", domain: "samsung_infrared", title: "Samsung TV", entities: [{ entity_id: "remote.samsung_tv", name: "Samsung TV Remote" }] },
+                  { entry_id: "ac-1", domain: "ir_climate", title: "Bedroom AC", entities: [{ entity_id: "climate.bedroom_ac", name: "Bedroom AC" }] },
+                ],
+              });
             case "sofabaton_x1s/backup/export":
               return respond(type, { operation_id: operationId("backup-export") });
             case "sofabaton_x1s/backup/restore":

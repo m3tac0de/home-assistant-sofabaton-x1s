@@ -220,6 +220,14 @@ class IrBlobMixin:
                         OP_IR_LEARN_EXIT, ack_timeout=ack_timeout
                     )
                     return {"state": "timed_out", "timeout_s": timeout}
+                if state == "cancelled":
+                    # Caller gave up (card closed, user pressed Cancel):
+                    # the hub is still armed, so disarm it explicitly.
+                    self._send_ir_learn_toggle(
+                        OP_IR_LEARN_EXIT, ack_timeout=ack_timeout
+                    )
+                    self._log.info("[IR_LEARN] cancelled by caller; learn mode exited")
+                    return {"state": "cancelled"}
             finally:
                 with self._ir_learn_lock:
                     self._ir_learn_pending = None
@@ -263,6 +271,23 @@ class IrBlobMixin:
             result["carrier_hz"] = int.from_bytes(blob[6:8], "big")
             result["duration_count"] = int.from_bytes(blob[0:2], "big") // 4
         return result
+
+    def cancel_ir_learn(self) -> bool:
+        """End an in-flight :meth:`ir_learn_command` wait early.
+
+        Thread-safe and non-blocking: flags the pending capture as
+        ``cancelled`` and wakes the waiting exchange, which then sends
+        the EXIT toggle itself and returns ``{"state": "cancelled"}``.
+        Returns False when no learn window is open (or it already ended).
+        """
+
+        with self._ir_learn_lock:
+            pending = self._ir_learn_pending
+            if pending is None or pending["event"].is_set():
+                return False
+            pending["state"] = "cancelled"
+            pending["event"].set()
+            return True
 
     def _ingest_ir_learn_frame(self, opcode: int, payload: bytes) -> None:
         """Feed one H→A frame into an in-flight learn capture, if any.

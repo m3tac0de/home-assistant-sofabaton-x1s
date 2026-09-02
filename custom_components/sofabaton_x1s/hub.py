@@ -2175,6 +2175,15 @@ class SofabatonHub:
             partial(self._proxy.ir_learn_command, timeout=timeout)
         )
 
+    def cancel_ir_learn(self) -> bool:
+        """Wake an in-flight ``async_ir_learn_command`` early (non-blocking).
+
+        The exchange then disarms the hub and resolves with state
+        ``cancelled``. Returns False when no learn window is open.
+        """
+
+        return bool(self._proxy.cancel_ir_learn())
+
     async def async_persist_ir_blob(
         self,
         *,

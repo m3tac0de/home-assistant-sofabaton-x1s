@@ -1685,6 +1685,7 @@ var TOOLS_CARD_STRINGS_EN = {
   },
   errors: {
     backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
+    irLearnNoSocket: "Learning is unavailable without a websocket connection",
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
@@ -2293,6 +2294,39 @@ var TOOLS_CARD_STRINGS_EN = {
     prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as pronto hex.",
     invalidProntoHex: "This is not a valid learned-format pronto code.",
     descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+    // Payload-editor learn mode (IR9).
+    learn: "Learn",
+    learnAria: "Learn a payload from a remote or from Home Assistant",
+    learnBack: "Back",
+    learnTryAgain: "Try again",
+    learnFromHub: "From a remote",
+    learnFromHubDescription: "The hub's receiver listens for one button press from a physical remote pointed at it.",
+    learnFromHa: "From Home Assistant",
+    learnFromHaDescription: "Anything another integration sends through the hub's infrared emitter lands here, ready to save.",
+    learnHaChecking: "Checking which integrations use the hub's emitter\u2026",
+    learnHubArming: "Arming the hub's receiver\u2026",
+    learnHubListening: "Point the remote at the hub and press the button once.",
+    learnHubCountdown: (left) => `Listening\u2026 ${left}`,
+    learnHubLearned: (timings, khz) => `Learned from the remote: ${timings} timings at ${khz} kHz. Test it, then Save.`,
+    learnHubLearnedRaw: "Learned from the remote. Test it, then Save.",
+    learnHubTimedOut: "No signal arrived before the hub's learning window closed.",
+    learnHubInterrupted: (by) => `Other hub traffic ended the learning window (${by}). Keep the paired remote untouched and try again.`,
+    learnHubCancelled: "Learning cancelled.",
+    learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
+    learnHubFailed: "Learning failed.",
+    learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
+    learnHaHelper: "Send a command from Home Assistant through the hub's emitter; it appears below the moment the hub plays it. You can leave this page and come back.",
+    learnHaConsumers: "Integrations using this hub's emitter",
+    learnHaEmpty: "Nothing captured yet.",
+    learnHaNew: "new",
+    learnHaUse: "Use",
+    learnHaSentCount: (count) => `\xD7${count}`,
+    learnHaCaptured: (label) => `Captured from Home Assistant: ${label}. Test it, then Save.`,
+    learnHaUnavailable: "Could not read the emitter inbox.",
+    learnJustNow: "just now",
+    learnSecondsAgo: (seconds) => `${seconds} s ago`,
+    learnMinutesAgo: (minutes) => `${minutes} min ago`,
+    learnHoursAgo: (hours) => `${hours} h ago`,
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",
@@ -2738,6 +2772,37 @@ var ControlPanelApi = class {
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
       blob
+    });
+  }
+  // ── Payload-editor learn mode (IR9) ───────────────────────────────────
+  /**
+   * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
+   * then a terminal state); calling the returned unsubscribe before the
+   * terminal event cancels the window on the hub.
+   */
+  subscribeIrLearn(entryId, timeoutS, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_learn/subscribe", entry_id: entryId, timeout: Math.round(timeoutS) }
+    );
+  }
+  /** Emitter inbox: the intercept ring, replayed on connect and after every send. */
+  subscribeIrEmissions(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_emissions/subscribe", entry_id: entryId }
+    );
+  }
+  getIrEmitterConsumers(entryId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/ir_emitter/consumers",
+      entry_id: entryId
     });
   }
   startBackupExport(entryId, deviceIds) {
@@ -9681,6 +9746,7 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
 var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
+var LEARN_TIMEOUT_S = 60;
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function bundleSupportsUnicodeNames(bundle) {
@@ -9776,6 +9842,31 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogAddMode = false;
     this._payloadDialogNameDraft = "";
     this._addCommandPreparing = false;
+    // ── Learn mode of the payload dialog (IR9, live IR devices only) ───
+    // Two capture sources with opposite shapes. The hub receiver is a
+    // *listener*: one armed window per attempt, countdown, cancel. The HA
+    // emitter is an *inbox*: the backend's intercept ring, replayed on
+    // subscribe and pushed on every send, so nothing has to stay alive in
+    // the browser while the user walks off to press a button elsewhere.
+    // "New" is judged against the ring as first seen when learn mode
+    // opened (payload -> timestamp), never against the browser clock.
+    this.irLearn = null;
+    this._payloadLearnView = "off";
+    this._payloadLearnHubState = "arming";
+    this._payloadLearnHubEvent = null;
+    this._payloadLearnHubDeadline = 0;
+    this._payloadLearnSecondsLeft = 0;
+    this._payloadLearnHubCancel = null;
+    this._payloadLearnHubAttempt = 0;
+    this._payloadLearnTicker = null;
+    this._payloadLearnEmissions = [];
+    this._payloadLearnEmissionsUnsub = null;
+    this._payloadLearnEmissionsError = "";
+    this._payloadLearnBaseline = null;
+    this._payloadLearnHaAvailable = null;
+    this._payloadLearnConsumers = [];
+    this._payloadLearnSourceNote = "";
+    this._payloadLearnNow = Date.now();
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
@@ -9990,6 +10081,8 @@ var SofabatonEditDetailView = class extends i4 {
       this._editRenameDialogOpen = true;
     };
     this._closeCommandPayloadDialog = () => {
+      this._exitLearnMode();
+      this._payloadLearnSourceNote = "";
       this._payloadDialogOpen = false;
       this._payloadDialogTarget = null;
       this._payloadDialogDecodedSnapshot = null;
@@ -11445,7 +11538,7 @@ var SofabatonEditDetailView = class extends i4 {
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${this._payloadDialogAddMode ? b2`
+            ${this._payloadDialogAddMode && this._payloadLearnView === "off" ? b2`
                   <label class="decoded-field">
                     <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
                     <input
@@ -11460,8 +11553,14 @@ var SofabatonEditDetailView = class extends i4 {
                     <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
                   </label>
                 ` : A}
-            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._liveDeviceIsIr() ? this._renderIrHexPayloadForm() : this._renderRawPayloadForm()}
-            ${this._liveDeviceIsIr() ? b2`
+            ${this._payloadLearnView !== "off" ? this._renderLearnPanel() : decoded ? this._renderDecodedPayloadForm(decoded.className) : this._liveDeviceIsIr() ? this._renderIrHexPayloadForm() : this._renderRawPayloadForm()}
+            ${this._payloadLearnView === "off" && this._payloadLearnSourceNote ? b2`
+                  <div class="section-status payload-test-status success" role="status" aria-live="polite">
+                    <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+                    <span>${this._payloadLearnSourceNote}</span>
+                  </div>
+                ` : A}
+            ${this._payloadLearnView === "off" && this._liveDeviceIsIr() ? b2`
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
@@ -11469,7 +11568,7 @@ var SofabatonEditDetailView = class extends i4 {
                     </span>
                   </div>
                 ` : A}
-            ${this._payloadDialogTestStatus !== "idle" ? b2`
+            ${this._payloadLearnView === "off" && this._payloadDialogTestStatus !== "idle" ? b2`
                   <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
                     <ha-icon icon=${this._payloadDialogTestStatus === "success" ? "mdi:check-circle-outline" : this._payloadDialogTestStatus === "error" ? "mdi:alert-circle-outline" : "mdi:progress-clock"}></ha-icon>
                     <span>
@@ -11479,9 +11578,10 @@ var SofabatonEditDetailView = class extends i4 {
                 ` : A}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._payloadDialogError}</div>
+            <div class="dialog-footer-note">${this._payloadLearnView === "off" ? this._payloadDialogError : ""}</div>
             <div class="dialog-footer-actions">
-              ${this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? b2`
+              ${this._payloadLearnView !== "off" ? this._renderLearnFooterActions() : A}
+              ${this._payloadLearnView === "off" && this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? b2`
                     <button
                       class="dialog-btn payload-test-btn"
                       ?disabled=${this._payloadDialogTestStatus === "testing"}
@@ -11491,13 +11591,195 @@ var SofabatonEditDetailView = class extends i4 {
                       <span>${TOOLS_CARD_STRINGS.backup.test}</span>
                     </button>
                   ` : A}
-              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+              ${this._payloadLearnView === "off" ? b2`
+                    <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+                    <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+                  ` : A}
             </div>
           </div>
         </div>
       </div>
     `;
+  }
+  // ── Learn mode rendering (IR9) ─────────────────────────────────────
+  _renderLearnEntryButton() {
+    if (!this._learnAvailable()) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <button
+        class="payload-learn-btn"
+        type="button"
+        title=${S5.learnAria}
+        aria-label=${S5.learnAria}
+        @click=${() => void this._enterLearnMode()}
+      >
+        <ha-icon icon="mdi:import"></ha-icon>
+        <span>${S5.learn}</span>
+      </button>
+    `;
+  }
+  _renderLearnPanel() {
+    switch (this._payloadLearnView) {
+      case "menu":
+        return this._renderLearnMenu();
+      case "hub":
+        return this._renderLearnHub();
+      case "ha":
+        return this._renderLearnInbox();
+      default:
+        return A;
+    }
+  }
+  _renderLearnMenu() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <div class="learn-panel" data-learn-view="menu">
+        <button class="learn-option" type="button" @click=${() => void this._startHubLearn()}>
+          <ha-icon icon="mdi:remote"></ha-icon>
+          <span class="learn-option-body">
+            <span class="learn-option-title">${S5.learnFromHub}</span>
+            <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
+          </span>
+          <ha-icon icon="mdi:chevron-right"></ha-icon>
+        </button>
+        ${this._learnHaOptionVisible() ? b2`
+              <button class="learn-option" type="button" @click=${() => this._openLearnInbox()}>
+                <ha-icon icon="mdi:home-assistant"></ha-icon>
+                <span class="learn-option-body">
+                  <span class="learn-option-title">${S5.learnFromHa}</span>
+                  <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
+                </span>
+                <ha-icon icon="mdi:chevron-right"></ha-icon>
+              </button>
+            ` : this._payloadLearnHaAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
+      </div>
+    `;
+  }
+  _renderLearnHub() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const state = this._payloadLearnHubState;
+    const event = this._payloadLearnHubEvent;
+    let icon = "mdi:remote";
+    let title = "";
+    let detail = "";
+    switch (state) {
+      case "arming":
+        icon = "mdi:progress-clock";
+        title = S5.learnHubArming;
+        break;
+      case "listening":
+        title = S5.learnHubListening;
+        detail = S5.learnHubCountdown(this._formatCountdown(this._payloadLearnSecondsLeft));
+        break;
+      case "timed_out":
+        icon = "mdi:timer-off-outline";
+        title = S5.learnHubTimedOut;
+        break;
+      case "interrupted":
+        icon = "mdi:alert-circle-outline";
+        title = S5.learnHubInterrupted(String(event?.interrupted_by || "?"));
+        break;
+      case "cancelled":
+        icon = "mdi:cancel";
+        title = S5.learnHubCancelled;
+        break;
+      case "refused":
+        icon = "mdi:alert-circle-outline";
+        title = S5.learnHubRefused;
+        detail = String(event?.message || "");
+        break;
+      case "error":
+        icon = "mdi:alert-circle-outline";
+        title = S5.learnHubFailed;
+        detail = String(event?.message || "");
+        break;
+      default:
+        title = S5.learnHubListening;
+    }
+    return b2`
+      <div class="learn-panel" data-learn-view="hub">
+        <div class="learn-stage ${state}" role="status" aria-live="polite">
+          <ha-icon icon=${icon}></ha-icon>
+          <div class="learn-stage-copy">
+            <div class="learn-stage-title">${title}</div>
+            ${detail ? b2`<div class="learn-stage-detail">${detail}</div>` : A}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderLearnInbox() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const chips = this._payloadLearnConsumers.map((consumer) => ({
+      name: consumer.title || consumer.domain,
+      entity_id: consumer.entities.map((entity) => entity.entity_id).join(", ") || consumer.domain
+    }));
+    const emissions = [...this._payloadLearnEmissions].reverse();
+    return b2`
+      <div class="learn-panel" data-learn-view="ha">
+        <div class="learn-inbox-help">${S5.learnHaHelper}</div>
+        ${chips.length ? b2`
+              <div class="learn-consumers">
+                <span class="learn-consumers-label">${S5.learnHaConsumers}</span>
+                <div class="learn-chips">
+                  ${chips.map((chip) => b2`<span class="learn-chip" title=${chip.entity_id}>${chip.name}</span>`)}
+                </div>
+              </div>
+            ` : A}
+        ${this._payloadLearnEmissionsError ? b2`
+              <div class="section-status error" role="alert">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${S5.learnHaUnavailable} ${this._payloadLearnEmissionsError}</span>
+              </div>
+            ` : A}
+        <div class="learn-inbox-list" role="list">
+          ${emissions.length ? emissions.map((rec) => this._renderInboxRow(rec)) : b2`
+                <div class="learn-inbox-empty">
+                  <ha-icon icon="mdi:tray-arrow-down"></ha-icon>
+                  <span>${S5.learnHaEmpty}</span>
+                </div>
+              `}
+        </div>
+      </div>
+    `;
+  }
+  _renderInboxRow(rec) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const isNew = this._emissionIsNew(rec);
+    const meta = [this._learnTimeAgo(rec.when)];
+    if (Number(rec.count) > 1) meta.push(S5.learnHaSentCount(Number(rec.count)));
+    if (Number(rec.carrier_hz) > 0) meta.push(`${(Number(rec.carrier_hz) / 1e3).toFixed(1)} kHz`);
+    return b2`
+      <button
+        class="learn-inbox-row ${isNew ? "is-new" : ""}"
+        type="button"
+        role="listitem"
+        @click=${() => this._useEmission(rec)}
+      >
+        <span class="learn-inbox-main">
+          <span class="learn-inbox-label">${this._emissionDisplayName(rec)}</span>
+          <span class="learn-inbox-meta">${meta.filter(Boolean).join(" \xB7 ")}</span>
+        </span>
+        ${isNew ? b2`<span class="learn-badge">${S5.learnHaNew}</span>` : A}
+        <span class="learn-inbox-use">${S5.learnHaUse}</span>
+      </button>
+    `;
+  }
+  _renderLearnFooterActions() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    if (this._payloadLearnView === "menu") {
+      return b2`<button class="dialog-btn" @click=${() => this._exitLearnMode()}>${S5.learnBack}</button>`;
+    }
+    if (this._payloadLearnView === "hub") {
+      const terminal = this._hubLearnIsTerminal();
+      return b2`
+        ${terminal ? b2`<button class="dialog-btn dialog-btn-primary" @click=${() => void this._startHubLearn()}>${S5.learnTryAgain}</button>` : A}
+        <button class="dialog-btn" @click=${() => this._backToLearnMenu()}>
+          ${terminal ? S5.learnBack : TOOLS_CARD_STRINGS.common.cancel}
+        </button>
+      `;
+    }
+    return b2`<button class="dialog-btn" @click=${() => this._backToLearnMenu()}>${S5.learnBack}</button>`;
   }
   _renderRawPayloadForm() {
     return b2`
@@ -11553,6 +11835,7 @@ var SofabatonEditDetailView = class extends i4 {
             aria-selected=${prontoActive ? "false" : "true"}
             @click=${() => this._selectHexTab("sofabaton")}
           >${S5.sofabatonHexTab}</button>
+          ${this._renderLearnEntryButton()}
         </div>
         <label class="decoded-field">
           <textarea
@@ -11647,6 +11930,7 @@ var SofabatonEditDetailView = class extends i4 {
             <button class="payload-format-tab active" role="tab" aria-selected="true">
               ${TOOLS_CARD_STRINGS.backup.descriptorTab}
             </button>
+            ${this._renderLearnEntryButton()}
           </div>
           ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
         ` : b2`
@@ -12078,6 +12362,256 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogError = "";
     this._resetIrHexTabState();
     this._payloadDialogOpen = true;
+  }
+  // ── Learn mode logic (IR9) ─────────────────────────────────────────
+  /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
+  _learnAvailable() {
+    return this.mode === "live" && !!this.irLearn && this._liveDeviceIsIr();
+  }
+  /**
+   * Open the source menu. The HA option is gated on the emitter existing
+   * AND either a consumer config entry or a non-empty intercept ring, so
+   * the inbox subscription is opened right away (it also feeds the inbox
+   * view later) while the consumer lookup runs alongside it.
+   */
+  async _enterLearnMode() {
+    const host = this.irLearn;
+    if (!host || !this._learnAvailable()) return;
+    this._payloadLearnView = "menu";
+    this._payloadLearnSourceNote = "";
+    this._payloadLearnHaAvailable = null;
+    this._payloadLearnConsumers = [];
+    this._startLearnTicker();
+    void this._openEmissionInbox(host);
+    try {
+      const response = await host.consumers();
+      if (this._learnModeLeft()) return;
+      this._payloadLearnConsumers = Array.isArray(response?.consumers) ? response.consumers : [];
+      this._payloadLearnHaAvailable = !!response?.available;
+    } catch {
+      if (this._learnModeLeft()) return;
+      this._payloadLearnHaAvailable = false;
+    }
+  }
+  /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
+  _learnModeLeft() {
+    return this._payloadLearnView === "off";
+  }
+  _learnHaOptionVisible() {
+    return this._payloadLearnHaAvailable === true && (this._payloadLearnConsumers.length > 0 || this._payloadLearnEmissions.length > 0);
+  }
+  async _openEmissionInbox(host) {
+    if (this._payloadLearnEmissionsUnsub) return;
+    this._payloadLearnEmissionsError = "";
+    try {
+      const unsubscribe = await host.subscribeEmissions((emissions) => {
+        if (this._payloadLearnView === "off") return;
+        const next = Array.isArray(emissions) ? emissions : [];
+        if (!this._payloadLearnBaseline) {
+          this._payloadLearnBaseline = new Map(next.map((rec) => [rec.payload_hex, rec.when]));
+        }
+        this._payloadLearnEmissions = next;
+      });
+      if (this._payloadLearnView === "off") {
+        unsubscribe();
+        return;
+      }
+      this._payloadLearnEmissionsUnsub = unsubscribe;
+    } catch (error) {
+      if (this._payloadLearnView === "off") return;
+      this._payloadLearnEmissionsError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  /**
+   * Row name: the command's own repr when its class defines one (it
+   * carries address/command), otherwise the backend label, which is the
+   * class name plus a per-code digest. Repr-less classes (live finding:
+   * SonyX700Command) would otherwise make every code read identically.
+   */
+  _emissionDisplayName(rec) {
+    const repr = String(rec.command_repr ?? "").trim();
+    const label = String(rec.label ?? "").trim();
+    if (!repr) return label;
+    const className = label.replace(/\s*\(.*$/, "");
+    return repr === className ? label : repr;
+  }
+  /** New = not in the ring as first seen, or re-sent since (count bump refreshes `when`). */
+  _emissionIsNew(rec) {
+    const baseline = this._payloadLearnBaseline;
+    if (!baseline) return false;
+    return baseline.get(rec.payload_hex) !== rec.when;
+  }
+  _openLearnInbox() {
+    this._cancelHubLearn();
+    this._payloadLearnView = "ha";
+    if (this.irLearn) void this._openEmissionInbox(this.irLearn);
+  }
+  _backToLearnMenu() {
+    this._cancelHubLearn();
+    this._payloadLearnView = "menu";
+  }
+  /** Leave learn mode entirely: cancel any hub window, drop the inbox, reset. */
+  _exitLearnMode() {
+    this._cancelHubLearn();
+    const unsubscribe = this._payloadLearnEmissionsUnsub;
+    this._payloadLearnEmissionsUnsub = null;
+    if (unsubscribe) {
+      try {
+        unsubscribe();
+      } catch {
+      }
+    }
+    this._stopLearnTicker();
+    this._payloadLearnView = "off";
+    this._payloadLearnHubState = "arming";
+    this._payloadLearnHubEvent = null;
+    this._payloadLearnHubDeadline = 0;
+    this._payloadLearnSecondsLeft = 0;
+    this._payloadLearnEmissions = [];
+    this._payloadLearnEmissionsError = "";
+    this._payloadLearnBaseline = null;
+    this._payloadLearnHaAvailable = null;
+    this._payloadLearnConsumers = [];
+  }
+  async _startHubLearn() {
+    const host = this.irLearn;
+    if (!host) return;
+    this._cancelHubLearn();
+    const attempt = ++this._payloadLearnHubAttempt;
+    this._payloadLearnView = "hub";
+    this._payloadLearnHubState = "arming";
+    this._payloadLearnHubEvent = null;
+    this._payloadLearnHubDeadline = 0;
+    this._payloadLearnSecondsLeft = 0;
+    this._startLearnTicker();
+    try {
+      const cancel = await host.learnFromHub((event) => {
+        if (attempt !== this._payloadLearnHubAttempt) return;
+        this._handleHubLearnEvent(event);
+      }, LEARN_TIMEOUT_S);
+      if (attempt !== this._payloadLearnHubAttempt || this._payloadLearnView !== "hub") {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      if (this._hubLearnIsTerminal()) {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      this._payloadLearnHubCancel = cancel;
+    } catch (error) {
+      if (attempt !== this._payloadLearnHubAttempt) return;
+      this._payloadLearnHubState = "error";
+      this._payloadLearnHubEvent = {
+        state: "error",
+        message: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  _handleHubLearnEvent(event) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    this._payloadLearnHubEvent = event;
+    this._payloadLearnHubState = event.state;
+    if (event.state === "listening") {
+      const timeout = Number(event.timeout_s) > 0 ? Number(event.timeout_s) : LEARN_TIMEOUT_S;
+      this._payloadLearnHubDeadline = Date.now() + timeout * 1e3;
+      this._payloadLearnSecondsLeft = Math.ceil(timeout);
+      return;
+    }
+    this._releaseHubLearn();
+    if (event.state !== "learned") return;
+    const hex = String(event.payload_hex ?? "").trim();
+    if (!hex) {
+      this._payloadLearnHubState = "error";
+      this._payloadLearnHubEvent = { state: "error", message: S5.learnHubNoPayload };
+      return;
+    }
+    const timings = Number(event.duration_count) || 0;
+    const carrier = Number(event.carrier_hz) || 0;
+    const note = timings && carrier ? S5.learnHubLearned(timings, (carrier / 1e3).toFixed(1)) : S5.learnHubLearnedRaw;
+    this._adoptLearnedPayload(hex, note);
+  }
+  _useEmission(rec) {
+    const hex = String(rec.payload_hex ?? "").trim();
+    if (!hex) return;
+    this._adoptLearnedPayload(
+      hex,
+      TOOLS_CARD_STRINGS.backup.learnHaCaptured(this._emissionDisplayName(rec))
+    );
+  }
+  /**
+   * Drop a captured Sofabaton blob into the editor: hex mode (leaving a
+   * descriptor form if the dialog was in one), pronto view when the bytes
+   * parse as raw timings, Test/Save untouched and ready.
+   */
+  _adoptLearnedPayload(hex, note) {
+    this._exitLearnMode();
+    const normalized = normalizeCommandPayloadHex(hex) ?? hex;
+    this._morphToHex(normalized, "sofabaton");
+    if (this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "pronto";
+    this._payloadDialogError = "";
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
+    this._payloadLearnSourceNote = note;
+  }
+  _hubLearnIsTerminal() {
+    return this._payloadLearnHubState !== "arming" && this._payloadLearnHubState !== "listening";
+  }
+  /** Cancel an in-flight hub window (unsubscribe => backend disarms) and orphan its callbacks. */
+  _cancelHubLearn() {
+    this._payloadLearnHubAttempt++;
+    this._releaseHubLearn();
+  }
+  _releaseHubLearn() {
+    const cancel = this._payloadLearnHubCancel;
+    this._payloadLearnHubCancel = null;
+    if (cancel) {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+  }
+  _startLearnTicker() {
+    if (this._payloadLearnTicker) return;
+    this._payloadLearnNow = Date.now();
+    this._payloadLearnTicker = setInterval(() => this._learnTick(), 1e3);
+  }
+  _stopLearnTicker() {
+    if (this._payloadLearnTicker) clearInterval(this._payloadLearnTicker);
+    this._payloadLearnTicker = null;
+  }
+  /** One-second tick: drives the hub countdown and the inbox "ago" labels. */
+  _learnTick() {
+    this._payloadLearnNow = Date.now();
+    if (this._payloadLearnView === "hub" && this._payloadLearnHubState === "listening" && this._payloadLearnHubDeadline) {
+      this._payloadLearnSecondsLeft = Math.max(
+        0,
+        Math.ceil((this._payloadLearnHubDeadline - this._payloadLearnNow) / 1e3)
+      );
+    }
+  }
+  _formatCountdown(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
+  }
+  _learnTimeAgo(when) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const ts = Date.parse(String(when ?? ""));
+    if (!Number.isFinite(ts)) return "";
+    const secs = Math.max(0, Math.round((this._payloadLearnNow - ts) / 1e3));
+    if (secs < 5) return S5.learnJustNow;
+    if (secs < 60) return S5.learnSecondsAgo(secs);
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return S5.learnMinutesAgo(mins);
+    return S5.learnHoursAgo(Math.round(mins / 60));
   }
   _initialDecodedDrafts(decoded) {
     const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
@@ -13447,6 +13981,17 @@ SofabatonEditDetailView.properties = {
   _payloadDialogAddMode: { state: true },
   _payloadDialogNameDraft: { state: true },
   _addCommandPreparing: { state: true },
+  irLearn: { attribute: false },
+  _payloadLearnView: { state: true },
+  _payloadLearnHubState: { state: true },
+  _payloadLearnHubEvent: { state: true },
+  _payloadLearnSecondsLeft: { state: true },
+  _payloadLearnEmissions: { state: true },
+  _payloadLearnEmissionsError: { state: true },
+  _payloadLearnHaAvailable: { state: true },
+  _payloadLearnConsumers: { state: true },
+  _payloadLearnSourceNote: { state: true },
+  _payloadLearnNow: { state: true },
   _confirmDeleteTarget: { state: true },
   _confirmDeleteLabel: { state: true },
   _addFavoriteOpen: { state: true },
@@ -13578,6 +14123,83 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButt
       color: var(--primary-text-color);
       background: color-mix(in srgb, var(--primary-color) 12%, transparent);
     }
+    /* Payload-editor learn mode (IR9): entry button, source menu, hub
+       listener stage, and the emitter inbox. */
+    .payload-learn-btn {
+      margin-left: auto; align-self: center; flex: 0 0 auto;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 11px; border-radius: 999px; cursor: pointer; font: inherit;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+      color: var(--sb-accent-text, var(--primary-color));
+      border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    }
+    .payload-learn-btn:hover { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .payload-learn-btn ha-icon { --mdc-icon-size: 16px; }
+    .learn-panel { display: flex; flex-direction: column; gap: 12px; }
+    .learn-option, .learn-inbox-row {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+      border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
+      background: var(--ha-card-background, var(--card-background-color));
+      color: var(--primary-text-color); cursor: pointer; font: inherit;
+    }
+    .learn-option { padding: 12px 14px; }
+    .learn-option:hover, .learn-inbox-row:hover {
+      border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .learn-option > ha-icon:first-child { --mdc-icon-size: 26px; color: var(--primary-color); flex: 0 0 auto; }
+    .learn-option > ha-icon:last-child { --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: 0 0 auto; }
+    .learn-option-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .learn-option-title { font-weight: 600; font-size: 14px; }
+    .learn-option-desc { font-size: 12.5px; line-height: 1.4; color: var(--secondary-text-color); }
+    .learn-checking { font-size: 12.5px; color: var(--secondary-text-color); padding: 2px 4px; }
+    .learn-stage {
+      display: flex; align-items: center; gap: 14px; padding: 18px 16px;
+      border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
+    }
+    .learn-stage > ha-icon { --mdc-icon-size: 34px; color: var(--primary-color); flex: 0 0 auto; }
+    .learn-stage.listening > ha-icon { animation: sb-learn-pulse 1.4s ease-in-out infinite; }
+    .learn-stage.timed_out > ha-icon, .learn-stage.interrupted > ha-icon,
+    .learn-stage.refused > ha-icon, .learn-stage.error > ha-icon { color: var(--error-color, #db4437); }
+    .learn-stage.cancelled > ha-icon { color: var(--secondary-text-color); }
+    @keyframes sb-learn-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.92); } }
+    .learn-stage-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .learn-stage-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
+    .learn-stage-detail { font-size: 13px; color: var(--secondary-text-color); line-height: 1.4; font-variant-numeric: tabular-nums; }
+    .learn-inbox-help { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); }
+    .learn-consumers { display: flex; flex-direction: column; gap: 6px; }
+    .learn-consumers-label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+    .learn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .learn-chip {
+      font-size: 12px; padding: 3px 10px; border-radius: 999px; color: var(--primary-text-color);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 40%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    }
+    .learn-inbox-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+    .learn-inbox-row { padding: 10px 12px; }
+    .learn-inbox-row.is-new {
+      border-color: color-mix(in srgb, #48b851 55%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 8%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .learn-inbox-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .learn-inbox-label {
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .learn-inbox-meta { font-size: 12px; color: var(--secondary-text-color); }
+    .learn-badge {
+      flex: 0 0 auto; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 999px; color: #2e7d32;
+      border: 1px solid color-mix(in srgb, #2e7d32 45%, transparent);
+    }
+    .learn-inbox-use { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--sb-accent-text, var(--primary-color)); }
+    .learn-inbox-empty {
+      display: flex; align-items: center; gap: 10px; padding: 16px 12px;
+      border: 1px dashed var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
+      color: var(--secondary-text-color); font-size: 13px;
+    }
+    .learn-inbox-empty ha-icon { --mdc-icon-size: 22px; }
     .managed-wifi-lock { padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
     .managed-wifi-lock-chip {
       display: inline-flex; align-items: center; gap: 8px;
@@ -18430,6 +19052,27 @@ var SofabatonActivitiesTab = class extends i4 {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
       await this.api().playIrBlob(this.hub.entry_id, hex);
     };
+    // ── Payload-editor learn mode (IR9) ─────────────────────────────────
+    // Hub learn = one WS subscription per attempt (unsubscribe cancels the
+    // hub window); the HA inbox = a subscription onto the emitter intercept
+    // ring; consumer discovery = a one-shot lookup that gates the HA option.
+    this._irLearnFacade = {
+      learnFromHub: async (onEvent, timeoutS) => {
+        if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+        return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent);
+      },
+      subscribeEmissions: async (onEvent) => {
+        if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+        return this.api().subscribeIrEmissions(
+          this.hub.entry_id,
+          (event) => onEvent(Array.isArray(event?.emissions) ? event.emissions : [])
+        );
+      },
+      consumers: async () => {
+        if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+        return this.api().getIrEmitterConsumers(this.hub.entry_id);
+      }
+    };
     /** A stable positive device id for the not-yet-deployed events device
      *  (W7). It must be POSITIVE — the bundle-edit helpers reject id 0 /
      *  negatives as "no device", which would silently drop a first-ever
@@ -19011,6 +19654,7 @@ var SofabatonActivitiesTab = class extends i4 {
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
+          .irLearn=${this._irLearnFacade}
           .wifiEvents=${this._wifiEventsFacade}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}

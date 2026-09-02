@@ -55,6 +55,7 @@ export const TOOLS_CARD_STRINGS_FR = {
   },
   errors: {
     backupProgressNoSocket: "La progression de la sauvegarde n’est pas disponible sans connexion WebSocket", logsNoSocket: "Les journaux en direct ne sont pas disponibles sans connexion WebSocket",
+    irLearnNoSocket: "L’apprentissage n’est pas disponible sans connexion WebSocket",
     wifiPressNoSocket: "Les événements d’appui Wifi ne sont pas disponibles sans connexion WebSocket", hubEventsNoSocket: "Les événements du hub ne sont pas disponibles sans connexion WebSocket",
     anotherOperation: "Une autre opération du hub est déjà en cours.", noHubSelected: "Aucun hub sélectionné.", noHubSelectedLong: "Aucun hub n’est sélectionné.",
     cacheRefreshFailed: "Échec de l’actualisation du cache.", syncFailed: "Échec de la synchronisation.", activityIdMissing: "Le hub n’a pas renvoyé l’identifiant de la nouvelle activité.",
@@ -281,9 +282,47 @@ export const TOOLS_CARD_STRINGS_FR = {
     prontoHexHelper:
       'Mots pronto au format appris comme "0000 006D 0022 0000 00AB …" ; convertis automatiquement en octets Sofabaton.',
     prontoUnavailable:
-      "Cette charge utile ne se lit pas comme des timings IR bruts et ne peut donc pas Ãªtre affichÃ©e en pronto hex.",
+      "Cette charge utile ne se lit pas comme des timings IR bruts et ne peut donc pas être affichée en pronto hex.",
     invalidProntoHex: "Ceci n'est pas un code pronto valide au format appris.",
     descriptorX2Only: "Les charges utiles IR descriptives ne sont prises en charge que sur les hubs X2.",
+    // Mode apprentissage de l’éditeur de charge utile (IR9).
+    learn: "Apprendre",
+    learnAria: "Apprendre une charge utile depuis une télécommande ou depuis Home Assistant",
+    learnBack: "Retour",
+    learnTryAgain: "Réessayer",
+    learnFromHub: "Depuis une télécommande",
+    learnFromHubDescription:
+      "Le récepteur du hub attend une seule pression sur une télécommande physique pointée vers le hub.",
+    learnFromHa: "Depuis Home Assistant",
+    learnFromHaDescription:
+      "Tout ce qu’une autre intégration envoie via l’émetteur infrarouge du hub arrive ici, prêt à être enregistré.",
+    learnHaChecking: "Vérification des intégrations qui utilisent l’émetteur du hub…",
+    learnHubArming: "Activation du récepteur du hub…",
+    learnHubListening: "Pointez la télécommande vers le hub et appuyez une fois sur la touche.",
+    learnHubCountdown: (left: string) => `Écoute… ${left}`,
+    learnHubLearned: (timings: number, khz: string) =>
+      `Appris depuis la télécommande : ${timings} timings à ${khz} kHz. Testez, puis enregistrez.`,
+    learnHubLearnedRaw: "Appris depuis la télécommande. Testez, puis enregistrez.",
+    learnHubTimedOut: "Aucun signal n’est arrivé avant la fermeture de la fenêtre d’apprentissage du hub.",
+    learnHubInterrupted: (by: string) =>
+      `Un autre trafic du hub a mis fin à la fenêtre d’apprentissage (${by}). Ne touchez pas à la télécommande appairée et réessayez.`,
+    learnHubCancelled: "Apprentissage annulé.",
+    learnHubRefused: "Le hub n’est pas passé en mode apprentissage. L’application Sofabaton est-elle connectée, ou une synchronisation est-elle en cours ?",
+    learnHubFailed: "L’apprentissage a échoué.",
+    learnHubNoPayload: "Le hub a capté un signal, mais sa charge utile n’a pas pu être lue.",
+    learnHaHelper:
+      "Envoyez une commande depuis Home Assistant via l’émetteur du hub ; elle apparaît ci-dessous dès que le hub la joue. Vous pouvez quitter cette page et revenir plus tard.",
+    learnHaConsumers: "Intégrations utilisant l’émetteur de ce hub",
+    learnHaEmpty: "Rien de capté pour l’instant.",
+    learnHaNew: "nouveau",
+    learnHaUse: "Utiliser",
+    learnHaSentCount: (count: number) => `×${count}`,
+    learnHaCaptured: (label: string) => `Capté depuis Home Assistant : ${label}. Testez, puis enregistrez.`,
+    learnHaUnavailable: "Impossible de lire la boîte de réception de l’émetteur.",
+    learnJustNow: "à l’instant",
+    learnSecondsAgo: (seconds: number) => `il y a ${seconds} s`,
+    learnMinutesAgo: (minutes: number) => `il y a ${minutes} min`,
+    learnHoursAgo: (hours: number) => `il y a ${hours} h`,
     renameFavorite: "Renommer le favori", renameCommand: "Renommer la commande", ipAddress: "Adresse IP", noPayloadReturned: "Le hub n’a renvoyé aucune donnée utile pour cette commande.",
     noTemplateCommand: "Cet appareil ne comporte aucune commande pouvant servir de modèle — ajoutez sa première commande avec l’application Sofabaton.", newCommandNameRequired: "Saisissez un nom pour la nouvelle commande.",
     descriptiveIrRequired: "Saisissez des données utiles IR descriptives commençant par P: (p. ex. P:Sony12 R:40000 D:1 F:18).", payloadHexRequired: "Saisissez les données utiles sous forme d’octets hexadécimaux (nombre pair de chiffres hexadécimaux ; les espaces sont acceptés).",

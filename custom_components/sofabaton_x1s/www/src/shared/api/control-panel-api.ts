@@ -11,6 +11,9 @@ import type {
   HassLike,
   HubAction,
   HubClickAction,
+  IrEmissionsEvent,
+  IrEmitterConsumersResponse,
+  IrLearnEvent,
   LogsResponse,
   RefreshKind,
   SettingKey,
@@ -75,6 +78,40 @@ export class ControlPanelApi {
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
       blob,
+    });
+  }
+
+  // ── Payload-editor learn mode (IR9) ───────────────────────────────────
+  /**
+   * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
+   * then a terminal state); calling the returned unsubscribe before the
+   * terminal event cancels the window on the hub.
+   */
+  subscribeIrLearn(entryId: string, timeoutS: number, onMessage: (event: IrLearnEvent) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_learn/subscribe", entry_id: entryId, timeout: Math.round(timeoutS) },
+    );
+  }
+
+  /** Emitter inbox: the intercept ring, replayed on connect and after every send. */
+  subscribeIrEmissions(entryId: string, onMessage: (event: IrEmissionsEvent) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_emissions/subscribe", entry_id: entryId },
+    );
+  }
+
+  getIrEmitterConsumers(entryId: string) {
+    return this.hass.callWS<IrEmitterConsumersResponse>({
+      type: "sofabaton_x1s/ir_emitter/consumers",
+      entry_id: entryId,
     });
   }
 

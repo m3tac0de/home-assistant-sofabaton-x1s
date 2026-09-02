@@ -72,25 +72,54 @@ if (-not (Test-Path $tokenFile)) {
 $token = (Get-Content $tokenFile -Raw).Trim()
 $headers = @{ Authorization = "Bearer $token" }
 
+# /api/ keeps answering while HA is still shutting down, so the only
+# trustworthy signal is /api/config "state": wait until it is no longer
+# RUNNING (or the socket drops), then until it is RUNNING again.
+# Gotcha (2026-09-02): the core silently IGNORES restart requests while it
+# is still bootstrapping integrations (state NOT_RUNNING before startup
+# completes; a slow platform kept that phase at ~10 minutes). Deploying
+# twice in a row therefore needs the first startup to finish first, which
+# the pre-check below enforces.
+function Get-HaState {
+    try {
+        $cfgResp = Invoke-RestMethod -Uri "$baseUrl/api/config" -Headers $headers -TimeoutSec 5
+        return [string]$cfgResp.state
+    } catch {
+        return "DOWN"
+    }
+}
+
+$stateBefore = Get-HaState
+if ($stateBefore -ne "RUNNING") {
+    throw "HA is not RUNNING (state: $stateBefore) - it is still starting up or shutting down and would ignore the restart request. Files are copied; retry with -SkipBuild once it reports RUNNING."
+}
+
 Write-Host "== Restarting Home Assistant =="
 Invoke-RestMethod -Method Post -Uri "$baseUrl/api/services/homeassistant/restart" `
     -Headers $headers -ContentType "application/json" | Out-Null
 Write-Host "Restart requested; waiting for HA to come back..."
 
-$deadline = (Get-Date).AddSeconds(180)
-Start-Sleep -Seconds 10   # give HA time to actually go down before probing
+$deadline = (Get-Date).AddSeconds(900)
+$downDeadline = (Get-Date).AddSeconds(120)
+$wentDown = $false
+while ((Get-Date) -lt $downDeadline -and -not $wentDown) {
+    $state = Get-HaState
+    if ($state -ne "RUNNING") { $wentDown = $true; Write-Host "HA left RUNNING (state: $state)" }
+    else { Start-Sleep -Seconds 2 }
+}
+if (-not $wentDown) {
+    throw "HA never left RUNNING within 120s - the restart request was ignored. Check the HA log."
+}
+
 $back = $false
 while ((Get-Date) -lt $deadline) {
-    try {
-        $resp = Invoke-RestMethod -Uri "$baseUrl/api/" -Headers $headers -TimeoutSec 5
-        if ($resp.message) { $back = $true; break }
-    } catch {
-        Start-Sleep -Seconds 3
-    }
+    $state = Get-HaState
+    if ($state -eq "RUNNING") { $back = $true; break }
+    Start-Sleep -Seconds 3
 }
 
 if (-not $back) {
-    throw "HA did not respond within 180s - check $baseUrl manually."
+    throw "HA did not reach RUNNING within 900s (last state: $(Get-HaState)) - check $baseUrl manually."
 }
 
 # Debug logging comes from the HA configuration.yaml logger block
