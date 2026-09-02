@@ -109,9 +109,16 @@ def test_all_entity_names_use_translation_keys() -> None:
             "remote_vol_up",
             "remote_yellow",
         },
+        "infrared": {"ir_emitter"},
         "remote": {"remote"},
         "select": {"activity"},
-        "sensor": {"activity", "index", "ip_commands", "recorded_keypress"},
+        "sensor": {
+            "activity",
+            "index",
+            "ip_commands",
+            "ir_intercept",
+            "recorded_keypress",
+        },
         "switch": {"hex_logging", "proxy", "wifi_device"},
         "text": {"hub_ip_address"},
     }
@@ -119,9 +126,10 @@ def test_all_entity_names_use_translation_keys() -> None:
     entity_class_counts = {
         "binary_sensor": 2,
         "button": 3,
+        "infrared": 1,
         "remote": 1,
         "select": 1,
-        "sensor": 4,
+        "sensor": 5,
         "switch": 3,
         "text": 1,
     }

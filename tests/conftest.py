@@ -96,6 +96,7 @@ def _install_homeassistant_stubs() -> None:
     config_validation = types.ModuleType("homeassistant.helpers.config_validation")
     config_validation.boolean = lambda value=None: value  # type: ignore[assignment]
     config_validation.entity_id = lambda value=None: value  # type: ignore[assignment]
+    config_validation.string = lambda value=None: value  # type: ignore[assignment]
     sys.modules.setdefault("homeassistant.helpers.config_validation", config_validation)
 
     service_info = types.ModuleType("homeassistant.helpers.service_info")
@@ -191,6 +192,18 @@ def _install_homeassistant_stubs() -> None:
 
     entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
     entity_platform.AddEntitiesCallback = object
+
+    class _StubEntityPlatform:  # pragma: no cover - only used as stub
+        def __init__(self) -> None:
+            self.registered_services: list[tuple] = []
+
+        def async_register_entity_service(self, name, schema, func):
+            self.registered_services.append((name, schema, func))
+
+    entity_platform._stub_platform = _StubEntityPlatform()
+    entity_platform.async_get_current_platform = (
+        lambda: entity_platform._stub_platform
+    )
     sys.modules.setdefault("homeassistant.helpers.entity_platform", entity_platform)
 
     components = types.ModuleType("homeassistant.components")
@@ -237,6 +250,29 @@ def _install_homeassistant_stubs() -> None:
     remote.RemoteEntity = RemoteEntity
     remote.RemoteEntityFeature = RemoteEntityFeature
     sys.modules.setdefault("homeassistant.components.remote", remote)
+
+    infrared = types.ModuleType("homeassistant.components.infrared")
+
+    class InfraredEmitterEntity:  # pragma: no cover - only used as stub
+        async def async_added_to_hass(self) -> None:
+            return None
+
+        async def async_send_command_internal(self, command) -> None:
+            # Real HA wraps async_send_command and updates the timestamp
+            # state; the stub just delegates.
+            await self.async_send_command(command)
+
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+        def schedule_update_ha_state(self, *args, **kwargs):
+            return None
+
+    infrared.InfraredEmitterEntity = InfraredEmitterEntity
+    sys.modules.setdefault("homeassistant.components.infrared", infrared)
 
     sensor = types.ModuleType("homeassistant.components.sensor")
 

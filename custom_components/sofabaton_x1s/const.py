@@ -109,6 +109,25 @@ def signal_wifi_device(entry_id: str) -> str:
     return f"sofabaton_x1s_wifi_device_{entry_id}"
 
 
+def signal_ir_intercept(entry_id: str) -> str:
+    return f"sofabaton_x1s_ir_intercept_{entry_id}"
+
+
+def infrared_platform_available() -> bool:
+    """Whether this HA core ships the ``infrared`` building-block domain.
+
+    The infrared platform is new (HA ~2026.5); on older cores the import
+    fails, the emitter entity is skipped, and the intercept sensor
+    (useless without an emitter feeding it) is not created either.
+    """
+
+    try:
+        import homeassistant.components.infrared  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def signal_command_sync(entry_id: str) -> str:
     return f"sofabaton_x1s_command_sync_{entry_id}"
 

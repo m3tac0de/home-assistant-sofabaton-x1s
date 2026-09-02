@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import deque
 from time import monotonic
 from datetime import datetime, timezone
 from functools import partial
@@ -41,6 +42,7 @@ from .const import (
     signal_app_activations,
     signal_hub_events,
     signal_ip_commands,
+    signal_ir_intercept,
     signal_wifi_device,
     signal_buttons,
     signal_client,
@@ -275,6 +277,7 @@ class SofabatonHub:
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
         self._app_activations: list[dict[str, Any]] = []
         self._last_ip_command: dict[str, Any] | None = None
+        self._ir_emissions: deque[dict[str, Any]] = deque(maxlen=20)
         # MQTT press ingress: one subscription on
         # <MAC>/up, established only while a record is deployed over MQTT.
         self._mqtt_press_unsub: Any = None
@@ -306,6 +309,15 @@ class SofabatonHub:
     @property
     def cache_generation(self) -> int:
         return self._cache_generation
+
+    @property
+    def bridge_stats(self) -> dict[str, Any] | None:
+        """Bridge-loop health counters for diagnostics (issue #279)."""
+
+        try:
+            return self._proxy.transport.get_bridge_stats()
+        except Exception:
+            return None
 
     def _bump_cache_generation(self) -> int:
         self._cache_generation += 1
@@ -2147,6 +2159,20 @@ class SofabatonHub:
                 blob,
                 inter_frame_delay=inter_frame_delay,
             )
+        )
+
+    async def async_set_ir_learn_mode(self, enabled: bool) -> bool:
+        """Arm or disarm the hub's IR learn mode (toggle only, no capture wait)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.set_ir_learn_mode, enabled)
+        )
+
+    async def async_ir_learn_command(self, *, timeout: float = 60.0) -> dict[str, Any] | None:
+        """Arm learn mode and wait for one captured IR command (or timeout/interrupt)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.ir_learn_command, timeout=timeout)
         )
 
     async def async_persist_ir_blob(
@@ -5134,6 +5160,34 @@ class SofabatonHub:
         if self._last_ip_command is None:
             return None
         return dict(self._last_ip_command)
+
+    def record_ir_emission(
+        self, *, command: Any, timings: list[int], carrier_hz: int, blob: bytes
+    ) -> None:
+        """Ring-buffer a command sent through the infrared emitter (IR5).
+
+        Consecutive identical sends (same blob) collapse into one entry
+        with a bumped ``count`` and refreshed timestamp. Feeds the IR
+        intercept sensor via its dispatcher signal.
+        """
+
+        from . import ir_intercept  # local import: keeps hub import light
+
+        record = ir_intercept.build_emission_record(
+            command=command, timings=timings, carrier_hz=carrier_hz, blob=blob
+        )
+        last = self._ir_emissions[-1] if self._ir_emissions else None
+        if last is not None and last["payload_hex"] == record["payload_hex"]:
+            last["count"] += 1
+            last["when"] = record["when"]
+        else:
+            self._ir_emissions.append(record)
+        async_dispatcher_send(self.hass, signal_ir_intercept(self.entry_id))
+
+    def get_ir_emissions(self) -> list[dict[str, Any]]:
+        """Recent emitter sends, oldest first (copies)."""
+
+        return [dict(record) for record in self._ir_emissions]
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         """Return recent app-originated activation requests."""

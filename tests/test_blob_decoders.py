@@ -30,6 +30,9 @@ ensure_stub_package(
 
 from custom_components.sofabaton_x1s.lib.blob_decoders import (  # noqa: E402
     DECODABLE_CLASSES,
+    RAW_IR_DEFAULT_TRAILING_GAP_US,
+    build_raw_ir_blob_body,
+    parse_pronto_hex,
     encode_decoded_blob,
     format_decoded_for_display,
     is_decodable_class,
@@ -642,3 +645,154 @@ def test_format_decoded_wifi_hue():
     assert "path: api/Wrq3v0M7iDqAXHa-oXOeoXSgHH1LXFYwaNOl6jf1/groups/5/action" in text
     assert "body_block:" in text
     assert '  "on": false' in text  # body block indented for readability
+
+
+# ---------------------------------------------------------------------------
+# Raw-timing IR blob builder (live-validated layout, IR0 bench 2026-08-31)
+# ---------------------------------------------------------------------------
+#
+# The expected vectors here are hand-encodings of the wire layout proven
+# by physical device response in the IR0 bench program
+# (docs/internal/ha-infrared-plan.md findings): declared timing-section
+# byte length BE16, four format-field zeros, carrier Hz BE16, BE32 µs
+# words, four-zero-byte terminator. The old IrScrutinizer sofabaton-x.xml
+# framing (fixed 6-byte header + BE32 carrier) parses as length 0 /
+# carrier 0 under this layout and emitted no photons despite hub acks.
+
+
+def _raw_words(*values):
+    return b"".join(int(v).to_bytes(4, "big") for v in values)
+
+
+def _raw_header(timing_count, carrier_hz):
+    return (
+        (4 * timing_count).to_bytes(2, "big")
+        + bytes(4)
+        + carrier_hz.to_bytes(2, "big")
+    )
+
+
+RAW_IR_TERMINATOR = bytes(4)
+
+
+def test_raw_ir_blob_even_sequence_exact_layout():
+    blob = build_raw_ir_blob_body([9000, 4500, 560, 1690], 38000)
+    assert blob == (
+        _raw_header(4, 38000)
+        + _raw_words(9000, 4500, 560, 1690)
+        + RAW_IR_TERMINATOR
+    )
+    assert blob[:8] == bytes.fromhex("0010000000009470")
+
+
+def test_raw_ir_blob_signed_input_uses_absolute_values():
+    # infrared-protocols emits marks positive, spaces negative; the blob
+    # encodes alternation positionally, so signs must be stripped.
+    signed = build_raw_ir_blob_body([4500, -4500, 560, -1690], 38000)
+    unsigned = build_raw_ir_blob_body([4500, 4500, 560, 1690], 38000)
+    assert signed == unsigned
+
+
+def test_raw_ir_blob_odd_sequence_appends_default_trailing_gap():
+    blob = build_raw_ir_blob_body([9000, -4500, 560], 40000)
+    assert blob == (
+        _raw_header(4, 40000)
+        + _raw_words(9000, 4500, 560, RAW_IR_DEFAULT_TRAILING_GAP_US)
+        + RAW_IR_TERMINATOR
+    )
+
+
+def test_raw_ir_blob_odd_sequence_honors_custom_trailing_gap():
+    blob = build_raw_ir_blob_body([560], 38000, trailing_gap_us=108_000)
+    assert blob == (
+        _raw_header(2, 38000) + _raw_words(560, 108_000) + RAW_IR_TERMINATOR
+    )
+
+
+def test_raw_ir_blob_even_sequence_ignores_trailing_gap_setting():
+    blob = build_raw_ir_blob_body([560, 560], 38000, trailing_gap_us=0)
+    assert blob == (
+        _raw_header(2, 38000) + _raw_words(560, 560) + RAW_IR_TERMINATOR
+    )
+
+
+def test_raw_ir_blob_declared_length_matches_cloud_deploy_shape():
+    # The vendor-cloud Samsung Volume_up deploy (bench 2026-08-31) carried
+    # 136 timing words declared as 0x0220 = 544 bytes with carrier 0x9470.
+    blob = build_raw_ir_blob_body([560] * 136, 38000)
+    assert blob[:8] == bytes.fromhex("0220000000009470")
+
+
+@pytest.mark.parametrize(
+    "timings, carrier, kwargs",
+    [
+        ([], 38000, {}),
+        ([560, 560], 0, {}),
+        ([560, 560], -38000, {}),
+        ([560, 560], 2**16, {}),
+        ([560, 0, 560, 560], 38000, {}),
+        ([560, 560, 560], 38000, {"trailing_gap_us": 0}),
+        ([560, 2**32], 38000, {}),
+        ([560] * 16384, 38000, {}),
+    ],
+)
+def test_raw_ir_blob_rejects_bad_input(timings, carrier, kwargs):
+    with pytest.raises(ValueError):
+        build_raw_ir_blob_body(timings, carrier, **kwargs)
+
+
+def test_raw_ir_blob_is_play_ir_blob_sized():
+    # play_ir_blob refuses blobs under 10 bytes; even the smallest legal
+    # sequence (one mark, padded to a pair) must clear that floor.
+    blob = build_raw_ir_blob_body([560], 38000)
+    assert len(blob) >= 10
+
+
+# ---------------------------------------------------------------------------
+# Pronto hex parser (learned format, owned locally - see parse_pronto_hex)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_pronto_hex_basic_pair():
+    timings, carrier = parse_pronto_hex("0000 006D 0002 0000 00AB 00AB 0015 0040")
+    assert carrier == 38029
+    # 171 cycles * (1e6/38029) us -> 4497; 21 -> 552; 64 -> 1683
+    assert timings == [4497, 4497, 552, 1683]
+
+
+def test_parse_pronto_hex_round_trips_with_blob_builder():
+    timings, carrier = parse_pronto_hex("0000 006D 0001 0000 00AB 06AE")
+    blob = build_raw_ir_blob_body(timings, carrier)
+    assert blob[6:8] == carrier.to_bytes(2, "big")
+    assert int.from_bytes(blob[8:12], "big") == timings[0]
+
+
+def test_parse_pronto_hex_prefers_once_ignores_repeat():
+    timings, _carrier = parse_pronto_hex(
+        "0000 006D 0001 0001 00AB 06AE 0015 0040"
+    )
+    assert len(timings) == 2  # once section only
+
+
+def test_parse_pronto_hex_uses_repeat_when_once_empty():
+    timings, _carrier = parse_pronto_hex("0000 006D 0000 0001 0015 0040")
+    assert len(timings) == 2
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "zz not hex",
+        "0000 006D 0001 0000",  # too short for declared pair
+        "0100 006D 0001 0000 00AB 00AB",  # predefined format
+        "0000 0000 0001 0000 00AB 00AB",  # zero freq word
+        "0000 006D 0000 0000",  # no sections
+        "0000 006D 0001 0000 00AB 00AB 0015",  # count mismatch
+        "0000 006D 0001 0000 0000 00AB",  # zero timing
+        "10000 006D 0001 0000 00AB 00AB",  # >16-bit word
+    ],
+)
+def test_parse_pronto_hex_rejects_bad_input(text):
+    with pytest.raises(ValueError):
+        parse_pronto_hex(text)

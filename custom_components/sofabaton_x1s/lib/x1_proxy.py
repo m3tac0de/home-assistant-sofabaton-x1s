@@ -448,6 +448,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._pending_command_requests: dict[int, set[int]] = {}
         self._ir_dump_lock = threading.Lock()
         self._ir_dump_pending: dict[tuple[int, int], dict[str, Any]] = {}
+        self._ir_learn_lock = threading.Lock()
+        self._ir_learn_pending: dict[str, Any] | None = None
         self._commands_complete: set[int] = set()
         self._pending_macro_requests: set[int] = set()
         self._macros_complete: set[int] = set()
