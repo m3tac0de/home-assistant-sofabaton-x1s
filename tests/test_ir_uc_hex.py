@@ -272,13 +272,24 @@ def test_wrong_bit_widths_are_refused_per_protocol() -> None:
 
 
 def test_an_encoder_missing_from_an_old_library_reads_as_unsupported(monkeypatch) -> None:
-    """A library without ``rc6`` refuses RC6 by name instead of failing NEC too."""
+    """A library without ``rc6`` refuses RC6 by name instead of failing NEC too.
+
+    The converter tells "old library" from "no library" by probing the base
+    package after the encoder import fails, so the fake stands in for that
+    base package too: the test must not depend on whether the runner has
+    ``infrared-protocols`` installed at all.
+    """
 
     real_import = importlib.import_module
 
     def selective_import(name: str, package=None):
         if name == "infrared_protocols.commands.rc6":
             raise ImportError("No module named 'infrared_protocols.commands.rc6'")
+        if name == "infrared_protocols.commands":
+            try:
+                return real_import(name, package)
+            except ImportError:
+                return SimpleNamespace()
         return real_import(name, package)
 
     monkeypatch.setattr("importlib.import_module", selective_import)
