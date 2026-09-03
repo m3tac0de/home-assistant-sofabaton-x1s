@@ -2154,7 +2154,9 @@ async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str,
     ``refused`` (hub would not arm) or ``error``. Failure events carry a
     stable ``error_code`` for frontend localization. Unsubscribing before
     the terminal event - including the socket closing - cancels the window
-    so the hub is never left armed behind a closed card.
+    so the hub is never left armed behind a closed card; the outcome is
+    then swallowed, because the client already dropped the subscription
+    and would log an "unknown subscription" warning for it.
     """
 
     hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
@@ -2200,7 +2202,10 @@ async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str,
             "state": "refused",
             "error_code": _IR_LEARN_ERROR_REFUSED,
         }
-    _push(result)
+    # HA pops the subscription before running its unsub callback, so a
+    # missing entry means the client (or the socket) is gone.
+    if msg["id"] in connection.subscriptions:
+        _push(result)
 
 
 @websocket_api.websocket_command(

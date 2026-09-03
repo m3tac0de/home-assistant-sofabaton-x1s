@@ -103,6 +103,11 @@ class _Conn:
     def send_message(self, payload):
         self.messages.append(payload)
 
+    def unsubscribe(self, msg_id):
+        # Mirrors HA's ``unsubscribe_events`` handler: the entry is popped
+        # (and the client has already forgotten the id) before the unsub runs.
+        self.subscriptions.pop(msg_id)()
+
 
 class _Hub:
     entry_id = "entry-1"
@@ -177,7 +182,7 @@ def test_learn_subscribe_pushes_listening_then_the_outcome(monkeypatch) -> None:
     ]
     # A late unsubscribe (card closes after the outcome) must not cancel
     # a window that already ended.
-    conn.subscriptions[7]()
+    conn.unsubscribe(7)
     assert hub.cancel_calls == 0
 
 
@@ -235,14 +240,17 @@ def test_learn_subscribe_unsubscribe_cancels_a_pending_window(monkeypatch) -> No
             await asyncio.sleep(0)
         assert conn.messages == [{"id": 3, "event": {"state": "listening", "timeout_s": 60.0}}]
         assert 3 in conn.subscriptions
-        # Socket closed / card cancelled: HA invokes the subscription's unsub.
-        conn.subscriptions[3]()
+        # Socket closed / card cancelled: HA pops the subscription and
+        # invokes its unsub.
+        conn.unsubscribe(3)
         await task
 
     _run(scenario())
 
     assert hub.cancel_calls == 1
-    assert conn.messages[-1] == {"id": 3, "event": {"state": "cancelled"}}
+    # The outcome is not pushed to a subscriber that already left; doing so
+    # makes the frontend log "Received event for unknown subscription".
+    assert conn.messages == [{"id": 3, "event": {"state": "listening", "timeout_s": 60.0}}]
 
 
 def test_learn_subscribe_refuses_while_the_hub_is_busy(monkeypatch) -> None:
