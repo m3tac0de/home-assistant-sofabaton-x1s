@@ -5,6 +5,7 @@
 name: sofabaton-x CI
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "custom_components/sofabaton_x1s/lib/**"

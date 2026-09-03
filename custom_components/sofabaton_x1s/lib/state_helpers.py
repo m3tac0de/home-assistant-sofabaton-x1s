@@ -634,7 +634,7 @@ class BurstScheduler:
         self.active = False
         self.kind: str | None = None
         self.last_ts = 0.0
-        self.queue: list[tuple[int, bytes, bool, Optional[str]]] = []
+        self.queue: list[tuple[int, bytes, bool, Optional[str], Optional[Callable[[], None]]]] = []
         self.listeners: dict[str, list[Callable[[str], None]]] = {}
 
     def on_burst_end(self, key: str, cb: Callable[[str], None]) -> None:
@@ -655,6 +655,7 @@ class BurstScheduler:
         burst_kind: Optional[str],
         can_issue: Callable[[], bool],
         sender: Callable[[int, bytes], None],
+        on_send: Optional[Callable[[], None]] = None,
         now: Optional[float] = None,
     ) -> bool:
         is_burst = expects_burst
@@ -664,12 +665,14 @@ class BurstScheduler:
             return False
 
         if self.active:
-            self.queue.append((opcode, payload, is_burst, burst_kind))
+            self.queue.append((opcode, payload, is_burst, burst_kind, on_send))
             return True
 
         if is_burst:
             self.start(burst_kind or "generic", now=current_time)
 
+        if on_send is not None:
+            on_send()
         sender(opcode, payload)
         return True
 
@@ -723,11 +726,13 @@ class BurstScheduler:
         self._notify_burst_end(finished_kind)
 
         while self.queue:
-            op, payload, is_burst, next_kind = self.queue.pop(0)
+            op, payload, is_burst, next_kind, on_send = self.queue.pop(0)
             if not can_issue():
                 continue
             if is_burst:
                 self.start(next_kind or "generic", now=now)
+            if on_send is not None:
+                on_send()
             sender(op, payload)
             if self.active:
                 break
@@ -739,4 +744,3 @@ class BurstScheduler:
             prefix = key.split(":", 1)[0]
             for cb in self.listeners.get(prefix, []):
                 cb(key)
-

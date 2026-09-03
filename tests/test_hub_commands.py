@@ -60,6 +60,20 @@ class FakeDeviceRegistry:
         self.updated.append((device_id, kwargs))
 
 
+def _publish_activity_snapshot(hub):
+    """Deliver the unit fixture's catalog as an identified proxy commit."""
+    activities, ready = hub._get_activities_cached()
+    assert ready
+    proxy = hub._proxy
+    proxy._activities_snapshot_generation += 1
+    proxy._committed_activity_snapshot = (
+        proxy._activities_snapshot_generation,
+        {act_id: dict(row) for act_id, row in activities.items()},
+    )
+    proxy._last_activities_burst_complete = True
+    hub._on_activities_burst("activities")
+
+
 def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -1746,7 +1760,7 @@ def test_identical_activity_refresh_does_not_bump_cache_generation(monkeypatch):
         lambda: ({101: {"name": "Watch TV", "active": False, "needs_confirm": False}}, True),
     )
 
-    hub._on_activities_burst("activities")
+    _publish_activity_snapshot(hub)
     loop.run_until_complete(asyncio.sleep(0))
 
     assert hub.cache_generation == 0
@@ -1782,7 +1796,7 @@ def test_activity_active_flag_changes_without_bumping_cache_generation(monkeypat
         lambda: ({101: {"name": "Watch TV", "active": True, "needs_confirm": False}}, True),
     )
 
-    hub._on_activities_burst("activities")
+    _publish_activity_snapshot(hub)
     loop.run_until_complete(asyncio.sleep(0))
 
     assert hub.cache_generation == 0
@@ -1818,7 +1832,7 @@ def test_activity_catalog_name_change_bumps_cache_generation(monkeypatch):
         lambda: ({101: {"name": "New Name", "active": False, "needs_confirm": False}}, True),
     )
 
-    hub._on_activities_burst("activities")
+    _publish_activity_snapshot(hub)
     loop.run_until_complete(asyncio.sleep(0))
 
     assert hub.cache_generation == 1
@@ -2688,7 +2702,7 @@ def test_on_activities_burst_syncs_current_activity_from_active_flag(monkeypatch
     )
 
     hub.current_activity = None
-    hub._on_activities_burst("activities")
+    _publish_activity_snapshot(hub)
     loop.run_until_complete(asyncio.sleep(0))
 
     assert hub.current_activity == 101
@@ -2800,7 +2814,7 @@ def test_activities_burst_can_clear_current_when_no_activity_active(monkeypatch)
         lambda: ({101: {"name": "Watch a movie", "active": False}}, True),
     )
 
-    hub._on_activities_burst("activities")
+    _publish_activity_snapshot(hub)
     loop.run_until_complete(asyncio.sleep(0))
 
     assert hub.current_activity is None
@@ -5130,7 +5144,6 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     hub._activities_generation = 2
     hub._proxy.get_known_activity_ids = lambda: {101, 102}  # type: ignore[method-assign]
     hub._proxy.get_cached_activity_detail_ids = lambda: {5, 6, 101, 102}  # type: ignore[method-assign]
-    hub._proxy.clear_activities_catalog = lambda: None  # type: ignore[method-assign]
     hub._proxy.request_activities = lambda: None  # type: ignore[method-assign]
 
     cleared: list[tuple[int, str]] = []
@@ -5148,7 +5161,11 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     hub._proxy.get_known_activity_ids = _fake_get_known_activity_ids  # type: ignore[method-assign]
 
     async def _fake_sleep(_delay):
+        hub._proxy._activities_snapshot_generation = 1
         hub._activities_generation = 3
+        hub._received_activity_snapshot = (
+            hub._proxy, 1, {101: {"name": "TV"}, 102: {"name": "Music"}},
+        )
 
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
@@ -5188,7 +5205,10 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
     async def _request_catalog(kind, timeout_seconds=30.0):
         catalog_calls.append(kind)
         hub._activities_generation += 1
-        hub.activities = {101: {"name": "Movie Night", "active": False}}
+        # Validation must use this request's returned snapshot even if the
+        # general-purpose HA cache is subsequently replaced by another view.
+        hub.activities = {101: {"name": "TV", "active": False}}
+        return {101: {"name": "Movie Night", "active": False}}
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5228,7 +5248,7 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
 
 def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
     """If the fresh activity read never lands, abort instead of deploying
-    against a stale (now cleared) catalog."""
+    against the preserved but stale catalog."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -5250,7 +5270,7 @@ def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
     monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
 
     async def _request_catalog(kind, timeout_seconds=30.0):
-        return None  # no generation bump: the burst never arrived
+        raise TimeoutError("Timed out waiting for a complete activities catalog from the hub")
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5270,12 +5290,16 @@ def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
 
     from homeassistant.exceptions import HomeAssistantError
 
-    with pytest.raises(HomeAssistantError, match="Failed to refresh the Activity list"):
+    with pytest.raises(HomeAssistantError, match="Failed to refresh the Activity list") as err:
         loop.run_until_complete(
             hub.async_sync_command_config(command_payload=payload, request_port=8060)
         )
 
     assert delete_calls == []
+    assert isinstance(err.value.__cause__, TimeoutError)
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "failed"
+    assert "Failed to refresh the Activity list" in progress["message"]
 
     loop.close()
 
@@ -5309,6 +5333,7 @@ def test_sync_command_config_proceeds_when_activity_labels_match(monkeypatch):
         catalog_calls.append(kind)
         hub._activities_generation += 1
         hub.activities = {101: {"name": "TV", "active": False}}
+        return dict(hub.activities)
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5575,7 +5600,7 @@ def test_hub_event_actions_fire_on_first_transition_after_powered_off_startup(mo
     hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
     try:
         monkeypatch.setattr(hub, "_get_activities_cached", lambda: ({}, True))
-        hub._on_activities_burst("activities")
+        _publish_activity_snapshot(hub)
         drain()
         assert executed == []
         assert hub.get_last_hub_event() is None
@@ -5748,7 +5773,7 @@ def test_activities_burst_prunes_stale_activity_event_actions(monkeypatch):
         lambda: ({102: {"name": "Music", "active": False, "needs_confirm": False}}, True),
     )
 
-    hub._on_activities_burst("activities")
+    _publish_activity_snapshot(hub)
     loop.run_until_complete(asyncio.sleep(0))
     loop.run_until_complete(asyncio.sleep(0))
 

@@ -3,6 +3,9 @@
 import asyncio
 import importlib
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from homeassistant.exceptions import HomeAssistantError
 
@@ -61,6 +64,46 @@ def _patch(monkeypatch, *, hub=_Hub(), locked=False, store=None):
             raise HomeAssistantError("The Sofabaton app is connected")
 
     monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", fake_lock)
+
+
+def test_ws_catalog_timeout_does_not_report_success_or_persist_cache(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+    hub.async_request_catalog = AsyncMock(side_effect=TimeoutError("Incomplete activities catalog"))
+    hub.async_export_cache_state = AsyncMock()
+    store = _Store()
+    store.async_set_hub_cache = AsyncMock()
+    _patch(monkeypatch, hub=hub, store=store)
+
+    _run(integration._ws_refresh_catalog(SimpleNamespace(), conn, {
+        "id": 1, "entry_id": hub.entry_id, "kind": "activities",
+    }))
+
+    assert conn.result is None
+    assert conn.error == (1, "timeout", "Incomplete activities catalog")
+    hub.async_export_cache_state.assert_not_awaited()
+    store.async_set_hub_cache.assert_not_awaited()
+
+
+@pytest.mark.parametrize("kind", ["activities", "devices"])
+def test_ws_catalog_success_persists_refreshed_cache(monkeypatch, kind):
+    conn = _Conn()
+    hub = _Hub()
+    hub.async_request_catalog = AsyncMock()
+    payload = {kind: {"101": {"name": "TV"}}}
+    hub.async_export_cache_state = AsyncMock(return_value=payload)
+    store = _Store()
+    store.async_set_hub_cache = AsyncMock()
+    _patch(monkeypatch, hub=hub, store=store)
+
+    _run(integration._ws_refresh_catalog(SimpleNamespace(), conn, {
+        "id": 1, "entry_id": hub.entry_id, "kind": kind,
+    }))
+
+    assert conn.error is None
+    assert conn.result == (1, {"ok": True})
+    hub.async_request_catalog.assert_awaited_once_with(kind)
+    store.async_set_hub_cache.assert_awaited_once_with(hub.entry_id, payload)
 
 
 def test_ws_refresh_all_cache_starts_operation(monkeypatch):

@@ -302,13 +302,17 @@ def test_bridge_loop_moves_hub_bytes_and_counts_stats():
         ):
             time.sleep(0.01)
     finally:
-        bridge.stop()
+        # Quiesce the test-owned worker before closing its sockets.
+        bridge._stop.set()
+        bridge._signal_wake()
         thr.join(5.0)
+        bridge.stop()
         try:
             peer.close()
         except OSError:
             pass
 
+    assert not thr.is_alive()
     assert received[0] == b"hello"
     stats = bridge.get_bridge_stats()
     assert stats["hub_rx_bytes"] == len(b"hello")

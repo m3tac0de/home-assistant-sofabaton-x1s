@@ -37,6 +37,28 @@ def test_burst_scheduler_drains_queue_and_notifies() -> None:
     assert notifications == ["foo"]
 
 
+def test_burst_scheduler_keeps_send_hooks_with_their_commands() -> None:
+    scheduler = BurstScheduler()
+    events = []
+    sender = lambda op, payload: events.append(("send", op))
+    for opcode in (1, 2, 3):
+        assert scheduler.queue_or_send(
+            opcode=opcode,
+            payload=b"",
+            expects_burst=True,
+            burst_kind=str(opcode),
+            can_issue=lambda: True,
+            sender=sender,
+            on_send=lambda op=opcode: events.append(("bind", op)),
+        )
+    assert events == [("bind", 1), ("send", 1)]
+    assert scheduler.finish("1", can_issue=lambda: True, sender=sender)
+    assert events == [("bind", 1), ("send", 1), ("bind", 2), ("send", 2)]
+    # A command dropped before transmission must never bind its intent.
+    assert scheduler.finish("2", can_issue=lambda: False, sender=sender)
+    assert events == [("bind", 1), ("send", 1), ("bind", 2), ("send", 2)]
+
+
 def test_burst_scheduler_tick_never_drains_exchange_pseudo_burst() -> None:
     """An ``exchange:`` pseudo-burst is exempt from the idle tick.
 

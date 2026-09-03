@@ -682,6 +682,7 @@ class AckReadyHandler(BaseFrameHandler):
         externally_applied = proxy.notify_hub_ready()
         if proxy.can_issue_commands():
             proxy._log.info("[HINT] no proxy client; auto-REQ_ACTIVITIES")
+            on_send = None
             if (
                 proxy.state.current_activity is None
                 and proxy._activities_catalog_ready
@@ -690,12 +691,16 @@ class AckReadyHandler(BaseFrameHandler):
                 # Known powered off (not merely state-not-yet-fetched). If the
                 # refreshed state stays off, this ACK_READY was an OFF press
                 # with nothing left to turn off.
-                proxy.flag_pending_redundant_off_check()
-            if proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities"):
+                on_send = proxy.flag_pending_redundant_off_check()
+            if proxy.enqueue_cmd(
+                OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities", on_send=on_send
+            ):
                 # An MQTT push for this same transition may still be on
                 # its way; until the burst lands it must not arm a settle
                 # gate that no later ACK_READY would release.
                 proxy.note_ack_ready_refresh()
+            else:
+                proxy.clear_pending_redundant_off_check()
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
 

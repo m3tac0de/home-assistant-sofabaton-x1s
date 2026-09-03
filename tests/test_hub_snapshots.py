@@ -84,6 +84,17 @@ def test_to_export_view_is_a_noop_when_raw_body_absent() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _complete_activity_request(hub):
+    # Simulate a new commit and its HA delivery after the request begins.
+    hub._proxy._activities_snapshot_generation += 1
+    hub._activities_generation += 1
+    hub._received_activity_snapshot = (
+        hub._proxy,
+        hub._proxy._activities_snapshot_generation,
+        {act_id: dict(row) for act_id, row in hub._proxy.state.activities.items()},
+    )
+
+
 def test_refresh_devices_snapshot_carries_raw_body_from_proxy_state(
     monkeypatch,
 ) -> None:
@@ -136,9 +147,8 @@ def test_refresh_activities_snapshot_carries_raw_body_from_proxy_state(
     }
 
     monkeypatch.setattr(
-        hub._proxy, "request_activities", lambda *args, **kwargs: None
+        hub._proxy, "request_activities", lambda: _complete_activity_request(hub)
     )
-    hub._activities_generation += 1
 
     snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_activities_snapshot(timeout_seconds=1.0)
@@ -164,9 +174,8 @@ def test_refresh_devices_and_activities_have_identical_shape(monkeypatch) -> Non
     hub._proxy.state.activities[0x02] = {"name": "Act", "raw_body": raw_act}
 
     monkeypatch.setattr(hub._proxy, "request_devices", lambda *a, **kw: None)
-    monkeypatch.setattr(hub._proxy, "request_activities", lambda *a, **kw: None)
+    monkeypatch.setattr(hub._proxy, "request_activities", lambda: _complete_activity_request(hub))
     hub._devices_generation += 1
-    hub._activities_generation += 1
 
     dev_snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_devices_snapshot(timeout_seconds=1.0)

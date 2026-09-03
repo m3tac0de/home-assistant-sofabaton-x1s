@@ -82,6 +82,47 @@ Guards:
 
 ---
 
+## ◇ Activity catalog refreshes
+
+`REQ_ACTIVITIES` collects rows in a pending snapshot. The committed catalog,
+active-activity hint, and cache readiness remain available during a refresh.
+Only a complete row set, or an explicit empty-catalog `STATUS_ACK 0x07`,
+replaces them. A silent or partial burst is discarded without publishing
+activity changes or confirming a pending redundant-OFF event.
+
+The burst scheduler also invokes end listeners on timeout, so its notification
+alone is not proof of success. `X1Proxy` records whether that burst committed a
+snapshot; both active-state evaluation and the HA catalog listener require
+that proof. The HA listener captures it before scheduling work on its event
+loop, so a later burst cannot turn a discarded refresh into a successful one.
+
+The proxy publishes each complete snapshot's generation and raw contents
+together. The HA listener acknowledges that same pair on the event loop;
+an explicit refresh requires the acknowledged generation to exceed the
+proxy generation observed before its request. An old queued HA callback and
+a newer proxy commit whose callback is still pending cannot satisfy each
+other. Validation and pruning use the acknowledged snapshot, including its
+raw bodies, rather than rereading mutable proxy or HA caches. Callbacks from
+a replaced proxy cannot acknowledge a refresh on its replacement.
+
+The refresh raises `TimeoutError` when no matching complete snapshot arrives
+before its deadline. The websocket API returns a `timeout`
+error and does not persist the cache. Removed activity details are pruned only
+after a successful refresh. A complete snapshot with no active row still
+reports Powered Off normally; retaining the cache does not debounce Off.
+
+A pending redundant-OFF press owns its queued confirmation request and the
+one permitted X2 retry. The send hook binds the press to that request when it
+leaves the queue, so earlier reads cannot confirm or cancel it. The intent
+expires on disconnect, when its own read fails without a remaining retry,
+when an unrelated read replaces its scheduled retry, or after 15 seconds.
+The retry can confirm the press within that deadline. A rejected confirmation
+request clears its intent as well. A later recovery or a delayed queued read
+cannot execute old button
+intent; a fresh Off press still fires once after a complete Off response.
+
+---
+
 ## ◇ Unified create / restore orchestrator
 
 The user-driven "create WiFi device" path and the backup-driven
