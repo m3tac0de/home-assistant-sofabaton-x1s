@@ -825,7 +825,7 @@ def test_macro_handler_drains_completed_burst_immediately(monkeypatch) -> None:
     opcode_two = (OP_MACROS_B1 >> 8) << 8 | (OP_MACROS_B1 & 0xFF)
 
     proxy._pending_macro_requests.add(act)
-    proxy._burst.queue.append((0x025C, b"\x01\x03", True, "commands:1:3"))
+    proxy._burst.queue.append((0x025C, b"\x01\x03", True, "commands:1:3", None))
 
     sent: list[tuple[int, bytes]] = []
 
@@ -1659,11 +1659,26 @@ def test_ack_ready_prefetches_when_cache_missing() -> None:
     assert OP_REQ_COMMANDS not in opcodes
 
 
+def _stub_completed_activity_request(proxy: X1Proxy):
+    """Deliver queued request hooks; tests evaluate the simulated commit below."""
+    def enqueue(opcode, payload=b"", **kwargs):
+        if opcode == OP_REQ_ACTIVITIES:
+            on_send = kwargs.get("on_send")
+            if on_send is not None:
+                on_send()
+            proxy._begin_activity_request()
+            proxy._last_activities_request_generation = proxy._activity_request_inflight
+            proxy._last_activities_burst_complete = True
+        return True
+
+    return enqueue
+
+
 def _redundant_off_proxy() -> tuple[X1Proxy, list[str]]:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
-    proxy.enqueue_cmd = lambda *args, **kwargs: True  # type: ignore[assignment]
+    proxy.enqueue_cmd = _stub_completed_activity_request(proxy)  # type: ignore[assignment]
     # Direct handle_active_state calls below simulate a committed burst.
     proxy._last_activities_burst_complete = True
     fired: list[str] = []
@@ -1740,7 +1755,7 @@ def _external_state_proxy() -> tuple[X1Proxy, list[tuple]]:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
-    proxy.enqueue_cmd = lambda *args, **kwargs: True  # type: ignore[assignment]
+    proxy.enqueue_cmd = _stub_completed_activity_request(proxy)  # type: ignore[assignment]
     proxy._activities_catalog_ready = True
     proxy._last_activities_burst_complete = True
     proxy.state.activities = {0x67: {"name": "Music"}, 0x68: {"name": "Movie"}}

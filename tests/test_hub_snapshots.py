@@ -88,6 +88,11 @@ def _complete_activity_request(hub):
     # Simulate a new commit and its HA delivery after the request begins.
     hub._proxy._activities_snapshot_generation += 1
     hub._activities_generation += 1
+    hub._received_activity_snapshot = (
+        hub._proxy,
+        hub._proxy._activities_snapshot_generation,
+        {act_id: dict(row) for act_id, row in hub._proxy.state.activities.items()},
+    )
 
 
 def test_refresh_devices_snapshot_carries_raw_body_from_proxy_state(

@@ -169,7 +169,7 @@ from .proxy_backup_export import BackupExportMixin
 from .proxy_activity_ops import ActivityOpsMixin
 from .proxy_activity_sync import ActivitySyncMixin
 from .proxy_ack_waiters import AckWaitersMixin
-from .proxy_catalog import CatalogMixin
+from .proxy_catalog import CatalogMixin, RedundantOffConfirmation
 from .proxy_exchange import ExchangeMixin
 from .proxy_frame_decode import FrameDecodeMixin, _hexdump
 from .proxy_ir_blob import IrBlobMixin
@@ -466,7 +466,9 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._activity_request_inflight: int | None = None
         self._activities_catalog_ready = False
         self._last_activities_burst_complete = False
+        self._last_activities_request_generation: int | None = None
         self._activities_snapshot_generation = 0
+        self._committed_activity_snapshot: tuple[int, dict[int, dict[str, Any]]] = (0, {})
         self._activity_retry_count = 0
         self._activity_retry_due_at: float | None = None
         self._activity_retry_send_pending = False
@@ -487,7 +489,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         # Set when ACK_READY arrives while the hub is already powered off;
         # resolved by the next active-state evaluation (see
         # handle_active_state). A no-op OFF press is the only known trigger.
-        self._pending_redundant_off_check = False
+        self._pending_redundant_off_check: RedundantOffConfirmation | None = None
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
         self._pending_virtual: dict[str, Any] | None = None
@@ -670,6 +672,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             cb()
 
     def handle_active_state(self, trigger: str) -> None:
+        pending_redundant_off = self._consume_pending_redundant_off_check(trigger)
         if trigger == "activities":
             # The ACK refresh is no longer in flight, even on timeout. A
             # later external transition must arm its own settling gate.
@@ -679,8 +682,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             if not self._last_activities_burst_complete:
                 return
         new_id, old_id = self.state.update_activity_state()
-        pending_redundant_off = self._pending_redundant_off_check
-        self._pending_redundant_off_check = False
         if new_id != old_id:
             if new_id is not None:
                 self._notify_activity_change(new_id & 0xFF, old_id & 0xFF if old_id is not None else None)
@@ -692,15 +693,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             # is an OFF press on the remote while everything was already off.
             self._log.info("[HINT] OFF pressed while hub already powered off")
             self._notify_redundant_off_press()
-
-    def flag_pending_redundant_off_check(self) -> None:
-        """Arm the redundant-OFF check for the next active-state evaluation.
-
-        Called when ACK_READY arrives while the cached state says the hub is
-        already powered off (see :class:`AckReadyHandler`).
-        """
-
-        self._pending_redundant_off_check = True
 
     def apply_external_activity_state(self, activity_id: int | None) -> bool:
         """Apply an activity change learned outside the TCP session.
@@ -860,6 +852,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         *,
         expects_burst: bool = False,
         burst_kind: str | None = None,
+        on_send: Callable[[], None] | None = None,
     ) -> bool:
         sent = self._burst.queue_or_send(
             opcode=opcode,
@@ -868,6 +861,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             burst_kind=burst_kind,
             can_issue=self.can_issue_commands,
             sender=self._send_cmd_frame,
+            on_send=on_send,
         )
         if sent:
             self._log.debug("%s queued %s (0x%04X) %dB", LogTag.CMD, OPNAMES.get(opcode, f"OP_{opcode:04X}"), opcode, len(payload))
@@ -1770,6 +1764,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             # commands sit out the settle timeout for nothing.
             self._external_settle_event.set()
             self._ack_ready_refresh_pending = False
+            self.clear_pending_redundant_off_check()
         for cb in self._hub_state_listeners:
             try:
                 cb(connected)
@@ -1895,6 +1890,9 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             self._button_burst_expected_frames.clear()
 
     def _handle_idle(self, now: float) -> None:
+        pending = self._pending_redundant_off_check
+        if pending is not None and now >= pending.deadline:
+            self.clear_pending_redundant_off_check()
         if self._frame_thread_ident is None:
             # The transport bridge invokes this callback on its
             # frame-processing thread; latch its ident so exchange()

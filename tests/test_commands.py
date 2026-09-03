@@ -207,7 +207,7 @@ def test_full_command_burst_drains_immediately_when_final_page_arrives(monkeypat
     )
 
     proxy._pending_command_requests[dev_id] = {0xFF}
-    proxy._burst.queue.append((0x025C, b"\x2b\xff", True, "commands:43"))
+    proxy._burst.queue.append((0x025C, b"\x2b\xff", True, "commands:43", None))
 
     sent: list[tuple[int, bytes]] = []
 
@@ -1167,7 +1167,7 @@ def test_single_command_handler_drains_targeted_command_burst_immediately(monkey
     proxy._burst.kind = "commands:1:2"
     proxy._burst.last_ts = 0.0
     proxy._pending_command_requests[1] = {0x02, 0x03}
-    proxy._burst.queue.append((0x025C, b"\x01\x03", True, "commands:1:3"))
+    proxy._burst.queue.append((0x025C, b"\x01\x03", True, "commands:1:3", None))
 
     sent: list[tuple[int, bytes]] = []
 

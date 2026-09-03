@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
 
 from .hub_versions import HUB_VERSION_X2
 from .commands import extract_ir_dump_blob, extract_ir_dump_label_field
@@ -34,6 +35,15 @@ from .state_helpers import normalize_device_entry
 
 
 ACTIVITY_INCOMPLETE_RETRY_DELAY_S = 0.75
+# Allow a read and the X2 retry, while bounding intent behind queued traffic.
+REDUNDANT_OFF_CONFIRM_TIMEOUT_S = 15.0
+
+
+@dataclass
+class RedundantOffConfirmation:
+    deadline: float
+    request_generation: int | None = None
+    retry_pending: bool = False
 
 
 def _to_export_view():
@@ -357,10 +367,57 @@ class CatalogMixin:
     def _begin_activity_request(self, *, is_retry: bool = False) -> None:
         self._activity_request_serial += 1
         self._activity_request_inflight = self._activity_request_serial
+        pending = self._pending_redundant_off_check
+        if pending is not None and pending.retry_pending:
+            if is_retry:
+                pending.request_generation = self._activity_request_serial
+                pending.retry_pending = False
+            else:
+                self.clear_pending_redundant_off_check()
         self._activity_retry_due_at = None
         if not is_retry:
             self._activity_retry_count = 0
         self._reset_pending_activity_snapshot(self._activity_request_inflight)
+
+    def flag_pending_redundant_off_check(self) -> Callable[[], None]:
+        """Return the send hook binding this press to its confirmation request."""
+        pending = RedundantOffConfirmation(time.monotonic() + REDUNDANT_OFF_CONFIRM_TIMEOUT_S)
+        self._pending_redundant_off_check = pending
+
+        def bind_request() -> None:
+            if self._pending_redundant_off_check is pending:
+                if time.monotonic() >= pending.deadline:
+                    self.clear_pending_redundant_off_check()
+                else:
+                    # The scheduler invokes this only when this exact queued
+                    # command is about to call _begin_activity_request.
+                    pending.request_generation = self._activity_request_serial + 1
+
+        return bind_request
+
+    def clear_pending_redundant_off_check(self) -> None:
+        self._pending_redundant_off_check = None
+
+    def _consume_pending_redundant_off_check(self, trigger: str) -> bool:
+        pending = self._pending_redundant_off_check
+        if pending is None:
+            return False
+        if trigger != "activities" or time.monotonic() >= pending.deadline:
+            self.clear_pending_redundant_off_check()
+            return False
+        if (
+            pending.request_generation is None
+            or pending.request_generation != self._last_activities_request_generation
+        ):
+            return False
+        if not self._last_activities_burst_complete:
+            if self._activity_retry_due_at is None:
+                self.clear_pending_redundant_off_check()
+            else:
+                pending.retry_pending = True
+            return False
+        self.clear_pending_redundant_off_check()
+        return True
 
     def _schedule_activity_retry(self, *, now: float | None = None) -> None:
         if self.hub_version != HUB_VERSION_X2:
@@ -740,6 +797,7 @@ class CatalogMixin:
 
     def _on_activities_burst_end(self, key: str) -> None:
         generation = self._activity_request_inflight
+        self._last_activities_request_generation = generation
         complete = generation is not None and self._activity_pending_generation == generation and self._activity_snapshot_complete()
         # Cache readiness describes the last good catalog, not this burst.
         # Later listeners must distinguish a fresh commit from a timeout.
@@ -748,6 +806,12 @@ class CatalogMixin:
         if complete:
             self._commit_pending_activity_snapshot()
             self._activities_snapshot_generation += 1
+            # Publish generation and contents together. HA must acknowledge
+            # this exact snapshot, even if other commits precede its callback.
+            self._committed_activity_snapshot = (
+                self._activities_snapshot_generation,
+                {act_id: dict(row) for act_id, row in self.state.entities("activity").items()},
+            )
             self._log.info(
                 "[ACT] committed complete activities snapshot rows=%d request=%s",
                 len(self._activity_pending_rows),
