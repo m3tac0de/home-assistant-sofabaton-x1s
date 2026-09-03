@@ -116,18 +116,29 @@ export function parseSofabatonBlob(hexText: string): IrSignal {
   if (carrierHz < 10_000 || carrierHz > 500_000) {
     throw new IrFormatError("ir-format/blob-carrier");
   }
-  const timingsUs: number[] = [];
-  let terminated = false;
-  for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
-    const word =
-      blob[pos] * 0x1000000 + blob[pos + 1] * 0x10000 + blob[pos + 2] * 0x100 + blob[pos + 3];
-    if (word === 0) {
-      terminated = true;
-      break;
-    }
-    timingsUs.push(word);
+  const wordAt = (pos: number): number =>
+    blob[pos] * 0x1000000 + blob[pos + 1] * 0x10000 + blob[pos + 2] * 0x100 + blob[pos + 3];
+  let timingsUs: number[] = [];
+  // Declared block lengths first ([0:2] pulse bytes + [2:4] repeat bytes):
+  // the X1 never writes the zero terminator after a learned capture, the
+  // slot holds stale RAM from an earlier capture (loopback bench 2026-09-03).
+  const declaredBytes = ((blob[0] << 8) | blob[1]) + ((blob[2] << 8) | blob[3]);
+  if (declaredBytes > 0 && declaredBytes % 4 === 0 && 8 + declaredBytes + 4 <= blob.length) {
+    for (let pos = 8; pos < 8 + declaredBytes; pos += 4) timingsUs.push(wordAt(pos));
+    if (timingsUs.some((v) => v === 0)) timingsUs = [];
   }
-  if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  if (timingsUs.length === 0) {
+    let terminated = false;
+    for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
+      const word = wordAt(pos);
+      if (word === 0) {
+        terminated = true;
+        break;
+      }
+      timingsUs.push(word);
+    }
+    if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  }
   if (timingsUs.length < 2) {
     throw new IrFormatError("ir-format/blob-too-few-timings");
   }

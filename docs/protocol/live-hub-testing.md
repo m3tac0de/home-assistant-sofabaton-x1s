@@ -1697,3 +1697,149 @@ must normalize body[0] to 0x01 and recompute the trailer.
 Open items for a later chunk: X1 replication of the collision runs, a
 late-phase (~90%) 0x64 probe, reproducing the spontaneous restart,
 and 0x65 semantics.
+
+## ◇ Validated: IR loopback round trips, X1 <-> X1S (2026-09-03)
+
+Rig: the X1 (192.168.2.108) and X1S (192.168.2.151) face each other, so
+either can emit while the other is in IR learn mode. Harness:
+`scripts/hub-bench/bench_160_ir_loopback.py` renders a source to the raw
+blob, plays it on the emitter via `play_ir_blob`, captures it on the
+learner via `ir_learn_command` (own connection, exchange held in a
+thread), then compares timings, carrier and learned-blob shape, and
+decodes both sequences with IrpTransmogrifier at the requested carrier.
+Full findings: docs/internal/ha-infrared-plan.md, "IR loopback bench,
+chunk 1".
+
+| Source | Direction | Loops | Decode |
+| --- | --- | --- | --- |
+| Library Samsung POWER (NECx-f16) | X1 -> X1S | 3/3 | match |
+| Library Samsung POWER | X1S -> X1 | 3/3 | match |
+| UC HEX `3;0x4B36D32C;32;0` (NEC) | X1 -> X1S | 2/2 | match |
+| UC HEX NEC | X1S -> X1 | 1/1 | match |
+| Pronto (rendered Samsung VOLUME_UP) | X1 -> X1S | 2/2 | match |
+| Pronto | X1S -> X1 | 1/1 | match |
+| Sony20 NUM_1, 3 frames | X1S -> X1 | 2/2 | match, reps=3 |
+| Sony20 NUM_1, 3 frames | X1 -> X1S | 2/2 learned | content ok at 40k, carrier read 35.0k |
+
+Validated:
+
+- the raw blob layout (`build_raw_ir_blob_body`) produces photons whose
+  timing content survives an independent receiver + decoder, on both
+  hub generations, for library, UC HEX and Pronto sources;
+- `ir_learn_command` returns a parseable capture for single- and
+  multi-frame emissions on both hubs (multi-frame lands in the pulse
+  block, repeat block 0, sign 0);
+- the X1S emitter follows any requested carrier from 33 to 56 kHz (read
+  +1.6..3.8 % by the X1 learner).
+
+Found:
+
+- the X1 never writes the terminator word after a learned capture; the
+  slot holds stale RAM from an earlier, longer capture (each stale value
+  matched an earlier capture's word at the same index). Parsers now use
+  the declared block lengths first (Python + TS, golden vector added);
+- the X1 emitter reproduces a 40 kHz request at ~35 kHz, and after a
+  56 kHz request it stopped producing decodable output (X1S learner:
+  timeouts, then the `IR_LEARN_FAILED 0x0068` push, first live sighting).
+  Re-test after a power cycle is pending; carrier sweep results above
+  38 kHz on the X1 are void until then.
+
+### Chunk 2 (2026-09-03, after an X1 power cycle)
+
+| Probe | Direction | Result |
+| --- | --- | --- |
+| 38 kHz control, Samsung POWER | X1 -> X1S | 2/2 match |
+| 40 kHz (x4) and the 33/36/40/56 kHz sequence | X1 -> X1S | all learned; 56k read 56 010 Hz; controls after it pass |
+| Odd-count body, unpadded (`--gap none`) | X1 -> X1S, X1S -> X1 | 2/2 + 2/2, full frame emitted, decode match |
+| HA `button.press button.samsung_tv_x1_info` via `infrared.x1_hub_ir_emitter` | X1 (HA) -> X1S | 2/2; intercept sensor payload == photons (NECx-f16 F=31) |
+| `sofabaton_x1s/ir_learn/subscribe` (payload editor learn backend) | X1 -> X1S (HA) | 3/3 learned ~0.25 s after play; cancel-on-unsubscribe leaves hub re-armable |
+
+Validated: the HA emitter entity produces the photons the intercept
+sensor records; the IR9 learn websocket delivers a parseable capture
+through HA; both hubs accept mark-terminated odd-count bodies.
+
+Resolved: the chunk-1 X1 emitter failure (40 kHz read as 35 kHz, then
+no output) did not return after a power cycle and could not be
+reproduced with the same carrier sequence, 56 kHz included. Treated as
+a degraded hub state, cause unknown.
+
+### Chunk 3: X2 joins the rig, descriptive payload sweep (2026-09-03)
+
+| Probe | Result |
+| --- | --- |
+| Line of sight, six directed pairings, Samsung POWER | all pass (X1S -> X2 marginal until the X1S was nudged: 4/6, then 5/5) |
+| First X2 learn | works; X2 receiver reads carriers within 0.2-0.4 % |
+| `P:` descriptor sweep, X2 -> X1S, ~120 plays over 8 sweeps | 16 tokens photon-verified exact; Samsung32/Kaseikyo silent; Panasonic+MUL:1 rejected; Sharp3 mapping wrong on-air |
+| Parser state | descriptor fields persist across one-shot plays; a raw blob play clears them |
+
+Validated: `render_ir_descriptive_blob_body` + `play_ir_blob` drive the
+X2's descriptive engine; IrpTransmogrifier decodes of the learned
+photons match the descriptor parameters for NECx, NEC, Sony12/15/20,
+JVC, RC6, RC6-6-20, DirecTV1, Denon-K, Samsung20, Samsung36,
+Samsung-SMT-G, Logitech, Panasonic (no MUL:1), Bose (no F_CHECKSUM).
+
+Found (details in IrScrutinizer/x2-protocols.md, "Photon-verified
+results"): the X2 descriptor parser keeps S/F/repeat state across plays
+and several cloud-sample forms wedge it; `P:Samsung32` is dead;
+`P:Panasonic ... MUL:1` is never acked; Sharp3 D/F are bit-shifted wire
+fields, not IRP parameters.
+
+### Chunk 4: cloud Sharp devices, mapping solved (2026-09-03)
+
+| Probe | Result |
+| --- | --- |
+| 3 cloud Sharp devices dumped from the X2 (`bench_162_x2_cloud_dump.py`) | 69 distinct `P:Sharp2` + 66 `P:SharpDVD` strings |
+| all distinct cloud strings played X2 -> X1S | 125/125 learned; 63 Sharp2 decode as Sharp, 6 (`C0:3`) carry the complemented half first; 28 SharpDVD decode exactly |
+| bit-level fit of X2 fields vs transmitted bits | Sharp2/Sharp = one-bit-offset reading, token pins the first bit (Sharp2 -> odd D Sharp, Sharp -> even D Denon) |
+| synthesized Sharp2 / Sharp / SharpDVD strings, canary-checked | 5/5 Sharp, 4/4 Denon, 3/3 SharpDVD exact; Sharp2 and Sharp leave the parser clean, SharpDVD wedges it |
+| exporter output (XSLT via .NET) for Sharp, Denon, SharpDVD Girr inputs | 8/8 lines decode exactly; even-D Sharp and odd-D Denon produce no line (raw fallback) |
+
+Validated: the X2 exporter's Sharp2, Sharp (Denon) and SharpDVD
+emissions; details in IrScrutinizer/x2-protocols.md "Sharp family,
+solved".
+
+### Chunk 5: is the X2 descriptor parser state confined to one-shot plays? (2026-09-03)
+
+Interleaved stored cloud commands (`send_command`, the remote's path) with
+one-shot descriptor plays, X2 -> X1S, 12/12 captured:
+
+| Step | Result |
+| --- | --- |
+| stored Sharp2 TV Power, stored SharpDVD Power, stored Sharp2 again | all exact |
+| one-shot NECx after the stored SharpDVD | exact (stored multi-field command does not wedge plays) |
+| one-shot SharpDVD, then stored Sharp2 (two different keys) | stored commands exact (wedge does not touch them) |
+| one-shot NECx after those stored commands | still wedged (stored commands do not clear it) |
+
+Conclusion: the stateful parser is a property of the family-0x0F
+one-shot play path only. Remote use and the HA emitter entity (raw
+blobs) are unaffected; the payload editor's Test button on the X2 is the
+only integration surface that sees it.
+
+Reboot check (X2 power-cycled): first one-shot play clean, one-shot
+SharpDVD wedges the next play, stored Sharp2 exact and does not clear
+it, raw play clears it. 7/7 captured. Not a corrupted state.
+
+### Chunk 6: a silent reset for the X2 descriptor parser (2026-09-03)
+
+| Candidate raw play (after a SharpDVD wedge) | Learner saw | Next play clean? |
+| --- | --- | --- |
+| 1 word (1 us or 20 us) + gap, 1 us/1 us, empty body | energy / nothing | no |
+| 4 words, 6 words | energy | no |
+| 8, 10, 12 words of 300 us | frame captured | **yes** |
+| 12-word NEC fragment at 20 kHz / 65 kHz | frame captured | **yes** |
+| 12 x 1 us marks (dense or 5 ms apart) | energy | canary itself undecodable: avoid 1 us marks |
+| **4 x 20 us blips, 5 ms apart, 65 kHz (8 words)** | energy, undecodable | **yes, 3/3**; harmless when clean; NECx and Sony12 exact afterwards |
+
+Rule: the family-0x0F play path re-initialises the descriptor parser
+when a raw body carries >= 8 timing words. Payload hex in
+IrScrutinizer/x2-protocols.md "Parser state".
+
+### Chunk 7: auto-reset shipped and validated through HA (2026-09-03)
+
+`play_ir_blob` now plays the 8-word reset blips before every descriptor
+payload on the X2. Deployed to the live HA; X2 in HA, X1S learning on
+the bench, `sofabaton_x1s.play_ir_blob` action: SharpDVD -> NECx ->
+Sony12 -> NECx all decode exactly (full 100/68-word captures), where the
+NECx after SharpDVD came out as SharpDVD's fields before the change.
+The learner needs `--rearm-on-failed` and a negative `--lead` (arm ~0.45 s
+after the action call) because the blips end its first learn window.

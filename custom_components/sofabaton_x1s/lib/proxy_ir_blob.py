@@ -21,11 +21,17 @@ import threading
 import time
 from typing import Any
 
+from .blob_decoders import (
+    X2_PARSER_RESET_CARRIER_HZ,
+    X2_PARSER_RESET_TIMINGS_US,
+    build_raw_ir_blob_body,
+)
 from .commands import (
     descriptive_play_blob_text,
     extract_learned_ir_blob,
     looks_like_descriptive_play_blob,
 )
+from .hub_versions import HUB_VERSION_X2
 from .device_create import (
     build_command_write_steps,
     build_key_sort_steps,
@@ -52,6 +58,14 @@ def _run_create_sequence(*args, **kwargs):
     from . import x1_proxy as _xp
 
     return _xp.run_create_sequence(*args, **kwargs)
+
+
+def x2_parser_reset_blob() -> bytes:
+    """The raw library_data body that re-initialises the X2 descriptor parser."""
+
+    return build_raw_ir_blob_body(
+        list(X2_PARSER_RESET_TIMINGS_US), X2_PARSER_RESET_CARRIER_HZ
+    )
 
 
 class IrBlobMixin:
@@ -84,6 +98,24 @@ class IrBlobMixin:
         if not isinstance(blob, (bytes, bytearray)) or len(blob) < 10:
             self._log.warning("[PLAY_BLOB] blob too short or wrong type: %r", type(blob))
             return False
+
+        if self.hub_version == HUB_VERSION_X2 and looks_like_descriptive_play_blob(bytes(blob)):
+            # The X2's one-shot play path keeps descriptor-parser state
+            # between plays (a multi-field P: payload leaves stale fields the
+            # next P: play inherits). A raw play of >= 8 words re-initialises
+            # it, so every descriptor play is preceded by the reset blips
+            # (see X2_PARSER_RESET_TIMINGS_US). Stored commands never see
+            # this state; only this path does.
+            reset_ok, _ = self._play_ir_blob_body(
+                self._build_play_blob_body_buffer(x2_parser_reset_blob()),
+                inter_frame_delay=inter_frame_delay,
+                ack_timeout=ack_timeout,
+                final_ack_timeout=final_ack_timeout,
+            )
+            if not reset_ok:
+                self._log.warning(
+                    "[PLAY_BLOB] X2 parser reset play not acked; playing descriptor anyway"
+                )
 
         body_buffer = self._build_play_blob_body_buffer(bytes(blob))
         ok, rejected = self._play_ir_blob_body(

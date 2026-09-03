@@ -863,6 +863,27 @@ def test_parse_raw_ir_blob_rejects_unterminated_and_short():
         parse_raw_ir_blob_body(unterminated)
 
 
+def test_parse_raw_ir_blob_prefers_declared_length_over_terminator():
+    # X1 learn captures never write the zero terminator: the slot holds
+    # stale RAM from an earlier, longer capture (loopback bench 2026-09-03).
+    header = bytes.fromhex("0010000000009470")  # 16 timing bytes = 4 words
+    words = b"".join(v.to_bytes(4, "big") for v in (9000, 4500, 560, 40000))
+    stale = (8954).to_bytes(4, "big")
+    timings, carrier = parse_raw_ir_blob_body(header + words + stale + b"\x00")
+    assert timings == [9000, 4500, 560, 40000]
+    assert carrier == 38000
+    # a declared span that runs past the real words (zero inside it) falls
+    # back to the terminator scan
+    short_declared = bytes.fromhex("0018000000009470")  # claims 6 words
+    timings, _ = parse_raw_ir_blob_body(short_declared + words + bytes(4))
+    assert timings == [9000, 4500, 560, 40000]
+    # learned layout: pulse block + repeat block are both part of the signal
+    learned_header = bytes.fromhex("000c0004010094cf")  # 3 + 1 words, sign 1
+    timings, carrier = parse_raw_ir_blob_body(learned_header + words + bytes(4))
+    assert timings == [9000, 4500, 560, 40000]
+    assert carrier == 38095
+
+
 def test_render_pronto_hex_clamps_and_pads():
     # odd count -> closing gap; huge gap clamps to 0xFFFF cycles
     pronto = render_pronto_hex([9000, 2_000_000, 560], 38000)

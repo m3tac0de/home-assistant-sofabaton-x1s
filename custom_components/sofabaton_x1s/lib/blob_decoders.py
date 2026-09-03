@@ -761,15 +761,36 @@ def build_raw_ir_blob_body(
     return bytes(out)
 
 
+#: Timings/carrier of the X2 descriptor-parser reset play: four 20 us
+#: blips 5 ms apart at 65 kHz. The X2's family-0x0F one-shot play path
+#: keeps descriptor (``P:``) parser state across plays - a multi-field
+#: descriptor (Panasonic, SharpDVD, DenonK, ...) leaves stale fields that
+#: the next descriptor play inherits - and any raw play carrying at least
+#: 8 timing words re-initialises it (loopback bench 2026-09-03; fewer words
+#: do not, content and carrier are irrelevant). These blips are barely one
+#: carrier cycle wide at a carrier outside every consumer IR band, so a
+#: receiver sees only undecodable energy. 1 us marks must NOT be used: they
+#: corrupt the hub's next emission.
+X2_PARSER_RESET_TIMINGS_US: tuple[int, ...] = (20, 5000) * 4
+X2_PARSER_RESET_CARRIER_HZ = 65000
+
+
 def parse_raw_ir_blob_body(blob: bytes) -> Tuple[list, int]:
     """Extract ``(timings_us, carrier_hz)`` from a raw-timing IR blob.
 
     Inverse of :func:`build_raw_ir_blob_body`, tolerant of the stored
-    variants seen on real hubs: nonzero format fields at ``[2:6]``, a
-    declared length that disagrees with the timing byte count (observed
-    on learned captures), and trailing save-tail byte(s) after the
-    terminator. Timings are read as BE32 words from offset 8 until the
-    zero terminator word.
+    variants seen on real hubs. Learned captures use the same framing
+    with the header fields meaning ``[0:2]`` pulse-block byte length,
+    ``[2:4]`` repeat-block byte length, ``[4]`` sign and ``[5:8]`` a
+    3-byte carrier; the emit layout's zero format field is the
+    degenerate case of that. The word count is taken from the declared
+    block lengths whenever they are consistent with the blob, because
+    the X1 never writes the zero terminator after a learned capture -
+    the slot holds stale RAM from an earlier, longer capture (loopback
+    bench, 2026-09-03). Only when the declared lengths do not fit (or a
+    zero word sits inside the declared span) are the words read up to
+    the first zero terminator word instead. Trailing save-tail byte(s)
+    after the terminator slot are ignored either way.
 
     Raises ``ValueError`` for blobs that are not raw-timing shaped -
     notably descriptive ``P:`` payloads and the pre-2026-08-31 exporter
@@ -784,17 +805,24 @@ def parse_raw_ir_blob_body(blob: bytes) -> Tuple[list, int]:
     if not 10_000 <= carrier_hz <= 500_000:
         raise ValueError(f"implausible carrier field: {carrier_hz} Hz")
     timings: list = []
-    pos = 8
-    while pos + 4 <= len(blob):
-        word = int.from_bytes(blob[pos : pos + 4], "big")
-        pos += 4
-        if word == 0:
-            break
-    else:
-        raise ValueError("raw IR blob has no terminator word")
-    end = pos - 4
-    for offset in range(8, end, 4):
-        timings.append(int.from_bytes(blob[offset : offset + 4], "big"))
+    declared_bytes = int.from_bytes(blob[0:2], "big") + int.from_bytes(blob[2:4], "big")
+    if declared_bytes and declared_bytes % 4 == 0 and 8 + declared_bytes + 4 <= len(blob):
+        for offset in range(8, 8 + declared_bytes, 4):
+            timings.append(int.from_bytes(blob[offset : offset + 4], "big"))
+        if any(value == 0 for value in timings):
+            timings = []
+    if not timings:
+        pos = 8
+        while pos + 4 <= len(blob):
+            word = int.from_bytes(blob[pos : pos + 4], "big")
+            pos += 4
+            if word == 0:
+                break
+        else:
+            raise ValueError("raw IR blob has no terminator word")
+        end = pos - 4
+        for offset in range(8, end, 4):
+            timings.append(int.from_bytes(blob[offset : offset + 4], "big"))
     if len(timings) < 2:
         raise ValueError("raw IR blob has fewer than two timing words")
     if any(not 20 <= value <= 2_000_000 for value in timings):

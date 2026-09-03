@@ -65,6 +65,23 @@ test("golden vectors: pronto round-trips within quantization tolerance", () => {
   }
 });
 
+test("sofabaton blob: declared block lengths win over the terminator slot", () => {
+  // X1 learn captures never write the zero terminator; the slot holds stale
+  // RAM from an earlier, longer capture (loopback bench 2026-09-03).
+  const word = (v: number) => v.toString(16).padStart(8, "0");
+  const words = [9000, 4500, 560, 40000].map(word).join("");
+  const stale = parseSofabatonBlob("0010000000009470" + words + word(8954) + "00");
+  assert.deepEqual(stale.timingsUs, [9000, 4500, 560, 40000]);
+  assert.equal(stale.carrierHz, 38000);
+  // declared span running past the real words (zero inside) -> terminator scan
+  const overDeclared = parseSofabatonBlob("0018000000009470" + words + word(0));
+  assert.deepEqual(overDeclared.timingsUs, [9000, 4500, 560, 40000]);
+  // learned layout: pulse block + repeat block both belong to the signal
+  const learned = parseSofabatonBlob("000c0004010094cf" + words + word(0));
+  assert.deepEqual(learned.timingsUs, [9000, 4500, 560, 40000]);
+  assert.equal(learned.carrierHz, 38095);
+});
+
 test("format detection", () => {
   const vector = VECTORS[0];
   assert.equal(detectIrPayloadFormat(vector.pronto_hex), "pronto");
