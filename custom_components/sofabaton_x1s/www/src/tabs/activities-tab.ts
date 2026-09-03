@@ -18,6 +18,7 @@ import type {
   BackupProgressEvent,
   ControlPanelHubState,
   HassLike,
+  IrPayloadForeignFormat,
   WifiEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
@@ -344,6 +345,11 @@ class SofabatonActivitiesTab extends LitElement {
     if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
     await this.api().playIrBlob(this.hub.entry_id, hex);
   };
+
+  // Foreign IR codes (Unfolded Circle HEX) are rendered on the backend;
+  // the view only detects the shape and shows the result.
+  private _convertForeignPayload = (text: string, format: IrPayloadForeignFormat) =>
+    this.api().convertIrPayload(text, format);
 
   // ── Payload-editor learn mode (IR9) ─────────────────────────────────
   // Hub learn = one WS subscription per attempt (unsubscribe cancels the
@@ -925,6 +931,7 @@ class SofabatonActivitiesTab extends LitElement {
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
+          .convertForeignPayload=${this._convertForeignPayload}
           .irLearn=${this._irLearnFacade}
           .wifiEvents=${this._wifiEventsFacade}
           @bundle-change=${this._handleBundleChange}

@@ -80,6 +80,7 @@ from .command_config import (
     wifi_device_requires_listener,
 )
 from . import ir_library
+from . import ir_uc_hex
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
@@ -2369,6 +2370,59 @@ async def _ws_ir_library_commands(
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/ir_payload/convert",
+        vol.Required("text"): str,
+        vol.Optional("format", default="uc_hex"): vol.In(["uc_hex"]),
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_payload_convert(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Render a foreign IR code into the canonical signal + both hex projections.
+
+    The single conversion path for anything that needs protocol knowledge:
+    the card detects the format by shape, this command turns it into
+    ``(timings, carrier)`` through ``infrared-protocols`` and hands back
+    the pronto and Sofabaton renderings the payload editor shows. Hub
+    independent - nothing is sent, no entry is resolved. Errors keep a
+    stable ``uc_hex_*`` code; the message is the refused protocol label.
+    """
+
+    from .lib.blob_decoders import build_raw_ir_blob_body, render_pronto_hex
+
+    try:
+        result = await hass.async_add_executor_job(ir_uc_hex.convert_uc_hex, msg["text"])
+    except ir_uc_hex.UcHexError as err:
+        code = "unavailable" if err.code == "unavailable" else f"uc_hex_{err.code}"
+        connection.send_error(msg["id"], code, err.detail or err.code)
+        return
+    timings = result["timings_us"]
+    carrier_hz = result["carrier_hz"]
+    try:
+        pronto_hex = render_pronto_hex(timings, carrier_hz)
+        sofabaton_hex = build_raw_ir_blob_body(timings, carrier_hz).hex()
+    except ValueError as err:
+        connection.send_error(msg["id"], "uc_hex_unrepresentable", str(err))
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "format": "uc_hex",
+            "timings_us": timings,
+            "carrier_hz": carrier_hz,
+            "pronto_hex": pronto_hex,
+            "sofabaton_hex": sofabaton_hex,
+            "protocol": result["protocol"],
+            "protocol_name": result["protocol_name"],
+            "bits": result["bits"],
+            "repeat": result["repeat"],
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/backup/export",
         vol.Required("entry_id"): str,
         vol.Optional("device_ids"): [vol.All(int, vol.Range(min=1, max=255))],
@@ -4078,6 +4132,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_ir_emitter_consumers)
     websocket_api.async_register_command(hass, _ws_ir_library_catalog)
     websocket_api.async_register_command(hass, _ws_ir_library_commands)
+    websocket_api.async_register_command(hass, _ws_ir_payload_convert)
     websocket_api.async_register_command(hass, _ws_backup_export)
     websocket_api.async_register_command(hass, _ws_backup_restore)
     websocket_api.async_register_command(hass, _ws_backup_stash_edited)

@@ -277,11 +277,23 @@ export const TOOLS_CARD_STRINGS_ES = {
     sofabatonHexTab: "Sofabaton Hex",
     descriptorTab: "Descriptor",
     prontoHexHelper:
-      "Los valores Pronto Hex en formato aprendido, como «0000 006D 0022 0000 00AB …», se convierten automáticamente en bytes Sofabaton.",
+      "Los valores Pronto Hex en formato aprendido, como «0000 006D 0022 0000 00AB …», y los códigos HEX de Unfolded Circle, como «3;0x4B36D32C;32;0», se convierten automáticamente en bytes Sofabaton.",
     prontoUnavailable:
       "Esta carga útil no se puede leer como duraciones IR sin procesar, por lo que no puede mostrarse como Pronto Hex.",
     invalidProntoHex: "Este no es un código Pronto Hex válido en formato aprendido.",
     descriptorX2Only: "Las cargas útiles IR descriptivas solo se admiten en hubs X2.",
+    // Importación de códigos HEX de Unfolded Circle (convertidos en el backend mediante infrared-protocols).
+    ucHexConverting: "Convirtiendo el código de Unfolded Circle…",
+    ucHexInvalid: "Este no es un código HEX de Unfolded Circle válido.",
+    ucHexUnknownProtocol: "este protocolo",
+    ucHexUnsupported: (protocol: string) =>
+      `Los códigos HEX de Unfolded Circle para ${protocol} todavía no se pueden convertir. Exporta el comando como PRONTO en su lugar.`,
+    ucHexUnrepresentable:
+      "Este código HEX de Unfolded Circle no respeta las reglas de trama de su protocolo, por lo que no se puede convertir.",
+    ucHexUnavailable:
+      "Para convertir códigos de Unfolded Circle se necesita la biblioteca infrared-protocols, que no está disponible en este Home Assistant.",
+    ucHexNoHost: "Los códigos de Unfolded Circle solo se pueden convertir mientras Home Assistant está conectado.",
+    ucHexFailed: "No se pudo convertir el código de Unfolded Circle.",
     // Modo de aprendizaje del editor de cargas útiles (IR9).
     learn: "Aprender",
     learnAria: "Aprender una carga útil desde otro mando a distancia o desde Home Assistant",

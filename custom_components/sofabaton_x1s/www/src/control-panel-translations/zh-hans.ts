@@ -337,11 +337,23 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     sofabatonHexTab: "Sofabaton Hex",
     descriptorTab: "描述符",
     prontoHexHelper:
-      '学习格式的 Pronto Hex 16 位数值（例如“0000 006D 0022 0000 00AB …”）会自动转换为 Sofabaton 字节。',
+      '学习格式的 Pronto Hex 16 位数值（例如“0000 006D 0022 0000 00AB …”）以及 Unfolded Circle HEX 代码（例如“3;0x4B36D32C;32;0”）会自动转换为 Sofabaton 字节。',
     prontoUnavailable:
       "此有效载荷无法解析为原始红外时序，因此无法显示为 Pronto Hex。",
     invalidProntoHex: "这不是有效的学习格式 Pronto Hex 代码。",
     descriptorX2Only: "描述性红外有效载荷仅支持 X2 Hub。",
+    // Unfolded Circle HEX 代码导入（由后端通过 infrared-protocols 转换）。
+    ucHexConverting: "正在转换 Unfolded Circle 代码…",
+    ucHexInvalid: "这不是有效的 Unfolded Circle HEX 代码。",
+    ucHexUnknownProtocol: "此协议",
+    ucHexUnsupported: (protocol: string) =>
+      `暂时无法转换 ${protocol} 的 Unfolded Circle HEX 代码。请改为将该命令导出为 PRONTO。`,
+    ucHexUnrepresentable:
+      "此 Unfolded Circle HEX 代码不符合其协议的帧规则，因此无法转换。",
+    ucHexUnavailable:
+      "转换 Unfolded Circle 代码需要 infrared-protocols 库，而此 Home Assistant 中没有提供该库。",
+    ucHexNoHost: "只有在 Home Assistant 已连接时才能转换 Unfolded Circle 代码。",
+    ucHexFailed: "转换 Unfolded Circle 代码失败。",
     // 有效载荷编辑器的学习模式（IR9）。
     learn: "学习",
     learnAria: "从另一台遥控器或 Home Assistant 学习有效载荷",

@@ -110,8 +110,26 @@ You can use:
   (see **Learn a payload** above);
 - a payload fetched from another command on your hub;
 - a payload shared by another user;
+- a code exported from an Unfolded Circle remote (see below);
 - IR data converted from an online database with
   [IrScrutinizer](../IrScrutinizer/README.md).
+
+### Unfolded Circle codes
+
+Unfolded Circle remotes store IR commands as either `PRONTO` codes or `HEX`
+codes such as `3;0x4B36D32C;32;0` (protocol, value, bit count, repeat count).
+Paste either form into the payload editor, or paste a whole row of a codeset
+CSV export such as `"Power-Toggle","HEX","3;0x4B36D32C;32;0"`. PRONTO codes
+are used as they are. HEX codes are rendered by Home Assistant's
+`infrared-protocols` library into timings and shown as Pronto Hex; the editor
+does not keep the original HEX text. When a row is pasted while adding a
+command, its name fills the Name field if that is still empty.
+
+Only protocols with an encoder in `infrared-protocols` convert: NEC, Sony,
+Samsung, RC5, RC6, Panasonic, Sharp, and Pioneer. Other protocols are refused
+with a message that names the protocol; export those commands as PRONTO from
+the Unfolded Circle web configurator instead. A HEX code's embedded repeat
+count is applied where the protocol has a repeat form.
 
 > **Note:** payloads exported with the Sofabaton X-series IrScrutinizer
 > exporter before its 2026-08-31 layout fix are accepted by the hub but emit

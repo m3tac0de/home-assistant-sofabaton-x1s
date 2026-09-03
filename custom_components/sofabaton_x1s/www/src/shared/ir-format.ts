@@ -162,13 +162,92 @@ export function buildSofabatonBlob(signal: IrSignal): string {
 // Format detection + helpers
 // ---------------------------------------------------------------------------
 
-export type IrPayloadFormat = "descriptor" | "pronto" | "sofabaton" | "unknown";
+export type IrPayloadFormat = "descriptor" | "pronto" | "sofabaton" | "uc_hex" | "unknown";
+
+/**
+ * Unfolded Circle `HEX` code: `<protocol>;<0xvalue>;<bits>;<repeat>`. The
+ * semicolons make the shape exact - none of the other formats can contain
+ * one - so detection never has to guess. Conversion itself needs protocol
+ * knowledge and lives on the backend (`ir_payload/convert`).
+ */
+const UC_HEX_RE = /^\s*([A-Za-z_0-9]+)\s*;\s*(?:0[xX])?([0-9A-Fa-f]+)\s*;\s*(\d+)\s*;\s*(\d+)\s*$/;
+
+export function isUcHexCode(text: string): boolean {
+  return UC_HEX_RE.test(text);
+}
+
+/** One row of an Unfolded Circle codeset export (`"key","format","code"`). */
+export interface UcCodesetRow {
+  name: string | null;
+  format: "HEX" | "PRONTO";
+  code: string;
+}
+
+/**
+ * Unwrap a pasted codeset CSV row into its fields. Accepts quoted and bare
+ * cells and a leading name column; returns null for anything else.
+ */
+export function unwrapUcCodesetRow(text: string): UcCodesetRow | null {
+  const trimmed = text.trim();
+  if (!trimmed.includes(",")) return null;
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '"') {
+      if (quoted && trimmed[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  const values = cells.map((cell) => cell.trim());
+  const formatIndex = values.findIndex((cell) => /^(HEX|PRONTO)$/i.test(cell));
+  if (formatIndex < 0 || formatIndex + 1 >= values.length) return null;
+  const format = values[formatIndex].toUpperCase() as "HEX" | "PRONTO";
+  const code = values.slice(formatIndex + 1).join(",").trim();
+  if (!code) return null;
+  const name = formatIndex > 0 ? values.slice(0, formatIndex).join(",").trim() : "";
+  return { name: name || null, format, code };
+}
+
+/** What a pasted Unfolded Circle code resolves to, or null if it is not one. */
+export interface UcPaste {
+  name: string | null;
+  kind: "uc_hex" | "pronto";
+  code: string;
+}
+
+export function resolveUcPaste(text: string): UcPaste | null {
+  const row = unwrapUcCodesetRow(text);
+  if (row) {
+    if (row.format === "HEX" && isUcHexCode(row.code)) {
+      return { name: row.name, kind: "uc_hex", code: row.code.trim() };
+    }
+    if (row.format === "PRONTO" && detectIrPayloadFormat(row.code) === "pronto") {
+      return { name: row.name, kind: "pronto", code: row.code.trim() };
+    }
+    return null;
+  }
+  if (isUcHexCode(text)) return { name: null, kind: "uc_hex", code: text.trim() };
+  return null;
+}
 
 /** Best-effort classification of pasted payload text. */
 export function detectIrPayloadFormat(text: string): IrPayloadFormat {
   const trimmed = text.trim();
   if (trimmed.length === 0) return "unknown";
   if (/^P:/i.test(trimmed)) return "descriptor";
+  if (isUcHexCode(trimmed)) return "uc_hex";
   const tokens = trimmed.split(/\s+/);
   if (
     tokens.length >= 6 &&

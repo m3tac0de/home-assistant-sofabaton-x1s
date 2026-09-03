@@ -7,9 +7,12 @@ import {
   buildSofabatonBlob,
   detectIrPayloadFormat,
   formatHexForDisplay,
+  isUcHexCode,
   parseProntoHex,
   parseSofabatonBlob,
   renderProntoHex,
+  resolveUcPaste,
+  unwrapUcCodesetRow,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/ir-format";
 
 // Shared golden vectors, also consumed by tests/test_blob_decoders.py -
@@ -73,6 +76,54 @@ test("format detection", () => {
   assert.equal(detectIrPayloadFormat(""), "unknown");
   // 4-hex-digit words that do NOT satisfy the pronto preamble stay sofabaton
   assert.equal(detectIrPayloadFormat("0011 2233 4455 6677 8899 aabb"), "sofabaton");
+  // Unfolded Circle HEX: the semicolons make the shape exact
+  assert.equal(detectIrPayloadFormat("3;0x4B36D32C;32;0"), "uc_hex");
+  assert.equal(detectIrPayloadFormat(" 4 ; A90 ; 12 ; 2 "), "uc_hex");
+  assert.equal(detectIrPayloadFormat("NEC;0x20DF10EF;32;0"), "uc_hex");
+  assert.equal(detectIrPayloadFormat("3;0x4B36D32C;32"), "unknown");
+  assert.equal(detectIrPayloadFormat("3;0xZZ;32;0"), "unknown");
+});
+
+// ── Unfolded Circle pastes (bare HEX codes and codeset CSV rows) ────────
+
+test("uc: bare HEX code resolves to a backend conversion", () => {
+  assert.deepEqual(resolveUcPaste("3;0x4B36D32C;32;0"), {
+    name: null,
+    kind: "uc_hex",
+    code: "3;0x4B36D32C;32;0",
+  });
+  assert.equal(isUcHexCode("0000 006D 0002 0000 00AB 00AB 0015 06AE"), false);
+  assert.equal(resolveUcPaste("0000 006D 0002 0000 00AB 00AB 0015 06AE"), null);
+  assert.equal(resolveUcPaste("P:Sony12 R:40000 D:1 F:18"), null);
+});
+
+test("uc: codeset CSV rows unwrap with their name and format", () => {
+  assert.deepEqual(unwrapUcCodesetRow('"Power-Toggle","HEX","3;0x4B36D32C;32;0"'), {
+    name: "Power-Toggle",
+    format: "HEX",
+    code: "3;0x4B36D32C;32;0",
+  });
+  assert.deepEqual(resolveUcPaste('"Volume-Up","HEX","3;0x4BB640BF;32;0"'), {
+    name: "Volume-Up",
+    kind: "uc_hex",
+    code: "3;0x4BB640BF;32;0",
+  });
+  const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
+  assert.deepEqual(resolveUcPaste(`"Power_Toggle","PRONTO","${pronto}"`), {
+    name: "Power_Toggle",
+    kind: "pronto",
+    code: pronto,
+  });
+  // unquoted cells and a missing name column are fine too
+  assert.deepEqual(resolveUcPaste("HEX,3;0x4B36D32C;32;0"), {
+    name: null,
+    kind: "uc_hex",
+    code: "3;0x4B36D32C;32;0",
+  });
+  // the header row and rows whose code does not match their format are not pastes
+  assert.equal(resolveUcPaste('"key","format","code"'), null);
+  assert.equal(resolveUcPaste('"Power","HEX","0000 006D 0002 0000 00AB 00AB 0015 06AE"'), null);
+  assert.equal(unwrapUcCodesetRow("3;0x4B36D32C;32;0"), null);
 });
 
 test("pronto parser rejects malformed input", () => {

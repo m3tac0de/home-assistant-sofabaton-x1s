@@ -34,6 +34,7 @@ import {
   parseProntoHex,
   parseSofabatonBlob,
   renderProntoHex,
+  resolveUcPaste,
 } from "../shared/ir-format";
 import type {
   BackupBundlePayload,
@@ -43,6 +44,8 @@ import type {
   IrEmitterConsumersResponse,
   IrLearnEvent,
   IrLearnState,
+  IrPayloadConvertResponse,
+  IrPayloadForeignFormat,
   WifiEvent,
 } from "../shared/ha-context";
 import {
@@ -277,6 +280,7 @@ export class SofabatonEditDetailView extends LitElement {
     _payloadDialogHexTab: { state: true },
     _payloadDialogProntoDraft: { state: true },
     _payloadDialogProntoAvailable: { state: true },
+    _payloadDialogConverting: { state: true },
     _payloadDialogFormatError: { state: true },
     _payloadDialogError: { state: true },
     fetchCommandPayload: { attribute: false },
@@ -579,12 +583,23 @@ export class SofabatonEditDetailView extends LitElement {
   private _payloadDialogProntoAvailable = true;
   private _payloadDialogFormatError = "";
   private _payloadDialogError = "";
+  // ── Foreign IR codes (Unfolded Circle HEX) ─────────────────────────
+  // Detection is local (the shape is exact); rendering needs protocol
+  // knowledge and runs on the backend through the host callback. While a
+  // conversion is in flight the sofabaton bytes are stale, so Test/Save
+  // wait for it; a newer paste supersedes an older one via the sequence.
+  private _payloadDialogConverting = false;
+  private _payloadConversionSeq = 0;
   // ── Live payload editing (host-provided I/O) ───────────────────────
   // The detail view is hass-free; the live Activities host injects these
   // to fetch a command's blob on demand and to Test it on the hub. Absent
   // in backup mode (the payload already lives in the bundle there).
   fetchCommandPayload: ((deviceId: number, commandId: number) => Promise<FetchedCommandPayload | null>) | null = null;
   testCommandPayload: ((hex: string) => Promise<void>) | null = null;
+  // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
+  convertForeignPayload:
+    | ((text: string, format: IrPayloadForeignFormat) => Promise<IrPayloadConvertResponse>)
+    | null = null;
   private _payloadFetchingCommandId: number | null = null;
   private _payloadFetchError = "";
   private _payloadLiveFetched: FetchedCommandPayload | null = null;
@@ -2011,6 +2026,7 @@ export class SofabatonEditDetailView extends LitElement {
           ></textarea>
           <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
             ${this._payloadDialogFormatError
+              || (this._payloadDialogConverting ? S.ucHexConverting : "")
               || (prontoActive ? S.prontoHexHelper : S.payloadHexHelper)}
           </span>
         </label>
@@ -2074,6 +2090,57 @@ export class SofabatonEditDetailView extends LitElement {
     }
   }
 
+  /**
+   * Unfolded Circle paste (IR10): a bare `<protocol>;<0xvalue>;<bits>;<repeat>`
+   * HEX code or a whole codeset CSV row. PRONTO rows unwrap locally; HEX
+   * codes go to the backend, which renders them through infrared-protocols
+   * and returns both hex projections. Returns false when the text is not a
+   * UC paste so the caller continues with its own handling.
+   */
+  private _tryForeignPaste(text: string): boolean {
+    const paste = resolveUcPaste(text);
+    if (!paste) return false;
+    if (paste.name && this._payloadDialogAddMode && !this._payloadDialogNameDraft.trim()) {
+      this._payloadDialogNameDraft = sanitizeBundleName(this.bundle, paste.name);
+    }
+    if (paste.kind === "pronto") {
+      this._morphToHex(paste.code, "pronto");
+      return true;
+    }
+    void this._convertForeignCode(paste.code, "uc_hex");
+    return true;
+  }
+
+  private async _convertForeignCode(code: string, format: IrPayloadForeignFormat) {
+    // Show the pasted code on the pronto tab while the backend works; the
+    // stale sofabaton bytes underneath are fenced off by `_converting`.
+    this._payloadDialogDecodedSnapshot = null;
+    this._payloadDialogDecodedDrafts = {};
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoAvailable = true;
+    this._payloadDialogProntoDraft = code;
+    this._payloadDialogFormatError = "";
+    const seq = ++this._payloadConversionSeq;
+    if (!this.convertForeignPayload) {
+      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.ucHexNoHost;
+      return;
+    }
+    this._payloadDialogConverting = true;
+    try {
+      const result = await this.convertForeignPayload(code, format);
+      if (seq !== this._payloadConversionSeq) return;
+      // The backend's sofabaton bytes are the truth (they are what the
+      // emitter would send); the pronto view is re-derived from them.
+      this._morphToHex(formatHexForDisplay(result.sofabaton_hex), "sofabaton");
+      this._payloadDialogHexTab = "pronto";
+    } catch (error) {
+      if (seq !== this._payloadConversionSeq) return;
+      this._payloadDialogFormatError = localizeBackendError(error, "ir_convert");
+    } finally {
+      if (seq === this._payloadConversionSeq) this._payloadDialogConverting = false;
+    }
+  }
+
   /** Parse a pronto draft and write the sofabaton bytes through. */
   private _applyProntoDraft(text: string) {
     if (!text.trim()) {
@@ -2097,6 +2164,10 @@ export class SofabatonEditDetailView extends LitElement {
     const input = event.currentTarget as HTMLTextAreaElement;
     const text = input.value;
     this._payloadDialogError = "";
+    if (this._tryForeignPaste(text)) return;
+    // Any further typing supersedes an in-flight conversion.
+    this._payloadConversionSeq += 1;
+    this._payloadDialogConverting = false;
     const detected = detectIrPayloadFormat(text);
     if (detected === "descriptor") {
       if (bundleIsX2(this.bundle)) {
@@ -2135,6 +2206,9 @@ export class SofabatonEditDetailView extends LitElement {
     const text = input.value;
     this._payloadDialogError = "";
     if (this._liveDeviceIsIr()) {
+      if (this._tryForeignPaste(text)) return;
+      this._payloadConversionSeq += 1;
+      this._payloadDialogConverting = false;
       const detected = detectIrPayloadFormat(text);
       if (detected === "pronto") {
         this._morphToHex(text, "pronto");
@@ -2314,6 +2388,7 @@ export class SofabatonEditDetailView extends LitElement {
       fieldKey === "descriptor" &&
       this._payloadDialogDecodedSnapshot?.className === "ir"
     ) {
+      if (this._tryForeignPaste(input.value)) return;
       const detected = detectIrPayloadFormat(input.value);
       if (detected === "pronto") {
         this._morphToHex(input.value, "pronto");
@@ -2691,6 +2766,11 @@ export class SofabatonEditDetailView extends LitElement {
       this._payloadDialogTestError = this._payloadDialogFormatError;
       return;
     }
+    if (this._payloadDialogConverting) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
+      return;
+    }
     const value = this._payloadDialogDecodedSnapshot
       ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim()
       : String(this._payloadDialogRawDraft ?? "").trim();
@@ -2736,6 +2816,9 @@ export class SofabatonEditDetailView extends LitElement {
   private _closeCommandPayloadDialog = () => {
     this._exitLearnMode();
     this._payloadLearnSourceNote = "";
+    // A conversion still in flight must not land in the next dialog.
+    this._payloadConversionSeq += 1;
+    this._payloadDialogConverting = false;
     this._payloadDialogOpen = false;
     this._payloadDialogTarget = null;
     this._payloadDialogDecodedSnapshot = null;
@@ -3029,6 +3112,10 @@ export class SofabatonEditDetailView extends LitElement {
     if (!target || !this.bundle) return;
     if (this._payloadDialogFormatError) {
       this._payloadDialogError = this._payloadDialogFormatError;
+      return;
+    }
+    if (this._payloadDialogConverting) {
+      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
       return;
     }
     if (this._payloadDialogAddMode) {

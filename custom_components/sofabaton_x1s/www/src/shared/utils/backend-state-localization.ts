@@ -8,7 +8,20 @@ type BackendOperation =
   | "entity_sync"
   | "wifi_deploy";
 
-export type BackendErrorSurface = "ir_learn" | "ir_emissions";
+export type BackendErrorSurface = "ir_learn" | "ir_emissions" | "ir_convert";
+
+/**
+ * The `ir_payload/convert` rejection carries the refused protocol as its
+ * message (e.g. `JVC (6)`, `NEC with 16 bits`). That is an identifier, not
+ * prose, so it may be interpolated - but only when it looks like one.
+ */
+function conversionDetail(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const message = (value as Record<string, unknown>).message;
+  if (typeof message !== "string") return null;
+  const trimmed = message.trim();
+  return /^[A-Za-z0-9_ ()-]{1,40}$/.test(trimmed) ? trimmed : null;
+}
 
 type ProgressLike = Partial<BackupProgressEvent> & {
   current_step?: number | null;
@@ -45,6 +58,16 @@ export function backendErrorCode(value: unknown): string | null {
 export function localizeBackendError(value: unknown, surface: BackendErrorSurface): string {
   const S = TOOLS_CARD_STRINGS.backup;
   if (surface === "ir_emissions") return S.learnHaUnavailable;
+  if (surface === "ir_convert") {
+    const code = backendErrorCode(value);
+    if (code === "uc_hex_invalid") return S.ucHexInvalid;
+    if (code === "uc_hex_unsupported_protocol" || code === "uc_hex_unsupported_bits") {
+      return S.ucHexUnsupported(conversionDetail(value) ?? S.ucHexUnknownProtocol);
+    }
+    if (code === "uc_hex_unrepresentable") return S.ucHexUnrepresentable;
+    if (code === "unavailable") return S.ucHexUnavailable;
+    return S.ucHexFailed;
+  }
 
   const event = value && typeof value === "object" ? value as Record<string, unknown> : null;
   const state = String(event?.state || "").trim().toLowerCase();

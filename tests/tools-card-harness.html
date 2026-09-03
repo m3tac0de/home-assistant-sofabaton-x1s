@@ -1678,6 +1678,38 @@
               });
             case "sofabaton_x1s/blobs/play":
               return respond(type, { ok: true });
+            case "sofabaton_x1s/ir_payload/convert": {
+              // Foreign-code conversion is backend-only (infrared-protocols);
+              // the harness answers from the Python golden vector for the
+              // Onkyo NEC row and refuses everything else the way the WS
+              // command does, so the paste flow can be exercised end to end.
+              const UC_HEX_VECTORS = [
+                {
+                  // tests/fixtures/uc-hex-vectors.json "onkyo-nec-extended"
+                  text: "3;0x4B36D32C;32;0",
+                  response: {
+                    format: "uc_hex",
+                    timings_us: [9000, 4500, 562, 562, 562, 1687, 562, 562, 562, 562, 562, 1687, 562, 562, 562, 1687, 562, 1687, 562, 562, 562, 562, 562, 1687, 562, 1687, 562, 562, 562, 1687, 562, 1687, 562, 562, 562, 1687, 562, 1687, 562, 562, 562, 1687, 562, 562, 562, 562, 562, 1687, 562, 1687, 562, 562, 562, 562, 562, 1687, 562, 562, 562, 1687, 562, 1687, 562, 562, 562, 562, 562],
+                    carrier_hz: 38000,
+                    pronto_hex: "0000 006D 0022 0000 0156 00AB 0015 0015 0015 0040 0015 0015 0015 0015 0015 0040 0015 0015 0015 0040 0015 0040 0015 0015 0015 0015 0015 0040 0015 0040 0015 0015 0015 0040 0015 0040 0015 0015 0015 0040 0015 0040 0015 0015 0015 0040 0015 0015 0015 0015 0015 0040 0015 0040 0015 0015 0015 0015 0015 0040 0015 0015 0015 0040 0015 0040 0015 0015 0015 0015 0015 05F0",
+                    sofabaton_hex: "01100000000094700000232800001194000002320000023200000232000006970000023200000232000002320000023200000232000006970000023200000232000002320000069700000232000006970000023200000232000002320000023200000232000006970000023200000697000002320000023200000232000006970000023200000697000002320000023200000232000006970000023200000697000002320000023200000232000006970000023200000232000002320000023200000232000006970000023200000697000002320000023200000232000002320000023200000697000002320000023200000232000006970000023200000697000002320000023200000232000002320000023200009c4000000000",
+                    protocol: 3,
+                    protocol_name: "NEC",
+                    bits: 32,
+                    repeat: 0,
+                  },
+                },
+              ];
+              const text = String(message.text ?? "").trim();
+              const match = UC_HEX_VECTORS.find((vector) => vector.text === text);
+              if (match) return respond(type, match.response);
+              if (!/^\s*[A-Za-z_0-9]+\s*;\s*(?:0[xX])?[0-9A-Fa-f]+\s*;\s*\d+\s*;\s*\d+\s*$/.test(text)) {
+                wsLog(type, "err");
+                return Promise.reject({ code: "uc_hex_invalid", message: "not an Unfolded Circle HEX code" });
+              }
+              wsLog(type, "err");
+              return Promise.reject({ code: "uc_hex_unsupported_protocol", message: `protocol ${text.split(";")[0].trim()}` });
+            }
             case "sofabaton_x1s/ir_emitter/consumers":
               return respond(type, scenario.irEmitterConsumers ?? {
                 available: true,

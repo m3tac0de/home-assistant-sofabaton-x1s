@@ -7,6 +7,7 @@ import type {
   CacheHubState,
   ControlPanelHubState,
   HassLike,
+  IrPayloadForeignFormat,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { formatError } from "../shared/utils/control-panel-selectors";
@@ -385,6 +386,7 @@ class SofabatonBackupTab extends LitElement {
             .entityId=${this._editDetailId}
             .dirty=${this._editBundleDirty}
             mode="backup"
+            .convertForeignPayload=${this._convertForeignPayload}
             @bundle-change=${this._handleDetailBundleChange}
             @close=${this._closeEditDetail}
           ></sofabaton-edit-detail-view>
@@ -1248,6 +1250,11 @@ class SofabatonBackupTab extends LitElement {
     if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
   }
+
+  // The offline editor still has Home Assistant, so foreign IR codes
+  // (Unfolded Circle HEX) convert here exactly as in the live editor.
+  private _convertForeignPayload = (text: string, format: IrPayloadForeignFormat) =>
+    this.api().convertIrPayload(text, format);
 
   private async _runBackup() {
     if (!this.hub) return;

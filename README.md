@@ -220,7 +220,7 @@ Use Wifi Commands for selected physical buttons, or place a Wifi Event in an Act
 <details>
 <summary><strong>Can I use Pronto Hex with my Sofabaton hub?</strong></summary>
 
-Yes. Use the [IrScrutinizer exporters](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/IrScrutinizer) to generate Sofabaton-compatible commands from Pronto Hex signals.
+Yes. Paste a learned-format Pronto Hex code straight into the Control Panel's payload editor, or use the [IrScrutinizer exporters](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/IrScrutinizer) to generate Sofabaton-compatible commands from Pronto Hex signals. Codes exported from an Unfolded Circle remote, in either its PRONTO or its HEX format, can be pasted into the payload editor as well.
 
 For more information about command payloads on Sofabaton hubs and how this integration interacts with them, see the [command payload guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md).
 

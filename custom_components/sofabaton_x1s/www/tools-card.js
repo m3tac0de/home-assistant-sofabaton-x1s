@@ -2416,10 +2416,19 @@ var TOOLS_CARD_STRINGS_EN = {
     prontoHexTab: "Pronto Hex",
     sofabatonHexTab: "Sofabaton Hex",
     descriptorTab: "Descriptor",
-    prontoHexHelper: 'Learned-format Pronto Hex values such as "0000 006D 0022 0000 00AB \u2026" are converted to Sofabaton bytes automatically.',
+    prontoHexHelper: 'Learned-format Pronto Hex values such as "0000 006D 0022 0000 00AB \u2026" and Unfolded Circle HEX codes such as "3;0x4B36D32C;32;0" are converted to Sofabaton bytes automatically.',
     prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
     invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
     descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+    // Unfolded Circle HEX import (converted on the backend through infrared-protocols).
+    ucHexConverting: "Converting the Unfolded Circle code\u2026",
+    ucHexInvalid: "This is not a valid Unfolded Circle HEX code.",
+    ucHexUnknownProtocol: "this protocol",
+    ucHexUnsupported: (protocol) => `Unfolded Circle HEX codes for ${protocol} cannot be converted yet. Export the command as PRONTO instead.`,
+    ucHexUnrepresentable: "This Unfolded Circle HEX code does not follow its protocol's frame rules, so it cannot be converted.",
+    ucHexUnavailable: "Converting Unfolded Circle codes needs the infrared-protocols library, which this Home Assistant does not provide.",
+    ucHexNoHost: "Unfolded Circle codes can only be converted while Home Assistant is connected.",
+    ucHexFailed: "Converting the Unfolded Circle code failed.",
     // Payload-editor learn mode (IR9).
     learn: "Learn",
     learnAria: "Learn a payload from another remote or from Home Assistant",
@@ -2903,6 +2912,17 @@ var ControlPanelApi = class {
       blob
     });
   }
+  /**
+   * Render a foreign IR code (Unfolded Circle HEX) through the backend's
+   * protocol library. Hub-independent: no entry id, nothing is sent.
+   */
+  convertIrPayload(text, format = "uc_hex") {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/ir_payload/convert",
+      text,
+      format
+    });
+  }
   // ── Payload-editor learn mode (IR9) ───────────────────────────────────
   /**
    * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
@@ -3181,6 +3201,13 @@ var ControlPanelApi = class {
 };
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization.ts
+function conversionDetail(value) {
+  if (!value || typeof value !== "object") return null;
+  const message = value.message;
+  if (typeof message !== "string") return null;
+  const trimmed = message.trim();
+  return /^[A-Za-z0-9_ ()-]{1,40}$/.test(trimmed) ? trimmed : null;
+}
 function positiveInteger(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -3200,6 +3227,16 @@ function backendErrorCode(value) {
 function localizeBackendError(value, surface) {
   const S5 = TOOLS_CARD_STRINGS.backup;
   if (surface === "ir_emissions") return S5.learnHaUnavailable;
+  if (surface === "ir_convert") {
+    const code2 = backendErrorCode(value);
+    if (code2 === "uc_hex_invalid") return S5.ucHexInvalid;
+    if (code2 === "uc_hex_unsupported_protocol" || code2 === "uc_hex_unsupported_bits") {
+      return S5.ucHexUnsupported(conversionDetail(value) ?? S5.ucHexUnknownProtocol);
+    }
+    if (code2 === "uc_hex_unrepresentable") return S5.ucHexUnrepresentable;
+    if (code2 === "unavailable") return S5.ucHexUnavailable;
+    return S5.ucHexFailed;
+  }
   const event = value && typeof value === "object" ? value : null;
   const state = String(event?.state || "").trim().toLowerCase();
   const code = backendErrorCode(value);
@@ -7767,10 +7804,61 @@ function buildSofabatonBlob(signal) {
   bytes.push(0, 0, 0, 0);
   return bytes.map((b3) => b3.toString(16).padStart(2, "0")).join("");
 }
+var UC_HEX_RE = /^\s*([A-Za-z_0-9]+)\s*;\s*(?:0[xX])?([0-9A-Fa-f]+)\s*;\s*(\d+)\s*;\s*(\d+)\s*$/;
+function isUcHexCode(text) {
+  return UC_HEX_RE.test(text);
+}
+function unwrapUcCodesetRow(text) {
+  const trimmed = text.trim();
+  if (!trimmed.includes(",")) return null;
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '"') {
+      if (quoted && trimmed[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  const values = cells.map((cell) => cell.trim());
+  const formatIndex = values.findIndex((cell) => /^(HEX|PRONTO)$/i.test(cell));
+  if (formatIndex < 0 || formatIndex + 1 >= values.length) return null;
+  const format = values[formatIndex].toUpperCase();
+  const code = values.slice(formatIndex + 1).join(",").trim();
+  if (!code) return null;
+  const name = formatIndex > 0 ? values.slice(0, formatIndex).join(",").trim() : "";
+  return { name: name || null, format, code };
+}
+function resolveUcPaste(text) {
+  const row = unwrapUcCodesetRow(text);
+  if (row) {
+    if (row.format === "HEX" && isUcHexCode(row.code)) {
+      return { name: row.name, kind: "uc_hex", code: row.code.trim() };
+    }
+    if (row.format === "PRONTO" && detectIrPayloadFormat(row.code) === "pronto") {
+      return { name: row.name, kind: "pronto", code: row.code.trim() };
+    }
+    return null;
+  }
+  if (isUcHexCode(text)) return { name: null, kind: "uc_hex", code: text.trim() };
+  return null;
+}
 function detectIrPayloadFormat(text) {
   const trimmed = text.trim();
   if (trimmed.length === 0) return "unknown";
   if (/^P:/i.test(trimmed)) return "descriptor";
+  if (isUcHexCode(trimmed)) return "uc_hex";
   const tokens = trimmed.split(/\s+/);
   if (tokens.length >= 6 && tokens.every((t4) => /^[0-9a-fA-F]{4}$/.test(t4)) && parseInt(tokens[0], 16) === 0) {
     const once = parseInt(tokens[2], 16);
@@ -10006,12 +10094,21 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogProntoAvailable = true;
     this._payloadDialogFormatError = "";
     this._payloadDialogError = "";
+    // ── Foreign IR codes (Unfolded Circle HEX) ─────────────────────────
+    // Detection is local (the shape is exact); rendering needs protocol
+    // knowledge and runs on the backend through the host callback. While a
+    // conversion is in flight the sofabaton bytes are stale, so Test/Save
+    // wait for it; a newer paste supersedes an older one via the sequence.
+    this._payloadDialogConverting = false;
+    this._payloadConversionSeq = 0;
     // ── Live payload editing (host-provided I/O) ───────────────────────
     // The detail view is hass-free; the live Activities host injects these
     // to fetch a command's blob on demand and to Test it on the hub. Absent
     // in backup mode (the payload already lives in the bundle there).
     this.fetchCommandPayload = null;
     this.testCommandPayload = null;
+    // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
+    this.convertForeignPayload = null;
     this._payloadFetchingCommandId = null;
     this._payloadFetchError = "";
     this._payloadLiveFetched = null;
@@ -10158,6 +10255,9 @@ var SofabatonEditDetailView = class extends i4 {
       const input = event.currentTarget;
       const text = input.value;
       this._payloadDialogError = "";
+      if (this._tryForeignPaste(text)) return;
+      this._payloadConversionSeq += 1;
+      this._payloadDialogConverting = false;
       const detected = detectIrPayloadFormat(text);
       if (detected === "descriptor") {
         if (bundleIsX2(this.bundle)) {
@@ -10191,6 +10291,9 @@ var SofabatonEditDetailView = class extends i4 {
       const text = input.value;
       this._payloadDialogError = "";
       if (this._liveDeviceIsIr()) {
+        if (this._tryForeignPaste(text)) return;
+        this._payloadConversionSeq += 1;
+        this._payloadDialogConverting = false;
         const detected = detectIrPayloadFormat(text);
         if (detected === "pronto") {
           this._morphToHex(text, "pronto");
@@ -10215,6 +10318,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
       if (fieldKey === "descriptor" && this._payloadDialogDecodedSnapshot?.className === "ir") {
+        if (this._tryForeignPaste(input.value)) return;
         const detected = detectIrPayloadFormat(input.value);
         if (detected === "pronto") {
           this._morphToHex(input.value, "pronto");
@@ -10266,6 +10370,8 @@ var SofabatonEditDetailView = class extends i4 {
     this._closeCommandPayloadDialog = () => {
       this._exitLearnMode();
       this._payloadLearnSourceNote = "";
+      this._payloadConversionSeq += 1;
+      this._payloadDialogConverting = false;
       this._payloadDialogOpen = false;
       this._payloadDialogTarget = null;
       this._payloadDialogDecodedSnapshot = null;
@@ -10288,6 +10394,10 @@ var SofabatonEditDetailView = class extends i4 {
       if (!target || !this.bundle) return;
       if (this._payloadDialogFormatError) {
         this._payloadDialogError = this._payloadDialogFormatError;
+        return;
+      }
+      if (this._payloadDialogConverting) {
+        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
         return;
       }
       if (this._payloadDialogAddMode) {
@@ -12028,7 +12138,7 @@ var SofabatonEditDetailView = class extends i4 {
             @change=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
           ></textarea>
           <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
-            ${this._payloadDialogFormatError || (prontoActive ? S5.prontoHexHelper : S5.payloadHexHelper)}
+            ${this._payloadDialogFormatError || (this._payloadDialogConverting ? S5.ucHexConverting : "") || (prontoActive ? S5.prontoHexHelper : S5.payloadHexHelper)}
           </span>
         </label>
       </div>
@@ -12083,6 +12193,51 @@ var SofabatonEditDetailView = class extends i4 {
       this._payloadDialogHexTab = "sofabaton";
       this._payloadDialogRawDraft = text.trim();
       this._syncProntoFromRaw();
+    }
+  }
+  /**
+   * Unfolded Circle paste (IR10): a bare `<protocol>;<0xvalue>;<bits>;<repeat>`
+   * HEX code or a whole codeset CSV row. PRONTO rows unwrap locally; HEX
+   * codes go to the backend, which renders them through infrared-protocols
+   * and returns both hex projections. Returns false when the text is not a
+   * UC paste so the caller continues with its own handling.
+   */
+  _tryForeignPaste(text) {
+    const paste = resolveUcPaste(text);
+    if (!paste) return false;
+    if (paste.name && this._payloadDialogAddMode && !this._payloadDialogNameDraft.trim()) {
+      this._payloadDialogNameDraft = sanitizeBundleName(this.bundle, paste.name);
+    }
+    if (paste.kind === "pronto") {
+      this._morphToHex(paste.code, "pronto");
+      return true;
+    }
+    void this._convertForeignCode(paste.code, "uc_hex");
+    return true;
+  }
+  async _convertForeignCode(code, format) {
+    this._payloadDialogDecodedSnapshot = null;
+    this._payloadDialogDecodedDrafts = {};
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoAvailable = true;
+    this._payloadDialogProntoDraft = code;
+    this._payloadDialogFormatError = "";
+    const seq = ++this._payloadConversionSeq;
+    if (!this.convertForeignPayload) {
+      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.ucHexNoHost;
+      return;
+    }
+    this._payloadDialogConverting = true;
+    try {
+      const result = await this.convertForeignPayload(code, format);
+      if (seq !== this._payloadConversionSeq) return;
+      this._morphToHex(formatHexForDisplay(result.sofabaton_hex), "sofabaton");
+      this._payloadDialogHexTab = "pronto";
+    } catch (error) {
+      if (seq !== this._payloadConversionSeq) return;
+      this._payloadDialogFormatError = localizeBackendError(error, "ir_convert");
+    } finally {
+      if (seq === this._payloadConversionSeq) this._payloadDialogConverting = false;
     }
   }
   /** Parse a pronto draft and write the sofabaton bytes through. */
@@ -12509,6 +12664,11 @@ var SofabatonEditDetailView = class extends i4 {
     if (this._payloadDialogFormatError) {
       this._payloadDialogTestStatus = "error";
       this._payloadDialogTestError = this._payloadDialogFormatError;
+      return;
+    }
+    if (this._payloadDialogConverting) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
       return;
     }
     const value = this._payloadDialogDecodedSnapshot ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim() : String(this._payloadDialogRawDraft ?? "").trim();
@@ -14153,6 +14313,7 @@ SofabatonEditDetailView.properties = {
   _payloadDialogHexTab: { state: true },
   _payloadDialogProntoDraft: { state: true },
   _payloadDialogProntoAvailable: { state: true },
+  _payloadDialogConverting: { state: true },
   _payloadDialogFormatError: { state: true },
   _payloadDialogError: { state: true },
   fetchCommandPayload: { attribute: false },
@@ -14609,6 +14770,9 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       this._restoreActivityIds = [];
       this._restoreManualDeviceIds = [];
     };
+    // The offline editor still has Home Assistant, so foreign IR codes
+    // (Unfolded Circle HEX) convert here exactly as in the live editor.
+    this._convertForeignPayload = (text, format) => this.api().convertIrPayload(text, format);
     this._resetBackupComposer = () => {
       this._backupError = null;
       this._backupProgress = null;
@@ -14781,6 +14945,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
             .entityId=${this._editDetailId}
             .dirty=${this._editBundleDirty}
             mode="backup"
+            .convertForeignPayload=${this._convertForeignPayload}
             @bundle-change=${this._handleDetailBundleChange}
             @close=${this._closeEditDetail}
           ></sofabaton-edit-detail-view>
@@ -19237,6 +19402,9 @@ var SofabatonActivitiesTab = class extends i4 {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
       await this.api().playIrBlob(this.hub.entry_id, hex);
     };
+    // Foreign IR codes (Unfolded Circle HEX) are rendered on the backend;
+    // the view only detects the shape and shows the result.
+    this._convertForeignPayload = (text, format) => this.api().convertIrPayload(text, format);
     // ── Payload-editor learn mode (IR9) ─────────────────────────────────
     // Hub learn = one WS subscription per attempt (unsubscribe cancels the
     // hub window); the HA inbox = a subscription onto the emitter intercept
@@ -19839,6 +20007,7 @@ var SofabatonActivitiesTab = class extends i4 {
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
+          .convertForeignPayload=${this._convertForeignPayload}
           .irLearn=${this._irLearnFacade}
           .wifiEvents=${this._wifiEventsFacade}
           @bundle-change=${this._handleBundleChange}

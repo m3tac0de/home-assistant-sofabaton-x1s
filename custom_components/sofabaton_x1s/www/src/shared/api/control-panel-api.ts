@@ -14,6 +14,8 @@ import type {
   IrEmissionsEvent,
   IrEmitterConsumersResponse,
   IrLearnEvent,
+  IrPayloadConvertResponse,
+  IrPayloadForeignFormat,
   LogsResponse,
   RefreshKind,
   SettingKey,
@@ -78,6 +80,18 @@ export class ControlPanelApi {
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
       blob,
+    });
+  }
+
+  /**
+   * Render a foreign IR code (Unfolded Circle HEX) through the backend's
+   * protocol library. Hub-independent: no entry id, nothing is sent.
+   */
+  convertIrPayload(text: string, format: IrPayloadForeignFormat = "uc_hex") {
+    return this.hass.callWS<IrPayloadConvertResponse>({
+      type: "sofabaton_x1s/ir_payload/convert",
+      text,
+      format,
     });
   }
 

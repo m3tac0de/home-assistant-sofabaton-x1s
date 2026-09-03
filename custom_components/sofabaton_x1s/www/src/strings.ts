@@ -773,11 +773,23 @@ export const TOOLS_CARD_STRINGS_EN = {
     sofabatonHexTab: "Sofabaton Hex",
     descriptorTab: "Descriptor",
     prontoHexHelper:
-      "Learned-format Pronto Hex values such as \"0000 006D 0022 0000 00AB …\" are converted to Sofabaton bytes automatically.",
+      "Learned-format Pronto Hex values such as \"0000 006D 0022 0000 00AB …\" and Unfolded Circle HEX codes such as \"3;0x4B36D32C;32;0\" are converted to Sofabaton bytes automatically.",
     prontoUnavailable:
       "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
     invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
     descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+    // Unfolded Circle HEX import (converted on the backend through infrared-protocols).
+    ucHexConverting: "Converting the Unfolded Circle code…",
+    ucHexInvalid: "This is not a valid Unfolded Circle HEX code.",
+    ucHexUnknownProtocol: "this protocol",
+    ucHexUnsupported: (protocol: string) =>
+      `Unfolded Circle HEX codes for ${protocol} cannot be converted yet. Export the command as PRONTO instead.`,
+    ucHexUnrepresentable:
+      "This Unfolded Circle HEX code does not follow its protocol's frame rules, so it cannot be converted.",
+    ucHexUnavailable:
+      "Converting Unfolded Circle codes needs the infrared-protocols library, which this Home Assistant does not provide.",
+    ucHexNoHost: "Unfolded Circle codes can only be converted while Home Assistant is connected.",
+    ucHexFailed: "Converting the Unfolded Circle code failed.",
     // Payload-editor learn mode (IR9).
     learn: "Learn",
     learnAria: "Learn a payload from another remote or from Home Assistant",

@@ -6,7 +6,7 @@ import {
   useLegacyTextField,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
-import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
 const EditDetailViewElement = customElements.get("sofabaton-edit-detail-view") as {
@@ -707,6 +707,155 @@ test("a descriptor paste on a non-X2 hub is rejected, not applied", () => {
   element._handleProntoPayloadInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
   assert.equal(element._payloadDialogDecodedSnapshot, null); // stayed in hex mode
   assert.notEqual(element._payloadDialogFormatError, "");
+});
+
+// ── IR10: Unfolded Circle pastes ───────────────────────────────────────
+// Detection is local; rendering goes through the host's convert callback
+// (backend + infrared-protocols). The stub below plays the backend.
+
+const UC_ONKYO = "3;0x4B36D32C;32;0";
+const UC_RESPONSE = {
+  format: "uc_hex" as const,
+  timings_us: [9000, 4500, 560, 1690],
+  carrier_hz: 38000,
+  pronto_hex: "0000 006D 0002 0000 0156 00AB 0015 0040",
+  sofabaton_hex: IR_BLOB_HEX,
+  protocol: 3,
+  protocol_name: "NEC",
+  bits: 32,
+  repeat: 0,
+};
+// `settle()` (declared below, hoisted) drains the microtask queue between steps.
+
+test("pasting a UC HEX code converts through the host and lands on the pronto tab", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  const calls: string[] = [];
+  element.convertForeignPayload = async (text: string) => {
+    calls.push(text);
+    return UC_RESPONSE;
+  };
+  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
+  // pending: the pasted code stays visible, Test/Save are fenced off
+  assert.equal(element._payloadDialogConverting, true);
+  assert.equal(element._payloadDialogProntoDraft, UC_ONKYO);
+  const changes = collectBundleChanges(element);
+  element._applyCommandPayloadDialog();
+  assert.equal(changes.length, 0);
+  assert.equal(element._payloadDialogError, TOOLS_CARD_STRINGS.backup.ucHexConverting);
+  await settle();
+  assert.deepEqual(calls, [UC_ONKYO]);
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogFormatError, "");
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  // the backend's sofabaton bytes are the truth; pronto is re-derived from them
+  assert.equal(element._payloadDialogRawDraft.replace(/\s/g, ""), IR_BLOB_HEX);
+  assert.match(element._payloadDialogProntoDraft, /^0000 /);
+});
+
+test("a UC HEX row on the sofabaton tab converts too and names a new command", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payloadDialogAddMode = true;
+  element._payloadDialogNameDraft = "";
+  element._payloadDialogHexTab = "sofabaton";
+  const calls: string[] = [];
+  element.convertForeignPayload = async (text: string) => {
+    calls.push(text);
+    return UC_RESPONSE;
+  };
+  element._handleRawPayloadInput(controlEvent('"Volume-Up","HEX","3;0x4BB640BF;32;0"'));
+  await settle();
+  assert.deepEqual(calls, ["3;0x4BB640BF;32;0"]);
+  assert.match(element._payloadDialogNameDraft, /^Volume.Up$/);
+  assert.equal(element._payloadDialogHexTab, "pronto");
+});
+
+test("a UC codeset row with a PRONTO code unwraps locally without the host", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = null;
+  const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
+  element._handleProntoPayloadInput(controlEvent(`"Power_Toggle","PRONTO","${pronto}"`));
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogFormatError, "");
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.equal(element._payloadDialogProntoDraft, pronto);
+});
+
+test("a UC code the backend refuses stays in the box with the refusal", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = async () => {
+    throw { code: "uc_hex_unsupported_protocol", message: "JVC (6)" };
+  };
+  element._handleProntoPayloadInput(controlEvent("6;0x1234;16;0"));
+  await settle();
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogProntoDraft, "6;0x1234;16;0");
+  assert.equal(
+    element._payloadDialogFormatError,
+    TOOLS_CARD_STRINGS.backup.ucHexUnsupported("JVC (6)"),
+  );
+  const changes = collectBundleChanges(element);
+  element._applyCommandPayloadDialog();
+  assert.equal(changes.length, 0); // save refused while the error stands
+});
+
+test("a refusal message that is not a protocol label is not shown", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = async () => {
+    throw { code: "uc_hex_unsupported_bits", message: "Traceback: something exploded!" };
+  };
+  element._handleProntoPayloadInput(controlEvent("3;0x1234;16;0"));
+  await settle();
+  assert.equal(
+    element._payloadDialogFormatError,
+    TOOLS_CARD_STRINGS.backup.ucHexUnsupported(TOOLS_CARD_STRINGS.backup.ucHexUnknownProtocol),
+  );
+});
+
+test("without a host converter a UC HEX code is refused, not applied", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = null;
+  const before = element._payloadDialogRawDraft;
+  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogFormatError, TOOLS_CARD_STRINGS.backup.ucHexNoHost);
+  assert.equal(element._payloadDialogRawDraft, before);
+});
+
+test("typing over an in-flight conversion supersedes it", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  let release: (value: typeof UC_RESPONSE) => void = () => {};
+  element.convertForeignPayload = () => new Promise((resolve) => { release = resolve; });
+  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
+  assert.equal(element._payloadDialogConverting, true);
+  const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
+  element._handleProntoPayloadInput(controlEvent(pronto));
+  assert.equal(element._payloadDialogConverting, false);
+  release(UC_RESPONSE);
+  await settle();
+  // the late result must not overwrite what the user typed afterwards
+  assert.equal(element._payloadDialogProntoDraft, pronto);
+});
+
+test("a UC HEX paste into the X2 descriptor field converts as well", async () => {
+  const element = irLiveEditor("X2");
+  await element._openAddCommandDialog(); // descriptor form
+  const calls: string[] = [];
+  element.convertForeignPayload = async (text: string) => {
+    calls.push(text);
+    return UC_RESPONSE;
+  };
+  element._handleDecodedFieldInput(controlEvent(UC_ONKYO), "descriptor");
+  await settle();
+  assert.deepEqual(calls, [UC_ONKYO]);
+  assert.equal(element._payloadDialogDecodedSnapshot, null); // hex mode now
+  assert.equal(element._payloadDialogHexTab, "pronto");
 });
 
 test("add-command on a non-X2 IR device opens the hex tabs, not the descriptor", async () => {

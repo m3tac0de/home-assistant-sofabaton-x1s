@@ -339,11 +339,23 @@ export const TOOLS_CARD_STRINGS_NL = {
     sofabatonHexTab: "Sofabaton Hex",
     descriptorTab: "Descriptor",
     prontoHexHelper:
-      'Pronto Hex-waarden in aangeleerd formaat zoals "0000 006D 0022 0000 00AB …" worden automatisch omgezet naar Sofabaton-bytes.',
+      'Pronto Hex-waarden in aangeleerd formaat zoals "0000 006D 0022 0000 00AB …" en Unfolded Circle HEX-codes zoals "3;0x4B36D32C;32;0" worden automatisch omgezet naar Sofabaton-bytes.',
     prontoUnavailable:
       "Deze payload is niet leesbaar als ruwe IR-timingwaarden en kan daarom niet als Pronto Hex worden getoond.",
     invalidProntoHex: "Dit is geen geldige Pronto Hex-code in aangeleerd formaat.",
     descriptorX2Only: "Beschrijvende IR-payloads worden alleen op X2-hubs ondersteund.",
+    // Import van Unfolded Circle HEX-codes (omgezet in de backend via infrared-protocols).
+    ucHexConverting: "Unfolded Circle-code wordt omgezet…",
+    ucHexInvalid: "Dit is geen geldige Unfolded Circle HEX-code.",
+    ucHexUnknownProtocol: "dit protocol",
+    ucHexUnsupported: (protocol: string) =>
+      `Unfolded Circle HEX-codes voor ${protocol} kunnen nog niet worden omgezet. Exporteer het commando in plaats daarvan als PRONTO.`,
+    ucHexUnrepresentable:
+      "Deze Unfolded Circle HEX-code volgt de frameregels van zijn protocol niet en kan daarom niet worden omgezet.",
+    ucHexUnavailable:
+      "Voor het omzetten van Unfolded Circle-codes is de bibliotheek infrared-protocols nodig, die in deze Home Assistant niet beschikbaar is.",
+    ucHexNoHost: "Unfolded Circle-codes kunnen alleen worden omgezet zolang Home Assistant verbonden is.",
+    ucHexFailed: "Het omzetten van de Unfolded Circle-code is mislukt.",
     // Leermodus van de payload-editor (IR9).
     learn: "Inleren",
     learnAria: "Een payload inleren vanaf een andere afstandsbediening of vanuit Home Assistant",

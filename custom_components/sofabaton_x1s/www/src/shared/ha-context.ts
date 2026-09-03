@@ -236,6 +236,26 @@ export interface BlobPlayResponse {
   ok: boolean;
 }
 
+/** Foreign IR code formats the backend can render to the canonical signal. */
+export type IrPayloadForeignFormat = "uc_hex";
+
+/**
+ * `ir_payload/convert`: a foreign code (Unfolded Circle HEX) rendered by the
+ * backend's protocol library into timings + carrier, plus both hex
+ * projections so the payload editor never re-derives them locally.
+ */
+export interface IrPayloadConvertResponse {
+  format: IrPayloadForeignFormat;
+  timings_us: number[];
+  carrier_hz: number;
+  pronto_hex: string;
+  sofabaton_hex: string;
+  protocol: number;
+  protocol_name: string;
+  bits: number;
+  repeat: number;
+}
+
 // ── Payload-editor learn mode (IR9) ─────────────────────────────────────
 /** One entry of the emitter intercept ring (`ir_emissions/subscribe`). */
 export interface IrEmissionRecord {
