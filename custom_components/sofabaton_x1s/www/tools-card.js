@@ -4431,6 +4431,8 @@ var ControlPanelStore = class {
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     } finally {
       this._clearRefreshBusy(hub.entry_id);
     }
@@ -7765,17 +7767,25 @@ function parseSofabatonBlob(hexText) {
   if (carrierHz < 1e4 || carrierHz > 5e5) {
     throw new IrFormatError("ir-format/blob-carrier");
   }
-  const timingsUs = [];
-  let terminated = false;
-  for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
-    const word = blob[pos] * 16777216 + blob[pos + 1] * 65536 + blob[pos + 2] * 256 + blob[pos + 3];
-    if (word === 0) {
-      terminated = true;
-      break;
-    }
-    timingsUs.push(word);
+  const wordAt = (pos) => blob[pos] * 16777216 + blob[pos + 1] * 65536 + blob[pos + 2] * 256 + blob[pos + 3];
+  let timingsUs = [];
+  const declaredBytes = (blob[0] << 8 | blob[1]) + (blob[2] << 8 | blob[3]);
+  if (declaredBytes > 0 && declaredBytes % 4 === 0 && 8 + declaredBytes + 4 <= blob.length) {
+    for (let pos = 8; pos < 8 + declaredBytes; pos += 4) timingsUs.push(wordAt(pos));
+    if (timingsUs.some((v2) => v2 === 0)) timingsUs = [];
   }
-  if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  if (timingsUs.length === 0) {
+    let terminated = false;
+    for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
+      const word = wordAt(pos);
+      if (word === 0) {
+        terminated = true;
+        break;
+      }
+      timingsUs.push(word);
+    }
+    if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  }
   if (timingsUs.length < 2) {
     throw new IrFormatError("ir-format/blob-too-few-timings");
   }

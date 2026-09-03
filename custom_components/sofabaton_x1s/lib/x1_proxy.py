@@ -459,12 +459,14 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._device_request_serial = 0
         self._device_request_inflight: int | None = None
         self._devices_catalog_ready = False
+        self._last_devices_burst_committed = True
         self._device_pending_generation: int | None = None
         self._device_pending_expected_rows: int | None = None
         self._device_pending_rows: dict[int, dict[str, Any]] = {}
         self._activity_request_serial = 0
         self._activity_request_inflight: int | None = None
         self._activities_catalog_ready = False
+        self._last_activities_burst_committed = True
         self._activity_retry_count = 0
         self._activity_retry_due_at: float | None = None
         self._activity_retry_send_pending = False
@@ -669,9 +671,18 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
     def handle_active_state(self, trigger: str) -> None:
         if trigger == "activities":
-            # Whatever triggered this burst, state now mirrors hub rows:
-            # an ACK_READY refresh, if one was in flight, has landed.
+            # Whatever triggered this burst, the ACK_READY refresh (if one
+            # was in flight) is over, even when it went unanswered.
             self._ack_ready_refresh_pending = False
+            if not self._last_activities_burst_committed:
+                # The burst ended on the scheduler timeout without a
+                # complete row set: nothing was committed, so the hint is
+                # unchanged and there is no state to publish. Evaluating
+                # here turned an unanswered read into a phantom power-off
+                # (issue #279 / PR #280). A pending redundant-OFF check
+                # survives only for the X2 retry (see
+                # _on_activities_burst_end).
+                return
         new_id, old_id = self.state.update_activity_state()
         pending_redundant_off = self._pending_redundant_off_check
         self._pending_redundant_off_check = False

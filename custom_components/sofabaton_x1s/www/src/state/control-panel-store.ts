@@ -757,6 +757,10 @@ export class ControlPanelStore {
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
+    } catch (error) {
+      // A hub that did not answer leaves the cached catalog as it was;
+      // say so instead of silently showing the old data as refreshed.
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     } finally {
       this._clearRefreshBusy(hub.entry_id);
     }

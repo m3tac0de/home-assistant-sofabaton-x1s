@@ -688,9 +688,29 @@ class CatalogMixin:
         self.state.devices = committed
         self._devices_catalog_ready = True
 
+    @property
+    def last_devices_burst_committed(self) -> bool:
+        """Whether the most recent devices burst end committed a snapshot.
+
+        A burst also ends on the scheduler's idle timeout; only a complete
+        row set replaces ``state.devices``. Listeners that run after
+        :meth:`_on_devices_burst_end` use this to tell a fresh catalog
+        from an unanswered request. Starts ``True`` so listeners invoked
+        without a preceding burst keep their pre-existing behavior.
+        """
+
+        return self._last_devices_burst_committed
+
+    @property
+    def last_activities_burst_committed(self) -> bool:
+        """Activities counterpart of :attr:`last_devices_burst_committed`."""
+
+        return self._last_activities_burst_committed
+
     def _on_devices_burst_end(self, key: str) -> None:
         generation = self._device_request_inflight
         complete = generation is not None and self._device_pending_generation == generation and self._device_snapshot_complete()
+        self._last_devices_burst_committed = complete
 
         if complete:
             self._commit_pending_device_snapshot()
@@ -741,6 +761,7 @@ class CatalogMixin:
     def _on_activities_burst_end(self, key: str) -> None:
         generation = self._activity_request_inflight
         complete = generation is not None and self._activity_pending_generation == generation and self._activity_snapshot_complete()
+        self._last_activities_burst_committed = complete
 
         if complete:
             self._commit_pending_activity_snapshot()
@@ -762,6 +783,11 @@ class CatalogMixin:
                     seen,
                 )
             self._schedule_activity_retry()
+            if self._activity_retry_due_at is None:
+                # Nothing will confirm this OFF press: an unanswered read
+                # must not leave the check armed for an unrelated later
+                # burst, which would then report a phantom redundant OFF.
+                self._pending_redundant_off_check = False
         self._reset_pending_activity_snapshot()
 
     def get_macros_for_activity(self, act_id: int, *, fetch_if_missing: bool = True) -> tuple[list[dict[str, int | str]], bool]:

@@ -1320,7 +1320,11 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
         result = await hub.async_delete_device(deployed_device_id)
         deleted_hub_device = bool(result)
     if not deleted_hub_device:
-        snapshot = await hub._async_refresh_devices_snapshot()
+        try:
+            snapshot = await hub._async_refresh_devices_snapshot()
+        except TimeoutError as err:
+            connection.send_error(msg["id"], "timeout", str(err))
+            return
         stored_devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
         matches, ambiguous = hub._match_managed_wifi_devices(
             managed_devices=hub._managed_wifi_devices(snapshot),
@@ -4092,7 +4096,13 @@ async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, An
         connection.send_error(msg["id"], "unavailable", str(err))
         return
 
-    await hub.async_request_catalog(msg["kind"])
+    try:
+        await hub.async_request_catalog(msg["kind"])
+    except TimeoutError as err:
+        # The cached catalog is untouched; tell the card the refresh
+        # failed instead of reporting success over stale data.
+        connection.send_error(msg["id"], "timeout", str(err))
+        return
     store = await _async_get_persistent_cache_store(hass)
     if store.enabled:
         payload = await hub.async_export_cache_state()
