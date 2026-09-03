@@ -9349,9 +9349,9 @@ registerRemoteCardTranslation("en-gb", {
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/de.ts
 var REMOTE_CARD_STRINGS_DE = {
   card: {
-    selectEntityError: "W\xE4hle eine Sofabaton-Fernbedienungsentit\xE4t aus",
-    remoteUnavailable: "Die Fernbedienung ist nicht verf\xFCgbar (m\xF6glicherweise ist die Sofabaton-App verbunden).",
-    noActivitiesWarning: "Keine Aktivit\xE4ten in den Attributen der Fernbedienung gefunden.",
+    selectEntityError: "W\xE4hle eine Sofabaton-Fernsteuerungsentit\xE4t aus",
+    remoteUnavailable: "Die Fernsteuerung ist nicht verf\xFCgbar (m\xF6glicherweise ist die Sofabaton-App verbunden).",
+    noActivitiesWarning: "Keine Aktivit\xE4ten in den Attributen der Fernsteuerung gefunden.",
     noMacros: "Keine Makros verf\xFCgbar",
     noFavorites: "Keine Favoriten verf\xFCgbar",
     noCommands: "Keine Befehle verf\xFCgbar",
@@ -9422,7 +9422,7 @@ var REMOTE_CARD_STRINGS_DE = {
   },
   editor: {
     fieldLabels: {
-      entity: "Sofabaton-Fernbedienungsentit\xE4t ausw\xE4hlen",
+      entity: "Sofabaton-Fernsteuerungsentit\xE4t ausw\xE4hlen",
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
@@ -9544,9 +9544,9 @@ registerRemoteCardTranslation("de", REMOTE_CARD_STRINGS_DE);
 var plural = (count, singular, pluralForm = `${singular}s`) => count === 1 ? singular : pluralForm;
 var REMOTE_CARD_STRINGS_ES = {
   card: {
-    selectEntityError: "Selecciona una entidad de control remoto Sofabaton",
-    remoteUnavailable: "El control remoto no est\xE1 disponible (posiblemente porque la aplicaci\xF3n Sofabaton est\xE1 conectada).",
-    noActivitiesWarning: "No se encontraron actividades en los atributos del control remoto.",
+    selectEntityError: "Selecciona una entidad de mando a distancia Sofabaton",
+    remoteUnavailable: "El mando a distancia no est\xE1 disponible (posiblemente porque la aplicaci\xF3n Sofabaton est\xE1 conectada).",
+    noActivitiesWarning: "No se encontraron actividades en los atributos del mando a distancia.",
     noMacros: "No hay macros disponibles",
     noFavorites: "No hay favoritos disponibles",
     noCommands: "No hay comandos disponibles",
@@ -9567,8 +9567,8 @@ var REMOTE_CARD_STRINGS_ES = {
     defaultLayout: "Dise\xF1o predeterminado de actividades",
     activityFallback: (id) => `Actividad ${id}`,
     deviceFallback: (id) => `Dispositivo ${id}`,
-    pickerName: "Control remoto virtual Sofabaton",
-    pickerDescription: "Un control remoto configurable para la integraci\xF3n Sofabaton X1, X1S y X2."
+    pickerName: "Mando a distancia virtual Sofabaton",
+    pickerDescription: "Un mando a distancia configurable para la integraci\xF3n Sofabaton X1, X1S y X2."
   },
   assist: {
     label: "Captura de botones",
@@ -9617,7 +9617,7 @@ var REMOTE_CARD_STRINGS_ES = {
   },
   editor: {
     fieldLabels: {
-      entity: "Seleccionar una entidad de control remoto Sofabaton",
+      entity: "Seleccionar una entidad de mando a distancia Sofabaton",
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
@@ -9655,7 +9655,7 @@ var REMOTE_CARD_STRINGS_ES = {
     modeToggle: "Bot\xF3n de modo",
     deviceModeDescription: "Controla un \xFAnico dispositivo configurado en el hub mediante sus asignaciones de botones y su lista completa de comandos.",
     longPress: "Activar la repetici\xF3n al mantener pulsado un bot\xF3n",
-    longPressDescription: "Mant\xE9n pulsado un bot\xF3n seleccionado para enviar su comando repetidamente, como en el mando f\xEDsico.",
+    longPressDescription: "Mant\xE9n pulsado un bot\xF3n seleccionado para enviar su comando repetidamente, como en el mando a distancia f\xEDsico.",
     longPressButtons: "Botones",
     enableDeviceMode: "Activar el modo de dispositivo",
     initialView: "Vista inicial",
@@ -9933,9 +9933,9 @@ registerRemoteCardTranslation("fr", REMOTE_CARD_STRINGS_FR);
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/nl.ts
 var REMOTE_CARD_STRINGS_NL = {
   card: {
-    selectEntityError: "Selecteer een Sofabaton remote-entiteit",
-    remoteUnavailable: "De remote is niet beschikbaar (mogelijk omdat de Sofabaton-app verbonden is).",
-    noActivitiesWarning: "Geen activiteiten gevonden in de remote-attributen.",
+    selectEntityError: "Selecteer een Sofabaton-entiteit voor afstandsbediening",
+    remoteUnavailable: "De afstandsbediening is niet beschikbaar (mogelijk omdat de Sofabaton-app verbonden is).",
+    noActivitiesWarning: "Geen activiteiten gevonden in de attributen van de afstandsbediening.",
     noMacros: "Geen macro's beschikbaar",
     noFavorites: "Geen favorieten beschikbaar",
     noCommands: "Geen commando's beschikbaar",
@@ -10006,7 +10006,7 @@ var REMOTE_CARD_STRINGS_NL = {
   },
   editor: {
     fieldLabels: {
-      entity: "Selecteer een Sofabaton remote-entiteit",
+      entity: "Selecteer een Sofabaton-entiteit voor afstandsbediening",
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
@@ -10127,9 +10127,9 @@ registerRemoteCardTranslation("nl", REMOTE_CARD_STRINGS_NL);
 // custom_components/sofabaton_x1s/www/src/remote-card-translations/zh-hans.ts
 var REMOTE_CARD_STRINGS_ZH_HANS = {
   card: {
-    selectEntityError: "\u8BF7\u9009\u62E9 Sofabaton \u9065\u63A7\u5668\u5B9E\u4F53",
-    remoteUnavailable: "\u9065\u63A7\u5668\u4E0D\u53EF\u7528\uFF08\u53EF\u80FD\u662F\u56E0\u4E3A Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5\uFF09\u3002",
-    noActivitiesWarning: "\u5728\u9065\u63A7\u5668\u5C5E\u6027\u4E2D\u672A\u627E\u5230\u6D3B\u52A8\u3002",
+    selectEntityError: "\u8BF7\u9009\u62E9 Sofabaton \u9065\u63A7\u5B9E\u4F53",
+    remoteUnavailable: "\u9065\u63A7\u4E0D\u53EF\u7528\uFF08\u53EF\u80FD\u662F\u56E0\u4E3A Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5\uFF09\u3002",
+    noActivitiesWarning: "\u5728\u9065\u63A7\u5C5E\u6027\u4E2D\u672A\u627E\u5230\u6D3B\u52A8\u3002",
     noMacros: "\u6CA1\u6709\u53EF\u7528\u7684\u5B8F",
     noFavorites: "\u6CA1\u6709\u53EF\u7528\u7684\u6536\u85CF",
     noCommands: "\u6CA1\u6709\u53EF\u7528\u547D\u4EE4",
@@ -10200,7 +10200,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
   },
   editor: {
     fieldLabels: {
-      entity: "\u9009\u62E9 Sofabaton \u9065\u63A7\u5668\u5B9E\u4F53",
+      entity: "\u9009\u62E9 Sofabaton \u9065\u63A7\u5B9E\u4F53",
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
@@ -10238,7 +10238,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     modeToggle: "\u6A21\u5F0F\u5207\u6362",
     deviceModeDescription: "\u63A7\u5236 Hub \u4E2D\u914D\u7F6E\u7684\u5355\u4E2A\u8BBE\u5907\uFF0C\u5E76\u4F7F\u7528\u8BE5\u8BBE\u5907\u81EA\u5DF1\u7684\u6309\u952E\u5206\u914D\u548C\u5B8C\u6574\u547D\u4EE4\u5217\u8868\u3002",
     longPress: "\u542F\u7528\u957F\u6309\u91CD\u590D\u53D1\u9001",
-    longPressDescription: "\u6309\u4F4F\u6240\u9009\u6309\u952E\u53EF\u91CD\u590D\u53D1\u9001\u5176\u547D\u4EE4\uFF0C\u5C31\u50CF\u4F7F\u7528\u5B9E\u4F53\u9065\u63A7\u5668\u4E00\u6837\u3002",
+    longPressDescription: "\u6309\u4F4F\u6240\u9009\u6309\u952E\u53EF\u91CD\u590D\u53D1\u9001\u5176\u547D\u4EE4\uFF0C\u5C31\u50CF\u4F7F\u7528\u7269\u7406\u9065\u63A7\u5668\u4E00\u6837\u3002",
     longPressButtons: "\u6309\u952E",
     enableDeviceMode: "\u542F\u7528\u8BBE\u5907\u6A21\u5F0F",
     initialView: "\u521D\u59CB\u89C6\u56FE",

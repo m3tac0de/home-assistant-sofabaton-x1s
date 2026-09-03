@@ -212,8 +212,10 @@ def test_learn_subscribe_reports_a_refused_arm(monkeypatch) -> None:
         )
     )
 
-    assert conn.messages[-1]["event"]["state"] == "refused"
-    assert "arm" in conn.messages[-1]["event"]["message"]
+    assert conn.messages[-1]["event"] == {
+        "state": "refused",
+        "error_code": "ir_learn_refused",
+    }
 
 
 def test_learn_subscribe_unsubscribe_cancels_a_pending_window(monkeypatch) -> None:
@@ -282,7 +284,7 @@ def test_learn_subscribe_surfaces_exceptions_as_error_state(monkeypatch) -> None
 
     assert conn.messages[-1] == {
         "id": 1,
-        "event": {"state": "error", "message": "transport gone"},
+        "event": {"state": "error", "error_code": "ir_learn_failed"},
     }
 
 

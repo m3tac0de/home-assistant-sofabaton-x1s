@@ -19,7 +19,7 @@
  * different write backend behind the same events.
  */
 import { LitElement, css, html, nothing } from "lit";
-import { TOOLS_CARD_STRINGS } from "../strings";
+import { TOOLS_CARD_STRINGS, toolsCardLanguage } from "../strings";
 import {
   activityEditorStyles,
   renderActivityRolesBlock,
@@ -45,6 +45,10 @@ import type {
   IrLearnState,
   WifiEvent,
 } from "../shared/ha-context";
+import {
+  backendErrorCode,
+  localizeBackendError,
+} from "../shared/utils/backend-state-localization";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -185,6 +189,20 @@ export interface IrLearnHost {
 }
 /** Seconds the hub keeps its receiver armed per learn attempt (hub exits at ~60 s anyway). */
 const LEARN_TIMEOUT_S = 60;
+
+/** Format a carrier frequency with the decimal separator of the active card locale. */
+function formatCarrierKhz(carrierHz: number): string {
+  const locale = toolsCardLanguage() || "en";
+  try {
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(carrierHz / 1000);
+  } catch {
+    return (carrierHz / 1000).toFixed(1);
+  }
+}
+
 type MacroTargetMode = "existing" | "new";
 // Step-dialog modes. "input" edits an activity power-macro input ref;
 // "power" refs never open the dialog so aren't included here. Waits are no
@@ -599,7 +617,7 @@ export class SofabatonEditDetailView extends LitElement {
   private _payloadLearnTicker: ReturnType<typeof setInterval> | null = null;
   private _payloadLearnEmissions: IrEmissionRecord[] = [];
   private _payloadLearnEmissionsUnsub: (() => void) | null = null;
-  private _payloadLearnEmissionsError = "";
+  private _payloadLearnEmissionsError: { error_code: string } | null = null;
   private _payloadLearnBaseline: Map<string, string> | null = null;
   private _payloadLearnHaAvailable: boolean | null = null;
   private _payloadLearnConsumers: IrEmitterConsumer[] = [];
@@ -1816,13 +1834,11 @@ export class SofabatonEditDetailView extends LitElement {
         break;
       case "refused":
         icon = "mdi:alert-circle-outline";
-        title = S.learnHubRefused;
-        detail = String(event?.message || "");
+        title = localizeBackendError(event, "ir_learn");
         break;
       case "error":
         icon = "mdi:alert-circle-outline";
-        title = S.learnHubFailed;
-        detail = String(event?.message || "");
+        title = localizeBackendError(event, "ir_learn");
         break;
       default:
         title = S.learnHubListening;
@@ -1867,7 +1883,7 @@ export class SofabatonEditDetailView extends LitElement {
           ? html`
               <div class="section-status error" role="alert">
                 <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${S.learnHaUnavailable} ${this._payloadLearnEmissionsError}</span>
+                <span>${localizeBackendError(this._payloadLearnEmissionsError, "ir_emissions")}</span>
               </div>
             `
           : nothing}
@@ -1890,7 +1906,7 @@ export class SofabatonEditDetailView extends LitElement {
     const isNew = this._emissionIsNew(rec);
     const meta: string[] = [this._learnTimeAgo(rec.when)];
     if (Number(rec.count) > 1) meta.push(S.learnHaSentCount(Number(rec.count)));
-    if (Number(rec.carrier_hz) > 0) meta.push(`${(Number(rec.carrier_hz) / 1000).toFixed(1)} kHz`);
+    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
     return html`
       <button
         class="learn-inbox-row ${isNew ? "is-new" : ""}"
@@ -2783,7 +2799,7 @@ export class SofabatonEditDetailView extends LitElement {
 
   private async _openEmissionInbox(host: IrLearnHost) {
     if (this._payloadLearnEmissionsUnsub) return;
-    this._payloadLearnEmissionsError = "";
+    this._payloadLearnEmissionsError = null;
     try {
       const unsubscribe = await host.subscribeEmissions((emissions) => {
         if (this._payloadLearnView === "off") return;
@@ -2800,7 +2816,9 @@ export class SofabatonEditDetailView extends LitElement {
       this._payloadLearnEmissionsUnsub = unsubscribe;
     } catch (error) {
       if (this._payloadLearnView === "off") return;
-      this._payloadLearnEmissionsError = error instanceof Error ? error.message : String(error);
+      this._payloadLearnEmissionsError = {
+        error_code: backendErrorCode(error) ?? "ir_emissions_failed",
+      };
     }
   }
 
@@ -2851,7 +2869,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadLearnHubDeadline = 0;
     this._payloadLearnSecondsLeft = 0;
     this._payloadLearnEmissions = [];
-    this._payloadLearnEmissionsError = "";
+    this._payloadLearnEmissionsError = null;
     this._payloadLearnBaseline = null;
     this._payloadLearnHaAvailable = null;
     this._payloadLearnConsumers = [];
@@ -2889,7 +2907,7 @@ export class SofabatonEditDetailView extends LitElement {
       this._payloadLearnHubState = "error";
       this._payloadLearnHubEvent = {
         state: "error",
-        message: error instanceof Error ? error.message : String(error),
+        error_code: backendErrorCode(error) ?? "ir_learn_failed",
       };
     }
   }
@@ -2911,13 +2929,13 @@ export class SofabatonEditDetailView extends LitElement {
     const hex = String(event.payload_hex ?? "").trim();
     if (!hex) {
       this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = { state: "error", message: S.learnHubNoPayload };
+      this._payloadLearnHubEvent = { state: "error", error_code: "ir_learn_no_payload" };
       return;
     }
     const timings = Number(event.duration_count) || 0;
     const carrier = Number(event.carrier_hz) || 0;
     const note = timings && carrier
-      ? S.learnHubLearned(timings, (carrier / 1000).toFixed(1))
+      ? S.learnHubLearned(timings, formatCarrierKhz(carrier))
       : S.learnHubLearnedRaw;
     this._adoptLearnedPayload(hex, note);
   }

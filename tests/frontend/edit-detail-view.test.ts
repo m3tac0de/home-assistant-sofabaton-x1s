@@ -6,6 +6,8 @@ import {
   useLegacyTextField,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
 const EditDetailViewElement = customElements.get("sofabaton-edit-detail-view") as {
   new (): HTMLElement;
@@ -734,6 +736,7 @@ function learnHost(overrides: Partial<{
   available: boolean;
   consumers: unknown[];
   consumersFails: boolean;
+  emissionsFails: boolean;
 }> = {}) {
   const calls = {
     learnEvents: null as LearnEventSink | null,
@@ -750,6 +753,7 @@ function learnHost(overrides: Partial<{
       return () => { calls.learnCancelled += 1; };
     },
     subscribeEmissions: async (onEvent: EmissionSink) => {
+      if (overrides.emissionsFails) throw new Error("backend transport gone");
       calls.emissionSink = onEvent;
       return () => { calls.emissionsUnsubscribed += 1; };
     },
@@ -860,7 +864,7 @@ test("hub learn: listening countdown, then a learned payload lands in the hex ed
   assert.equal(element._payloadDialogOpen, true);
   assert.equal(element._payloadDialogRawDraft, "0a 4f 22");
   assert.equal(element._payloadDialogDecodedSnapshot, null);
-  assert.match(element._payloadLearnSourceNote, /136 timings at 38\.4 kHz/);
+  assert.match(element._payloadLearnSourceNote, /136 timing values at 38\.4 kHz/);
   // The finished subscription is released exactly once.
   assert.equal(calls.learnCancelled, 1);
   // Inbox subscription is dropped with learn mode.
@@ -868,6 +872,21 @@ test("hub learn: listening countdown, then a learned payload lands in the hex ed
 
   element._closeCommandPayloadDialog();
   assert.equal(element._payloadLearnSourceNote, "");
+});
+
+test("hub learn: carrier frequency follows the active locale", async () => {
+  setToolsCardLanguage("de");
+  const { host, calls } = learnHost();
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+
+  await element._startHubLearn();
+  calls.learnEvents!({ state: "learned", payload_hex: "0a4f22", carrier_hz: 38400, duration_count: 136 });
+  assert.match(element._payloadLearnSourceNote, /136 IR-Zeitwerte bei 38,4 kHz/);
+
+  element._closeCommandPayloadDialog();
+  setToolsCardLanguage("en");
 });
 
 test("hub learn: terminal outcomes stay on the hub view with a retry; cancel unsubscribes", async () => {
@@ -897,11 +916,11 @@ test("hub learn: terminal outcomes stay on the hub view with a retry; cancel uns
   assert.equal(element._payloadLearnView, "menu");
   assert.equal(calls.learnCancelled, 2); // cancelled the live window
 
-  // A refused arm reads as its own state with the backend's message.
+  // A refused arm reads as its own structured state.
   await element._startHubLearn();
-  calls.learnEvents!({ state: "refused", message: "proxy client connected" });
+  calls.learnEvents!({ state: "refused", error_code: "ir_learn_refused" });
   assert.equal(element._payloadLearnHubState, "refused");
-  assert.equal(element._payloadLearnHubEvent.message, "proxy client connected");
+  assert.equal(element._payloadLearnHubEvent.error_code, "ir_learn_refused");
 
   element._closeCommandPayloadDialog();
   assert.equal(element._payloadLearnView, "off");
@@ -916,8 +935,36 @@ test("hub learn: a subscribe failure surfaces as an error state", async () => {
 
   await element._startHubLearn();
   assert.equal(element._payloadLearnHubState, "error");
-  assert.equal(element._payloadLearnHubEvent.message, "no socket");
+  assert.equal(element._payloadLearnHubEvent.error_code, "ir_learn_failed");
   element._closeCommandPayloadDialog();
+});
+
+test("localized learn views never render backend exception messages", async () => {
+  setToolsCardLanguage("de");
+  const { host } = learnHost({ emissionsFails: true });
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+  assert.deepEqual(element._payloadLearnEmissionsError, { error_code: "ir_emissions_failed" });
+
+  element._payloadLearnView = "hub";
+  element._payloadLearnHubState = "error";
+  element._payloadLearnHubEvent = {
+    state: "error",
+    error_code: "ir_learn_failed",
+    message: "backend transport gone",
+  };
+  const hubText = templateText(element._renderLearnHub());
+  assert.match(hubText, /Anlernen fehlgeschlagen/);
+  assert.doesNotMatch(hubText, /backend transport gone/);
+
+  element._payloadLearnView = "ha";
+  const inboxText = templateText(element._renderLearnInbox());
+  assert.match(inboxText, /Zuletzt gesendete IR-Befehle konnten nicht geladen werden/);
+  assert.doesNotMatch(inboxText, /backend transport gone/);
+
+  element._closeCommandPayloadDialog();
+  setToolsCardLanguage("en");
 });
 
 test("inbox: new sends are judged against the ring as first seen, and Use adopts the payload", async () => {

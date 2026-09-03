@@ -218,9 +218,9 @@ Use Wifi Commands for selected physical buttons, or place a Wifi Event in an Act
 </details>
 
 <details>
-<summary><strong>Can I use Pronto HEX with my Sofabaton hub?</strong></summary>
+<summary><strong>Can I use Pronto Hex with my Sofabaton hub?</strong></summary>
 
-Yes. Use the [IrScrutinizer exporters](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/IrScrutinizer) to generate Sofabaton-compatible commands from Pronto HEX signals.
+Yes. Use the [IrScrutinizer exporters](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/IrScrutinizer) to generate Sofabaton-compatible commands from Pronto Hex signals.
 
 For more information about command payloads on Sofabaton hubs and how this integration interacts with them, see the [command payload guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md).
 

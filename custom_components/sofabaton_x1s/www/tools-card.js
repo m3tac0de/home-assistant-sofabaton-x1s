@@ -2413,30 +2413,30 @@ var TOOLS_CARD_STRINGS_EN = {
     rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
     payloadHex: "Payload (hex bytes)",
     payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
-    prontoHexTab: "PRONTO HEX",
-    sofabatonHexTab: "SOFABATON HEX",
-    descriptorTab: "DESCRIPTOR",
-    prontoHexHelper: 'Learned-format pronto words like "0000 006D 0022 0000 00AB \u2026"; converted to Sofabaton bytes automatically.',
-    prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as pronto hex.",
-    invalidProntoHex: "This is not a valid learned-format pronto code.",
+    prontoHexTab: "Pronto Hex",
+    sofabatonHexTab: "Sofabaton Hex",
+    descriptorTab: "Descriptor",
+    prontoHexHelper: 'Learned-format Pronto Hex values such as "0000 006D 0022 0000 00AB \u2026" are converted to Sofabaton bytes automatically.',
+    prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+    invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
     descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
     // Payload-editor learn mode (IR9).
     learn: "Learn",
-    learnAria: "Learn a payload from a remote or from Home Assistant",
+    learnAria: "Learn a payload from another remote or from Home Assistant",
     learnBack: "Back",
     learnTryAgain: "Try again",
-    learnFromHub: "From a remote",
-    learnFromHubDescription: "The hub's receiver listens for one button press from a physical remote pointed at it.",
+    learnFromHub: "From another remote",
+    learnFromHubDescription: "The hub's receiver listens for one button press from the IR remote whose command you want to learn.",
     learnFromHa: "From Home Assistant",
     learnFromHaDescription: "Anything another integration sends through the hub's infrared emitter lands here, ready to save.",
     learnHaChecking: "Checking which integrations use the hub's emitter\u2026",
     learnHubArming: "Arming the hub's receiver\u2026",
-    learnHubListening: "Point the remote at the hub and press the button once.",
+    learnHubListening: "Point that remote at the hub and press the button once.",
     learnHubCountdown: (left) => `Listening\u2026 ${left}`,
-    learnHubLearned: (timings, khz) => `Learned from the remote: ${timings} timings at ${khz} kHz. Test it, then Save.`,
-    learnHubLearnedRaw: "Learned from the remote. Test it, then Save.",
+    learnHubLearned: (timings, khz) => `Learned from the source remote: ${timings} timing values at ${khz} kHz. Test it, then Save.`,
+    learnHubLearnedRaw: "Learned from the source remote. Test it, then Save.",
     learnHubTimedOut: "No signal arrived before the hub's learning window closed.",
-    learnHubInterrupted: (by) => `Other hub traffic ended the learning window (${by}). Keep the paired remote untouched and try again.`,
+    learnHubInterrupted: (by) => `Other hub traffic ended the learning window (${by}).`,
     learnHubCancelled: "Learning cancelled.",
     learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
     learnHubFailed: "Learning failed.",
@@ -2448,7 +2448,7 @@ var TOOLS_CARD_STRINGS_EN = {
     learnHaUse: "Use",
     learnHaSentCount: (count) => `\xD7${count}`,
     learnHaCaptured: (label) => `Captured from Home Assistant: ${label}. Test it, then Save.`,
-    learnHaUnavailable: "Could not read the emitter inbox.",
+    learnHaUnavailable: "Could not load recently emitted IR commands.",
     learnJustNow: "just now",
     learnSecondsAgo: (seconds) => `${seconds} s ago`,
     learnMinutesAgo: (minutes) => `${minutes} min ago`,
@@ -2805,6 +2805,9 @@ function setToolsCardLanguage(language) {
   const translation = resolveTranslation(lang);
   currentStrings = translation ? deepMerge(TOOLS_CARD_STRINGS_EN, translation) : TOOLS_CARD_STRINGS_EN;
   return true;
+}
+function toolsCardLanguage() {
+  return currentLanguage;
 }
 function hasToolsCardTranslation(language) {
   return Boolean(resolveTranslation(normalizeToolsCardLanguage(language)));
@@ -3181,6 +3184,32 @@ var ControlPanelApi = class {
 function positiveInteger(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function normalizedErrorCode(value) {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toLowerCase();
+  return /^[a-z][a-z0-9_.-]*$/.test(code) ? code : null;
+}
+function backendErrorCode(value) {
+  if (!value || typeof value !== "object") return null;
+  const error = value;
+  const direct = normalizedErrorCode(error.error_code) ?? normalizedErrorCode(error.code);
+  if (direct) return direct;
+  return error.error && error.error !== value ? backendErrorCode(error.error) : null;
+}
+function localizeBackendError(value, surface) {
+  const S5 = TOOLS_CARD_STRINGS.backup;
+  if (surface === "ir_emissions") return S5.learnHaUnavailable;
+  const event = value && typeof value === "object" ? value : null;
+  const state = String(event?.state || "").trim().toLowerCase();
+  const code = backendErrorCode(value);
+  if (state === "refused" || code === "ir_learn_refused" || code === "unavailable" || code === "busy" || code === "operation_locked") {
+    return S5.learnHubRefused;
+  }
+  if (code === "ir_learn_no_payload" || code === "no_payload") {
+    return S5.learnHubNoPayload;
+  }
+  return S5.learnHubFailed;
 }
 function progressStep(progress) {
   const total = positiveInteger(progress.total_steps);
@@ -9890,6 +9919,17 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
 var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 var LEARN_TIMEOUT_S = 60;
+function formatCarrierKhz(carrierHz) {
+  const locale = toolsCardLanguage() || "en";
+  try {
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    }).format(carrierHz / 1e3);
+  } catch {
+    return (carrierHz / 1e3).toFixed(1);
+  }
+}
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function bundleSupportsUnicodeNames(bundle) {
@@ -10004,7 +10044,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadLearnTicker = null;
     this._payloadLearnEmissions = [];
     this._payloadLearnEmissionsUnsub = null;
-    this._payloadLearnEmissionsError = "";
+    this._payloadLearnEmissionsError = null;
     this._payloadLearnBaseline = null;
     this._payloadLearnHaAvailable = null;
     this._payloadLearnConsumers = [];
@@ -11828,13 +11868,11 @@ var SofabatonEditDetailView = class extends i4 {
         break;
       case "refused":
         icon = "mdi:alert-circle-outline";
-        title = S5.learnHubRefused;
-        detail = String(event?.message || "");
+        title = localizeBackendError(event, "ir_learn");
         break;
       case "error":
         icon = "mdi:alert-circle-outline";
-        title = S5.learnHubFailed;
-        detail = String(event?.message || "");
+        title = localizeBackendError(event, "ir_learn");
         break;
       default:
         title = S5.learnHubListening;
@@ -11872,7 +11910,7 @@ var SofabatonEditDetailView = class extends i4 {
         ${this._payloadLearnEmissionsError ? b2`
               <div class="section-status error" role="alert">
                 <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${S5.learnHaUnavailable} ${this._payloadLearnEmissionsError}</span>
+                <span>${localizeBackendError(this._payloadLearnEmissionsError, "ir_emissions")}</span>
               </div>
             ` : A}
         <div class="learn-inbox-list" role="list">
@@ -11891,7 +11929,7 @@ var SofabatonEditDetailView = class extends i4 {
     const isNew = this._emissionIsNew(rec);
     const meta = [this._learnTimeAgo(rec.when)];
     if (Number(rec.count) > 1) meta.push(S5.learnHaSentCount(Number(rec.count)));
-    if (Number(rec.carrier_hz) > 0) meta.push(`${(Number(rec.carrier_hz) / 1e3).toFixed(1)} kHz`);
+    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
     return b2`
       <button
         class="learn-inbox-row ${isNew ? "is-new" : ""}"
@@ -12545,7 +12583,7 @@ var SofabatonEditDetailView = class extends i4 {
   }
   async _openEmissionInbox(host) {
     if (this._payloadLearnEmissionsUnsub) return;
-    this._payloadLearnEmissionsError = "";
+    this._payloadLearnEmissionsError = null;
     try {
       const unsubscribe = await host.subscribeEmissions((emissions) => {
         if (this._payloadLearnView === "off") return;
@@ -12562,7 +12600,9 @@ var SofabatonEditDetailView = class extends i4 {
       this._payloadLearnEmissionsUnsub = unsubscribe;
     } catch (error) {
       if (this._payloadLearnView === "off") return;
-      this._payloadLearnEmissionsError = error instanceof Error ? error.message : String(error);
+      this._payloadLearnEmissionsError = {
+        error_code: backendErrorCode(error) ?? "ir_emissions_failed"
+      };
     }
   }
   /**
@@ -12611,7 +12651,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadLearnHubDeadline = 0;
     this._payloadLearnSecondsLeft = 0;
     this._payloadLearnEmissions = [];
-    this._payloadLearnEmissionsError = "";
+    this._payloadLearnEmissionsError = null;
     this._payloadLearnBaseline = null;
     this._payloadLearnHaAvailable = null;
     this._payloadLearnConsumers = [];
@@ -12652,7 +12692,7 @@ var SofabatonEditDetailView = class extends i4 {
       this._payloadLearnHubState = "error";
       this._payloadLearnHubEvent = {
         state: "error",
-        message: error instanceof Error ? error.message : String(error)
+        error_code: backendErrorCode(error) ?? "ir_learn_failed"
       };
     }
   }
@@ -12671,12 +12711,12 @@ var SofabatonEditDetailView = class extends i4 {
     const hex = String(event.payload_hex ?? "").trim();
     if (!hex) {
       this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = { state: "error", message: S5.learnHubNoPayload };
+      this._payloadLearnHubEvent = { state: "error", error_code: "ir_learn_no_payload" };
       return;
     }
     const timings = Number(event.duration_count) || 0;
     const carrier = Number(event.carrier_hz) || 0;
-    const note = timings && carrier ? S5.learnHubLearned(timings, (carrier / 1e3).toFixed(1)) : S5.learnHubLearnedRaw;
+    const note = timings && carrier ? S5.learnHubLearned(timings, formatCarrierKhz(carrier)) : S5.learnHubLearnedRaw;
     this._adoptLearnedPayload(hex, note);
   }
   _useEmission(rec) {

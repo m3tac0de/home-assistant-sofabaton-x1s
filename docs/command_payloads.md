@@ -37,7 +37,7 @@ Choose **Add command** in the Device editor, then enter a name and payload.
 The form depends on the Device class:
 
 - **IR** — enter a descriptive payload beginning with `P:`, such as
-  `P:Sony12 R:40000 D:1 F:18 MUL:2`, paste pronto or Sofabaton hex, or use
+  `P:Sony12 R:40000 D:1 F:18 MUL:2`, paste Pronto Hex or Sofabaton Hex, or use
   **Learn** to capture the code (see below). You can Test it before saving.
 - **Supported Wifi classes** — edit the structured fields. The editor uses an
   existing command from that Device as a template for the hub-specific record.
@@ -68,7 +68,7 @@ tabs. It offers up to two sources:
   distinct codes. This is the only way to capture codes that are generated on
   the fly, such as air-conditioner state frames.
 
-Either way the code lands as Sofabaton hex with its pronto view alongside.
+Either way the code lands as Sofabaton Hex with its Pronto Hex view alongside.
 Test it, then Save; the command is written to the hub on the next Sync.
 
 ## ◇ Payload forms

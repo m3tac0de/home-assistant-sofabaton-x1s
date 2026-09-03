@@ -197,8 +197,8 @@ data:
 ## ◇ `sofabaton_x1s.set_ir_learn_mode`
 
 Arms or disarms the hub's IR learning mode, the same mode the official app
-uses when it learns a code from a physical remote. While armed, the hub's
-IR receiver waits for a button press.
+uses when it learns a code from a source IR remote. While armed, the hub's
+IR receiver waits for a button press from that remote.
 
 For the complete learn flow (arm, wait, and get the captured payload back),
 use [`ir_learn_command`](#-sofabaton_x1sir_learn_command) instead. This
@@ -236,7 +236,7 @@ Notes:
 
 ## ◇ `sofabaton_x1s.ir_learn_command`
 
-Learns one IR command from a physical remote, end to end: exits any stale
+Learns one IR command from a source IR remote, end to end: exits any stale
 learning session, arms learning mode, waits for a button press, and returns
 the result. No manual mode switching is needed around this action.
 
@@ -282,7 +282,7 @@ Notes:
   nothing of its own can end the learning window. Other write actions issued
   meanwhile are delayed until it finishes.
 - `interrupted` is normal behavior, not an error: any wire traffic ends the
-  hub's learning window. Keep the paired remote untouched while learning.
+  hub's learning window.
 - Point the source remote close to the hub and press the button briefly. On
   a timeout the action disarms learning mode explicitly on its way out.
 
@@ -854,4 +854,3 @@ action: sofabaton_x1s.sync_command_config
 data:
   device: <hub_device_id>
 ```
-

@@ -277,11 +277,13 @@ export type IrLearnState =
   | "error";
 export interface IrLearnEvent {
   state: IrLearnState;
+  error_code?: string;
   payload_hex?: string | null;
   carrier_hz?: number;
   duration_count?: number;
   timeout_s?: number;
   interrupted_by?: string;
+  /** Diagnostic fallback for old backends; cards must render `error_code`, not this text. */
   message?: string;
 }
 

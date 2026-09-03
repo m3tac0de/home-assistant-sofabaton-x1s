@@ -95,6 +95,23 @@ literal UI text outside the English table.
 - Use sentence case. Use the single-character ellipsis (`…`) for progress text,
   not three periods (`...`). French uses a non-breaking space before `:`, `;`,
   `?`, and `!` so punctuation cannot wrap onto a line by itself.
+- Write the protocol format as **Pronto Hex** in prose. CSS may render compact
+  tab labels in uppercase, but the underlying accessible label stays in sentence case.
+- In IR learning copy, call the remote whose signal is being captured the
+  **source remote** so it stays distinct from the Sofabaton hub and receiver.
+- Treat **remote** as context-sensitive. For a Home Assistant `remote` entity,
+  follow Home Assistant's domain term: **Fernsteuerung** (German), **mando a
+  distancia** (Spanish), **télécommande** (French), **afstandsbediening**
+  (Dutch), and **遥控** (Simplified Chinese). For the handheld hardware, use
+  the natural physical-device term instead (for example, **遥控器** in Chinese).
+- Keep payload terminology stable inside the editor: German `Nutzdaten`, Spanish
+  `carga útil`, French `données utiles`, Dutch `payload`, and Simplified Chinese
+  `有效载荷`. Simplified Chinese also keeps the Sofabaton product term `Hub` unchanged.
+- Backend progress and failure payloads must expose stable machine-readable
+  fields (`kind`/`phase`/`step_kind` or `error_code`). Translate those fields at
+  the card boundary; never place a backend exception message directly on a
+  localized screen. Unknown error codes fall back to localized generic copy;
+  retain diagnostic detail in logs rather than treating it as interface text.
 - Treat tabs, pills, chips, and buttons as compact copy. Prefer a direct verb
   when the surrounding UI already supplies the object. Put a longer
   explanation in helper text, a tooltip, or an `aria-label` rather than in the

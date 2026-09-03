@@ -1,0 +1,14 @@
+{
+  "entity": {
+    "infrared": {
+      "ir_emitter": {
+        "name": "红外发射器"
+      }
+    },
+    "sensor": {
+      "ir_intercept": {
+        "name": "最近截获的红外命令"
+      }
+    }
+  }
+}

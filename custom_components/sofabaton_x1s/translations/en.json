@@ -177,7 +177,7 @@
         "name": "Wi-Fi commands"
       },
       "ir_intercept": {
-        "name": "IR intercept"
+        "name": "Last intercepted IR command"
       },
       "recorded_keypress": {
         "name": "Recorded keypress"
@@ -457,7 +457,7 @@
     },
     "set_ir_learn_mode": {
       "name": "Set IR learn mode",
-      "description": "Arms or disarms the hub's IR learning mode. While armed, the hub's IR receiver waits for a button press from a physical remote. Arming always exits any previous learning session first. This action only toggles the mode; it does not wait for a captured code. Use Learn IR command for the full learn flow.",
+      "description": "Arms or disarms the hub's IR learning mode. While armed, the hub's IR receiver waits for a button press from the source IR remote. Arming always exits any previous learning session first. This action only toggles the mode; it does not wait for a captured code. Use Learn IR command for the full learn flow.",
       "fields": {
         "device": {
           "name": "Sofabaton hub",
@@ -471,7 +471,7 @@
     },
     "ir_learn_command": {
       "name": "Learn IR command",
-      "description": "Arms the hub's IR learning mode and waits for one code from a physical remote. The response reports what happened: `learned` (with the captured payload), `timed_out` (nothing was received), or `interrupted` (other hub traffic ended the learning window). No manual mode switching is needed.",
+      "description": "Arms the hub's IR learning mode and waits for one code from the source IR remote. The response reports what happened: `learned` (with the captured payload), `timed_out` (nothing was received), or `interrupted` (other hub traffic ended the learning window). No manual mode switching is needed.",
       "fields": {
         "device": {
           "name": "Sofabaton hub",
@@ -530,12 +530,12 @@
       }
     },
     "send_pronto": {
-      "name": "Send pronto hex",
-      "description": "Decodes a pronto hex code (learned format, 0000) and emits it through the hub's IR emitter entity. The send behaves exactly like one from an infrared consumer integration: the emitter timestamp updates and the IR intercept sensor records the hub-ready payload.",
+      "name": "Send Pronto Hex",
+      "description": "Decodes a learned-format Pronto Hex code (0000) and sends it through the hub's IR emitter. The emitter timestamp updates, and the Last intercepted IR command sensor records the payload prepared for the hub.",
       "fields": {
         "pronto": {
-          "name": "Pronto hex",
-          "description": "Space-separated pronto hex words, e.g. `0000 006D 0022 0000 00AB 00AB ...`."
+          "name": "Pronto Hex",
+          "description": "Space-separated four-digit Pronto Hex values, e.g. `0000 006D 0022 0000 00AB 00AB ...`."
         }
       }
     },

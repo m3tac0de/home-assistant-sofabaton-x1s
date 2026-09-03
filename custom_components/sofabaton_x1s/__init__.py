@@ -2128,6 +2128,8 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
 _IR_LEARN_TIMEOUT_DEFAULT = 60.0
 _IR_LEARN_TIMEOUT_MIN = 5.0
 _IR_LEARN_TIMEOUT_MAX = 120.0
+_IR_LEARN_ERROR_FAILED = "ir_learn_failed"
+_IR_LEARN_ERROR_REFUSED = "ir_learn_refused"
 
 
 @websocket_api.websocket_command(
@@ -2144,9 +2146,10 @@ async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str,
     Event ``state`` values: ``listening`` (window armed) then exactly one
     terminal state - ``learned`` (with ``payload_hex``), ``timed_out``,
     ``interrupted`` (``interrupted_by`` names the frame), ``cancelled``,
-    ``refused`` (hub would not arm) or ``error``. Unsubscribing before the
-    terminal event - including the socket closing - cancels the window so
-    the hub is never left armed behind a closed card.
+    ``refused`` (hub would not arm) or ``error``. Failure events carry a
+    stable ``error_code`` for frontend localization. Unsubscribing before
+    the terminal event - including the socket closing - cancels the window
+    so the hub is never left armed behind a closed card.
     """
 
     hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
@@ -2181,16 +2184,16 @@ async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str,
 
     try:
         result = await hub.async_ir_learn_command(timeout=timeout)
-    except Exception as err:  # noqa: BLE001 - surfaced to the card verbatim
+    except Exception as err:  # noqa: BLE001 - logged; card receives a stable code
         _LOGGER.warning("IR learn window failed: %s", err)
-        result = {"state": "error", "message": str(err)}
+        result = {"state": "error", "error_code": _IR_LEARN_ERROR_FAILED}
     finally:
         finished = True
 
     if result is None:
         result = {
             "state": "refused",
-            "message": "Hub did not accept the IR learn-mode arm (proxy client connected?)",
+            "error_code": _IR_LEARN_ERROR_REFUSED,
         }
     _push(result)
 

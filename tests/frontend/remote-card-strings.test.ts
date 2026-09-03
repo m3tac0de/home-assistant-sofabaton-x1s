@@ -72,6 +72,25 @@ test("regional codes fall back to the base language", () => {
   setRemoteCardLanguage("en");
 });
 
+test("physical remote terminology stays aligned with the Control Panel", () => {
+  setRemoteCardLanguage("de");
+  assert.match(str().card.selectEntityError, /Fernsteuerungsentität/);
+
+  setRemoteCardLanguage("es");
+  assert.match(str().card.selectEntityError, /entidad de mando a distancia/);
+  assert.match(str().editor.longPressDescription, /mando a distancia físico/);
+
+  setRemoteCardLanguage("nl");
+  assert.match(str().card.selectEntityError, /entiteit voor afstandsbediening/);
+  assert.match(str().card.remoteUnavailable, /afstandsbediening/);
+  assert.doesNotMatch(str().card.remoteUnavailable, /\bremote\b/i);
+
+  setRemoteCardLanguage("zh-Hans");
+  assert.match(str().card.selectEntityError, /遥控实体/);
+  assert.match(str().editor.longPressDescription, /物理遥控器/);
+  setRemoteCardLanguage("en");
+});
+
 test("device cache recovery names the localized Control Panel card and Hub tab", () => {
   const cases = [
     ["en", TOOLS_CARD_STRINGS],
@@ -266,7 +285,7 @@ test("bundled German translation supports regional locales and inflection", () =
 
   assert.equal(
     str().card.remoteUnavailable,
-    "Die Fernbedienung ist nicht verfügbar (möglicherweise ist die Sofabaton-App verbunden).",
+    "Die Fernsteuerung ist nicht verfügbar (möglicherweise ist die Sofabaton-App verbunden).",
   );
   assert.equal(str().card.activityFallback(7), "Aktivität 7");
   assert.equal(
@@ -337,7 +356,7 @@ test("bundled Spanish translation supports regional locales and inflection", () 
 
   assert.equal(
     str().card.remoteUnavailable,
-    "El control remoto no está disponible (posiblemente porque la aplicación Sofabaton está conectada).",
+    "El mando a distancia no está disponible (posiblemente porque la aplicación Sofabaton está conectada).",
   );
   assert.equal(str().card.activityFallback(7), "Actividad 7");
   assert.equal(
@@ -358,7 +377,7 @@ test("bundled Simplified Chinese translation supports the zh-Hans locale", () =>
 
   assert.equal(
     str().card.remoteUnavailable,
-    "遥控器不可用（可能是因为 Sofabaton 应用已连接）。",
+    "遥控不可用（可能是因为 Sofabaton 应用已连接）。",
   );
   assert.equal(str().card.activityFallback(7), "活动 7");
   assert.equal(

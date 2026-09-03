@@ -12,10 +12,10 @@ import {
 
 const REMOTE_CARD_STRINGS_NL = {
   card: {
-    selectEntityError: "Selecteer een Sofabaton remote-entiteit",
+    selectEntityError: "Selecteer een Sofabaton-entiteit voor afstandsbediening",
     remoteUnavailable:
-      "De remote is niet beschikbaar (mogelijk omdat de Sofabaton-app verbonden is).",
-    noActivitiesWarning: "Geen activiteiten gevonden in de remote-attributen.",
+      "De afstandsbediening is niet beschikbaar (mogelijk omdat de Sofabaton-app verbonden is).",
+    noActivitiesWarning: "Geen activiteiten gevonden in de attributen van de afstandsbediening.",
     noMacros: "Geen macro's beschikbaar",
     noFavorites: "Geen favorieten beschikbaar",
     noCommands: "Geen commando's beschikbaar",
@@ -95,7 +95,7 @@ const REMOTE_CARD_STRINGS_NL = {
   },
   editor: {
     fieldLabels: {
-      entity: "Selecteer een Sofabaton remote-entiteit",
+      entity: "Selecteer een Sofabaton-entiteit voor afstandsbediening",
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",

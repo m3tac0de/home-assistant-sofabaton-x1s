@@ -8,11 +8,52 @@ import {
   ENTITY_SYNC_STEP_KINDS,
   WIFI_DEPLOY_PHASES,
   WIFI_INPLACE_STEP_KINDS,
+  backendErrorCode,
+  localizeBackendError,
   localizeBackendOperationDetail,
   localizeBackendProgress,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization";
 import { resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+
+test("structured backend errors are localized without relaying English exception text", () => {
+  setToolsCardLanguage("de");
+  assert.equal(
+    localizeBackendError(
+      { state: "error", error_code: "ir_learn_failed", message: "transport gone" },
+      "ir_learn",
+    ),
+    "Anlernen fehlgeschlagen.",
+  );
+
+  setToolsCardLanguage("fr");
+  assert.equal(
+    localizeBackendError({ state: "refused", message: "proxy client connected" }, "ir_learn"),
+    "Le hub n’est pas passé en mode apprentissage. L’application Sofabaton est-elle connectée, ou une synchronisation est-elle en cours\u00a0?",
+  );
+
+  setToolsCardLanguage("es");
+  assert.equal(
+    localizeBackendError({ state: "error", error_code: "ir_learn_no_payload" }, "ir_learn"),
+    "El hub captó una señal, pero no se pudo leer su carga útil.",
+  );
+
+  setToolsCardLanguage("nl");
+  assert.equal(
+    localizeBackendError({ code: "a_future_backend_code", message: "Some new English error" }, "ir_learn"),
+    "Inleren mislukt.",
+  );
+
+  setToolsCardLanguage("zh-Hans");
+  assert.equal(
+    localizeBackendError({ message: "Could not resolve Sofabaton hub" }, "ir_emissions"),
+    "无法加载最近发射的红外命令。",
+  );
+
+  assert.equal(backendErrorCode({ error: { code: "UNAVAILABLE" } }), "unavailable");
+  assert.equal(backendErrorCode({ message: "transport gone" }), null);
+  setToolsCardLanguage("en");
+});
 
 test("structured backend progress is localized without relaying its English message", () => {
   const cases = [

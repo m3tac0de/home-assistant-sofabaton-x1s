@@ -9,7 +9,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "sofabaton_x1s"
-TRANSLATIONS = INTEGRATION / "translations" / "en.json"
+TRANSLATIONS_DIR = INTEGRATION / "translations"
+TRANSLATIONS = TRANSLATIONS_DIR / "en.json"
+IR_LOCALES = {"de", "es", "fr", "nl", "zh-Hans"}
 
 
 def _english() -> dict:
@@ -41,8 +43,21 @@ def _service_schema() -> dict[str, set[str]]:
 def test_custom_translation_file_is_flat() -> None:
     """Custom integrations cannot use Core's build-time translation references."""
 
-    source = TRANSLATIONS.read_text(encoding="utf-8")
-    assert "[%key:" not in source
+    for path in TRANSLATIONS_DIR.glob("*.json"):
+        source = path.read_text(encoding="utf-8")
+        assert "[%key:" not in source, path.name
+
+
+def test_new_ir_entities_have_localized_backend_copy() -> None:
+    """Localize new IR entities without translating Actions for now."""
+
+    for locale in IR_LOCALES:
+        translated = json.loads(
+            (TRANSLATIONS_DIR / f"{locale}.json").read_text(encoding="utf-8")
+        )
+        assert translated.keys() == {"entity"}
+        assert translated["entity"]["infrared"]["ir_emitter"]["name"]
+        assert translated["entity"]["sensor"]["ir_intercept"]["name"]
 
 
 def test_config_flow_steps_and_abort_reasons_are_translated() -> None:

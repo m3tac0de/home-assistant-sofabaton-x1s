@@ -1,0 +1,14 @@
+{
+  "entity": {
+    "infrared": {
+      "ir_emitter": {
+        "name": "IR-zender"
+      }
+    },
+    "sensor": {
+      "ir_intercept": {
+        "name": "Laatst onderschepte IR-commando"
+      }
+    }
+  }
+}
