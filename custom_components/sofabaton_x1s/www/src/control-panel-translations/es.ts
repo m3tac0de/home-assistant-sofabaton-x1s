@@ -277,23 +277,24 @@ export const TOOLS_CARD_STRINGS_ES = {
     sofabatonHexTab: "Sofabaton Hex",
     descriptorTab: "Descriptor",
     prontoHexHelper:
-      "Los valores Pronto Hex en formato aprendido, como «0000 006D 0022 0000 00AB …», y los códigos HEX de Unfolded Circle, como «3;0x4B36D32C;32;0», se convierten automáticamente en bytes Sofabaton.",
+      "Pega un código Pronto Hex en formato aprendido, como «0000 006D 0022 0000 00AB …», o un código HEX compatible de Unfolded Circle, como «3;0x4B36D32C;32;0». El editor lo convierte automáticamente en bytes de Sofabaton.",
     prontoUnavailable:
       "Esta carga útil no se puede leer como duraciones IR sin procesar, por lo que no puede mostrarse como Pronto Hex.",
     invalidProntoHex: "Este no es un código Pronto Hex válido en formato aprendido.",
     descriptorX2Only: "Las cargas útiles IR descriptivas solo se admiten en hubs X2.",
     // Importación de códigos HEX de Unfolded Circle (convertidos en el backend mediante infrared-protocols).
-    ucHexConverting: "Convirtiendo el código de Unfolded Circle…",
+    ucHexConverting: "Convirtiendo el código HEX de Unfolded Circle…",
     ucHexInvalid: "Este no es un código HEX de Unfolded Circle válido.",
-    ucHexUnknownProtocol: "este protocolo",
+    ucHexUnknownProtocol: "un protocolo desconocido",
     ucHexUnsupported: (protocol: string) =>
-      `Los códigos HEX de Unfolded Circle para ${protocol} todavía no se pueden convertir. Exporta el comando como PRONTO en su lugar.`,
+      `Este código HEX de Unfolded Circle usa ${protocol}, que no es compatible. En su lugar, exporta el comando desde Unfolded Circle en formato Pronto Hex y pégalo aquí.`,
     ucHexUnrepresentable:
-      "Este código HEX de Unfolded Circle no respeta las reglas de trama de su protocolo, por lo que no se puede convertir.",
+      "Este código HEX de Unfolded Circle no cumple las reglas de formato de su protocolo IR y no se puede convertir. Exporta el comando desde Unfolded Circle en formato Pronto Hex y pégalo aquí.",
     ucHexUnavailable:
-      "Para convertir códigos de Unfolded Circle se necesita la biblioteca infrared-protocols, que no está disponible en este Home Assistant.",
-    ucHexNoHost: "Los códigos de Unfolded Circle solo se pueden convertir mientras Home Assistant está conectado.",
-    ucHexFailed: "No se pudo convertir el código de Unfolded Circle.",
+      "La conversión de códigos HEX de Unfolded Circle no está disponible porque la biblioteca infrared-protocols necesaria no se puede cargar en esta instalación de Home Assistant.",
+    ucHexNoHost:
+      "Este editor no puede convertir códigos HEX de Unfolded Circle porque necesita una conexión con Home Assistant.",
+    ucHexFailed: "No se pudo convertir el código HEX de Unfolded Circle.",
     // Modo de aprendizaje del editor de cargas útiles (IR9).
     learn: "Aprender",
     learnAria: "Aprender una carga útil desde otro mando a distancia o desde Home Assistant",
