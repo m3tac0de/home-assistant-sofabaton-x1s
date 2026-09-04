@@ -460,6 +460,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._device_request_inflight: int | None = None
         self._devices_catalog_ready = False
         self._last_devices_burst_committed = True
+        self._devices_commit_serial = 0
         self._device_pending_generation: int | None = None
         self._device_pending_expected_rows: int | None = None
         self._device_pending_rows: dict[int, dict[str, Any]] = {}
@@ -467,6 +468,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._activity_request_inflight: int | None = None
         self._activities_catalog_ready = False
         self._last_activities_burst_committed = True
+        self._activities_commit_serial = 0
         self._activity_retry_count = 0
         self._activity_retry_due_at: float | None = None
         self._activity_retry_send_pending = False
@@ -675,13 +677,9 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             # was in flight) is over, even when it went unanswered.
             self._ack_ready_refresh_pending = False
             if not self._last_activities_burst_committed:
-                # The burst ended on the scheduler timeout without a
-                # complete row set: nothing was committed, so the hint is
-                # unchanged and there is no state to publish. Evaluating
-                # here turned an unanswered read into a phantom power-off
-                # (issue #279 / PR #280). A pending redundant-OFF check
-                # survives only for the X2 retry (see
-                # _on_activities_burst_end).
+                # Scheduler timeout, nothing committed: the hint is unchanged
+                # and there is no state to publish (evaluating here turned an
+                # unanswered read into a phantom power-off, issue #279).
                 return
         new_id, old_id = self.state.update_activity_state()
         pending_redundant_off = self._pending_redundant_off_check
@@ -1775,6 +1773,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             # commands sit out the settle timeout for nothing.
             self._external_settle_event.set()
             self._ack_ready_refresh_pending = False
+            # Nor may a pre-drop OFF press be confirmed after reconnect.
+            self._pending_redundant_off_check = False
         for cb in self._hub_state_listeners:
             try:
                 cb(connected)

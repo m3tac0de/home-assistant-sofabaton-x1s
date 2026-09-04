@@ -102,11 +102,11 @@ def test_refresh_devices_snapshot_carries_raw_body_from_proxy_state(
         "raw_body": raw,
     }
 
-    # Bypass the request-devices round-trip: the helper polls
-    # ``_devices_generation`` until it advances past the value it saw
-    # when the request went out, so the stub plays the committed burst.
+    # Bypass the request-devices round-trip: the helper polls the proxy's
+    # commit serial until it advances past the value it saw when the
+    # request went out, so the stub plays the committed burst.
     def _request_devices(*args, **kwargs):
-        hub._devices_generation += 1
+        hub._proxy._devices_commit_serial += 1
 
     monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
 
@@ -136,7 +136,7 @@ def test_refresh_activities_snapshot_carries_raw_body_from_proxy_state(
     }
 
     def _request_activities(*args, **kwargs):
-        hub._activities_generation += 1
+        hub._proxy._activities_commit_serial += 1
 
     monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)
 
@@ -164,10 +164,10 @@ def test_refresh_devices_and_activities_have_identical_shape(monkeypatch) -> Non
     hub._proxy.state.activities[0x02] = {"name": "Act", "raw_body": raw_act}
 
     def _request_devices(*a, **kw):
-        hub._devices_generation += 1
+        hub._proxy._devices_commit_serial += 1
 
     def _request_activities(*a, **kw):
-        hub._activities_generation += 1
+        hub._proxy._activities_commit_serial += 1
 
     monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
     monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)

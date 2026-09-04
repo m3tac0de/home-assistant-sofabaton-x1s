@@ -376,7 +376,7 @@ def test_request_catalog_devices_prunes_removed_ids_on_success(hub, monkeypatch)
     def _request_devices(*_a, **_kw):
         # Simulate the committed burst: wholesale replace + generation bump.
         hub._proxy.state.devices = {0x0B: {"name": "TV"}}
-        hub._devices_generation += 1
+        hub._proxy._devices_commit_serial += 1
 
     monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
     pruned: list = []
@@ -454,3 +454,128 @@ def test_ws_refresh_catalog_reports_timeout(monkeypatch):
     assert conn.error[1] == "timeout"
     assert "Activity list" in conn.error[2]
     assert persisted == []
+
+
+# ---------------------------------------------------------------------------
+# Refresh consistency (PR #280 follow-up cases 1 and 2)
+# ---------------------------------------------------------------------------
+
+
+def _commit_activities(proxy: X1Proxy, rows: list[tuple[int, str, bool]]) -> None:
+    """Drive a complete activities burst through the proxy on the caller's thread."""
+
+    proxy._begin_activity_request()
+    for idx, (act_id, name, active) in enumerate(rows, start=1):
+        assert proxy.ingest_activity_row(
+            row_idx=idx,
+            expected_rows=len(rows),
+            act_id=act_id,
+            activity={"id": act_id, "name": name, "active": active, "needs_confirm": False},
+        )
+    proxy._on_activities_burst_end("activities")
+
+
+def test_queued_old_completion_cannot_satisfy_a_new_refresh(hub, monkeypatch):
+    """Case 1: read A committed but its HA callback is still queued when
+    read B goes out unanswered. A's callback must not satisfy B's wait."""
+    _silence_dispatcher(monkeypatch)
+    loop = hub.hass.loop
+
+    # Read A commits in the proxy; the hub's burst callback is queued on
+    # the loop but has not run yet.
+    _commit_activities(hub._proxy, [(101, "TV", True), (102, "Music", False)])
+    hub._on_activities_burst("activities")
+    generation = hub._activities_generation
+    assert hub._proxy.activities_commit_serial == 1
+
+    # Read B goes out and the hub never answers.
+    monkeypatch.setattr(hub._proxy, "request_activities", lambda *a, **kw: True)
+
+    with pytest.raises(TimeoutError):
+        loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=0.3))
+
+    # A's callback did run meanwhile (the HA-side counter moved), and that
+    # is exactly what must not count as B's completion.
+    assert hub._activities_generation == generation + 1
+    assert hub.activities[101]["name"] == "TV"
+
+
+def test_refresh_returns_proxy_commit_before_ha_callback_runs(hub, monkeypatch):
+    """Case 2: the wait is satisfied by the proxy commit itself, so the
+    returned snapshot may be ahead of ``hub.activities``; callers validate
+    against the return value."""
+    _silence_dispatcher(monkeypatch)
+    loop = hub.hass.loop
+    hub.activities = {101: {"name": "TV", "active": True, "needs_confirm": False}}
+
+    def _request_activities(*a, **kw):
+        # Commit lands on the frame thread; the HA callback is not delivered
+        # in this test at all.
+        _commit_activities(hub._proxy, [(101, "Movie Night", True)])
+        return True
+
+    monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)
+
+    snapshot = loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=1.0))
+
+    assert snapshot[101]["name"] == "Movie Night"
+    assert hub.activities[101]["name"] == "TV"
+
+
+def test_sync_validates_labels_against_returned_snapshot(hub, monkeypatch):
+    """Case 2, sync side: a stale HA-side dict must not let a renamed
+    activity pass label validation when the refreshed snapshot disagrees."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    hub.roku_server_enabled = True
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
+    hub.activities = {101: {"name": "TV", "active": False, "needs_confirm": False}}
+
+    async def _request_catalog(kind, timeout_seconds=30.0):
+        # The proxy committed a rename, but the HA-side dict is still old.
+        return {101: {"name": "Movie Night", "active": False, "needs_confirm": False}}
+
+    monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
+
+    async def _no_devices(*a, **kw):
+        raise AssertionError("sync passed stale activity validation")
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _no_devices)
+    deleted: list[int] = []
+
+    async def _delete(dev_id, *a, **kw):
+        deleted.append(dev_id)
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [{"name": "Command 1", "add_as_favorite": True, "activities": ["101"]}],
+        "commands_hash": "abc",
+        "activity_labels": {"101": "TV"},
+    }
+    with pytest.raises(HomeAssistantError, match="Failed Activity validation"):
+        hub.hass.loop.run_until_complete(
+            hub.async_sync_command_config(command_payload=payload, request_port=8060)
+        )
+    assert deleted == []
+
+
+def test_hub_disconnect_clears_pending_redundant_off_check() -> None:
+    proxy = _proxy()
+    proxy._activities_catalog_ready = True
+    fired: list[str] = []
+    proxy.on_redundant_off_press(lambda: fired.append("off"))
+
+    proxy.flag_pending_redundant_off_check()
+    proxy._notify_hub_state(False)
+    assert proxy._pending_redundant_off_check is False
+
+    # First complete read after reconnect finds the hub off: no phantom
+    # confirmation of the pre-drop press.
+    proxy._notify_hub_state(True)
+    proxy._begin_activity_request()
+    proxy._activity_pending_expected_rows = 0
+    proxy._on_activities_burst_end("activities")
+    proxy.handle_active_state("activities")
+    assert fired == []

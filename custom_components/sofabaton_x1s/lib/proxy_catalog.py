@@ -707,6 +707,25 @@ class CatalogMixin:
 
         return self._last_activities_burst_committed
 
+    @property
+    def devices_commit_serial(self) -> int:
+        """Count of committed devices snapshots, bumped on the frame thread.
+
+        Refresh waiters key on this rather than on the HA-side generation
+        counter: that one is bumped by a loop callback that may still be
+        queued from an *earlier* burst when a new request goes out, so it
+        could satisfy a wait whose own request went unanswered. A serial
+        captured before the request only advances on a commit after it.
+        """
+
+        return self._devices_commit_serial
+
+    @property
+    def activities_commit_serial(self) -> int:
+        """Activities counterpart of :attr:`devices_commit_serial`."""
+
+        return self._activities_commit_serial
+
     def _on_devices_burst_end(self, key: str) -> None:
         generation = self._device_request_inflight
         complete = generation is not None and self._device_pending_generation == generation and self._device_snapshot_complete()
@@ -714,6 +733,7 @@ class CatalogMixin:
 
         if complete:
             self._commit_pending_device_snapshot()
+            self._devices_commit_serial += 1
             self._log.info(
                 "[DEV] committed complete devices snapshot rows=%d request=%s",
                 len(self._device_pending_rows),
@@ -765,6 +785,7 @@ class CatalogMixin:
 
         if complete:
             self._commit_pending_activity_snapshot()
+            self._activities_commit_serial += 1
             self._log.info(
                 "[ACT] committed complete activities snapshot rows=%d request=%s",
                 len(self._activity_pending_rows),

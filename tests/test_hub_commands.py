@@ -3511,6 +3511,9 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
             0.05,
             lambda: (
                 ready.__setitem__("value", True),
+                # A real commit bumps the proxy serial on the frame thread
+                # before the hub's burst listener runs.
+                setattr(hub._proxy, "_devices_commit_serial", hub._proxy._devices_commit_serial + 1),
                 hub._on_devices_burst("devices"),
             ),
         )
@@ -5188,7 +5191,7 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     hub._proxy.get_known_activity_ids = _fake_get_known_activity_ids  # type: ignore[method-assign]
 
     async def _fake_sleep(_delay):
-        hub._activities_generation = 3
+        hub._proxy._activities_commit_serial += 1
 
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
@@ -5229,6 +5232,7 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
         catalog_calls.append(kind)
         hub._activities_generation += 1
         hub.activities = {101: {"name": "Movie Night", "active": False}}
+        return dict(hub.activities)
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5355,6 +5359,7 @@ def test_sync_command_config_proceeds_when_activity_labels_match(monkeypatch):
         catalog_calls.append(kind)
         hub._activities_generation += 1
         hub.activities = {101: {"name": "TV", "active": False}}
+        return dict(hub.activities)
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5473,6 +5478,7 @@ def test_sync_command_config_ignores_orphaned_activities(monkeypatch):
     async def _request_catalog(kind, timeout_seconds=30.0):
         catalog_calls.append(kind)
         hub._activities_generation += 1
+        return dict(hub.activities)
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
