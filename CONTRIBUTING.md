@@ -129,7 +129,10 @@ npm run fetch:ha-themes                         # regenerate the fixture (needs 
 The remote-card harness (`tests/playwright/fixtures/remote-card-harness.html`)
 takes `?theme=<value>&mode=global|card&scenario=active[+macros|+favorites|+menu]`
 for manual checks; without `?theme=` it keeps its legacy palette so the
-Playwright snapshots stay stable.
+Playwright snapshots stay stable. The `unavailable`, `no_activities` and
+`device_keymap_missing` scenarios render the card's status notice row
+(the in-flow banner above the selector) and are part of the remote
+audit's default set.
 
 The audit writes `artifacts/contrast-audit.md` (remote: `contrast-audit-remote.md`, + `.json`), grouped by
 element signature (component + tag + classes) with the worst theme per

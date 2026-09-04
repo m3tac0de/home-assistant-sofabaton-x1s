@@ -386,6 +386,47 @@ test.describe("remote card playwright harness", () => {
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-loading.png");
   });
 
+  test("renders status notices as an in-flow row above the selector, never as an overlay", async ({ page }) => {
+    // The notice used to be a 12px, background-less absolute overlay on top
+    // of the activity selector; it now occupies its own layout row with an
+    // opaque tinted surface and body-sized text.
+    for (const scenario of ["unavailable", "no_activities", "device_keymap_missing"]) {
+      await mountCard(page, scenario);
+      const notice = page.locator(".sb-notice");
+      await expect(notice).toBeVisible();
+      await expect(page.locator(".warn")).toHaveCount(0);
+      const noticeBox = await notice.boundingBox();
+      const selectBox = await page.locator("ha-select").boundingBox();
+      expect(noticeBox).not.toBeNull();
+      expect(selectBox).not.toBeNull();
+      expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(selectBox.y);
+      const style = await notice.evaluate((node) => {
+        const cs = getComputedStyle(node);
+        return { fontSize: parseFloat(cs.fontSize), opacity: cs.opacity, position: cs.position, background: cs.backgroundColor };
+      });
+      expect(style.fontSize).toBeGreaterThanOrEqual(13);
+      expect(style.opacity).toBe("1");
+      expect(style.position).toBe("static");
+      expect(style.background).not.toBe("rgba(0, 0, 0, 0)");
+    }
+  });
+
+  test("captures unavailable notice visual baseline", async ({ page }) => {
+    await mountCard(page, "unavailable");
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-unavailable.png");
+  });
+
+  test("captures no-activities notice visual baseline", async ({ page }) => {
+    await mountCard(page, "no_activities");
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-no-activities.png");
+  });
+
+  test("captures device keymap missing notice visual baseline", async ({ page }) => {
+    await mountCard(page, "device_keymap_missing");
+    await expect(page.locator(".sb-notice")).toContainText("not cached yet");
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-device-keymap-missing.png");
+  });
+
   test("captures activity menu visual baseline", async ({ page }) => {
     await mountCard(page, "active");
     await page.locator("ha-select").click();

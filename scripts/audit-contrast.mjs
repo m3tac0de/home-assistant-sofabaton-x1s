@@ -82,7 +82,10 @@ const TARGETS = {
     // global = theme on <html> (HA themes-mixin); card = the card's own
     // `theme:` config on an HA-default-light page (the card's _applyTheme).
     modes: ["global", "card"],
-    defaultScenarios: ["active", "active+macros", "active+favorites", "active+menu", "device_mode", "powered_off"],
+    defaultScenarios: [
+      "active", "active+macros", "active+favorites", "active+menu", "device_mode", "powered_off",
+      "unavailable", "no_activities", "device_keymap_missing", // status notice row
+    ],
     // HA-component stubs whose internals mirror HA's tokens and are part of
     // the card's look (the activity select: label, value, menu).
     includeHosts: ["ha-select"],

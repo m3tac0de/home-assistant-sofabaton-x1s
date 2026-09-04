@@ -2474,16 +2474,44 @@ var REMOTE_CARD_CSS = `
         --sb-control-background: var(--sb-color);
       }
 
-      .warn {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        right: 12px;
-        z-index: 10;
-        font-size: 12px;
-        opacity: .9;
-        border-inline-start: 3px solid var(--warning-color, orange);
-        padding-inline-start: 10px;
+      /* Status notice (remote unavailable, no activities, device keymap
+         missing / failed): an in-flow row at the top of the layout, styled
+         like HA's ha-alert so it reads on any theme. The surface is the
+         card background with a 12% accent tint and the text is the theme's
+         primary text colour, i.e. exactly the contrast the theme already
+         guarantees for the card's own text. It used to be a 12px,
+         background-less absolute overlay sitting on the activity selector,
+         which was unreadable on most themes and clipped on narrow cards. */
+      .sb-notice {
+        --sb-notice-accent: var(--warning-color, #ffa600);
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: min(12px, var(--sb-group-radius));
+        border-inline-start: 4px solid var(--sb-notice-accent);
+        background: color-mix(in srgb, var(--sb-notice-accent) 12%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        color: var(--primary-text-color);
+        font-size: clamp(13px, 3.6cqw, 15px);
+        line-height: 1.4;
+        text-align: start;
+        overflow-wrap: anywhere;
+      }
+      .sb-notice--error {
+        --sb-notice-accent: var(--error-color, #db4437);
+      }
+      .sb-notice ha-icon {
+        flex: none;
+        margin-top: 1px;
+        color: var(--sb-notice-accent);
+        /* Real ha-icon sizes itself from --mdc-icon-size; the harness stub
+           from font-size. Both land on 20px. */
+        font-size: 20px;
+        --mdc-icon-size: 20px;
+      }
+      .sb-notice__text {
+        flex: 1 1 auto;
+        min-width: 0;
       }
 
       .sb-modal {
@@ -9003,7 +9031,8 @@ var SofabatonRemoteCard = class extends i4 {
         shortcutsVisible
       )
     };
-    const warnText = derived.isUnavailable ? str().card.remoteUnavailable : derived.noActivitiesMessage;
+    const noticeText = derived.isUnavailable ? str().card.remoteUnavailable : derived.noActivitiesMessage;
+    const noticeTone = deviceMode && !derived.isUnavailable && derived.keymapEntry?.status === "error" ? "error" : "warning";
     const assistEnabled = store.automationAssistEnabled();
     return b2`
       <ha-card ${n6(this._cardRef)}>
@@ -9011,14 +9040,21 @@ var SofabatonRemoteCard = class extends i4 {
         <div class=${wrapClass} ${n6(this._wrapRef)}>
           ${assistEnabled ? renderAssistRow({ visible: true, controller: this._assist }) : A}
           <div class="layout-container" ${n6(this._layoutContainerRef)}>
+            ${noticeText ? b2`<div
+                  class="sb-notice sb-notice--${noticeTone}"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <ha-icon
+                    icon=${noticeTone === "error" ? "mdi:alert-circle-outline" : "mdi:alert-outline"}
+                  ></ha-icon>
+                  <span class="sb-notice__text">${noticeText}</span>
+                </div>` : A}
             ${c6(
       order.filter((key) => key in groupTemplates),
       (key) => key,
       (key) => groupTemplates[key]()
     )}
-            <div class="warn" style=${warnText ? "display: block;" : "display: none;"}>
-              ${warnText}
-            </div>
           </div>
         </div>
       </ha-card>

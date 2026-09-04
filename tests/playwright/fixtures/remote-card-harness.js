@@ -74,6 +74,8 @@ const ICONS = {
   "mdi:audio-video": iconSvg(`<rect x="3" y="7" width="18" height="10" rx="1.5"></rect><circle cx="16.5" cy="12" r="2.5"></circle><path d="M6 10.5h5"></path><path d="M6 13.5h5"></path>`),
   "mdi:play": iconSvg(`<path d="M8 6l10 6-10 6z" fill="currentColor" stroke="none"></path>`),
   "mdi:play-circle": iconSvg(`<circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"></circle><path d="M10 8l6 4-6 4z" fill="#fff" stroke="none"></path>`),
+  "mdi:alert-outline": iconSvg(`<path d="M12 4l9 16H3z"></path><path d="M12 10v4"></path><path d="M12 17h.01"></path>`),
+  "mdi:alert-circle-outline": iconSvg(`<circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path>`),
   "mdi:circle": iconSvg(`<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"></circle>`, { stroke: "none" }),
 };
 
@@ -789,6 +791,34 @@ scenarios.long_press = (() => {
   return base;
 })();
 
+// Status-notice scenarios: the card's in-flow notice row (remote unavailable,
+// no activities, device keymap not cached / failed). Audited across themes
+// and snapshotted; the notice must never float over the activity selector.
+scenarios.unavailable = (() => {
+  const base = clone(scenarios.active);
+  base.states[remoteEntityId].state = "unavailable";
+  return base;
+})();
+
+scenarios.no_activities = (() => {
+  const base = clone(scenarios.powered_off);
+  const attributes = base.states[remoteEntityId].attributes;
+  attributes.activities = [];
+  attributes.assigned_keys = {};
+  attributes.macro_keys = {};
+  attributes.favorite_keys = {};
+  return base;
+})();
+
+scenarios.device_keymap_missing = (() => {
+  const base = clone(scenarios.device_mode);
+  // Device 3 exists on the hub but has no keymap in the persistent cache:
+  // the keymap WS stub answers cache_miss for it.
+  base.states[remoteEntityId].attributes.devices.push({ id: 3, name: "Blu-ray", device_class: "ir" });
+  base.config = { device_mode: { open_device: 3 } };
+  return base;
+})();
+
 // The official integration must ignore the attribute even when present:
 // long-press is gated on the sofabaton_x1s platform, not just on the data.
 scenarios.hub_x2.states[remoteEntityId].attributes.long_press_keys = {
@@ -1019,7 +1049,9 @@ async function mountCard({ scenario = "active", config = {}, view = null } = {})
   harnessState.scenario = clone(scenarios[scenario]);
   harnessState.serviceCalls = [];
   harnessState.wsCalls = [];
-  harnessState.config = { ...defaultConfig(), ...clone(config) };
+  // A scenario may carry its own config overrides (loadView passes none);
+  // an explicit config from the caller still wins.
+  harnessState.config = { ...defaultConfig(), ...clone(harnessState.scenario.config ?? {}), ...clone(config) };
   // Under a fixture theme the legacy "Harness Midnight" default would fight
   // it: global mode wants no card theme, card mode wants the fixture theme.
   if (themeState.value) {
