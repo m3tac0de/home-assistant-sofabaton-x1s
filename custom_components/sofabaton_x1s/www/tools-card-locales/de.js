@@ -114,7 +114,11 @@ var TOOLS_CARD_STRINGS_DE = {
     cacheRefreshFailed: "Cache-Aktualisierung fehlgeschlagen.",
     syncFailed: "Synchronisierung fehlgeschlagen.",
     activityIdMissing: "Der Hub hat keine ID f\xFCr die neue Aktivit\xE4t zur\xFCckgegeben.",
-    deviceIdMissing: "Der Hub hat keine ID f\xFCr das neue Ger\xE4t zur\xFCckgegeben."
+    deviceIdMissing: "Der Hub hat keine ID f\xFCr das neue Ger\xE4t zur\xFCckgegeben.",
+    deviceCreateFailed: "Das Ger\xE4t konnte auf dem Hub nicht erstellt werden.",
+    deviceNameInvalid: "Gib einen Ger\xE4tenamen mit 1 bis 30 Zeichen ein.",
+    deviceTypeUnsupported: "Dieser Ger\xE4tetyp kann auf diesem Hub nicht erstellt werden.",
+    selectedHubUnavailable: "Der ausgew\xE4hlte Hub ist nicht mehr verf\xFCgbar."
   },
   settings: {
     loading: "Wird geladen\u2026",
@@ -183,15 +187,15 @@ var TOOLS_CARD_STRINGS_DE = {
     addActivityConfirm: "Erstellen",
     addActivityCreating: "Wird erstellt\u2026",
     addDeviceTitle: "Ger\xE4t hinzuf\xFCgen",
-    addDeviceBody: "Benenne das neue Ger\xE4t und w\xE4hle seine Klasse. Es wird leer auf dem Hub erstellt und im Editor ge\xF6ffnet, wo du seine Befehle hinzuf\xFCgst.",
+    addDeviceBody: "W\xE4hle einen Namen und Ger\xE4tetyp. Das Ger\xE4t wird ohne Befehle auf dem Hub erstellt und anschlie\xDFend im Editor ge\xF6ffnet, wo du Befehle hinzuf\xFCgen kannst.",
     addDevicePlaceholder: "Ger\xE4tename",
-    addDeviceClass: "Ger\xE4teklasse",
+    addDeviceClass: "Ger\xE4tetyp",
     addDeviceCancel: "Abbrechen",
     addDeviceConfirm: "Erstellen",
     addDeviceCreating: "Wird erstellt\u2026",
-    addDeviceWifiHint: "Befehle, die Home Assistant aufrufen sollen, geh\xF6ren in den Tab Wifi Commands.",
+    addDeviceWifiHint: "Verwende f\xFCr Befehle, die Home Assistant ausf\xFChren soll, stattdessen den Tab Wifi Commands.",
     creatingDevice: "Ger\xE4t wird erstellt\u2026",
-    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "Aktivit\xE4ten werden neu geordnet\u2026",
     reorderingDevices: "Ger\xE4te werden neu geordnet\u2026",
     creatingActivity: "Aktivit\xE4t wird erstellt\u2026"

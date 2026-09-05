@@ -302,12 +302,12 @@ test("createDevice resolves the assigned id and refreshes its cache entry", asyn
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
-test("createDevice reports the backend error without opening the editor id", async () => {
+test("createDevice preserves the backend error code without opening the editor id", async () => {
   const store = createStore();
   store.setHass(
     createHass({
       "sofabaton_x1s/device/create": () => {
-        throw new Error("The hub did not confirm creation of the new device");
+        throw { code: "create_failed", message: "The hub did not confirm creation of the new device" };
       },
     }),
   );
@@ -315,9 +315,25 @@ test("createDevice reports the backend error without opening the editor id", asy
 
   const result = await store.createDevice("TV", "ir");
 
-  assert.ok("error" in result);
-  assert.match(String((result as { error: string }).error), /did not confirm creation/);
+  assert.deepEqual(result, { errorCode: "create_failed" });
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+
+test("createDevice replaces a code-less exception with a stable generic code", async () => {
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/create": () => {
+        throw new Error("Untranslated backend detail");
+      },
+    }),
+  );
+  await store.loadState();
+
+  assert.deepEqual(
+    await store.createDevice("TV", "ir"),
+    { errorCode: "device_create_failed" },
+  );
 });
 
 test("createDevice reports a missing device id as an error", async () => {
@@ -331,6 +347,5 @@ test("createDevice reports a missing device id as an error", async () => {
 
   const result = await store.createDevice("TV", "ir");
 
-  assert.ok("error" in result);
-  assert.match(String((result as { error: string }).error), /did not return the new device id/);
+  assert.deepEqual(result, { errorCode: "device_id_missing" });
 });

@@ -85,6 +85,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     anotherOperation: "另一项 Hub 操作正在运行。", noHubSelected: "未选择 Hub。",
     noHubSelectedLong: "尚未选择 Hub。", cacheRefreshFailed: "缓存刷新失败。",
     syncFailed: "同步失败。", activityIdMissing: "Hub 未返回新活动的 ID。", deviceIdMissing: "Hub 未返回新设备的 ID。",
+    deviceCreateFailed: "无法在 Hub 上创建设备。", deviceNameInvalid: "请输入 1 至 30 个字符的设备名称。", deviceTypeUnsupported: "无法在此 Hub 上创建该设备类型。", selectedHubUnavailable: "所选 Hub 已不可用。",
   },
   settings: {
     loading: "正在加载…", noHubsFound: "未找到 Hub。", unknownHubName: "未知", activities: "活动", devices: "设备",
@@ -113,10 +114,10 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     reorderDevicesHint: "将设备拖到所需位置，然后同步到 Hub。", reorderSyncing: "正在将新顺序写入 Hub…",
     addActivityTitle: "添加活动", addActivityBody: "为新活动命名。活动将在 Hub 上创建并在编辑器中打开。",
     addActivityPlaceholder: "活动名称", addActivityCancel: "取消", addActivityConfirm: "创建", addActivityCreating: "正在创建…",
-    addDeviceTitle: "添加设备", addDeviceBody: "为新设备命名并选择其类别。设备将在 Hub 上创建为空设备并在编辑器中打开，你可以在那里添加命令。",
-    addDevicePlaceholder: "设备名称", addDeviceClass: "设备类别", addDeviceCancel: "取消", addDeviceConfirm: "创建", addDeviceCreating: "正在创建…",
-    addDeviceWifiHint: "需要调用 Home Assistant 的命令请放在 Wifi Commands 标签页中。", creatingDevice: "正在创建设备…",
-    deviceClassLabels: { ir: "红外", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
+    addDeviceTitle: "添加设备", addDeviceBody: "选择设备名称和类型。设备将在 Hub 上创建，初始不含任何命令，随后会在编辑器中打开，以便你添加命令。",
+    addDevicePlaceholder: "设备名称", addDeviceClass: "设备类型", addDeviceCancel: "取消", addDeviceConfirm: "创建", addDeviceCreating: "正在创建…",
+    addDeviceWifiHint: "需要由 Home Assistant 执行的命令，请改用 Wifi Commands 标签页。", creatingDevice: "正在创建设备…",
+    deviceClassLabels: { ir: "红外", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "通用 HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "正在调整活动顺序…", reorderingDevices: "正在调整设备顺序…", creatingActivity: "正在创建活动…",
   },
   hubClick: {

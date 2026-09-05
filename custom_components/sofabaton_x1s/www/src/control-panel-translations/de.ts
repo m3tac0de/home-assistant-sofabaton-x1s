@@ -61,6 +61,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     wifiPressNoSocket: "WLAN-Tastendruckereignisse sind ohne Websocket-Verbindung nicht verfügbar", hubEventsNoSocket: "Hub-Ereignisse sind ohne Websocket-Verbindung nicht verfügbar",
     anotherOperation: "Ein anderer Hub-Vorgang wird bereits ausgeführt.", noHubSelected: "Kein Hub ausgewählt.", noHubSelectedLong: "Es ist kein Hub ausgewählt.",
     cacheRefreshFailed: "Cache-Aktualisierung fehlgeschlagen.", syncFailed: "Synchronisierung fehlgeschlagen.", activityIdMissing: "Der Hub hat keine ID für die neue Aktivität zurückgegeben.", deviceIdMissing: "Der Hub hat keine ID für das neue Gerät zurückgegeben.",
+    deviceCreateFailed: "Das Gerät konnte auf dem Hub nicht erstellt werden.", deviceNameInvalid: "Gib einen Gerätenamen mit 1 bis 30 Zeichen ein.", deviceTypeUnsupported: "Dieser Gerätetyp kann auf diesem Hub nicht erstellt werden.", selectedHubUnavailable: "Der ausgewählte Hub ist nicht mehr verfügbar.",
   },
   settings: {
     loading: "Wird geladen…", noHubsFound: "Keine Hubs gefunden.", unknownHubName: "Unbekannt", activities: "Aktivitäten", devices: "Geräte",
@@ -87,10 +88,10 @@ export const TOOLS_CARD_STRINGS_DE = {
     reorderDevicesHint: "Ziehe die Geräte in die gewünschte Reihenfolge und synchronisiere sie anschließend mit dem Hub.", reorderSyncing: "Neue Reihenfolge wird auf den Hub geschrieben…",
     addActivityTitle: "Aktivität hinzufügen", addActivityBody: "Benenne die neue Aktivität. Sie wird auf dem Hub erstellt und im Editor geöffnet.", addActivityPlaceholder: "Name der Aktivität",
     addActivityCancel: "Abbrechen", addActivityConfirm: "Erstellen", addActivityCreating: "Wird erstellt…",
-    addDeviceTitle: "Gerät hinzufügen", addDeviceBody: "Benenne das neue Gerät und wähle seine Klasse. Es wird leer auf dem Hub erstellt und im Editor geöffnet, wo du seine Befehle hinzufügst.",
-    addDevicePlaceholder: "Gerätename", addDeviceClass: "Geräteklasse", addDeviceCancel: "Abbrechen", addDeviceConfirm: "Erstellen", addDeviceCreating: "Wird erstellt…",
-    addDeviceWifiHint: "Befehle, die Home Assistant aufrufen sollen, gehören in den Tab Wifi Commands.", creatingDevice: "Gerät wird erstellt…",
-    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" }, reorderingActivities: "Aktivitäten werden neu geordnet…",
+    addDeviceTitle: "Gerät hinzufügen", addDeviceBody: "Wähle einen Namen und Gerätetyp. Das Gerät wird ohne Befehle auf dem Hub erstellt und anschließend im Editor geöffnet, wo du Befehle hinzufügen kannst.",
+    addDevicePlaceholder: "Gerätename", addDeviceClass: "Gerätetyp", addDeviceCancel: "Abbrechen", addDeviceConfirm: "Erstellen", addDeviceCreating: "Wird erstellt…",
+    addDeviceWifiHint: "Verwende für Befehle, die Home Assistant ausführen soll, stattdessen den Tab Wifi Commands.", creatingDevice: "Gerät wird erstellt…",
+    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT" }, reorderingActivities: "Aktivitäten werden neu geordnet…",
     reorderingDevices: "Geräte werden neu geordnet…", creatingActivity: "Aktivität wird erstellt…",
   },
   hubClick: {

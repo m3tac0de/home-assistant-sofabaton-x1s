@@ -39,7 +39,7 @@ test.describe("tools-card browser harness", () => {
     const languages = await page.evaluate(
       () => window.__toolsCardHarness.supportedLanguages,
     );
-    const scenarios = ["1", "activities-capture", "backup-edit", "automation-events", "18", "21", "24"];
+    const scenarios = ["1", "add-device", "activities-capture", "backup-edit", "automation-events", "18", "21", "24"];
     const failures = [];
 
     for (const language of languages) {
@@ -64,7 +64,7 @@ test.describe("tools-card browser harness", () => {
 
           const failures = [];
           for (const root of roots) {
-            for (const element of root.querySelectorAll("button, [role='tab'], .chip, .pill")) {
+            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill")) {
               const text = element.textContent?.replace(/\s+/g, " ").trim();
               if (!text || !element.getClientRects().length) continue;
               if (element.scrollWidth > element.clientWidth + 1) {

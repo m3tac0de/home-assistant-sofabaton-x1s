@@ -87,6 +87,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     anotherOperation: "Er wordt al een andere hubbewerking uitgevoerd.", noHubSelected: "Geen hub geselecteerd.",
     noHubSelectedLong: "Er is geen hub geselecteerd.", cacheRefreshFailed: "Vernieuwen van cache mislukt.",
     syncFailed: "Synchronisatie mislukt.", activityIdMissing: "De hub heeft geen ID voor de nieuwe activiteit teruggegeven.", deviceIdMissing: "De hub heeft geen ID voor het nieuwe apparaat teruggegeven.",
+    deviceCreateFailed: "Het apparaat kon niet op de hub worden aangemaakt.", deviceNameInvalid: "Voer een apparaatnaam van 1 tot 30 tekens in.", deviceTypeUnsupported: "Dit apparaattype kan niet op deze hub worden aangemaakt.", selectedHubUnavailable: "De geselecteerde hub is niet meer beschikbaar.",
   },
   settings: {
     loading: "Laden…", noHubsFound: "Geen hubs gevonden.", unknownHubName: "Onbekend", activities: "Activiteiten", devices: "Apparaten",
@@ -115,10 +116,10 @@ export const TOOLS_CARD_STRINGS_NL = {
     reorderDevicesHint: "Sleep apparaten naar de gewenste volgorde en synchroniseer daarna met de hub.", reorderSyncing: "Nieuwe volgorde naar de hub schrijven…",
     addActivityTitle: "Activiteit toevoegen", addActivityBody: "Geef de nieuwe activiteit een naam. De activiteit wordt op de hub aangemaakt en in de editor geopend.",
     addActivityPlaceholder: "Naam van activiteit", addActivityCancel: "Annuleren", addActivityConfirm: "Aanmaken", addActivityCreating: "Aanmaken…",
-    addDeviceTitle: "Apparaat toevoegen", addDeviceBody: "Geef het nieuwe apparaat een naam en kies de klasse. Het wordt leeg op de hub aangemaakt en in de editor geopend, waar je de commando's toevoegt.",
-    addDevicePlaceholder: "Naam van apparaat", addDeviceClass: "Apparaatklasse", addDeviceCancel: "Annuleren", addDeviceConfirm: "Aanmaken", addDeviceCreating: "Aanmaken…",
-    addDeviceWifiHint: "Commando's die Home Assistant moeten aanroepen horen in het tabblad Wifi Commands.", creatingDevice: "Apparaat aanmaken…",
-    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
+    addDeviceTitle: "Apparaat toevoegen", addDeviceBody: "Kies een naam en apparaattype. Het apparaat wordt zonder commando's op de hub aangemaakt en daarna in de editor geopend, zodat je commando's kunt toevoegen.",
+    addDevicePlaceholder: "Apparaatnaam", addDeviceClass: "Apparaattype", addDeviceCancel: "Annuleren", addDeviceConfirm: "Aanmaken", addDeviceCreating: "Aanmaken…",
+    addDeviceWifiHint: "Gebruik voor commando's die Home Assistant moet uitvoeren het tabblad Wifi Commands.", creatingDevice: "Apparaat aanmaken…",
+    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "Activiteiten opnieuw ordenen…", reorderingDevices: "Apparaten opnieuw ordenen…", creatingActivity: "Activiteit aanmaken…",
   },
   hubClick: {

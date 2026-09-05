@@ -397,6 +397,70 @@ test("compact navigation and button copy stays clear in translated UI", () => {
   setToolsCardLanguage("en");
 });
 
+test("add-device copy describes user choices and an initially commandless device", () => {
+  const cases = [
+    [
+      "en",
+      "Device type",
+      "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
+      "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
+      "Generic HTTP",
+    ],
+    [
+      "de",
+      "Gerätetyp",
+      "Wähle einen Namen und Gerätetyp. Das Gerät wird ohne Befehle auf dem Hub erstellt und anschließend im Editor geöffnet, wo du Befehle hinzufügen kannst.",
+      "Verwende für Befehle, die Home Assistant ausführen soll, stattdessen den Tab Wifi Commands.",
+      "Generisches HTTP",
+    ],
+    [
+      "es",
+      "Tipo de dispositivo",
+      "Elige un nombre y un tipo de dispositivo. El dispositivo se creará en el hub sin comandos y después se abrirá en el editor para que puedas añadirlos.",
+      "Para los comandos que deba gestionar Home Assistant, usa la pestaña Wifi Commands.",
+      "HTTP genérico",
+    ],
+    [
+      "fr",
+      "Type d’appareil",
+      "Choisissez un nom et un type d’appareil. L’appareil sera créé sur le hub sans commandes, puis ouvert dans l’éditeur pour que vous puissiez en ajouter.",
+      "Pour les commandes que Home Assistant doit exécuter, utilisez plutôt l’onglet Wifi Commands.",
+      "HTTP générique",
+    ],
+    [
+      "nl",
+      "Apparaattype",
+      "Kies een naam en apparaattype. Het apparaat wordt zonder commando's op de hub aangemaakt en daarna in de editor geopend, zodat je commando's kunt toevoegen.",
+      "Gebruik voor commando's die Home Assistant moet uitvoeren het tabblad Wifi Commands.",
+      "Generiek HTTP",
+    ],
+    [
+      "zh-Hans",
+      "设备类型",
+      "选择设备名称和类型。设备将在 Hub 上创建，初始不含任何命令，随后会在编辑器中打开，以便你添加命令。",
+      "需要由 Home Assistant 执行的命令，请改用 Wifi Commands 标签页。",
+      "通用 HTTP",
+    ],
+  ] as const;
+
+  for (const [locale, deviceType, body, hint, genericHttp] of cases) {
+    setToolsCardLanguage(locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.addDeviceClass, deviceType, locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.addDeviceBody, body, locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.addDeviceWifiHint, hint, locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.deviceClassLabels.wifi_ip, genericHttp, locale);
+  }
+
+  setToolsCardLanguage("es");
+  assert.equal(
+    TOOLS_CARD_STRINGS.errors.deviceIdMissing,
+    "El hub no devolvió el identificador del nuevo dispositivo.",
+  );
+  setToolsCardLanguage("nl");
+  assert.equal(TOOLS_CARD_STRINGS.cache.addDevicePlaceholder, "Apparaatnaam");
+  setToolsCardLanguage("en");
+});
+
 test("firmware copy distinguishes required updates from recommendations", () => {
   setToolsCardLanguage("en");
 

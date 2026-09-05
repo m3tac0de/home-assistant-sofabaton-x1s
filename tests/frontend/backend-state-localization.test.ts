@@ -55,6 +55,27 @@ test("structured backend errors are localized without relaying English exception
   setToolsCardLanguage("en");
 });
 
+test("device creation errors are localized from stable codes", () => {
+  const cases = [
+    ["de", "invalid_name", "Gib einen Gerätenamen mit 1 bis 30 Zeichen ein."],
+    ["es", "unsupported_class", "Este tipo de dispositivo no se puede crear en este hub."],
+    ["fr", "create_failed", "Impossible de créer l’appareil sur le hub."],
+    ["nl", "device_id_missing", "De hub heeft geen ID voor het nieuwe apparaat teruggegeven."],
+    ["de", "not_found", "Der ausgewählte Hub ist nicht mehr verfügbar."],
+    ["zh-Hans", "a_future_code", "无法在 Hub 上创建设备。"],
+  ] as const;
+
+  for (const [locale, code, expected] of cases) {
+    setToolsCardLanguage(locale);
+    assert.equal(
+      localizeBackendError({ code, message: "The hub returned an English error" }, "device_create"),
+      expected,
+      locale,
+    );
+  }
+  setToolsCardLanguage("en");
+});
+
 test("structured backend progress is localized without relaying its English message", () => {
   const cases = [
     {

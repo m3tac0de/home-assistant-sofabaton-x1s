@@ -220,7 +220,7 @@ class SofabatonControlPanelCard extends LitElement {
   // "Add Device" dialog state.
   private _addDeviceOpen = false;
   private _addDeviceBusy = false;
-  private _addDeviceError: string | null = null;
+  private _addDeviceError: { error_code: string } | null = null;
   private _addDeviceClass = "";
   private _localeLoading = false;
   private _localeRequestId = 0;
@@ -587,8 +587,8 @@ class SofabatonControlPanelCard extends LitElement {
     this.requestUpdate();
     const result = await this._store.createDevice(name, deviceClass);
     this._addDeviceBusy = false;
-    if ("error" in result) {
-      this._addDeviceError = result.error;
+    if ("errorCode" in result) {
+      this._addDeviceError = { error_code: result.errorCode };
       this.requestUpdate();
       return;
     }

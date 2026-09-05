@@ -32,6 +32,7 @@ import {
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
 import { buildHubClickNotification } from "../shared/utils/hub-click-notification";
+import { backendErrorCode } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const BACKEND_RETRY_MIN_MS = 2000;
@@ -890,20 +891,20 @@ export class ControlPanelStore {
   /**
    * Create an empty device of `deviceClass` on the hub, then pull its cache
    * entry so the live editor can capture it right away. Resolves with the
-   * assigned device id or an error message. Mirrors `createActivity`.
+   * assigned device id or a stable error code. Mirrors `createActivity`.
    */
-  async createDevice(name: string, deviceClass: string): Promise<{ deviceId: number } | { error: string }> {
-    if (this._isHubCommandBusy()) return { error: TOOLS_CARD_STRINGS.errors.anotherOperation };
+  async createDevice(name: string, deviceClass: string): Promise<{ deviceId: number } | { errorCode: string }> {
+    if (this._isHubCommandBusy()) return { errorCode: "another_operation" };
     const hub = selectedHub(this._snapshot);
-    if (!hub) return { error: TOOLS_CARD_STRINGS.errors.noHubSelected };
+    if (!hub) return { errorCode: "no_hub_selected" };
     this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingDevice, hub.entry_id);
     let deviceId = 0;
     try {
       const result = await this.api().createDevice(hub.entry_id, name, deviceClass);
       deviceId = Number(result?.device_id || 0);
-      if (!deviceId) return { error: TOOLS_CARD_STRINGS.errors.deviceIdMissing };
+      if (!deviceId) return { errorCode: "device_id_missing" };
     } catch (error) {
-      return { error: formatError(error) };
+      return { errorCode: backendErrorCode(error) ?? "device_create_failed" };
     } finally {
       this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }

@@ -8,7 +8,7 @@ type BackendOperation =
   | "entity_sync"
   | "wifi_deploy";
 
-export type BackendErrorSurface = "ir_learn" | "ir_emissions" | "ir_convert";
+export type BackendErrorSurface = "device_create" | "ir_learn" | "ir_emissions" | "ir_convert";
 
 /**
  * The `ir_payload/convert` rejection carries the refused protocol as its
@@ -56,6 +56,19 @@ export function backendErrorCode(value: unknown): string | null {
  * use localized generic copy rather than leaking their English `message`.
  */
 export function localizeBackendError(value: unknown, surface: BackendErrorSurface): string {
+  if (surface === "device_create") {
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
+    if (code === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (code === "device_id_missing") return TOOLS_CARD_STRINGS.errors.deviceIdMissing;
+    if (code === "invalid_name") return TOOLS_CARD_STRINGS.errors.deviceNameInvalid;
+    if (code === "unsupported_class") return TOOLS_CARD_STRINGS.errors.deviceTypeUnsupported;
+    return TOOLS_CARD_STRINGS.errors.deviceCreateFailed;
+  }
+
   const S = TOOLS_CARD_STRINGS.backup;
   if (surface === "ir_emissions") return S.learnHaUnavailable;
   if (surface === "ir_convert") {
@@ -346,4 +359,3 @@ export function localizeBackendProgress(
 
   return progressStep(progress) || S.working;
 }
-

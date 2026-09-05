@@ -59,6 +59,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     wifiPressNoSocket: "Les événements d’appui Wifi ne sont pas disponibles sans connexion WebSocket", hubEventsNoSocket: "Les événements du hub ne sont pas disponibles sans connexion WebSocket",
     anotherOperation: "Une autre opération du hub est déjà en cours.", noHubSelected: "Aucun hub sélectionné.", noHubSelectedLong: "Aucun hub n’est sélectionné.",
     cacheRefreshFailed: "Échec de l’actualisation du cache.", syncFailed: "Échec de la synchronisation.", activityIdMissing: "Le hub n’a pas renvoyé l’identifiant de la nouvelle activité.", deviceIdMissing: "Le hub n’a pas renvoyé l’identifiant du nouvel appareil.",
+    deviceCreateFailed: "Impossible de créer l’appareil sur le hub.", deviceNameInvalid: "Saisissez un nom d’appareil comportant entre 1 et 30 caractères.", deviceTypeUnsupported: "Ce type d’appareil ne peut pas être créé sur ce hub.", selectedHubUnavailable: "Le hub sélectionné n’est plus disponible.",
   },
   settings: {
     loading: "Chargement…", noHubsFound: "Aucun hub trouvé.", unknownHubName: "Inconnu", activities: "Activités", devices: "Appareils",
@@ -84,10 +85,10 @@ export const TOOLS_CARD_STRINGS_FR = {
     reorderDevicesHint: "Faites glisser les appareils dans l’ordre souhaité, puis synchronisez-les avec le hub.", reorderSyncing: "Écriture du nouvel ordre sur le hub…",
     addActivityTitle: "Ajouter une activité", addActivityBody: "Nommez la nouvelle activité. Elle sera créée sur le hub et ouverte dans l’éditeur.", addActivityPlaceholder: "Nom de l’activité",
     addActivityCancel: "Annuler", addActivityConfirm: "Créer", addActivityCreating: "Création…",
-    addDeviceTitle: "Ajouter un appareil", addDeviceBody: "Nommez le nouvel appareil et choisissez sa classe. Il sera créé vide sur le hub et ouvert dans l’éditeur, où vous ajoutez ses commandes.",
-    addDevicePlaceholder: "Nom de l’appareil", addDeviceClass: "Classe d’appareil", addDeviceCancel: "Annuler", addDeviceConfirm: "Créer", addDeviceCreating: "Création…",
-    addDeviceWifiHint: "Les commandes qui doivent appeler Home Assistant vont dans l’onglet Wifi Commands.", creatingDevice: "Création de l’appareil…",
-    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" }, reorderingActivities: "Réorganisation des activités…", reorderingDevices: "Réorganisation des appareils…", creatingActivity: "Création de l’activité…",
+    addDeviceTitle: "Ajouter un appareil", addDeviceBody: "Choisissez un nom et un type d’appareil. L’appareil sera créé sur le hub sans commandes, puis ouvert dans l’éditeur pour que vous puissiez en ajouter.",
+    addDevicePlaceholder: "Nom de l’appareil", addDeviceClass: "Type d’appareil", addDeviceCancel: "Annuler", addDeviceConfirm: "Créer", addDeviceCreating: "Création…",
+    addDeviceWifiHint: "Pour les commandes que Home Assistant doit exécuter, utilisez plutôt l’onglet Wifi Commands.", creatingDevice: "Création de l’appareil…",
+    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP générique", wifi_mqtt: "MQTT" }, reorderingActivities: "Réorganisation des activités…", reorderingDevices: "Réorganisation des appareils…", creatingActivity: "Création de l’activité…",
   },
   hubClick: {
     notificationTitle: "🛠️ Assistant d’automatisation", contextActivity: "Activité", contextDevice: "Appareil", kindLabels: { favorite: "Favori", macro: "Macro", button: "Touche", command: "Commande" },

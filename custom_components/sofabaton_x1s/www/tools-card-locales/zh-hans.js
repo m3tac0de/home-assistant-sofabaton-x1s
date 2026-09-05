@@ -114,7 +114,11 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     cacheRefreshFailed: "\u7F13\u5B58\u5237\u65B0\u5931\u8D25\u3002",
     syncFailed: "\u540C\u6B65\u5931\u8D25\u3002",
     activityIdMissing: "Hub \u672A\u8FD4\u56DE\u65B0\u6D3B\u52A8\u7684 ID\u3002",
-    deviceIdMissing: "Hub \u672A\u8FD4\u56DE\u65B0\u8BBE\u5907\u7684 ID\u3002"
+    deviceIdMissing: "Hub \u672A\u8FD4\u56DE\u65B0\u8BBE\u5907\u7684 ID\u3002",
+    deviceCreateFailed: "\u65E0\u6CD5\u5728 Hub \u4E0A\u521B\u5EFA\u8BBE\u5907\u3002",
+    deviceNameInvalid: "\u8BF7\u8F93\u5165 1 \u81F3 30 \u4E2A\u5B57\u7B26\u7684\u8BBE\u5907\u540D\u79F0\u3002",
+    deviceTypeUnsupported: "\u65E0\u6CD5\u5728\u6B64 Hub \u4E0A\u521B\u5EFA\u8BE5\u8BBE\u5907\u7C7B\u578B\u3002",
+    selectedHubUnavailable: "\u6240\u9009 Hub \u5DF2\u4E0D\u53EF\u7528\u3002"
   },
   settings: {
     loading: "\u6B63\u5728\u52A0\u8F7D\u2026",
@@ -183,15 +187,15 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     addActivityConfirm: "\u521B\u5EFA",
     addActivityCreating: "\u6B63\u5728\u521B\u5EFA\u2026",
     addDeviceTitle: "\u6DFB\u52A0\u8BBE\u5907",
-    addDeviceBody: "\u4E3A\u65B0\u8BBE\u5907\u547D\u540D\u5E76\u9009\u62E9\u5176\u7C7B\u522B\u3002\u8BBE\u5907\u5C06\u5728 Hub \u4E0A\u521B\u5EFA\u4E3A\u7A7A\u8BBE\u5907\u5E76\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00\uFF0C\u4F60\u53EF\u4EE5\u5728\u90A3\u91CC\u6DFB\u52A0\u547D\u4EE4\u3002",
+    addDeviceBody: "\u9009\u62E9\u8BBE\u5907\u540D\u79F0\u548C\u7C7B\u578B\u3002\u8BBE\u5907\u5C06\u5728 Hub \u4E0A\u521B\u5EFA\uFF0C\u521D\u59CB\u4E0D\u542B\u4EFB\u4F55\u547D\u4EE4\uFF0C\u968F\u540E\u4F1A\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00\uFF0C\u4EE5\u4FBF\u4F60\u6DFB\u52A0\u547D\u4EE4\u3002",
     addDevicePlaceholder: "\u8BBE\u5907\u540D\u79F0",
-    addDeviceClass: "\u8BBE\u5907\u7C7B\u522B",
+    addDeviceClass: "\u8BBE\u5907\u7C7B\u578B",
     addDeviceCancel: "\u53D6\u6D88",
     addDeviceConfirm: "\u521B\u5EFA",
     addDeviceCreating: "\u6B63\u5728\u521B\u5EFA\u2026",
-    addDeviceWifiHint: "\u9700\u8981\u8C03\u7528 Home Assistant \u7684\u547D\u4EE4\u8BF7\u653E\u5728 Wifi Commands \u6807\u7B7E\u9875\u4E2D\u3002",
+    addDeviceWifiHint: "\u9700\u8981\u7531 Home Assistant \u6267\u884C\u7684\u547D\u4EE4\uFF0C\u8BF7\u6539\u7528 Wifi Commands \u6807\u7B7E\u9875\u3002",
     creatingDevice: "\u6B63\u5728\u521B\u5EFA\u8BBE\u5907\u2026",
-    deviceClassLabels: { ir: "\u7EA2\u5916", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "\u7EA2\u5916", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "\u901A\u7528 HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "\u6B63\u5728\u8C03\u6574\u6D3B\u52A8\u987A\u5E8F\u2026",
     reorderingDevices: "\u6B63\u5728\u8C03\u6574\u8BBE\u5907\u987A\u5E8F\u2026",
     creatingActivity: "\u6B63\u5728\u521B\u5EFA\u6D3B\u52A8\u2026"

@@ -11,6 +11,7 @@ import {
   hubActivities,
   hubDevices,
 } from "../shared/utils/control-panel-selectors";
+import { localizeBackendError } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 function badge(type: string, value: string | number) {
@@ -77,7 +78,7 @@ export function renderCacheTab(params: {
   // lists the classes the selected hub line can create, in display order.
   addDeviceOpen: boolean;
   addDeviceBusy: boolean;
-  addDeviceError: string | null;
+  addDeviceError: { error_code: string } | null;
   addDeviceClasses: string[];
   addDeviceClass: string;
   onOpenAddDevice: () => void;
@@ -430,7 +431,7 @@ export function renderCacheTab(params: {
             <div class="cache-dialog-title">${S.addDeviceTitle}</div>
             <div class="cache-dialog-text">${S.addDeviceBody}</div>
             ${params.addDeviceError
-              ? html`<div class="cache-footer-error">${params.addDeviceError}</div>`
+              ? html`<div class="cache-footer-error">${localizeBackendError(params.addDeviceError, "device_create")}</div>`
               : null}
             <input
               class="cache-dialog-input"

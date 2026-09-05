@@ -1828,7 +1828,11 @@ var TOOLS_CARD_STRINGS_EN = {
     cacheRefreshFailed: "Cache refresh failed.",
     syncFailed: "Sync failed.",
     activityIdMissing: "The hub did not return the new activity id.",
-    deviceIdMissing: "The hub did not return the new device id."
+    deviceIdMissing: "The hub did not return the new device id.",
+    deviceCreateFailed: "The device could not be created on the hub.",
+    deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
+    deviceTypeUnsupported: "This device type cannot be created on this hub.",
+    selectedHubUnavailable: "The selected hub is no longer available."
   },
   settings: {
     loading: "Loading\u2026",
@@ -1901,20 +1905,20 @@ var TOOLS_CARD_STRINGS_EN = {
     reorderingDevices: "Reordering devices\u2026",
     creatingActivity: "Creating activity\u2026",
     addDeviceTitle: "Add device",
-    addDeviceBody: "Name the new device and pick its class. It is created empty on the hub and opened in the editor, where you add its commands.",
+    addDeviceBody: "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
     addDevicePlaceholder: "Device name",
-    addDeviceClass: "Device class",
+    addDeviceClass: "Device type",
     addDeviceCancel: "Cancel",
     addDeviceConfirm: "Create",
     addDeviceCreating: "Creating\u2026",
-    addDeviceWifiHint: "Commands that should call Home Assistant belong in the Wifi Commands tab.",
+    addDeviceWifiHint: "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
     creatingDevice: "Creating device\u2026",
     deviceClassLabels: {
       ir: "Infrared",
       wifi_roku: "Roku",
       wifi_hue: "Philips Hue",
       wifi_sonos: "Sonos",
-      wifi_ip: "Wifi HTTP",
+      wifi_ip: "Generic HTTP",
       wifi_mqtt: "MQTT"
     }
   },
@@ -3262,6 +3266,18 @@ function backendErrorCode(value) {
   return error.error && error.error !== value ? backendErrorCode(error.error) : null;
 }
 function localizeBackendError(value, surface) {
+  if (surface === "device_create") {
+    const code2 = backendErrorCode(value);
+    if (code2 === "busy" || code2 === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code2 === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
+    if (code2 === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (code2 === "device_id_missing") return TOOLS_CARD_STRINGS.errors.deviceIdMissing;
+    if (code2 === "invalid_name") return TOOLS_CARD_STRINGS.errors.deviceNameInvalid;
+    if (code2 === "unsupported_class") return TOOLS_CARD_STRINGS.errors.deviceTypeUnsupported;
+    return TOOLS_CARD_STRINGS.errors.deviceCreateFailed;
+  }
   const S5 = TOOLS_CARD_STRINGS.backup;
   if (surface === "ir_emissions") return S5.learnHaUnavailable;
   if (surface === "ir_convert") {
@@ -4605,20 +4621,20 @@ var ControlPanelStore = class {
   /**
    * Create an empty device of `deviceClass` on the hub, then pull its cache
    * entry so the live editor can capture it right away. Resolves with the
-   * assigned device id or an error message. Mirrors `createActivity`.
+   * assigned device id or a stable error code. Mirrors `createActivity`.
    */
   async createDevice(name, deviceClass) {
-    if (this._isHubCommandBusy()) return { error: TOOLS_CARD_STRINGS.errors.anotherOperation };
+    if (this._isHubCommandBusy()) return { errorCode: "another_operation" };
     const hub = selectedHub(this._snapshot);
-    if (!hub) return { error: TOOLS_CARD_STRINGS.errors.noHubSelected };
+    if (!hub) return { errorCode: "no_hub_selected" };
     this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingDevice, hub.entry_id);
     let deviceId = 0;
     try {
       const result = await this.api().createDevice(hub.entry_id, name, deviceClass);
       deviceId = Number(result?.device_id || 0);
-      if (!deviceId) return { error: TOOLS_CARD_STRINGS.errors.deviceIdMissing };
+      if (!deviceId) return { errorCode: "device_id_missing" };
     } catch (error) {
-      return { error: formatError(error) };
+      return { errorCode: backendErrorCode(error) ?? "device_create_failed" };
     } finally {
       this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
@@ -5689,7 +5705,7 @@ function renderCacheTab(params) {
           <div class="cache-dialog" @click=${(event) => event.stopPropagation()}>
             <div class="cache-dialog-title">${S5.addDeviceTitle}</div>
             <div class="cache-dialog-text">${S5.addDeviceBody}</div>
-            ${params.addDeviceError ? b2`<div class="cache-footer-error">${params.addDeviceError}</div>` : null}
+            ${params.addDeviceError ? b2`<div class="cache-footer-error">${localizeBackendError(params.addDeviceError, "device_create")}</div>` : null}
             <input
               class="cache-dialog-input"
               type="text"
@@ -20900,8 +20916,8 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this.requestUpdate();
     const result = await this._store.createDevice(name, deviceClass);
     this._addDeviceBusy = false;
-    if ("error" in result) {
-      this._addDeviceError = result.error;
+    if ("errorCode" in result) {
+      this._addDeviceError = { error_code: result.errorCode };
       this.requestUpdate();
       return;
     }

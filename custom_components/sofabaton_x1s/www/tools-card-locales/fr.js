@@ -114,7 +114,11 @@ var TOOLS_CARD_STRINGS_FR = {
     cacheRefreshFailed: "\xC9chec de l\u2019actualisation du cache.",
     syncFailed: "\xC9chec de la synchronisation.",
     activityIdMissing: "Le hub n\u2019a pas renvoy\xE9 l\u2019identifiant de la nouvelle activit\xE9.",
-    deviceIdMissing: "Le hub n\u2019a pas renvoy\xE9 l\u2019identifiant du nouvel appareil."
+    deviceIdMissing: "Le hub n\u2019a pas renvoy\xE9 l\u2019identifiant du nouvel appareil.",
+    deviceCreateFailed: "Impossible de cr\xE9er l\u2019appareil sur le hub.",
+    deviceNameInvalid: "Saisissez un nom d\u2019appareil comportant entre 1 et 30 caract\xE8res.",
+    deviceTypeUnsupported: "Ce type d\u2019appareil ne peut pas \xEAtre cr\xE9\xE9 sur ce hub.",
+    selectedHubUnavailable: "Le hub s\xE9lectionn\xE9 n\u2019est plus disponible."
   },
   settings: {
     loading: "Chargement\u2026",
@@ -183,15 +187,15 @@ var TOOLS_CARD_STRINGS_FR = {
     addActivityConfirm: "Cr\xE9er",
     addActivityCreating: "Cr\xE9ation\u2026",
     addDeviceTitle: "Ajouter un appareil",
-    addDeviceBody: "Nommez le nouvel appareil et choisissez sa classe. Il sera cr\xE9\xE9 vide sur le hub et ouvert dans l\u2019\xE9diteur, o\xF9 vous ajoutez ses commandes.",
+    addDeviceBody: "Choisissez un nom et un type d\u2019appareil. L\u2019appareil sera cr\xE9\xE9 sur le hub sans commandes, puis ouvert dans l\u2019\xE9diteur pour que vous puissiez en ajouter.",
     addDevicePlaceholder: "Nom de l\u2019appareil",
-    addDeviceClass: "Classe d\u2019appareil",
+    addDeviceClass: "Type d\u2019appareil",
     addDeviceCancel: "Annuler",
     addDeviceConfirm: "Cr\xE9er",
     addDeviceCreating: "Cr\xE9ation\u2026",
-    addDeviceWifiHint: "Les commandes qui doivent appeler Home Assistant vont dans l\u2019onglet Wifi Commands.",
+    addDeviceWifiHint: "Pour les commandes que Home Assistant doit ex\xE9cuter, utilisez plut\xF4t l\u2019onglet Wifi Commands.",
     creatingDevice: "Cr\xE9ation de l\u2019appareil\u2026",
-    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP g\xE9n\xE9rique", wifi_mqtt: "MQTT" },
     reorderingActivities: "R\xE9organisation des activit\xE9s\u2026",
     reorderingDevices: "R\xE9organisation des appareils\u2026",
     creatingActivity: "Cr\xE9ation de l\u2019activit\xE9\u2026"

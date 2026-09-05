@@ -113,7 +113,11 @@ var TOOLS_CARD_STRINGS_ES = {
     cacheRefreshFailed: "No se pudo actualizar la cach\xE9.",
     syncFailed: "Error de sincronizaci\xF3n.",
     activityIdMissing: "El hub no devolvi\xF3 el identificador de la nueva actividad.",
-    deviceIdMissing: "El hub no devolvi\xF3 el ID del nuevo dispositivo."
+    deviceIdMissing: "El hub no devolvi\xF3 el identificador del nuevo dispositivo.",
+    deviceCreateFailed: "No se pudo crear el dispositivo en el hub.",
+    deviceNameInvalid: "Introduce un nombre de dispositivo de entre 1 y 30 caracteres.",
+    deviceTypeUnsupported: "Este tipo de dispositivo no se puede crear en este hub.",
+    selectedHubUnavailable: "El hub seleccionado ya no est\xE1 disponible."
   },
   settings: {
     loading: "Cargando\u2026",
@@ -182,15 +186,15 @@ var TOOLS_CARD_STRINGS_ES = {
     addActivityConfirm: "Crear",
     addActivityCreating: "Creando\u2026",
     addDeviceTitle: "A\xF1adir dispositivo",
-    addDeviceBody: "Asigna un nombre al nuevo dispositivo y elige su clase. Se crear\xE1 vac\xEDo en el hub y se abrir\xE1 en el editor, donde a\xF1ades sus comandos.",
+    addDeviceBody: "Elige un nombre y un tipo de dispositivo. El dispositivo se crear\xE1 en el hub sin comandos y despu\xE9s se abrir\xE1 en el editor para que puedas a\xF1adirlos.",
     addDevicePlaceholder: "Nombre del dispositivo",
-    addDeviceClass: "Clase de dispositivo",
+    addDeviceClass: "Tipo de dispositivo",
     addDeviceCancel: "Cancelar",
     addDeviceConfirm: "Crear",
     addDeviceCreating: "Creando\u2026",
-    addDeviceWifiHint: "Los comandos que deban llamar a Home Assistant van en la pesta\xF1a Wifi Commands.",
+    addDeviceWifiHint: "Para los comandos que deba gestionar Home Assistant, usa la pesta\xF1a Wifi Commands.",
     creatingDevice: "Creando dispositivo\u2026",
-    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP gen\xE9rico", wifi_mqtt: "MQTT" },
     reorderingActivities: "Reordenando actividades\u2026",
     reorderingDevices: "Reordenando dispositivos\u2026",
     creatingActivity: "Creando actividad\u2026"

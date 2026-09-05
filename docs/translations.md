@@ -107,6 +107,9 @@ literal UI text outside the English table.
 - Keep payload terminology stable inside the editor: German `Nutzdaten`, Spanish
   `carga útil`, French `données utiles`, Dutch `payload`, and Simplified Chinese
   `有效载荷`. Simplified Chinese also keeps the Sofabaton product term `Hub` unchanged.
+- In creation dialogs, present the internal `device_class` field as **device
+  type**. Describe a newly created device as having **no commands** rather than
+  as “empty,” and label the generic `wifi_ip` option as **Generic HTTP**.
 - Backend progress and failure payloads must expose stable machine-readable
   fields (`kind`/`phase`/`step_kind` or `error_code`). Translate those fields at
   the card boundary; never place a backend exception message directly on a
