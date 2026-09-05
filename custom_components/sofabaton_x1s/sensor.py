@@ -485,6 +485,8 @@ class SofabatonIrInterceptSensor(SensorEntity):
     _attr_should_poll = False
     _attr_has_entity_name = True
     _attr_translation_key = "ir_intercept"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     _DEFAULT_VALUE = "Waiting for infrared send"
 

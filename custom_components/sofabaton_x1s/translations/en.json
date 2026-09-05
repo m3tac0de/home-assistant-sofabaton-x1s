@@ -174,7 +174,7 @@
         "name": "Index"
       },
       "ip_commands": {
-        "name": "Wi-Fi commands"
+        "name": "Wifi commands"
       },
       "ir_intercept": {
         "name": "Last intercepted IR command"
@@ -191,7 +191,7 @@
         "name": "Proxy"
       },
       "wifi_device": {
-        "name": "Wi-Fi device"
+        "name": "Wifi device"
       }
     },
     "text": {

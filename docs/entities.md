@@ -38,6 +38,7 @@ For Wifi Commands, Wifi Events, Hub Events, Activity Events, and a sensor automa
 | Button   | `button.<hub>_find_remote`         | Sound the physical remote's buzzer                                                                                                               |
 | Button   | `button.<hub>_resync_remote`       | Synchronize the physical remote                                                                                                                  |
 | Text     | `text.<hub>_ip_address`            | Override the stored hub IP; disabled by default                                                                                                  |
+| Sensor   | `sensor.<hub>_ir_intercept`        | Last command intercepted by the infrared emitter entity (HA 2026.8 or newer); disabled by default                                                |
 
 ## ◇ Availability while the Sofabaton app is connected
 

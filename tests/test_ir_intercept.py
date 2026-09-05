@@ -223,7 +223,8 @@ def test_intercept_sensor_exposes_last_emission_and_recent():
     assert attrs["count"] == 7
     assert len(attrs["recent"]) == 5
     assert attrs["recent"][0]["label"] == "Samsung32Command (00000002)"
-    assert getattr(entity, "_attr_entity_registry_enabled_default", True) is True
+    assert entity._attr_entity_registry_enabled_default is False
+    assert entity._attr_entity_category is _sensor_module().EntityCategory.DIAGNOSTIC
     assert entity._attr_unique_id == "aabbccddeeff_ir_intercept"
 
 
