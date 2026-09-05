@@ -6,11 +6,12 @@ Each configured hub provides entities for controlling Sofabaton from Home Assist
 
 Use these entities in dashboards or custom UIs, automations, and scripts.
 
-| Platform | Default entity                                   | Purpose                              |
-| -------- | ------------------------------------------------ | ------------------------------------ |
-| Remote   | `remote.<hub>_remote`                            | Send commands and control Activities |
-| Select   | `select.<hub>_activity`                          | View or change the current Activity  |
-| Button   | `button.<hub>_volume_up`, `button.<hub>_mute`, … | Send Activity-aware commands         |
+| Platform | Default entity                                   | Purpose                                                                                  |
+| -------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| Remote   | `remote.<hub>_remote`                            | Send commands and control Activities                                                     |
+| Infrared | `infrared.<hub>_ir_emitter`                      | Let compatible Home Assistant infrared integrations send commands through the hub; requires a recent Home Assistant release |
+| Select   | `select.<hub>_activity`                          | View or change the current Activity                                                      |
+| Button   | `button.<hub>_volume_up`, `button.<hub>_mute`, … | Send Activity-aware commands                                                             |
 
 For `remote.send_command`, `remote.turn_on`, and `remote.turn_off` examples, see the [remote entity guide](remote_entity.md).
 

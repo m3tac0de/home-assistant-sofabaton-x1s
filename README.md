@@ -32,6 +32,7 @@ Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from 
 | HTTP-delivered Wifi Commands      | Yes | Yes | Yes |
 | MQTT-delivered Wifi Commands      | No  | No  | Yes |
 | Activity state over MQTT          | No  | No  | Yes |
+| IR emitter and learning           | Yes | Yes | Yes |
 | Live editing, backup, and restore | Yes | Yes | Yes |
 
 Requirements:
@@ -189,7 +190,7 @@ For configuration, delivery choices, limits, and automation examples, see the [r
 
 ## ◇ Entities
 
-The integration provides entities for both automation directions: remotes, selects, and buttons control the hub, while sensors expose Activity changes, Wifi Command presses, and connection state as automation inputs. Additional entities manage the proxy, listener, diagnostics, and maintenance tasks.
+The integration provides entities for both automation directions: remotes, selects, and buttons control the hub, while sensors expose Activity changes, Wifi Command presses, and connection state as automation inputs. On recent Home Assistant releases, `infrared.<hub>_ir_emitter` lets compatible infrared integrations send commands through the hub. Additional entities manage the proxy, listener, diagnostics, and maintenance tasks.
 
 See the [entity reference](docs/entities.md) for default entity IDs, purposes, and availability behavior.
 
