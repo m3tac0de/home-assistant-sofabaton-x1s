@@ -195,7 +195,7 @@ var TOOLS_CARD_STRINGS_DE = {
     addDeviceCreating: "Wird erstellt\u2026",
     addDeviceWifiHint: "Verwende f\xFCr Befehle, die Home Assistant ausf\xFChren soll, stattdessen den Tab Wifi Commands.",
     creatingDevice: "Ger\xE4t wird erstellt\u2026",
-    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "Aktivit\xE4ten werden neu geordnet\u2026",
     reorderingDevices: "Ger\xE4te werden neu geordnet\u2026",
     creatingActivity: "Aktivit\xE4t wird erstellt\u2026"

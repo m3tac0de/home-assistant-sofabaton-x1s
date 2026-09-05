@@ -195,7 +195,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     addDeviceCreating: "\u6B63\u5728\u521B\u5EFA\u2026",
     addDeviceWifiHint: "\u9700\u8981\u7531 Home Assistant \u6267\u884C\u7684\u547D\u4EE4\uFF0C\u8BF7\u6539\u7528 Wifi Commands \u6807\u7B7E\u9875\u3002",
     creatingDevice: "\u6B63\u5728\u521B\u5EFA\u8BBE\u5907\u2026",
-    deviceClassLabels: { ir: "\u7EA2\u5916", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "\u901A\u7528 HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "\u7EA2\u5916", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "\u901A\u7528 HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "\u6B63\u5728\u8C03\u6574\u6D3B\u52A8\u987A\u5E8F\u2026",
     reorderingDevices: "\u6B63\u5728\u8C03\u6574\u8BBE\u5907\u987A\u5E8F\u2026",
     creatingActivity: "\u6B63\u5728\u521B\u5EFA\u6D3B\u52A8\u2026"

@@ -91,7 +91,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     addDeviceTitle: "Gerät hinzufügen", addDeviceBody: "Wähle einen Namen und Gerätetyp. Das Gerät wird ohne Befehle auf dem Hub erstellt und anschließend im Editor geöffnet, wo du Befehle hinzufügen kannst.",
     addDevicePlaceholder: "Gerätename", addDeviceClass: "Gerätetyp", addDeviceCancel: "Abbrechen", addDeviceConfirm: "Erstellen", addDeviceCreating: "Wird erstellt…",
     addDeviceWifiHint: "Verwende für Befehle, die Home Assistant ausführen soll, stattdessen den Tab Wifi Commands.", creatingDevice: "Gerät wird erstellt…",
-    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT" }, reorderingActivities: "Aktivitäten werden neu geordnet…",
+    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT" }, reorderingActivities: "Aktivitäten werden neu geordnet…",
     reorderingDevices: "Geräte werden neu geordnet…", creatingActivity: "Aktivität wird erstellt…",
   },
   hubClick: {

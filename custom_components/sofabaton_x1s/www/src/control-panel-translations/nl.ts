@@ -119,7 +119,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     addDeviceTitle: "Apparaat toevoegen", addDeviceBody: "Kies een naam en apparaattype. Het apparaat wordt zonder commando's op de hub aangemaakt en daarna in de editor geopend, zodat je commando's kunt toevoegen.",
     addDevicePlaceholder: "Apparaatnaam", addDeviceClass: "Apparaattype", addDeviceCancel: "Annuleren", addDeviceConfirm: "Aanmaken", addDeviceCreating: "Aanmaken…",
     addDeviceWifiHint: "Gebruik voor commando's die Home Assistant moet uitvoeren het tabblad Wifi Commands.", creatingDevice: "Apparaat aanmaken…",
-    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "Activiteiten opnieuw ordenen…", reorderingDevices: "Apparaten opnieuw ordenen…", creatingActivity: "Activiteit aanmaken…",
   },
   hubClick: {

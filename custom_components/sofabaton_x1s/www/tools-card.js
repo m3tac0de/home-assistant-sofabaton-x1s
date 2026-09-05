@@ -1916,7 +1916,7 @@ var TOOLS_CARD_STRINGS_EN = {
     deviceClassLabels: {
       ir: "Infrared",
       wifi_roku: "Roku",
-      wifi_hue: "Philips Hue",
+      wifi_hue: "Hue",
       wifi_sonos: "Sonos",
       wifi_ip: "Generic HTTP",
       wifi_mqtt: "MQTT"

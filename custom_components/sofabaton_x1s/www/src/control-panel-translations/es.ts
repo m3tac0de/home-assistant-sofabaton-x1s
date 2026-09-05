@@ -86,7 +86,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     addDeviceTitle: "Añadir dispositivo", addDeviceBody: "Elige un nombre y un tipo de dispositivo. El dispositivo se creará en el hub sin comandos y después se abrirá en el editor para que puedas añadirlos.",
     addDevicePlaceholder: "Nombre del dispositivo", addDeviceClass: "Tipo de dispositivo", addDeviceCancel: "Cancelar", addDeviceConfirm: "Crear", addDeviceCreating: "Creando…",
     addDeviceWifiHint: "Para los comandos que deba gestionar Home Assistant, usa la pestaña Wifi Commands.", creatingDevice: "Creando dispositivo…",
-    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP genérico", wifi_mqtt: "MQTT" }, reorderingActivities: "Reordenando actividades…", reorderingDevices: "Reordenando dispositivos…", creatingActivity: "Creando actividad…",
+    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP genérico", wifi_mqtt: "MQTT" }, reorderingActivities: "Reordenando actividades…", reorderingDevices: "Reordenando dispositivos…", creatingActivity: "Creando actividad…",
   },
   hubClick: {
     notificationTitle: "🛠️ Asistente de automatización", contextActivity: "Actividad", contextDevice: "Dispositivo", kindLabels: { favorite: "Favorito", macro: "Macro", button: "Botón", command: "Comando" },

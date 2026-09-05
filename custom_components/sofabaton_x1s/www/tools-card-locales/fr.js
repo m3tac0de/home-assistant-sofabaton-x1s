@@ -195,7 +195,7 @@ var TOOLS_CARD_STRINGS_FR = {
     addDeviceCreating: "Cr\xE9ation\u2026",
     addDeviceWifiHint: "Pour les commandes que Home Assistant doit ex\xE9cuter, utilisez plut\xF4t l\u2019onglet Wifi Commands.",
     creatingDevice: "Cr\xE9ation de l\u2019appareil\u2026",
-    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP g\xE9n\xE9rique", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP g\xE9n\xE9rique", wifi_mqtt: "MQTT" },
     reorderingActivities: "R\xE9organisation des activit\xE9s\u2026",
     reorderingDevices: "R\xE9organisation des appareils\u2026",
     creatingActivity: "Cr\xE9ation de l\u2019activit\xE9\u2026"

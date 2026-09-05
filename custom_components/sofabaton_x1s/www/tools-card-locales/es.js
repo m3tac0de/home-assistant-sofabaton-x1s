@@ -194,7 +194,7 @@ var TOOLS_CARD_STRINGS_ES = {
     addDeviceCreating: "Creando\u2026",
     addDeviceWifiHint: "Para los comandos que deba gestionar Home Assistant, usa la pesta\xF1a Wifi Commands.",
     creatingDevice: "Creando dispositivo\u2026",
-    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP gen\xE9rico", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP gen\xE9rico", wifi_mqtt: "MQTT" },
     reorderingActivities: "Reordenando actividades\u2026",
     reorderingDevices: "Reordenando dispositivos\u2026",
     creatingActivity: "Creando actividad\u2026"

@@ -198,7 +198,7 @@ var TOOLS_CARD_STRINGS_NL = {
     addDeviceCreating: "Aanmaken\u2026",
     addDeviceWifiHint: "Gebruik voor commando's die Home Assistant moet uitvoeren het tabblad Wifi Commands.",
     creatingDevice: "Apparaat aanmaken\u2026",
-    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "Activiteiten opnieuw ordenen\u2026",
     reorderingDevices: "Apparaten opnieuw ordenen\u2026",
     creatingActivity: "Activiteit aanmaken\u2026"

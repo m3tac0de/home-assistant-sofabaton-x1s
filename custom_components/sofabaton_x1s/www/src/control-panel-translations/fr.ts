@@ -88,7 +88,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     addDeviceTitle: "Ajouter un appareil", addDeviceBody: "Choisissez un nom et un type d’appareil. L’appareil sera créé sur le hub sans commandes, puis ouvert dans l’éditeur pour que vous puissiez en ajouter.",
     addDevicePlaceholder: "Nom de l’appareil", addDeviceClass: "Type d’appareil", addDeviceCancel: "Annuler", addDeviceConfirm: "Créer", addDeviceCreating: "Création…",
     addDeviceWifiHint: "Pour les commandes que Home Assistant doit exécuter, utilisez plutôt l’onglet Wifi Commands.", creatingDevice: "Création de l’appareil…",
-    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP générique", wifi_mqtt: "MQTT" }, reorderingActivities: "Réorganisation des activités…", reorderingDevices: "Réorganisation des appareils…", creatingActivity: "Création de l’activité…",
+    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP générique", wifi_mqtt: "MQTT" }, reorderingActivities: "Réorganisation des activités…", reorderingDevices: "Réorganisation des appareils…", creatingActivity: "Création de l’activité…",
   },
   hubClick: {
     notificationTitle: "🛠️ Assistant d’automatisation", contextActivity: "Activité", contextDevice: "Appareil", kindLabels: { favorite: "Favori", macro: "Macro", button: "Touche", command: "Commande" },

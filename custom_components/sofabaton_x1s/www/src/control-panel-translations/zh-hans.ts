@@ -117,7 +117,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     addDeviceTitle: "添加设备", addDeviceBody: "选择设备名称和类型。设备将在 Hub 上创建，初始不含任何命令，随后会在编辑器中打开，以便你添加命令。",
     addDevicePlaceholder: "设备名称", addDeviceClass: "设备类型", addDeviceCancel: "取消", addDeviceConfirm: "创建", addDeviceCreating: "正在创建…",
     addDeviceWifiHint: "需要由 Home Assistant 执行的命令，请改用 Wifi Commands 标签页。", creatingDevice: "正在创建设备…",
-    deviceClassLabels: { ir: "红外", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "通用 HTTP", wifi_mqtt: "MQTT" },
+    deviceClassLabels: { ir: "红外", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "通用 HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "正在调整活动顺序…", reorderingDevices: "正在调整设备顺序…", creatingActivity: "正在创建活动…",
   },
   hubClick: {
