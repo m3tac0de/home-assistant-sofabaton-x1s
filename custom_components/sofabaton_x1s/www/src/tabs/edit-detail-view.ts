@@ -96,6 +96,7 @@ import {
   updateCommandRawPayload,
   DECODED_CLASS_FORM_SPECS,
   deviceButtonBindingItems,
+  defaultDecodedSnapshotForClass,
   deviceCommandItems,
   deviceMacroStepItems,
   deviceIpAddress,
@@ -2601,7 +2602,16 @@ export class SofabatonEditDetailView extends LitElement {
 
     const existing = deviceCommandItems(this.bundle, deviceId);
     if (!existing.length) {
-      this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noTemplateCommand;
+      // A device created empty (Hub tab "Add device") has no template
+      // command to clone a decoded snapshot from: open the class's form
+      // with neutral defaults, or raw hex for classes without a form.
+      this._openAddDialogWithSnapshot(
+        deviceId,
+        defaultDecodedSnapshotForClass(deviceClass, {
+          deviceId,
+          commandId: nextFreeDeviceCommandId(this.bundle, deviceId),
+        }),
+      );
       return;
     }
 
@@ -2664,6 +2674,12 @@ export class SofabatonEditDetailView extends LitElement {
       const fields: Record<string, unknown> = {};
       for (const field of spec.fields) {
         fields[field.key] = this._draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
+      }
+      if (snapshot.className === "wifi_mqtt") {
+        // Read-only ids: keep them equal to this device and the id the
+        // commit is about to allocate (the hub ignores both bytes anyway).
+        fields["device_id"] = target.deviceId & 0xff;
+        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? Number(fields["command_id"]) ?? 1) & 0xff;
       }
       if (snapshot.className === "ir") {
         const descriptor = String(fields["descriptor"] ?? "").trim();

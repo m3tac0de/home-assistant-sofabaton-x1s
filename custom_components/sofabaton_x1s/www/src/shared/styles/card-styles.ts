@@ -604,6 +604,13 @@ export const cardStyles = [secondaryTabStyles, css`
     font: inherit; font-size: 13.5px;
   }
   .cache-dialog-input:focus { outline: none; border-color: var(--primary-color); }
+  .cache-dialog-field { display: flex; flex-direction: column; gap: 4px; }
+  .cache-dialog-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--secondary-text-color); }
+  /* Native <select> in the dialog: same field surface as the text input;
+     the popup rows follow the measured theme polarity (see the note on
+     color-scheme above). */
+  .cache-dialog-select { cursor: pointer; }
+  .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
   .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }

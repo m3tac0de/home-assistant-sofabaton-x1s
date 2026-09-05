@@ -113,7 +113,8 @@ var TOOLS_CARD_STRINGS_FR = {
     noHubSelectedLong: "Aucun hub n\u2019est s\xE9lectionn\xE9.",
     cacheRefreshFailed: "\xC9chec de l\u2019actualisation du cache.",
     syncFailed: "\xC9chec de la synchronisation.",
-    activityIdMissing: "Le hub n\u2019a pas renvoy\xE9 l\u2019identifiant de la nouvelle activit\xE9."
+    activityIdMissing: "Le hub n\u2019a pas renvoy\xE9 l\u2019identifiant de la nouvelle activit\xE9.",
+    deviceIdMissing: "Le hub n\u2019a pas renvoy\xE9 l\u2019identifiant du nouvel appareil."
   },
   settings: {
     loading: "Chargement\u2026",
@@ -169,6 +170,7 @@ var TOOLS_CARD_STRINGS_FR = {
     editDevice: "Modifier l\u2019appareil",
     changeOrder: "R\xE9ordonner",
     addActivity: "Ajouter",
+    addDevice: "Ajouter",
     reorderSync: "Synchroniser",
     reorderCancel: "Annuler",
     reorderHint: "Faites glisser les activit\xE9s dans l\u2019ordre souhait\xE9, puis synchronisez-les avec le hub.",
@@ -180,6 +182,16 @@ var TOOLS_CARD_STRINGS_FR = {
     addActivityCancel: "Annuler",
     addActivityConfirm: "Cr\xE9er",
     addActivityCreating: "Cr\xE9ation\u2026",
+    addDeviceTitle: "Ajouter un appareil",
+    addDeviceBody: "Nommez le nouvel appareil et choisissez sa classe. Il sera cr\xE9\xE9 vide sur le hub et ouvert dans l\u2019\xE9diteur, o\xF9 vous ajoutez ses commandes.",
+    addDevicePlaceholder: "Nom de l\u2019appareil",
+    addDeviceClass: "Classe d\u2019appareil",
+    addDeviceCancel: "Annuler",
+    addDeviceConfirm: "Cr\xE9er",
+    addDeviceCreating: "Cr\xE9ation\u2026",
+    addDeviceWifiHint: "Les commandes qui doivent appeler Home Assistant vont dans l\u2019onglet Wifi Commands.",
+    creatingDevice: "Cr\xE9ation de l\u2019appareil\u2026",
+    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "R\xE9organisation des activit\xE9s\u2026",
     reorderingDevices: "R\xE9organisation des appareils\u2026",
     creatingActivity: "Cr\xE9ation de l\u2019activit\xE9\u2026"

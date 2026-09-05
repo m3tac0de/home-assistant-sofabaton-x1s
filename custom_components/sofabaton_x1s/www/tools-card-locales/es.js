@@ -112,7 +112,8 @@ var TOOLS_CARD_STRINGS_ES = {
     noHubSelectedLong: "No hay ning\xFAn hub seleccionado.",
     cacheRefreshFailed: "No se pudo actualizar la cach\xE9.",
     syncFailed: "Error de sincronizaci\xF3n.",
-    activityIdMissing: "El hub no devolvi\xF3 el identificador de la nueva actividad."
+    activityIdMissing: "El hub no devolvi\xF3 el identificador de la nueva actividad.",
+    deviceIdMissing: "El hub no devolvi\xF3 el ID del nuevo dispositivo."
   },
   settings: {
     loading: "Cargando\u2026",
@@ -168,6 +169,7 @@ var TOOLS_CARD_STRINGS_ES = {
     editDevice: "Editar dispositivo",
     changeOrder: "Ordenar",
     addActivity: "A\xF1adir",
+    addDevice: "A\xF1adir",
     reorderSync: "Sincronizar",
     reorderCancel: "Cancelar",
     reorderHint: "Arrastra las actividades al orden deseado y sincron\xEDzalas despu\xE9s con el hub.",
@@ -179,6 +181,16 @@ var TOOLS_CARD_STRINGS_ES = {
     addActivityCancel: "Cancelar",
     addActivityConfirm: "Crear",
     addActivityCreating: "Creando\u2026",
+    addDeviceTitle: "A\xF1adir dispositivo",
+    addDeviceBody: "Asigna un nombre al nuevo dispositivo y elige su clase. Se crear\xE1 vac\xEDo en el hub y se abrir\xE1 en el editor, donde a\xF1ades sus comandos.",
+    addDevicePlaceholder: "Nombre del dispositivo",
+    addDeviceClass: "Clase de dispositivo",
+    addDeviceCancel: "Cancelar",
+    addDeviceConfirm: "Crear",
+    addDeviceCreating: "Creando\u2026",
+    addDeviceWifiHint: "Los comandos que deban llamar a Home Assistant van en la pesta\xF1a Wifi Commands.",
+    creatingDevice: "Creando dispositivo\u2026",
+    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "Reordenando actividades\u2026",
     reorderingDevices: "Reordenando dispositivos\u2026",
     creatingActivity: "Creando actividad\u2026"

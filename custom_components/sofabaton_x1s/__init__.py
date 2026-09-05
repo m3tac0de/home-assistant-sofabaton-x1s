@@ -88,6 +88,8 @@ from .lib.bundle_validation import validate_hub_bundle_for_model
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
+from .lib.device_class_profiles import MAX_DEVICE_NAME_LEN, supported_create_classes
+from .lib.protocol_const import normalize_device_class
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -3405,7 +3407,7 @@ async def _resolve_hub_for_activity_write(
     hass: HomeAssistant, connection, msg: dict[str, Any], *, op_name: str
 ):
     """Shared guard chain for the immediate catalog writes (activity
-    reorder / create, device reorder): resolve the hub, refuse while a
+    reorder / create, device reorder / create): resolve the hub, refuse while a
     backup-registry operation is running, and honor the hub operation
     lock."""
 
@@ -3517,6 +3519,55 @@ async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, An
             msg["id"],
             "create_failed",
             "The hub did not confirm creation of the new activity",
+        )
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/device/create",
+        vol.Required("entry_id"): str,
+        vol.Required("name"): str,
+        vol.Required("device_class"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_device_create(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Hub tab "Add device": create an EMPTY device of the chosen class;
+    # the frontend then opens the live editor on the assigned id and the
+    # user adds commands there. Same guard chain as activity create.
+    name = str(msg["name"]).strip()
+    if not name or len(name) > MAX_DEVICE_NAME_LEN:
+        connection.send_error(
+            msg["id"],
+            "invalid_name",
+            f"Device name must be 1-{MAX_DEVICE_NAME_LEN} characters",
+        )
+        return
+
+    hub = await _resolve_hub_for_activity_write(
+        hass, connection, msg, op_name="_ws_device_create"
+    )
+    if hub is None:
+        return
+
+    device_class = normalize_device_class(msg.get("device_class"))
+    if device_class is None or device_class not in supported_create_classes(hub.version):
+        connection.send_error(
+            msg["id"],
+            "unsupported_class",
+            f"Device class {msg.get('device_class')!r} cannot be created on a "
+            f"{hub.version} hub",
+        )
+        return
+
+    result = await hub.async_create_device(name, device_class=device_class)
+    if not result or str(result.get("status")) != "success":
+        connection.send_error(
+            msg["id"],
+            "create_failed",
+            "The hub did not confirm creation of the new device",
         )
         return
     connection.send_result(msg["id"], result)
@@ -4163,6 +4214,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_activity_reorder)
     websocket_api.async_register_command(hass, _ws_device_reorder)
     websocket_api.async_register_command(hass, _ws_activity_create)
+    websocket_api.async_register_command(hass, _ws_device_create)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)
     websocket_api.async_register_command(hass, _ws_get_device_keymap)

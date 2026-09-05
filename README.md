@@ -130,7 +130,7 @@ card_height: 700
 
 Its main areas are:
 
-- **Hub**: browse and edit Activities, Devices, commands, inputs, power behavior, button assignments, shortcuts, and macros.
+- **Hub**: browse, add, and edit Activities, Devices, commands, inputs, power behavior, button assignments, shortcuts, and macros.
 - **Automation**: configure Home Assistant Actions triggered by Wifi Commands, Wifi Events, Hub Events, and Activity Events.
 - **Backup**: create and restore whole-hub or selected device backups.
 - **Settings and Logs**: manage caching, network listeners, diagnostic logging, Find Remote, physical remote synchronization, and live hub logs.

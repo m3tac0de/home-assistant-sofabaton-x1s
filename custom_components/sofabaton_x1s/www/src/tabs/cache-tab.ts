@@ -73,6 +73,17 @@ export function renderCacheTab(params: {
   onOpenAddActivity: () => void;
   onCloseAddActivity: () => void;
   onConfirmAddActivity: (name: string) => void;
+  // "Add Device" dialog (name + class prompt → live editor). addDeviceClasses
+  // lists the classes the selected hub line can create, in display order.
+  addDeviceOpen: boolean;
+  addDeviceBusy: boolean;
+  addDeviceError: string | null;
+  addDeviceClasses: string[];
+  addDeviceClass: string;
+  onOpenAddDevice: () => void;
+  onCloseAddDevice: () => void;
+  onSelectAddDeviceClass: (deviceClass: string) => void;
+  onConfirmAddDevice: (name: string, deviceClass: string) => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -322,13 +333,30 @@ export function renderCacheTab(params: {
     </div>
   `;
 
-  // Footer under the Devices list: Change order, replaced by Sync to hub /
-  // Cancel while re-order mode is active.
+  // Footer under the Devices list: Change order / Add device, replaced by
+  // Sync to hub / Cancel while re-order mode is active. Add device is
+  // hidden (not just disabled) when the hub line offers no creatable class.
   const devicesFooter = html`
     <div class="cache-list-footer">
       ${deviceReorder
         ? reorderActions(S.reorderDevicesHint)
-        : html`<div class="cache-footer-actions">${changeOrderButton("device", devices.length)}</div>`}
+        : html`
+            <div class="cache-footer-actions">
+              ${changeOrderButton("device", devices.length)}
+              ${params.addDeviceClasses.length > 0
+                ? html`
+                    <button
+                      class="cache-footer-btn"
+                      ?disabled=${locked}
+                      @click=${params.onOpenAddDevice}
+                    >
+                      <ha-icon icon="mdi:plus"></ha-icon>
+                      <span>${S.addDevice}</span>
+                    </button>
+                  `
+                : null}
+            </div>
+          `}
     </div>
   `;
 
@@ -375,6 +403,74 @@ export function renderCacheTab(params: {
                 ?disabled=${params.addActivityBusy}
                 @click=${confirmAddActivity}
               >${params.addActivityBusy ? S.addActivityCreating : S.addActivityConfirm}</button>
+            </div>
+          </div>
+        </div>
+      `
+    : null;
+
+  const confirmAddDevice = (event: Event) => {
+    const dialog = (event.currentTarget as HTMLElement).closest(".cache-dialog");
+    const input = dialog?.querySelector<HTMLInputElement>(".cache-dialog-input");
+    const select = dialog?.querySelector<HTMLSelectElement>(".cache-dialog-select");
+    const name = String(input?.value || "").trim();
+    const deviceClass = String(select?.value || params.addDeviceClass || params.addDeviceClasses[0] || "");
+    if (name && deviceClass) params.onConfirmAddDevice(name, deviceClass);
+  };
+  const classLabel = (deviceClass: string) => S.deviceClassLabels[deviceClass] ?? deviceClass;
+  const wifiHintClasses = new Set(["wifi_ip", "wifi_mqtt"]);
+  const selectedDeviceClass = params.addDeviceClasses.includes(params.addDeviceClass)
+    ? params.addDeviceClass
+    : (params.addDeviceClasses[0] ?? "");
+
+  const addDeviceDialog = params.addDeviceOpen
+    ? html`
+        <div class="cache-modal-backdrop" @click=${params.addDeviceBusy ? null : params.onCloseAddDevice}>
+          <div class="cache-dialog" @click=${(event: Event) => event.stopPropagation()}>
+            <div class="cache-dialog-title">${S.addDeviceTitle}</div>
+            <div class="cache-dialog-text">${S.addDeviceBody}</div>
+            ${params.addDeviceError
+              ? html`<div class="cache-footer-error">${params.addDeviceError}</div>`
+              : null}
+            <input
+              class="cache-dialog-input"
+              type="text"
+              maxlength="30"
+              placeholder=${S.addDevicePlaceholder}
+              ?disabled=${params.addDeviceBusy}
+              @keydown=${(event: KeyboardEvent) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                confirmAddDevice(event);
+              }}
+            />
+            <label class="cache-dialog-field">
+              <span class="cache-dialog-label">${S.addDeviceClass}</span>
+              <select
+                class="cache-dialog-input cache-dialog-select"
+                ?disabled=${params.addDeviceBusy}
+                @change=${(event: Event) =>
+                  params.onSelectAddDeviceClass((event.currentTarget as HTMLSelectElement).value)}
+              >
+                ${params.addDeviceClasses.map(
+                  (deviceClass) => html`<option value=${deviceClass} ?selected=${deviceClass === selectedDeviceClass}>${classLabel(deviceClass)}</option>`,
+                )}
+              </select>
+            </label>
+            ${wifiHintClasses.has(selectedDeviceClass)
+              ? html`<div class="cache-dialog-hint cache-dialog-text">${S.addDeviceWifiHint}</div>`
+              : null}
+            <div class="cache-dialog-actions">
+              <button
+                class="cache-footer-btn"
+                ?disabled=${params.addDeviceBusy}
+                @click=${params.onCloseAddDevice}
+              >${S.addDeviceCancel}</button>
+              <button
+                class="cache-footer-btn cache-footer-btn--primary"
+                ?disabled=${params.addDeviceBusy}
+                @click=${confirmAddDevice}
+              >${params.addDeviceBusy ? S.addDeviceCreating : S.addDeviceConfirm}</button>
             </div>
           </div>
         </div>
@@ -431,6 +527,7 @@ export function renderCacheTab(params: {
         }),
       })}
       ${addActivityDialog}
+      ${addDeviceDialog}
     </div>
   `;
 }

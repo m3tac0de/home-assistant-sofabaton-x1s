@@ -297,6 +297,7 @@ test.describe("tools-card browser harness", () => {
         selectedCacheSection: card?._snapshot?.selectedCacheSection ?? null,
         openEntity: card?._snapshot?.openEntity ?? null,
         staleData: card?._snapshot?.staleData ?? false,
+        addDeviceOpen: Boolean(card?._addDeviceOpen),
         refreshSpinner: Boolean(root?.querySelector(".icon-btn.spinning")),
         editor: editor ? { kind: editor.kind, stage: editor._stage } : null,
         wifi: wifi ? {
@@ -323,6 +324,10 @@ test.describe("tools-card browser harness", () => {
     expect(await inspect("9")).toMatchObject({
       selectedCacheSection: "devices",
       openEntity: "dev-7",
+    });
+    expect(await inspect("add-device")).toMatchObject({
+      selectedCacheSection: "devices",
+      addDeviceOpen: true,
     });
     expect(await inspect("10")).toMatchObject({ staleData: true });
     expect(await inspect("11")).toMatchObject({
@@ -365,6 +370,53 @@ test.describe("tools-card browser harness", () => {
     expect(await inspect("25")).toMatchObject({
       wifi: { deviceKey: null, deleteDeviceKey: "dev-br" },
     });
+  });
+
+  test("creates a device from the Hub tab dialog and opens the live editor on it", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("add-device"));
+
+    const card = page.locator("sofabaton-control-panel");
+    const dialog = card.locator(".cache-dialog");
+    await expect(dialog).toBeVisible();
+    // Class list follows the hub line (X1S in the connected fixture): generic
+    // Wifi HTTP present, MQTT absent, Bluetooth never offered.
+    const classes = await dialog.locator(".cache-dialog-select option").evaluateAll(
+      (options) => options.map((option) => option.value),
+    );
+    expect(classes).toEqual(["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip"]);
+
+    await dialog.locator(".cache-dialog-input[type=text]").fill("Hue Bridge");
+    await dialog.locator(".cache-dialog-select").selectOption("wifi_hue");
+    // The Home Assistant hint only shows for the classes it applies to.
+    await expect(dialog.locator(".cache-dialog-hint")).toHaveCount(0);
+    await dialog.locator(".cache-dialog-select").selectOption("wifi_ip");
+    await expect(dialog.locator(".cache-dialog-hint")).toHaveCount(1);
+    await dialog.locator(".cache-dialog-select").selectOption("wifi_hue");
+    await dialog.locator(".cache-footer-btn--primary").click();
+
+    await page.waitForFunction(() => {
+      const card = window.__toolsCardHarness.getCard();
+      return card?._editingEntity?.kind === "device";
+    });
+    const result = await page.evaluate(() => {
+      const card = window.__toolsCardHarness.getCard();
+      const create = window.__toolsCardHarness.getCalls()
+        .filter((call) => call.channel === "ws" && call.message?.type === "sofabaton_x1s/device/create")
+        .map((call) => call.message);
+      return {
+        create,
+        editing: card._editingEntity,
+        dialogOpen: card._addDeviceOpen,
+        unhandled: window.__toolsCardHarness.getUnhandledCalls(),
+      };
+    });
+    expect(result.create).toEqual([
+      { type: "sofabaton_x1s/device/create", entry_id: "hub-1", name: "Hue Bridge", device_class: "wifi_hue" },
+    ]);
+    expect(result.editing).toEqual({ kind: "device", id: 40 });
+    expect(result.dialogOpen).toBe(false);
+    expect(result.unhandled).toEqual([]);
   });
 
   test("the latest scenario wins when setup overlaps", async ({ page }) => {

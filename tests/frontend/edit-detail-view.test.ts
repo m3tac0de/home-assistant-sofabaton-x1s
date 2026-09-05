@@ -1178,3 +1178,69 @@ test("inbox: repr-less command classes fall back to the digest label so codes st
     "ProntoHexCommand (deadbeef)",
   );
 });
+
+
+// ── Add command on a device created EMPTY (Hub tab "Add device") ────────
+
+function emptyLiveDevice(deviceClass: string, model: "X1" | "X1S" | "X2" = "X1S"): EditorElement {
+  const element = createEditor(model, "device");
+  element.bundle = {
+    ...element.bundle!,
+    devices: [
+      ...element.bundle!.devices,
+      { device: { device_id: 9, name: "Fresh", device_class: deviceClass }, commands: [] },
+    ],
+  } as BackupBundlePayload;
+  element.mode = "live";
+  element.entityId = 9;
+  return element;
+}
+
+test("add-command on an empty Roku device opens the Roku form instead of the template error", async () => {
+  const element = emptyLiveDevice("wifi_roku");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadFetchError, "");
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_roku");
+  assert.equal(element._payloadDialogDecodedDrafts.path, "keypress/");
+});
+
+test("add-command on an empty Wifi HTTP device opens the HTTP form with GET defaults", async () => {
+  const element = emptyLiveDevice("wifi_ip");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_ip");
+  assert.equal(element._payloadDialogDecodedDrafts.method, "GET");
+  assert.equal(element._payloadDialogDecodedDrafts.port, "80");
+});
+
+test("add-command on an empty MQTT device commits the device and allocated command id", async () => {
+  const element = emptyLiveDevice("wifi_mqtt", "X2");
+  const changes = collectBundleChanges(element);
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_mqtt");
+  assert.equal(element._payloadDialogDecodedDrafts.device_id, "9");
+  assert.equal(element._payloadDialogDecodedDrafts.command_id, "1");
+
+  element._payloadDialogNameDraft = "Toggle";
+  element._applyAddCommandDialog({ deviceId: 9, commandId: 0 });
+
+  assert.equal(changes.length, 1);
+  const device = changes[0].devices.find((row) => row.device?.device_id === 9)!;
+  const commands = device.commands ?? [];
+  assert.equal(commands.length, 1);
+  const row = commands[0] as { command_id: number; name: string; restore_data: Record<string, unknown> };
+  assert.equal(row.command_id, 1);
+  assert.equal(row.name, "Toggle");
+  const decoded = row.restore_data.decoded as { class: string; fields: Record<string, unknown>; edited: boolean };
+  assert.equal(decoded.class, "wifi_mqtt");
+  assert.deepEqual(decoded.fields, { device_id: 9, command_id: 1 });
+  assert.equal(decoded.edited, true);
+  assert.equal(row.restore_data.new, true);
+});
+
+test("add-command on an empty IR device keeps the IR path (hex tabs on X1S)", async () => {
+  const element = emptyLiveDevice("ir");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.equal(element._payloadDialogDecodedSnapshot, null);
+});

@@ -1274,3 +1274,145 @@ def test_new_macro_write_fails_when_live_favorites_unreadable():
     assert result["status"] == "failed"
     assert result["failed_at"].startswith("macro_write")
     assert not any(c[0] == "macro_write" for c in proxy.calls)
+
+
+# ── command_add on a device created empty (Hub tab "Add device") ─────────
+
+
+def test_command_add_raw_falls_back_to_the_device_class_code():
+    """First command on an empty device: nothing to clone a library_type
+    from, so the device's class code is used (library_type == class code
+    for every captured record)."""
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "c0 a8 01 4d 1f 90 00 05 47 45 54 20 2f",
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state = SimpleNamespace(
+        command_metadata={},
+        devices={DEVICE_ID: {"name": "HTTP box", "device_class": "wifi_ip", "device_class_code": 0x1C}},
+    )
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "persist_command_record")
+    assert call[2]["library_type"] == 0x1C
+    assert call[2]["command_id"] == 12
+
+
+def test_command_add_raw_resolves_class_code_from_the_class_name():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "0a 4f 23",
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state = SimpleNamespace(
+        command_metadata={},
+        devices={DEVICE_ID: {"name": "Roku", "device_class": "wifi_roku"}},
+    )
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "persist_command_record")
+    assert call[2]["library_type"] == 0x0A
+
+
+def test_command_add_raw_prefers_cloned_metadata_over_the_class_code():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "0a 4f 23",
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state = SimpleNamespace(
+        command_metadata={DEVICE_ID: {10: {"library_type": 0x03, "button_code": 0x0102}}},
+        devices={DEVICE_ID: {"device_class_code": 0x1C}},
+    )
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "persist_command_record")
+    assert call[2]["library_type"] == 0x03
+
+
+# ── device_ip keeps ``channel`` at the last IP octet ─────────────────────
+
+
+def _ip_proxy(cached: dict):
+    class IpProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_ip")
+            self.hub_version = "X1S"
+            self.state = SimpleNamespace(entities=lambda kind: {1: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    return IpProxy()
+
+
+def test_device_ip_step_sets_channel_to_the_last_octet(monkeypatch):
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Bridge", device_id=1, code_type=0x1A, channel=0, ip_address=None)
+    cached = {"raw_body": build_device_create_payload(original, hub_version="X1S")[3:]}
+    captured: list = []
+    monkeypatch.setattr(
+        pas, "run_create_sequence",
+        lambda proxy, steps: (captured.extend(steps), SimpleNamespace(success=True))[1],
+    )
+
+    ok = _ip_proxy(cached)._sync_step_device_ip({"device_id": 1, "ip_address": "192.168.2.162"})
+
+    assert ok is True
+    written = parse_device_record(bytes(captured[0].payload[3:]), hub_version="X1S", entity_kind="device")
+    assert written.ip_address == "192.168.2.162"
+    assert written.channel == 162
+
+
+def test_device_ip_step_clears_channel_with_the_ip(monkeypatch):
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Bridge", device_id=1, code_type=0x1A, channel=162, ip_address="192.168.2.162")
+    cached = {"raw_body": build_device_create_payload(original, hub_version="X1S")[3:]}
+    captured: list = []
+    monkeypatch.setattr(
+        pas, "run_create_sequence",
+        lambda proxy, steps: (captured.extend(steps), SimpleNamespace(success=True))[1],
+    )
+
+    ok = _ip_proxy(cached)._sync_step_device_ip({"device_id": 1, "ip_address": ""})
+
+    assert ok is True
+    written = parse_device_record(bytes(captured[0].payload[3:]), hub_version="X1S", entity_kind="device")
+    assert written.ip_address is None
+    assert written.channel == 0
+
+
+def test_channel_for_head_ip_helper():
+    from custom_components.sofabaton_x1s.lib.proxy_activity_sync import _channel_for_head_ip
+
+    assert _channel_for_head_ip("10.0.0.7", 99) == 7
+    assert _channel_for_head_ip("10.0.0.300", 99) == 300 & 0xFF
+    assert _channel_for_head_ip(None, 99) == 0
+    assert _channel_for_head_ip("", 99) == 0
+    assert _channel_for_head_ip("not-an-ip", 99) == 99
+    assert _channel_for_head_ip("1.2.x.4", 99) == 99

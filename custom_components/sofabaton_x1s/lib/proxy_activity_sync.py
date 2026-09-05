@@ -39,11 +39,13 @@ from .devices import build_device_create_payload, parse_device_record
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
+    DEVICE_CLASS_BY_CODE,
     FAMILY_FAV_DELETE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
     OP_REQ_MACRO_LABELS,
     ButtonName,
+    normalize_device_class,
 )
 
 _POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
@@ -310,6 +312,22 @@ def _activity_block_signature(
 
 # Highest editable quick-access id (198/199 are the reserved power macros).
 _MAX_QUICK_ACCESS_BUTTON_ID = min(_POWER_MACRO_BUTTON_IDS) - 1
+
+
+def _channel_for_head_ip(ip_address: str | None, previous: int) -> int:
+    """``channel`` byte to write alongside a head-IP change.
+
+    Set IP -> last dotted-decimal octet (what the vendor app writes for
+    Roku / Hue / Sonos heads); cleared IP -> 0. A non-dotted value keeps
+    the previous byte so a malformed input never corrupts the record.
+    """
+
+    if not ip_address:
+        return 0
+    parts = str(ip_address).strip().split(".")
+    if len(parts) != 4 or not all(part.isdigit() for part in parts):
+        return previous & 0xFF
+    return int(parts[3]) & 0xFF
 
 
 class ActivitySyncMixin:
@@ -1185,9 +1203,21 @@ class ActivitySyncMixin:
                 library_type = int(meta.get("library_type", 0)) & 0xFF
                 break
         if library_type is None:
+            # First command on a device created empty (Hub tab "Add
+            # device"): nothing to clone, so use the device's class code.
+            # Every captured record carries library_type == class code
+            # (0x03 BT, 0x0A Roku, 0x0D IR, 0x1A Hue, 0x1B Sonos, 0x1C IP).
+            library_type = self._device_class_code_for_command_add(dev_lo)
+            if library_type is not None:
+                self._log.info(
+                    "[DEVICE_SYNC] command_add: dev=0x%02X has no commands yet; "
+                    "library_type 0x%02X taken from the device class",
+                    dev_lo, library_type,
+                )
+        if library_type is None:
             self._log.warning(
                 "[DEVICE_SYNC] command_add: no cached record metadata on dev=0x%02X "
-                "to clone a library_type from (device has no existing commands?)",
+                "to clone a library_type from and no device class code known",
                 dev_lo,
             )
             return False
@@ -1414,6 +1444,25 @@ class ActivitySyncMixin:
             device["raw_body"] = body[3:]
         return True
 
+    def _device_class_code_for_command_add(self, dev_lo: int) -> int | None:
+        """Resolve a device's class code from proxy state for the codec byte."""
+
+        devices = getattr(self.state, "devices", None)
+        row = devices.get(dev_lo) if isinstance(devices, Mapping) else None
+        if not isinstance(row, Mapping):
+            return None
+        raw = row.get("device_class_code")
+        if raw is None:
+            cls = normalize_device_class(row.get("device_class"))
+            for code, name in DEVICE_CLASS_BY_CODE.items():
+                if name == cls:
+                    return int(code) & 0xFF
+            return None
+        try:
+            return int(raw) & 0xFF
+        except (TypeError, ValueError):
+            return None
+
     def _sync_step_device_ip(self, payload: Mapping[str, Any]) -> bool:
         """Update a device's head IP address via a device-record update write.
 
@@ -1436,7 +1485,16 @@ class ActivitySyncMixin:
 
         try:
             config = parse_device_record(bytes(raw), hub_version=self.hub_version, entity_kind="device")
-            updated = replace(config, ip_address=new_ip, device_id=dev_lo)
+            # The app keeps ``channel`` (body[27]) equal to the last octet
+            # of the head IP for the network head classes, and clears it
+            # with the IP; mirror that so an editor-set IP leaves the
+            # record the way the app would write it.
+            updated = replace(
+                config,
+                ip_address=new_ip,
+                channel=_channel_for_head_ip(new_ip, config.channel),
+                device_id=dev_lo,
+            )
             body = build_device_create_payload(updated, hub_version=self.hub_version)
         except (ValueError, TypeError):
             self._log.exception("[DEVICE_SYNC] device_ip: could not rebuild record dev=0x%02X", dev_lo)

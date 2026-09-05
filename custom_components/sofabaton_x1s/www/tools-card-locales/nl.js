@@ -116,7 +116,8 @@ var TOOLS_CARD_STRINGS_NL = {
     noHubSelectedLong: "Er is geen hub geselecteerd.",
     cacheRefreshFailed: "Vernieuwen van cache mislukt.",
     syncFailed: "Synchronisatie mislukt.",
-    activityIdMissing: "De hub heeft geen ID voor de nieuwe activiteit teruggegeven."
+    activityIdMissing: "De hub heeft geen ID voor de nieuwe activiteit teruggegeven.",
+    deviceIdMissing: "De hub heeft geen ID voor het nieuwe apparaat teruggegeven."
   },
   settings: {
     loading: "Laden\u2026",
@@ -172,6 +173,7 @@ var TOOLS_CARD_STRINGS_NL = {
     editDevice: "Apparaat bewerken",
     changeOrder: "Ordenen",
     addActivity: "Toevoegen",
+    addDevice: "Toevoegen",
     reorderSync: "Synchroniseren",
     reorderCancel: "Annuleren",
     reorderHint: "Sleep activiteiten naar de gewenste volgorde en synchroniseer daarna met de hub.",
@@ -183,6 +185,16 @@ var TOOLS_CARD_STRINGS_NL = {
     addActivityCancel: "Annuleren",
     addActivityConfirm: "Aanmaken",
     addActivityCreating: "Aanmaken\u2026",
+    addDeviceTitle: "Apparaat toevoegen",
+    addDeviceBody: "Geef het nieuwe apparaat een naam en kies de klasse. Het wordt leeg op de hub aangemaakt en in de editor geopend, waar je de commando's toevoegt.",
+    addDevicePlaceholder: "Naam van apparaat",
+    addDeviceClass: "Apparaatklasse",
+    addDeviceCancel: "Annuleren",
+    addDeviceConfirm: "Aanmaken",
+    addDeviceCreating: "Aanmaken\u2026",
+    addDeviceWifiHint: "Commando's die Home Assistant moeten aanroepen horen in het tabblad Wifi Commands.",
+    creatingDevice: "Apparaat aanmaken\u2026",
+    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Philips Hue", wifi_sonos: "Sonos", wifi_ip: "Wifi HTTP", wifi_mqtt: "MQTT" },
     reorderingActivities: "Activiteiten opnieuw ordenen\u2026",
     reorderingDevices: "Apparaten opnieuw ordenen\u2026",
     creatingActivity: "Activiteit aanmaken\u2026"

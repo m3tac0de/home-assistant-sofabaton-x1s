@@ -1513,6 +1513,13 @@ var cardStyles = [secondaryTabStyles, i`
     font: inherit; font-size: 13.5px;
   }
   .cache-dialog-input:focus { outline: none; border-color: var(--primary-color); }
+  .cache-dialog-field { display: flex; flex-direction: column; gap: 4px; }
+  .cache-dialog-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--secondary-text-color); }
+  /* Native <select> in the dialog: same field surface as the text input;
+     the popup rows follow the measured theme polarity (see the note on
+     color-scheme above). */
+  .cache-dialog-select { cursor: pointer; }
+  .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
   .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
@@ -1820,7 +1827,8 @@ var TOOLS_CARD_STRINGS_EN = {
     noHubSelectedLong: "No hub is selected.",
     cacheRefreshFailed: "Cache refresh failed.",
     syncFailed: "Sync failed.",
-    activityIdMissing: "The hub did not return the new activity id."
+    activityIdMissing: "The hub did not return the new activity id.",
+    deviceIdMissing: "The hub did not return the new device id."
   },
   settings: {
     loading: "Loading\u2026",
@@ -1877,6 +1885,7 @@ var TOOLS_CARD_STRINGS_EN = {
     editDevice: "Edit device",
     changeOrder: "Change order",
     addActivity: "Add activity",
+    addDevice: "Add device",
     reorderSync: "Sync to Hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
@@ -1890,7 +1899,24 @@ var TOOLS_CARD_STRINGS_EN = {
     addActivityCreating: "Creating\u2026",
     reorderingActivities: "Reordering activities\u2026",
     reorderingDevices: "Reordering devices\u2026",
-    creatingActivity: "Creating activity\u2026"
+    creatingActivity: "Creating activity\u2026",
+    addDeviceTitle: "Add device",
+    addDeviceBody: "Name the new device and pick its class. It is created empty on the hub and opened in the editor, where you add its commands.",
+    addDevicePlaceholder: "Device name",
+    addDeviceClass: "Device class",
+    addDeviceCancel: "Cancel",
+    addDeviceConfirm: "Create",
+    addDeviceCreating: "Creating\u2026",
+    addDeviceWifiHint: "Commands that should call Home Assistant belong in the Wifi Commands tab.",
+    creatingDevice: "Creating device\u2026",
+    deviceClassLabels: {
+      ir: "Infrared",
+      wifi_roku: "Roku",
+      wifi_hue: "Philips Hue",
+      wifi_sonos: "Sonos",
+      wifi_ip: "Wifi HTTP",
+      wifi_mqtt: "MQTT"
+    }
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).
   hubClick: {
@@ -3041,6 +3067,17 @@ var ControlPanelApi = class {
       name
     });
   }
+  // Create an EMPTY device of the given class on the hub (Hub tab "Add
+  // device"); resolves with the hub-assigned device id so the caller can
+  // open the live editor on it. Commands are added there.
+  createDevice(entryId, name, deviceClass) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/create",
+      entry_id: entryId,
+      name,
+      device_class: deviceClass
+    });
+  }
   startCacheRefresh(entryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/cache/refresh_all",
@@ -3426,6 +3463,18 @@ function selectedHub(snapshot) {
   const hubs = snapshot.state?.hubs ?? [];
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
 }
+function creatableDeviceClasses(hubVersion) {
+  switch (String(hubVersion ?? "")) {
+    case "X1":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos"];
+    case "X1S":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip"];
+    case "X2":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip", "wifi_mqtt"];
+    default:
+      return [];
+  }
+}
 function selectedHubCache(snapshot) {
   const hubs = snapshot.contents?.hubs ?? [];
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
@@ -3563,6 +3612,10 @@ function remoteAvailableForHub(hass, hub) {
   const stateObject = entityId ? hass?.states?.[entityId] : null;
   const state = String(stateObject?.state ?? "").toLowerCase();
   return !!state && state !== "unavailable" && state !== "unknown";
+}
+function hubLineFor(hass, hub) {
+  const attrs = remoteAttrsForHub(hass, hub);
+  return String(attrs.hub_version || hub?.version || "").trim().toUpperCase();
 }
 function proxyClientConnected(hass, hub) {
   const attrs = remoteAttrsForHub(hass, hub);
@@ -4548,6 +4601,29 @@ var ControlPanelStore = class {
     }
     await this.refreshForHub("activity", activityId, `act-${activityId}`);
     return { activityId };
+  }
+  /**
+   * Create an empty device of `deviceClass` on the hub, then pull its cache
+   * entry so the live editor can capture it right away. Resolves with the
+   * assigned device id or an error message. Mirrors `createActivity`.
+   */
+  async createDevice(name, deviceClass) {
+    if (this._isHubCommandBusy()) return { error: TOOLS_CARD_STRINGS.errors.anotherOperation };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { error: TOOLS_CARD_STRINGS.errors.noHubSelected };
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingDevice, hub.entry_id);
+    let deviceId = 0;
+    try {
+      const result = await this.api().createDevice(hub.entry_id, name, deviceClass);
+      deviceId = Number(result?.device_id || 0);
+      if (!deviceId) return { error: TOOLS_CARD_STRINGS.errors.deviceIdMissing };
+    } catch (error) {
+      return { error: formatError(error) };
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.refreshForHub("device", deviceId, `dev-${deviceId}`);
+    return { deviceId };
   }
   async refreshForHub(kind, targetId, key) {
     if (this._isHubCommandBusy()) return;
@@ -5540,7 +5616,21 @@ function renderCacheTab(params) {
   `;
   const devicesFooter = b2`
     <div class="cache-list-footer">
-      ${deviceReorder ? reorderActions(S5.reorderDevicesHint) : b2`<div class="cache-footer-actions">${changeOrderButton("device", devices.length)}</div>`}
+      ${deviceReorder ? reorderActions(S5.reorderDevicesHint) : b2`
+            <div class="cache-footer-actions">
+              ${changeOrderButton("device", devices.length)}
+              ${params.addDeviceClasses.length > 0 ? b2`
+                    <button
+                      class="cache-footer-btn"
+                      ?disabled=${locked}
+                      @click=${params.onOpenAddDevice}
+                    >
+                      <ha-icon icon="mdi:plus"></ha-icon>
+                      <span>${S5.addDevice}</span>
+                    </button>
+                  ` : null}
+            </div>
+          `}
     </div>
   `;
   const activeBody = selectedSection === "activities" ? b2`${activitiesList}${activitiesFooter}` : b2`${devicesList}${devicesFooter}`;
@@ -5579,6 +5669,63 @@ function renderCacheTab(params) {
                 ?disabled=${params.addActivityBusy}
                 @click=${confirmAddActivity}
               >${params.addActivityBusy ? S5.addActivityCreating : S5.addActivityConfirm}</button>
+            </div>
+          </div>
+        </div>
+      ` : null;
+  const confirmAddDevice = (event) => {
+    const dialog = event.currentTarget.closest(".cache-dialog");
+    const input = dialog?.querySelector(".cache-dialog-input");
+    const select = dialog?.querySelector(".cache-dialog-select");
+    const name = String(input?.value || "").trim();
+    const deviceClass = String(select?.value || params.addDeviceClass || params.addDeviceClasses[0] || "");
+    if (name && deviceClass) params.onConfirmAddDevice(name, deviceClass);
+  };
+  const classLabel = (deviceClass) => S5.deviceClassLabels[deviceClass] ?? deviceClass;
+  const wifiHintClasses = /* @__PURE__ */ new Set(["wifi_ip", "wifi_mqtt"]);
+  const selectedDeviceClass = params.addDeviceClasses.includes(params.addDeviceClass) ? params.addDeviceClass : params.addDeviceClasses[0] ?? "";
+  const addDeviceDialog = params.addDeviceOpen ? b2`
+        <div class="cache-modal-backdrop" @click=${params.addDeviceBusy ? null : params.onCloseAddDevice}>
+          <div class="cache-dialog" @click=${(event) => event.stopPropagation()}>
+            <div class="cache-dialog-title">${S5.addDeviceTitle}</div>
+            <div class="cache-dialog-text">${S5.addDeviceBody}</div>
+            ${params.addDeviceError ? b2`<div class="cache-footer-error">${params.addDeviceError}</div>` : null}
+            <input
+              class="cache-dialog-input"
+              type="text"
+              maxlength="30"
+              placeholder=${S5.addDevicePlaceholder}
+              ?disabled=${params.addDeviceBusy}
+              @keydown=${(event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    confirmAddDevice(event);
+  }}
+            />
+            <label class="cache-dialog-field">
+              <span class="cache-dialog-label">${S5.addDeviceClass}</span>
+              <select
+                class="cache-dialog-input cache-dialog-select"
+                ?disabled=${params.addDeviceBusy}
+                @change=${(event) => params.onSelectAddDeviceClass(event.currentTarget.value)}
+              >
+                ${params.addDeviceClasses.map(
+    (deviceClass) => b2`<option value=${deviceClass} ?selected=${deviceClass === selectedDeviceClass}>${classLabel(deviceClass)}</option>`
+  )}
+              </select>
+            </label>
+            ${wifiHintClasses.has(selectedDeviceClass) ? b2`<div class="cache-dialog-hint cache-dialog-text">${S5.addDeviceWifiHint}</div>` : null}
+            <div class="cache-dialog-actions">
+              <button
+                class="cache-footer-btn"
+                ?disabled=${params.addDeviceBusy}
+                @click=${params.onCloseAddDevice}
+              >${S5.addDeviceCancel}</button>
+              <button
+                class="cache-footer-btn cache-footer-btn--primary"
+                ?disabled=${params.addDeviceBusy}
+                @click=${confirmAddDevice}
+              >${params.addDeviceBusy ? S5.addDeviceCreating : S5.addDeviceConfirm}</button>
             </div>
           </div>
         </div>
@@ -5643,6 +5790,7 @@ function renderCacheTab(params) {
     })
   })}
       ${addActivityDialog}
+      ${addDeviceDialog}
     </div>
   `;
 }
@@ -8554,6 +8702,31 @@ function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
 }
 function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
   return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
+}
+function defaultDecodedSnapshotForClass(deviceClass, options) {
+  const className = normalizeDecodableClass(deviceClass);
+  if (!className || className === "ir") return null;
+  let fields;
+  switch (className) {
+    case "wifi_ip":
+      fields = { host: "", port: 80, method: "GET", path: "/", header: "", content_type: "", body: "" };
+      break;
+    case "wifi_roku":
+      fields = { path: "keypress/" };
+      break;
+    case "wifi_hue":
+      fields = { path: "api/", body_block: "" };
+      break;
+    case "wifi_sonos":
+      fields = { path: "MediaRenderer/AVTransport/Control", body_block: "" };
+      break;
+    case "wifi_mqtt":
+      fields = { device_id: options.deviceId & 255, command_id: (options.commandId ?? 1) & 255 };
+      break;
+    default:
+      return null;
+  }
+  return { className, fields, trailerHex: "", edited: false };
 }
 function nextFreeDeviceCommandId(bundle, deviceId) {
   if (!bundle) return null;
@@ -12522,7 +12695,13 @@ var SofabatonEditDetailView = class extends i4 {
     }
     const existing = deviceCommandItems(this.bundle, deviceId);
     if (!existing.length) {
-      this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noTemplateCommand;
+      this._openAddDialogWithSnapshot(
+        deviceId,
+        defaultDecodedSnapshotForClass(deviceClass, {
+          deviceId,
+          commandId: nextFreeDeviceCommandId(this.bundle, deviceId)
+        })
+      );
       return;
     }
     if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
@@ -12579,6 +12758,10 @@ var SofabatonEditDetailView = class extends i4 {
       const fields = {};
       for (const field of spec.fields) {
         fields[field.key] = this._draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
+      }
+      if (snapshot.className === "wifi_mqtt") {
+        fields["device_id"] = target.deviceId & 255;
+        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? Number(fields["command_id"]) ?? 1) & 255;
       }
       if (snapshot.className === "ir") {
         const descriptor = String(fields["descriptor"] ?? "").trim();
@@ -20410,6 +20593,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._addActivityOpen = false;
     this._addActivityBusy = false;
     this._addActivityError = null;
+    // "Add Device" dialog state.
+    this._addDeviceOpen = false;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = "";
     this._localeLoading = false;
     this._localeRequestId = 0;
     this._irFlashClearTimer = null;
@@ -20611,6 +20799,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._addActivityOpen = false;
     this._addActivityBusy = false;
     this._addActivityError = null;
+    this._addDeviceOpen = false;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = "";
   }
   // ── Activity / Device re-order mode ────────────────────────────────
   startReorder(kind) {
@@ -20679,6 +20871,42 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     }
     this._addActivityOpen = false;
     this._editingEntity = { kind: "activity", id: result.activityId };
+    this.requestUpdate();
+  }
+  // ── Add Device flow (name + class prompt → live editor) ────────────
+  openAddDevice() {
+    this._addDeviceOpen = true;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = creatableDeviceClasses(
+      hubLineFor(this._snapshot.hass, selectedHub(this._snapshot))
+    )[0] ?? "";
+    this.requestUpdate();
+  }
+  selectAddDeviceClass(deviceClass) {
+    this._addDeviceClass = deviceClass;
+    this.requestUpdate();
+  }
+  closeAddDevice() {
+    if (this._addDeviceBusy) return;
+    this._addDeviceOpen = false;
+    this._addDeviceError = null;
+    this.requestUpdate();
+  }
+  async confirmAddDevice(name, deviceClass) {
+    if (this._addDeviceBusy) return;
+    this._addDeviceBusy = true;
+    this._addDeviceError = null;
+    this.requestUpdate();
+    const result = await this._store.createDevice(name, deviceClass);
+    this._addDeviceBusy = false;
+    if ("error" in result) {
+      this._addDeviceError = result.error;
+      this.requestUpdate();
+      return;
+    }
+    this._addDeviceOpen = false;
+    this._editingEntity = { kind: "device", id: result.deviceId };
     this.requestUpdate();
   }
   handleSettingToggle(setting, enabled) {
@@ -21100,7 +21328,16 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           addActivityError: this._addActivityError,
           onOpenAddActivity: () => this.openAddActivity(),
           onCloseAddActivity: () => this.closeAddActivity(),
-          onConfirmAddActivity: (name) => void this.confirmAddActivity(name)
+          onConfirmAddActivity: (name) => void this.confirmAddActivity(name),
+          addDeviceOpen: this._addDeviceOpen,
+          addDeviceBusy: this._addDeviceBusy,
+          addDeviceError: this._addDeviceError,
+          addDeviceClasses: creatableDeviceClasses(hubLineFor(this._snapshot.hass, hub)),
+          addDeviceClass: this._addDeviceClass,
+          onOpenAddDevice: () => this.openAddDevice(),
+          onCloseAddDevice: () => this.closeAddDevice(),
+          onSelectAddDeviceClass: (deviceClass) => this.selectAddDeviceClass(deviceClass),
+          onConfirmAddDevice: (name, deviceClass) => void this.confirmAddDevice(name, deviceClass)
         });
       }
     }

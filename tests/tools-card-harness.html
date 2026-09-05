@@ -1634,6 +1634,24 @@
               });
               return respond(type, { status: "success", activity_id: activityId });
             }
+            case "sofabaton_x1s/device/create": {
+              const classCodes = { ir: 13, wifi_roku: 10, wifi_hue: 26, wifi_sonos: 27, wifi_ip: 28, wifi_mqtt: 32 };
+              const deviceClass = String(message.device_class || "ir");
+              if (!(deviceClass in classCodes)) {
+                return Promise.reject({ code: "unsupported_class", message: `Device class ${deviceClass} cannot be created` });
+              }
+              mock.deviceSequence = mock.deviceSequence ?? 40;
+              const deviceId = mock.deviceSequence++;
+              const name = String(message.name || `Device ${deviceId}`);
+              mock.state.hubs[0]?.devices_list?.push({
+                id: deviceId,
+                name,
+                command_count: 0,
+                device_class: deviceClass,
+                device_class_code: classCodes[deviceClass],
+              });
+              return respond(type, { status: "success", device_id: deviceId });
+            }
             case "sofabaton_x1s/activity/delete":
               for (const hub of mock.state.hubs) {
                 hub.activities = (hub.activities ?? []).filter(
@@ -2257,6 +2275,22 @@
         async postLoad(card) {
           await clickTab(card, "Hub");
           await selectCacheSection(card, "devices");
+        },
+      },
+      {
+        id: "add-device", group: "Cache Tab",
+        label: "8b. Add device dialog",
+        states: STATES_CONNECTED,
+        async postLoad(card) {
+          await clickTab(card, "Hub");
+          await selectCacheSection(card, "devices");
+          // The Devices footer holds Change order + Add device; Add device is
+          // the one carrying the plus icon.
+          const addBtn = [...card.shadowRoot.querySelectorAll(".cache-list-footer .cache-footer-btn")]
+            .find(b => b.querySelector('ha-icon[icon="mdi:plus"]'));
+          if (!addBtn) throw new Error("add-device: Add device button not found");
+          addBtn.click();
+          await card.updateComplete;
         },
       },
       {

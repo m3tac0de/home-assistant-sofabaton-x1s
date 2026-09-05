@@ -887,6 +887,33 @@ export class ControlPanelStore {
     return { activityId };
   }
 
+  /**
+   * Create an empty device of `deviceClass` on the hub, then pull its cache
+   * entry so the live editor can capture it right away. Resolves with the
+   * assigned device id or an error message. Mirrors `createActivity`.
+   */
+  async createDevice(name: string, deviceClass: string): Promise<{ deviceId: number } | { error: string }> {
+    if (this._isHubCommandBusy()) return { error: TOOLS_CARD_STRINGS.errors.anotherOperation };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { error: TOOLS_CARD_STRINGS.errors.noHubSelected };
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingDevice, hub.entry_id);
+    let deviceId = 0;
+    try {
+      const result = await this.api().createDevice(hub.entry_id, name, deviceClass);
+      deviceId = Number(result?.device_id || 0);
+      if (!deviceId) return { error: TOOLS_CARD_STRINGS.errors.deviceIdMissing };
+    } catch (error) {
+      return { error: formatError(error) };
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    // Per-entity cache refresh: the new device becomes part of the
+    // structural cache (and the visible list) before the editor opens on
+    // it; its cache row carries the device_class the editor keys on.
+    await this.refreshForHub("device", deviceId, `dev-${deviceId}`);
+    return { deviceId };
+  }
+
   async refreshForHub(kind: RefreshKind, targetId: number, key: string) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);

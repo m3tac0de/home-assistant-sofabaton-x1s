@@ -246,6 +246,18 @@ export class ControlPanelApi {
     });
   }
 
+  // Create an EMPTY device of the given class on the hub (Hub tab "Add
+  // device"); resolves with the hub-assigned device id so the caller can
+  // open the live editor on it. Commands are added there.
+  createDevice(entryId: string, name: string, deviceClass: string) {
+    return this.hass.callWS<{ status?: string; device_id?: number }>({
+      type: "sofabaton_x1s/device/create",
+      entry_id: entryId,
+      name,
+      device_class: deviceClass,
+    });
+  }
+
   startCacheRefresh(entryId: string) {
     return this.hass.callWS<BackupOperationStartResponse>({
       type: "sofabaton_x1s/cache/refresh_all",

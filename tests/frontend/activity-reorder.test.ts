@@ -273,3 +273,64 @@ test("createActivity reports the backend error without opening the editor id", a
   assert.match(String((result as { error: string }).error), /did not confirm creation/);
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
+
+test("createDevice resolves the assigned id and refreshes its cache entry", async () => {
+  const refreshCalls: Record<string, unknown>[] = [];
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/create": (message) => {
+        assert.equal(message.name, "Hue Bridge");
+        assert.equal(message.device_class, "wifi_hue");
+        assert.equal(message.entry_id, "hub-1");
+        return { status: "success", device_id: 7 };
+      },
+      "sofabaton_x1s/persistent_cache/refresh": (message) => {
+        refreshCalls.push(message);
+        return { ok: true };
+      },
+    }),
+  );
+  await store.loadState();
+
+  const result = await store.createDevice("Hue Bridge", "wifi_hue");
+
+  assert.deepEqual(result, { deviceId: 7 });
+  assert.equal(refreshCalls.length, 1);
+  assert.equal(refreshCalls[0].kind, "device");
+  assert.equal(refreshCalls[0].target_id, 7);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+
+test("createDevice reports the backend error without opening the editor id", async () => {
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/create": () => {
+        throw new Error("The hub did not confirm creation of the new device");
+      },
+    }),
+  );
+  await store.loadState();
+
+  const result = await store.createDevice("TV", "ir");
+
+  assert.ok("error" in result);
+  assert.match(String((result as { error: string }).error), /did not confirm creation/);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+
+test("createDevice reports a missing device id as an error", async () => {
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/create": () => ({ status: "success" }),
+    }),
+  );
+  await store.loadState();
+
+  const result = await store.createDevice("TV", "ir");
+
+  assert.ok("error" in result);
+  assert.match(String((result as { error: string }).error), /did not return the new device id/);
+});

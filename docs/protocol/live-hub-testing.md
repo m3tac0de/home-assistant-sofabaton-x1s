@@ -1843,3 +1843,50 @@ Sony12 -> NECx all decode exactly (full 100/68-word captures), where the
 NECx after SharpDVD came out as SharpDVD's fields before the change.
 The learner needs `--rearm-on-failed` and a negative `--lead` (arm ~0.45 s
 after the action call) because the blips end its first learn window.
+
+## ◇ Validated: device create from the Control Panel (X1 + X1S, 2026-09-05)
+
+Bench-validated the Hub tab "Add device" path (docs/internal/add-device-plan.md)
+on both hub lines, first through the direct harness
+(`scripts/hub-bench/bench_180_device_create.py`, HA entries disabled) and
+then through the deployed HA integration
+(`scripts/hub-bench/bench_181_device_create_ha.py`, HA entries enabled):
+`device/create` → `persistent_cache/refresh` → `cache/structural_bundle`
+→ `device/sync` with the first command (add-command planner) and, for
+the network head classes, the head IP → `blobs/fetch` readback →
+`backup/export` readback → `device/delete`. Counts: X1S direct 82/82
+and via HA 118/118 (ir, wifi_roku, wifi_hue, wifi_sonos, wifi_ip); X1
+direct 66/66 (re-run) and via HA 95/95 (ir, wifi_roku, wifi_hue,
+wifi_sonos). Logs under `scripts/hub-bench/out/logs/bench18*`.
+
+Findings:
+
+- **Empty create bytes are accepted as planned** on both lines: the hub
+  stores exactly the per-class head bytes of the plan's §2a table
+  (class code, `device_type` 2 for IR / 0x10 for wifi, icon 1,
+  `input_mode`, `power_style`, `share_mode`, channel 0, no head IP, zero
+  commands), the catalog refresh lands the row, and family-0x11 reorder
+  accepts the new id right after create.
+- **X1 refuses the default inputs page for an empty Roku record.** The
+  X1 import path writes an empty family-0x46 inputs page after create;
+  for a `wifi_roku` record with no commands the hub answers STATUS_ACK
+  0x04 (ir / wifi_hue / wifi_sonos accept the same page). The create
+  rolled back cleanly (delete + catalog re-read). Fix: skip that page
+  for an empty Roku record on X1 (the editor's later sync writes the
+  real input configuration); re-run green.
+- **First command on an empty device works with an EMPTY trailer** for
+  every wifi class: the record persists with `library_type` taken from
+  the device class (nothing to clone), reads back as the same class with
+  the same decoded fields, and the hub reports its own per-record tail
+  checksum (`trailer_hex` '' on readback; tail checksums Roku 126/127,
+  Hue 72/73, Sonos 14/15, IP 214 on X1/X1S). The 3-byte Hue and 1-byte
+  Sonos trailers seen in app-created captures are therefore not needed
+  on the write side.
+- **Head IP + channel**: setting the IP through the device sync writes
+  `fc 55 <ip>` and `channel` = last octet (250 for 192.168.2.250) on
+  both lines, matching app-created records.
+- Not exercised: pressing the new commands on a real target (needs a
+  physical remote / real Hue bridge), the browser click-through against
+  live HA (covered by the Playwright harness test instead), and X2
+  (MQTT class) — the X2 was not part of this program.
+

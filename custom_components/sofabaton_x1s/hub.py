@@ -2442,6 +2442,29 @@ class SofabatonHub:
             name,
         )
 
+    async def async_create_device(
+        self, name: str, *, device_class: str
+    ) -> dict[str, Any] | None:
+        """Create an empty device of *device_class* named *name* on the hub.
+
+        The proxy wrapper already refreshes the hub-side device catalog
+        (which feeds ``self.devices`` through the normal devices burst)
+        and syncs the remote; the bookkeeping here mirrors
+        :meth:`async_delete_device` so the Hub tab repaints and the
+        persisted cache picks the new row up without waiting for the
+        frontend's per-entity refresh.
+        """
+
+        result = await self.hass.async_add_executor_job(
+            partial(self._proxy.create_device, name, device_class=device_class)
+        )
+        if isinstance(result, dict) and str(result.get("status")) == "success":
+            self._devices_generation += 1
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+            await self._async_persist_cache_if_enabled()
+        return result
+
     async def async_command_to_favorite(
         self,
         activity_id: int,

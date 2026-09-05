@@ -1603,7 +1603,13 @@ def test_restore_device_x1_device_type_7_still_emits_input_step(monkeypatch) -> 
     )
 
 
-def test_restore_device_rejects_bluetooth_until_backup_metadata_exists(monkeypatch) -> None:
+def test_restore_device_rejects_bluetooth_rows_without_backup_metadata(monkeypatch) -> None:
+    """A non-IR row that lacks the hub_code_record metadata is refused.
+
+    (Zero rows are accepted since the Hub tab's "Add device" creates
+    empty devices; see ``test_restore_device_accepts_empty_non_ir_rows``.)
+    """
+
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -1623,7 +1629,7 @@ def test_restore_device_rejects_bluetooth_until_backup_metadata_exists(monkeypat
             "device_class": "bluetooth",
             "device_class_code": 0x03,
         },
-        "commands": [],
+        "commands": [{"command_id": 5, "name": "Play"}],
         "button_bindings": [],
         "macros": [],
         "inputs": [],
@@ -1642,16 +1648,66 @@ def test_restore_device_rejects_bluetooth_until_backup_metadata_exists(monkeypat
 
 
 @pytest.mark.parametrize(
-    ("device_class", "expected_message"),
-    [
-        ("wifi_sonos", "needs command restore metadata"),
-        ("wifi_roku", "needs command restore metadata"),
-    ],
+    "device_class",
+    ["wifi_sonos", "wifi_roku", "wifi_ip", "wifi_hue", "bluetooth"],
 )
-def test_restore_device_reports_class_specific_capability_gaps(
+def test_restore_device_accepts_empty_non_ir_rows(monkeypatch, device_class: str) -> None:
+    """An empty command list passes validation for every non-IR class: an
+    empty device backup is a legitimate export and the Hub tab's "Add
+    device" creates exactly that (head record only)."""
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sequence_calls: list[list[Any]] = []
+
+    def _run_create_sequence(_proxy, steps):
+        sequence_calls.append(list(steps))
+        return types.SimpleNamespace(
+            success=True,
+            assigned_device_id=0x23,
+            failed_step=None,
+            failed_index=None,
+        )
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+
+    backup = {
+        "kind": "device_backup",
+        "schema_version": 4,
+        "device": {
+            "device_id": 11,
+            "name": "Device",
+            "brand": "Brand",
+            "device_class": device_class,
+        },
+        "commands": [],
+        "button_bindings": [],
+        "macros": [],
+        "inputs": [],
+        "favorite_slots": [],
+    }
+
+    result = proxy.restore_device(backup)
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["device_id"] == 0x23
+    assert result["restored_commands"] == 0
+    assert [step.label for step in sequence_calls[0]] == ["device-create"]
+    assert 0x0E not in [step.family for step in sequence_calls[1]]
+
+
+@pytest.mark.parametrize("device_class", ["wifi_sonos", "wifi_roku"])
+def test_restore_device_still_refuses_rows_without_metadata(
     monkeypatch,
     device_class: str,
-    expected_message: str,
 ) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
@@ -1671,14 +1727,14 @@ def test_restore_device_reports_class_specific_capability_gaps(
             "brand": "Brand",
             "device_class": device_class,
         },
-        "commands": [],
+        "commands": [{"command_id": 1, "name": "Volume up", "restore_data": {"transport": "hub_code_record"}}],
         "button_bindings": [],
         "macros": [],
         "inputs": [],
         "favorite_slots": [],
     }
 
-    with pytest.raises(ValueError, match=expected_message):
+    with pytest.raises(ValueError, match="needs command restore metadata"):
         proxy.restore_device(backup)
 
 
