@@ -448,6 +448,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._pending_command_requests: dict[int, set[int]] = {}
         self._ir_dump_lock = threading.Lock()
         self._ir_dump_pending: dict[tuple[int, int], dict[str, Any]] = {}
+        self._ir_learn_lock = threading.Lock()
+        self._ir_learn_pending: dict[str, Any] | None = None
         self._commands_complete: set[int] = set()
         self._pending_macro_requests: set[int] = set()
         self._macros_complete: set[int] = set()
@@ -457,12 +459,16 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._device_request_serial = 0
         self._device_request_inflight: int | None = None
         self._devices_catalog_ready = False
+        self._last_devices_burst_committed = True
+        self._devices_commit_serial = 0
         self._device_pending_generation: int | None = None
         self._device_pending_expected_rows: int | None = None
         self._device_pending_rows: dict[int, dict[str, Any]] = {}
         self._activity_request_serial = 0
         self._activity_request_inflight: int | None = None
         self._activities_catalog_ready = False
+        self._last_activities_burst_committed = True
+        self._activities_commit_serial = 0
         self._activity_retry_count = 0
         self._activity_retry_due_at: float | None = None
         self._activity_retry_send_pending = False
@@ -667,9 +673,14 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
     def handle_active_state(self, trigger: str) -> None:
         if trigger == "activities":
-            # Whatever triggered this burst, state now mirrors hub rows:
-            # an ACK_READY refresh, if one was in flight, has landed.
+            # Whatever triggered this burst, the ACK_READY refresh (if one
+            # was in flight) is over, even when it went unanswered.
             self._ack_ready_refresh_pending = False
+            if not self._last_activities_burst_committed:
+                # Scheduler timeout, nothing committed: the hint is unchanged
+                # and there is no state to publish (evaluating here turned an
+                # unanswered read into a phantom power-off, issue #279).
+                return
         new_id, old_id = self.state.update_activity_state()
         pending_redundant_off = self._pending_redundant_off_check
         self._pending_redundant_off_check = False
@@ -1762,6 +1773,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             # commands sit out the settle timeout for nothing.
             self._external_settle_event.set()
             self._ack_ready_refresh_pending = False
+            # Nor may a pre-drop OFF press be confirmed after reconnect.
+            self._pending_redundant_off_check = False
         for cb in self._hub_state_listeners:
             try:
                 cb(connected)

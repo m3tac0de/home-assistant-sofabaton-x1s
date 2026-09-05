@@ -26,6 +26,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
 from .const import (
+    infrared_platform_available,
     DOMAIN,
     PLATFORMS,
     DEFAULT_PROXY_UDP_PORT,
@@ -43,6 +44,7 @@ from .const import (
     signal_command_sync,
     signal_hub_events,
     signal_ip_commands,
+    signal_ir_intercept,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
     HUB_VERSION_X2,
@@ -77,6 +79,8 @@ from .command_config import (
     WIFI_TRANSPORT_MQTT,
     wifi_device_requires_listener,
 )
+from . import ir_library
+from . import ir_uc_hex
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
@@ -84,6 +88,8 @@ from .lib.bundle_validation import validate_hub_bundle_for_model
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
+from .lib.device_class_profiles import MAX_DEVICE_NAME_LEN, supported_create_classes
+from .lib.protocol_const import normalize_device_class
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -1316,7 +1322,11 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
         result = await hub.async_delete_device(deployed_device_id)
         deleted_hub_device = bool(result)
     if not deleted_hub_device:
-        snapshot = await hub._async_refresh_devices_snapshot()
+        try:
+            snapshot = await hub._async_refresh_devices_snapshot()
+        except TimeoutError as err:
+            connection.send_error(msg["id"], "timeout", str(err))
+            return
         stored_devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
         matches, ambiguous = hub._match_managed_wifi_devices(
             managed_devices=hub._managed_wifi_devices(snapshot),
@@ -2103,6 +2113,323 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
         return
 
     connection.send_result(msg["id"], {"ok": True})
+
+
+# ── Payload-editor learn mode (IR9) ─────────────────────────────────────
+# Two capture sources feed the control panel's payload editor:
+#
+# * the hub's own IR receiver, driven as a *listener*: one learn window
+#   per subscription, ended by a capture, a timeout, wire traffic, or the
+#   card giving up (unsubscribe / socket close => cancel);
+# * the HA infrared emitter's intercept ring, exposed as an *inbox*: a
+#   subscription that replays the ring on connect and again on every
+#   emitter send, so nothing has to stay "running" while the user walks
+#   off to press a button on a consumer integration's entity.
+#
+# Consumer discovery is by config-entry inspection: HA core keeps no
+# registry of which integrations use which emitter, but every consumer
+# stores the emitter entity id as a plain string in its entry data or
+# options (Samsung/LG Infrared, AC climate, ...), which is enough to
+# gate the HA option and name the entities the user can poke.
+
+_IR_LEARN_TIMEOUT_DEFAULT = 60.0
+_IR_LEARN_TIMEOUT_MIN = 5.0
+_IR_LEARN_TIMEOUT_MAX = 120.0
+_IR_LEARN_ERROR_FAILED = "ir_learn_failed"
+_IR_LEARN_ERROR_REFUSED = "ir_learn_refused"
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_learn/subscribe",
+        vol.Required("entry_id"): str,
+        vol.Optional("timeout"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Run one hub learn window and push its outcome as a subscription event.
+
+    Event ``state`` values: ``listening`` (window armed) then exactly one
+    terminal state - ``learned`` (with ``payload_hex``), ``timed_out``,
+    ``interrupted`` (``interrupted_by`` names the frame), ``cancelled``,
+    ``refused`` (hub would not arm) or ``error``. Failure events carry a
+    stable ``error_code`` for frontend localization. Unsubscribing before
+    the terminal event - including the socket closing - cancels the window
+    so the hub is never left armed behind a closed card; the outcome is
+    then swallowed, because the client already dropped the subscription
+    and would log an "unknown subscription" warning for it.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_ir_learn_subscribe")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
+    timeout = float(msg.get("timeout", _IR_LEARN_TIMEOUT_DEFAULT))
+    timeout = min(max(timeout, _IR_LEARN_TIMEOUT_MIN), _IR_LEARN_TIMEOUT_MAX)
+    finished = False
+
+    @callback
+    def _cancel() -> None:
+        if not finished:
+            hub.cancel_ir_learn()
+
+    def _push(payload: dict[str, Any]) -> None:
+        try:
+            connection.send_message(websocket_api.event_message(msg["id"], payload))
+        except Exception:  # noqa: BLE001 - socket gone; nothing left to tell
+            _LOGGER.debug("IR learn: could not push %s (connection closed?)", payload.get("state"))
+
+    connection.subscriptions[msg["id"]] = _cancel
+    connection.send_result(msg["id"])
+    _push({"state": "listening", "timeout_s": timeout})
+
+    try:
+        result = await hub.async_ir_learn_command(timeout=timeout)
+    except Exception as err:  # noqa: BLE001 - logged; card receives a stable code
+        _LOGGER.warning("IR learn window failed: %s", err)
+        result = {"state": "error", "error_code": _IR_LEARN_ERROR_FAILED}
+    finally:
+        finished = True
+
+    if result is None:
+        result = {
+            "state": "refused",
+            "error_code": _IR_LEARN_ERROR_REFUSED,
+        }
+    # HA pops the subscription before running its unsub callback, so a
+    # missing entry means the client (or the socket) is gone.
+    if msg["id"] in connection.subscriptions:
+        _push(result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_emissions/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_emissions_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Replay the emitter intercept ring now and on every emitter send.
+
+    Each event carries the whole ring (oldest first, at most 20 entries)
+    so the card never has to merge deltas; the ring is the same one the
+    IR intercept sensor reads, fanned out via ``signal_ir_intercept``.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    @callback
+    def _forward() -> None:
+        connection.send_message(
+            websocket_api.event_message(msg["id"], {"emissions": hub.get_ir_emissions()})
+        )
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(
+        hass, signal_ir_intercept(hub.entry_id), _forward
+    )
+    connection.send_result(msg["id"])
+    _forward()
+
+
+def _ir_emitter_entity_id(hass: HomeAssistant, hub: SofabatonHub) -> str | None:
+    """The hub's infrared emitter entity id, or None when it does not exist."""
+
+    if not infrared_platform_available():
+        return None
+    registry = er.async_get(hass)
+    if registry is None:
+        return None
+    for entry in er.async_entries_for_config_entry(registry, hub.entry_id):
+        if entry.domain == "infrared":
+            return entry.entity_id
+    return None
+
+
+def _value_references_entity(value: Any, entity_id: str) -> bool:
+    """Deep string match over a config entry's data/options mapping.
+
+    ``ConfigEntry.data``/``options`` are read-only ``MappingProxyType``
+    views, not dicts, so match on the Mapping ABC (live-HA finding
+    2026-09-02: a dict check silently found zero consumers).
+    """
+
+    if isinstance(value, str):
+        return value == entity_id
+    if isinstance(value, Mapping):
+        return any(_value_references_entity(item, entity_id) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_value_references_entity(item, entity_id) for item in value)
+    return False
+
+
+def build_ir_emitter_consumers(hass: HomeAssistant, hub: SofabatonHub) -> dict[str, Any]:
+    """Which config entries point at this hub's emitter, and their entities.
+
+    ``available`` is False when the emitter entity does not exist (older
+    HA core, or the entity was removed), in which case the card hides the
+    "from Home Assistant" learn option entirely.
+    """
+
+    emitter_entity_id = _ir_emitter_entity_id(hass, hub)
+    if emitter_entity_id is None:
+        return {"available": False, "emitter_entity_id": None, "consumers": []}
+
+    registry = er.async_get(hass)
+    consumers: list[dict[str, Any]] = []
+    for entry in hass.config_entries.async_entries():
+        if entry.domain == DOMAIN:
+            continue
+        if not (
+            _value_references_entity(getattr(entry, "data", None), emitter_entity_id)
+            or _value_references_entity(getattr(entry, "options", None), emitter_entity_id)
+        ):
+            continue
+        entities: list[dict[str, Any]] = []
+        for ent in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if getattr(ent, "disabled_by", None) is not None:
+                continue
+            state = hass.states.get(ent.entity_id)
+            friendly = state.attributes.get("friendly_name") if state is not None else None
+            name = friendly or ent.name or getattr(ent, "original_name", None) or ent.entity_id
+            entities.append({"entity_id": ent.entity_id, "name": str(name)})
+        consumers.append(
+            {
+                "entry_id": entry.entry_id,
+                "domain": entry.domain,
+                "title": str(getattr(entry, "title", "") or entry.domain),
+                "entities": entities,
+            }
+        )
+    return {
+        "available": True,
+        "emitter_entity_id": emitter_entity_id,
+        "consumers": consumers,
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_emitter/consumers",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_emitter_consumers(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    connection.send_result(msg["id"], build_ir_emitter_consumers(hass, hub))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_library/catalog",
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_library_catalog(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Browsable infrared-protocols catalog (no hub interaction).
+
+    The first call scans and imports the library's code modules, so it
+    runs in the executor; later calls hit the module-level cache.
+    """
+
+    result = await hass.async_add_executor_job(ir_library.catalog)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_library/commands",
+        vol.Required("brand"): str,
+        vol.Required("device_type"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_library_commands(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Rendered commands for one code set: labels + playable payload hex."""
+
+    try:
+        result = await hass.async_add_executor_job(
+            ir_library.commands, msg["brand"], msg["device_type"]
+        )
+    except LookupError as err:
+        connection.send_error(msg["id"], "not_found", str(err))
+        return
+    except RuntimeError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+    connection.send_result(msg["id"], {"commands": result})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_payload/convert",
+        vol.Required("text"): str,
+        vol.Optional("format", default="uc_hex"): vol.In(["uc_hex"]),
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_payload_convert(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Render a foreign IR code into the canonical signal + both hex projections.
+
+    The single conversion path for anything that needs protocol knowledge:
+    the card detects the format by shape, this command turns it into
+    ``(timings, carrier)`` through ``infrared-protocols`` and hands back
+    the pronto and Sofabaton renderings the payload editor shows. Hub
+    independent - nothing is sent, no entry is resolved. Errors keep a
+    stable ``uc_hex_*`` code; the message is the refused protocol label.
+    """
+
+    from .lib.blob_decoders import build_raw_ir_blob_body, render_pronto_hex
+
+    try:
+        result = await hass.async_add_executor_job(ir_uc_hex.convert_uc_hex, msg["text"])
+    except ir_uc_hex.UcHexError as err:
+        code = "unavailable" if err.code == "unavailable" else f"uc_hex_{err.code}"
+        connection.send_error(msg["id"], code, err.detail or err.code)
+        return
+    timings = result["timings_us"]
+    carrier_hz = result["carrier_hz"]
+    try:
+        pronto_hex = render_pronto_hex(timings, carrier_hz)
+        sofabaton_hex = build_raw_ir_blob_body(timings, carrier_hz).hex()
+    except ValueError as err:
+        connection.send_error(msg["id"], "uc_hex_unrepresentable", str(err))
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "format": "uc_hex",
+            "timings_us": timings,
+            "carrier_hz": carrier_hz,
+            "pronto_hex": pronto_hex,
+            "sofabaton_hex": sofabaton_hex,
+            "protocol": result["protocol"],
+            "protocol_name": result["protocol_name"],
+            "bits": result["bits"],
+            "repeat": result["repeat"],
+        },
+    )
 
 
 @websocket_api.websocket_command(
@@ -3080,7 +3407,7 @@ async def _resolve_hub_for_activity_write(
     hass: HomeAssistant, connection, msg: dict[str, Any], *, op_name: str
 ):
     """Shared guard chain for the immediate catalog writes (activity
-    reorder / create, device reorder): resolve the hub, refuse while a
+    reorder / create, device reorder / create): resolve the hub, refuse while a
     backup-registry operation is running, and honor the hub operation
     lock."""
 
@@ -3192,6 +3519,55 @@ async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, An
             msg["id"],
             "create_failed",
             "The hub did not confirm creation of the new activity",
+        )
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/device/create",
+        vol.Required("entry_id"): str,
+        vol.Required("name"): str,
+        vol.Required("device_class"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_device_create(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Hub tab "Add device": create an EMPTY device of the chosen class;
+    # the frontend then opens the live editor on the assigned id and the
+    # user adds commands there. Same guard chain as activity create.
+    name = str(msg["name"]).strip()
+    if not name or len(name) > MAX_DEVICE_NAME_LEN:
+        connection.send_error(
+            msg["id"],
+            "invalid_name",
+            f"Device name must be 1-{MAX_DEVICE_NAME_LEN} characters",
+        )
+        return
+
+    hub = await _resolve_hub_for_activity_write(
+        hass, connection, msg, op_name="_ws_device_create"
+    )
+    if hub is None:
+        return
+
+    device_class = normalize_device_class(msg.get("device_class"))
+    if device_class is None or device_class not in supported_create_classes(hub.version):
+        connection.send_error(
+            msg["id"],
+            "unsupported_class",
+            f"Device class {msg.get('device_class')!r} cannot be created on a "
+            f"{hub.version} hub",
+        )
+        return
+
+    result = await hub.async_create_device(name, device_class=device_class)
+    if not result or str(result.get("status")) != "success":
+        connection.send_error(
+            msg["id"],
+            "create_failed",
+            "The hub did not confirm creation of the new device",
         )
         return
     connection.send_result(msg["id"], result)
@@ -3776,7 +4152,13 @@ async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, An
         connection.send_error(msg["id"], "unavailable", str(err))
         return
 
-    await hub.async_request_catalog(msg["kind"])
+    try:
+        await hub.async_request_catalog(msg["kind"])
+    except TimeoutError as err:
+        # The cached catalog is untouched; tell the card the refresh
+        # failed instead of reporting success over stale data.
+        connection.send_error(msg["id"], "timeout", str(err))
+        return
     store = await _async_get_persistent_cache_store(hass)
     if store.enabled:
         payload = await hub.async_export_cache_state()
@@ -3811,6 +4193,12 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
     websocket_api.async_register_command(hass, _ws_fetch_blob)
     websocket_api.async_register_command(hass, _ws_play_ir_blob)
+    websocket_api.async_register_command(hass, _ws_ir_learn_subscribe)
+    websocket_api.async_register_command(hass, _ws_ir_emissions_subscribe)
+    websocket_api.async_register_command(hass, _ws_ir_emitter_consumers)
+    websocket_api.async_register_command(hass, _ws_ir_library_catalog)
+    websocket_api.async_register_command(hass, _ws_ir_library_commands)
+    websocket_api.async_register_command(hass, _ws_ir_payload_convert)
     websocket_api.async_register_command(hass, _ws_backup_export)
     websocket_api.async_register_command(hass, _ws_backup_restore)
     websocket_api.async_register_command(hass, _ws_backup_stash_edited)
@@ -3826,6 +4214,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_activity_reorder)
     websocket_api.async_register_command(hass, _ws_device_reorder)
     websocket_api.async_register_command(hass, _ws_activity_create)
+    websocket_api.async_register_command(hass, _ws_device_create)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)
     websocket_api.async_register_command(hass, _ws_get_device_keymap)
@@ -4118,6 +4507,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     if not hass.services.has_service(DOMAIN, "play_ir_blob"):
         hass.services.async_register(DOMAIN, "play_ir_blob", _async_handle_play_ir_blob)
+    if not hass.services.has_service(DOMAIN, "set_ir_learn_mode"):
+        hass.services.async_register(DOMAIN, "set_ir_learn_mode", _async_handle_set_ir_learn_mode)
+    if not hass.services.has_service(DOMAIN, "ir_learn_command"):
+        hass.services.async_register(
+            DOMAIN,
+            "ir_learn_command",
+            _async_handle_ir_learn_command,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     if not hass.services.has_service(DOMAIN, "persist_ir_blob"):
         hass.services.async_register(
             DOMAIN,
@@ -4177,9 +4575,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.add_update_listener(async_update_options)
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(
+        entry, _supported_platforms()
+    )
     await _async_ensure_storage_mode_frontend_resources(hass)
     return True
+
+
+def _supported_platforms() -> list[str]:
+    """PLATFORMS plus ``infrared`` when this HA core ships the domain.
+
+    Setup and unload must both use this so the forward/unload platform
+    lists match.
+    """
+
+    platforms = list(PLATFORMS)
+    if not infrared_platform_available():
+        _LOGGER.info(
+            "This Home Assistant core has no infrared platform; "
+            "skipping the IR emitter entity"
+        )
+        return platforms
+    platforms.append("infrared")
+    return platforms
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -4202,7 +4620,9 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await roku_listener.async_set_listen_port(int(roku_listen_port))
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, _supported_platforms()
+    )
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
         if not _get_hubs(hass.data[DOMAIN]):
@@ -4212,6 +4632,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "backup_bundle")
             hass.services.async_remove(DOMAIN, "restore_backup")
             hass.services.async_remove(DOMAIN, "play_ir_blob")
+            hass.services.async_remove(DOMAIN, "set_ir_learn_mode")
+            hass.services.async_remove(DOMAIN, "ir_learn_command")
             hass.services.async_remove(DOMAIN, "persist_ir_blob")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
@@ -4453,6 +4875,49 @@ async def _async_handle_play_ir_blob(call: ServiceCall):
     ok = await hub.async_play_ir_blob(blob_bytes)
     if not ok:
         raise HomeAssistantError("Hub is not ready to play IR blob (proxy client connected?)")
+
+
+async def _async_handle_set_ir_learn_mode(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_set_ir_learn_mode")
+
+    enabled = call.data.get("enabled")
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be a boolean")
+
+    ok = await hub.async_set_ir_learn_mode(enabled)
+    if not ok:
+        raise HomeAssistantError(
+            "Hub did not accept the IR learn-mode toggle (proxy client connected?)"
+        )
+
+
+async def _async_handle_ir_learn_command(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_ir_learn_command")
+
+    timeout = call.data.get("timeout", 60)
+    try:
+        timeout = float(timeout)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("timeout must be a number of seconds") from exc
+    if timeout < 5 or timeout > 120:
+        raise ValueError("timeout must be between 5 and 120 seconds")
+
+    result = await hub.async_ir_learn_command(timeout=timeout)
+    if result is None:
+        raise HomeAssistantError(
+            "Hub did not accept the IR learn-mode arm (proxy client connected?)"
+        )
+    return result
 
 
 async def _async_handle_persist_ir_blob(call: ServiceCall):

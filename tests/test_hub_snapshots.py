@@ -102,13 +102,13 @@ def test_refresh_devices_snapshot_carries_raw_body_from_proxy_state(
         "raw_body": raw,
     }
 
-    # Bypass the request-devices round-trip: the helper just polls
-    # ``_devices_generation`` until it advances, so a single bump is
-    # enough to make it return immediately.
-    monkeypatch.setattr(
-        hub._proxy, "request_devices", lambda *args, **kwargs: None
-    )
-    hub._devices_generation += 1
+    # Bypass the request-devices round-trip: the helper polls the proxy's
+    # commit serial until it advances past the value it saw when the
+    # request went out, so the stub plays the committed burst.
+    def _request_devices(*args, **kwargs):
+        hub._proxy._devices_commit_serial += 1
+
+    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
 
     snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_devices_snapshot(timeout_seconds=1.0)
@@ -135,10 +135,10 @@ def test_refresh_activities_snapshot_carries_raw_body_from_proxy_state(
         "raw_body": raw,
     }
 
-    monkeypatch.setattr(
-        hub._proxy, "request_activities", lambda *args, **kwargs: None
-    )
-    hub._activities_generation += 1
+    def _request_activities(*args, **kwargs):
+        hub._proxy._activities_commit_serial += 1
+
+    monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)
 
     snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_activities_snapshot(timeout_seconds=1.0)
@@ -163,10 +163,14 @@ def test_refresh_devices_and_activities_have_identical_shape(monkeypatch) -> Non
     hub._proxy.state.devices[0x01] = {"name": "Dev", "raw_body": raw_dev}
     hub._proxy.state.activities[0x02] = {"name": "Act", "raw_body": raw_act}
 
-    monkeypatch.setattr(hub._proxy, "request_devices", lambda *a, **kw: None)
-    monkeypatch.setattr(hub._proxy, "request_activities", lambda *a, **kw: None)
-    hub._devices_generation += 1
-    hub._activities_generation += 1
+    def _request_devices(*a, **kw):
+        hub._proxy._devices_commit_serial += 1
+
+    def _request_activities(*a, **kw):
+        hub._proxy._activities_commit_serial += 1
+
+    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
+    monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)
 
     dev_snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_devices_snapshot(timeout_seconds=1.0)

@@ -129,7 +129,10 @@ npm run fetch:ha-themes                         # regenerate the fixture (needs 
 The remote-card harness (`tests/playwright/fixtures/remote-card-harness.html`)
 takes `?theme=<value>&mode=global|card&scenario=active[+macros|+favorites|+menu]`
 for manual checks; without `?theme=` it keeps its legacy palette so the
-Playwright snapshots stay stable.
+Playwright snapshots stay stable. The `unavailable`, `no_activities` and
+`device_keymap_missing` scenarios render the card's status notice row
+(the in-flow banner above the selector) and are part of the remote
+audit's default set.
 
 The audit writes `artifacts/contrast-audit.md` (remote: `contrast-audit-remote.md`, + `.json`), grouped by
 element signature (component + tag + classes) with the worst theme per
@@ -139,6 +142,17 @@ measured too (rows marked `@hover`; `--no-hover` skips them), and
 measured but never counted; deliberate exceptions go in
 `tests/fixtures/contrast-allowlist.json` with the reason documented next
 to the style rule.
+
+Form fields are measured like text (their value, or their placeholder,
+marked `::placeholder`), and every native `<select>` gets a row per distinct
+option styling marked `@popup`: Chromium paints the popup from the
+options' computed colours and the select's `color-scheme`, so the row tells
+you what the opened dropdown will look like without opening it. The
+`payload-editor-ir` and `macro-add-step` scenarios exist for those probes
+(IR payload editor with its Pronto / Sofabaton tabs; the macro editor's
+Add step dialog with its native selects) and are part of the default set.
+A test in `tests/frontend/tools-card-harness.test.ts` keeps the audit's
+default scenario list and the harness in sync.
 
 ## ◇ Documentation
 

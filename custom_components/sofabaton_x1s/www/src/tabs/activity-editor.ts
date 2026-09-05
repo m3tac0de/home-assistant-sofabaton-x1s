@@ -255,7 +255,7 @@ export const activityEditorStyles = css`
     cursor: pointer;
   }
   .member-add-option:hover {
-    background: var(--secondary-background-color);
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
   }
   .member-add-empty {
     padding: 8px 10px;

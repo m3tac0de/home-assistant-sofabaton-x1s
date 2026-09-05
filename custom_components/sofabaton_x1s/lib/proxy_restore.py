@@ -246,6 +246,10 @@ class RestoreMixin:
         # all live in the same family-0x0E command-record table; the
         # restore path replays them through ``persist_command_record``
         # using the ``hub_code_record`` metadata captured at backup time.
+        # Every row that IS present must carry that metadata. An empty
+        # command list is fine: an empty device backup is a legitimate
+        # export, and the Hub tab's "Add device" creates exactly that
+        # (head record only, commands come later through the editor).
         if device_class in (
             DEVICE_CLASS_BLUETOOTH,
             DEVICE_CLASS_RF_315,
@@ -257,15 +261,12 @@ class RestoreMixin:
             DEVICE_CLASS_WIFI_SONOS,
         ):
             command_rows = payload.get("commands")
-            if not isinstance(command_rows, list) or not any(
-                isinstance(row, dict) for row in command_rows
-            ):
+            if command_rows is None:
+                command_rows = []
+            if not isinstance(command_rows, list):
                 raise ValueError(
-                    "restore_device for "
-                    f"{device_class} devices needs command restore metadata "
-                    "(library_type/data_hex/button slot) in each command row"
+                    f"restore_device for {device_class} devices needs a command list"
                 )
-            validated_rows = 0
             for row in command_rows:
                 if not isinstance(row, dict):
                     continue
@@ -281,13 +282,6 @@ class RestoreMixin:
                         f"{device_class} devices needs command restore metadata "
                         "(library_type/data_hex/button slot) in each command row"
                     )
-                validated_rows += 1
-            if validated_rows == 0:
-                raise ValueError(
-                    "restore_device for "
-                    f"{device_class} devices needs command restore metadata "
-                    "(library_type/data_hex/button slot) in each command row"
-                )
             return
 
         if device_class != DEVICE_CLASS_IR:
@@ -1460,7 +1454,13 @@ class RestoreMixin:
                     label_suffix=f"count={restored_inputs}",
                 )
             )
-        else:
+        elif request.commands or device_class != DEVICE_CLASS_WIFI_ROKU:
+            # Default (empty) inputs page. The X1 hub refuses it for a
+            # wifi_roku record that has no commands yet (STATUS_ACK 0x04,
+            # bench_180 2026-09-05) while accepting it for ir / wifi_hue /
+            # wifi_sonos; a Roku device created EMPTY (Hub tab "Add
+            # device") therefore skips it and the editor's later sync
+            # writes the real input configuration.
             post_steps.append(
                 _input_create_step(
                     device_id=new_device_id,

@@ -236,6 +236,77 @@ export interface BlobPlayResponse {
   ok: boolean;
 }
 
+/** Foreign IR code formats the backend can render to the canonical signal. */
+export type IrPayloadForeignFormat = "uc_hex";
+
+/**
+ * `ir_payload/convert`: a foreign code (Unfolded Circle HEX) rendered by the
+ * backend's protocol library into timings + carrier, plus both hex
+ * projections so the payload editor never re-derives them locally.
+ */
+export interface IrPayloadConvertResponse {
+  format: IrPayloadForeignFormat;
+  timings_us: number[];
+  carrier_hz: number;
+  pronto_hex: string;
+  sofabaton_hex: string;
+  protocol: number;
+  protocol_name: string;
+  bits: number;
+  repeat: number;
+}
+
+// ── Payload-editor learn mode (IR9) ─────────────────────────────────────
+/** One entry of the emitter intercept ring (`ir_emissions/subscribe`). */
+export interface IrEmissionRecord {
+  label: string;
+  command_repr?: string;
+  carrier_hz?: number;
+  timing_count?: number;
+  payload_hex: string;
+  when: string;
+  count: number;
+}
+export interface IrEmissionsEvent {
+  emissions: IrEmissionRecord[];
+}
+export interface IrEmitterConsumerEntity {
+  entity_id: string;
+  name: string;
+}
+/** A config entry that references the hub's infrared emitter entity. */
+export interface IrEmitterConsumer {
+  entry_id: string;
+  domain: string;
+  title: string;
+  entities: IrEmitterConsumerEntity[];
+}
+export interface IrEmitterConsumersResponse {
+  available: boolean;
+  emitter_entity_id: string | null;
+  consumers: IrEmitterConsumer[];
+}
+/** Events of one hub learn window (`ir_learn/subscribe`): `listening`, then one terminal state. */
+export type IrLearnState =
+  | "listening"
+  | "learned"
+  | "timed_out"
+  | "interrupted"
+  | "cancelled"
+  | "refused"
+  | "error";
+export interface IrLearnEvent {
+  state: IrLearnState;
+  error_code?: string;
+  payload_hex?: string | null;
+  carrier_hz?: number;
+  duration_count?: number;
+  timeout_s?: number;
+  interrupted_by?: string;
+  /** Diagnostic fallback for old backends; cards must render `error_code`, not this text. */
+  message?: string;
+}
+
 export interface BackupBundleDeviceBlock {
   device_id: number;
   name?: string | null;

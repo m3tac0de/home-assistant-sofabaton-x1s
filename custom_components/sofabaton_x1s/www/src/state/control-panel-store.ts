@@ -32,6 +32,7 @@ import {
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
 import { buildHubClickNotification } from "../shared/utils/hub-click-notification";
+import { backendErrorCode } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const BACKEND_RETRY_MIN_MS = 2000;
@@ -757,6 +758,10 @@ export class ControlPanelStore {
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
+    } catch (error) {
+      // A hub that did not answer leaves the cached catalog as it was;
+      // say so instead of silently showing the old data as refreshed.
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     } finally {
       this._clearRefreshBusy(hub.entry_id);
     }
@@ -881,6 +886,33 @@ export class ControlPanelStore {
     // case where this refresh fails.
     await this.refreshForHub("activity", activityId, `act-${activityId}`);
     return { activityId };
+  }
+
+  /**
+   * Create an empty device of `deviceClass` on the hub, then pull its cache
+   * entry so the live editor can capture it right away. Resolves with the
+   * assigned device id or a stable error code. Mirrors `createActivity`.
+   */
+  async createDevice(name: string, deviceClass: string): Promise<{ deviceId: number } | { errorCode: string }> {
+    if (this._isHubCommandBusy()) return { errorCode: "another_operation" };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { errorCode: "no_hub_selected" };
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingDevice, hub.entry_id);
+    let deviceId = 0;
+    try {
+      const result = await this.api().createDevice(hub.entry_id, name, deviceClass);
+      deviceId = Number(result?.device_id || 0);
+      if (!deviceId) return { errorCode: "device_id_missing" };
+    } catch (error) {
+      return { errorCode: backendErrorCode(error) ?? "device_create_failed" };
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    // Per-entity cache refresh: the new device becomes part of the
+    // structural cache (and the visible list) before the editor opens on
+    // it; its cache row carries the device_class the editor keys on.
+    await this.refreshForHub("device", deviceId, `dev-${deviceId}`);
+    return { deviceId };
   }
 
   async refreshForHub(kind: RefreshKind, targetId: number, key: string) {

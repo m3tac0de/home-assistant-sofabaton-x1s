@@ -1088,6 +1088,46 @@ export function renameBundleDeviceCommand(
  * 0xFF like the hub's one-byte command-id space). Returns `null` when the
  * device is absent or its id space is exhausted.
  */
+/**
+ * Default decoded snapshot for the add-command dialog on a device that has
+ * NO commands yet (a device created empty through the Hub tab's "Add
+ * device"). With no template row to clone, the class's form opens with
+ * neutral defaults and an empty trailer; the hub checksums the record
+ * itself. Returns `null` for classes without a decoded form (raw hex
+ * entry) and for IR, which has its own descriptor / hex-tab path.
+ *
+ * `commandId` seeds the read-only MQTT fields; the apply step re-resolves
+ * it against the bundle at commit time.
+ */
+export function defaultDecodedSnapshotForClass(
+  deviceClass: string,
+  options: { deviceId: number; commandId: number | null },
+): BackupCommandDecodedBlock | null {
+  const className = normalizeDecodableClass(deviceClass);
+  if (!className || className === "ir") return null;
+  let fields: Record<string, unknown>;
+  switch (className) {
+    case "wifi_ip":
+      fields = { host: "", port: 80, method: "GET", path: "/", header: "", content_type: "", body: "" };
+      break;
+    case "wifi_roku":
+      fields = { path: "keypress/" };
+      break;
+    case "wifi_hue":
+      fields = { path: "api/", body_block: "" };
+      break;
+    case "wifi_sonos":
+      fields = { path: "MediaRenderer/AVTransport/Control", body_block: "" };
+      break;
+    case "wifi_mqtt":
+      fields = { device_id: options.deviceId & 0xff, command_id: (options.commandId ?? 1) & 0xff };
+      break;
+    default:
+      return null;
+  }
+  return { className, fields, trailerHex: "", edited: false };
+}
+
 export function nextFreeDeviceCommandId(
   bundle: BackupBundlePayload | null,
   deviceId: number,

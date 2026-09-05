@@ -361,6 +361,7 @@ async def async_get_config_entry_diagnostics(
                 "current_activity": getattr(hub, "current_activity", None),
                 "client_connected": getattr(hub, "client_connected", None),
                 "hub_connected": getattr(hub, "hub_connected", None),
+                "bridge": getattr(hub, "bridge_stats", None),
             }
         )
 

@@ -11,10 +11,10 @@ import {
 
 export const REMOTE_CARD_STRINGS_ZH_HANS = {
   card: {
-    selectEntityError: "请选择 Sofabaton 遥控器实体",
+    selectEntityError: "请选择 Sofabaton 遥控实体",
     remoteUnavailable:
-      "遥控器不可用（可能是因为 Sofabaton 应用已连接）。",
-    noActivitiesWarning: "在遥控器属性中未找到活动。",
+      "遥控不可用（可能是因为 Sofabaton 应用已连接）。",
+    noActivitiesWarning: "在遥控属性中未找到活动。",
     noMacros: "没有可用的宏",
     noFavorites: "没有可用的收藏",
     noCommands: "没有可用命令",
@@ -92,7 +92,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
   },
   editor: {
     fieldLabels: {
-      entity: "选择 Sofabaton 遥控器实体",
+      entity: "选择 Sofabaton 遥控实体",
       theme: "为卡片应用主题",
       use_background_override: "自定义背景颜色",
       background_override: "选择背景颜色",
@@ -133,7 +133,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
       "控制 Hub 中配置的单个设备，并使用该设备自己的按键分配和完整命令列表。",
     longPress: "启用长按重复发送",
     longPressDescription:
-      "按住所选按键可重复发送其命令，就像使用实体遥控器一样。",
+      "按住所选按键可重复发送其命令，就像使用物理遥控器一样。",
     longPressButtons: "按键",
     enableDeviceMode: "启用设备模式",
     initialView: "初始视图",

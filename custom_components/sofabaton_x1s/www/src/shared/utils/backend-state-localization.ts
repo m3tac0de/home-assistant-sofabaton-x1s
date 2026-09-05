@@ -8,6 +8,21 @@ type BackendOperation =
   | "entity_sync"
   | "wifi_deploy";
 
+export type BackendErrorSurface = "device_create" | "ir_learn" | "ir_emissions" | "ir_convert";
+
+/**
+ * The `ir_payload/convert` rejection carries the refused protocol as its
+ * message (e.g. `JVC (6)`, `NEC with 16 bits`). That is an identifier, not
+ * prose, so it may be interpolated - but only when it looks like one.
+ */
+function conversionDetail(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const message = (value as Record<string, unknown>).message;
+  if (typeof message !== "string") return null;
+  const trimmed = message.trim();
+  return /^[A-Za-z0-9_ ()-]{1,40}$/.test(trimmed) ? trimmed : null;
+}
+
 type ProgressLike = Partial<BackupProgressEvent> & {
   current_step?: number | null;
 };
@@ -15,6 +30,74 @@ type ProgressLike = Partial<BackupProgressEvent> & {
 function positiveInteger(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizedErrorCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toLowerCase();
+  return /^[a-z][a-z0-9_.-]*$/.test(code) ? code : null;
+}
+
+/**
+ * Pull a stable machine-readable code out of either one of our event payloads
+ * or Home Assistant's WebSocket rejection shape. Prose is intentionally not
+ * treated as a code: backend exception messages must never become UI copy.
+ */
+export function backendErrorCode(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const error = value as Record<string, unknown>;
+  const direct = normalizedErrorCode(error.error_code) ?? normalizedErrorCode(error.code);
+  if (direct) return direct;
+  return error.error && error.error !== value ? backendErrorCode(error.error) : null;
+}
+
+/**
+ * Translate structured backend failures at the UI boundary. Unknown codes
+ * use localized generic copy rather than leaking their English `message`.
+ */
+export function localizeBackendError(value: unknown, surface: BackendErrorSurface): string {
+  if (surface === "device_create") {
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
+    if (code === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (code === "device_id_missing") return TOOLS_CARD_STRINGS.errors.deviceIdMissing;
+    if (code === "invalid_name") return TOOLS_CARD_STRINGS.errors.deviceNameInvalid;
+    if (code === "unsupported_class") return TOOLS_CARD_STRINGS.errors.deviceTypeUnsupported;
+    return TOOLS_CARD_STRINGS.errors.deviceCreateFailed;
+  }
+
+  const S = TOOLS_CARD_STRINGS.backup;
+  if (surface === "ir_emissions") return S.learnHaUnavailable;
+  if (surface === "ir_convert") {
+    const code = backendErrorCode(value);
+    if (code === "uc_hex_invalid") return S.ucHexInvalid;
+    if (code === "uc_hex_unsupported_protocol" || code === "uc_hex_unsupported_bits") {
+      return S.ucHexUnsupported(conversionDetail(value) ?? S.ucHexUnknownProtocol);
+    }
+    if (code === "uc_hex_unrepresentable") return S.ucHexUnrepresentable;
+    if (code === "unavailable") return S.ucHexUnavailable;
+    return S.ucHexFailed;
+  }
+
+  const event = value && typeof value === "object" ? value as Record<string, unknown> : null;
+  const state = String(event?.state || "").trim().toLowerCase();
+  const code = backendErrorCode(value);
+  if (
+    state === "refused"
+    || code === "ir_learn_refused"
+    || code === "unavailable"
+    || code === "busy"
+    || code === "operation_locked"
+  ) {
+    return S.learnHubRefused;
+  }
+  if (code === "ir_learn_no_payload" || code === "no_payload") {
+    return S.learnHubNoPayload;
+  }
+  return S.learnHubFailed;
 }
 
 function progressStep(progress: ProgressLike): string | null {
@@ -166,9 +249,9 @@ export function localizeBackendOperationDetail(
 }
 
 /**
- * Localize only structured operational progress. Backend exceptions, logs,
- * hub-provided labels, and unknown payloads deliberately remain outside this
- * adapter so diagnostic text is never mistranslated or hidden.
+ * Localize structured operational progress. Error events use the companion
+ * `localizeBackendError` adapter above; logs and hub-provided labels remain
+ * diagnostic data rather than translated UI copy.
  */
 export function localizeBackendProgress(
   progress: ProgressLike | null | undefined,
@@ -276,4 +359,3 @@ export function localizeBackendProgress(
 
   return progressStep(progress) || S.working;
 }
-

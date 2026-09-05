@@ -146,7 +146,7 @@ export function keyStyleFromConfig(
 
 /**
  * Tinted panels: the group containers take the accent-tinted dock
- * surface. An independent switch since 0.3.0 so it combines with any
+ * surface. An independent switch so it combines with any
  * key style; released `key_style: "panel"` configs read as flat keys
  * plus panels (never rewritten unless the user edits styling).
  */

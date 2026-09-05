@@ -55,9 +55,11 @@ export const TOOLS_CARD_STRINGS_FR = {
   },
   errors: {
     backupProgressNoSocket: "La progression de la sauvegarde n’est pas disponible sans connexion WebSocket", logsNoSocket: "Les journaux en direct ne sont pas disponibles sans connexion WebSocket",
+    irLearnNoSocket: "L’apprentissage n’est pas disponible sans connexion WebSocket",
     wifiPressNoSocket: "Les événements d’appui Wifi ne sont pas disponibles sans connexion WebSocket", hubEventsNoSocket: "Les événements du hub ne sont pas disponibles sans connexion WebSocket",
     anotherOperation: "Une autre opération du hub est déjà en cours.", noHubSelected: "Aucun hub sélectionné.", noHubSelectedLong: "Aucun hub n’est sélectionné.",
-    cacheRefreshFailed: "Échec de l’actualisation du cache.", syncFailed: "Échec de la synchronisation.", activityIdMissing: "Le hub n’a pas renvoyé l’identifiant de la nouvelle activité.",
+    cacheRefreshFailed: "Échec de l’actualisation du cache.", syncFailed: "Échec de la synchronisation.", activityIdMissing: "Le hub n’a pas renvoyé l’identifiant de la nouvelle activité.", deviceIdMissing: "Le hub n’a pas renvoyé l’identifiant du nouvel appareil.",
+    deviceCreateFailed: "Impossible de créer l’appareil sur le hub.", deviceNameInvalid: "Saisissez un nom d’appareil comportant entre 1 et 30 caractères.", deviceTypeUnsupported: "Ce type d’appareil ne peut pas être créé sur ce hub.", selectedHubUnavailable: "Le hub sélectionné n’est plus disponible.",
   },
   settings: {
     loading: "Chargement…", noHubsFound: "Aucun hub trouvé.", unknownHubName: "Inconnu", activities: "Activités", devices: "Appareils",
@@ -78,11 +80,15 @@ export const TOOLS_CARD_STRINGS_FR = {
     activityCounts: (favorites: number, macros: number, buttons: number) => `${favorites} fav. / ${macros} ${macros > 1 ? "macros" : "macro"} / ${buttons} ${buttons > 1 ? "touches" : "touche"}`, deviceCommandCount: (count: number) => `${count} cmd`,
     favorites: "Favoris", macros: "Macros", buttons: "Touches", noCachedData: "Aucune donnée en cache pour le moment.", noCachedCommands: "Aucune commande en cache.",
     staleBanner: "Le cache a été mis à jour en dehors de cette carte. Actualisez pour voir les dernières données.", refresh: "Actualiser", activities: "Activités", devices: "Appareils",
-    refreshList: "Liste", refreshAll: "Tout", editActivity: "Modifier l’activité", editDevice: "Modifier l’appareil", changeOrder: "Réordonner", addActivity: "Ajouter",
+    refreshList: "Liste", refreshAll: "Tout", editActivity: "Modifier l’activité", editDevice: "Modifier l’appareil", changeOrder: "Réordonner", addActivity: "Ajouter", addDevice: "Ajouter",
     reorderSync: "Synchroniser", reorderCancel: "Annuler", reorderHint: "Faites glisser les activités dans l’ordre souhaité, puis synchronisez-les avec le hub.",
     reorderDevicesHint: "Faites glisser les appareils dans l’ordre souhaité, puis synchronisez-les avec le hub.", reorderSyncing: "Écriture du nouvel ordre sur le hub…",
     addActivityTitle: "Ajouter une activité", addActivityBody: "Nommez la nouvelle activité. Elle sera créée sur le hub et ouverte dans l’éditeur.", addActivityPlaceholder: "Nom de l’activité",
-    addActivityCancel: "Annuler", addActivityConfirm: "Créer", addActivityCreating: "Création…", reorderingActivities: "Réorganisation des activités…", reorderingDevices: "Réorganisation des appareils…", creatingActivity: "Création de l’activité…",
+    addActivityCancel: "Annuler", addActivityConfirm: "Créer", addActivityCreating: "Création…",
+    addDeviceTitle: "Ajouter un appareil", addDeviceBody: "Choisissez un nom et un type d’appareil. L’appareil sera créé sur le hub sans commandes, puis ouvert dans l’éditeur pour que vous puissiez en ajouter.",
+    addDevicePlaceholder: "Nom de l’appareil", addDeviceClass: "Type d’appareil", addDeviceCancel: "Annuler", addDeviceConfirm: "Créer", addDeviceCreating: "Création…",
+    addDeviceWifiHint: "Pour les commandes que Home Assistant doit exécuter, utilisez plutôt l’onglet Wifi Commands.", creatingDevice: "Création de l’appareil…",
+    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP générique", wifi_mqtt: "MQTT" }, reorderingActivities: "Réorganisation des activités…", reorderingDevices: "Réorganisation des appareils…", creatingActivity: "Création de l’activité…",
   },
   hubClick: {
     notificationTitle: "🛠️ Assistant d’automatisation", contextActivity: "Activité", contextDevice: "Appareil", kindLabels: { favorite: "Favori", macro: "Macro", button: "Touche", command: "Commande" },
@@ -275,6 +281,66 @@ export const TOOLS_CARD_STRINGS_FR = {
     test: "Tester", sendingToHub: "Envoi au hub…", sentToHub: "Envoyé au hub pour une lecture unique.", testFailed: "Échec du test.", rawPayload: "Données utiles brutes",
     rawPayloadDescription: "Aucun éditeur structuré n’existe pour cette classe d’appareil ; les octets ci-dessous seront rejoués tels quels sur le hub lors de la restauration.", payloadHex: "Données utiles (octets hexadécimaux)",
     payloadHexHelper: "Paires d’octets comme « 0a 4f 22 » ; les espaces et les préfixes 0x sont acceptés.", rename: "Renommer", renameActivity: "Renommer l’activité", renameDevice: "Renommer l’appareil", renameMacro: "Renommer la macro",
+    prontoHexTab: "Pronto Hex",
+    sofabatonHexTab: "Sofabaton Hex",
+    descriptorTab: "Descripteur",
+    prontoHexHelper:
+      "Collez un code Pronto Hex au format appris, tel que « 0000 006D 0022 0000 00AB … », ou un code HEX pris en charge au format Unfolded Circle, tel que « 3;0x4B36D32C;32;0 ». L’éditeur le convertit automatiquement en octets Sofabaton.",
+    prontoUnavailable:
+      "Ces données utiles ne peuvent pas être interprétées comme des durées IR brutes et ne peuvent donc pas être affichées au format Pronto Hex.",
+    invalidProntoHex: "Ceci n’est pas un code Pronto Hex valide au format appris.",
+    descriptorX2Only: "Les données utiles IR descriptives ne sont prises en charge que sur les hubs X2.",
+    // Import de codes HEX Unfolded Circle (convertis côté backend via infrared-protocols).
+    ucHexConverting: "Conversion du code HEX au format Unfolded Circle…",
+    ucHexInvalid: "Ce code HEX au format Unfolded Circle n’est pas valide.",
+    ucHexUnknownProtocol: "un protocole inconnu",
+    ucHexUnsupported: (protocol: string) =>
+      `Ce code HEX au format Unfolded Circle utilise ${protocol}, qui n’est pas pris en charge. Exportez plutôt la commande depuis Unfolded Circle au format Pronto Hex, puis collez-la ici.`,
+    ucHexUnrepresentable:
+      "Ce code HEX au format Unfolded Circle ne respecte pas les règles de format de son protocole IR et ne peut pas être converti. Exportez la commande depuis Unfolded Circle au format Pronto Hex, puis collez-la ici.",
+    ucHexUnavailable:
+      "La conversion des codes HEX au format Unfolded Circle n’est pas disponible, car la bibliothèque infrared-protocols requise ne peut pas être chargée dans cette installation de Home Assistant.",
+    ucHexNoHost:
+      "Cet éditeur ne peut pas convertir les codes HEX au format Unfolded Circle, car une connexion à Home Assistant est nécessaire.",
+    ucHexFailed: "La conversion du code HEX au format Unfolded Circle a échoué.",
+    // Mode apprentissage de l’éditeur de données utiles (IR9).
+    learn: "Apprendre",
+    learnAria: "Apprendre des données utiles depuis une autre télécommande ou depuis Home Assistant",
+    learnBack: "Retour",
+    learnTryAgain: "Réessayer",
+    learnFromHub: "Depuis une autre télécommande",
+    learnFromHubDescription:
+      "Le récepteur du hub attend une pression sur la télécommande IR dont vous souhaitez apprendre le signal.",
+    learnFromHa: "Depuis Home Assistant",
+    learnFromHaDescription:
+      "Tout ce qu’une autre intégration envoie via l’émetteur infrarouge du hub arrive ici, prêt à être enregistré.",
+    learnHaChecking: "Vérification des intégrations qui utilisent l’émetteur du hub…",
+    learnHubArming: "Activation du récepteur du hub…",
+    learnHubListening: "Pointez cette télécommande vers le hub et appuyez une fois sur la touche.",
+    learnHubCountdown: (left: string) => `Écoute… ${left}`,
+    learnHubLearned: (timings: number, khz: string) =>
+      `Signal appris depuis la télécommande source : ${timings} durées de signal à ${khz} kHz. Testez, puis enregistrez.`,
+    learnHubLearnedRaw: "Signal appris depuis la télécommande source. Testez, puis enregistrez.",
+    learnHubTimedOut: "Aucun signal n’est arrivé avant la fermeture de la fenêtre d’apprentissage du hub.",
+    learnHubInterrupted: (by: string) =>
+      `Une autre communication avec le hub a mis fin à la fenêtre d’apprentissage (${by}).`,
+    learnHubCancelled: "Apprentissage annulé.",
+    learnHubRefused: "Le hub n’est pas passé en mode apprentissage. L’application Sofabaton est-elle connectée, ou une synchronisation est-elle en cours ?",
+    learnHubFailed: "L’apprentissage a échoué.",
+    learnHubNoPayload: "Le hub a capté un signal, mais ses données utiles n’ont pas pu être lues.",
+    learnHaHelper:
+      "Envoyez une commande depuis Home Assistant via l’émetteur du hub ; elle apparaît ci-dessous dès que le hub la joue. Vous pouvez quitter cette page et revenir plus tard.",
+    learnHaConsumers: "Intégrations utilisant l’émetteur de ce hub",
+    learnHaEmpty: "Rien de capté pour l’instant.",
+    learnHaNew: "nouveau",
+    learnHaUse: "Utiliser",
+    learnHaSentCount: (count: number) => `×${count}`,
+    learnHaCaptured: (label: string) => `Capté depuis Home Assistant : ${label}. Testez, puis enregistrez.`,
+    learnHaUnavailable: "Impossible de charger les commandes IR émises récemment.",
+    learnJustNow: "à l’instant",
+    learnSecondsAgo: (seconds: number) => `il y a ${seconds} s`,
+    learnMinutesAgo: (minutes: number) => `il y a ${minutes} min`,
+    learnHoursAgo: (hours: number) => `il y a ${hours} h`,
     renameFavorite: "Renommer le favori", renameCommand: "Renommer la commande", ipAddress: "Adresse IP", noPayloadReturned: "Le hub n’a renvoyé aucune donnée utile pour cette commande.",
     noTemplateCommand: "Cet appareil ne comporte aucune commande pouvant servir de modèle — ajoutez sa première commande avec l’application Sofabaton.", newCommandNameRequired: "Saisissez un nom pour la nouvelle commande.",
     descriptiveIrRequired: "Saisissez des données utiles IR descriptives commençant par P: (p. ex. P:Sony12 R:40000 D:1 F:18).", payloadHexRequired: "Saisissez les données utiles sous forme d’octets hexadécimaux (nombre pair de chiffres hexadécimaux ; les espaces sont acceptés).",

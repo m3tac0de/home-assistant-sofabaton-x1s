@@ -19,6 +19,7 @@ import {
   addActivityUserMacro,
   addBundleActivityFavorite,
   addBundleDeviceCommand,
+  defaultDecodedSnapshotForClass,
   addDeviceMacroCommandStep,
   nextFreeDeviceCommandId,
   clearActivityDeviceInput,
@@ -1589,4 +1590,39 @@ test("bundleDeviceBrand reads the device head brand", () => {
   assert.equal(bundleDeviceBrand(bundle, 9), ""); // no brand field
   assert.equal(bundleDeviceBrand(bundle, 99), ""); // missing device
   assert.equal(bundleDeviceBrand(null, 8), "");
+});
+
+
+// ── defaultDecodedSnapshotForClass (add-command on an empty device) ───────
+
+test("defaultDecodedSnapshotForClass opens each wifi form with neutral defaults", () => {
+  const ip = defaultDecodedSnapshotForClass("wifi_ip", { deviceId: 7, commandId: 1 });
+  assert.equal(ip?.className, "wifi_ip");
+  assert.equal(ip?.fields.method, "GET");
+  assert.equal(ip?.fields.port, 80);
+  assert.equal(ip?.trailerHex, "");
+  assert.equal(ip?.edited, false);
+  assert.equal(defaultDecodedSnapshotForClass("wifi_roku", { deviceId: 7, commandId: 1 })?.fields.path, "keypress/");
+  assert.equal(defaultDecodedSnapshotForClass("wifi_hue", { deviceId: 7, commandId: 1 })?.fields.path, "api/");
+  assert.equal(
+    defaultDecodedSnapshotForClass("wifi_sonos", { deviceId: 7, commandId: 1 })?.fields.path,
+    "MediaRenderer/AVTransport/Control",
+  );
+});
+
+test("defaultDecodedSnapshotForClass seeds the MQTT ids and masks them to a byte", () => {
+  const mqtt = defaultDecodedSnapshotForClass("WIFI_MQTT", { deviceId: 300, commandId: 5 });
+  assert.equal(mqtt?.className, "wifi_mqtt");
+  assert.deepEqual(mqtt?.fields, { device_id: 300 & 0xff, command_id: 5 });
+  assert.deepEqual(
+    defaultDecodedSnapshotForClass("wifi_mqtt", { deviceId: 4, commandId: null })?.fields,
+    { device_id: 4, command_id: 1 },
+  );
+});
+
+test("defaultDecodedSnapshotForClass returns null for IR and non-decodable classes", () => {
+  assert.equal(defaultDecodedSnapshotForClass("ir", { deviceId: 1, commandId: 1 }), null);
+  assert.equal(defaultDecodedSnapshotForClass("bluetooth", { deviceId: 1, commandId: 1 }), null);
+  assert.equal(defaultDecodedSnapshotForClass("rf_433mhz", { deviceId: 1, commandId: 1 }), null);
+  assert.equal(defaultDecodedSnapshotForClass("", { deviceId: 1, commandId: 1 }), null);
 });

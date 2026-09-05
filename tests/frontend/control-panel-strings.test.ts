@@ -149,6 +149,50 @@ test("shared editor terminology stays aligned within every Control Panel locale"
   setToolsCardLanguage("en");
 });
 
+test("IR learning copy follows each locale's established glossary", () => {
+  const cases = [
+    ["de", "Nutzdaten", "Anlernen", "IR-Zeitwerte"],
+    ["es", "carga útil", "mando a distancia", "duraciones de señal"],
+    ["fr", "données utiles", "télécommande source", "durées de signal"],
+    ["nl", "payload", "Inleren", "timingwaarden"],
+    ["zh-Hans", "有效载荷", "Hub", "时序值"],
+  ] as const;
+
+  for (const [locale, payload, learning, timing] of cases) {
+    setToolsCardLanguage(locale);
+    const copy = [
+      TOOLS_CARD_STRINGS.backup.learnAria,
+      TOOLS_CARD_STRINGS.backup.learnHubLearned(12, "38"),
+      TOOLS_CARD_STRINGS.backup.learnHubNoPayload,
+      TOOLS_CARD_STRINGS.backup.learnHaUnavailable,
+    ].join(" ");
+    const normalized = copy.toLowerCase();
+    assert.equal(normalized.includes(payload.toLowerCase()), true, `${locale}: payload term`);
+    assert.equal(normalized.includes(learning.toLowerCase()), true, `${locale}: learning term`);
+    assert.equal(normalized.includes(timing.toLowerCase()), true, `${locale}: timing term`);
+    assert.equal(normalized.includes("emitter inbox"), false, `${locale}: no inbox metaphor`);
+  }
+
+  setToolsCardLanguage("en");
+});
+
+test("remote entity copy follows Home Assistant's domain terminology", () => {
+  const cases = [
+    ["de", "Fernsteuerungsentität"],
+    ["es", "entidad de mando a distancia"],
+    ["fr", "entité de télécommande"],
+    ["nl", "afstandsbedieningsentiteit"],
+    ["zh-Hans", "遥控实体"],
+  ] as const;
+
+  for (const [locale, term] of cases) {
+    setToolsCardLanguage(locale);
+    assert.match(TOOLS_CARD_STRINGS.hubClick.noRemoteEntity, new RegExp(term, "i"), locale);
+  }
+
+  setToolsCardLanguage("en");
+});
+
 test("correctness-sensitive translations preserve runtime meaning and protocol identifiers", () => {
   setToolsCardLanguage("zh-Hans");
   assert.equal(
@@ -260,7 +304,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "nl",
       tabs: ["Hub", "Automatisering", "Back-up"],
-      cache: ["Inschakelen", "Lijst", "Alles", "Ordenen", "Toevoegen", "Synchroniseren"],
+      cache: ["Inschakelen", "Lijst", "Alles", "Ordenen", "Toevoegen", "Toevoegen", "Synchroniseren"],
       backupSections: ["Maken", "Bewerken", "Herstellen"],
       backupButtons: ["Downloaden", "Geen", "Alles", "Starten", "Bestand kiezen"],
       wifiButtons: ["Toevoegen", "Synchroniseren"],
@@ -269,7 +313,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "de",
       tabs: ["Hub", "Automatisierung", "Backup"],
-      cache: ["Aktivieren", "Liste", "Alle", "Sortieren", "Hinzufügen", "Synchronisieren"],
+      cache: ["Aktivieren", "Liste", "Alle", "Sortieren", "Hinzufügen", "Hinzufügen", "Synchronisieren"],
       backupSections: ["Sichern", "Ändern", "Wiederherstellen"],
       backupButtons: ["Herunterladen", "Keine", "Alle", "Starten", "Datei auswählen"],
       wifiButtons: ["Hinzufügen", "Synchronisieren"],
@@ -278,7 +322,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "fr",
       tabs: ["Hub", "Automatisation", "Sauvegarde"],
-      cache: ["Activer", "Liste", "Tout", "Réordonner", "Ajouter", "Synchroniser"],
+      cache: ["Activer", "Liste", "Tout", "Réordonner", "Ajouter", "Ajouter", "Synchroniser"],
       backupSections: ["Créer", "Modifier", "Restaurer"],
       backupButtons: ["Télécharger", "Aucun", "Tout", "Démarrer", "Choisir un fichier"],
       wifiButtons: ["Ajouter", "Synchroniser"],
@@ -287,7 +331,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "es",
       tabs: ["Hub", "Automatización", "Backup"],
-      cache: ["Activar", "Lista", "Todo", "Ordenar", "Añadir", "Sincronizar"],
+      cache: ["Activar", "Lista", "Todo", "Ordenar", "Añadir", "Añadir", "Sincronizar"],
       backupSections: ["Crear", "Editar", "Restaurar"],
       backupButtons: ["Descargar", "Ninguno", "Todos", "Iniciar", "Elegir archivo"],
       wifiButtons: ["Añadir", "Sincronizar"],
@@ -309,6 +353,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
         TOOLS_CARD_STRINGS.cache.refreshAll,
         TOOLS_CARD_STRINGS.cache.changeOrder,
         TOOLS_CARD_STRINGS.cache.addActivity,
+        TOOLS_CARD_STRINGS.cache.addDevice,
         TOOLS_CARD_STRINGS.cache.reorderSync,
       ],
       item.cache,
@@ -349,6 +394,70 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     );
   }
 
+  setToolsCardLanguage("en");
+});
+
+test("add-device copy describes user choices and an initially commandless device", () => {
+  const cases = [
+    [
+      "en",
+      "Device type",
+      "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
+      "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
+      "Generic HTTP",
+    ],
+    [
+      "de",
+      "Gerätetyp",
+      "Wähle einen Namen und Gerätetyp. Das Gerät wird ohne Befehle auf dem Hub erstellt und anschließend im Editor geöffnet, wo du Befehle hinzufügen kannst.",
+      "Verwende für Befehle, die Home Assistant ausführen soll, stattdessen den Tab Wifi Commands.",
+      "Generisches HTTP",
+    ],
+    [
+      "es",
+      "Tipo de dispositivo",
+      "Elige un nombre y un tipo de dispositivo. El dispositivo se creará en el hub sin comandos y después se abrirá en el editor para que puedas añadirlos.",
+      "Para los comandos que deba gestionar Home Assistant, usa la pestaña Wifi Commands.",
+      "HTTP genérico",
+    ],
+    [
+      "fr",
+      "Type d’appareil",
+      "Choisissez un nom et un type d’appareil. L’appareil sera créé sur le hub sans commandes, puis ouvert dans l’éditeur pour que vous puissiez en ajouter.",
+      "Pour les commandes que Home Assistant doit exécuter, utilisez plutôt l’onglet Wifi Commands.",
+      "HTTP générique",
+    ],
+    [
+      "nl",
+      "Apparaattype",
+      "Kies een naam en apparaattype. Het apparaat wordt zonder commando's op de hub aangemaakt en daarna in de editor geopend, zodat je commando's kunt toevoegen.",
+      "Gebruik voor commando's die Home Assistant moet uitvoeren het tabblad Wifi Commands.",
+      "Generiek HTTP",
+    ],
+    [
+      "zh-Hans",
+      "设备类型",
+      "选择设备名称和类型。设备将在 Hub 上创建，初始不含任何命令，随后会在编辑器中打开，以便你添加命令。",
+      "需要由 Home Assistant 执行的命令，请改用 Wifi Commands 标签页。",
+      "通用 HTTP",
+    ],
+  ] as const;
+
+  for (const [locale, deviceType, body, hint, genericHttp] of cases) {
+    setToolsCardLanguage(locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.addDeviceClass, deviceType, locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.addDeviceBody, body, locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.addDeviceWifiHint, hint, locale);
+    assert.equal(TOOLS_CARD_STRINGS.cache.deviceClassLabels.wifi_ip, genericHttp, locale);
+  }
+
+  setToolsCardLanguage("es");
+  assert.equal(
+    TOOLS_CARD_STRINGS.errors.deviceIdMissing,
+    "El hub no devolvió el identificador del nuevo dispositivo.",
+  );
+  setToolsCardLanguage("nl");
+  assert.equal(TOOLS_CARD_STRINGS.cache.addDevicePlaceholder, "Apparaatnaam");
   setToolsCardLanguage("en");
 });
 

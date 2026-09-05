@@ -13,11 +13,11 @@ import {
 
 const REMOTE_CARD_STRINGS_DE = {
   card: {
-    selectEntityError: "Wähle eine Sofabaton-Fernbedienungsentität aus",
+    selectEntityError: "Wähle eine Sofabaton-Fernsteuerungsentität aus",
     remoteUnavailable:
-      "Die Fernbedienung ist nicht verfügbar (möglicherweise ist die Sofabaton-App verbunden).",
+      "Die Fernsteuerung ist nicht verfügbar (möglicherweise ist die Sofabaton-App verbunden).",
     noActivitiesWarning:
-      "Keine Aktivitäten in den Attributen der Fernbedienung gefunden.",
+      "Keine Aktivitäten in den Attributen der Fernsteuerung gefunden.",
     noMacros: "Keine Makros verfügbar",
     noFavorites: "Keine Favoriten verfügbar",
     noCommands: "Keine Befehle verfügbar",
@@ -99,7 +99,7 @@ const REMOTE_CARD_STRINGS_DE = {
   },
   editor: {
     fieldLabels: {
-      entity: "Sofabaton-Fernbedienungsentität auswählen",
+      entity: "Sofabaton-Fernsteuerungsentität auswählen",
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe auswählen",

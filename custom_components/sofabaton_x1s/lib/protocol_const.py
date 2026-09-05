@@ -232,6 +232,31 @@ OP_BANNER = 0x1D02  # representative family-0x02 banner reply with hub ident/nam
 OP_WIFI_FW = 0x0359  # WiFi firmware ver (Vx.y.z)
 OP_INFO_BANNER = 0x112F  # vendor tag, batch date, remote fw byte, etc.
 
+# IR learn mode (the hub's on-board IR receiver). Both commands are
+# zero-payload and the hub ACKs each with STATUS_ACK 0x00 (wire capture
+# X1S 2026-08-31, which also shows the app's teardown-then-arm ordering:
+# EXIT for the previous learn session immediately followed by ENTER for
+# the new one). Once armed the hub waits until a button press is
+# captured, then streams the learned code back as paged family-0x06
+# frames (FAMILY_IR_LEARN_DATA).
+#
+# Live semantics (two-hub bench, 2026-09-01): the hub NEVER signals
+# leaving learn mode. It exits silently after ~60 s, and on ANY wire
+# traffic in either direction regardless of origin (the captured payload
+# itself counts; HTTP/MQTT traffic does not). It can also end up
+# believing it is armed while the receiver is not actually listening --
+# in that state a bare ENTER is accepted but inert, so arming must
+# always send EXIT first (the app does the same). The H→A expiry/failure
+# pushes suggested by protocol research (0x0005 expired, 0x0068 failed)
+# were never observed live.
+OP_IR_LEARN_ENTER = 0x0004  # A→H: arm IR learn mode (len 0); always preceded by EXIT
+OP_IR_LEARN_EXIT = 0x0005  # A→H: exit/cancel IR learn mode (len 0)
+OP_IR_LEARN_FAILED = 0x0068  # H→A: learn-failure push per research; not observed live
+
+# RF learning is one two-byte command: payload [enter_flag, band] where
+# enter_flag 0x01 arms and 0x00 exits, band 0x00 = 433 MHz.
+OP_RF_LEARN = 0x0270  # A→H payload: [enter_flag, band]
+
 
 # Backward-compatible aliases retained for older call sites and docs.
 OP_PING2 = OP_REQ_IDLE_BEHAVIOR
@@ -328,6 +353,10 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_VERSION: "REQ_VERSION",
     OP_REQ_IDLE_BEHAVIOR: "REQ_IDLE_BEHAVIOR",
     OP_SET_IDLE_BEHAVIOR: "SET_IDLE_BEHAVIOR",
+    OP_IR_LEARN_ENTER: "IR_LEARN_ENTER",
+    OP_IR_LEARN_EXIT: "IR_LEARN_EXIT",
+    OP_IR_LEARN_FAILED: "IR_LEARN_FAILED",
+    OP_RF_LEARN: "RF_LEARN",
 }
 
 
@@ -402,11 +431,31 @@ PLAY_BLOB_CHUNK_SIZE = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_PAGE_HEADER_LEN  # 247B
 
 FAMILY_BLOB_ROW = 0x0D  # IP-command sync rows, input-config refresh, REQ_BLOB dump pages
 
+# Learned-IR capture upload (H→A, paged). Streamed by the hub after an
+# armed learn window (OP_IR_LEARN_ENTER) captures a button press. Each
+# frame's payload is [key_index, page_no BE16, record slice...]; page 1's
+# slice opens with the record header (key count, total page count BE16)
+# followed by the same command-record body that family-0x0E saves carry
+# (ids, codec byte, fixed-width name, then the raw learned blob:
+# pulse-block length BE16, repeat-block length BE16, sign byte, 3-byte
+# carrier in Hz, 4-byte BE durations). The app saves a learned code by
+# echoing the reassembled record back verbatim as a family-0x0E write --
+# byte-identical payloads on the wire capture.
+FAMILY_IR_LEARN_DATA = 0x06
+
+# Per-command record writes (A→H, paged). IR-DB, BT, RF and learned
+# codes all share this family; the codec is selected by the body's
+# ``library_type`` field. The step builders live in ``lib.device_create``
+# (which also defines this constant for its own doc block).
+FAMILY_COMMAND_WRITE = 0x0E
+
 FAMILY_NAMES: Dict[int, str] = {
     FAMILY_STATUS_ACK: "STATUS_ACK",
     FAMILY_HUB_NAME_REPLY: "HUB_NAME_REPLY",
     FAMILY_DEV_ROW: "DEVICE_ROW",
     FAMILY_BLOB_ROW: "BLOB_ROW",
+    FAMILY_IR_LEARN_DATA: "IR_LEARN_DATA",
+    FAMILY_COMMAND_WRITE: "COMMAND_WRITE",
     FAMILY_REMOTE_STATUS: "REMOTE_STATUS",
     FAMILY_PLAY_BLOB: "PLAY_BLOB",
     FAMILY_FAV_DELETE: "FAV_DELETE",
@@ -658,6 +707,10 @@ __all__ = [
     "OP_BANNER",
     "OP_WIFI_FW",
     "OP_INFO_BANNER",
+    "OP_IR_LEARN_ENTER",
+    "OP_IR_LEARN_EXIT",
+    "OP_IR_LEARN_FAILED",
+    "OP_RF_LEARN",
     "OPNAMES",
     "opcode_hi",
     "opcode_lo",
@@ -677,4 +730,6 @@ __all__ = [
     "FAMILY_DEVICE_SORT",
     "FAMILY_FAV_ORDER_REQ",
     "FAMILY_FAV_ORDER_RESP",
+    "FAMILY_IR_LEARN_DATA",
+    "FAMILY_COMMAND_WRITE",
 ]

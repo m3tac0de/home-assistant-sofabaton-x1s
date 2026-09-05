@@ -16,6 +16,26 @@ export function selectedHub(snapshot: ControlPanelSnapshot): ControlPanelHubStat
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
 }
 
+/**
+ * Device classes the Hub tab "Add device" dialog can create on a hub line,
+ * in display order. Mirrors SUPPORTED_CREATE_CLASSES_BY_HUB in
+ * lib/device_class_profiles.py (the WS handler enforces the same table);
+ * Roku / Hue / Sonos are supported on every line, generic Wifi HTTP needs
+ * X1S or X2, MQTT is X2-only. Bluetooth and RF are deliberately absent.
+ */
+export function creatableDeviceClasses(hubVersion: string | null | undefined): string[] {
+  switch (String(hubVersion ?? "")) {
+    case "X1":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos"];
+    case "X1S":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip"];
+    case "X2":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip", "wifi_mqtt"];
+    default:
+      return [];
+  }
+}
+
 export function selectedHubCache(snapshot: ControlPanelSnapshot): CacheHubState | null {
   const hubs = snapshot.contents?.hubs ?? [];
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
@@ -194,6 +214,17 @@ export function remoteAvailableForHub(hass: HassLike | null, hub: { entry_id: st
   const stateObject = entityId ? hass?.states?.[entityId] : null;
   const state = String(stateObject?.state ?? "").toLowerCase();
   return !!state && state !== "unavailable" && state !== "unknown";
+}
+
+/**
+ * The hub line ("X1" / "X1S" / "X2") for a hub, upper-cased. The remote
+ * entity's `hub_version` attribute is authoritative; the state row's
+ * `version` (banner model) is the fallback. Same resolution the Wifi
+ * Commands tab uses.
+ */
+export function hubLineFor(hass: HassLike | null, hub: ControlPanelHubState | null): string {
+  const attrs = remoteAttrsForHub(hass, hub);
+  return String(attrs.hub_version || hub?.version || "").trim().toUpperCase();
 }
 
 export function proxyClientConnected(hass: HassLike | null, hub: ControlPanelHubState | null) {

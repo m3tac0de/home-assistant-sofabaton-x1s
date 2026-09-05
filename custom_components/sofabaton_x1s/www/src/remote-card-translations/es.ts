@@ -1,7 +1,7 @@
 // Spanish (Español) translation for the Sofabaton Virtual Remote card.
 //
-// Complete mirror of REMOTE_CARD_STRINGS_EN, written in neutral international
-// Spanish. Product and feature names such as Home Assistant, Wifi Commands,
+// Complete mirror of REMOTE_CARD_STRINGS_EN, aligned with Home Assistant's
+// base Spanish terminology. Product and feature names such as Home Assistant, Wifi Commands,
 // MQTT Discovery, Lovelace, and Sofabaton are intentionally preserved.
 
 import {
@@ -14,11 +14,11 @@ const plural = (count: number, singular: string, pluralForm = `${singular}s`) =>
 
 export const REMOTE_CARD_STRINGS_ES = {
   card: {
-    selectEntityError: "Selecciona una entidad de control remoto Sofabaton",
+    selectEntityError: "Selecciona una entidad de mando a distancia Sofabaton",
     remoteUnavailable:
-      "El control remoto no está disponible (posiblemente porque la aplicación Sofabaton está conectada).",
+      "El mando a distancia no está disponible (posiblemente porque la aplicación Sofabaton está conectada).",
     noActivitiesWarning:
-      "No se encontraron actividades en los atributos del control remoto.",
+      "No se encontraron actividades en los atributos del mando a distancia.",
     noMacros: "No hay macros disponibles",
     noFavorites: "No hay favoritos disponibles",
     noCommands: "No hay comandos disponibles",
@@ -40,9 +40,9 @@ export const REMOTE_CARD_STRINGS_ES = {
     defaultLayout: "Diseño predeterminado de actividades",
     activityFallback: (id: number | string) => `Actividad ${id}`,
     deviceFallback: (id: number | string) => `Dispositivo ${id}`,
-    pickerName: "Control remoto virtual Sofabaton",
+    pickerName: "Mando a distancia virtual Sofabaton",
     pickerDescription:
-      "Un control remoto configurable para la integración Sofabaton X1, X1S y X2.",
+      "Un mando a distancia configurable para la integración Sofabaton X1, X1S y X2.",
   },
   assist: {
     label: "Captura de botones",
@@ -100,7 +100,7 @@ export const REMOTE_CARD_STRINGS_ES = {
   },
   editor: {
     fieldLabels: {
-      entity: "Seleccionar una entidad de control remoto Sofabaton",
+      entity: "Seleccionar una entidad de mando a distancia Sofabaton",
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
@@ -142,7 +142,7 @@ export const REMOTE_CARD_STRINGS_ES = {
       "Controla un único dispositivo configurado en el hub mediante sus asignaciones de botones y su lista completa de comandos.",
     longPress: "Activar la repetición al mantener pulsado un botón",
     longPressDescription:
-      "Mantén pulsado un botón seleccionado para enviar su comando repetidamente, como en el mando físico.",
+      "Mantén pulsado un botón seleccionado para enviar su comando repetidamente, como en el mando a distancia físico.",
     longPressButtons: "Botones",
     enableDeviceMode: "Activar el modo de dispositivo",
     initialView: "Vista inicial",

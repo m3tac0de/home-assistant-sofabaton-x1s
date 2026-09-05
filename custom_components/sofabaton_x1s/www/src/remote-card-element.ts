@@ -1153,9 +1153,13 @@ export class SofabatonRemoteCard extends LitElement {
         ),
     };
 
-    const warnText = derived.isUnavailable
+    const noticeText = derived.isUnavailable
       ? str().card.remoteUnavailable
       : derived.noActivitiesMessage;
+    const noticeTone =
+      deviceMode && !derived.isUnavailable && derived.keymapEntry?.status === "error"
+        ? "error"
+        : "warning";
     const assistEnabled = store.automationAssistEnabled();
 
     return html`
@@ -1168,14 +1172,25 @@ export class SofabatonRemoteCard extends LitElement {
             ? renderAssistRow({ visible: true, controller: this._assist })
             : nothing}
           <div class="layout-container" ${ref(this._layoutContainerRef)}>
+            ${noticeText
+              ? html`<div
+                  class="sb-notice sb-notice--${noticeTone}"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <ha-icon
+                    icon=${noticeTone === "error"
+                      ? "mdi:alert-circle-outline"
+                      : "mdi:alert-outline"}
+                  ></ha-icon>
+                  <span class="sb-notice__text">${noticeText}</span>
+                </div>`
+              : nothing}
             ${repeat(
               order.filter((key) => key in groupTemplates),
               (key) => key,
               (key) => groupTemplates[key](),
             )}
-            <div class="warn" style=${warnText ? "display: block;" : "display: none;"}>
-              ${warnText}
-            </div>
           </div>
         </div>
       </ha-card>

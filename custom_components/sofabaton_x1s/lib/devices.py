@@ -521,6 +521,17 @@ def device_config_from_backup(
     extras = device.get("extras")
     extras_present = isinstance(extras, Mapping)
 
+    def _extra(key: str) -> int:
+        # The exporter nests the vendor-extension triple under ``extras``
+        # (``{"a": .., "b": .., "c": ..}``); read it from there, not from
+        # the top-level block.
+        if not isinstance(extras, Mapping):
+            return 0
+        try:
+            return int(extras.get(key, 0)) & 0xFF
+        except (TypeError, ValueError):
+            return 0
+
     return DeviceConfig(
         name=str(device.get("name") or ""),
         brand=str(device.get("brand") or ""),
@@ -543,9 +554,9 @@ def device_config_from_backup(
         share_mode=_as_int("share_mode", 0) & 0xFF,
         tail_flag=0 if for_create else (_as_int("tail_flag", 0) & 0xFF),
         tail_marker=0 if for_create else (_as_int("tail_marker", 1) & 0xFF),
-        extra_a=_as_int("a", 0) & 0xFF if isinstance(extras, Mapping) else 0,
-        extra_b=_as_int("b", 0) & 0xFF if isinstance(extras, Mapping) else 0,
-        extra_c=_as_int("c", 0) & 0xFF if isinstance(extras, Mapping) else 0,
+        extra_a=_extra("a"),
+        extra_b=_extra("b"),
+        extra_c=_extra("c"),
         extras_present=extras_present,
     )
 

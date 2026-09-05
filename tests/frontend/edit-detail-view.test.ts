@@ -6,6 +6,8 @@ import {
   useLegacyTextField,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
 const EditDetailViewElement = customElements.get("sofabaton-edit-detail-view") as {
   new (): HTMLElement;
@@ -623,4 +625,622 @@ test("the offline backup editor never locks a managed Wifi Device", () => {
 
   assert.equal(element._isManagedWifiLiveDevice(), false);
   assert.ok(element._editDetailSectionItems("device").length > 0);
+});
+
+// ── IR8: payload editor format tabs ────────────────────────────────────
+
+function irLiveEditor(model: "X1" | "X1S" | "X2" = "X1S"): EditorElement {
+  const element = createEditor(model, "device");
+  element.mode = "live";
+  element.entityId = 1; // IR device
+  return element;
+}
+
+// A real Sofabaton blob (Samsung VOLUME_UP double frame is overkill here;
+// a short NEC fragment suffices) and its pronto rendering, produced by the
+// shared converter so the test tracks the golden layout.
+const IR_BLOB_HEX = "0010 000000009470 0000232800001194000002300000069a 00000000".replace(/\s/g, "");
+
+test("IR payload opens on the pronto tab and renders pronto text", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  assert.equal(element._payloadDialogProntoAvailable, true);
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.match(element._payloadDialogProntoDraft, /^0000 /);
+  // sofabaton bytes remain the source of truth for Test/Save
+  assert.match(element._payloadDialogRawDraft.replace(/\s/g, ""), /^0010000000009470/);
+});
+
+test("editing pronto writes through to the sofabaton bytes", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  const pronto = element._payloadDialogProntoDraft;
+  // round-trip: feed the same pronto back through the pronto handler
+  element._handleProntoPayloadInput(controlEvent(pronto));
+  assert.equal(element._payloadDialogFormatError, "");
+  // declared length (0010) + zero format field survive; the carrier
+  // re-quantizes through the pronto frequency word (38000 -> 38029), so
+  // assert the structural prefix, not the exact carrier bytes.
+  assert.match(element._payloadDialogRawDraft.replace(/\s/g, ""), /^001000000000[0-9a-f]{4}/);
+});
+
+test("invalid pronto sets a format error and blocks save", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._handleProntoPayloadInput(controlEvent("0000 006D 0002 0000 00AB"));
+  assert.notEqual(element._payloadDialogFormatError, "");
+  const changes = collectBundleChanges(element);
+  element._applyCommandPayloadDialog();
+  assert.equal(changes.length, 0); // save refused while format error stands
+});
+
+test("pasting pronto into the sofabaton tab morphs to the pronto tab", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payloadDialogHexTab = "sofabaton";
+  const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
+  element._handleRawPayloadInput(controlEvent(pronto));
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.equal(element._payloadDialogProntoDraft, pronto);
+});
+
+test("a non-timing blob disables the pronto tab (sofabaton passthrough)", () => {
+  const element = irLiveEditor();
+  // descriptive P: blob body -> parseSofabatonBlob throws -> pronto off
+  element._openLivePayloadDialog(1, 10, { dataHex: "00 11", decoded: null });
+  assert.equal(element._payloadDialogProntoAvailable, false);
+  assert.equal(element._payloadDialogHexTab, "sofabaton");
+});
+
+test("pasting a descriptor into an X2 IR payload morphs to descriptor mode", () => {
+  const element = irLiveEditor("X2");
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._handleProntoPayloadInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
+  assert.ok(element._payloadDialogDecodedSnapshot);
+  assert.equal(element._payloadDialogDecodedSnapshot.className, "ir");
+  assert.equal(element._payloadDialogDecodedDrafts.descriptor, "P:Sony12 R:40000 D:1 F:18 MUL:2");
+});
+
+test("a descriptor paste on a non-X2 hub is rejected, not applied", () => {
+  const element = irLiveEditor("X1S");
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._handleProntoPayloadInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
+  assert.equal(element._payloadDialogDecodedSnapshot, null); // stayed in hex mode
+  assert.notEqual(element._payloadDialogFormatError, "");
+});
+
+// ── IR10: Unfolded Circle pastes ───────────────────────────────────────
+// Detection is local; rendering goes through the host's convert callback
+// (backend + infrared-protocols). The stub below plays the backend.
+
+const UC_ONKYO = "3;0x4B36D32C;32;0";
+const UC_RESPONSE = {
+  format: "uc_hex" as const,
+  timings_us: [9000, 4500, 560, 1690],
+  carrier_hz: 38000,
+  pronto_hex: "0000 006D 0002 0000 0156 00AB 0015 0040",
+  sofabaton_hex: IR_BLOB_HEX,
+  protocol: 3,
+  protocol_name: "NEC",
+  bits: 32,
+  repeat: 0,
+};
+// `settle()` (declared below, hoisted) drains the microtask queue between steps.
+
+test("pasting a UC HEX code converts through the host and lands on the pronto tab", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  const calls: string[] = [];
+  element.convertForeignPayload = async (text: string) => {
+    calls.push(text);
+    return UC_RESPONSE;
+  };
+  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
+  // pending: the pasted code stays visible, Test/Save are fenced off
+  assert.equal(element._payloadDialogConverting, true);
+  assert.equal(element._payloadDialogProntoDraft, UC_ONKYO);
+  const changes = collectBundleChanges(element);
+  element._applyCommandPayloadDialog();
+  assert.equal(changes.length, 0);
+  assert.equal(element._payloadDialogError, TOOLS_CARD_STRINGS.backup.ucHexConverting);
+  await settle();
+  assert.deepEqual(calls, [UC_ONKYO]);
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogFormatError, "");
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  // the backend's sofabaton bytes are the truth; pronto is re-derived from them
+  assert.equal(element._payloadDialogRawDraft.replace(/\s/g, ""), IR_BLOB_HEX);
+  assert.match(element._payloadDialogProntoDraft, /^0000 /);
+});
+
+test("a UC HEX row on the sofabaton tab converts too and names a new command", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payloadDialogAddMode = true;
+  element._payloadDialogNameDraft = "";
+  element._payloadDialogHexTab = "sofabaton";
+  const calls: string[] = [];
+  element.convertForeignPayload = async (text: string) => {
+    calls.push(text);
+    return UC_RESPONSE;
+  };
+  element._handleRawPayloadInput(controlEvent('"Volume-Up","HEX","3;0x4BB640BF;32;0"'));
+  await settle();
+  assert.deepEqual(calls, ["3;0x4BB640BF;32;0"]);
+  assert.match(element._payloadDialogNameDraft, /^Volume.Up$/);
+  assert.equal(element._payloadDialogHexTab, "pronto");
+});
+
+test("a UC codeset row with a PRONTO code unwraps locally without the host", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = null;
+  const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
+  element._handleProntoPayloadInput(controlEvent(`"Power_Toggle","PRONTO","${pronto}"`));
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogFormatError, "");
+  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.equal(element._payloadDialogProntoDraft, pronto);
+});
+
+test("a UC code the backend refuses stays in the box with the refusal", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = async () => {
+    throw { code: "uc_hex_unsupported_protocol", message: "JVC (6)" };
+  };
+  element._handleProntoPayloadInput(controlEvent("6;0x1234;16;0"));
+  await settle();
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogProntoDraft, "6;0x1234;16;0");
+  assert.equal(
+    element._payloadDialogFormatError,
+    TOOLS_CARD_STRINGS.backup.ucHexUnsupported("JVC (6)"),
+  );
+  const changes = collectBundleChanges(element);
+  element._applyCommandPayloadDialog();
+  assert.equal(changes.length, 0); // save refused while the error stands
+});
+
+test("a refusal message that is not a protocol label is not shown", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = async () => {
+    throw { code: "uc_hex_unsupported_bits", message: "Traceback: something exploded!" };
+  };
+  element._handleProntoPayloadInput(controlEvent("3;0x1234;16;0"));
+  await settle();
+  assert.equal(
+    element._payloadDialogFormatError,
+    TOOLS_CARD_STRINGS.backup.ucHexUnsupported(TOOLS_CARD_STRINGS.backup.ucHexUnknownProtocol),
+  );
+});
+
+test("without a host converter a UC HEX code is refused, not applied", () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element.convertForeignPayload = null;
+  const before = element._payloadDialogRawDraft;
+  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
+  assert.equal(element._payloadDialogConverting, false);
+  assert.equal(element._payloadDialogFormatError, TOOLS_CARD_STRINGS.backup.ucHexNoHost);
+  assert.equal(element._payloadDialogRawDraft, before);
+});
+
+test("typing over an in-flight conversion supersedes it", async () => {
+  const element = irLiveEditor();
+  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  let release: (value: typeof UC_RESPONSE) => void = () => {};
+  element.convertForeignPayload = () => new Promise((resolve) => { release = resolve; });
+  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
+  assert.equal(element._payloadDialogConverting, true);
+  const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
+  element._handleProntoPayloadInput(controlEvent(pronto));
+  assert.equal(element._payloadDialogConverting, false);
+  release(UC_RESPONSE);
+  await settle();
+  // the late result must not overwrite what the user typed afterwards
+  assert.equal(element._payloadDialogProntoDraft, pronto);
+});
+
+test("a UC HEX paste into the X2 descriptor field converts as well", async () => {
+  const element = irLiveEditor("X2");
+  await element._openAddCommandDialog(); // descriptor form
+  const calls: string[] = [];
+  element.convertForeignPayload = async (text: string) => {
+    calls.push(text);
+    return UC_RESPONSE;
+  };
+  element._handleDecodedFieldInput(controlEvent(UC_ONKYO), "descriptor");
+  await settle();
+  assert.deepEqual(calls, [UC_ONKYO]);
+  assert.equal(element._payloadDialogDecodedSnapshot, null); // hex mode now
+  assert.equal(element._payloadDialogHexTab, "pronto");
+});
+
+test("add-command on a non-X2 IR device opens the hex tabs, not the descriptor", async () => {
+  const element = irLiveEditor("X1S");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.equal(element._payloadDialogDecodedSnapshot, null); // hex mode
+});
+
+test("add-command on an X2 IR device opens the descriptor form", async () => {
+  const element = irLiveEditor("X2");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.ok(element._payloadDialogDecodedSnapshot);
+  assert.equal(element._payloadDialogDecodedSnapshot.className, "ir");
+});
+
+// ── Payload-editor learn mode (IR9) ──────────────────────────────────
+// The hub receiver is a listener (one window per attempt, cancel on the
+// way out); the HA emitter is an inbox (backend ring replayed + pushed).
+// Both land the captured Sofabaton bytes in the hex editor with a note.
+
+type LearnEventSink = (event: Record<string, unknown>) => void;
+type EmissionSink = (emissions: Record<string, unknown>[]) => void;
+
+function learnHost(overrides: Partial<{
+  available: boolean;
+  consumers: unknown[];
+  consumersFails: boolean;
+  emissionsFails: boolean;
+}> = {}) {
+  const calls = {
+    learnEvents: null as LearnEventSink | null,
+    learnCancelled: 0,
+    learnTimeout: 0,
+    emissionSink: null as EmissionSink | null,
+    emissionsUnsubscribed: 0,
+    consumersCalls: 0,
+  };
+  const host = {
+    learnFromHub: async (onEvent: LearnEventSink, timeoutS: number) => {
+      calls.learnEvents = onEvent;
+      calls.learnTimeout = timeoutS;
+      return () => { calls.learnCancelled += 1; };
+    },
+    subscribeEmissions: async (onEvent: EmissionSink) => {
+      if (overrides.emissionsFails) throw new Error("backend transport gone");
+      calls.emissionSink = onEvent;
+      return () => { calls.emissionsUnsubscribed += 1; };
+    },
+    consumers: async () => {
+      calls.consumersCalls += 1;
+      if (overrides.consumersFails) throw new Error("boom");
+      return {
+        available: overrides.available ?? true,
+        emitter_entity_id: "infrared.x1_hub_ir_emitter",
+        consumers: overrides.consumers ?? [
+          { entry_id: "s1", domain: "samsung_infrared", title: "Samsung TV", entities: [{ entity_id: "remote.tv", name: "TV Remote" }] },
+        ],
+      };
+    },
+  };
+  return { host, calls };
+}
+
+async function settle() {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+}
+
+function openLearnEditor(host: unknown): EditorElement {
+  const element = createLiveDeviceEditor();
+  element.irLearn = host;
+  element._openAddDialogWithSnapshot(1, null);
+  return element;
+}
+
+test("learn mode is offered only for live IR devices with a host facade", () => {
+  const element = createLiveDeviceEditor();
+  assert.equal(element._learnAvailable(), false); // no facade
+  element.irLearn = learnHost().host;
+  assert.equal(element._learnAvailable(), true);
+  element.entityId = 2; // wifi_roku
+  assert.equal(element._learnAvailable(), false);
+  element.entityId = 1;
+  element.mode = "backup";
+  assert.equal(element._learnAvailable(), false);
+});
+
+test("entering learn mode opens the menu, subscribes the inbox and gates the HA option", async () => {
+  const { host, calls } = learnHost();
+  const element = openLearnEditor(host);
+
+  await element._enterLearnMode();
+  await settle();
+
+  assert.equal(element._payloadLearnView, "menu");
+  assert.equal(calls.consumersCalls, 1);
+  assert.ok(calls.emissionSink, "inbox subscription opened with the menu");
+  assert.equal(element._payloadLearnHaAvailable, true);
+  assert.equal(element._learnHaOptionVisible(), true); // a consumer exists
+
+  element._closeCommandPayloadDialog();
+  assert.equal(element._payloadLearnView, "off");
+  assert.equal(calls.emissionsUnsubscribed, 1);
+});
+
+test("the HA option needs the emitter plus a consumer or a non-empty inbox", async () => {
+  {
+    const { host } = learnHost({ available: false });
+    const element = openLearnEditor(host);
+    await element._enterLearnMode();
+    await settle();
+    assert.equal(element._learnHaOptionVisible(), false);
+    element._closeCommandPayloadDialog();
+  }
+  {
+    const { host, calls } = learnHost({ consumers: [] });
+    const element = openLearnEditor(host);
+    await element._enterLearnMode();
+    await settle();
+    assert.equal(element._learnHaOptionVisible(), false);
+    calls.emissionSink!([{ label: "ProntoHexCommand (abcd1234)", payload_hex: "aabb", when: "2026-09-02T10:00:00+00:00", count: 1 }]);
+    assert.equal(element._learnHaOptionVisible(), true);
+    element._closeCommandPayloadDialog();
+  }
+  {
+    const { host } = learnHost({ consumersFails: true });
+    const element = openLearnEditor(host);
+    await element._enterLearnMode();
+    await settle();
+    assert.equal(element._payloadLearnHaAvailable, false);
+    element._closeCommandPayloadDialog();
+  }
+});
+
+test("hub learn: listening countdown, then a learned payload lands in the hex editor", async () => {
+  const { host, calls } = learnHost();
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+
+  await element._startHubLearn();
+  assert.equal(element._payloadLearnView, "hub");
+  assert.equal(element._payloadLearnHubState, "arming");
+  assert.equal(calls.learnTimeout, 60);
+
+  calls.learnEvents!({ state: "listening", timeout_s: 30 });
+  assert.equal(element._payloadLearnHubState, "listening");
+  assert.equal(element._payloadLearnSecondsLeft, 30);
+  assert.equal(element._hubLearnIsTerminal(), false);
+  assert.equal(element._formatCountdown(element._payloadLearnSecondsLeft), "0:30");
+
+  calls.learnEvents!({ state: "learned", payload_hex: "0a4f22", carrier_hz: 38400, duration_count: 136 });
+  assert.equal(element._payloadLearnView, "off");
+  assert.equal(element._payloadDialogOpen, true);
+  assert.equal(element._payloadDialogRawDraft, "0a 4f 22");
+  assert.equal(element._payloadDialogDecodedSnapshot, null);
+  assert.match(element._payloadLearnSourceNote, /136 timing values at 38\.4 kHz/);
+  // The finished subscription is released exactly once.
+  assert.equal(calls.learnCancelled, 1);
+  // Inbox subscription is dropped with learn mode.
+  assert.equal(calls.emissionsUnsubscribed, 1);
+
+  element._closeCommandPayloadDialog();
+  assert.equal(element._payloadLearnSourceNote, "");
+});
+
+test("hub learn: carrier frequency follows the active locale", async () => {
+  setToolsCardLanguage("de");
+  const { host, calls } = learnHost();
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+
+  await element._startHubLearn();
+  calls.learnEvents!({ state: "learned", payload_hex: "0a4f22", carrier_hz: 38400, duration_count: 136 });
+  assert.match(element._payloadLearnSourceNote, /136 IR-Zeitwerte bei 38,4 kHz/);
+
+  element._closeCommandPayloadDialog();
+  setToolsCardLanguage("en");
+});
+
+test("hub learn: terminal outcomes stay on the hub view with a retry; cancel unsubscribes", async () => {
+  const { host, calls } = learnHost();
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+
+  await element._startHubLearn();
+  calls.learnEvents!({ state: "listening", timeout_s: 60 });
+  calls.learnEvents!({ state: "interrupted", interrupted_by: "ACK_READY (0x0160)" });
+  assert.equal(element._payloadLearnView, "hub");
+  assert.equal(element._payloadLearnHubState, "interrupted");
+  assert.equal(element._hubLearnIsTerminal(), true);
+  assert.equal(calls.learnCancelled, 1);
+
+  // Try again: a fresh window; a late event from the old one is ignored.
+  const staleEvents = calls.learnEvents!;
+  await element._startHubLearn();
+  assert.equal(element._payloadLearnHubState, "arming");
+  staleEvents({ state: "learned", payload_hex: "ff" });
+  assert.equal(element._payloadLearnHubState, "arming");
+  assert.equal(element._payloadDialogRawDraft, "");
+
+  calls.learnEvents!({ state: "listening", timeout_s: 60 });
+  element._backToLearnMenu();
+  assert.equal(element._payloadLearnView, "menu");
+  assert.equal(calls.learnCancelled, 2); // cancelled the live window
+
+  // A refused arm reads as its own structured state.
+  await element._startHubLearn();
+  calls.learnEvents!({ state: "refused", error_code: "ir_learn_refused" });
+  assert.equal(element._payloadLearnHubState, "refused");
+  assert.equal(element._payloadLearnHubEvent.error_code, "ir_learn_refused");
+
+  element._closeCommandPayloadDialog();
+  assert.equal(element._payloadLearnView, "off");
+});
+
+test("hub learn: a subscribe failure surfaces as an error state", async () => {
+  const { host } = learnHost();
+  host.learnFromHub = async () => { throw new Error("no socket"); };
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+
+  await element._startHubLearn();
+  assert.equal(element._payloadLearnHubState, "error");
+  assert.equal(element._payloadLearnHubEvent.error_code, "ir_learn_failed");
+  element._closeCommandPayloadDialog();
+});
+
+test("localized learn views never render backend exception messages", async () => {
+  setToolsCardLanguage("de");
+  const { host } = learnHost({ emissionsFails: true });
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+  assert.deepEqual(element._payloadLearnEmissionsError, { error_code: "ir_emissions_failed" });
+
+  element._payloadLearnView = "hub";
+  element._payloadLearnHubState = "error";
+  element._payloadLearnHubEvent = {
+    state: "error",
+    error_code: "ir_learn_failed",
+    message: "backend transport gone",
+  };
+  const hubText = templateText(element._renderLearnHub());
+  assert.match(hubText, /Anlernen fehlgeschlagen/);
+  assert.doesNotMatch(hubText, /backend transport gone/);
+
+  element._payloadLearnView = "ha";
+  const inboxText = templateText(element._renderLearnInbox());
+  assert.match(inboxText, /Zuletzt gesendete IR-Befehle konnten nicht geladen werden/);
+  assert.doesNotMatch(inboxText, /backend transport gone/);
+
+  element._closeCommandPayloadDialog();
+  setToolsCardLanguage("en");
+});
+
+test("inbox: new sends are judged against the ring as first seen, and Use adopts the payload", async () => {
+  const { host, calls } = learnHost();
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+
+  const first = { label: "Samsung32Command (0123abcd)", command_repr: "Samsung32Command(address=7, command=2)", payload_hex: "aabb", when: "2026-09-02T10:00:00+00:00", count: 1, carrier_hz: 38000 };
+  calls.emissionSink!([first]);
+  assert.equal(element._emissionIsNew(first), false); // already there when learn mode opened
+
+  element._openLearnInbox();
+  assert.equal(element._payloadLearnView, "ha");
+
+  const resent = { ...first, when: "2026-09-02T10:00:30+00:00", count: 2 };
+  const fresh = { label: "ProntoHexCommand (deadbeef)", command_repr: "ProntoHexCommand(68 timings, 38000 Hz)", payload_hex: "ccdd", when: "2026-09-02T10:00:31+00:00", count: 1 };
+  calls.emissionSink!([resent, fresh]);
+  assert.equal(element._emissionIsNew(resent), true); // count bump refreshed `when`
+  assert.equal(element._emissionIsNew(fresh), true);
+  assert.equal(element._payloadLearnEmissions.length, 2);
+
+  element._useEmission(fresh);
+  assert.equal(element._payloadLearnView, "off");
+  assert.equal(element._payloadDialogRawDraft, "cc dd");
+  assert.match(element._payloadLearnSourceNote, /ProntoHexCommand\(68 timings, 38000 Hz\)/);
+  assert.equal(calls.emissionsUnsubscribed, 1);
+
+  // Adopting into the add dialog leaves Save's own checks intact: a
+  // name is still required.
+  element._applyCommandPayloadDialog();
+  assert.equal(element._payloadDialogOpen, true);
+  assert.match(element._payloadDialogError, /name/i);
+  element._closeCommandPayloadDialog();
+});
+
+test("inbox: time-ago labels follow the ticker clock", () => {
+  const element = createLiveDeviceEditor();
+  element._payloadLearnNow = Date.parse("2026-09-02T10:10:00Z");
+  assert.equal(element._learnTimeAgo("2026-09-02T10:09:58+00:00"), "just now");
+  assert.equal(element._learnTimeAgo("2026-09-02T10:09:20+00:00"), "40 s ago");
+  assert.equal(element._learnTimeAgo("2026-09-02T09:58:00+00:00"), "12 min ago");
+  assert.equal(element._learnTimeAgo("2026-09-02T07:10:00+00:00"), "3 h ago");
+  assert.equal(element._learnTimeAgo("not a date"), "");
+});
+
+test("inbox: repr-less command classes fall back to the digest label so codes stay distinguishable", () => {
+  const element = createLiveDeviceEditor();
+  // Class with its own repr: the repr wins (carries address/command).
+  assert.equal(
+    element._emissionDisplayName({ label: "Samsung32Command (0123abcd)", command_repr: "Samsung32Command(address=7, command=2)", payload_hex: "aa", when: "t", count: 1 }),
+    "Samsung32Command(address=7, command=2)",
+  );
+  // No repr (backend sends the bare class name): show class + digest.
+  assert.equal(
+    element._emissionDisplayName({ label: "SonyX700Command (9f1e2d3c)", command_repr: "SonyX700Command", payload_hex: "bb", when: "t", count: 1 }),
+    "SonyX700Command (9f1e2d3c)",
+  );
+  // Missing repr entirely.
+  assert.equal(
+    element._emissionDisplayName({ label: "ProntoHexCommand (deadbeef)", payload_hex: "cc", when: "t", count: 1 }),
+    "ProntoHexCommand (deadbeef)",
+  );
+});
+
+
+// ── Add command on a device created EMPTY (Hub tab "Add device") ────────
+
+function emptyLiveDevice(deviceClass: string, model: "X1" | "X1S" | "X2" = "X1S"): EditorElement {
+  const element = createEditor(model, "device");
+  element.bundle = {
+    ...element.bundle!,
+    devices: [
+      ...element.bundle!.devices,
+      { device: { device_id: 9, name: "Fresh", device_class: deviceClass }, commands: [] },
+    ],
+  } as BackupBundlePayload;
+  element.mode = "live";
+  element.entityId = 9;
+  return element;
+}
+
+test("add-command on an empty Roku device opens the Roku form instead of the template error", async () => {
+  const element = emptyLiveDevice("wifi_roku");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadFetchError, "");
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_roku");
+  assert.equal(element._payloadDialogDecodedDrafts.path, "keypress/");
+});
+
+test("add-command on an empty Wifi HTTP device opens the HTTP form with GET defaults", async () => {
+  const element = emptyLiveDevice("wifi_ip");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_ip");
+  assert.equal(element._payloadDialogDecodedDrafts.method, "GET");
+  assert.equal(element._payloadDialogDecodedDrafts.port, "80");
+});
+
+test("add-command on an empty MQTT device commits the device and allocated command id", async () => {
+  const element = emptyLiveDevice("wifi_mqtt", "X2");
+  const changes = collectBundleChanges(element);
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_mqtt");
+  assert.equal(element._payloadDialogDecodedDrafts.device_id, "9");
+  assert.equal(element._payloadDialogDecodedDrafts.command_id, "1");
+
+  element._payloadDialogNameDraft = "Toggle";
+  element._applyAddCommandDialog({ deviceId: 9, commandId: 0 });
+
+  assert.equal(changes.length, 1);
+  const device = changes[0].devices.find((row) => row.device?.device_id === 9)!;
+  const commands = device.commands ?? [];
+  assert.equal(commands.length, 1);
+  const row = commands[0] as { command_id: number; name: string; restore_data: Record<string, unknown> };
+  assert.equal(row.command_id, 1);
+  assert.equal(row.name, "Toggle");
+  const decoded = row.restore_data.decoded as { class: string; fields: Record<string, unknown>; edited: boolean };
+  assert.equal(decoded.class, "wifi_mqtt");
+  assert.deepEqual(decoded.fields, { device_id: 9, command_id: 1 });
+  assert.equal(decoded.edited, true);
+  assert.equal(row.restore_data.new, true);
+});
+
+test("add-command on an empty IR device keeps the IR path (hex tabs on X1S)", async () => {
+  const element = emptyLiveDevice("ir");
+  await element._openAddCommandDialog();
+  assert.equal(element._payloadDialogAddMode, true);
+  assert.equal(element._payloadDialogDecodedSnapshot, null);
 });

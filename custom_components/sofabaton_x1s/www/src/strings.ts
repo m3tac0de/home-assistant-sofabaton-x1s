@@ -129,6 +129,7 @@ export const TOOLS_CARD_STRINGS_EN = {
   } as Record<number, string>,
   errors: {
     backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
+    irLearnNoSocket: "Learning is unavailable without a websocket connection",
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
@@ -138,6 +139,11 @@ export const TOOLS_CARD_STRINGS_EN = {
     cacheRefreshFailed: "Cache refresh failed.",
     syncFailed: "Sync failed.",
     activityIdMissing: "The hub did not return the new activity id.",
+    deviceIdMissing: "The hub did not return the new device id.",
+    deviceCreateFailed: "The device could not be created on the hub.",
+    deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
+    deviceTypeUnsupported: "This device type cannot be created on this hub.",
+    selectedHubUnavailable: "The selected hub is no longer available.",
   },
   settings: {
     loading: "Loading…",
@@ -198,6 +204,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     editDevice: "Edit device",
     changeOrder: "Change order",
     addActivity: "Add activity",
+    addDevice: "Add device",
     reorderSync: "Sync to Hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
@@ -212,6 +219,23 @@ export const TOOLS_CARD_STRINGS_EN = {
     reorderingActivities: "Reordering activities…",
     reorderingDevices: "Reordering devices…",
     creatingActivity: "Creating activity…",
+    addDeviceTitle: "Add device",
+    addDeviceBody: "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
+    addDevicePlaceholder: "Device name",
+    addDeviceClass: "Device type",
+    addDeviceCancel: "Cancel",
+    addDeviceConfirm: "Create",
+    addDeviceCreating: "Creating…",
+    addDeviceWifiHint: "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
+    creatingDevice: "Creating device…",
+    deviceClassLabels: {
+      ir: "Infrared",
+      wifi_roku: "Roku",
+      wifi_hue: "Hue",
+      wifi_sonos: "Sonos",
+      wifi_ip: "Generic HTTP",
+      wifi_mqtt: "MQTT",
+    } as Record<string, string>,
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).
   hubClick: {
@@ -768,6 +792,66 @@ export const TOOLS_CARD_STRINGS_EN = {
       "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
     payloadHex: "Payload (hex bytes)",
     payloadHexHelper: "Byte pairs like \"0a 4f 22\"; whitespace and 0x prefixes are tolerated.",
+    prontoHexTab: "Pronto Hex",
+    sofabatonHexTab: "Sofabaton Hex",
+    descriptorTab: "Descriptor",
+    prontoHexHelper:
+      "Paste a learned-format Pronto Hex code such as \"0000 006D 0022 0000 00AB …\", or a supported Unfolded Circle HEX code such as \"3;0x4B36D32C;32;0\". The editor converts it to Sofabaton bytes automatically.",
+    prontoUnavailable:
+      "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+    invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
+    descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+    // Unfolded Circle HEX import (converted on the backend through infrared-protocols).
+    ucHexConverting: "Converting the Unfolded Circle HEX code…",
+    ucHexInvalid: "This is not a valid Unfolded Circle HEX code.",
+    ucHexUnknownProtocol: "an unknown protocol",
+    ucHexUnsupported: (protocol: string) =>
+      `This Unfolded Circle HEX code uses ${protocol}, which is not supported. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.`,
+    ucHexUnrepresentable:
+      "This Unfolded Circle HEX code does not match its IR protocol's format rules and cannot be converted. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.",
+    ucHexUnavailable:
+      "Unfolded Circle HEX conversion is unavailable because the required infrared-protocols library cannot be loaded in this Home Assistant installation.",
+    ucHexNoHost:
+      "This editor cannot convert Unfolded Circle HEX codes because conversion requires a connection to Home Assistant.",
+    ucHexFailed: "The Unfolded Circle HEX code could not be converted.",
+    // Payload-editor learn mode (IR9).
+    learn: "Learn",
+    learnAria: "Learn a payload from another remote or from Home Assistant",
+    learnBack: "Back",
+    learnTryAgain: "Try again",
+    learnFromHub: "From another remote",
+    learnFromHubDescription:
+      "The hub's receiver listens for one button press from the IR remote whose command you want to learn.",
+    learnFromHa: "From Home Assistant",
+    learnFromHaDescription:
+      "Anything another integration sends through the hub's infrared emitter lands here, ready to save.",
+    learnHaChecking: "Checking which integrations use the hub's emitter…",
+    learnHubArming: "Arming the hub's receiver…",
+    learnHubListening: "Point that remote at the hub and press the button once.",
+    learnHubCountdown: (left: string) => `Listening… ${left}`,
+    learnHubLearned: (timings: number, khz: string) =>
+      `Learned from the source remote: ${timings} timing values at ${khz} kHz. Test it, then Save.`,
+    learnHubLearnedRaw: "Learned from the source remote. Test it, then Save.",
+    learnHubTimedOut: "No signal arrived before the hub's learning window closed.",
+    learnHubInterrupted: (by: string) =>
+      `Other hub traffic ended the learning window (${by}).`,
+    learnHubCancelled: "Learning cancelled.",
+    learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
+    learnHubFailed: "Learning failed.",
+    learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
+    learnHaHelper:
+      "Send a command from Home Assistant through the hub's emitter; it appears below the moment the hub plays it. You can leave this page and come back.",
+    learnHaConsumers: "Integrations using this hub's emitter",
+    learnHaEmpty: "Nothing captured yet.",
+    learnHaNew: "new",
+    learnHaUse: "Use",
+    learnHaSentCount: (count: number) => `×${count}`,
+    learnHaCaptured: (label: string) => `Captured from Home Assistant: ${label}. Test it, then Save.`,
+    learnHaUnavailable: "Could not load recently emitted IR commands.",
+    learnJustNow: "just now",
+    learnSecondsAgo: (seconds: number) => `${seconds} s ago`,
+    learnMinutesAgo: (minutes: number) => `${minutes} min ago`,
+    learnHoursAgo: (hours: number) => `${hours} h ago`,
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",

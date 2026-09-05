@@ -2827,6 +2827,12 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
     hub.roku_server_enabled = True
 
     requested_maps: list[int] = []
@@ -3352,6 +3358,12 @@ def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(mon
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
     hub.roku_server_enabled = True
 
     hub.devices = {
@@ -3416,6 +3428,12 @@ def test_sync_command_config_with_zero_slots_does_not_enable_wifi_device(monkeyp
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
     hub.roku_server_enabled = False
 
     calls: list[bool] = []
@@ -3493,6 +3511,9 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
             0.05,
             lambda: (
                 ready.__setitem__("value", True),
+                # A real commit bumps the proxy serial on the frame thread
+                # before the hub's burst listener runs.
+                setattr(hub._proxy, "_devices_commit_serial", hub._proxy._devices_commit_serial + 1),
                 hub._on_devices_burst("devices"),
             ),
         )
@@ -3838,6 +3859,12 @@ def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
 
     hub.roku_server_enabled = False
 
@@ -4163,6 +4190,12 @@ def test_sync_command_config_with_zero_slots_keeps_listener_when_another_device_
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
     hub.roku_server_enabled = True
 
     hub.devices = {
@@ -4358,6 +4391,12 @@ def test_sync_command_config_with_missing_metadata_matches_unique_hash_only_bran
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
     hub.roku_server_enabled = True
 
     hub.devices = {
@@ -5130,7 +5169,11 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     hub._activities_generation = 2
     hub._proxy.get_known_activity_ids = lambda: {101, 102}  # type: ignore[method-assign]
     hub._proxy.get_cached_activity_detail_ids = lambda: {5, 6, 101, 102}  # type: ignore[method-assign]
-    hub._proxy.clear_activities_catalog = lambda: None  # type: ignore[method-assign]
+
+    def _clear_must_not_run():
+        raise AssertionError("catalog refresh must not clear the cached catalog before the read")
+
+    hub._proxy.clear_activities_catalog = _clear_must_not_run  # type: ignore[method-assign]
     hub._proxy.request_activities = lambda: None  # type: ignore[method-assign]
 
     cleared: list[tuple[int, str]] = []
@@ -5148,7 +5191,7 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
     hub._proxy.get_known_activity_ids = _fake_get_known_activity_ids  # type: ignore[method-assign]
 
     async def _fake_sleep(_delay):
-        hub._activities_generation = 3
+        hub._proxy._activities_commit_serial += 1
 
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
@@ -5189,6 +5232,7 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
         catalog_calls.append(kind)
         hub._activities_generation += 1
         hub.activities = {101: {"name": "Movie Night", "active": False}}
+        return dict(hub.activities)
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5228,7 +5272,7 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
 
 def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
     """If the fresh activity read never lands, abort instead of deploying
-    against a stale (now cleared) catalog."""
+    against the stale cached catalog."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -5250,7 +5294,7 @@ def test_sync_command_config_aborts_when_activity_refresh_fails(monkeypatch):
     monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
 
     async def _request_catalog(kind, timeout_seconds=30.0):
-        return None  # no generation bump: the burst never arrived
+        raise TimeoutError("the burst never arrived")
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5300,6 +5344,12 @@ def test_sync_command_config_proceeds_when_activity_labels_match(monkeypatch):
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
     hub.roku_server_enabled = True
     monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
 
@@ -5309,6 +5359,7 @@ def test_sync_command_config_proceeds_when_activity_labels_match(monkeypatch):
         catalog_calls.append(kind)
         hub._activities_generation += 1
         hub.activities = {101: {"name": "TV", "active": False}}
+        return dict(hub.activities)
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 
@@ -5413,6 +5464,12 @@ def test_sync_command_config_ignores_orphaned_activities(monkeypatch):
         True,
         False,
     )
+    # The devices-snapshot read raises on timeout instead of falling
+    # through with the cached view after 15 s; stub it with that view.
+    async def _stub_devices_snapshot(timeout_seconds=15.0):
+        return dict(hub._proxy.state.entities("device"))
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _stub_devices_snapshot)
     hub.roku_server_enabled = True
     monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
 
@@ -5421,6 +5478,7 @@ def test_sync_command_config_ignores_orphaned_activities(monkeypatch):
     async def _request_catalog(kind, timeout_seconds=30.0):
         catalog_calls.append(kind)
         hub._activities_generation += 1
+        return dict(hub.activities)
 
     monkeypatch.setattr(hub, "async_request_catalog", _request_catalog)
 

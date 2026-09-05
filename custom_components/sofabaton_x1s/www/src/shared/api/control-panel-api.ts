@@ -11,6 +11,11 @@ import type {
   HassLike,
   HubAction,
   HubClickAction,
+  IrEmissionsEvent,
+  IrEmitterConsumersResponse,
+  IrLearnEvent,
+  IrPayloadConvertResponse,
+  IrPayloadForeignFormat,
   LogsResponse,
   RefreshKind,
   SettingKey,
@@ -75,6 +80,52 @@ export class ControlPanelApi {
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
       blob,
+    });
+  }
+
+  /**
+   * Render a foreign IR code (Unfolded Circle HEX) through the backend's
+   * protocol library. Hub-independent: no entry id, nothing is sent.
+   */
+  convertIrPayload(text: string, format: IrPayloadForeignFormat = "uc_hex") {
+    return this.hass.callWS<IrPayloadConvertResponse>({
+      type: "sofabaton_x1s/ir_payload/convert",
+      text,
+      format,
+    });
+  }
+
+  // ── Payload-editor learn mode (IR9) ───────────────────────────────────
+  /**
+   * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
+   * then a terminal state); calling the returned unsubscribe before the
+   * terminal event cancels the window on the hub.
+   */
+  subscribeIrLearn(entryId: string, timeoutS: number, onMessage: (event: IrLearnEvent) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_learn/subscribe", entry_id: entryId, timeout: Math.round(timeoutS) },
+    );
+  }
+
+  /** Emitter inbox: the intercept ring, replayed on connect and after every send. */
+  subscribeIrEmissions(entryId: string, onMessage: (event: IrEmissionsEvent) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_emissions/subscribe", entry_id: entryId },
+    );
+  }
+
+  getIrEmitterConsumers(entryId: string) {
+    return this.hass.callWS<IrEmitterConsumersResponse>({
+      type: "sofabaton_x1s/ir_emitter/consumers",
+      entry_id: entryId,
     });
   }
 
@@ -192,6 +243,18 @@ export class ControlPanelApi {
       type: "sofabaton_x1s/activity/create",
       entry_id: entryId,
       name,
+    });
+  }
+
+  // Create an EMPTY device of the given class on the hub (Hub tab "Add
+  // device"); resolves with the hub-assigned device id so the caller can
+  // open the live editor on it. Commands are added there.
+  createDevice(entryId: string, name: string, deviceClass: string) {
+    return this.hass.callWS<{ status?: string; device_id?: number }>({
+      type: "sofabaton_x1s/device/create",
+      entry_id: entryId,
+      name,
+      device_class: deviceClass,
     });
   }
 

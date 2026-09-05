@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
+import { applyThemePolarity } from "./shared/styles/theme-polarity";
 import type {
   BackupSectionId,
   HassLike,
@@ -22,6 +23,8 @@ import {
   hubActiveRefreshLabel,
   hubExternalCommandLabel,
   hubRefreshBusy,
+  creatableDeviceClasses,
+  hubLineFor,
   proxyClientConnected,
   resolveCardGateState,
   resolveRuntimeState,
@@ -214,6 +217,11 @@ class SofabatonControlPanelCard extends LitElement {
   private _addActivityOpen = false;
   private _addActivityBusy = false;
   private _addActivityError: string | null = null;
+  // "Add Device" dialog state.
+  private _addDeviceOpen = false;
+  private _addDeviceBusy = false;
+  private _addDeviceError: { error_code: string } | null = null;
+  private _addDeviceClass = "";
   private _localeLoading = false;
   private _localeRequestId = 0;
   private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
@@ -226,6 +234,11 @@ class SofabatonControlPanelCard extends LitElement {
   private readonly _boundHandleDocumentPointerDown = (event: PointerEvent) => {
     this.handleDocumentPointerDown(event);
   };
+  // Theme polarity probe (shared/styles/theme-polarity.ts): a hidden span in
+  // the shadow root whose computed colour / background resolve the theme's
+  // text colour and card surface. Read after every render.
+  private _themeProbe: HTMLElement | null = null;
+  private _lastThemesRef: unknown = undefined;
 
   constructor() {
     super();
@@ -251,7 +264,33 @@ class SofabatonControlPanelCard extends LitElement {
       value?.locale?.language ?? value?.language,
     );
     this._store.setHass(value);
-    if (languageChanged) this.requestUpdate();
+    // A theme or dark-mode switch replaces hass.themes without touching any
+    // store state; re-render so the polarity probe sees the new variables.
+    const themes = (value as { themes?: unknown } | null | undefined)?.themes;
+    const themesChanged = themes !== this._lastThemesRef;
+    this._lastThemesRef = themes;
+    if (languageChanged || themesChanged) this.requestUpdate();
+  }
+
+  /**
+   * Native <select> popups and scrollbars follow `color-scheme`, which no
+   * theme variable carries; measure the theme instead and write the scheme
+   * plus an opaque popup surface onto the host (card-styles.ts declares the
+   * tokens' no-JS fallbacks). Runs after every render because the theme can
+   * change without any hass update reaching the store (dark-mode toggle,
+   * card-level `theme:`).
+   */
+  private syncThemePolarity() {
+    const root = this.renderRoot;
+    if (!(root instanceof ShadowRoot)) return;
+    if (!this._themeProbe || !this._themeProbe.isConnected) {
+      const probe = document.createElement("span");
+      probe.className = "sb-theme-probe";
+      probe.setAttribute("aria-hidden", "true");
+      root.appendChild(probe);
+      this._themeProbe = probe;
+    }
+    applyThemePolarity(this, this._themeProbe);
   }
 
   private selectLanguage(language: unknown): boolean {
@@ -332,6 +371,7 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   protected updated() {
+    this.syncThemePolarity();
     const pendingEntityKey = this._snapshot.pendingScrollEntityKey;
     if (this._snapshot.selectedTab === "cache") {
       this.restoreCacheScrollState(this._pendingCacheScrollSnapshot, pendingEntityKey);
@@ -425,6 +465,10 @@ class SofabatonControlPanelCard extends LitElement {
     this._addActivityOpen = false;
     this._addActivityBusy = false;
     this._addActivityError = null;
+    this._addDeviceOpen = false;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = "";
   }
 
   // ── Activity / Device re-order mode ────────────────────────────────
@@ -509,6 +553,49 @@ class SofabatonControlPanelCard extends LitElement {
     // mirrors the Edit (wrench) behavior exactly.
     this._addActivityOpen = false;
     this._editingEntity = { kind: "activity", id: result.activityId };
+    this.requestUpdate();
+  }
+
+  // ── Add Device flow (name + class prompt → live editor) ────────────
+
+  private openAddDevice() {
+    this._addDeviceOpen = true;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = creatableDeviceClasses(
+      hubLineFor(this._snapshot.hass, selectedHub(this._snapshot)),
+    )[0] ?? "";
+    this.requestUpdate();
+  }
+
+  private selectAddDeviceClass(deviceClass: string) {
+    this._addDeviceClass = deviceClass;
+    this.requestUpdate();
+  }
+
+  private closeAddDevice() {
+    if (this._addDeviceBusy) return;
+    this._addDeviceOpen = false;
+    this._addDeviceError = null;
+    this.requestUpdate();
+  }
+
+  private async confirmAddDevice(name: string, deviceClass: string) {
+    if (this._addDeviceBusy) return;
+    this._addDeviceBusy = true;
+    this._addDeviceError = null;
+    this.requestUpdate();
+    const result = await this._store.createDevice(name, deviceClass);
+    this._addDeviceBusy = false;
+    if ("errorCode" in result) {
+      this._addDeviceError = { error_code: result.errorCode };
+      this.requestUpdate();
+      return;
+    }
+    // Open the live editor on the freshly assigned id; from here the flow
+    // mirrors the Edit (wrench) behavior exactly.
+    this._addDeviceOpen = false;
+    this._editingEntity = { kind: "device", id: result.deviceId };
     this.requestUpdate();
   }
 
@@ -992,6 +1079,15 @@ class SofabatonControlPanelCard extends LitElement {
           onOpenAddActivity: () => this.openAddActivity(),
           onCloseAddActivity: () => this.closeAddActivity(),
           onConfirmAddActivity: (name) => void this.confirmAddActivity(name),
+          addDeviceOpen: this._addDeviceOpen,
+          addDeviceBusy: this._addDeviceBusy,
+          addDeviceError: this._addDeviceError,
+          addDeviceClasses: creatableDeviceClasses(hubLineFor(this._snapshot.hass, hub)),
+          addDeviceClass: this._addDeviceClass,
+          onOpenAddDevice: () => this.openAddDevice(),
+          onCloseAddDevice: () => this.closeAddDevice(),
+          onSelectAddDeviceClass: (deviceClass) => this.selectAddDeviceClass(deviceClass),
+          onConfirmAddDevice: (name, deviceClass) => void this.confirmAddDevice(name, deviceClass),
         });
       }
     }

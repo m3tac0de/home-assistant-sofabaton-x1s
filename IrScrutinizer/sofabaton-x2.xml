@@ -56,6 +56,7 @@
             <xsl:variable name="x2proto">
                 <xsl:call-template name="map-protocol-name">
                     <xsl:with-param name="irp" select="$proto"/>
+                    <xsl:with-param name="D" select="girr:parameters/girr:parameter[@name='D']/@value"/>
                 </xsl:call-template>
             </xsl:variable>
             <xsl:choose>
@@ -77,6 +78,7 @@
              ===================================================== -->
         <xsl:template name="map-protocol-name">
             <xsl:param name="irp"/>
+            <xsl:param name="D"/>
             <xsl:choose>
                 <xsl:when test="$irp = 'NEC1' or $irp = 'NEC2' or $irp = 'NEC'">NEC</xsl:when>
                 <xsl:when test="$irp = 'NECx1' or $irp = 'NECx2' or $irp = 'NECx'">NECx</xsl:when>
@@ -92,10 +94,22 @@
                 <xsl:when test="$irp = 'Logitech'">Logitech</xsl:when>
                 <xsl:when test="$irp = 'Bose'">Bose</xsl:when>
                 <xsl:when test="$irp = 'JVC'">JVC</xsl:when>
-                <xsl:when test="$irp = 'Sharp'">Sharp3</xsl:when>
-                <xsl:when test="$irp = 'Sharp{1}' or $irp = 'Sharp{2}'">Sharp3</xsl:when>
+                <!-- 15-bit Sharp/Denon family (photon-verified against 69 cloud
+                     strings + synthesized probes, 2026-09-03; see x2-protocols.md
+                     "Sharp family, solved"). The X2 fields are a one-bit-offset
+                     reading of the frame, and each token pins the first frame
+                     bit (= LSB of the IRP D): Sharp2 forces 1 (IRP Sharp, odd D
+                     only), Sharp forces 0 with Denon trailer bits (IRP Denon,
+                     even D only). The other parity is not expressible; those
+                     signals fall through to the raw X-series exporter. -->
+                <xsl:when test="($irp = 'Sharp' or $irp = 'Sharp{1}' or $irp = 'Sharp{2}') and number($D) mod 2 = 1">Sharp2</xsl:when>
+                <xsl:when test="$irp = 'Denon' and number($D) mod 2 = 0">Sharp</xsl:when>
+                <xsl:when test="$irp = 'SharpDVD'">SharpDVD</xsl:when>
                 <xsl:when test="$irp = 'Samsung20'">Samsung20</xsl:when>
-                <xsl:when test="$irp = 'Samsung32'">Samsung32</xsl:when>
+                <!-- Samsung32: the X2's P:Samsung32 token is silent on the hub
+                     (photon-verified 2026-09-03); the signal is NECx with S = D,
+                     which the hub does emit. -->
+                <xsl:when test="$irp = 'Samsung32'">NECx</xsl:when>
                 <xsl:when test="$irp = 'Samsung36'">Samsung36</xsl:when>
                 <xsl:when test="$irp = 'Samsung-SMT-G'">SamsungSMTG</xsl:when>
                 <xsl:when test="$irp = 'DirecTV' or $irp = 'DirecTV_P0' or $irp = 'DirecTV_P1' or $irp = 'DirecTV_P2' or $irp = 'DirecTV_P3' or $irp = 'DirecTV_P4' or $irp = 'DirecTV_P5'">DirecTV1</xsl:when>
@@ -145,7 +159,9 @@
                         <xsl:with-param name="S" select="number($S)"/>
                         <xsl:with-param name="F" select="number($F)"/>
                     </xsl:call-template>
-                    <xsl:text> MUL:1</xsl:text>
+                    <!-- No MUL:1: the cloud-sample form with MUL:1 is never acked
+                         by the hub's play path (7/7, 2026-09-03); without it the
+                         emitted signal decodes exactly as Panasonic {D,S,F}. -->
                 </xsl:when>
 
                 <xsl:when test="$x2proto = 'Kaseikyo'">
@@ -174,11 +190,9 @@
                 </xsl:when>
 
                 <xsl:when test="$x2proto = 'Bose'">
+                    <!-- F only. With F_CHECKSUM present the hub emits a stale F
+                         (photon-verified 2026-09-03); the bare form is exact. -->
                     <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
-                    <xsl:text> F_CHECKSUM:</xsl:text>
-                    <xsl:call-template name="sb-not8">
-                        <xsl:with-param name="v" select="number($F)"/>
-                    </xsl:call-template>
                 </xsl:when>
 
                 <xsl:when test="$x2proto = 'Logitech'">
@@ -272,22 +286,69 @@
                     <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
                 </xsl:when>
 
-                <xsl:when test="$x2proto = 'Sharp3'">
-                    <!-- Sharp's IRP has two paired halves: (D, F, 1:2) and (D, ~F, 2:2).
-                         The X2 represents the captured half via C0 (0 or 1). When
-                         exporting from a Girr decode, we use the C0 parameter from
-                         the decoded signal if present, otherwise default to 0 (first
-                         half). Note that if IrScrutinizer canonicalizes both halves
-                         to a single Sharp decode, the C0 distinction may be lost,
-                         and the exporter will emit C0:0 by default. -->
-                    <xsl:variable name="C0" select="girr:parameters/girr:parameter[@name='C0']/@value"/>
-                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                <!-- IRP Sharp {D odd, F} -> Sharp2. X2 fields (from the bit fit):
+                       Dx = ((D div 2) mod 16) + 16 * (F mod 2)
+                       Fx = 127 - ((F div 2) mod 128)
+                       C0 = 2 (first frame bit = 1), D0 = Dx xor 16,
+                       F0 = 255 - Fx, C1 = 1 (second frame = D, ~F, 2:2) -->
+                <xsl:when test="$x2proto = 'Sharp2'">
+                    <xsl:variable name="Dx" select="(floor(number($D) div 2) mod 16) + 16 * (number($F) mod 2)"/>
+                    <xsl:variable name="Fx" select="127 - (floor(number($F) div 2) mod 128)"/>
+                    <xsl:variable name="D0">
+                        <xsl:choose>
+                            <xsl:when test="$Dx >= 16"><xsl:value-of select="$Dx - 16"/></xsl:when>
+                            <xsl:otherwise><xsl:value-of select="$Dx + 16"/></xsl:otherwise>
+                        </xsl:choose>
+                    </xsl:variable>
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$Dx"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$Fx"/>
+                    <xsl:text> C0:2 D0:</xsl:text><xsl:value-of select="$D0"/>
+                    <xsl:text> F0:</xsl:text><xsl:value-of select="255 - $Fx"/>
+                    <xsl:text> C1:1</xsl:text>
+                </xsl:when>
+
+                <!-- IRP Denon {D even, F} -> Sharp (the X2 token with Denon trailer
+                     bits 0:2 / 3:2). Same field offset, F not inverted:
+                       Dx = ((D div 2) mod 16) + 16 * (F mod 2)
+                       Fx = (F div 2) mod 128
+                       C0 = 0, D_CHECKSUM = D0 = Dx xor 16, F_CHECKSUM = 255 - Fx, C1 = 1 -->
+                <xsl:when test="$x2proto = 'Sharp'">
+                    <xsl:variable name="Dx" select="(floor(number($D) div 2) mod 16) + 16 * (number($F) mod 2)"/>
+                    <xsl:variable name="Fx" select="floor(number($F) div 2) mod 128"/>
+                    <xsl:variable name="D0">
+                        <xsl:choose>
+                            <xsl:when test="$Dx >= 16"><xsl:value-of select="$Dx - 16"/></xsl:when>
+                            <xsl:otherwise><xsl:value-of select="$Dx + 16"/></xsl:otherwise>
+                        </xsl:choose>
+                    </xsl:variable>
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$Dx"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$Fx"/>
+                    <xsl:text> C0:0 D_CHECKSUM:</xsl:text><xsl:value-of select="$D0"/>
+                    <xsl:text> F_CHECKSUM:</xsl:text><xsl:value-of select="255 - $Fx"/>
+                    <xsl:text> C1:1 D0:</xsl:text><xsl:value-of select="$D0"/>
+                </xsl:when>
+
+                <!-- IRP SharpDVD {D:4, S:8, F:8, E:4} -> SharpDVD, 1:1 with the
+                     protocol's fixed header (170, 90, 15) and its nibble-XOR
+                     checksum C = D ^ S:4:0 ^ S:4:4 ^ F:4:0 ^ F:4:4 ^ E. -->
+                <xsl:when test="$x2proto = 'SharpDVD'">
+                    <xsl:variable name="Ev">
+                        <xsl:choose>
+                            <xsl:when test="$E"><xsl:value-of select="$E"/></xsl:when>
+                            <xsl:otherwise>1</xsl:otherwise>
+                        </xsl:choose>
+                    </xsl:variable>
+                    <xsl:text> C0:170 C1:90 C2:15 D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
                     <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
-                    <xsl:text> C0:</xsl:text>
-                    <xsl:choose>
-                        <xsl:when test="$C0"><xsl:value-of select="$C0"/></xsl:when>
-                        <xsl:otherwise>0</xsl:otherwise>
-                    </xsl:choose>
+                    <xsl:text> E:</xsl:text><xsl:value-of select="$Ev"/>
+                    <xsl:text> CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-sharpdvd-checksum">
+                        <xsl:with-param name="D" select="number($D)"/>
+                        <xsl:with-param name="S" select="number($S)"/>
+                        <xsl:with-param name="F" select="number($F)"/>
+                        <xsl:with-param name="E" select="number($Ev)"/>
+                    </xsl:call-template>
                 </xsl:when>
 
                 <xsl:when test="$x2proto = 'Samsung20'">
@@ -296,11 +357,8 @@
                     <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
                 </xsl:when>
 
-                <xsl:when test="$x2proto = 'Samsung32'">
-                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
-                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
-                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
-                </xsl:when>
+                <!-- Samsung32 is mapped to the NECx token (see map-protocol-name)
+                     and uses the NECx emission above. -->
             </xsl:choose>
 
             <xsl:text>&#10;</xsl:text>
@@ -396,6 +454,42 @@
                 </xsl:call-template>
             </xsl:variable>
             <xsl:value-of select="$abcd mod 256"/>
+        </xsl:template>
+
+        <!-- SharpDVD: XOR of every nibble of D, S, F and E (4-bit result). -->
+        <xsl:template name="sb-sharpdvd-checksum">
+            <xsl:param name="D"/>
+            <xsl:param name="S"/>
+            <xsl:param name="F"/>
+            <xsl:param name="E"/>
+            <xsl:variable name="x1">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$D mod 16"/>
+                    <xsl:with-param name="b" select="$S mod 16"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="x2">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$x1"/>
+                    <xsl:with-param name="b" select="floor($S div 16) mod 16"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="x3">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$x2"/>
+                    <xsl:with-param name="b" select="$F mod 16"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="x4">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$x3"/>
+                    <xsl:with-param name="b" select="floor($F div 16) mod 16"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:call-template name="sb-xor">
+                <xsl:with-param name="a" select="$x4"/>
+                <xsl:with-param name="b" select="$E mod 16"/>
+            </xsl:call-template>
         </xsl:template>
 
         <xsl:template name="sb-panasonic-checksum">

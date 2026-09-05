@@ -3,12 +3,12 @@ from __future__ import annotations
 import errno
 import logging
 import random
-import select
+import selectors
 import socket
 import struct
 import threading
 import time
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from .hub_logging import HubLogger, LogTag, get_hub_logger
 from .hub_listener import get_hub_listener
@@ -66,6 +66,16 @@ def _enable_keepalive(
             sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, idle)
     except Exception:
         pass
+
+
+def _socket_is_usable(sock: socket.socket) -> bool:
+    """Return True when the OS still accepts operations on this socket."""
+
+    try:
+        sock.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _disable_nagle(sock: socket.socket) -> None:
@@ -176,6 +186,19 @@ class TransportBridge:
 
         self._inter_command_gap = 0.2
 
+        # Bridge-loop health telemetry (written by the bridge thread only;
+        # plain attribute reads elsewhere are GIL-atomic snapshots). Exposed
+        # via get_bridge_stats() so config-entry diagnostics can show
+        # whether the loop is actually moving bytes (issue #279).
+        self._hub_rx_bytes = 0
+        self._hub_tx_bytes = 0
+        self._hub_last_rx_ts: Optional[float] = None
+        self._select_error_count = 0
+        self._select_failure_streak = 0
+        self._last_select_error: Optional[str] = None
+        self._last_select_error_ts: Optional[float] = None
+        self._select_error_log_monotonic = 0.0
+
         self._chunk_id = 0
         self._proxy_enabled = True
         self._busy_gate: Optional[Callable[[], bool]] = None
@@ -217,6 +240,22 @@ class TransportBridge:
     def is_client_connected(self) -> bool:
         with self._app_lock:
             return self._app_sock is not None
+
+    def get_bridge_stats(self) -> Dict[str, object]:
+        """Snapshot of bridge-loop health counters for diagnostics."""
+
+        last_rx = self._hub_last_rx_ts
+        return {
+            "hub_rx_bytes": self._hub_rx_bytes,
+            "hub_tx_bytes": self._hub_tx_bytes,
+            "hub_last_rx": last_rx,
+            "hub_last_rx_age_s": (
+                round(time.time() - last_rx, 1) if last_rx is not None else None
+            ),
+            "select_errors": self._select_error_count,
+            "last_select_error": self._last_select_error,
+            "last_select_error_at": self._last_select_error_ts,
+        }
 
     def pause_for_ota(self, seconds: float) -> None:
         """Drop the hub session and refuse reconnects for ``seconds`` seconds.
@@ -572,7 +611,36 @@ class TransportBridge:
     def _emit_connect_ready_beacon(self, app_ip: str) -> None:
         return
 
+    def _flush_to_hub(self, hub: socket.socket, buf: bytearray, label: str) -> bool:
+        """_flush_buffer toward the hub, counting flushed bytes for stats.
+
+        max(0, ...) guards the local-queue case where a concurrent
+        send_local() extend() lands mid-flush and grows the buffer.
+        """
+
+        before = len(buf)
+        closed = _flush_buffer(hub, buf, label, self._log)
+        if not closed:
+            self._hub_tx_bytes += max(0, before - len(buf))
+        return closed
+
     def _bridge_forever(self) -> None:
+        # poll/epoll-backed selector instead of select.select(): the
+        # latter rejects any fd >= FD_SETSIZE (1024) with ValueError, so
+        # on installs where other components hold ~1024 descriptors a
+        # reconnected hub socket could never be monitored and the loop
+        # wedged silently while hub_connected stayed true (issue #279).
+        selector = selectors.DefaultSelector()
+        try:
+            self._run_bridge_loop(selector)
+        finally:
+            try:
+                selector.close()
+            except Exception:
+                pass
+            self._close_wake_channel()
+
+    def _run_bridge_loop(self, selector: selectors.BaseSelector) -> None:
         app_to_hub = bytearray()
         hub_to_app = bytearray()
         app_partial_frame = bytearray()
@@ -585,29 +653,43 @@ class TransportBridge:
             with self._wake_lock:
                 wake_reader = self._wake_reader
 
-            rlist: List[socket.socket] = []
+            desired: Dict[socket.socket, int] = {}
             if hub is not None:
-                rlist.append(hub)
+                events = selectors.EVENT_READ
+                if app_to_hub or self._local_to_hub:
+                    events |= selectors.EVENT_WRITE
+                desired[hub] = events
             if app is not None:
-                rlist.append(app)
+                events = selectors.EVENT_READ
+                if hub_to_app:
+                    events |= selectors.EVENT_WRITE
+                desired[app] = events
             if wake_reader is not None:
-                rlist.append(wake_reader)
+                desired[wake_reader] = selectors.EVENT_READ
 
-            wlist: List[socket.socket] = []
-            if hub is not None and (app_to_hub or self._local_to_hub):
-                wlist.append(hub)
-            if app is not None and hub_to_app:
-                wlist.append(app)
-
-            if not rlist and not wlist:
+            if not desired:
                 time.sleep(0.05)
                 continue
 
             try:
-                r, w, _ = select.select(rlist, wlist, [], 0.5)
-            except (OSError, ValueError):
+                self._sync_selector(selector, desired)
+                ready = selector.select(0.5)
+            except (OSError, ValueError) as exc:
+                self._handle_select_failure(
+                    exc,
+                    hub,
+                    app,
+                    wake_reader,
+                    app_to_hub,
+                    hub_to_app,
+                    app_partial_frame,
+                )
                 time.sleep(0.05)
                 continue
+            self._select_failure_streak = 0
+
+            r = {key.fileobj for key, mask in ready if mask & selectors.EVENT_READ}
+            w = {key.fileobj for key, mask in ready if mask & selectors.EVENT_WRITE}
 
             if wake_reader is not None and wake_reader in r:
                 self._drain_wake_socket(wake_reader)
@@ -641,6 +723,8 @@ class TransportBridge:
                 else:
                     self._chunk_id += 1
                     cid = self._chunk_id
+                    self._hub_rx_bytes += len(data)
+                    self._hub_last_rx_ts = time.time()
                     for cb in self._hub_frame_cbs:
                         cb(data, cid)
                     if app is not None:
@@ -731,7 +815,7 @@ class TransportBridge:
                     for idx, frame in enumerate(frames_to_send):
                         app_to_hub.extend(frame)
                         if hub is not None:
-                            if _flush_buffer(hub, app_to_hub, "client", self._log):
+                            if self._flush_to_hub(hub, app_to_hub, "client"):
                                 with self._hub_lock:
                                     try:
                                         hub.shutdown(socket.SHUT_RDWR)
@@ -752,7 +836,7 @@ class TransportBridge:
 
             if hub is not None and hub in w:
                 if self._local_to_hub:
-                    if _flush_buffer(hub, self._local_to_hub, "local", self._log):
+                    if self._flush_to_hub(hub, self._local_to_hub, "local"):
                         with self._hub_lock:
                             try:
                                 hub.shutdown(socket.SHUT_RDWR)
@@ -767,7 +851,7 @@ class TransportBridge:
                         app_to_hub.clear()
                         continue
                 if app_to_hub:
-                    if _flush_buffer(hub, app_to_hub, "client", self._log):
+                    if self._flush_to_hub(hub, app_to_hub, "client"):
                         with self._hub_lock:
                             try:
                                 hub.shutdown(socket.SHUT_RDWR)
@@ -806,7 +890,126 @@ class TransportBridge:
                     if self._hub_sock is None:
                         self._local_to_hub.clear()
 
-        self._close_wake_channel()
+    @staticmethod
+    def _sync_selector(
+        selector: selectors.BaseSelector, desired: Dict[socket.socket, int]
+    ) -> None:
+        """Make the selector's registrations match ``desired`` exactly.
+
+        Sockets are installed and closed by other threads between passes,
+        so stale registrations are unregistered defensively; register and
+        modify errors propagate to the caller's failure handler.
+        """
+
+        registered = dict(selector.get_map())
+        for fileobj in registered:
+            if fileobj not in desired:
+                try:
+                    selector.unregister(fileobj)
+                except (KeyError, ValueError, OSError):
+                    pass
+        for fileobj, events in desired.items():
+            key = registered.get(fileobj)
+            if key is None:
+                selector.register(fileobj, events)
+            elif key.events != events:
+                selector.modify(fileobj, events)
+
+    def _handle_select_failure(
+        self,
+        exc: Exception,
+        hub: Optional[socket.socket],
+        app: Optional[socket.socket],
+        wake_reader: Optional[socket.socket],
+        app_to_hub: bytearray,
+        hub_to_app: bytearray,
+        app_partial_frame: bytearray,
+    ) -> None:
+        """React to a failed selector pass instead of retrying blindly.
+
+        This branch used to swallow the error and retry the identical
+        call every 50 ms forever, turning a single bad descriptor into a
+        silent permanent outage while hub_connected stayed true (issue
+        #279). Record the error for diagnostics, log it (throttled),
+        drop any socket the OS no longer accepts, and when the failure
+        persists across seemingly healthy sockets force a reconnect as a
+        last resort.
+        """
+
+        self._select_error_count += 1
+        self._select_failure_streak += 1
+        self._last_select_error = repr(exc)
+        self._last_select_error_ts = time.time()
+
+        now = time.monotonic()
+        if now - self._select_error_log_monotonic >= 30.0:
+            self._select_error_log_monotonic = now
+            self._log.warning(
+                "%s bridge select failed (%d total): %r",
+                LogTag.TRANSPORT,
+                self._select_error_count,
+                exc,
+            )
+        elif self._log.isEnabledFor(logging.DEBUG):
+            self._log.debug("%s bridge select failed", LogTag.TRANSPORT, exc_info=exc)
+
+        force = self._select_failure_streak >= 20
+        if force:
+            self._select_failure_streak = 0
+
+        if hub is not None and (force or not _socket_is_usable(hub)):
+            with self._hub_lock:
+                if self._hub_sock is hub:
+                    try:
+                        hub.shutdown(socket.SHUT_RDWR)
+                    except Exception:
+                        pass
+                    try:
+                        hub.close()
+                    except Exception:
+                        pass
+                    self._hub_sock = None
+                    dropped = True
+                else:
+                    dropped = False
+            if dropped:
+                app_to_hub.clear()
+                self._notify_hub_state(False)
+                self._log.warning(
+                    "%s dropped hub socket after select failure; CALL_ME will re-dial",
+                    LogTag.TRANSPORT,
+                )
+
+        if app is not None and (force or not _socket_is_usable(app)):
+            with self._app_lock:
+                if self._app_sock is app:
+                    try:
+                        app.shutdown(socket.SHUT_RDWR)
+                    except Exception:
+                        pass
+                    try:
+                        app.close()
+                    except Exception:
+                        pass
+                    self._app_sock = None
+                    dropped = True
+                else:
+                    dropped = False
+            if dropped:
+                app_to_hub.clear()
+                app_partial_frame.clear()
+                hub_to_app.clear()
+                self._notify_client_state(False)
+                self._log.warning(
+                    "%s dropped app socket after select failure",
+                    LogTag.TRANSPORT,
+                )
+
+        if wake_reader is not None and not _socket_is_usable(wake_reader):
+            self._log.warning(
+                "%s recreating wake channel after select failure", LogTag.TRANSPORT
+            )
+            self._init_wake_channel()
 
     def _init_wake_channel(self) -> None:
         self._close_wake_channel()

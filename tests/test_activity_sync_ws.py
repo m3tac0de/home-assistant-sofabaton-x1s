@@ -761,3 +761,110 @@ def test_ws_entity_delete_blocked_when_locked(monkeypatch):
     }))
     assert conn.error[1] == "unavailable"
     assert hub.deleted is None
+
+
+# ── device/create (Hub tab "Add device") ─────────────────────────────────
+
+
+class _CreatingHub(_Hub):
+    def __init__(self, result, version="X1S"):
+        self._result = result
+        self.version = version
+        self.created = None
+
+    async def async_create_device(self, name, *, device_class):
+        self.created = (name, device_class)
+        return self._result
+
+
+def test_ws_device_create_runs_hub_create(monkeypatch):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 7})
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 50, "entry_id": "entry-1", "name": "  Hue Bridge ", "device_class": "hue",
+    }))
+    assert conn.error is None
+    # Name trimmed, class normalized through the alias table.
+    assert hub.created == ("Hue Bridge", "wifi_hue")
+    assert conn.result[1] == {"status": "success", "device_id": 7}
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 31])
+def test_ws_device_create_rejects_bad_names(monkeypatch, name):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 7})
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 51, "entry_id": "entry-1", "name": name, "device_class": "ir",
+    }))
+    assert conn.error[1] == "invalid_name"
+    assert hub.created is None
+
+
+@pytest.mark.parametrize(
+    ("version", "device_class"),
+    [("X1S", "wifi_mqtt"), ("X1", "wifi_ip"), ("X2", "bluetooth"), ("X2", "rf_433mhz"), ("X2", "nonsense")],
+)
+def test_ws_device_create_rejects_unsupported_class(monkeypatch, version, device_class):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 7}, version=version)
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 52, "entry_id": "entry-1", "name": "Thing", "device_class": device_class,
+    }))
+    assert conn.error[1] == "unsupported_class"
+    assert hub.created is None
+
+
+def test_ws_device_create_accepts_mqtt_on_x2(monkeypatch):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 9}, version="X2")
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 53, "entry_id": "entry-1", "name": "Broker", "device_class": "wifi_mqtt",
+    }))
+    assert conn.error is None
+    assert hub.created == ("Broker", "wifi_mqtt")
+
+
+def test_ws_device_create_reports_failure_when_hub_declines(monkeypatch):
+    conn = _Conn()
+    hub = _CreatingHub(None)
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 54, "entry_id": "entry-1", "name": "TV", "device_class": "ir",
+    }))
+    assert conn.result is None
+    assert conn.error[1] == "create_failed"
+
+
+def test_ws_device_create_busy(monkeypatch):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 7})
+    _patch(monkeypatch, hub=hub)
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
+    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 55, "entry_id": "entry-1", "name": "TV", "device_class": "ir",
+    }))
+    assert conn.error[1] == "busy"
+    assert hub.created is None
+
+
+def test_ws_device_create_blocked_when_locked(monkeypatch):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 7})
+    _patch(monkeypatch, hub=hub, locked=True)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 56, "entry_id": "entry-1", "name": "TV", "device_class": "ir",
+    }))
+    assert conn.error[1] == "unavailable"
+    assert hub.created is None

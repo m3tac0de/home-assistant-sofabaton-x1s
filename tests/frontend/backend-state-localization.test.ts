@@ -8,11 +8,73 @@ import {
   ENTITY_SYNC_STEP_KINDS,
   WIFI_DEPLOY_PHASES,
   WIFI_INPLACE_STEP_KINDS,
+  backendErrorCode,
+  localizeBackendError,
   localizeBackendOperationDetail,
   localizeBackendProgress,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization";
 import { resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+
+test("structured backend errors are localized without relaying English exception text", () => {
+  setToolsCardLanguage("de");
+  assert.equal(
+    localizeBackendError(
+      { state: "error", error_code: "ir_learn_failed", message: "transport gone" },
+      "ir_learn",
+    ),
+    "Anlernen fehlgeschlagen.",
+  );
+
+  setToolsCardLanguage("fr");
+  assert.equal(
+    localizeBackendError({ state: "refused", message: "proxy client connected" }, "ir_learn"),
+    "Le hub n’est pas passé en mode apprentissage. L’application Sofabaton est-elle connectée, ou une synchronisation est-elle en cours\u00a0?",
+  );
+
+  setToolsCardLanguage("es");
+  assert.equal(
+    localizeBackendError({ state: "error", error_code: "ir_learn_no_payload" }, "ir_learn"),
+    "El hub captó una señal, pero no se pudo leer su carga útil.",
+  );
+
+  setToolsCardLanguage("nl");
+  assert.equal(
+    localizeBackendError({ code: "a_future_backend_code", message: "Some new English error" }, "ir_learn"),
+    "Inleren mislukt.",
+  );
+
+  setToolsCardLanguage("zh-Hans");
+  assert.equal(
+    localizeBackendError({ message: "Could not resolve Sofabaton hub" }, "ir_emissions"),
+    "无法加载最近发射的红外命令。",
+  );
+
+  assert.equal(backendErrorCode({ error: { code: "UNAVAILABLE" } }), "unavailable");
+  assert.equal(backendErrorCode({ message: "transport gone" }), null);
+  setToolsCardLanguage("en");
+});
+
+test("device creation errors are localized from stable codes", () => {
+  const cases = [
+    ["de", "invalid_name", "Gib einen Gerätenamen mit 1 bis 30 Zeichen ein."],
+    ["es", "unsupported_class", "Este tipo de dispositivo no se puede crear en este hub."],
+    ["fr", "create_failed", "Impossible de créer l’appareil sur le hub."],
+    ["nl", "device_id_missing", "De hub heeft geen ID voor het nieuwe apparaat teruggegeven."],
+    ["de", "not_found", "Der ausgewählte Hub ist nicht mehr verfügbar."],
+    ["zh-Hans", "a_future_code", "无法在 Hub 上创建设备。"],
+  ] as const;
+
+  for (const [locale, code, expected] of cases) {
+    setToolsCardLanguage(locale);
+    assert.equal(
+      localizeBackendError({ code, message: "The hub returned an English error" }, "device_create"),
+      expected,
+      locale,
+    );
+  }
+  setToolsCardLanguage("en");
+});
 
 test("structured backend progress is localized without relaying its English message", () => {
   const cases = [

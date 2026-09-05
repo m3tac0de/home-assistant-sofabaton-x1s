@@ -6,11 +6,12 @@ Each configured hub provides entities for controlling Sofabaton from Home Assist
 
 Use these entities in dashboards or custom UIs, automations, and scripts.
 
-| Platform | Default entity                                   | Purpose                              |
-| -------- | ------------------------------------------------ | ------------------------------------ |
-| Remote   | `remote.<hub>_remote`                            | Send commands and control Activities |
-| Select   | `select.<hub>_activity`                          | View or change the current Activity  |
-| Button   | `button.<hub>_volume_up`, `button.<hub>_mute`, … | Send Activity-aware commands         |
+| Platform | Default entity                                   | Purpose                                                                                  |
+| -------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| Remote   | `remote.<hub>_remote`                            | Send commands and control Activities                                                     |
+| Infrared | `infrared.<hub>_ir_emitter`                      | Let compatible Home Assistant infrared integrations send commands through the hub; requires a recent Home Assistant release |
+| Select   | `select.<hub>_activity`                          | View or change the current Activity                                                      |
+| Button   | `button.<hub>_volume_up`, `button.<hub>_mute`, … | Send Activity-aware commands                                                             |
 
 For `remote.send_command`, `remote.turn_on`, and `remote.turn_off` examples, see the [remote entity guide](remote_entity.md).
 
@@ -38,6 +39,7 @@ For Wifi Commands, Wifi Events, Hub Events, Activity Events, and a sensor automa
 | Button   | `button.<hub>_find_remote`         | Sound the physical remote's buzzer                                                                                                               |
 | Button   | `button.<hub>_resync_remote`       | Synchronize the physical remote                                                                                                                  |
 | Text     | `text.<hub>_ip_address`            | Override the stored hub IP; disabled by default                                                                                                  |
+| Sensor   | `sensor.<hub>_ir_intercept`        | Last command intercepted by the infrared emitter entity (HA 2026.8 or newer); disabled by default                                                |
 
 ## ◇ Availability while the Sofabaton app is connected
 

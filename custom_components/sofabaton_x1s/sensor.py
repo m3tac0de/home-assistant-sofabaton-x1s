@@ -13,6 +13,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN,
     CONF_MAC,
+    infrared_platform_available,
     signal_activity,
     signal_buttons,
     signal_devices,
@@ -21,6 +22,7 @@ from .const import (
     signal_macros,
     signal_app_activations,
     signal_ip_commands,
+    signal_ir_intercept,
     signal_wifi_device,
 )
 from .hub import SofabatonHub, get_hub_display_name, get_hub_model
@@ -34,6 +36,9 @@ async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
         SofabatonRecordedKeypressSensor(hub, entry),
         SofabatonIpCommandsSensor(hub, entry),
     ]
+    if infrared_platform_available():
+        # Only meaningful alongside the emitter entity that feeds it.
+        entities.append(SofabatonIrInterceptSensor(hub, entry))
     async_add_entities(entities)
 
 
@@ -464,4 +469,80 @@ class SofabatonIpCommandsSensor(SensorEntity):
             # broker hop; never faked).
             "source_ip": self._display_command.get("source_ip"),
             "transport": self._display_command.get("transport") or "http",
+        }
+
+
+class SofabatonIrInterceptSensor(SensorEntity):
+    """Last command intercepted by the infrared emitter entity (IR5).
+
+    State is the factual label of the most recent send (command class
+    name + payload digest); attributes carry the hub-ready payload hex
+    so a working command can be persisted through the payload editor's
+    Test/Save flow. Only created when the HA core ships the infrared
+    domain (no emitter, nothing to intercept).
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "ir_intercept"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    _DEFAULT_VALUE = "Waiting for infrared send"
+
+    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
+        self._hub = hub
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_ir_intercept"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
+            name=get_hub_display_name(self._hub, self._entry),
+            model=get_hub_model(self._entry),
+        )
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_ir_intercept(self._hub.entry_id),
+                self._handle_ir_intercept,
+            )
+        )
+
+    @callback
+    def _handle_ir_intercept(self) -> None:
+        self.async_write_ha_state()
+
+    def _last_emission(self) -> dict | None:
+        emissions = self._hub.get_ir_emissions()
+        return emissions[-1] if emissions else None
+
+    @property
+    def native_value(self) -> str:
+        last = self._last_emission()
+        if last is None:
+            return self._DEFAULT_VALUE
+        return last["label"]
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        last = self._last_emission()
+        if last is None:
+            return {"recent": []}
+        recent = [
+            {"label": rec["label"], "when": rec["when"], "count": rec["count"]}
+            for rec in self._hub.get_ir_emissions()[-5:]
+        ]
+        return {
+            "label": last["label"],
+            "command": last["command_repr"],
+            "carrier_hz": last["carrier_hz"],
+            "timing_count": last["timing_count"],
+            "payload_hex": last["payload_hex"],
+            "when": last["when"],
+            "count": last["count"],
+            "recent": recent,
         }

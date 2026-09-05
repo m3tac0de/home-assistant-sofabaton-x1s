@@ -43,6 +43,11 @@ export const REMOTE_CARD_CSS = `
         --sb-overlay-hover: color-mix(in srgb, var(--sb-tint-base) 10%, transparent);
         --sb-overlay-press: color-mix(in srgb, var(--sb-tint-base) 18%, transparent);
         --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+        /* Field surface for native inputs (the commands filter): the card
+           surface with a 6% text tint, same recipe as the control panel.
+           The theme's input fill is not trusted (Caule aliases it to the
+           primary colour, glass themes set it transparent). */
+        --sb-field-surface: color-mix(in srgb, var(--sb-tint-base) 6%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
         /* Raised-surface pair used by key_style tinted/elevated. Computed
            here (not on the consumers) so redefining --ha-card-background on
            a drawer button from it is not a self-reference. */
@@ -131,8 +136,8 @@ export const REMOTE_CARD_CSS = `
       .wrap--keys-elevated .drawer-btn {
         --ha-card-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.10);
       }
-      /* Tinted panels (the former key_style "panel", an independent
-         switch since 0.3.0 so it combines with any key style): the
+      /* Tinted panels (the former key_style "panel", now an independent
+         switch so it combines with any key style): the
          bordered group containers take the dock surface. With flat keys
          the keys KEEP the card background and read as card-coloured
          cutouts on a softly accent-tinted panel; with a tinted/elevated/
@@ -364,8 +369,8 @@ export const REMOTE_CARD_CSS = `
         font: inherit;
         font-size: 13px;
         color: var(--primary-text-color);
-        background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
-        border: 1px solid var(--divider-color);
+        background: var(--sb-field-surface, var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243))));
+        border: 1px solid var(--sb-key-border, var(--divider-color));
         border-radius: var(--sb-group-radius);
         outline: none;
       }
@@ -1003,16 +1008,44 @@ export const REMOTE_CARD_CSS = `
         --sb-control-background: var(--sb-color);
       }
 
-      .warn {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        right: 12px;
-        z-index: 10;
-        font-size: 12px;
-        opacity: .9;
-        border-inline-start: 3px solid var(--warning-color, orange);
-        padding-inline-start: 10px;
+      /* Status notice (remote unavailable, no activities, device keymap
+         missing / failed): an in-flow row at the top of the layout, styled
+         like HA's ha-alert so it reads on any theme. The surface is the
+         card background with a 12% accent tint and the text is the theme's
+         primary text colour, i.e. exactly the contrast the theme already
+         guarantees for the card's own text. It used to be a 12px,
+         background-less absolute overlay sitting on the activity selector,
+         which was unreadable on most themes and clipped on narrow cards. */
+      .sb-notice {
+        --sb-notice-accent: var(--warning-color, #ffa600);
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: min(12px, var(--sb-group-radius));
+        border-inline-start: 4px solid var(--sb-notice-accent);
+        background: color-mix(in srgb, var(--sb-notice-accent) 12%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        color: var(--primary-text-color);
+        font-size: clamp(13px, 3.6cqw, 15px);
+        line-height: 1.4;
+        text-align: start;
+        overflow-wrap: anywhere;
+      }
+      .sb-notice--error {
+        --sb-notice-accent: var(--error-color, #db4437);
+      }
+      .sb-notice ha-icon {
+        flex: none;
+        margin-top: 1px;
+        color: var(--sb-notice-accent);
+        /* Real ha-icon sizes itself from --mdc-icon-size; the harness stub
+           from font-size. Both land on 20px. */
+        font-size: 20px;
+        --mdc-icon-size: 20px;
+      }
+      .sb-notice__text {
+        flex: 1 1 auto;
+        min-width: 0;
       }
 
       .sb-modal {

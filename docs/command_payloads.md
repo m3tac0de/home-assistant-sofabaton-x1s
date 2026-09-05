@@ -37,7 +37,8 @@ Choose **Add command** in the Device editor, then enter a name and payload.
 The form depends on the Device class:
 
 - **IR** — enter a descriptive payload beginning with `P:`, such as
-  `P:Sony12 R:40000 D:1 F:18 MUL:2`. You can Test it before saving.
+  `P:Sony12 R:40000 D:1 F:18 MUL:2`, paste Pronto Hex or Sofabaton Hex, or use
+  **Learn** to capture the code (see below). You can Test it before saving.
 - **Supported Wifi classes** — edit the structured fields. The editor uses an
   existing command from that Device as a template for the hub-specific record.
 - **Other classes** — enter raw hex. A non-IR Device needs at least one existing
@@ -45,6 +46,30 @@ The form depends on the Device class:
 
 The new command is staged alongside the other Device edits and created during
 the next Sync.
+
+## ◇ Learn a payload
+
+For IR Devices the payload editor has a **Learn** button next to the format
+tabs. It offers up to two sources:
+
+- **From a remote.** The hub's own IR receiver is armed for one button press.
+  Point the physical remote at the hub and press the button once; the captured
+  code drops straight into the editor. The hub keeps its receiver armed for
+  about a minute, and any other hub traffic (a press on the paired Sofabaton
+  remote, an automation sending a command) ends the window early. Leaving the
+  editor cancels it.
+- **From Home Assistant.** Shown only when another integration uses the hub's
+  infrared emitter (a Samsung or LG Infrared remote, an IR air conditioner, and
+  so on) or the emitter has sent something before. Everything those
+  integrations send through the hub is collected in an inbox, newest first.
+  Send the command from wherever you normally would in Home Assistant, come
+  back, and pick it. Nothing has to stay open while you do this: the inbox
+  lives on the hub side, survives page changes, and keeps the last twenty
+  distinct codes. This is the only way to capture codes that are generated on
+  the fly, such as air-conditioner state frames.
+
+Either way the code lands as Sofabaton Hex with its Pronto Hex view alongside.
+Test it, then Save; the command is written to the hub on the next Sync.
 
 ## ◇ Payload forms
 
@@ -81,10 +106,35 @@ choice when you want timing-style payloads.
 
 You can use:
 
+- a code learned from a physical remote or captured from another integration
+  (see **Learn a payload** above);
 - a payload fetched from another command on your hub;
 - a payload shared by another user;
+- a code exported from an Unfolded Circle remote (see below);
 - IR data converted from an online database with
   [IrScrutinizer](../IrScrutinizer/README.md).
+
+### Unfolded Circle codes
+
+Unfolded Circle remotes store IR commands as either `PRONTO` codes or `HEX`
+codes such as `3;0x4B36D32C;32;0` (protocol, value, bit count, repeat count).
+Paste either form into the payload editor, or paste a whole row of a codeset
+CSV export such as `"Power-Toggle","HEX","3;0x4B36D32C;32;0"`. PRONTO codes
+are used as they are. HEX codes are rendered by Home Assistant's
+`infrared-protocols` library into timings and shown as Pronto Hex; the editor
+does not keep the original HEX text. When a row is pasted while adding a
+command, its name fills the Name field if that is still empty.
+
+Only protocols with an encoder in `infrared-protocols` convert: NEC, Sony,
+Samsung, RC5, RC6, Panasonic, Sharp, and Pioneer. Other protocols are refused
+with a message that names the protocol; export those commands as PRONTO from
+the Unfolded Circle web configurator instead. A HEX code's embedded repeat
+count is applied where the protocol has a repeat form.
+
+> **Note:** payloads exported with the Sofabaton X-series IrScrutinizer
+> exporter before its 2026-08-31 layout fix are accepted by the hub but emit
+> no IR. They start with `00 00 03 20 00 00`; re-export them with the fixed
+> exporter. See the [exporter README](../IrScrutinizer/README.md) for details.
 
 For an imported payload, paste it into the editor, Test it, Save it, and then
 Sync the Device. When sharing a payload, include the Device brand and model,
@@ -125,7 +175,10 @@ fields, response data, and examples.
   support other Device classes.
 - A payload Save in the live editor is staged; use the Device's **Sync** button
   to write it to the hub.
-- Test an IR payload before syncing it whenever possible.
+- Test an IR payload before syncing it whenever possible, and confirm the
+  target device actually reacts. The hub accepts a malformed IR payload
+  without any error and then emits nothing, so a Test that "succeeds" in the
+  editor is not proof of IR output.
 - Editing and syncing are unavailable while the Sofabaton app or another hub
   operation holds the connection.
 - If the editor asks for a cache refresh, refresh that Device and reopen it.

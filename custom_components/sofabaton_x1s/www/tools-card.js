@@ -945,10 +945,57 @@ var cardStyles = [secondaryTabStyles, i`
        on the indicator (underline, border, icon, fill). Sub-components
        inherit it; they spell the fallback for standalone use. */
     --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+    /* Form fields. The theme's own input fill is never trusted alone: Caule
+       aliases --input-fill-color to its primary colour (saturated purple or
+       green behind grey text) and the glass themes set it transparent. A
+       field is the card surface with a 6% tint of the text colour (HA
+       default light: #f2f2f2, dark: #282828, i.e. HA's own field fills)
+       and a border from the text colour, so text on a field contrasts like
+       text on the card, on opaque and glass themes alike. */
+    --sb-field-surface: color-mix(in srgb, var(--primary-text-color) 6%, var(--sb-card-surface));
+    --sb-field-border: color-mix(in srgb, var(--primary-text-color) 24%, transparent);
+    /* Hover / pressed overlays from the text colour, never from HA's
+       neutral fills: those are opaque light grey under any theme that runs
+       in light mode, the glass themes with white text included. */
+    --sb-overlay-hover: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
+    --sb-overlay-press: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+    /* Native <select> popups need an OPAQUE row colour and a matching
+       color-scheme. tools-card.ts measures the theme's polarity through
+       .sb-theme-probe (shared/styles/theme-polarity.ts) and writes
+       color-scheme, --sb-scheme-ground and --sb-popup-surface inline on the
+       host, which wins over these no-JS fallbacks. */
+    --sb-scheme-ground: #fff;
+    --sb-popup-surface: var(--sb-field-surface);
   }
   ha-card {
     --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
     --ha-card-background: var(--sb-card-surface);
+    /* HA's own form components inside the card (ha-textfield, ha-input)
+       paint their fill from these; point them at the field surface so every
+       field in a dialog looks alike, native or HA. */
+    --ha-color-form-background: var(--sb-field-surface);
+    --ha-color-form-background-hover: var(--sb-field-surface);
+    --input-fill-color: var(--sb-field-surface);
+    --mdc-text-field-fill-color: var(--sb-field-surface);
+  }
+  /* Polarity probe, appended to the shadow root by tools-card.ts: resolves
+     the theme's text colour and card surface to concrete rgb values. */
+  .sb-theme-probe {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+    color: var(--primary-text-color);
+    background-color: var(--sb-card-surface);
+  }
+  /* Native select popups: Chromium paints option rows from these computed
+     values; the row colour has to be opaque or a glass theme gets
+     white-on-white options (see theme-polarity.ts). */
+  select option {
+    background-color: var(--sb-popup-surface);
+    color: var(--primary-text-color);
   }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
@@ -1345,8 +1392,8 @@ var cardStyles = [secondaryTabStyles, i`
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
   .setting-select {
     max-width: 180px; padding: 6px 10px;
-    border: 1px solid var(--divider-color); border-radius: 8px;
-    background: var(--card-background-color, var(--ha-card-background, #fff));
+    border: 1px solid var(--sb-field-border); border-radius: 8px;
+    background: var(--sb-field-surface);
     color: var(--primary-text-color);
     font: inherit; font-size: 12.5px; font-weight: 600;
     cursor: pointer;
@@ -1459,18 +1506,25 @@ var cardStyles = [secondaryTabStyles, i`
   .cache-dialog-input {
     width: 100%; box-sizing: border-box;
     padding: 9px 10px;
-    border: 1px solid var(--divider-color);
+    border: 1px solid var(--sb-field-border);
     border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
-    background: var(--card-background-color, var(--primary-background-color));
+    background: var(--sb-field-surface);
     color: var(--primary-text-color);
     font: inherit; font-size: 13.5px;
   }
   .cache-dialog-input:focus { outline: none; border-color: var(--primary-color); }
+  .cache-dialog-field { display: flex; flex-direction: column; gap: 4px; }
+  .cache-dialog-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--secondary-text-color); }
+  /* Native <select> in the dialog: same field surface as the text input;
+     the popup rows follow the measured theme polarity (see the note on
+     color-scheme above). */
+  .cache-dialog-select { cursor: pointer; }
+  .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
   .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
-  .inner-row:hover { background: rgba(0, 0, 0, 0.03); }
+  .inner-row:hover { background: var(--sb-overlay-hover); }
   .inner-row--clickable { cursor: pointer; }
   .inner-row--clickable:hover { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
   .inner-row--clickable:active { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
@@ -1567,6 +1621,85 @@ var cardStyles = [secondaryTabStyles, i`
     }
   }
 `];
+
+// custom_components/sofabaton_x1s/www/src/shared/styles/theme-polarity.ts
+var BLACK = { r: 0, g: 0, b: 0, a: 1 };
+var WHITE = { r: 255, g: 255, b: 255, a: 1 };
+function parseCssColor(value) {
+  const text = String(value ?? "").trim();
+  let match = text.match(/^rgba?\(([^)]+)\)$/i);
+  if (match) {
+    const parts = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    if (parts.length < 3 || parts.some((n4) => Number.isNaN(n4))) return null;
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+  }
+  match = text.match(/^color\(srgb\s+([^)]+)\)$/i);
+  if (match) {
+    const parts = match[1].split(/[\s/]+/).filter(Boolean).map(Number);
+    if (parts.length < 3 || parts.some((n4) => Number.isNaN(n4))) return null;
+    return { r: parts[0] * 255, g: parts[1] * 255, b: parts[2] * 255, a: parts.length > 3 ? parts[3] : 1 };
+  }
+  return null;
+}
+function relativeLuminance({ r: r4, g: g2, b: b3 }) {
+  const lin = (v2) => {
+    const c4 = v2 / 255;
+    return c4 <= 0.03928 ? c4 / 12.92 : ((c4 + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r4) + 0.7152 * lin(g2) + 0.0722 * lin(b3);
+}
+function contrastRatio(a3, b3) {
+  const l1 = relativeLuminance(a3);
+  const l22 = relativeLuminance(b3);
+  return (Math.max(l1, l22) + 0.05) / (Math.min(l1, l22) + 0.05);
+}
+function compositeOver(top, bottom) {
+  const a3 = top.a + bottom.a * (1 - top.a);
+  if (a3 === 0) return { r: 0, g: 0, b: 0, a: 0 };
+  const mix = (c4) => (top[c4] * top.a + bottom[c4] * bottom.a * (1 - top.a)) / a3;
+  return { r: mix("r"), g: mix("g"), b: mix("b"), a: a3 };
+}
+function formatRgb({ r: r4, g: g2, b: b3 }) {
+  const clamp = (v2) => Math.max(0, Math.min(255, Math.round(v2)));
+  return `rgb(${clamp(r4)}, ${clamp(g2)}, ${clamp(b3)})`;
+}
+function resolveThemePolarity(text, surface) {
+  const base = surface ?? { r: 255, g: 255, b: 255, a: 0 };
+  const overBlack = compositeOver(base, BLACK);
+  const overWhite = compositeOver(base, WHITE);
+  let scheme;
+  if (base.a >= 0.9) {
+    scheme = relativeLuminance(overWhite) < 0.4 ? "dark" : "light";
+  } else {
+    scheme = contrastRatio(text, overBlack) > contrastRatio(text, overWhite) ? "dark" : "light";
+  }
+  const popup = scheme === "dark" ? overBlack : overWhite;
+  return {
+    scheme,
+    ground: scheme === "dark" ? "#000000" : "#ffffff",
+    popupSurface: formatRgb({ ...popup, a: 1 })
+  };
+}
+function applyThemePolarity(host, probe) {
+  const view = probe.ownerDocument?.defaultView;
+  if (!view?.getComputedStyle) return false;
+  const computed = view.getComputedStyle(probe);
+  const text = parseCssColor(computed.color);
+  if (!text) return false;
+  const surface = parseCssColor(computed.backgroundColor);
+  const polarity = resolveThemePolarity(text, surface);
+  const style = host.style;
+  let changed = false;
+  const set = (name, value) => {
+    if (style.getPropertyValue(name) === value) return;
+    style.setProperty(name, value);
+    changed = true;
+  };
+  set("color-scheme", polarity.scheme);
+  set("--sb-scheme-ground", polarity.ground);
+  set("--sb-popup-surface", polarity.popupSurface);
+  return changed;
+}
 
 // custom_components/sofabaton_x1s/www/src/strings.ts
 var TOOLS_CARD_STRINGS_EN = {
@@ -1685,6 +1818,7 @@ var TOOLS_CARD_STRINGS_EN = {
   },
   errors: {
     backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
+    irLearnNoSocket: "Learning is unavailable without a websocket connection",
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
@@ -1693,7 +1827,12 @@ var TOOLS_CARD_STRINGS_EN = {
     noHubSelectedLong: "No hub is selected.",
     cacheRefreshFailed: "Cache refresh failed.",
     syncFailed: "Sync failed.",
-    activityIdMissing: "The hub did not return the new activity id."
+    activityIdMissing: "The hub did not return the new activity id.",
+    deviceIdMissing: "The hub did not return the new device id.",
+    deviceCreateFailed: "The device could not be created on the hub.",
+    deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
+    deviceTypeUnsupported: "This device type cannot be created on this hub.",
+    selectedHubUnavailable: "The selected hub is no longer available."
   },
   settings: {
     loading: "Loading\u2026",
@@ -1750,6 +1889,7 @@ var TOOLS_CARD_STRINGS_EN = {
     editDevice: "Edit device",
     changeOrder: "Change order",
     addActivity: "Add activity",
+    addDevice: "Add device",
     reorderSync: "Sync to Hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
@@ -1763,7 +1903,24 @@ var TOOLS_CARD_STRINGS_EN = {
     addActivityCreating: "Creating\u2026",
     reorderingActivities: "Reordering activities\u2026",
     reorderingDevices: "Reordering devices\u2026",
-    creatingActivity: "Creating activity\u2026"
+    creatingActivity: "Creating activity\u2026",
+    addDeviceTitle: "Add device",
+    addDeviceBody: "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
+    addDevicePlaceholder: "Device name",
+    addDeviceClass: "Device type",
+    addDeviceCancel: "Cancel",
+    addDeviceConfirm: "Create",
+    addDeviceCreating: "Creating\u2026",
+    addDeviceWifiHint: "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
+    creatingDevice: "Creating device\u2026",
+    deviceClassLabels: {
+      ir: "Infrared",
+      wifi_roku: "Roku",
+      wifi_hue: "Hue",
+      wifi_sonos: "Sonos",
+      wifi_ip: "Generic HTTP",
+      wifi_mqtt: "MQTT"
+    }
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).
   hubClick: {
@@ -2286,6 +2443,55 @@ var TOOLS_CARD_STRINGS_EN = {
     rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
     payloadHex: "Payload (hex bytes)",
     payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
+    prontoHexTab: "Pronto Hex",
+    sofabatonHexTab: "Sofabaton Hex",
+    descriptorTab: "Descriptor",
+    prontoHexHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB \u2026", or a supported Unfolded Circle HEX code such as "3;0x4B36D32C;32;0". The editor converts it to Sofabaton bytes automatically.',
+    prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+    invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
+    descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+    // Unfolded Circle HEX import (converted on the backend through infrared-protocols).
+    ucHexConverting: "Converting the Unfolded Circle HEX code\u2026",
+    ucHexInvalid: "This is not a valid Unfolded Circle HEX code.",
+    ucHexUnknownProtocol: "an unknown protocol",
+    ucHexUnsupported: (protocol) => `This Unfolded Circle HEX code uses ${protocol}, which is not supported. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.`,
+    ucHexUnrepresentable: "This Unfolded Circle HEX code does not match its IR protocol's format rules and cannot be converted. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.",
+    ucHexUnavailable: "Unfolded Circle HEX conversion is unavailable because the required infrared-protocols library cannot be loaded in this Home Assistant installation.",
+    ucHexNoHost: "This editor cannot convert Unfolded Circle HEX codes because conversion requires a connection to Home Assistant.",
+    ucHexFailed: "The Unfolded Circle HEX code could not be converted.",
+    // Payload-editor learn mode (IR9).
+    learn: "Learn",
+    learnAria: "Learn a payload from another remote or from Home Assistant",
+    learnBack: "Back",
+    learnTryAgain: "Try again",
+    learnFromHub: "From another remote",
+    learnFromHubDescription: "The hub's receiver listens for one button press from the IR remote whose command you want to learn.",
+    learnFromHa: "From Home Assistant",
+    learnFromHaDescription: "Anything another integration sends through the hub's infrared emitter lands here, ready to save.",
+    learnHaChecking: "Checking which integrations use the hub's emitter\u2026",
+    learnHubArming: "Arming the hub's receiver\u2026",
+    learnHubListening: "Point that remote at the hub and press the button once.",
+    learnHubCountdown: (left) => `Listening\u2026 ${left}`,
+    learnHubLearned: (timings, khz) => `Learned from the source remote: ${timings} timing values at ${khz} kHz. Test it, then Save.`,
+    learnHubLearnedRaw: "Learned from the source remote. Test it, then Save.",
+    learnHubTimedOut: "No signal arrived before the hub's learning window closed.",
+    learnHubInterrupted: (by) => `Other hub traffic ended the learning window (${by}).`,
+    learnHubCancelled: "Learning cancelled.",
+    learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
+    learnHubFailed: "Learning failed.",
+    learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
+    learnHaHelper: "Send a command from Home Assistant through the hub's emitter; it appears below the moment the hub plays it. You can leave this page and come back.",
+    learnHaConsumers: "Integrations using this hub's emitter",
+    learnHaEmpty: "Nothing captured yet.",
+    learnHaNew: "new",
+    learnHaUse: "Use",
+    learnHaSentCount: (count) => `\xD7${count}`,
+    learnHaCaptured: (label) => `Captured from Home Assistant: ${label}. Test it, then Save.`,
+    learnHaUnavailable: "Could not load recently emitted IR commands.",
+    learnJustNow: "just now",
+    learnSecondsAgo: (seconds) => `${seconds} s ago`,
+    learnMinutesAgo: (minutes) => `${minutes} min ago`,
+    learnHoursAgo: (hours) => `${hours} h ago`,
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",
@@ -2639,6 +2845,9 @@ function setToolsCardLanguage(language) {
   currentStrings = translation ? deepMerge(TOOLS_CARD_STRINGS_EN, translation) : TOOLS_CARD_STRINGS_EN;
   return true;
 }
+function toolsCardLanguage() {
+  return currentLanguage;
+}
 function hasToolsCardTranslation(language) {
   return Boolean(resolveTranslation(normalizeToolsCardLanguage(language)));
 }
@@ -2733,6 +2942,48 @@ var ControlPanelApi = class {
       blob
     });
   }
+  /**
+   * Render a foreign IR code (Unfolded Circle HEX) through the backend's
+   * protocol library. Hub-independent: no entry id, nothing is sent.
+   */
+  convertIrPayload(text, format = "uc_hex") {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/ir_payload/convert",
+      text,
+      format
+    });
+  }
+  // ── Payload-editor learn mode (IR9) ───────────────────────────────────
+  /**
+   * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
+   * then a terminal state); calling the returned unsubscribe before the
+   * terminal event cancels the window on the hub.
+   */
+  subscribeIrLearn(entryId, timeoutS, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_learn/subscribe", entry_id: entryId, timeout: Math.round(timeoutS) }
+    );
+  }
+  /** Emitter inbox: the intercept ring, replayed on connect and after every send. */
+  subscribeIrEmissions(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/ir_emissions/subscribe", entry_id: entryId }
+    );
+  }
+  getIrEmitterConsumers(entryId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/ir_emitter/consumers",
+      entry_id: entryId
+    });
+  }
   startBackupExport(entryId, deviceIds) {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/export",
@@ -2818,6 +3069,17 @@ var ControlPanelApi = class {
       type: "sofabaton_x1s/activity/create",
       entry_id: entryId,
       name
+    });
+  }
+  // Create an EMPTY device of the given class on the hub (Hub tab "Add
+  // device"); resolves with the hub-assigned device id so the caller can
+  // open the live editor on it. Commands are added there.
+  createDevice(entryId, name, deviceClass) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/create",
+      entry_id: entryId,
+      name,
+      device_class: deviceClass
     });
   }
   startCacheRefresh(entryId) {
@@ -2980,9 +3242,64 @@ var ControlPanelApi = class {
 };
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization.ts
+function conversionDetail(value) {
+  if (!value || typeof value !== "object") return null;
+  const message = value.message;
+  if (typeof message !== "string") return null;
+  const trimmed = message.trim();
+  return /^[A-Za-z0-9_ ()-]{1,40}$/.test(trimmed) ? trimmed : null;
+}
 function positiveInteger(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function normalizedErrorCode(value) {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toLowerCase();
+  return /^[a-z][a-z0-9_.-]*$/.test(code) ? code : null;
+}
+function backendErrorCode(value) {
+  if (!value || typeof value !== "object") return null;
+  const error = value;
+  const direct = normalizedErrorCode(error.error_code) ?? normalizedErrorCode(error.code);
+  if (direct) return direct;
+  return error.error && error.error !== value ? backendErrorCode(error.error) : null;
+}
+function localizeBackendError(value, surface) {
+  if (surface === "device_create") {
+    const code2 = backendErrorCode(value);
+    if (code2 === "busy" || code2 === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code2 === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
+    if (code2 === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (code2 === "device_id_missing") return TOOLS_CARD_STRINGS.errors.deviceIdMissing;
+    if (code2 === "invalid_name") return TOOLS_CARD_STRINGS.errors.deviceNameInvalid;
+    if (code2 === "unsupported_class") return TOOLS_CARD_STRINGS.errors.deviceTypeUnsupported;
+    return TOOLS_CARD_STRINGS.errors.deviceCreateFailed;
+  }
+  const S5 = TOOLS_CARD_STRINGS.backup;
+  if (surface === "ir_emissions") return S5.learnHaUnavailable;
+  if (surface === "ir_convert") {
+    const code2 = backendErrorCode(value);
+    if (code2 === "uc_hex_invalid") return S5.ucHexInvalid;
+    if (code2 === "uc_hex_unsupported_protocol" || code2 === "uc_hex_unsupported_bits") {
+      return S5.ucHexUnsupported(conversionDetail(value) ?? S5.ucHexUnknownProtocol);
+    }
+    if (code2 === "uc_hex_unrepresentable") return S5.ucHexUnrepresentable;
+    if (code2 === "unavailable") return S5.ucHexUnavailable;
+    return S5.ucHexFailed;
+  }
+  const event = value && typeof value === "object" ? value : null;
+  const state = String(event?.state || "").trim().toLowerCase();
+  const code = backendErrorCode(value);
+  if (state === "refused" || code === "ir_learn_refused" || code === "unavailable" || code === "busy" || code === "operation_locked") {
+    return S5.learnHubRefused;
+  }
+  if (code === "ir_learn_no_payload" || code === "no_payload") {
+    return S5.learnHubNoPayload;
+  }
+  return S5.learnHubFailed;
 }
 function progressStep(progress) {
   const total = positiveInteger(progress.total_steps);
@@ -3162,6 +3479,18 @@ function selectedHub(snapshot) {
   const hubs = snapshot.state?.hubs ?? [];
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
 }
+function creatableDeviceClasses(hubVersion) {
+  switch (String(hubVersion ?? "")) {
+    case "X1":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos"];
+    case "X1S":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip"];
+    case "X2":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip", "wifi_mqtt"];
+    default:
+      return [];
+  }
+}
 function selectedHubCache(snapshot) {
   const hubs = snapshot.contents?.hubs ?? [];
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
@@ -3299,6 +3628,10 @@ function remoteAvailableForHub(hass, hub) {
   const stateObject = entityId ? hass?.states?.[entityId] : null;
   const state = String(stateObject?.state ?? "").toLowerCase();
   return !!state && state !== "unavailable" && state !== "unknown";
+}
+function hubLineFor(hass, hub) {
+  const attrs = remoteAttrsForHub(hass, hub);
+  return String(attrs.hub_version || hub?.version || "").trim().toUpperCase();
 }
 function proxyClientConnected(hass, hub) {
   const attrs = remoteAttrsForHub(hass, hub);
@@ -4167,6 +4500,8 @@ var ControlPanelStore = class {
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     } finally {
       this._clearRefreshBusy(hub.entry_id);
     }
@@ -4282,6 +4617,29 @@ var ControlPanelStore = class {
     }
     await this.refreshForHub("activity", activityId, `act-${activityId}`);
     return { activityId };
+  }
+  /**
+   * Create an empty device of `deviceClass` on the hub, then pull its cache
+   * entry so the live editor can capture it right away. Resolves with the
+   * assigned device id or a stable error code. Mirrors `createActivity`.
+   */
+  async createDevice(name, deviceClass) {
+    if (this._isHubCommandBusy()) return { errorCode: "another_operation" };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { errorCode: "no_hub_selected" };
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingDevice, hub.entry_id);
+    let deviceId = 0;
+    try {
+      const result = await this.api().createDevice(hub.entry_id, name, deviceClass);
+      deviceId = Number(result?.device_id || 0);
+      if (!deviceId) return { errorCode: "device_id_missing" };
+    } catch (error) {
+      return { errorCode: backendErrorCode(error) ?? "device_create_failed" };
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.refreshForHub("device", deviceId, `dev-${deviceId}`);
+    return { deviceId };
   }
   async refreshForHub(kind, targetId, key) {
     if (this._isHubCommandBusy()) return;
@@ -5274,7 +5632,21 @@ function renderCacheTab(params) {
   `;
   const devicesFooter = b2`
     <div class="cache-list-footer">
-      ${deviceReorder ? reorderActions(S5.reorderDevicesHint) : b2`<div class="cache-footer-actions">${changeOrderButton("device", devices.length)}</div>`}
+      ${deviceReorder ? reorderActions(S5.reorderDevicesHint) : b2`
+            <div class="cache-footer-actions">
+              ${changeOrderButton("device", devices.length)}
+              ${params.addDeviceClasses.length > 0 ? b2`
+                    <button
+                      class="cache-footer-btn"
+                      ?disabled=${locked}
+                      @click=${params.onOpenAddDevice}
+                    >
+                      <ha-icon icon="mdi:plus"></ha-icon>
+                      <span>${S5.addDevice}</span>
+                    </button>
+                  ` : null}
+            </div>
+          `}
     </div>
   `;
   const activeBody = selectedSection === "activities" ? b2`${activitiesList}${activitiesFooter}` : b2`${devicesList}${devicesFooter}`;
@@ -5313,6 +5685,63 @@ function renderCacheTab(params) {
                 ?disabled=${params.addActivityBusy}
                 @click=${confirmAddActivity}
               >${params.addActivityBusy ? S5.addActivityCreating : S5.addActivityConfirm}</button>
+            </div>
+          </div>
+        </div>
+      ` : null;
+  const confirmAddDevice = (event) => {
+    const dialog = event.currentTarget.closest(".cache-dialog");
+    const input = dialog?.querySelector(".cache-dialog-input");
+    const select = dialog?.querySelector(".cache-dialog-select");
+    const name = String(input?.value || "").trim();
+    const deviceClass = String(select?.value || params.addDeviceClass || params.addDeviceClasses[0] || "");
+    if (name && deviceClass) params.onConfirmAddDevice(name, deviceClass);
+  };
+  const classLabel = (deviceClass) => S5.deviceClassLabels[deviceClass] ?? deviceClass;
+  const wifiHintClasses = /* @__PURE__ */ new Set(["wifi_ip", "wifi_mqtt"]);
+  const selectedDeviceClass = params.addDeviceClasses.includes(params.addDeviceClass) ? params.addDeviceClass : params.addDeviceClasses[0] ?? "";
+  const addDeviceDialog = params.addDeviceOpen ? b2`
+        <div class="cache-modal-backdrop" @click=${params.addDeviceBusy ? null : params.onCloseAddDevice}>
+          <div class="cache-dialog" @click=${(event) => event.stopPropagation()}>
+            <div class="cache-dialog-title">${S5.addDeviceTitle}</div>
+            <div class="cache-dialog-text">${S5.addDeviceBody}</div>
+            ${params.addDeviceError ? b2`<div class="cache-footer-error">${localizeBackendError(params.addDeviceError, "device_create")}</div>` : null}
+            <input
+              class="cache-dialog-input"
+              type="text"
+              maxlength="30"
+              placeholder=${S5.addDevicePlaceholder}
+              ?disabled=${params.addDeviceBusy}
+              @keydown=${(event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    confirmAddDevice(event);
+  }}
+            />
+            <label class="cache-dialog-field">
+              <span class="cache-dialog-label">${S5.addDeviceClass}</span>
+              <select
+                class="cache-dialog-input cache-dialog-select"
+                ?disabled=${params.addDeviceBusy}
+                @change=${(event) => params.onSelectAddDeviceClass(event.currentTarget.value)}
+              >
+                ${params.addDeviceClasses.map(
+    (deviceClass) => b2`<option value=${deviceClass} ?selected=${deviceClass === selectedDeviceClass}>${classLabel(deviceClass)}</option>`
+  )}
+              </select>
+            </label>
+            ${wifiHintClasses.has(selectedDeviceClass) ? b2`<div class="cache-dialog-hint cache-dialog-text">${S5.addDeviceWifiHint}</div>` : null}
+            <div class="cache-dialog-actions">
+              <button
+                class="cache-footer-btn"
+                ?disabled=${params.addDeviceBusy}
+                @click=${params.onCloseAddDevice}
+              >${S5.addDeviceCancel}</button>
+              <button
+                class="cache-footer-btn cache-footer-btn--primary"
+                ?disabled=${params.addDeviceBusy}
+                @click=${confirmAddDevice}
+              >${params.addDeviceBusy ? S5.addDeviceCreating : S5.addDeviceConfirm}</button>
             </div>
           </div>
         </div>
@@ -5377,6 +5806,7 @@ function renderCacheTab(params) {
     })
   })}
       ${addActivityDialog}
+      ${addDeviceDialog}
     </div>
   `;
 }
@@ -6516,9 +6946,9 @@ var backupTabStyles = i`
       align-items: baseline;
       gap: 3px;
       padding: 1px 6px 2px;
-      border: 1px solid var(--divider-color);
+      border: 1px solid var(--sb-field-border, var(--divider-color));
       border-radius: var(--backup-radius-sm);
-      background: var(--ha-card-background, var(--card-background-color));
+      background: var(--sb-field-surface, var(--ha-card-background, var(--card-background-color)));
     }
     .step-wait-field:focus-within {
       border-color: var(--primary-color);
@@ -6623,6 +7053,14 @@ var backupTabStyles = i`
     }
     .delete-replace-note ha-icon { --mdc-icon-size: 16px; flex: 0 0 auto; }
     select.decoded-field-input { cursor: pointer; }
+    /* Native select popups: Chromium draws the option rows from these
+       computed values. The row colour must be opaque (the host measures the
+       theme and writes --sb-popup-surface; shared/styles/theme-polarity.ts)
+       or a glass theme gets white-on-white options. */
+    select.decoded-field-input option {
+      background-color: var(--sb-popup-surface, var(--sb-field-surface, var(--secondary-background-color)));
+      color: var(--primary-text-color);
+    }
     .binding-toggle-row {
       display: flex;
       align-items: center;
@@ -6702,6 +7140,45 @@ var backupTabStyles = i`
       gap: 10px;
     }
     .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
+    .payload-format-tabs {
+      display: flex;
+      gap: 2px;
+      align-items: flex-end;
+    }
+    .payload-format-tab {
+      appearance: none;
+      border: none;
+      background: none;
+      padding: 4px 10px 5px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+      border-bottom: 2px solid transparent;
+      border-radius: 4px 4px 0 0;
+      cursor: pointer;
+    }
+    /* Hover paints the card's own overlay, not HA's neutral fill: that
+       token is opaque light grey under every light-mode theme, glass
+       themes with white text included. */
+    .payload-format-tab:hover:not(:disabled):not(.active) {
+      color: var(--primary-text-color);
+      background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
+    }
+    .payload-format-tab:active:not(:disabled):not(.active) {
+      background: var(--sb-overlay-press, color-mix(in srgb, var(--primary-text-color) 18%, transparent));
+    }
+    .payload-format-tab.active {
+      color: var(--sb-accent-text, var(--primary-color));
+      border-bottom-color: var(--primary-color);
+      cursor: default;
+    }
+    .payload-format-tab:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .payload-format-error { color: var(--error-color, #b3261e); }
     .decoded-form-title {
       font-size: 13px;
       font-weight: 600;
@@ -6730,8 +7207,8 @@ var backupTabStyles = i`
       font: inherit;
       font-size: 13px;
       color: var(--primary-text-color);
-      background: var(--ha-color-form-background, var(--secondary-background-color));
-      border: 1px solid var(--divider-color);
+      background: var(--sb-field-surface, var(--ha-color-form-background, var(--secondary-background-color)));
+      border: 1px solid var(--sb-field-border, var(--divider-color));
       border-radius: var(--backup-radius-sm);
       padding: 8px 10px;
     }
@@ -6771,8 +7248,11 @@ var backupTabStyles = i`
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
+      /* Fields in dialogs, native and HA (ha-input / ha-textfield), share
+         the card's field surface; the theme's own input fill is not trusted
+         (Caule aliases it to the primary colour). */
       --ha-color-form-background: var(
-        --input-fill-color,
+        --sb-field-surface,
         var(
           --secondary-background-color,
           color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
@@ -7254,7 +7734,7 @@ var activityEditorStyles = i`
     cursor: pointer;
   }
   .member-add-option:hover {
-    background: var(--secondary-background-color);
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
   }
   .member-add-empty {
     padding: 8px 10px;
@@ -7369,6 +7849,232 @@ var addButtonStyles = i`
   .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
   .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; color: var(--primary-color); }
 `;
+
+// custom_components/sofabaton_x1s/www/src/shared/ir-format.ts
+var IrFormatError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "IrFormatError";
+  }
+};
+var RAW_IR_DEFAULT_TRAILING_GAP_US = 4e4;
+var PRONTO_REFERENCE_HZ = 4145146;
+var PRONTO_MAX_WORD = 65535;
+function roundHalfEven(value) {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (diff > 0.5) return floor + 1;
+  if (diff < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+function parseProntoHex(text) {
+  const tokens = text.trim().split(/\s+/).filter((t4) => t4.length > 0);
+  const words = tokens.map((token) => {
+    const value = /^[0-9a-fA-F]+$/.test(token) ? parseInt(token, 16) : NaN;
+    if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
+    return value;
+  });
+  if (words.length < 6) {
+    throw new IrFormatError("ir-format/pronto-too-short");
+  }
+  if (words.some((w2) => w2 < 0 || w2 > 65535)) {
+    throw new IrFormatError("ir-format/pronto-word-range");
+  }
+  const [preamble, freqWord, oncePairs, repeatPairs] = words;
+  if (preamble !== 0) {
+    throw new IrFormatError("ir-format/pronto-not-learned-format");
+  }
+  if (freqWord === 0) throw new IrFormatError("ir-format/pronto-zero-frequency");
+  const expected = 4 + 2 * (oncePairs + repeatPairs);
+  if (words.length !== expected) {
+    throw new IrFormatError("ir-format/pronto-count-mismatch");
+  }
+  const carrierHz = roundHalfEven(PRONTO_REFERENCE_HZ / freqWord);
+  let count;
+  if (oncePairs > 0) {
+    count = 2 * oncePairs;
+  } else if (repeatPairs > 0) {
+    count = 2 * repeatPairs;
+  } else {
+    throw new IrFormatError("ir-format/pronto-empty");
+  }
+  const section = words.slice(4, 4 + count);
+  if (section.some((w2) => w2 === 0)) throw new IrFormatError("ir-format/pronto-zero-timing");
+  const cycleUs = 1e6 / carrierHz;
+  const timingsUs = section.map((w2) => Math.max(1, roundHalfEven(w2 * cycleUs)));
+  return { timingsUs, carrierHz };
+}
+function renderProntoHex(signal) {
+  const { carrierHz } = signal;
+  const durations = normalizeTimings(signal);
+  const freqWord = Math.max(
+    1,
+    Math.min(PRONTO_MAX_WORD, roundHalfEven(PRONTO_REFERENCE_HZ / carrierHz))
+  );
+  const cyclesPerUs = carrierHz / 1e6;
+  const words = [0, freqWord, durations.length / 2, 0];
+  for (const value of durations) {
+    words.push(Math.max(1, Math.min(PRONTO_MAX_WORD, roundHalfEven(value * cyclesPerUs))));
+  }
+  return words.map((w2) => w2.toString(16).toUpperCase().padStart(4, "0")).join(" ");
+}
+function parseSofabatonBlob(hexText) {
+  const blob = hexToBytes(hexText);
+  if (blob.length < 8 + 2 * 4 + 4) {
+    throw new IrFormatError("ir-format/blob-too-short");
+  }
+  if (looksLikeDescriptorBlob(blob)) {
+    throw new IrFormatError("ir-format/blob-descriptive");
+  }
+  const carrierHz = blob[6] << 8 | blob[7];
+  if (carrierHz < 1e4 || carrierHz > 5e5) {
+    throw new IrFormatError("ir-format/blob-carrier");
+  }
+  const wordAt = (pos) => blob[pos] * 16777216 + blob[pos + 1] * 65536 + blob[pos + 2] * 256 + blob[pos + 3];
+  let timingsUs = [];
+  const declaredBytes = (blob[0] << 8 | blob[1]) + (blob[2] << 8 | blob[3]);
+  if (declaredBytes > 0 && declaredBytes % 4 === 0 && 8 + declaredBytes + 4 <= blob.length) {
+    for (let pos = 8; pos < 8 + declaredBytes; pos += 4) timingsUs.push(wordAt(pos));
+    if (timingsUs.some((v2) => v2 === 0)) timingsUs = [];
+  }
+  if (timingsUs.length === 0) {
+    let terminated = false;
+    for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
+      const word = wordAt(pos);
+      if (word === 0) {
+        terminated = true;
+        break;
+      }
+      timingsUs.push(word);
+    }
+    if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  }
+  if (timingsUs.length < 2) {
+    throw new IrFormatError("ir-format/blob-too-few-timings");
+  }
+  if (timingsUs.some((v2) => v2 < 20 || v2 > 2e6)) {
+    throw new IrFormatError("ir-format/blob-timing-range");
+  }
+  return { timingsUs, carrierHz };
+}
+function buildSofabatonBlob(signal) {
+  const { carrierHz } = signal;
+  if (!(carrierHz > 0 && carrierHz < 65536)) {
+    throw new IrFormatError("ir-format/carrier-range");
+  }
+  const durations = normalizeTimings(signal);
+  if (4 * durations.length >= 65536) {
+    throw new IrFormatError("ir-format/too-many-timings");
+  }
+  const bytes = [];
+  pushBe16(bytes, 4 * durations.length);
+  bytes.push(0, 0, 0, 0);
+  pushBe16(bytes, carrierHz);
+  for (const value of durations) {
+    if (value >= 4294967296) throw new IrFormatError("ir-format/timing-range");
+    bytes.push(value >>> 24 & 255, value >>> 16 & 255, value >>> 8 & 255, value & 255);
+  }
+  bytes.push(0, 0, 0, 0);
+  return bytes.map((b3) => b3.toString(16).padStart(2, "0")).join("");
+}
+var UC_HEX_RE = /^\s*([A-Za-z_0-9]+)\s*;\s*(?:0[xX])?([0-9A-Fa-f]+)\s*;\s*(\d+)\s*;\s*(\d+)\s*$/;
+function isUcHexCode(text) {
+  return UC_HEX_RE.test(text);
+}
+function unwrapUcCodesetRow(text) {
+  const trimmed = text.trim();
+  if (!trimmed.includes(",")) return null;
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '"') {
+      if (quoted && trimmed[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  const values = cells.map((cell) => cell.trim());
+  const formatIndex = values.findIndex((cell) => /^(HEX|PRONTO)$/i.test(cell));
+  if (formatIndex < 0 || formatIndex + 1 >= values.length) return null;
+  const format = values[formatIndex].toUpperCase();
+  const code = values.slice(formatIndex + 1).join(",").trim();
+  if (!code) return null;
+  const name = formatIndex > 0 ? values.slice(0, formatIndex).join(",").trim() : "";
+  return { name: name || null, format, code };
+}
+function resolveUcPaste(text) {
+  const row = unwrapUcCodesetRow(text);
+  if (row) {
+    if (row.format === "HEX" && isUcHexCode(row.code)) {
+      return { name: row.name, kind: "uc_hex", code: row.code.trim() };
+    }
+    if (row.format === "PRONTO" && detectIrPayloadFormat(row.code) === "pronto") {
+      return { name: row.name, kind: "pronto", code: row.code.trim() };
+    }
+    return null;
+  }
+  if (isUcHexCode(text)) return { name: null, kind: "uc_hex", code: text.trim() };
+  return null;
+}
+function detectIrPayloadFormat(text) {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return "unknown";
+  if (/^P:/i.test(trimmed)) return "descriptor";
+  if (isUcHexCode(trimmed)) return "uc_hex";
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length >= 6 && tokens.every((t4) => /^[0-9a-fA-F]{4}$/.test(t4)) && parseInt(tokens[0], 16) === 0) {
+    const once = parseInt(tokens[2], 16);
+    const repeat = parseInt(tokens[3], 16);
+    if (tokens.length === 4 + 2 * (once + repeat)) return "pronto";
+  }
+  if (/^[0-9a-fA-F\s]+$/.test(trimmed)) return "sofabaton";
+  return "unknown";
+}
+function normalizeTimings(signal) {
+  if (signal.timingsUs.length === 0) {
+    throw new IrFormatError("ir-format/empty");
+  }
+  const durations = signal.timingsUs.map((v2) => Math.abs(Math.trunc(v2)));
+  if (durations.some((v2) => v2 === 0)) {
+    throw new IrFormatError("ir-format/zero-timing");
+  }
+  if (durations.length % 2 === 1) durations.push(RAW_IR_DEFAULT_TRAILING_GAP_US);
+  return durations;
+}
+function looksLikeDescriptorBlob(blob) {
+  const magic = [0, 0, 17, 0, 148, 112];
+  return blob.length >= 8 && magic.every((b3, i7) => blob[2 + i7] === b3);
+}
+function pushBe16(bytes, value) {
+  bytes.push(value >>> 8 & 255, value & 255);
+}
+function hexToBytes(hexText) {
+  const clean = hexText.replace(/\s+/g, "");
+  if (clean.length === 0 || clean.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(clean)) {
+    throw new IrFormatError("ir-format/not-hex-bytes");
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i7 = 0; i7 < out.length; i7 += 1) {
+    out[i7] = parseInt(clean.slice(2 * i7, 2 * i7 + 2), 16);
+  }
+  return out;
+}
+function formatHexForDisplay(hexText) {
+  const clean = hexText.replace(/\s+/g, "").toLowerCase();
+  return clean.replace(/(..)/g, "$1 ").trim();
+}
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
@@ -8012,6 +8718,31 @@ function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
 }
 function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
   return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
+}
+function defaultDecodedSnapshotForClass(deviceClass, options) {
+  const className = normalizeDecodableClass(deviceClass);
+  if (!className || className === "ir") return null;
+  let fields;
+  switch (className) {
+    case "wifi_ip":
+      fields = { host: "", port: 80, method: "GET", path: "/", header: "", content_type: "", body: "" };
+      break;
+    case "wifi_roku":
+      fields = { path: "keypress/" };
+      break;
+    case "wifi_hue":
+      fields = { path: "api/", body_block: "" };
+      break;
+    case "wifi_sonos":
+      fields = { path: "MediaRenderer/AVTransport/Control", body_block: "" };
+      break;
+    case "wifi_mqtt":
+      fields = { device_id: options.deviceId & 255, command_id: (options.commandId ?? 1) & 255 };
+      break;
+    default:
+      return null;
+  }
+  return { className, fields, trailerHex: "", edited: false };
 }
 function nextFreeDeviceCommandId(bundle, deviceId) {
   if (!bundle) return null;
@@ -9474,11 +10205,26 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
 var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
+var LEARN_TIMEOUT_S = 60;
+function formatCarrierKhz(carrierHz) {
+  const locale = toolsCardLanguage() || "en";
+  try {
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    }).format(carrierHz / 1e3);
+  } catch {
+    return (carrierHz / 1e3).toFixed(1);
+  }
+}
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function bundleSupportsUnicodeNames(bundle) {
   const version = String(bundle?.hub?.version || "").toUpperCase();
   return version.includes("X2") || version.includes("X1S");
+}
+function bundleIsX2(bundle) {
+  return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
 }
 function sanitizeBundleName(bundle, value) {
   const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
@@ -9535,13 +10281,33 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogDecodedSnapshot = null;
     this._payloadDialogRawSnapshot = "";
     this._payloadDialogRawDraft = "";
+    // ── IR hex format tabs (IR8) ───────────────────────────────────────
+    // For IR devices the raw-payload textarea carries two projections of
+    // one canonical signal: the Sofabaton blob (always the byte source of
+    // truth for Test/Save via _payloadDialogRawDraft) and its pronto hex
+    // rendering. Pronto is the default view; it is unavailable when the
+    // stored bytes do not parse as raw timings (descriptive payloads,
+    // unknown variants) and the sofabaton tab then acts as passthrough.
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoDraft = "";
+    this._payloadDialogProntoAvailable = true;
+    this._payloadDialogFormatError = "";
     this._payloadDialogError = "";
+    // ── Foreign IR codes (Unfolded Circle HEX) ─────────────────────────
+    // Detection is local (the shape is exact); rendering needs protocol
+    // knowledge and runs on the backend through the host callback. While a
+    // conversion is in flight the sofabaton bytes are stale, so Test/Save
+    // wait for it; a newer paste supersedes an older one via the sequence.
+    this._payloadDialogConverting = false;
+    this._payloadConversionSeq = 0;
     // ── Live payload editing (host-provided I/O) ───────────────────────
     // The detail view is hass-free; the live Activities host injects these
     // to fetch a command's blob on demand and to Test it on the hub. Absent
     // in backup mode (the payload already lives in the bundle there).
     this.fetchCommandPayload = null;
     this.testCommandPayload = null;
+    // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
+    this.convertForeignPayload = null;
     this._payloadFetchingCommandId = null;
     this._payloadFetchError = "";
     this._payloadLiveFetched = null;
@@ -9555,6 +10321,31 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogAddMode = false;
     this._payloadDialogNameDraft = "";
     this._addCommandPreparing = false;
+    // ── Learn mode of the payload dialog (IR9, live IR devices only) ───
+    // Two capture sources with opposite shapes. The hub receiver is a
+    // *listener*: one armed window per attempt, countdown, cancel. The HA
+    // emitter is an *inbox*: the backend's intercept ring, replayed on
+    // subscribe and pushed on every send, so nothing has to stay alive in
+    // the browser while the user walks off to press a button elsewhere.
+    // "New" is judged against the ring as first seen when learn mode
+    // opened (payload -> timestamp), never against the browser clock.
+    this.irLearn = null;
+    this._payloadLearnView = "off";
+    this._payloadLearnHubState = "arming";
+    this._payloadLearnHubEvent = null;
+    this._payloadLearnHubDeadline = 0;
+    this._payloadLearnSecondsLeft = 0;
+    this._payloadLearnHubCancel = null;
+    this._payloadLearnHubAttempt = 0;
+    this._payloadLearnTicker = null;
+    this._payloadLearnEmissions = [];
+    this._payloadLearnEmissionsUnsub = null;
+    this._payloadLearnEmissionsError = null;
+    this._payloadLearnBaseline = null;
+    this._payloadLearnHaAvailable = null;
+    this._payloadLearnConsumers = [];
+    this._payloadLearnSourceNote = "";
+    this._payloadLearnNow = Date.now();
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
@@ -9659,6 +10450,34 @@ var SofabatonEditDetailView = class extends i4 {
       if (!pending) return;
       this._applyRoleAssign(pending.group, pending.deviceId);
     };
+    this._handleProntoPayloadInput = (event) => {
+      const input = event.currentTarget;
+      const text = input.value;
+      this._payloadDialogError = "";
+      if (this._tryForeignPaste(text)) return;
+      this._payloadConversionSeq += 1;
+      this._payloadDialogConverting = false;
+      const detected = detectIrPayloadFormat(text);
+      if (detected === "descriptor") {
+        if (bundleIsX2(this.bundle)) {
+          this._morphToDescriptor(text);
+          return;
+        }
+        this._payloadDialogProntoDraft = text;
+        this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+        return;
+      }
+      if (detected === "sofabaton") {
+        try {
+          parseSofabatonBlob(text);
+          this._morphToHex(text, "sofabaton");
+          return;
+        } catch {
+        }
+      }
+      this._payloadDialogProntoDraft = text;
+      this._applyProntoDraft(text);
+    };
     this._handleAddCommandNameInput = (event) => {
       const input = event.currentTarget;
       const value = sanitizeBundleName(this.bundle, input.value);
@@ -9668,11 +10487,51 @@ var SofabatonEditDetailView = class extends i4 {
     };
     this._handleRawPayloadInput = (event) => {
       const input = event.currentTarget;
-      this._payloadDialogRawDraft = input.value;
+      const text = input.value;
       this._payloadDialogError = "";
+      if (this._liveDeviceIsIr()) {
+        if (this._tryForeignPaste(text)) return;
+        this._payloadConversionSeq += 1;
+        this._payloadDialogConverting = false;
+        const detected = detectIrPayloadFormat(text);
+        if (detected === "pronto") {
+          this._morphToHex(text, "pronto");
+          return;
+        }
+        if (detected === "descriptor") {
+          if (bundleIsX2(this.bundle)) {
+            this._morphToDescriptor(text);
+            return;
+          }
+          this._payloadDialogRawDraft = text;
+          this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+          return;
+        }
+        this._payloadDialogRawDraft = text;
+        this._payloadDialogFormatError = "";
+        this._syncProntoFromRaw();
+        return;
+      }
+      this._payloadDialogRawDraft = text;
     };
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
+      if (fieldKey === "descriptor" && this._payloadDialogDecodedSnapshot?.className === "ir") {
+        if (this._tryForeignPaste(input.value)) return;
+        const detected = detectIrPayloadFormat(input.value);
+        if (detected === "pronto") {
+          this._morphToHex(input.value, "pronto");
+          return;
+        }
+        if (detected === "sofabaton") {
+          try {
+            parseSofabatonBlob(input.value);
+            this._morphToHex(input.value, "sofabaton");
+            return;
+          } catch {
+          }
+        }
+      }
       this._payloadDialogDecodedDrafts = {
         ...this._payloadDialogDecodedDrafts,
         [fieldKey]: input.value
@@ -9708,6 +10567,10 @@ var SofabatonEditDetailView = class extends i4 {
       this._editRenameDialogOpen = true;
     };
     this._closeCommandPayloadDialog = () => {
+      this._exitLearnMode();
+      this._payloadLearnSourceNote = "";
+      this._payloadConversionSeq += 1;
+      this._payloadDialogConverting = false;
       this._payloadDialogOpen = false;
       this._payloadDialogTarget = null;
       this._payloadDialogDecodedSnapshot = null;
@@ -9720,10 +10583,22 @@ var SofabatonEditDetailView = class extends i4 {
       this._payloadDialogTestError = "";
       this._payloadDialogAddMode = false;
       this._payloadDialogNameDraft = "";
+      this._payloadDialogHexTab = "pronto";
+      this._payloadDialogProntoDraft = "";
+      this._payloadDialogProntoAvailable = true;
+      this._payloadDialogFormatError = "";
     };
     this._applyCommandPayloadDialog = () => {
       const target = this._payloadDialogTarget;
       if (!target || !this.bundle) return;
+      if (this._payloadDialogFormatError) {
+        this._payloadDialogError = this._payloadDialogFormatError;
+        return;
+      }
+      if (this._payloadDialogConverting) {
+        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
+        return;
+      }
       if (this._payloadDialogAddMode) {
         this._applyAddCommandDialog(target);
         return;
@@ -11155,7 +12030,7 @@ var SofabatonEditDetailView = class extends i4 {
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${this._payloadDialogAddMode ? b2`
+            ${this._payloadDialogAddMode && this._payloadLearnView === "off" ? b2`
                   <label class="decoded-field">
                     <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
                     <input
@@ -11170,8 +12045,14 @@ var SofabatonEditDetailView = class extends i4 {
                     <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
                   </label>
                 ` : A}
-            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._renderRawPayloadForm()}
-            ${this._liveDeviceIsIr() ? b2`
+            ${this._payloadLearnView !== "off" ? this._renderLearnPanel() : decoded ? this._renderDecodedPayloadForm(decoded.className) : this._liveDeviceIsIr() ? this._renderIrHexPayloadForm() : this._renderRawPayloadForm()}
+            ${this._payloadLearnView === "off" && this._payloadLearnSourceNote ? b2`
+                  <div class="section-status payload-test-status success" role="status" aria-live="polite">
+                    <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+                    <span>${this._payloadLearnSourceNote}</span>
+                  </div>
+                ` : A}
+            ${this._payloadLearnView === "off" && this._liveDeviceIsIr() ? b2`
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
@@ -11179,7 +12060,7 @@ var SofabatonEditDetailView = class extends i4 {
                     </span>
                   </div>
                 ` : A}
-            ${this._payloadDialogTestStatus !== "idle" ? b2`
+            ${this._payloadLearnView === "off" && this._payloadDialogTestStatus !== "idle" ? b2`
                   <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
                     <ha-icon icon=${this._payloadDialogTestStatus === "success" ? "mdi:check-circle-outline" : this._payloadDialogTestStatus === "error" ? "mdi:alert-circle-outline" : "mdi:progress-clock"}></ha-icon>
                     <span>
@@ -11189,9 +12070,10 @@ var SofabatonEditDetailView = class extends i4 {
                 ` : A}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._payloadDialogError}</div>
+            <div class="dialog-footer-note">${this._payloadLearnView === "off" ? this._payloadDialogError : ""}</div>
             <div class="dialog-footer-actions">
-              ${this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? b2`
+              ${this._payloadLearnView !== "off" ? this._renderLearnFooterActions() : A}
+              ${this._payloadLearnView === "off" && this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? b2`
                     <button
                       class="dialog-btn payload-test-btn"
                       ?disabled=${this._payloadDialogTestStatus === "testing"}
@@ -11201,13 +12083,193 @@ var SofabatonEditDetailView = class extends i4 {
                       <span>${TOOLS_CARD_STRINGS.backup.test}</span>
                     </button>
                   ` : A}
-              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+              ${this._payloadLearnView === "off" ? b2`
+                    <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+                    <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+                  ` : A}
             </div>
           </div>
         </div>
       </div>
     `;
+  }
+  // ── Learn mode rendering (IR9) ─────────────────────────────────────
+  _renderLearnEntryButton() {
+    if (!this._learnAvailable()) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <button
+        class="payload-learn-btn"
+        type="button"
+        title=${S5.learnAria}
+        aria-label=${S5.learnAria}
+        @click=${() => void this._enterLearnMode()}
+      >
+        <ha-icon icon="mdi:import"></ha-icon>
+        <span>${S5.learn}</span>
+      </button>
+    `;
+  }
+  _renderLearnPanel() {
+    switch (this._payloadLearnView) {
+      case "menu":
+        return this._renderLearnMenu();
+      case "hub":
+        return this._renderLearnHub();
+      case "ha":
+        return this._renderLearnInbox();
+      default:
+        return A;
+    }
+  }
+  _renderLearnMenu() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <div class="learn-panel" data-learn-view="menu">
+        <button class="learn-option" type="button" @click=${() => void this._startHubLearn()}>
+          <ha-icon icon="mdi:remote"></ha-icon>
+          <span class="learn-option-body">
+            <span class="learn-option-title">${S5.learnFromHub}</span>
+            <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
+          </span>
+          <ha-icon icon="mdi:chevron-right"></ha-icon>
+        </button>
+        ${this._learnHaOptionVisible() ? b2`
+              <button class="learn-option" type="button" @click=${() => this._openLearnInbox()}>
+                <ha-icon icon="mdi:home-assistant"></ha-icon>
+                <span class="learn-option-body">
+                  <span class="learn-option-title">${S5.learnFromHa}</span>
+                  <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
+                </span>
+                <ha-icon icon="mdi:chevron-right"></ha-icon>
+              </button>
+            ` : this._payloadLearnHaAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
+      </div>
+    `;
+  }
+  _renderLearnHub() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const state = this._payloadLearnHubState;
+    const event = this._payloadLearnHubEvent;
+    let icon = "mdi:remote";
+    let title = "";
+    let detail = "";
+    switch (state) {
+      case "arming":
+        icon = "mdi:progress-clock";
+        title = S5.learnHubArming;
+        break;
+      case "listening":
+        title = S5.learnHubListening;
+        detail = S5.learnHubCountdown(this._formatCountdown(this._payloadLearnSecondsLeft));
+        break;
+      case "timed_out":
+        icon = "mdi:timer-off-outline";
+        title = S5.learnHubTimedOut;
+        break;
+      case "interrupted":
+        icon = "mdi:alert-circle-outline";
+        title = S5.learnHubInterrupted(String(event?.interrupted_by || "?"));
+        break;
+      case "cancelled":
+        icon = "mdi:cancel";
+        title = S5.learnHubCancelled;
+        break;
+      case "refused":
+        icon = "mdi:alert-circle-outline";
+        title = localizeBackendError(event, "ir_learn");
+        break;
+      case "error":
+        icon = "mdi:alert-circle-outline";
+        title = localizeBackendError(event, "ir_learn");
+        break;
+      default:
+        title = S5.learnHubListening;
+    }
+    return b2`
+      <div class="learn-panel" data-learn-view="hub">
+        <div class="learn-stage ${state}" role="status" aria-live="polite">
+          <ha-icon icon=${icon}></ha-icon>
+          <div class="learn-stage-copy">
+            <div class="learn-stage-title">${title}</div>
+            ${detail ? b2`<div class="learn-stage-detail">${detail}</div>` : A}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderLearnInbox() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const chips = this._payloadLearnConsumers.map((consumer) => ({
+      name: consumer.title || consumer.domain,
+      entity_id: consumer.entities.map((entity) => entity.entity_id).join(", ") || consumer.domain
+    }));
+    const emissions = [...this._payloadLearnEmissions].reverse();
+    return b2`
+      <div class="learn-panel" data-learn-view="ha">
+        <div class="learn-inbox-help">${S5.learnHaHelper}</div>
+        ${chips.length ? b2`
+              <div class="learn-consumers">
+                <span class="learn-consumers-label">${S5.learnHaConsumers}</span>
+                <div class="learn-chips">
+                  ${chips.map((chip) => b2`<span class="learn-chip" title=${chip.entity_id}>${chip.name}</span>`)}
+                </div>
+              </div>
+            ` : A}
+        ${this._payloadLearnEmissionsError ? b2`
+              <div class="section-status error" role="alert">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${localizeBackendError(this._payloadLearnEmissionsError, "ir_emissions")}</span>
+              </div>
+            ` : A}
+        <div class="learn-inbox-list" role="list">
+          ${emissions.length ? emissions.map((rec) => this._renderInboxRow(rec)) : b2`
+                <div class="learn-inbox-empty">
+                  <ha-icon icon="mdi:tray-arrow-down"></ha-icon>
+                  <span>${S5.learnHaEmpty}</span>
+                </div>
+              `}
+        </div>
+      </div>
+    `;
+  }
+  _renderInboxRow(rec) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const isNew = this._emissionIsNew(rec);
+    const meta = [this._learnTimeAgo(rec.when)];
+    if (Number(rec.count) > 1) meta.push(S5.learnHaSentCount(Number(rec.count)));
+    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
+    return b2`
+      <button
+        class="learn-inbox-row ${isNew ? "is-new" : ""}"
+        type="button"
+        role="listitem"
+        @click=${() => this._useEmission(rec)}
+      >
+        <span class="learn-inbox-main">
+          <span class="learn-inbox-label">${this._emissionDisplayName(rec)}</span>
+          <span class="learn-inbox-meta">${meta.filter(Boolean).join(" \xB7 ")}</span>
+        </span>
+        ${isNew ? b2`<span class="learn-badge">${S5.learnHaNew}</span>` : A}
+        <span class="learn-inbox-use">${S5.learnHaUse}</span>
+      </button>
+    `;
+  }
+  _renderLearnFooterActions() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    if (this._payloadLearnView === "menu") {
+      return b2`<button class="dialog-btn" @click=${() => this._exitLearnMode()}>${S5.learnBack}</button>`;
+    }
+    if (this._payloadLearnView === "hub") {
+      const terminal = this._hubLearnIsTerminal();
+      return b2`
+        ${terminal ? b2`<button class="dialog-btn dialog-btn-primary" @click=${() => void this._startHubLearn()}>${S5.learnTryAgain}</button>` : A}
+        <button class="dialog-btn" @click=${() => this._backToLearnMenu()}>
+          ${terminal ? S5.learnBack : TOOLS_CARD_STRINGS.common.cancel}
+        </button>
+      `;
+    }
+    return b2`<button class="dialog-btn" @click=${() => this._backToLearnMenu()}>${S5.learnBack}</button>`;
   }
   _renderRawPayloadForm() {
     return b2`
@@ -11235,15 +12297,186 @@ var SofabatonEditDetailView = class extends i4 {
       </div>
     `;
   }
+  /**
+   * IR payload entry with format tabs (IR8): PRONTO HEX (default) and
+   * SOFABATON HEX are two views of the same signal. Sofabaton bytes in
+   * `_payloadDialogRawDraft` stay the source of truth for Test/Save;
+   * pronto edits write through via conversion. Pasting a descriptive
+   * `P:` payload morphs the dialog into descriptor mode (X2 only).
+   */
+  _renderIrHexPayloadForm() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const tab = this._payloadDialogProntoAvailable ? this._payloadDialogHexTab : "sofabaton";
+    const prontoActive = tab === "pronto";
+    return b2`
+      <div class="decoded-form">
+        <div class="payload-format-tabs" role="tablist">
+          <button
+            class="payload-format-tab ${prontoActive ? "active" : ""}"
+            role="tab"
+            aria-selected=${prontoActive ? "true" : "false"}
+            ?disabled=${!this._payloadDialogProntoAvailable}
+            title=${this._payloadDialogProntoAvailable ? "" : S5.prontoUnavailable}
+            @click=${() => this._selectHexTab("pronto")}
+          >${S5.prontoHexTab}</button>
+          <button
+            class="payload-format-tab ${prontoActive ? "" : "active"}"
+            role="tab"
+            aria-selected=${prontoActive ? "false" : "true"}
+            @click=${() => this._selectHexTab("sofabaton")}
+          >${S5.sofabatonHexTab}</button>
+          ${this._renderLearnEntryButton()}
+        </div>
+        <label class="decoded-field">
+          <textarea
+            class="decoded-field-input decoded-field-input--multiline"
+            rows="6"
+            spellcheck="false"
+            .value=${prontoActive ? this._payloadDialogProntoDraft : this._payloadDialogRawDraft}
+            @input=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
+            @change=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
+          ></textarea>
+          <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
+            ${this._payloadDialogFormatError || (this._payloadDialogConverting ? S5.ucHexConverting : "") || (prontoActive ? S5.prontoHexHelper : S5.payloadHexHelper)}
+          </span>
+        </label>
+      </div>
+    `;
+  }
+  _selectHexTab(tab) {
+    if (tab === "pronto" && !this._payloadDialogProntoAvailable) return;
+    this._payloadDialogHexTab = tab;
+    this._payloadDialogFormatError = "";
+  }
+  /** Map an IrFormatError to a user string; anything else falls through. */
+  _irFormatMessage(error, fallback) {
+    if (error instanceof IrFormatError) return `${fallback} (${error.code})`;
+    return fallback;
+  }
+  /**
+   * Re-derive the pronto projection after the sofabaton draft changed.
+   * Unparseable bytes are legal (passthrough for unknown variants); they
+   * only disable the pronto tab.
+   */
+  _syncProntoFromRaw() {
+    try {
+      const signal = parseSofabatonBlob(this._payloadDialogRawDraft);
+      this._payloadDialogProntoDraft = renderProntoHex(signal);
+      this._payloadDialogProntoAvailable = true;
+    } catch {
+      this._payloadDialogProntoDraft = "";
+      this._payloadDialogProntoAvailable = false;
+    }
+  }
+  /** Morph the open dialog to descriptor mode from pasted `P:` text. */
+  _morphToDescriptor(text) {
+    this._payloadDialogDecodedSnapshot = {
+      className: "ir",
+      fields: { descriptor: "" },
+      trailerHex: "",
+      edited: false
+    };
+    this._payloadDialogDecodedDrafts = { descriptor: text.trim() };
+    this._payloadDialogFormatError = "";
+  }
+  /** Morph the open dialog from descriptor mode to the hex tabs. */
+  _morphToHex(text, format) {
+    this._payloadDialogDecodedSnapshot = null;
+    this._payloadDialogDecodedDrafts = {};
+    this._payloadDialogFormatError = "";
+    if (format === "pronto") {
+      this._payloadDialogHexTab = "pronto";
+      this._payloadDialogProntoDraft = text.trim();
+      this._applyProntoDraft(text.trim());
+    } else {
+      this._payloadDialogHexTab = "sofabaton";
+      this._payloadDialogRawDraft = text.trim();
+      this._syncProntoFromRaw();
+    }
+  }
+  /**
+   * Unfolded Circle paste (IR10): a bare `<protocol>;<0xvalue>;<bits>;<repeat>`
+   * HEX code or a whole codeset CSV row. PRONTO rows unwrap locally; HEX
+   * codes go to the backend, which renders them through infrared-protocols
+   * and returns both hex projections. Returns false when the text is not a
+   * UC paste so the caller continues with its own handling.
+   */
+  _tryForeignPaste(text) {
+    const paste = resolveUcPaste(text);
+    if (!paste) return false;
+    if (paste.name && this._payloadDialogAddMode && !this._payloadDialogNameDraft.trim()) {
+      this._payloadDialogNameDraft = sanitizeBundleName(this.bundle, paste.name);
+    }
+    if (paste.kind === "pronto") {
+      this._morphToHex(paste.code, "pronto");
+      return true;
+    }
+    void this._convertForeignCode(paste.code, "uc_hex");
+    return true;
+  }
+  async _convertForeignCode(code, format) {
+    this._payloadDialogDecodedSnapshot = null;
+    this._payloadDialogDecodedDrafts = {};
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoAvailable = true;
+    this._payloadDialogProntoDraft = code;
+    this._payloadDialogFormatError = "";
+    const seq = ++this._payloadConversionSeq;
+    if (!this.convertForeignPayload) {
+      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.ucHexNoHost;
+      return;
+    }
+    this._payloadDialogConverting = true;
+    try {
+      const result = await this.convertForeignPayload(code, format);
+      if (seq !== this._payloadConversionSeq) return;
+      this._morphToHex(formatHexForDisplay(result.sofabaton_hex), "sofabaton");
+      this._payloadDialogHexTab = "pronto";
+    } catch (error) {
+      if (seq !== this._payloadConversionSeq) return;
+      this._payloadDialogFormatError = localizeBackendError(error, "ir_convert");
+    } finally {
+      if (seq === this._payloadConversionSeq) this._payloadDialogConverting = false;
+    }
+  }
+  /** Parse a pronto draft and write the sofabaton bytes through. */
+  _applyProntoDraft(text) {
+    if (!text.trim()) {
+      this._payloadDialogFormatError = "";
+      return;
+    }
+    try {
+      const signal = parseProntoHex(text);
+      this._payloadDialogRawDraft = formatHexForDisplay(buildSofabatonBlob(signal));
+      this._payloadDialogProntoAvailable = true;
+      this._payloadDialogFormatError = "";
+    } catch (error) {
+      this._payloadDialogFormatError = this._irFormatMessage(
+        error,
+        TOOLS_CARD_STRINGS.backup.invalidProntoHex
+      );
+    }
+  }
   _renderDecodedPayloadForm(className) {
     const spec = DECODED_CLASS_FORM_SPECS[className];
     if (!spec) return A;
+    const head = className === "ir" ? b2`
+          <div class="payload-format-tabs" role="tablist">
+            <button class="payload-format-tab active" role="tab" aria-selected="true">
+              ${TOOLS_CARD_STRINGS.backup.descriptorTab}
+            </button>
+            ${this._renderLearnEntryButton()}
+          </div>
+          ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
+        ` : b2`
+          <div class="decoded-form-head">
+            <div class="decoded-form-title">${spec.title}</div>
+            ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
+          </div>
+        `;
     return b2`
       <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${spec.title}</div>
-          ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
-        </div>
+        ${head}
         ${spec.fields.map((field) => this._renderDecodedField(field))}
       </div>
     `;
@@ -11429,7 +12662,23 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogError = "";
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
+  }
+  /**
+   * Seed the IR hex-tab state after the raw draft was (re)set: pronto is
+   * the default view when the blob parses as raw timings (IR8).
+   */
+  _resetIrHexTabState() {
+    this._payloadDialogFormatError = "";
+    this._payloadDialogHexTab = "pronto";
+    this._payloadDialogProntoDraft = "";
+    this._payloadDialogProntoAvailable = true;
+    if (!this._liveDeviceIsIr()) return;
+    if (String(this._payloadDialogRawDraft ?? "").trim()) {
+      this._syncProntoFromRaw();
+      if (!this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "sofabaton";
+    }
   }
   /**
    * Open the payload dialog in add-command mode (live only). The controls
@@ -11454,17 +12703,21 @@ var SofabatonEditDetailView = class extends i4 {
     const deviceClass = String(bundleDeviceClass(this.bundle, deviceId) || "").trim().toLowerCase();
     this._payloadFetchError = "";
     if (deviceClass === "ir") {
-      this._openAddDialogWithSnapshot(deviceId, {
-        className: "ir",
-        fields: { descriptor: "" },
-        trailerHex: "",
-        edited: false
-      });
+      this._openAddDialogWithSnapshot(
+        deviceId,
+        bundleIsX2(this.bundle) ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false } : null
+      );
       return;
     }
     const existing = deviceCommandItems(this.bundle, deviceId);
     if (!existing.length) {
-      this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noTemplateCommand;
+      this._openAddDialogWithSnapshot(
+        deviceId,
+        defaultDecodedSnapshotForClass(deviceClass, {
+          deviceId,
+          commandId: nextFreeDeviceCommandId(this.bundle, deviceId)
+        })
+      );
       return;
     }
     if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
@@ -11497,6 +12750,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogError = "";
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
   }
   /**
@@ -11520,6 +12774,10 @@ var SofabatonEditDetailView = class extends i4 {
       const fields = {};
       for (const field of spec.fields) {
         fields[field.key] = this._draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
+      }
+      if (snapshot.className === "wifi_mqtt") {
+        fields["device_id"] = target.deviceId & 255;
+        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? Number(fields["command_id"]) ?? 1) & 255;
       }
       if (snapshot.className === "ir") {
         const descriptor = String(fields["descriptor"] ?? "").trim();
@@ -11612,6 +12870,16 @@ var SofabatonEditDetailView = class extends i4 {
   /** Test the current draft on the hub (IR only), via the host's callback. */
   async _runLivePayloadTest() {
     if (!this.testCommandPayload) return;
+    if (this._payloadDialogFormatError) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = this._payloadDialogFormatError;
+      return;
+    }
+    if (this._payloadDialogConverting) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
+      return;
+    }
     const value = this._payloadDialogDecodedSnapshot ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim() : String(this._payloadDialogRawDraft ?? "").trim();
     if (!value) {
       this._payloadDialogTestStatus = "error";
@@ -11642,7 +12910,260 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogRawSnapshot = rawHex ?? "";
     this._payloadDialogRawDraft = rawHex ?? "";
     this._payloadDialogError = "";
+    this._resetIrHexTabState();
     this._payloadDialogOpen = true;
+  }
+  // ── Learn mode logic (IR9) ─────────────────────────────────────────
+  /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
+  _learnAvailable() {
+    return this.mode === "live" && !!this.irLearn && this._liveDeviceIsIr();
+  }
+  /**
+   * Open the source menu. The HA option is gated on the emitter existing
+   * AND either a consumer config entry or a non-empty intercept ring, so
+   * the inbox subscription is opened right away (it also feeds the inbox
+   * view later) while the consumer lookup runs alongside it.
+   */
+  async _enterLearnMode() {
+    const host = this.irLearn;
+    if (!host || !this._learnAvailable()) return;
+    this._payloadLearnView = "menu";
+    this._payloadLearnSourceNote = "";
+    this._payloadLearnHaAvailable = null;
+    this._payloadLearnConsumers = [];
+    this._startLearnTicker();
+    void this._openEmissionInbox(host);
+    try {
+      const response = await host.consumers();
+      if (this._learnModeLeft()) return;
+      this._payloadLearnConsumers = Array.isArray(response?.consumers) ? response.consumers : [];
+      this._payloadLearnHaAvailable = !!response?.available;
+    } catch {
+      if (this._learnModeLeft()) return;
+      this._payloadLearnHaAvailable = false;
+    }
+  }
+  /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
+  _learnModeLeft() {
+    return this._payloadLearnView === "off";
+  }
+  _learnHaOptionVisible() {
+    return this._payloadLearnHaAvailable === true && (this._payloadLearnConsumers.length > 0 || this._payloadLearnEmissions.length > 0);
+  }
+  async _openEmissionInbox(host) {
+    if (this._payloadLearnEmissionsUnsub) return;
+    this._payloadLearnEmissionsError = null;
+    try {
+      const unsubscribe = await host.subscribeEmissions((emissions) => {
+        if (this._payloadLearnView === "off") return;
+        const next = Array.isArray(emissions) ? emissions : [];
+        if (!this._payloadLearnBaseline) {
+          this._payloadLearnBaseline = new Map(next.map((rec) => [rec.payload_hex, rec.when]));
+        }
+        this._payloadLearnEmissions = next;
+      });
+      if (this._payloadLearnView === "off") {
+        unsubscribe();
+        return;
+      }
+      this._payloadLearnEmissionsUnsub = unsubscribe;
+    } catch (error) {
+      if (this._payloadLearnView === "off") return;
+      this._payloadLearnEmissionsError = {
+        error_code: backendErrorCode(error) ?? "ir_emissions_failed"
+      };
+    }
+  }
+  /**
+   * Row name: the command's own repr when its class defines one (it
+   * carries address/command), otherwise the backend label, which is the
+   * class name plus a per-code digest. Repr-less classes (live finding:
+   * SonyX700Command) would otherwise make every code read identically.
+   */
+  _emissionDisplayName(rec) {
+    const repr = String(rec.command_repr ?? "").trim();
+    const label = String(rec.label ?? "").trim();
+    if (!repr) return label;
+    const className = label.replace(/\s*\(.*$/, "");
+    return repr === className ? label : repr;
+  }
+  /** New = not in the ring as first seen, or re-sent since (count bump refreshes `when`). */
+  _emissionIsNew(rec) {
+    const baseline = this._payloadLearnBaseline;
+    if (!baseline) return false;
+    return baseline.get(rec.payload_hex) !== rec.when;
+  }
+  _openLearnInbox() {
+    this._cancelHubLearn();
+    this._payloadLearnView = "ha";
+    if (this.irLearn) void this._openEmissionInbox(this.irLearn);
+  }
+  _backToLearnMenu() {
+    this._cancelHubLearn();
+    this._payloadLearnView = "menu";
+  }
+  /** Leave learn mode entirely: cancel any hub window, drop the inbox, reset. */
+  _exitLearnMode() {
+    this._cancelHubLearn();
+    const unsubscribe = this._payloadLearnEmissionsUnsub;
+    this._payloadLearnEmissionsUnsub = null;
+    if (unsubscribe) {
+      try {
+        unsubscribe();
+      } catch {
+      }
+    }
+    this._stopLearnTicker();
+    this._payloadLearnView = "off";
+    this._payloadLearnHubState = "arming";
+    this._payloadLearnHubEvent = null;
+    this._payloadLearnHubDeadline = 0;
+    this._payloadLearnSecondsLeft = 0;
+    this._payloadLearnEmissions = [];
+    this._payloadLearnEmissionsError = null;
+    this._payloadLearnBaseline = null;
+    this._payloadLearnHaAvailable = null;
+    this._payloadLearnConsumers = [];
+  }
+  async _startHubLearn() {
+    const host = this.irLearn;
+    if (!host) return;
+    this._cancelHubLearn();
+    const attempt = ++this._payloadLearnHubAttempt;
+    this._payloadLearnView = "hub";
+    this._payloadLearnHubState = "arming";
+    this._payloadLearnHubEvent = null;
+    this._payloadLearnHubDeadline = 0;
+    this._payloadLearnSecondsLeft = 0;
+    this._startLearnTicker();
+    try {
+      const cancel = await host.learnFromHub((event) => {
+        if (attempt !== this._payloadLearnHubAttempt) return;
+        this._handleHubLearnEvent(event);
+      }, LEARN_TIMEOUT_S);
+      if (attempt !== this._payloadLearnHubAttempt || this._payloadLearnView !== "hub") {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      if (this._hubLearnIsTerminal()) {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      this._payloadLearnHubCancel = cancel;
+    } catch (error) {
+      if (attempt !== this._payloadLearnHubAttempt) return;
+      this._payloadLearnHubState = "error";
+      this._payloadLearnHubEvent = {
+        state: "error",
+        error_code: backendErrorCode(error) ?? "ir_learn_failed"
+      };
+    }
+  }
+  _handleHubLearnEvent(event) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    this._payloadLearnHubEvent = event;
+    this._payloadLearnHubState = event.state;
+    if (event.state === "listening") {
+      const timeout = Number(event.timeout_s) > 0 ? Number(event.timeout_s) : LEARN_TIMEOUT_S;
+      this._payloadLearnHubDeadline = Date.now() + timeout * 1e3;
+      this._payloadLearnSecondsLeft = Math.ceil(timeout);
+      return;
+    }
+    this._releaseHubLearn();
+    if (event.state !== "learned") return;
+    const hex = String(event.payload_hex ?? "").trim();
+    if (!hex) {
+      this._payloadLearnHubState = "error";
+      this._payloadLearnHubEvent = { state: "error", error_code: "ir_learn_no_payload" };
+      return;
+    }
+    const timings = Number(event.duration_count) || 0;
+    const carrier = Number(event.carrier_hz) || 0;
+    const note = timings && carrier ? S5.learnHubLearned(timings, formatCarrierKhz(carrier)) : S5.learnHubLearnedRaw;
+    this._adoptLearnedPayload(hex, note);
+  }
+  _useEmission(rec) {
+    const hex = String(rec.payload_hex ?? "").trim();
+    if (!hex) return;
+    this._adoptLearnedPayload(
+      hex,
+      TOOLS_CARD_STRINGS.backup.learnHaCaptured(this._emissionDisplayName(rec))
+    );
+  }
+  /**
+   * Drop a captured Sofabaton blob into the editor: hex mode (leaving a
+   * descriptor form if the dialog was in one), pronto view when the bytes
+   * parse as raw timings, Test/Save untouched and ready.
+   */
+  _adoptLearnedPayload(hex, note) {
+    this._exitLearnMode();
+    const normalized = normalizeCommandPayloadHex(hex) ?? hex;
+    this._morphToHex(normalized, "sofabaton");
+    if (this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "pronto";
+    this._payloadDialogError = "";
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
+    this._payloadLearnSourceNote = note;
+  }
+  _hubLearnIsTerminal() {
+    return this._payloadLearnHubState !== "arming" && this._payloadLearnHubState !== "listening";
+  }
+  /** Cancel an in-flight hub window (unsubscribe => backend disarms) and orphan its callbacks. */
+  _cancelHubLearn() {
+    this._payloadLearnHubAttempt++;
+    this._releaseHubLearn();
+  }
+  _releaseHubLearn() {
+    const cancel = this._payloadLearnHubCancel;
+    this._payloadLearnHubCancel = null;
+    if (cancel) {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+  }
+  _startLearnTicker() {
+    if (this._payloadLearnTicker) return;
+    this._payloadLearnNow = Date.now();
+    this._payloadLearnTicker = setInterval(() => this._learnTick(), 1e3);
+  }
+  _stopLearnTicker() {
+    if (this._payloadLearnTicker) clearInterval(this._payloadLearnTicker);
+    this._payloadLearnTicker = null;
+  }
+  /** One-second tick: drives the hub countdown and the inbox "ago" labels. */
+  _learnTick() {
+    this._payloadLearnNow = Date.now();
+    if (this._payloadLearnView === "hub" && this._payloadLearnHubState === "listening" && this._payloadLearnHubDeadline) {
+      this._payloadLearnSecondsLeft = Math.max(
+        0,
+        Math.ceil((this._payloadLearnHubDeadline - this._payloadLearnNow) / 1e3)
+      );
+    }
+  }
+  _formatCountdown(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
+  }
+  _learnTimeAgo(when) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const ts = Date.parse(String(when ?? ""));
+    if (!Number.isFinite(ts)) return "";
+    const secs = Math.max(0, Math.round((this._payloadLearnNow - ts) / 1e3));
+    if (secs < 5) return S5.learnJustNow;
+    if (secs < 60) return S5.learnSecondsAgo(secs);
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return S5.learnMinutesAgo(mins);
+    return S5.learnHoursAgo(Math.round(mins / 60));
   }
   _initialDecodedDrafts(decoded) {
     const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
@@ -12998,6 +14519,11 @@ SofabatonEditDetailView.properties = {
   _payloadDialogDecodedDrafts: { state: true },
   _payloadDialogDecodedSnapshot: { state: true },
   _payloadDialogRawDraft: { state: true },
+  _payloadDialogHexTab: { state: true },
+  _payloadDialogProntoDraft: { state: true },
+  _payloadDialogProntoAvailable: { state: true },
+  _payloadDialogConverting: { state: true },
+  _payloadDialogFormatError: { state: true },
   _payloadDialogError: { state: true },
   fetchCommandPayload: { attribute: false },
   testCommandPayload: { attribute: false },
@@ -13008,6 +14534,17 @@ SofabatonEditDetailView.properties = {
   _payloadDialogAddMode: { state: true },
   _payloadDialogNameDraft: { state: true },
   _addCommandPreparing: { state: true },
+  irLearn: { attribute: false },
+  _payloadLearnView: { state: true },
+  _payloadLearnHubState: { state: true },
+  _payloadLearnHubEvent: { state: true },
+  _payloadLearnSecondsLeft: { state: true },
+  _payloadLearnEmissions: { state: true },
+  _payloadLearnEmissionsError: { state: true },
+  _payloadLearnHaAvailable: { state: true },
+  _payloadLearnConsumers: { state: true },
+  _payloadLearnSourceNote: { state: true },
+  _payloadLearnNow: { state: true },
   _confirmDeleteTarget: { state: true },
   _confirmDeleteLabel: { state: true },
   _addFavoriteOpen: { state: true },
@@ -13139,6 +14676,83 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButt
       color: var(--primary-text-color);
       background: color-mix(in srgb, var(--primary-color) 12%, transparent);
     }
+    /* Payload-editor learn mode (IR9): entry button, source menu, hub
+       listener stage, and the emitter inbox. */
+    .payload-learn-btn {
+      margin-left: auto; align-self: center; flex: 0 0 auto;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 11px; border-radius: 999px; cursor: pointer; font: inherit;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+      color: var(--sb-accent-text, var(--primary-color));
+      border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    }
+    .payload-learn-btn:hover { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .payload-learn-btn ha-icon { --mdc-icon-size: 16px; }
+    .learn-panel { display: flex; flex-direction: column; gap: 12px; }
+    .learn-option, .learn-inbox-row {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+      border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
+      background: var(--ha-card-background, var(--card-background-color));
+      color: var(--primary-text-color); cursor: pointer; font: inherit;
+    }
+    .learn-option { padding: 12px 14px; }
+    .learn-option:hover, .learn-inbox-row:hover {
+      border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .learn-option > ha-icon:first-child { --mdc-icon-size: 26px; color: var(--primary-color); flex: 0 0 auto; }
+    .learn-option > ha-icon:last-child { --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: 0 0 auto; }
+    .learn-option-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .learn-option-title { font-weight: 600; font-size: 14px; }
+    .learn-option-desc { font-size: 12.5px; line-height: 1.4; color: var(--secondary-text-color); }
+    .learn-checking { font-size: 12.5px; color: var(--secondary-text-color); padding: 2px 4px; }
+    .learn-stage {
+      display: flex; align-items: center; gap: 14px; padding: 18px 16px;
+      border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
+    }
+    .learn-stage > ha-icon { --mdc-icon-size: 34px; color: var(--primary-color); flex: 0 0 auto; }
+    .learn-stage.listening > ha-icon { animation: sb-learn-pulse 1.4s ease-in-out infinite; }
+    .learn-stage.timed_out > ha-icon, .learn-stage.interrupted > ha-icon,
+    .learn-stage.refused > ha-icon, .learn-stage.error > ha-icon { color: var(--error-color, #db4437); }
+    .learn-stage.cancelled > ha-icon { color: var(--secondary-text-color); }
+    @keyframes sb-learn-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.92); } }
+    .learn-stage-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .learn-stage-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
+    .learn-stage-detail { font-size: 13px; color: var(--secondary-text-color); line-height: 1.4; font-variant-numeric: tabular-nums; }
+    .learn-inbox-help { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); }
+    .learn-consumers { display: flex; flex-direction: column; gap: 6px; }
+    .learn-consumers-label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+    .learn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .learn-chip {
+      font-size: 12px; padding: 3px 10px; border-radius: 999px; color: var(--primary-text-color);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 40%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    }
+    .learn-inbox-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+    .learn-inbox-row { padding: 10px 12px; }
+    .learn-inbox-row.is-new {
+      border-color: color-mix(in srgb, #48b851 55%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 8%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .learn-inbox-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .learn-inbox-label {
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .learn-inbox-meta { font-size: 12px; color: var(--secondary-text-color); }
+    .learn-badge {
+      flex: 0 0 auto; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 999px; color: #2e7d32;
+      border: 1px solid color-mix(in srgb, #2e7d32 45%, transparent);
+    }
+    .learn-inbox-use { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--sb-accent-text, var(--primary-color)); }
+    .learn-inbox-empty {
+      display: flex; align-items: center; gap: 10px; padding: 16px 12px;
+      border: 1px dashed var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
+      color: var(--secondary-text-color); font-size: 13px;
+    }
+    .learn-inbox-empty ha-icon { --mdc-icon-size: 22px; }
     .managed-wifi-lock { padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
     .managed-wifi-lock-chip {
       display: inline-flex; align-items: center; gap: 8px;
@@ -13365,6 +14979,9 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       this._restoreActivityIds = [];
       this._restoreManualDeviceIds = [];
     };
+    // The offline editor still has Home Assistant, so foreign IR codes
+    // (Unfolded Circle HEX) convert here exactly as in the live editor.
+    this._convertForeignPayload = (text, format) => this.api().convertIrPayload(text, format);
     this._resetBackupComposer = () => {
       this._backupError = null;
       this._backupProgress = null;
@@ -13537,6 +15154,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
             .entityId=${this._editDetailId}
             .dirty=${this._editBundleDirty}
             mode="backup"
+            .convertForeignPayload=${this._convertForeignPayload}
             @bundle-change=${this._handleDetailBundleChange}
             @close=${this._closeEditDetail}
           ></sofabaton-edit-detail-view>
@@ -17653,10 +19271,12 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
-      /* Match the remote card's HA form theming fix. HA frontend controls can
-         fall back to a light default when --ha-color-form-background is absent. */
+      /* Fields in dialogs share the card's field surface (card-styles.ts);
+         the theme's own input fill is not trusted (Caule aliases it to the
+         primary colour) and HA controls fall back to a light default when
+         --ha-color-form-background is absent. */
       --ha-color-form-background: var(
-        --input-fill-color,
+        --sb-field-surface,
         var(
           --secondary-background-color,
           color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
@@ -17990,6 +19610,30 @@ var SofabatonActivitiesTab = class extends i4 {
     this._testCommandPayload = async (hex) => {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
       await this.api().playIrBlob(this.hub.entry_id, hex);
+    };
+    // Foreign IR codes (Unfolded Circle HEX) are rendered on the backend;
+    // the view only detects the shape and shows the result.
+    this._convertForeignPayload = (text, format) => this.api().convertIrPayload(text, format);
+    // ── Payload-editor learn mode (IR9) ─────────────────────────────────
+    // Hub learn = one WS subscription per attempt (unsubscribe cancels the
+    // hub window); the HA inbox = a subscription onto the emitter intercept
+    // ring; consumer discovery = a one-shot lookup that gates the HA option.
+    this._irLearnFacade = {
+      learnFromHub: async (onEvent, timeoutS) => {
+        if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+        return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent);
+      },
+      subscribeEmissions: async (onEvent) => {
+        if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+        return this.api().subscribeIrEmissions(
+          this.hub.entry_id,
+          (event) => onEvent(Array.isArray(event?.emissions) ? event.emissions : [])
+        );
+      },
+      consumers: async () => {
+        if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
+        return this.api().getIrEmitterConsumers(this.hub.entry_id);
+      }
     };
     /** A stable positive device id for the not-yet-deployed events device
      *  (W7). It must be POSITIVE — the bundle-edit helpers reject id 0 /
@@ -18572,6 +20216,8 @@ var SofabatonActivitiesTab = class extends i4 {
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
+          .convertForeignPayload=${this._convertForeignPayload}
+          .irLearn=${this._irLearnFacade}
           .wifiEvents=${this._wifiEventsFacade}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}
@@ -18963,6 +20609,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._addActivityOpen = false;
     this._addActivityBusy = false;
     this._addActivityError = null;
+    // "Add Device" dialog state.
+    this._addDeviceOpen = false;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = "";
     this._localeLoading = false;
     this._localeRequestId = 0;
     this._irFlashClearTimer = null;
@@ -18971,6 +20622,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._boundHandleDocumentPointerDown = (event) => {
       this.handleDocumentPointerDown(event);
     };
+    // Theme polarity probe (shared/styles/theme-polarity.ts): a hidden span in
+    // the shadow root whose computed colour / background resolve the theme's
+    // text colour and card surface. Read after every render.
+    this._themeProbe = null;
+    this._lastThemesRef = void 0;
     this._handleEditorDirtyChanged = (event) => {
       const dirty = Boolean(event.detail?.dirty);
       const kind = event.detail?.kind === "download" ? "download" : "sync";
@@ -18998,7 +20654,30 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       value?.locale?.language ?? value?.language
     );
     this._store.setHass(value);
-    if (languageChanged) this.requestUpdate();
+    const themes = value?.themes;
+    const themesChanged = themes !== this._lastThemesRef;
+    this._lastThemesRef = themes;
+    if (languageChanged || themesChanged) this.requestUpdate();
+  }
+  /**
+   * Native <select> popups and scrollbars follow `color-scheme`, which no
+   * theme variable carries; measure the theme instead and write the scheme
+   * plus an opaque popup surface onto the host (card-styles.ts declares the
+   * tokens' no-JS fallbacks). Runs after every render because the theme can
+   * change without any hass update reaching the store (dark-mode toggle,
+   * card-level `theme:`).
+   */
+  syncThemePolarity() {
+    const root = this.renderRoot;
+    if (!(root instanceof ShadowRoot)) return;
+    if (!this._themeProbe || !this._themeProbe.isConnected) {
+      const probe = document.createElement("span");
+      probe.className = "sb-theme-probe";
+      probe.setAttribute("aria-hidden", "true");
+      root.appendChild(probe);
+      this._themeProbe = probe;
+    }
+    applyThemePolarity(this, this._themeProbe);
   }
   selectLanguage(language) {
     const languageChanged = setToolsCardLanguage(language);
@@ -19067,6 +20746,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     }
   }
   updated() {
+    this.syncThemePolarity();
     const pendingEntityKey = this._snapshot.pendingScrollEntityKey;
     if (this._snapshot.selectedTab === "cache") {
       this.restoreCacheScrollState(this._pendingCacheScrollSnapshot, pendingEntityKey);
@@ -19135,6 +20815,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._addActivityOpen = false;
     this._addActivityBusy = false;
     this._addActivityError = null;
+    this._addDeviceOpen = false;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = "";
   }
   // ── Activity / Device re-order mode ────────────────────────────────
   startReorder(kind) {
@@ -19203,6 +20887,42 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     }
     this._addActivityOpen = false;
     this._editingEntity = { kind: "activity", id: result.activityId };
+    this.requestUpdate();
+  }
+  // ── Add Device flow (name + class prompt → live editor) ────────────
+  openAddDevice() {
+    this._addDeviceOpen = true;
+    this._addDeviceBusy = false;
+    this._addDeviceError = null;
+    this._addDeviceClass = creatableDeviceClasses(
+      hubLineFor(this._snapshot.hass, selectedHub(this._snapshot))
+    )[0] ?? "";
+    this.requestUpdate();
+  }
+  selectAddDeviceClass(deviceClass) {
+    this._addDeviceClass = deviceClass;
+    this.requestUpdate();
+  }
+  closeAddDevice() {
+    if (this._addDeviceBusy) return;
+    this._addDeviceOpen = false;
+    this._addDeviceError = null;
+    this.requestUpdate();
+  }
+  async confirmAddDevice(name, deviceClass) {
+    if (this._addDeviceBusy) return;
+    this._addDeviceBusy = true;
+    this._addDeviceError = null;
+    this.requestUpdate();
+    const result = await this._store.createDevice(name, deviceClass);
+    this._addDeviceBusy = false;
+    if ("errorCode" in result) {
+      this._addDeviceError = { error_code: result.errorCode };
+      this.requestUpdate();
+      return;
+    }
+    this._addDeviceOpen = false;
+    this._editingEntity = { kind: "device", id: result.deviceId };
     this.requestUpdate();
   }
   handleSettingToggle(setting, enabled) {
@@ -19624,7 +21344,16 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           addActivityError: this._addActivityError,
           onOpenAddActivity: () => this.openAddActivity(),
           onCloseAddActivity: () => this.closeAddActivity(),
-          onConfirmAddActivity: (name) => void this.confirmAddActivity(name)
+          onConfirmAddActivity: (name) => void this.confirmAddActivity(name),
+          addDeviceOpen: this._addDeviceOpen,
+          addDeviceBusy: this._addDeviceBusy,
+          addDeviceError: this._addDeviceError,
+          addDeviceClasses: creatableDeviceClasses(hubLineFor(this._snapshot.hass, hub)),
+          addDeviceClass: this._addDeviceClass,
+          onOpenAddDevice: () => this.openAddDevice(),
+          onCloseAddDevice: () => this.closeAddDevice(),
+          onSelectAddDeviceClass: (deviceClass) => this.selectAddDeviceClass(deviceClass),
+          onConfirmAddDevice: (name, deviceClass) => void this.confirmAddDevice(name, deviceClass)
         });
       }
     }

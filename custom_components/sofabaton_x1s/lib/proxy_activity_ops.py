@@ -30,6 +30,7 @@ from .device_create import (
     build_button_binding_step,
     synthesize_command_code,
 )
+from .device_class_profiles import build_empty_device_payload
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
@@ -528,6 +529,57 @@ class ActivityOpsMixin:
             "status": "success",
             "activity_id": int(result.get("activity_id") or 0) & 0xFF,
         }
+
+    def create_device(self, name: str, *, device_class: str) -> dict[str, Any] | None:
+        """Create an EMPTY device of ``device_class`` named *name* on the hub.
+
+        Thin wrapper over :meth:`restore_device` with a synthetic
+        ``device_backup`` payload from :mod:`device_class_profiles` (head
+        record only, no commands / bindings / macros). The device-create
+        pipelines end without a terminal remote sync or a catalog
+        refresh (the bundle restore batches its own), so both happen here
+        after a successful create: the remote learns the new device and
+        the hub-side device catalog knows the id before the frontend
+        refreshes it. Returns ``{"status": "success", "device_id": <id>}``
+        with the hub-assigned id, or ``None`` on refusal / failure.
+        """
+
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            self._log.warning("[DEV_CREATE] refused: empty device name")
+            return None
+        if not self.can_issue_commands():
+            self._log.info("[DEV_CREATE] ignored: proxy client is connected")
+            return None
+
+        try:
+            payload = build_empty_device_payload(
+                clean_name, device_class, hub_version=self.hub_version
+            )
+        except ValueError as err:
+            self._log.warning("[DEV_CREATE] refused: %s", err)
+            return None
+
+        result = self.restore_device(payload)
+        if not isinstance(result, dict) or result.get("status") != "success":
+            return None
+        device_id = int(result.get("device_id") or 0) & 0xFF
+        if not device_id:
+            self._log.warning("[DEV_CREATE] hub did not report the assigned device id")
+            return None
+
+        if not self.resync_remote():
+            self._log.warning("[DEV_CREATE] REMOTE_SYNC after create was not acked")
+        if not self._request_devices_and_wait():
+            self._log.warning("[DEV_CREATE] catalog refresh after create did not finish")
+
+        self._log.info(
+            "[DEV_CREATE] created %s device %r as dev=0x%02X",
+            device_class,
+            clean_name,
+            device_id,
+        )
+        return {"status": "success", "device_id": device_id}
 
     def add_device_to_activity(
         self,

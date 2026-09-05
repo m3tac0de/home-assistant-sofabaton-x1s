@@ -82,7 +82,10 @@ const TARGETS = {
     // global = theme on <html> (HA themes-mixin); card = the card's own
     // `theme:` config on an HA-default-light page (the card's _applyTheme).
     modes: ["global", "card"],
-    defaultScenarios: ["active", "active+macros", "active+favorites", "active+menu", "device_mode", "powered_off"],
+    defaultScenarios: [
+      "active", "active+macros", "active+favorites", "active+menu", "device_mode", "powered_off",
+      "unavailable", "no_activities", "device_keymap_missing", // status notice row
+    ],
     // HA-component stubs whose internals mirror HA's tokens and are part of
     // the card's look (the activity select: label, value, menu).
     includeHosts: ["ha-select"],
@@ -99,6 +102,8 @@ const DEFAULT_SCENARIOS = [
   "13",                   // Logs tab
   "17",                   // Version mismatch (stale cache) edge state
   "activities-capture",   // Activity editor open
+  "payload-editor-ir",    // IR payload editor dialog: Pronto / Sofabaton tabs, hex textarea
+  "macro-add-step",       // Macro editor's Add step dialog: native selects + hold input
   "backup-compose",       // Backup composer
   "backup-edit",          // Backup edit view
   "restore-selection",    // Restore selection dialog
@@ -339,12 +344,16 @@ async function measureInPage({ injectCss, withHover, cardSelector, viewAreaSelec
     return hosts;
   };
 
+  // Form fields carry their text as a value or placeholder, not as a text
+  // node; they are measured like text elements (their own background is the
+  // innermost layer of the chain).
+  const FIELD_SELECTOR = "input:not([type='file']):not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='range']), textarea, select";
   const elements = [];
   const visit = (root) => {
     for (const el of root.querySelectorAll("*")) {
       if (el.tagName === "STYLE" || el.tagName === "SCRIPT") continue;
       const hasText = [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
-      if (hasText) elements.push(el);
+      if (hasText || el.matches(FIELD_SELECTOR)) elements.push(el);
       if (el.shadowRoot) visit(el.shadowRoot);
     }
   };
@@ -443,7 +452,28 @@ async function measureInPage({ injectCss, withHover, cardSelector, viewAreaSelec
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
-    const fgRaw = parseColor(cs.color);
+    let fgRaw = parseColor(cs.color);
+    let text = [...el.childNodes]
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent.trim())
+      .join(" ")
+      .slice(0, 48);
+    let placeholder = false;
+    if (el.matches(FIELD_SELECTOR)) {
+      const value = el.tagName === "SELECT"
+        ? String(el.selectedOptions?.[0]?.label ?? "")
+        : String(el.value ?? "");
+      if (value.trim()) {
+        text = value.trim().slice(0, 48);
+      } else if (el.placeholder) {
+        // An empty field shows its placeholder: that is the text a reader sees.
+        placeholder = true;
+        text = String(el.placeholder).slice(0, 48);
+        const pcs = getComputedStyle(el, "::placeholder");
+        const pfg = parseColor(pcs.color);
+        if (pfg) fgRaw = { ...pfg, a: pfg.a * (Number(pcs.opacity) || 1) };
+      }
+    }
     if (!fgRaw) return;
 
     const chain = collectChain(el, rect);
@@ -465,12 +495,7 @@ async function measureInPage({ injectCss, withHover, cardSelector, viewAreaSelec
       ? el.className.split(/\s+/).filter(Boolean)
       : [];
     const owner = hosts.find((tag) => !isStubHost(tag)) ?? cardSelector;
-    const signature = `${owner} ${el.tagName.toLowerCase()}${classes.filter((c) => c !== "audit-hover").map((c) => `.${c}`).join("")}${state === "hover" ? " @hover" : ""}`;
-    const text = [...el.childNodes]
-      .filter((n) => n.nodeType === Node.TEXT_NODE)
-      .map((n) => n.textContent.trim())
-      .join(" ")
-      .slice(0, 48);
+    const signature = `${owner} ${el.tagName.toLowerCase()}${classes.filter((c) => c !== "audit-hover").map((c) => `.${c}`).join("")}${placeholder ? " ::placeholder" : ""}${state === "hover" ? " @hover" : ""}`;
 
     results.push({
       signature,
@@ -491,6 +516,60 @@ async function measureInPage({ injectCss, withHover, cardSelector, viewAreaSelec
   };
 
   for (const el of elements) measureElement(el, "rest");
+
+  // Native <select> popups (rows marked @popup). Chromium paints the popup's
+  // option rows from each <option>'s computed color / background-color and
+  // grounds the popup in the select's color-scheme (white, or Chromium's
+  // dark menu grey) wherever the row colour is not opaque. Options have no
+  // layout, so their computed styles are probed directly and a translucent
+  // row is composited over that ground (flagged ≈bg: the exact ground is
+  // Chromium's, not ours). One row per distinct option styling.
+  const POPUP_GROUND = { light: { r: 255, g: 255, b: 255, a: 1 }, dark: { r: 59, g: 59, b: 59, a: 1 } };
+  for (const select of elements.filter((el) => el.tagName === "SELECT")) {
+    const hosts = hostChain(select);
+    if (hosts.some(isStubHost)) continue;
+    const scs = getComputedStyle(select);
+    if (scs.display === "none" || scs.visibility === "hidden") continue;
+    const rect = select.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    const chain = collectChain(select, rect);
+    if (chain.hidden) continue;
+    const scheme = /dark/.test(scs.colorScheme) ? "dark" : "light";
+    const classes = typeof select.className === "string" ? select.className.split(/\s+/).filter(Boolean) : [];
+    const owner = hosts.find((tag) => !isStubHost(tag)) ?? cardSelector;
+    const signature = `${owner} select${classes.map((c) => `.${c}`).join("")} option @popup`;
+    const seen = new Set();
+    for (const option of select.options) {
+      const ocs = getComputedStyle(option);
+      const fgRaw = parseColor(ocs.color);
+      if (!fgRaw) continue;
+      const bgRaw = parseColor(ocs.backgroundColor) ?? { r: 0, g: 0, b: 0, a: 0 };
+      const key = `${ocs.color}|${ocs.backgroundColor}|${option.disabled}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const approximate = bgRaw.a < 0.999;
+      const bg = composite(bgRaw, POPUP_GROUND[scheme]);
+      const fg = composite(fgRaw, bg);
+      const fontSize = parseFloat(ocs.fontSize) || 13.3;
+      const fontWeight = parseInt(ocs.fontWeight, 10) || 400;
+      results.push({
+        signature,
+        state: "rest",
+        text: `${String(option.label || option.textContent || "").trim().slice(0, 32)} · ${scheme} scheme`,
+        ratio: Math.round(contrast(fg, bg) * 100) / 100,
+        required: 4.5,
+        large: false,
+        disabled: option.disabled || chain.disabled || disabledOn(select),
+        approximate,
+        onWallpaper: false,
+        fontSize: Math.round(fontSize * 10) / 10,
+        fontWeight,
+        fg: fmt(fg),
+        bg: fmt(bg),
+        opacity: 1,
+      });
+    }
+  }
 
   // Hover pass. Every `:hover` rule in the sofabaton-* shadow roots is
   // cloned once as `.audit-hover`; each rule's hovered subject is then given

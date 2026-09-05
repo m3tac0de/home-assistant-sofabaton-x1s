@@ -18,6 +18,8 @@ filter by `sofabaton_x1s`.
 | `sofabaton_x1s.dump_ir_commands` | Read raw `0x020C` blob pages for one command or a full device | Yes |
 | `sofabaton_x1s.fetch_blob` | Read normalized IR blob bodies suitable for replay or save | Yes |
 | `sofabaton_x1s.play_ir_blob` | One-shot test-play an IR blob without saving it | No |
+| `sofabaton_x1s.set_ir_learn_mode` | Arm or disarm the hub's IR learning mode | No |
+| `sofabaton_x1s.ir_learn_command` | Learn one IR command from a physical remote | Yes |
 | `sofabaton_x1s.persist_ir_blob` | Save a new IR command blob onto an existing IR device | Yes |
 | `sofabaton_x1s.get_favorites` | Read the current ordered favorites list for an activity | Yes |
 | `sofabaton_x1s.command_to_button` | Map a command, with optional long-press, to a physical button | No |
@@ -189,6 +191,100 @@ data:
   device: 89c3874a93f1e9ee0f49e24a2710535e
   blob: "P:Sony12 R:40000 D:1 F:18 MUL:2"
 ```
+
+---
+
+## ◇ `sofabaton_x1s.set_ir_learn_mode`
+
+Arms or disarms the hub's IR learning mode, the same mode the official app
+uses when it learns a code from a source IR remote. While armed, the hub's
+IR receiver waits for a button press from that remote.
+
+For the complete learn flow (arm, wait, and get the captured payload back),
+use [`ir_learn_command`](#-sofabaton_x1sir_learn_command) instead. This
+action is the low-level toggle.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `enabled` | boolean | Yes | `true` arms learning mode, `false` exits it. |
+
+```yaml
+action: sofabaton_x1s.set_ir_learn_mode
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  enabled: true
+```
+
+Notes:
+
+- Arming always sends an exit first and then the arm, mirroring the official
+  app: the hub can end up believing it is in learning mode while its receiver
+  is not actually listening, and in that state a bare arm command is accepted
+  but does nothing.
+- The hub never announces that it left learning mode. It exits silently after
+  about 60 seconds, and whenever ANY traffic appears on its control
+  connection, in either direction and regardless of who initiated it. The
+  captured code itself counts as such traffic. HTTP and MQTT traffic does not
+  end the window.
+- The hub answers the toggle with a status ack; the action raises an error
+  if the hub rejects it or does not answer.
+- Learning mode occupies the hub's app session. Do not run it while the
+  official app is connected.
+
+---
+
+## ◇ `sofabaton_x1s.ir_learn_command`
+
+Learns one IR command from a source IR remote, end to end: exits any stale
+learning session, arms learning mode, waits for a button press, and returns
+the result. No manual mode switching is needed around this action.
+
+The response's `state` field tells you what happened:
+
+| `state` | Meaning |
+| ------- | ------- |
+| `learned` | A code was captured; `payload_hex` holds the payload. |
+| `timed_out` | Nothing was received within the timeout. |
+| `interrupted` | Other hub traffic ended the learning window before a code arrived (for example a button press on the paired remote); `interrupted_by` names the frame that did it. |
+
+On `learned`, the response also carries `carrier_hz` and `duration_count`
+decoded from the payload header. The payload is a canonical blob body: feed
+it straight to [`play_ir_blob`](#-sofabaton_x1splay_ir_blob) to test it, or
+to [`persist_ir_blob`](#-sofabaton_x1spersist_ir_blob) to save it onto an IR
+device.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `timeout` | int (5-120) | No | Seconds to wait for a button press. Default 60. The hub's own window closes after about 60 seconds regardless. |
+
+```yaml
+action: sofabaton_x1s.ir_learn_command
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  timeout: 30
+response_variable: learn_result
+```
+
+Example response:
+
+```yaml
+state: learned
+payload_hex: "02 20 00 00 00 00 96 07 00 00 11 b4 ..."
+carrier_hz: 38407
+duration_count: 136
+```
+
+Notes:
+
+- While this action waits, it holds the integration's write path so that
+  nothing of its own can end the learning window. Other write actions issued
+  meanwhile are delayed until it finishes.
+- `interrupted` is normal behavior, not an error: any wire traffic ends the
+  hub's learning window.
+- Point the source remote close to the hub and press the button briefly. On
+  a timeout the action disarms learning mode explicitly on its way out.
 
 ---
 
@@ -758,4 +854,3 @@ action: sofabaton_x1s.sync_command_config
 data:
   device: <hub_device_id>
 ```
-

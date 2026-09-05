@@ -32,6 +32,7 @@ Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from 
 | HTTP-delivered Wifi Commands      | Yes | Yes | Yes |
 | MQTT-delivered Wifi Commands      | No  | No  | Yes |
 | Activity state over MQTT          | No  | No  | Yes |
+| IR emitter and learning           | Yes | Yes | Yes |
 | Live editing, backup, and restore | Yes | Yes | Yes |
 
 Requirements:
@@ -130,7 +131,7 @@ card_height: 700
 
 Its main areas are:
 
-- **Hub**: browse and edit Activities, Devices, commands, inputs, power behavior, button assignments, shortcuts, and macros.
+- **Hub**: browse, add, and edit Activities, Devices, commands, inputs, power behavior, button assignments, shortcuts, and macros.
 - **Automation**: configure Home Assistant Actions triggered by Wifi Commands, Wifi Events, Hub Events, and Activity Events.
 - **Backup**: create and restore whole-hub or selected device backups.
 - **Settings and Logs**: manage caching, network listeners, diagnostic logging, Find Remote, physical remote synchronization, and live hub logs.
@@ -189,7 +190,7 @@ For configuration, delivery choices, limits, and automation examples, see the [r
 
 ## ◇ Entities
 
-The integration provides entities for both automation directions: remotes, selects, and buttons control the hub, while sensors expose Activity changes, Wifi Command presses, and connection state as automation inputs. Additional entities manage the proxy, listener, diagnostics, and maintenance tasks.
+The integration provides entities for both automation directions: remotes, selects, and buttons control the hub, while sensors expose Activity changes, Wifi Command presses, and connection state as automation inputs. On recent Home Assistant releases, `infrared.<hub>_ir_emitter` lets compatible infrared integrations send commands through the hub. Additional entities manage the proxy, listener, diagnostics, and maintenance tasks.
 
 See the [entity reference](docs/entities.md) for default entity IDs, purposes, and availability behavior.
 
@@ -218,9 +219,9 @@ Use Wifi Commands for selected physical buttons, or place a Wifi Event in an Act
 </details>
 
 <details>
-<summary><strong>Can I use Pronto HEX with my Sofabaton hub?</strong></summary>
+<summary><strong>Can I use Pronto Hex with my Sofabaton hub?</strong></summary>
 
-Yes. Use the [IrScrutinizer exporters](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/IrScrutinizer) to generate Sofabaton-compatible commands from Pronto HEX signals.
+Yes. Paste a learned-format Pronto Hex code straight into the Control Panel's payload editor, or use the [IrScrutinizer exporters](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/IrScrutinizer) to generate Sofabaton-compatible commands from Pronto Hex signals. Codes exported from an Unfolded Circle remote, in either its PRONTO or its HEX format, can be pasted into the payload editor as well.
 
 For more information about command payloads on Sofabaton hubs and how this integration interacts with them, see the [command payload guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md).
 

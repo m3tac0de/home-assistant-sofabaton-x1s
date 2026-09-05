@@ -36,10 +36,57 @@ export const cardStyles = [secondaryTabStyles, css`
        on the indicator (underline, border, icon, fill). Sub-components
        inherit it; they spell the fallback for standalone use. */
     --sb-accent-text: color-mix(in srgb, var(--primary-color) 35%, var(--primary-text-color));
+    /* Form fields. The theme's own input fill is never trusted alone: Caule
+       aliases --input-fill-color to its primary colour (saturated purple or
+       green behind grey text) and the glass themes set it transparent. A
+       field is the card surface with a 6% tint of the text colour (HA
+       default light: #f2f2f2, dark: #282828, i.e. HA's own field fills)
+       and a border from the text colour, so text on a field contrasts like
+       text on the card, on opaque and glass themes alike. */
+    --sb-field-surface: color-mix(in srgb, var(--primary-text-color) 6%, var(--sb-card-surface));
+    --sb-field-border: color-mix(in srgb, var(--primary-text-color) 24%, transparent);
+    /* Hover / pressed overlays from the text colour, never from HA's
+       neutral fills: those are opaque light grey under any theme that runs
+       in light mode, the glass themes with white text included. */
+    --sb-overlay-hover: color-mix(in srgb, var(--primary-text-color) 10%, transparent);
+    --sb-overlay-press: color-mix(in srgb, var(--primary-text-color) 18%, transparent);
+    /* Native <select> popups need an OPAQUE row colour and a matching
+       color-scheme. tools-card.ts measures the theme's polarity through
+       .sb-theme-probe (shared/styles/theme-polarity.ts) and writes
+       color-scheme, --sb-scheme-ground and --sb-popup-surface inline on the
+       host, which wins over these no-JS fallbacks. */
+    --sb-scheme-ground: #fff;
+    --sb-popup-surface: var(--sb-field-surface);
   }
   ha-card {
     --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
     --ha-card-background: var(--sb-card-surface);
+    /* HA's own form components inside the card (ha-textfield, ha-input)
+       paint their fill from these; point them at the field surface so every
+       field in a dialog looks alike, native or HA. */
+    --ha-color-form-background: var(--sb-field-surface);
+    --ha-color-form-background-hover: var(--sb-field-surface);
+    --input-fill-color: var(--sb-field-surface);
+    --mdc-text-field-fill-color: var(--sb-field-surface);
+  }
+  /* Polarity probe, appended to the shadow root by tools-card.ts: resolves
+     the theme's text colour and card surface to concrete rgb values. */
+  .sb-theme-probe {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+    color: var(--primary-text-color);
+    background-color: var(--sb-card-surface);
+  }
+  /* Native select popups: Chromium paints option rows from these computed
+     values; the row colour has to be opaque or a glass theme gets
+     white-on-white options (see theme-polarity.ts). */
+  select option {
+    background-color: var(--sb-popup-surface);
+    color: var(--primary-text-color);
   }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
@@ -436,8 +483,8 @@ export const cardStyles = [secondaryTabStyles, css`
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
   .setting-select {
     max-width: 180px; padding: 6px 10px;
-    border: 1px solid var(--divider-color); border-radius: 8px;
-    background: var(--card-background-color, var(--ha-card-background, #fff));
+    border: 1px solid var(--sb-field-border); border-radius: 8px;
+    background: var(--sb-field-surface);
     color: var(--primary-text-color);
     font: inherit; font-size: 12.5px; font-weight: 600;
     cursor: pointer;
@@ -550,18 +597,25 @@ export const cardStyles = [secondaryTabStyles, css`
   .cache-dialog-input {
     width: 100%; box-sizing: border-box;
     padding: 9px 10px;
-    border: 1px solid var(--divider-color);
+    border: 1px solid var(--sb-field-border);
     border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
-    background: var(--card-background-color, var(--primary-background-color));
+    background: var(--sb-field-surface);
     color: var(--primary-text-color);
     font: inherit; font-size: 13.5px;
   }
   .cache-dialog-input:focus { outline: none; border-color: var(--primary-color); }
+  .cache-dialog-field { display: flex; flex-direction: column; gap: 4px; }
+  .cache-dialog-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--secondary-text-color); }
+  /* Native <select> in the dialog: same field surface as the text input;
+     the popup rows follow the measured theme polarity (see the note on
+     color-scheme above). */
+  .cache-dialog-select { cursor: pointer; }
+  .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
   .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
-  .inner-row:hover { background: rgba(0, 0, 0, 0.03); }
+  .inner-row:hover { background: var(--sb-overlay-hover); }
   .inner-row--clickable { cursor: pointer; }
   .inner-row--clickable:hover { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
   .inner-row--clickable:active { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }

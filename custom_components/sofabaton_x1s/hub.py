@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import deque
 from time import monotonic
 from datetime import datetime, timezone
 from functools import partial
@@ -41,6 +42,7 @@ from .const import (
     signal_app_activations,
     signal_hub_events,
     signal_ip_commands,
+    signal_ir_intercept,
     signal_wifi_device,
     signal_buttons,
     signal_client,
@@ -275,6 +277,7 @@ class SofabatonHub:
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
         self._app_activations: list[dict[str, Any]] = []
         self._last_ip_command: dict[str, Any] | None = None
+        self._ir_emissions: deque[dict[str, Any]] = deque(maxlen=20)
         # MQTT press ingress: one subscription on
         # <MAC>/up, established only while a record is deployed over MQTT.
         self._mqtt_press_unsub: Any = None
@@ -306,6 +309,15 @@ class SofabatonHub:
     @property
     def cache_generation(self) -> int:
         return self._cache_generation
+
+    @property
+    def bridge_stats(self) -> dict[str, Any] | None:
+        """Bridge-loop health counters for diagnostics (issue #279)."""
+
+        try:
+            return self._proxy.transport.get_bridge_stats()
+        except Exception:
+            return None
 
     def _bump_cache_generation(self) -> int:
         self._cache_generation += 1
@@ -852,15 +864,29 @@ class SofabatonHub:
             return self._proxy.get_activities()
 
     def _on_activities_burst(self, key: str) -> None:
+        # Captured on the proxy's frame thread, before crossing into the
+        # event loop: a burst that ended on the scheduler timeout committed
+        # nothing, so the cached catalog (still "ready" from the last good
+        # read) must not be mistaken for a fresh one. Reading the flag
+        # inside _inner could observe a later burst instead.
+        committed = self._proxy.last_activities_burst_committed
+
         def _inner() -> None:
             acts, ready = self._get_activities_cached()
             self._log.debug(
-                "[%s] on_burst_end('activities'): ready=%s, count=%s",
+                "[%s] on_burst_end('activities'): ready=%s, committed=%s, count=%s",
                 self.entry_id,
                 ready,
+                committed,
                 len(acts) if acts else 0,
             )
             self.activities_ready = ready
+            if not committed:
+                # Unanswered or partial read: keep the last complete
+                # catalog and the current activity untouched. Waiters on
+                # _activities_generation see no advance and time out.
+                async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+                return
             if ready and not self._hub_event_hooks_armed:
                 # A complete catalog read establishes the current activity
                 # state even when nothing is running. The proxy's own
@@ -1023,10 +1049,13 @@ class SofabatonHub:
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_devices_burst(self, key: str) -> None:
+        # See _on_activities_burst: captured on the frame thread.
+        committed = self._proxy.last_devices_burst_committed
+
         def _inner() -> None:
             devs, ready = self._proxy.get_devices()
             self.devices_ready = ready
-            if ready:
+            if ready and committed:
                 self.devices = devs
                 self._devices_generation += 1
                 self._bump_cache_generation()
@@ -1204,8 +1233,8 @@ class SofabatonHub:
         if kind == "device":
             # Use the default 15s wait so a slow devices burst (which now has a
             # 5s response-grace fallback) has room to complete instead of the
-            # outer wait expiring first and returning a partial snapshot.
-            await self._async_refresh_devices_snapshot()
+            # outer wait expiring first.
+            await self._async_warm_devices_snapshot()
             devs, ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
             self.devices_ready = ready
             if ready:
@@ -2149,6 +2178,29 @@ class SofabatonHub:
             )
         )
 
+    async def async_set_ir_learn_mode(self, enabled: bool) -> bool:
+        """Arm or disarm the hub's IR learn mode (toggle only, no capture wait)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.set_ir_learn_mode, enabled)
+        )
+
+    async def async_ir_learn_command(self, *, timeout: float = 60.0) -> dict[str, Any] | None:
+        """Arm learn mode and wait for one captured IR command (or timeout/interrupt)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.ir_learn_command, timeout=timeout)
+        )
+
+    def cancel_ir_learn(self) -> bool:
+        """Wake an in-flight ``async_ir_learn_command`` early (non-blocking).
+
+        The exchange then disarms the hub and resolves with state
+        ``cancelled``. Returns False when no learn window is open.
+        """
+
+        return bool(self._proxy.cancel_ir_learn())
+
     async def async_persist_ir_blob(
         self,
         *,
@@ -2389,6 +2441,29 @@ class SofabatonHub:
             self._proxy.create_activity,
             name,
         )
+
+    async def async_create_device(
+        self, name: str, *, device_class: str
+    ) -> dict[str, Any] | None:
+        """Create an empty device of *device_class* named *name* on the hub.
+
+        The proxy wrapper already refreshes the hub-side device catalog
+        (which feeds ``self.devices`` through the normal devices burst)
+        and syncs the remote; the bookkeeping here mirrors
+        :meth:`async_delete_device` so the Hub tab repaints and the
+        persisted cache picks the new row up without waiting for the
+        frontend's per-entity refresh.
+        """
+
+        result = await self.hass.async_add_executor_job(
+            partial(self._proxy.create_device, name, device_class=device_class)
+        )
+        if isinstance(result, dict) and str(result.get("status")) == "success":
+            self._devices_generation += 1
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+            await self._async_persist_cache_if_enabled()
+        return result
 
     async def async_command_to_favorite(
         self,
@@ -3473,18 +3548,41 @@ class SofabatonHub:
         ``raw_body`` is included. Callers that need a JSON-safe view
         must pass each entry through :func:`to_export_view`. This
         contract is symmetric with :meth:`_async_refresh_activities_snapshot`.
+
+        Raises ``TimeoutError`` when no complete devices burst commits
+        before the deadline. The cached catalog is left as it was; it is
+        never cleared ahead of the read (a hub that stays silent is not a
+        hub with no devices).
         """
 
-        previous_generation = self._devices_generation
-        await self.hass.async_add_executor_job(self._proxy.request_devices)
+        proxy = self._proxy
+        baseline = proxy.devices_commit_serial
+        await self.hass.async_add_executor_job(proxy.request_devices)
 
         deadline = monotonic() + timeout_seconds
         while monotonic() < deadline:
-            if self._devices_generation > previous_generation:
-                return dict(self._proxy.state.entities("device"))
+            if proxy.devices_commit_serial > baseline:
+                return dict(proxy.state.entities("device"))
             await asyncio.sleep(0.1)
 
-        return dict(self._proxy.state.entities("device"))
+        raise TimeoutError("Timed out waiting for a complete device list from the hub")
+
+    async def _async_warm_devices_snapshot(self) -> None:
+        """Best-effort devices re-read for post-write epilogues.
+
+        The write already succeeded; a hub that does not answer the
+        follow-up catalog read only leaves the cached view one step
+        behind until the next read, which is not worth failing the
+        operation over.
+        """
+
+        try:
+            await self._async_refresh_devices_snapshot()
+        except TimeoutError:
+            self._log.warning(
+                "[%s] devices catalog re-read timed out; cached view may lag",
+                self.entry_id,
+            )
 
     async def async_get_device_power_state(self, device_id: int) -> int | None:
         """Fresh read of one device's live power state (0 off, 1 on).
@@ -3501,7 +3599,10 @@ class SofabatonHub:
         """
 
         dev_lo = int(device_id) & 0xFF
-        snapshot = await self._async_refresh_devices_snapshot()
+        try:
+            snapshot = await self._async_refresh_devices_snapshot()
+        except TimeoutError:
+            return None
         body = (snapshot.get(dev_lo) or {}).get("raw_body") or b""
         try:
             config = parse_device_record(bytes(body), hub_version=self.version)
@@ -3517,37 +3618,58 @@ class SofabatonHub:
         Returns the raw ``state.entities("activity")`` view (``raw_body``
         included); the JSON-export boundary is the only place that
         strips it via :func:`to_export_view`.
+
+        Raises ``TimeoutError`` when no complete activities burst commits
+        before the deadline. The cached catalog and the current activity
+        are left untouched: they are never cleared ahead of the read, so
+        an unanswered request cannot masquerade as a powered-off hub.
+
+        The wait keys on the proxy's commit serial, not on the HA-side
+        ``_activities_generation``: that counter is bumped by a loop
+        callback which can still be queued from an earlier burst when this
+        request goes out, and would then satisfy an unanswered wait. The
+        returned snapshot is therefore read from proxy state directly and
+        may be ahead of ``self.activities`` until that callback runs;
+        callers that validate against the fresh catalog use the return
+        value, not the HA-side dict.
         """
 
-        previous_generation = self._activities_generation
-        await self.hass.async_add_executor_job(self._proxy.request_activities)
+        proxy = self._proxy
+        baseline = proxy.activities_commit_serial
+        await self.hass.async_add_executor_job(proxy.request_activities)
 
         deadline = monotonic() + timeout_seconds
         while monotonic() < deadline:
-            if self._activities_generation > previous_generation:
-                return dict(self._proxy.state.entities("activity"))
+            if proxy.activities_commit_serial > baseline:
+                return dict(proxy.state.entities("activity"))
             await asyncio.sleep(0.1)
 
-        return dict(self._proxy.state.entities("activity"))
+        raise TimeoutError("Timed out waiting for a complete Activity list from the hub")
 
-    async def async_request_catalog(self, kind: str, timeout_seconds: float = 30.0) -> None:
+    async def async_request_catalog(
+        self, kind: str, timeout_seconds: float = 30.0
+    ) -> dict[int, dict[str, Any]]:
         """Send REQ_ACTIVITIES or REQ_DEVICES to the hub and wait for the burst to complete.
 
-        Uses a snapshot-clear-fetch-prune strategy: the name catalog is cleared before
-        the request so deleted entries don't persist, and per-entity detail data
-        (commands, macros) is preserved for entities that still exist and pruned only
-        for entities that were removed from the catalog.
+        Returns the committed raw snapshot (see the refresh helpers), so a
+        caller that must validate against the fresh catalog does not read
+        the HA-side dict, which a queued older callback may still hold.
+
+        Fetch-then-prune: the cached catalog stays in place until a complete
+        burst replaces it wholesale (the proxy commits a full row set or
+        nothing), so entries deleted on the hub drop out on success while an
+        unanswered request changes nothing. Per-entity detail data (commands,
+        macros) is pruned only for ids that a successful read no longer
+        returns.
+
+        Raises ``TimeoutError`` when the hub does not answer with a complete
+        catalog in time. The old clear-before-read variant wiped the catalog
+        and the active-activity hint ahead of the request, which turned a
+        timed-out read into a phantom power-off (issue #279 / PR #280).
         """
         if kind == "activities":
             old_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
-            await self.hass.async_add_executor_job(self._proxy.clear_activities_catalog)
-            previous_generation = self._activities_generation
-            await self.hass.async_add_executor_job(self._proxy.request_activities)
-            deadline = monotonic() + timeout_seconds
-            while monotonic() < deadline:
-                if self._activities_generation > previous_generation:
-                    break
-                await asyncio.sleep(0.1)
+            snapshot = await self._async_refresh_activities_snapshot(timeout_seconds=timeout_seconds)
             new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
             cached_detail_ids = await self.hass.async_add_executor_job(
                 self._proxy.get_cached_activity_detail_ids
@@ -3558,8 +3680,7 @@ class SofabatonHub:
                 )
         elif kind == "devices":
             old_ids = await self.hass.async_add_executor_job(self._proxy.get_known_device_ids)
-            await self.hass.async_add_executor_job(self._proxy.clear_devices_catalog)
-            await self._async_refresh_devices_snapshot(timeout_seconds=timeout_seconds)
+            snapshot = await self._async_refresh_devices_snapshot(timeout_seconds=timeout_seconds)
             new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_device_ids)
             for dev_id in old_ids - new_ids:
                 await self.hass.async_add_executor_job(
@@ -3576,6 +3697,7 @@ class SofabatonHub:
         else:
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        return snapshot
 
     def get_managed_command_hashes(self, device_key: str | None = None) -> list[str]:
         normalized_key = "".join(ch for ch in str(device_key or "").lower() if ch.isalnum())
@@ -4096,7 +4218,7 @@ class SofabatonHub:
             await self.async_fetch_device_commands(int(device_id))
             for act_id in sorted(self._proxy.activities_referencing_device(int(device_id))):
                 await self._async_fetch_activity_commands(act_id)
-            await self._async_refresh_devices_snapshot()
+            await self._async_warm_devices_snapshot()
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
             try:
@@ -4361,7 +4483,7 @@ class SofabatonHub:
             if act_id in favorite_acts:
                 await self.async_request_favorites_order(act_id)
         if plan.steps:
-            await self._async_refresh_devices_snapshot()
+            await self._async_warm_devices_snapshot()
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
             try:
@@ -4531,13 +4653,13 @@ class SofabatonHub:
                         phase="validating_activities",
                         message="Validating Activities against the hub",
                     )
-                    previous_activities_generation = self._activities_generation
-                    await self.async_request_catalog("activities")
-                    if self._activities_generation == previous_activities_generation:
+                    try:
+                        activity_snapshot = await self.async_request_catalog("activities")
+                    except TimeoutError as err:
                         raise HomeAssistantError(
                             "Failed to refresh the Activity list from the hub; "
                             "sync aborted rather than deploying against a stale catalog"
-                        )
+                        ) from err
                     stored_activity_labels = command_payload.get("activity_labels")
                     if isinstance(stored_activity_labels, dict):
                         label_mismatches: list[str] = []
@@ -4547,7 +4669,11 @@ class SofabatonHub:
                             ).strip()
                             if not stored_label:
                                 continue
-                            entry = self.activities.get(act_id)
+                            # Validate against the snapshot the refresh
+                            # returned, not self.activities: the burst
+                            # callback that updates the latter may still
+                            # be queued behind an older one.
+                            entry = activity_snapshot.get(act_id)
                             if entry is None:
                                 # Deleted activities are dropped from the
                                 # deploy further down, matching the existing
@@ -4569,7 +4695,13 @@ class SofabatonHub:
                                 "configuration, save, and sync again."
                             )
 
-                device_snapshot = await self._async_refresh_devices_snapshot()
+                try:
+                    device_snapshot = await self._async_refresh_devices_snapshot()
+                except TimeoutError as err:
+                    raise HomeAssistantError(
+                        "Failed to refresh the Device list from the hub; "
+                        "sync aborted rather than deploying against a stale catalog"
+                    ) from err
                 managed_devices = self._managed_wifi_devices(device_snapshot)
                 stored_devices = await store.async_list_hub_devices(self.entry_id) if store is not None else None
                 managed, ambiguous = self._match_managed_wifi_devices(
@@ -5134,6 +5266,34 @@ class SofabatonHub:
         if self._last_ip_command is None:
             return None
         return dict(self._last_ip_command)
+
+    def record_ir_emission(
+        self, *, command: Any, timings: list[int], carrier_hz: int, blob: bytes
+    ) -> None:
+        """Ring-buffer a command sent through the infrared emitter (IR5).
+
+        Consecutive identical sends (same blob) collapse into one entry
+        with a bumped ``count`` and refreshed timestamp. Feeds the IR
+        intercept sensor via its dispatcher signal.
+        """
+
+        from . import ir_intercept  # local import: keeps hub import light
+
+        record = ir_intercept.build_emission_record(
+            command=command, timings=timings, carrier_hz=carrier_hz, blob=blob
+        )
+        last = self._ir_emissions[-1] if self._ir_emissions else None
+        if last is not None and last["payload_hex"] == record["payload_hex"]:
+            last["count"] += 1
+            last["when"] = record["when"]
+        else:
+            self._ir_emissions.append(record)
+        async_dispatcher_send(self.hass, signal_ir_intercept(self.entry_id))
+
+    def get_ir_emissions(self) -> list[dict[str, Any]]:
+        """Recent emitter sends, oldest first (copies)."""
+
+        return [dict(record) for record in self._ir_emissions]
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         """Return recent app-originated activation requests."""

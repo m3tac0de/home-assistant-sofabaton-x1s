@@ -9,7 +9,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "custom_components" / "sofabaton_x1s"
-TRANSLATIONS = INTEGRATION / "translations" / "en.json"
+TRANSLATIONS_DIR = INTEGRATION / "translations"
+TRANSLATIONS = TRANSLATIONS_DIR / "en.json"
 
 
 def _english() -> dict:
@@ -41,8 +42,9 @@ def _service_schema() -> dict[str, set[str]]:
 def test_custom_translation_file_is_flat() -> None:
     """Custom integrations cannot use Core's build-time translation references."""
 
-    source = TRANSLATIONS.read_text(encoding="utf-8")
-    assert "[%key:" not in source
+    for path in TRANSLATIONS_DIR.glob("*.json"):
+        source = path.read_text(encoding="utf-8")
+        assert "[%key:" not in source, path.name
 
 
 def test_config_flow_steps_and_abort_reasons_are_translated() -> None:
@@ -109,9 +111,16 @@ def test_all_entity_names_use_translation_keys() -> None:
             "remote_vol_up",
             "remote_yellow",
         },
+        "infrared": {"ir_emitter"},
         "remote": {"remote"},
         "select": {"activity"},
-        "sensor": {"activity", "index", "ip_commands", "recorded_keypress"},
+        "sensor": {
+            "activity",
+            "index",
+            "ip_commands",
+            "ir_intercept",
+            "recorded_keypress",
+        },
         "switch": {"hex_logging", "proxy", "wifi_device"},
         "text": {"hub_ip_address"},
     }
@@ -119,9 +128,10 @@ def test_all_entity_names_use_translation_keys() -> None:
     entity_class_counts = {
         "binary_sensor": 2,
         "button": 3,
+        "infrared": 1,
         "remote": 1,
         "select": 1,
-        "sensor": 4,
+        "sensor": 5,
         "switch": 3,
         "text": 1,
     }

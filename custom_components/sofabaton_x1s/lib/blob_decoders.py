@@ -40,7 +40,7 @@ and the Fetch Blob result builder.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Sequence, Tuple
 
 from .protocol_const import (
     DEVICE_CLASS_IR,
@@ -619,6 +619,255 @@ def _encode_descriptive_ir(decoded: Dict[str, Any]) -> bytes:
     body = render_ir_descriptive_blob_body(str(decoded["descriptor"]))
     trailer = bytes.fromhex(str(decoded.get("trailer_hex") or "").replace(" ", ""))
     return body + trailer
+
+
+# ---- ir raw-timing replay blobs -------------------------------------------
+#
+# Wire body layout (raw-timing variant), live-validated 2026-08-31 against
+# a vendor-cloud Samsung deploy on a physical TV (bench session,
+# docs/internal/ha-infrared-plan.md IR0 findings):
+#   [0..2]               = timing-section byte length (big-endian, 2 bytes;
+#                          4 * number of timing words, terminator excluded)
+#   [2..6]               = format field (00 00 00 00 on vendor-cloud raw
+#                          deploys; other values observed on learned
+#                          captures, semantics not yet mapped)
+#   [6..8]               = carrier frequency in Hz (big-endian, 2 bytes)
+#   [8..8+4N]            = alternating mark/space durations in microseconds,
+#                          each one big-endian 4 bytes, mark first
+#   [-4..]               = terminator 00 00 00 00
+# Stored records carry one extra trailing byte after the terminator (a
+# save-tail byte whose algorithm is not simple sum8); it is NOT required
+# for one-shot playback and the builder does not emit it.
+#
+# CAUTION - the hub happily ACKs a malformed body and then emits nothing:
+# the earlier IrScrutinizer-exporter framing (fixed 00 00 03 20 00 00
+# header + BE32 carrier) declares a zero length and a 0 Hz carrier under
+# this layout, and produced zero photons despite clean 0x0103 acks. Only
+# a physically observed device response validates a framing change.
+# The builder is the write side only; captured raw blobs are content-
+# sniffed elsewhere (lib.proxy_ir_blob) and never decoded to a
+# structured form.
+
+
+_RAW_IR_FORMAT_FIELD = b"\x00\x00\x00\x00"
+_RAW_IR_TERMINATOR = b"\x00\x00\x00\x00"
+
+#: Gap appended when a timing sequence ends on a mark. Every hub-validated
+#: raw blob ends on a gap (Girr bakes the inter-burst gap into each
+#: sequence), while protocol encoders that emit signed timings typically
+#: end on the final mark. Provisional value pending IR0 bench validation
+#: (docs/internal/ha-infrared-plan.md).
+RAW_IR_DEFAULT_TRAILING_GAP_US = 40_000
+
+
+#: Pronto reference oscillator: carrier Hz = PRONTO_REFERENCE_HZ / freq_word.
+_PRONTO_REFERENCE_HZ = 4_145_146
+
+
+def parse_pronto_hex(text: str) -> tuple[list[int], int]:
+    """Parse a learned-format (``0000``) pronto hex string.
+
+    Returns ``(timings_us, carrier_hz)`` where timings alternate
+    mark/space in microseconds, mark first - ready for
+    :func:`build_raw_ir_blob_body`. The once-burst section is used;
+    when it is empty the repeat section is emitted once instead (many
+    published codes carry the whole signal in the repeat section).
+
+    Implemented locally on purpose: the ``infrared-protocols`` library's
+    pronto API differs between the versions HA cores pin (no hex parser
+    at all in 8.x, ``from_pronto_hex`` in 9.x), and the arithmetic is
+    small enough to own outright.
+    """
+
+    try:
+        words = [int(token, 16) for token in text.split()]
+    except ValueError as exc:
+        raise ValueError(f"not hex words: {exc}") from exc
+    if len(words) < 6:
+        raise ValueError("pronto code too short (needs preamble + one pair)")
+    if any(not 0 <= word <= 0xFFFF for word in words):
+        raise ValueError("pronto words must be 16-bit values")
+    preamble, freq_word, once_pairs, repeat_pairs = words[:4]
+    if preamble != 0x0000:
+        raise ValueError(
+            f"unsupported pronto format 0x{preamble:04X} (only learned/0000)"
+        )
+    if freq_word == 0:
+        raise ValueError("pronto frequency word is zero")
+    expected = 4 + 2 * (once_pairs + repeat_pairs)
+    if len(words) != expected:
+        raise ValueError(
+            f"pronto word count mismatch: preamble declares {expected}, got {len(words)}"
+        )
+    carrier_hz = round(_PRONTO_REFERENCE_HZ / freq_word)
+    if once_pairs:
+        start, count = 4, 2 * once_pairs
+    else:
+        if not repeat_pairs:
+            raise ValueError("pronto code has neither once nor repeat pairs")
+        start, count = 4, 2 * repeat_pairs
+    cycle_us = 1_000_000 / carrier_hz
+    timings = [
+        max(1, round(word * cycle_us)) for word in words[start : start + count]
+    ]
+    if any(word == 0 for word in words[start : start + count]):
+        raise ValueError("pronto timing word is zero")
+    return timings, carrier_hz
+
+
+def build_raw_ir_blob_body(
+    timings_us: Sequence[int],
+    carrier_hz: int,
+    *,
+    trailing_gap_us: int = RAW_IR_DEFAULT_TRAILING_GAP_US,
+) -> bytes:
+    """Render a raw-timing IR command blob body from mark/space durations.
+
+    ``timings_us`` is a positionally alternating mark/space sequence in
+    microseconds, mark first. Signs are ignored (sources like HA's
+    ``infrared-protocols`` library emit marks positive and spaces
+    negative; the blob encodes alternation by position only). A sequence
+    that ends on a mark (odd length) gets ``trailing_gap_us`` appended so
+    the body ends on a gap like every hub-validated capture.
+
+    The result is a complete ``library_data`` body: feed it to
+    ``play_ir_blob`` for one-shot playback or persist it on an IR device.
+    """
+
+    if not timings_us:
+        raise ValueError("raw IR timing sequence is empty")
+    if not 0 < carrier_hz < 2**32:
+        raise ValueError(f"carrier frequency out of range: {carrier_hz}")
+    durations = [abs(int(value)) for value in timings_us]
+    if any(value == 0 for value in durations):
+        raise ValueError("raw IR timing sequence contains a zero duration")
+    if len(durations) % 2:
+        if not 0 < trailing_gap_us < 2**32:
+            raise ValueError(f"trailing gap out of range: {trailing_gap_us}")
+        durations.append(int(trailing_gap_us))
+    if carrier_hz >= 2**16:
+        raise ValueError(f"carrier frequency out of range: {carrier_hz}")
+    if 4 * len(durations) >= 2**16:
+        raise ValueError(f"raw IR timing sequence too long: {len(durations)}")
+    out = bytearray()
+    out += (4 * len(durations)).to_bytes(2, "big")
+    out += _RAW_IR_FORMAT_FIELD
+    out += carrier_hz.to_bytes(2, "big")
+    for value in durations:
+        if value >= 2**32:
+            raise ValueError(f"raw IR duration out of range: {value}")
+        out += value.to_bytes(4, "big")
+    out += _RAW_IR_TERMINATOR
+    return bytes(out)
+
+
+#: Timings/carrier of the X2 descriptor-parser reset play: four 20 us
+#: blips 5 ms apart at 65 kHz. The X2's family-0x0F one-shot play path
+#: keeps descriptor (``P:``) parser state across plays - a multi-field
+#: descriptor (Panasonic, SharpDVD, DenonK, ...) leaves stale fields that
+#: the next descriptor play inherits - and any raw play carrying at least
+#: 8 timing words re-initialises it (loopback bench 2026-09-03; fewer words
+#: do not, content and carrier are irrelevant). These blips are barely one
+#: carrier cycle wide at a carrier outside every consumer IR band, so a
+#: receiver sees only undecodable energy. 1 us marks must NOT be used: they
+#: corrupt the hub's next emission.
+X2_PARSER_RESET_TIMINGS_US: tuple[int, ...] = (20, 5000) * 4
+X2_PARSER_RESET_CARRIER_HZ = 65000
+
+
+def parse_raw_ir_blob_body(blob: bytes) -> Tuple[list, int]:
+    """Extract ``(timings_us, carrier_hz)`` from a raw-timing IR blob.
+
+    Inverse of :func:`build_raw_ir_blob_body`, tolerant of the stored
+    variants seen on real hubs. Learned captures use the same framing
+    with the header fields meaning ``[0:2]`` pulse-block byte length,
+    ``[2:4]`` repeat-block byte length, ``[4]`` sign and ``[5:8]`` a
+    3-byte carrier; the emit layout's zero format field is the
+    degenerate case of that. The word count is taken from the declared
+    block lengths whenever they are consistent with the blob, because
+    the X1 never writes the zero terminator after a learned capture -
+    the slot holds stale RAM from an earlier, longer capture (loopback
+    bench, 2026-09-03). Only when the declared lengths do not fit (or a
+    zero word sits inside the declared span) are the words read up to
+    the first zero terminator word instead. Trailing save-tail byte(s)
+    after the terminator slot are ignored either way.
+
+    Raises ``ValueError`` for blobs that are not raw-timing shaped -
+    notably descriptive ``P:`` payloads and the pre-2026-08-31 exporter
+    framing (whose carrier field reads zero).
+    """
+
+    if not isinstance(blob, (bytes, bytearray)) or len(blob) < 8 + 2 * 4 + 4:
+        raise ValueError("blob too short for a raw IR timing body")
+    if looks_like_descriptive_ir_blob(bytes(blob)):
+        raise ValueError("descriptive IR payload carries no raw timings")
+    carrier_hz = int.from_bytes(blob[6:8], "big")
+    if not 10_000 <= carrier_hz <= 500_000:
+        raise ValueError(f"implausible carrier field: {carrier_hz} Hz")
+    timings: list = []
+    declared_bytes = int.from_bytes(blob[0:2], "big") + int.from_bytes(blob[2:4], "big")
+    if declared_bytes and declared_bytes % 4 == 0 and 8 + declared_bytes + 4 <= len(blob):
+        for offset in range(8, 8 + declared_bytes, 4):
+            timings.append(int.from_bytes(blob[offset : offset + 4], "big"))
+        if any(value == 0 for value in timings):
+            timings = []
+    if not timings:
+        pos = 8
+        while pos + 4 <= len(blob):
+            word = int.from_bytes(blob[pos : pos + 4], "big")
+            pos += 4
+            if word == 0:
+                break
+        else:
+            raise ValueError("raw IR blob has no terminator word")
+        end = pos - 4
+        for offset in range(8, end, 4):
+            timings.append(int.from_bytes(blob[offset : offset + 4], "big"))
+    if len(timings) < 2:
+        raise ValueError("raw IR blob has fewer than two timing words")
+    if any(not 20 <= value <= 2_000_000 for value in timings):
+        raise ValueError("raw IR blob timing word out of plausible range")
+    return timings, carrier_hz
+
+
+def looks_like_descriptive_ir_blob(blob: bytes) -> bool:
+    """Content sniff for the descriptive (``P:``) replay payload class."""
+
+    return len(blob) >= 8 and blob[2:8] == _DESCRIPTIVE_IR_MAGIC
+
+
+#: Pronto words are 16-bit; longer gaps clamp to the maximum.
+_PRONTO_MAX_WORD = 0xFFFF
+
+
+def render_pronto_hex(timings_us: Sequence[int], carrier_hz: int) -> str:
+    """Render timings as a learned-format (``0000``) pronto hex string.
+
+    Inverse of :func:`parse_pronto_hex`: everything goes into the
+    once-burst section (multi-frame signals keep their inter-frame gaps
+    inline, matching how validated hub blobs carry repeats), the repeat
+    section stays empty, and an odd sequence is closed with the default
+    trailing gap. Round-trips through ``parse_pronto_hex`` within
+    carrier-quantization tolerance.
+    """
+
+    if not timings_us:
+        raise ValueError("raw IR timing sequence is empty")
+    if not 10_000 <= int(carrier_hz) <= 500_000:
+        raise ValueError(f"carrier frequency out of range: {carrier_hz}")
+    durations = [abs(int(value)) for value in timings_us]
+    if any(value == 0 for value in durations):
+        raise ValueError("raw IR timing sequence contains a zero duration")
+    if len(durations) % 2:
+        durations.append(RAW_IR_DEFAULT_TRAILING_GAP_US)
+    freq_word = max(1, min(_PRONTO_MAX_WORD, round(_PRONTO_REFERENCE_HZ / int(carrier_hz))))
+    cycles_per_us = int(carrier_hz) / 1_000_000
+    words = [0x0000, freq_word, len(durations) // 2, 0x0000]
+    words += [
+        max(1, min(_PRONTO_MAX_WORD, round(value * cycles_per_us)))
+        for value in durations
+    ]
+    return " ".join(f"{word:04X}" for word in words)
 
 
 def _decode_wifi_mqtt(data: bytes) -> Dict[str, Any]:
