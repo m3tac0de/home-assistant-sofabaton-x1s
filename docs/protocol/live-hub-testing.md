@@ -1092,6 +1092,45 @@ device-scoped reuse of the existing `_send_step(family=FAMILY_FAV_DELETE,
 payload=[dev, cmd])` sender, no commit. Both hubs left clean (no bench
 devices remain).
 
+## ◇ Validated: command removal from any device via the live device editor (X1 + X1S + X2, 2026-09-16)
+
+`bench_240_command_delete_ha.py` (HA WS driver: sends exactly what the Hub
+tab's device editor sends — the edited bundle with the hub's reference
+cascade mirrored in, through `device/sync_plan` + `device/sync` — then
+reads the hub back). Follow-up to PR #287, which proposed a standalone
+per-command delete endpoint; the capability shipped through the batched
+plan instead (`allow_command_removal` opened to every device).
+
+- **X1S** device 10 "Soundbar" (IR) cmd 2 "Mute": 3 activity bindings +
+  1 device binding → plan `binding_delete, command_delete`; 17/17.
+- **X2** device 1 "MQTT test" (`wifi_mqtt`) cmd 1: no refs → plan
+  `command_delete`; 16/16. First family-0x10 command delete sent to an
+  X2; bare frame, ACK, six-command device read back as five.
+- **X1** device 8 "Emulated Roku" (wifi_roku, 47 commands) cmd 11 "Home":
+  activity binding + activity macro step (+ a device binding) → first run
+  FAILED at the device-scoped `binding_delete`: the 0x0210 key delete
+  acked after **12.08 s** (11-device catalog), past the 12 s window, and
+  the hub applied it anyway (binding gone on re-read, command still
+  there — the delete is last, so nothing else had been written).
+  `_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT` raised to 30 s (the command delete
+  now shares it); rerun 16/16, and device 10 "Sonos Arc" cmd 2 (6
+  activity bindings + device binding) 17/17 with the binding delete
+  acking at 11.2 s.
+- **X1** device 8 cmd 2 "PowerOff" (device power row): plan
+  `macro_write, command_delete` — the emptied POWER_OFF macro (0 steps)
+  is accepted by the hub; 17/17.
+- **X1** device 1 "Avstar" cmd 4 (inputs-page entry): plan `inputs_write,
+  command_delete`. The command is gone but the **inputs page keeps the
+  entry**: the live `inputs_write` step is a logged no-op (the page is a
+  restore-only family-0x46 write), and the hub does not cascade input
+  entries on a command delete. Known limitation; the editor still prunes
+  the entry in its working bundle (sync validation insists) and the
+  post-sync rebase shows the hub's entry again.
+- Every run: every other command survived, every activity read back
+  exactly as staged (favorites / binding legs / macro steps cascaded by
+  the hub, membership and power rows untouched), `blobs/fetch` agrees
+  with the structural bundle.
+
 ## ◇ Validated: remove device from one activity — power-macro rewrite (X1 + X1S, 2026-07-17)
 
 `bench_113_membership_remove.py` (in-place deploy program chunk 3).

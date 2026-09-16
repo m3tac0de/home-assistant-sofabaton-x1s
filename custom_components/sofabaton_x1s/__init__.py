@@ -2967,11 +2967,10 @@ async def _run_entity_sync_operation(
             # hub-side editing UI, but command ADD is blocked — a hub-only
             # record would have no slot, no callback payload discipline,
             # and no deployable snapshot entry. Events are added through
-            # the activity editor's Add dialogs. Command REMOVAL is the
-            # supported delete path (W7 stage 2): the plan's
-            # command_delete steps make the hub cascade referencing
-            # favorites/bindings/macro-steps, and the reconcile below
-            # resets the freed store slots.
+            # the activity editor's Add dialogs. Command REMOVAL follows
+            # the same plan step every device gets (below); what is
+            # events-specific is the reconcile after the sync, which
+            # resets the freed store slots so the record follows the hub.
             is_events_device = True
             try:
                 planned = build_device_sync_plan(
@@ -3010,12 +3009,19 @@ async def _run_entity_sync_operation(
 
     try:
         if entity_kind == "device":
+            # Command removal is in scope for EVERY device: a command the
+            # editor dropped becomes a command_delete step, ordered last in
+            # the plan, and the hub cascades the favorites/bindings/macro
+            # steps that referenced it. The plan runs behind the stale
+            # preflight, so a removal is only ever applied against the
+            # device as it currently reads on the hub. The scope guard
+            # still rejects an unflagged command ADD.
             result = await hub.async_sync_device(
                 baseline=baseline,
                 edited=edited,
                 device_id=entity_id,
                 progress_callback=_progress,
-                allow_command_removal=is_events_device,
+                allow_command_removal=True,
             )
         else:
             result = await hub.async_sync_activity(
@@ -3598,9 +3604,9 @@ async def _handle_entity_sync_plan_ws(
                 baseline,
                 edited,
                 entity_id,
-                # W7: command removal is in scope for the events device only
-                # (the review preview must mirror the executor's rules).
-                allow_command_removal=_bundle_device_is_wifi_events(baseline, entity_id),
+                # Command removal is in scope for every device (the review
+                # preview must mirror the executor's rules).
+                allow_command_removal=True,
             )
         else:
             plan = build_activity_sync_plan(baseline, edited, entity_id)

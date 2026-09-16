@@ -49,7 +49,13 @@ from .protocol_const import (
 )
 
 _POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
-_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT = 12.0
+# A 0x0210 key delete runs a hub-side consistency sweep before it acks, and
+# at device scope that sweep's latency grows with the catalog: 12.1 s on an
+# X1 with 11 devices (one of them 47 commands) during bench_240 2026-09-16,
+# past the old 12 s window, with the hub then applying the delete anyway.
+# Same reason the command delete below and the family-0x09 device delete
+# wait longer than the 5 s default.
+_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT = 30.0
 
 
 def _power_macro_label(button_id: int) -> str | None:
@@ -1583,14 +1589,15 @@ class ActivitySyncMixin:
         # The device-scoped delete runs a hub-side consistency sweep before
         # acking, and its latency scales with catalog size (observed live on
         # X1: 4.2 s on a 7-device catalog 2026-07-17, 5.1 s on a 10-device
-        # catalog 2026-07-18 — past the old 5 s window). Same reason the
-        # family-0x09 device delete waits 120 s.
+        # catalog 2026-07-18, 12.1 s for the sibling key delete on an
+        # 11-device catalog 2026-09-16). Same reason the family-0x09 device
+        # delete waits 120 s.
         step = self._send_step(
             step_name=f"wifi-command-delete[dev=0x{dev_lo:02X} cmd=0x{cmd_lo:02X}]",
             family=FAMILY_FAV_DELETE,
             payload=bytes([dev_lo, cmd_lo]),
             ack_opcode=ACK_OPCODE_STATUS,
-            timeout=20.0,
+            timeout=_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT,
         )
         return step.ok
 

@@ -475,6 +475,161 @@ def test_ws_device_sync_plan_returns_step_summary(monkeypatch):
     assert kinds == ["binding_write"]
 
 
+def _device_bundle_with_commands(command_ids):
+    bundle = _device_bundle([])
+    bundle["devices"][0]["commands"] = [
+        {"command_id": cid, "name": f"Cmd {cid}"} for cid in command_ids
+    ]
+    return bundle
+
+
+def test_ws_device_sync_plan_previews_command_removal_on_regular_device(monkeypatch):
+    """A command dropped from ANY device (not just the Wifi Events device)
+    plans a command_delete — the batched, preflighted path a command
+    removal takes, in place of any per-command endpoint."""
+    conn = _Conn()
+    _patch(monkeypatch)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 10, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _device_bundle_with_commands([10, 11]),
+        "edited": _device_bundle_with_commands([10]),
+    }))
+    assert conn.error is None
+    steps = conn.result[1]["steps"]
+    assert [s["kind"] for s in steps] == ["command_delete"]
+
+
+def test_ws_device_sync_plan_accepts_the_editor_cascade_end_to_end(monkeypatch):
+    """Through validation AND the scope guard: the editor drops the removed
+    command's favorite / macro step / binding from a referencing activity
+    (the validator insists on no dangling refs) and the plan still comes
+    out as a single command_delete."""
+    def _bundle(command_ids, *, cascaded):
+        bundle = _device_bundle_with_commands(command_ids)
+        bundle["activities"] = [{
+            "device": {"device_id": 101, "name": "Watch TV", "entity_type": "activity"},
+            "referenced_source_device_ids": [1],
+            "favorite_slots": [] if cascaded else [
+                {"button_id": 1, "device_id": 1, "command_id": 11, "name": "Cmd 11"},
+            ],
+            "macros": [
+                {"button_id": 3, "name": "Combo", "steps": (
+                    [{"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 0xFF}]
+                    if cascaded else
+                    [{"device_id": 1, "command_id": 11, "button_code": 0, "duration": 0, "delay": 0xFF},
+                     {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 0xFF}]
+                )},
+                {"button_id": 198, "name": "POWER_ON", "steps": [
+                    {"device_id": 1, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF},
+                ]},
+                {"button_id": 199, "name": "POWER_OFF", "steps": [
+                    {"device_id": 1, "command_id": 0xC7, "button_code": 0, "duration": 0, "delay": 0xFF},
+                ]},
+            ],
+            "button_bindings": [] if cascaded else [
+                {"button_id": 0xB0, "device_id": 1, "command_id": 11},
+            ],
+        }]
+        return bundle
+
+    conn = _Conn()
+    _patch(monkeypatch)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 12, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _bundle([10, 11], cascaded=False),
+        "edited": _bundle([10], cascaded=True),
+    }))
+    assert conn.error is None, conn.error
+    assert [s["kind"] for s in conn.result[1]["steps"]] == ["command_delete"]
+
+
+def test_ws_device_sync_plan_still_rejects_unflagged_command_add(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 11, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _device_bundle_with_commands([10]),
+        "edited": _device_bundle_with_commands([10, 11]),
+    }))
+    assert conn.result is None
+    assert conn.error[1] == "invalid_payload"
+
+
+def test_device_sync_command_removal_on_regular_device(monkeypatch):
+    """The executor opens command removal for a regular device and, since
+    the device has no command-config record, leaves the Wifi Events store
+    reconcile alone. The activities referencing the device are re-read so
+    cascaded favorite/binding labels follow."""
+    from custom_components.sofabaton_x1s.command_config import CommandConfigStore
+
+    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    reconciled = []
+
+    async def spy_reconcile(*args, **kwargs):
+        reconciled.append((args, kwargs))
+
+    monkeypatch.setattr(store, "async_reconcile_wifi_events_command_removals", spy_reconcile)
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    class _DisabledStore:
+        enabled = False
+
+    async def fake_cache_store(_hass):
+        return _DisabledStore()
+
+    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_cache_store)
+
+    class _SyncingHub(_Hub):
+        sync_kwargs = None
+        refreshed_referencing = None
+
+        async def async_sync_device(self, **kwargs):
+            self.sync_kwargs = kwargs
+            return {
+                "status": "success", "completed_steps": 1, "total_steps": 1,
+                "counters": {"command_delete": 1},
+            }
+
+        async def async_request_catalog(self, kind):
+            pass
+
+        async def async_refresh_entity_structure(self, *, kind, ent_id):
+            pass
+
+        async def async_refresh_activities_referencing_device(self, device_id):
+            self.refreshed_referencing = device_id
+
+    hub = _SyncingHub()
+    registry = integration._backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="device_sync", entry_id="entry-1",
+        initial_state={"status": "pending", "phase": "queued"},
+    )
+    result = _run(integration._run_entity_sync_operation(
+        hass, operation_id, hub=hub,
+        baseline=_device_bundle_with_commands([10, 11]),
+        edited=_device_bundle_with_commands([10]),
+        entity_kind="device", entity_id=1,
+    ))
+
+    assert result["status"] == "success"
+    assert hub.sync_kwargs["allow_command_removal"] is True
+    assert hub.refreshed_referencing == 1
+    assert reconciled == []
+    assert ((registry.get(operation_id) or {}).get("state") or {}).get("status") == "success"
+
+
 # ── Immediate entity delete (activity / device) ─────────────────────────
 
 

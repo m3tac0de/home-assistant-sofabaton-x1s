@@ -9067,7 +9067,7 @@ function deleteBundleDevice(bundle, deviceId) {
   };
   return reconcileBundlePowerMacros(next);
 }
-function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
+function deleteBundleDeviceCommand(bundle, deviceId, commandId, options = {}) {
   const dId = Number(deviceId);
   const cId = Number(commandId);
   const next = {
@@ -9087,7 +9087,21 @@ function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
         macros: (device.macros ?? []).map((macro) => ({
           ...macro,
           steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId))
-        }))
+        })),
+        // Same for the inputs page: an input entry that plays this command
+        // is dropped (surviving entries keep their ordinals, so activity
+        // input steps that point at them stay valid). Sync validation
+        // insists on this prune; the live sync's inputs_write is a no-op
+        // (the page is a restore-only write), so the hub keeps the entry
+        // and the post-sync rebase shows it again (bench_240, 2026-09-16).
+        ...device.input_record?.entries ? {
+          input_record: {
+            ...device.input_record,
+            entries: device.input_record.entries.filter(
+              (entry) => Number(entry?.command_id || 0) !== cId
+            )
+          }
+        } : {}
       };
     }),
     activities: (bundle.activities ?? []).map((activity) => ({
@@ -9105,6 +9119,7 @@ function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
       )
     }))
   };
+  if (options.reconcileMembership === false) return next;
   return reconcileBundleMembershipChange(bundle, next);
 }
 function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
@@ -9154,14 +9169,14 @@ function addBundleActivityFavorite(bundle, activityId, deviceId, commandId, name
   });
   return reconcileActivityPowerMacros(next, Number(activityId));
 }
-function applyBundleDelete(bundle, target) {
+function applyBundleDelete(bundle, target, options = {}) {
   switch (target.kind) {
     case "activity":
       return deleteBundleActivity(bundle, target.activityId);
     case "device":
       return deleteBundleDevice(bundle, target.deviceId);
     case "command":
-      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId);
+      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId, options);
     case "favorite":
       return deleteBundleActivityQuickAccess(bundle, target.activityId, "favorite", target.buttonId);
     case "macro":
@@ -10672,7 +10687,8 @@ var SofabatonEditDetailView = class extends i4 {
         }));
         return;
       }
-      let next = applyBundleDelete(this.bundle, target);
+      const deleteOptions = { reconcileMembership: this.mode !== "live" };
+      let next = applyBundleDelete(this.bundle, target, deleteOptions);
       if (target.kind === "command" && this._isWifiEventsLiveDevice()) {
         const slotCount = this._wifiEventsSlotCount();
         if (slotCount > 0 && Number(target.commandId) <= slotCount) {
@@ -10680,7 +10696,7 @@ var SofabatonEditDetailView = class extends i4 {
             kind: "command",
             deviceId: target.deviceId,
             commandId: Number(target.commandId) + slotCount
-          });
+          }, deleteOptions);
         }
       }
       this._commitEditBundleEdit(next);
@@ -11441,9 +11457,11 @@ var SofabatonEditDetailView = class extends i4 {
     );
   }
   /** True when the live editor is showing the reserved Wifi Events device.
-   *  It is fully editable (unlike other managed wifi devices) and, per W7,
-   *  supports command deletion — the only device where a live-editor
-   *  command delete stages a `command_delete` in the sync. */
+   *  It is fully editable (unlike other managed wifi devices). Command
+   *  deletion is available on every live device (a `command_delete` step
+   *  in the sync); what is events-specific is the short+long record
+   *  pairing: deleting a short row takes its long record along and long
+   *  rows carry no delete of their own. */
   _isWifiEventsLiveDevice() {
     return this.mode === "live" && this.kind === "device" && this.entityId != null && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)));
   }
@@ -11834,7 +11852,7 @@ var SofabatonEditDetailView = class extends i4 {
                     ></ha-icon>
                   </button>
                 ` : A}
-            ${(this.mode !== "live" || this._isWifiEventsLiveDevice()) && !this._commandIsLongRecord(item.commandId) ? b2`
+            ${!this._commandIsLongRecord(item.commandId) ? b2`
                   <button
                     class="icon-btn icon-btn--danger"
                     @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}

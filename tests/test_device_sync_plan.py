@@ -440,7 +440,7 @@ def test_removing_a_command_is_still_out_of_scope() -> None:
         build_device_sync_plan(base, edited, DEVICE_ID)
 
 
-# ── W7 stage 2: command removal (Wifi Events device only) ──────────────
+# ── Command removal (W7 stage 2, opened to every device by the HA layer) ──
 
 
 def test_command_removal_rejected_without_the_flag() -> None:
@@ -481,3 +481,109 @@ def test_command_add_still_rejected_even_with_removal_flag() -> None:
     _device(edited)["commands"].append({"command_id": 12, "name": "New"})
     with pytest.raises(ValueError, match="outside the live-editable fields"):
         build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
+
+
+# ── Command removal: the editor mirrors the hub's reference cascade ─────
+
+
+def _with_activity_refs(bundle, command_id, *, long_press_only=False):
+    """Add an activity that references (DEVICE_ID, command_id) from a favorite,
+    a user-macro step (with a trailing delay row) and a binding leg."""
+    binding = (
+        {"button_id": 0xB1, "device_id": DEVICE_ID, "command_id": 10,
+         "long_press_device_id": DEVICE_ID, "long_press_command_id": command_id}
+        if long_press_only
+        else {"button_id": 0xB1, "device_id": DEVICE_ID, "command_id": command_id}
+    )
+    bundle.setdefault("activities", []).append({
+        "device": {"device_id": 0x70, "name": "Watch", "entity_type": "activity"},
+        "referenced_source_device_ids": [DEVICE_ID],
+        "favorite_slots": [
+            {"button_id": 1, "device_id": DEVICE_ID, "command_id": command_id, "name": "X"},
+            {"button_id": 2, "device_id": DEVICE_ID, "command_id": 10, "name": "Keep"},
+        ],
+        "macros": [
+            {"button_id": 3, "name": "M", "steps": [
+                {"device_id": DEVICE_ID, "command_id": command_id, "button_code": 0, "duration": 0, "delay": 0xFF},
+                {"device_id": 0xFF, "command_id": 0xFF, "button_code": 0, "duration": 0xFF, "delay": 2},
+                {"device_id": DEVICE_ID, "command_id": 10, "button_code": 0, "duration": 0, "delay": 0xFF},
+            ]},
+            {"button_id": 198, "name": "POWER_ON", "steps": [
+                {"device_id": DEVICE_ID, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF},
+            ]},
+        ],
+        "button_bindings": [binding],
+    })
+    return bundle
+
+
+def _editor_cascade(bundle, command_id):
+    """What the live editor does to the activity when command_id is deleted
+    (deleteBundleDeviceCommand with reconcileMembership=false)."""
+    act = bundle["activities"][-1]
+    act["favorite_slots"] = [s for s in act["favorite_slots"] if s["command_id"] != command_id]
+    macro = act["macros"][0]
+    macro["steps"] = [macro["steps"][2]]  # step + its trailing delay row gone
+    bindings = []
+    for row in act["button_bindings"]:
+        if row.get("command_id") == command_id:
+            continue
+        if row.get("long_press_command_id") == command_id:
+            row = {k: v for k, v in row.items() if k not in ("long_press_device_id", "long_press_command_id")}
+        bindings.append(row)
+    act["button_bindings"] = bindings
+    return bundle
+
+
+def test_command_removal_tolerates_the_editor_cascade_in_activities() -> None:
+    base = _with_activity_refs(base_bundle(), 11)
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
+    _editor_cascade(edited, 11)
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
+    assert _kinds(plan) == ["command_delete"]
+    assert plan[0].payload == {"device_id": DEVICE_ID, "command_id": 11}
+
+
+def test_command_removal_tolerates_a_cleared_long_press_leg() -> None:
+    base = _with_activity_refs(base_bundle(), 11, long_press_only=True)
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
+    _editor_cascade(edited, 11)
+    assert edited["activities"][-1]["button_bindings"] == [
+        {"button_id": 0xB1, "device_id": DEVICE_ID, "command_id": 10}
+    ]
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
+    assert _kinds(plan) == ["command_delete"]
+
+
+def test_command_removal_still_rejects_other_activity_changes() -> None:
+    base = _with_activity_refs(base_bundle(), 11)
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
+    _editor_cascade(edited, 11)
+    # A membership rewrite (what the offline reconcile would do) is NOT the
+    # hub's cascade and stays out of scope.
+    edited["activities"][-1]["macros"][1]["steps"] = []
+    with pytest.raises(ValueError, match="changed activity"):
+        build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
+
+
+def test_uncascaded_activity_refs_are_in_scope_too() -> None:
+    # The scope guard strips the cascade from both sides: a client that leaves
+    # the activity untouched passes the guard as well (the validator, not the
+    # planner, is what insists on the cascade).
+    base = _with_activity_refs(base_bundle(), 11)
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
+    assert _kinds(plan) == ["command_delete"]
+
+
+def test_activity_cascade_without_the_flag_still_trips() -> None:
+    base = _with_activity_refs(base_bundle(), 11)
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
+    _editor_cascade(edited, 11)
+    with pytest.raises(ValueError, match="out-of-scope"):
+        build_device_sync_plan(base, edited, DEVICE_ID)

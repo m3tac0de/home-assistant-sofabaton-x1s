@@ -1657,10 +1657,26 @@ export function deleteBundleDevice(bundle: BackupBundlePayload, deviceId: number
  * steps that referenced exactly that command. Other commands on the
  * device, and references to them, are untouched.
  */
+/** Options for {@link applyBundleDelete} / {@link deleteBundleDeviceCommand}. */
+export interface BundleDeleteOptions {
+  /**
+   * Whether removing a device's final editable reference from an Activity
+   * also drops that device's generated power rows (offline editing keeps
+   * the bundle self-consistent for a restore). The LIVE device editor
+   * passes `false`: the hub's own command-delete cascade drops favorites,
+   * binding legs and macro steps but leaves membership alone, and the
+   * device sync's scope guard tolerates exactly that cascade and nothing
+   * else — a membership rewrite (or the power-macro self-heal that rides
+   * with it) would put the activity out of scope.
+   */
+  reconcileMembership?: boolean;
+}
+
 export function deleteBundleDeviceCommand(
   bundle: BackupBundlePayload,
   deviceId: number,
   commandId: number,
+  options: BundleDeleteOptions = {},
 ): BackupBundlePayload {
   const dId = Number(deviceId);
   const cId = Number(commandId);
@@ -1682,6 +1698,22 @@ export function deleteBundleDeviceCommand(
           ...macro,
           steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId)),
         })),
+        // Same for the inputs page: an input entry that plays this command
+        // is dropped (surviving entries keep their ordinals, so activity
+        // input steps that point at them stay valid). Sync validation
+        // insists on this prune; the live sync's inputs_write is a no-op
+        // (the page is a restore-only write), so the hub keeps the entry
+        // and the post-sync rebase shows it again (bench_240, 2026-09-16).
+        ...(device.input_record?.entries
+          ? {
+              input_record: {
+                ...device.input_record,
+                entries: device.input_record.entries.filter(
+                  (entry) => Number(entry?.command_id || 0) !== cId,
+                ),
+              },
+            }
+          : {}),
       };
     }),
     activities: (bundle.activities ?? []).map((activity) => ({
@@ -1699,6 +1731,7 @@ export function deleteBundleDeviceCommand(
       ),
     })),
   };
+  if (options.reconcileMembership === false) return next;
   return reconcileBundleMembershipChange(bundle, next);
 }
 
@@ -1786,6 +1819,7 @@ export function addBundleActivityFavorite(
 export function applyBundleDelete(
   bundle: BackupBundlePayload,
   target: BackupDeleteTarget,
+  options: BundleDeleteOptions = {},
 ): BackupBundlePayload {
   switch (target.kind) {
     case "activity":
@@ -1793,7 +1827,7 @@ export function applyBundleDelete(
     case "device":
       return deleteBundleDevice(bundle, target.deviceId);
     case "command":
-      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId);
+      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId, options);
     case "favorite":
       return deleteBundleActivityQuickAccess(bundle, target.activityId, "favorite", target.buttonId);
     case "macro":

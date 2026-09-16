@@ -389,12 +389,13 @@ def build_device_sync_plan(
     config, other devices, every activity) must be byte-identical
     between the two bundles.
 
-    ``allow_command_removal`` (W7, Wifi Events device only — the HA layer
-    gates it by brand) additionally accepts command rows PRESENT in the
-    baseline but absent from the edited bundle, planning a
+    ``allow_command_removal`` additionally accepts command rows PRESENT in
+    the baseline but absent from the edited bundle, planning a
     ``command_delete`` per removed id (ordered last; the hub cascades
     referencing favorites/bindings and removes macro steps in place).
-    Regular devices keep rejecting any id-set change.
+    Introduced for the Wifi Events device (W7) and opened to every device
+    by the HA layer since 2026-09; without the flag any id-set change
+    still trips the scope guard, and an unflagged ADD trips it either way.
 
     Key-row steps reuse the activity planners verbatim: the ``activity_id``
     payload field is the *keymap entity id* the 0x3E / 0x0210 / macro-save
@@ -605,6 +606,69 @@ def _plan_device_command_deletes(
         )
 
 
+_MACRO_DELAY_SENTINEL = 0xFF
+
+
+def _is_delay_step(step: Mapping[str, Any]) -> bool:
+    return (
+        _int(step.get("device_id")) == _MACRO_DELAY_SENTINEL
+        or _int(step.get("command_id")) == _MACRO_DELAY_SENTINEL
+    )
+
+
+def _strip_command_refs(
+    activity: Mapping[str, Any] | None,
+    device_id: int,
+    command_ids: frozenset[int],
+) -> dict[str, Any] | None:
+    """An activity with every reference to ``(device_id, command_ids)``
+    removed the way the hub's command-delete cascade (and the editor's
+    mirror of it) removes them: matching favorite slots dropped, matching
+    macro steps dropped together with the delay rows trailing them, binding
+    rows dropped when their short press matches and only the long-press
+    leg cleared when that alone matches."""
+
+    if activity is None:
+        return None
+
+    def _refs(row: Mapping[str, Any], dev_key: str, cmd_key: str) -> bool:
+        return _int(row.get(dev_key)) == device_id and _int(row.get(cmd_key)) in command_ids
+
+    out = dict(activity)
+    out["favorite_slots"] = [
+        slot for slot in activity.get("favorite_slots") or []
+        if not _refs(slot, "device_id", "command_id")
+    ]
+    macros = []
+    for macro in activity.get("macros") or []:
+        steps = list(macro.get("steps") or [])
+        kept: list[Any] = []
+        index = 0
+        while index < len(steps):
+            step = steps[index]
+            if _refs(step, "device_id", "command_id"):
+                index += 1
+                while index < len(steps) and _is_delay_step(steps[index]):
+                    index += 1
+                continue
+            kept.append(step)
+            index += 1
+        macros.append({**macro, "steps": kept})
+    out["macros"] = macros
+    bindings = []
+    for row in activity.get("button_bindings") or []:
+        if _refs(row, "device_id", "command_id"):
+            continue
+        if _refs(row, "long_press_device_id", "long_press_command_id"):
+            row = {
+                k: v for k, v in row.items()
+                if k not in ("long_press_device_id", "long_press_command_id")
+            }
+        bindings.append(row)
+    out["button_bindings"] = bindings
+    return out
+
+
 def _assert_device_sync_in_scope(
     baseline: Mapping[str, Any],
     edited: Mapping[str, Any],
@@ -612,18 +676,38 @@ def _assert_device_sync_in_scope(
     *,
     allow_command_removal: bool = False,
 ) -> None:
+    base_devs = _devices_by_id(baseline)
+    edit_devs = _devices_by_id(edited)
+    if set(base_devs) != set(edit_devs):
+        raise ValueError("edited bundle adds or removes a device (out-of-scope changes)")
+
+    # Commands the editor removed from the synced device. The hub's delete
+    # cascades every activity favorite / binding leg / macro step that
+    # referenced them, and the editor mirrors that cascade into its working
+    # bundle (the validator would otherwise reject the dangling references).
+    # Those activity rows are therefore expected to differ, and are never
+    # written by a device plan: compare activities with the cascaded rows
+    # stripped from BOTH sides, so any other activity change still trips.
+    removed_commands: frozenset[int] = frozenset()
+    if allow_command_removal and device_id in base_devs and device_id in edit_devs:
+        removed_commands = frozenset(
+            _int(cmd.get("command_id")) for cmd in base_devs[device_id].get("commands") or []
+        ) - frozenset(
+            _int(cmd.get("command_id")) for cmd in edit_devs[device_id].get("commands") or []
+        )
+
     base_acts = _activities_by_id(baseline)
     edit_acts = _activities_by_id(edited)
     if set(base_acts) != set(edit_acts):
         raise ValueError("edited bundle adds or removes an activity (out-of-scope changes)")
     for act_id, edited_act in edit_acts.items():
-        if _canonical(edited_act) != _canonical(base_acts.get(act_id)):
+        base_act = base_acts.get(act_id)
+        if removed_commands:
+            edited_act = _strip_command_refs(edited_act, device_id, removed_commands)
+            base_act = _strip_command_refs(base_act, device_id, removed_commands)
+        if _canonical(edited_act) != _canonical(base_act):
             raise ValueError(f"edited bundle changed activity 0x{act_id:02X} (out-of-scope changes)")
 
-    base_devs = _devices_by_id(baseline)
-    edit_devs = _devices_by_id(edited)
-    if set(base_devs) != set(edit_devs):
-        raise ValueError("edited bundle adds or removes a device (out-of-scope changes)")
     for dev_id, edited_dev in edit_devs.items():
         if dev_id == device_id:
             continue

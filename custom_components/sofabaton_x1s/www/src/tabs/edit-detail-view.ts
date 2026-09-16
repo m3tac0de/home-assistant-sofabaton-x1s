@@ -74,6 +74,7 @@ import {
   type BackupButtonBindingItem,
   type BackupCommandDecodedBlock,
   type BackupDeleteTarget,
+  type BundleDeleteOptions,
   type BackupDeviceCommandItem,
   type BackupMacroStepItem,
   type ButtonCatalogEntry,
@@ -932,9 +933,11 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   /** True when the live editor is showing the reserved Wifi Events device.
-   *  It is fully editable (unlike other managed wifi devices) and, per W7,
-   *  supports command deletion — the only device where a live-editor
-   *  command delete stages a `command_delete` in the sync. */
+   *  It is fully editable (unlike other managed wifi devices). Command
+   *  deletion is available on every live device (a `command_delete` step
+   *  in the sync); what is events-specific is the short+long record
+   *  pairing: deleting a short row takes its long record along and long
+   *  rows carry no delete of their own. */
   private _isWifiEventsLiveDevice(): boolean {
     return (
       this.mode === "live" &&
@@ -1451,7 +1454,7 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            ${(this.mode !== "live" || this._isWifiEventsLiveDevice()) && !this._commandIsLongRecord(item.commandId)
+            ${!this._commandIsLongRecord(item.commandId)
               ? html`
                   <button
                     class="icon-btn icon-btn--danger"
@@ -3292,7 +3295,12 @@ export class SofabatonEditDetailView extends LitElement {
       }));
       return;
     }
-    let next = applyBundleDelete(this.bundle, target);
+    // Live command deletes mirror the hub's own cascade (favorites, binding
+    // legs, macro steps) but must not rewrite activity membership: the
+    // device sync never writes activities and its scope guard tolerates
+    // exactly the cascade. Offline edits keep the full reconcile.
+    const deleteOptions: BundleDeleteOptions = { reconcileMembership: this.mode !== "live" };
+    let next = applyBundleDelete(this.bundle, target, deleteOptions);
     // W7: deleting a Wifi Event's short record from the events device
     // editor also removes its long record (they are one event) — the
     // backend plan then emits both command_delete steps.
@@ -3303,7 +3311,7 @@ export class SofabatonEditDetailView extends LitElement {
           kind: "command",
           deviceId: target.deviceId,
           commandId: Number(target.commandId) + slotCount,
-        });
+        }, deleteOptions);
       }
     }
     this._commitEditBundleEdit(next);

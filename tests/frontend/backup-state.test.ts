@@ -1626,3 +1626,72 @@ test("defaultDecodedSnapshotForClass returns null for IR and non-decodable class
   assert.equal(defaultDecodedSnapshotForClass("rf_433mhz", { deviceId: 1, commandId: 1 }), null);
   assert.equal(defaultDecodedSnapshotForClass("", { deviceId: 1, commandId: 1 }), null);
 });
+
+
+test("deleteBundleDeviceCommand keeps activity membership when membership reconcile is off", () => {
+  // Device 1 is a member of activity 101 through its power rows and ONE
+  // favorite. Deleting that favorite's command is the live device editor's
+  // case: the hub cascades the favorite but leaves membership alone, so the
+  // working bundle must keep the power rows and the linked-device mirror.
+  const b: BackupBundlePayload = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      { device: { device_id: 1, name: "TV" }, commands: [{ command_id: 10, name: "Power" }, { command_id: 11, name: "Mute" }] },
+    ],
+    activities: [{
+      device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+      referenced_source_device_ids: [1],
+      favorite_slots: [{ button_id: 1, device_id: 1, command_id: 10, name: "Power" }],
+      button_bindings: [{ button_id: 0xB0, device_id: 1, command_id: 11, long_press_device_id: 1, long_press_command_id: 10 }],
+      macros: [
+        { button_id: 198, name: "POWER_ON", steps: [{ device_id: 1, command_id: 0xC6, button_code: 0, duration: 0, delay: 0xFF }] },
+        { button_id: 199, name: "POWER_OFF", steps: [{ device_id: 1, command_id: 0xC7, button_code: 0, duration: 0, delay: 0xFF }] },
+      ],
+    }],
+  } as BackupBundlePayload;
+
+  const live = deleteBundleDeviceCommand(b, 1, 10, { reconcileMembership: false });
+  const liveAct = live.activities.find((a) => a.device?.device_id === 101)!;
+  assert.deepEqual(liveAct.favorite_slots, []);
+  // Long-press leg cleared, short press kept.
+  assert.deepEqual(liveAct.button_bindings, [{ button_id: 0xB0, device_id: 1, command_id: 11 }]);
+  assert.deepEqual(liveAct.referenced_source_device_ids, [1]);
+  assert.deepEqual(liveAct.macros?.map((m) => [m.button_id, m.steps?.length]), [[198, 1], [199, 1]]);
+
+  // Default (offline) behaviour is unchanged: with the binding also gone the
+  // device's last editable reference disappears and the reconcile drops it.
+  const offlineBase = { ...b, activities: [{ ...b.activities[0], button_bindings: [] }] } as BackupBundlePayload;
+  const offline = deleteBundleDeviceCommand(offlineBase, 1, 10);
+  const offlineAct = offline.activities.find((a) => a.device?.device_id === 101)!;
+  assert.deepEqual(offlineAct.referenced_source_device_ids, []);
+});
+
+
+test("deleteBundleDeviceCommand drops the command's inputs-page entry and keeps the others", () => {
+  const b: BackupBundlePayload = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [{
+      device: { device_id: 1, name: "TV" },
+      commands: [{ command_id: 10, name: "HDMI 1" }, { command_id: 11, name: "HDMI 2" }],
+      input_record: {
+        state_byte: 7,
+        entries: [
+          { command_id: 10, fid: 10, input_index: 1, name: "HDMI 1" },
+          { command_id: 11, fid: 11, input_index: 2, name: "HDMI 2" },
+        ],
+      },
+    }],
+    activities: [],
+  } as BackupBundlePayload;
+  const next = deleteBundleDeviceCommand(b, 1, 10);
+  const device = next.devices.find((d) => d.device?.device_id === 1)!;
+  assert.deepEqual(device.input_record?.entries?.map((e) => [e.command_id, e.input_index]), [[11, 2]]);
+  assert.equal((device.input_record as Record<string, unknown>).state_byte, 7); // opaque fields preserved
+  // A device without an inputs page is left without one.
+  const plain = deleteBundleDeviceCommand({ ...b, devices: [{ ...b.devices[0], input_record: undefined }] } as BackupBundlePayload, 1, 10);
+  assert.equal(plain.devices[0].input_record, undefined);
+});
