@@ -3403,6 +3403,136 @@ async def _ws_device_delete(hass: HomeAssistant, connection, msg: dict[str, Any]
     await _handle_entity_delete_ws(hass, connection, msg, entity_kind="device")
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/device/command_delete",
+        vol.Required("entry_id"): str,
+        vol.Required("device_id"): vol.All(int, vol.Range(min=1, max=255)),
+        vol.Required("command_id"): vol.All(int, vol.Range(min=1, max=255)),
+    }
+)
+@websocket_api.async_response
+async def _ws_device_command_delete(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Delete ONE command from a hub device by id, in place.
+
+    The device-scoped counterpart of ``device/delete``: it removes a single
+    command record via the bench-validated family-0x10 primitive, and the hub
+    cascades any favorite/binding that referenced it and drops the step from
+    macros (an emptied macro is removed). Every other command on the device,
+    and the device itself, is left untouched, so a caller can prune inert
+    commands from a device authored elsewhere (for example the phone app's
+    Home Assistant Remote) without recreating the device or losing the
+    commands it keeps.
+
+    Unlike ``device/sync`` this needs no baseline/edited bundle and is not
+    gated to the managed Wifi Events device: the request names exactly one
+    command, so the silent-deletion hazard the sync scope guard exists to
+    prevent does not apply. The command must be present on the device (read
+    from the structural bundle) or the call is a no-op reporting
+    ``deleted: false``; an unknown device is ``not_found``.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        connection.send_error(
+            msg["id"],
+            "busy",
+            "Another backup, restore, or sync operation is already running for this hub",
+        )
+        return
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_device_command_delete")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
+    device_id = int(msg["device_id"])
+    command_id = int(msg["command_id"])
+
+    # The structural bundle is the editing baseline (the same source
+    # device/sync diffs against): it confirms the device exists and lets the
+    # result say what was and was not removed, rather than firing blind.
+    store = await _async_get_persistent_cache_store(hass)
+    bundle = await hub.async_get_structural_bundle() if store.enabled else None
+    if not bundle:
+        connection.send_error(
+            msg["id"],
+            "cache_disabled",
+            "Enable the persistent cache to edit device commands",
+        )
+        return
+
+    def _command_ids(source: dict[str, Any]) -> list[int]:
+        for entry in source.get("devices") or []:
+            if int((entry.get("device") or {}).get("device_id") or 0) == device_id:
+                return [
+                    int(cmd.get("command_id"))
+                    for cmd in entry.get("commands") or []
+                    if cmd.get("command_id") is not None
+                ]
+        return []
+
+    if _find_bundle_device_block(bundle, device_id) is None:
+        connection.send_error(
+            msg["id"], "not_found", f"Device {device_id} is not on this hub"
+        )
+        return
+
+    before = _command_ids(bundle)
+    if command_id not in before:
+        # Idempotent: nothing to remove. Reported as a successful no-op so a
+        # retry after a partial failure is safe. If the caller believes the
+        # command exists, the cached device detail may be stale; refresh it.
+        connection.send_result(
+            msg["id"],
+            {
+                "status": "success",
+                "device_id": device_id,
+                "command_id": command_id,
+                "deleted": False,
+                "commands_before": before,
+                "commands_after": before,
+                "note": "command not present on the device; nothing to delete",
+            },
+        )
+        return
+
+    ok = await hub.async_delete_device_commands(
+        device_id=device_id, command_ids=[command_id]
+    )
+    if not ok:
+        connection.send_error(
+            msg["id"],
+            "delete_failed",
+            f"The hub did not confirm deletion of command {command_id} on device {device_id}",
+        )
+        return
+
+    # Verify against a fresh read: the target must be gone and every other
+    # command must survive (the whole point of a scoped delete).
+    after_bundle = await hub.async_get_structural_bundle()
+    after = _command_ids(after_bundle) if after_bundle else []
+    connection.send_result(
+        msg["id"],
+        {
+            "status": "success",
+            "device_id": device_id,
+            "command_id": command_id,
+            "deleted": True,
+            "commands_before": before,
+            "commands_after": after,
+        },
+    )
+
+
 async def _resolve_hub_for_activity_write(
     hass: HomeAssistant, connection, msg: dict[str, Any], *, op_name: str
 ):
@@ -4211,6 +4341,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_device_sync_plan)
     websocket_api.async_register_command(hass, _ws_activity_delete)
     websocket_api.async_register_command(hass, _ws_device_delete)
+    websocket_api.async_register_command(hass, _ws_device_command_delete)
     websocket_api.async_register_command(hass, _ws_activity_reorder)
     websocket_api.async_register_command(hass, _ws_device_reorder)
     websocket_api.async_register_command(hass, _ws_activity_create)

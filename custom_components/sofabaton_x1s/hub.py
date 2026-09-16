@@ -4252,6 +4252,32 @@ class SofabatonHub:
         Runs AFTER the freed slot's placeholder sync; the records
         resurrect as (ref-less) placeholders on the next full sync, which
         is harmless — the point of the delete is the reference cascade.
+
+        Thin alias for :meth:`async_delete_device_commands`: the record
+        delete and its reference cascade are device-scoped, not specific to
+        the Wifi Events device.
+        """
+
+        return await self.async_delete_device_commands(
+            device_id=device_id, command_ids=command_ids
+        )
+
+    async def async_delete_device_commands(
+        self,
+        *,
+        device_id: int,
+        command_ids: list[int],
+    ) -> bool:
+        """Delete one or more command records from a hub device by id.
+
+        Each id runs the bench-validated family-0x10 record delete
+        (``FAMILY_FAV_DELETE [dev, command_id]``); the hub cascades any
+        favorite/binding that referenced the command and removes the step
+        from macros in place (a macro left with no steps is removed). After
+        the deletes the referencing activities and the device catalog are
+        re-warmed so the cached views (favorite/binding labels, macro steps)
+        follow, and the cache generation is bumped. Returns True only when
+        every requested delete acked.
         """
 
         async with self._command_sync_lock:
@@ -4277,7 +4303,7 @@ class SofabatonHub:
                 await self._async_persist_cache_if_enabled()
             except Exception:  # noqa: BLE001 - persist is best-effort
                 self._log.debug(
-                    "[%s] post-event-delete cache persist failed", self.entry_id, exc_info=True
+                    "[%s] post-command-delete cache persist failed", self.entry_id, exc_info=True
                 )
             return ok
 
