@@ -427,6 +427,27 @@ def build_device_sync_plan(
     _plan_device_command_renames(base_dev, edit_dev, device_id, prereq)
     if allow_command_removal:
         _plan_device_command_deletes(base_dev, edit_dev, device_id, deletes)
+        if deletes:
+            # The hub does not touch the device's family-0x61 display-sort
+            # table when a command record is deleted (X2 bench 2026-09-16:
+            # the deleted id kept its slot), so the app-style follow-up is
+            # one rewrite of the table with the surviving commands
+            # renumbered (same shape as the activity-scope key delete
+            # capture in live-hub-testing.md). One step for any number of
+            # deletes; the executor no-ops when the table orders nothing.
+            deletes.append(
+                SyncStep(
+                    kind="command_sort_rewrite",
+                    label=f"Updating the command order on device {device_id}…",
+                    target_device_id=device_id,
+                    payload={
+                        "device_id": device_id,
+                        "removed_command_ids": [
+                            _int(step.payload.get("command_id")) for step in deletes
+                        ],
+                    },
+                )
+            )
 
     base_inputs = _input_entries(base_dev)
     edit_inputs = _input_entries(edit_dev)

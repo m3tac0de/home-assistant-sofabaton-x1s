@@ -497,7 +497,7 @@ def test_ws_device_sync_plan_previews_command_removal_on_regular_device(monkeypa
     }))
     assert conn.error is None
     steps = conn.result[1]["steps"]
-    assert [s["kind"] for s in steps] == ["command_delete"]
+    assert [s["kind"] for s in steps] == ["command_delete", "command_sort_rewrite"]
 
 
 def test_ws_device_sync_plan_accepts_the_editor_cascade_end_to_end(monkeypatch):
@@ -542,7 +542,7 @@ def test_ws_device_sync_plan_accepts_the_editor_cascade_end_to_end(monkeypatch):
         "edited": _bundle([10], cascaded=True),
     }))
     assert conn.error is None, conn.error
-    assert [s["kind"] for s in conn.result[1]["steps"]] == ["command_delete"]
+    assert [s["kind"] for s in conn.result[1]["steps"]] == ["command_delete", "command_sort_rewrite"]
 
 
 def test_ws_device_sync_plan_still_rejects_unflagged_command_add(monkeypatch):

@@ -314,6 +314,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     entityStepBindingWrite: "Writing button assignments…",
     entityStepCommandAdd: (id: number | null) => (id == null ? "Adding a command…" : `Adding a command on device ${id}…`),
     entityStepCommandDelete: (id: number | null) => (id == null ? "Removing a command…" : `Removing a command on device ${id}…`),
+    entityStepCommandSortRewrite: (id: number | null) => (id == null ? "Updating the command order…" : `Updating the command order on device ${id}…`),
     entityStepCommandPayload: (id: number | null) => (id == null ? "Updating a command…" : `Updating a command on device ${id}…`),
     entityStepCommandRename: (id: number | null) => (id == null ? "Renaming a command…" : `Renaming a command on device ${id}…`),
     entityStepDeviceIp: "Updating the IP address…",

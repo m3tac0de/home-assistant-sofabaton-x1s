@@ -459,7 +459,7 @@ def test_command_removal_plans_command_delete_with_flag() -> None:
     dev = _device(edited)
     dev["commands"] = [c for c in dev["commands"] if c["command_id"] != 11]
     plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
-    assert _kinds(plan) == ["command_delete"]
+    assert _kinds(plan) == ["command_delete", "command_sort_rewrite"]
     assert plan[0].target_device_id == DEVICE_ID
     assert plan[0].payload == {"device_id": DEVICE_ID, "command_id": 11}
 
@@ -471,7 +471,7 @@ def test_command_delete_ordered_last_after_other_writes() -> None:
     dev["commands"][0]["name"] = "Power Toggle"        # rename cmd 10
     dev["commands"] = [c for c in dev["commands"] if c["command_id"] != 11]  # delete cmd 11
     plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
-    assert _kinds(plan) == ["command_rename", "command_delete"]
+    assert _kinds(plan) == ["command_rename", "command_delete", "command_sort_rewrite"]
 
 
 def test_command_add_still_rejected_even_with_removal_flag() -> None:
@@ -541,7 +541,7 @@ def test_command_removal_tolerates_the_editor_cascade_in_activities() -> None:
     _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
     _editor_cascade(edited, 11)
     plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
-    assert _kinds(plan) == ["command_delete"]
+    assert _kinds(plan) == ["command_delete", "command_sort_rewrite"]
     assert plan[0].payload == {"device_id": DEVICE_ID, "command_id": 11}
 
 
@@ -554,7 +554,7 @@ def test_command_removal_tolerates_a_cleared_long_press_leg() -> None:
         {"button_id": 0xB1, "device_id": DEVICE_ID, "command_id": 10}
     ]
     plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
-    assert _kinds(plan) == ["command_delete"]
+    assert _kinds(plan) == ["command_delete", "command_sort_rewrite"]
 
 
 def test_command_removal_still_rejects_other_activity_changes() -> None:
@@ -577,7 +577,7 @@ def test_uncascaded_activity_refs_are_in_scope_too() -> None:
     edited = copy.deepcopy(base)
     _device(edited)["commands"] = [c for c in _device(edited)["commands"] if c["command_id"] != 11]
     plan = build_device_sync_plan(base, edited, DEVICE_ID, allow_command_removal=True)
-    assert _kinds(plan) == ["command_delete"]
+    assert _kinds(plan) == ["command_delete", "command_sort_rewrite"]
 
 
 def test_activity_cascade_without_the_flag_still_trips() -> None:

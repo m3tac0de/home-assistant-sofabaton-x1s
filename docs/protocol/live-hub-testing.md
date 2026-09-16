@@ -1130,6 +1130,24 @@ plan instead (`allow_command_removal` opened to every device).
   exactly as staged (favorites / binding legs / macro steps cascaded by
   the hub, membership and power rows untouched), `blobs/fetch` agrees
   with the structural bundle.
+- **Display-sort table (family 0x61) is NOT pruned by the hub on a
+  command delete** (`probe_x2_sort_after_delete.py`, X2 device 1): after
+  deleting command 2 the table still read `(2, 255) ...`. Two fixes:
+  (a) the add-side registration took the command-list record's 0xFF
+  "unpositioned" byte for a real position and wrote an all-0xFF table
+  with the new command at 0x00 (orders nothing); it now treats 0xFF like
+  0x00, and an add on a device with no positions writes `1..n` with the
+  new command last (verified: `(3,1) (4,2) (5,3) (6,4) (7,5) (8,6)`).
+  (b) a `command_sort_rewrite` plan step follows the deletes: re-read
+  the table, drop the removed ids, keep the surviving order, fold in any
+  unpositioned survivor, renumber `1..n`; a table that orders nothing is
+  left alone; a rejected write is logged, not fatal. Verified: deleting
+  command 3 from the table above read back `(4,1) (5,2) (6,3) (7,4)
+  (8,5)`. Positions only: command ids and every reference to them are
+  untouched (same shape as the activity-scope key-delete capture above,
+  "0x0210 + 0x61 reorder"). Only the X2 was available for this pass
+  (X1 + X1S entries were disabled in HA at the time); every device on
+  the X1 and X1S carries an empty table anyway, so the step no-ops there.
 
 ## ◇ Validated: remove device from one activity — power-macro rewrite (X1 + X1S, 2026-07-17)
 

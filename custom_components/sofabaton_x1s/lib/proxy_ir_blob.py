@@ -626,7 +626,12 @@ class IrBlobMixin:
                 continue
             entry = metadata.get(command_id) or {}
             sort_id = int(entry.get("sort_id", 0)) & 0xFF
-            if sort_id:
+            # The command-list record carries the hub's 0xFF "unpositioned"
+            # sentinel in this byte for commands that were never given a
+            # slot (0x00 means the same); treating 0xFF as a real position
+            # wrote an all-0xFF table with the new command at 0x00 (X2
+            # bench 2026-09-16), which orders nothing.
+            if sort_id and sort_id != 0xFF:
                 positioned.append((command_id & 0xFF, sort_id))
             else:
                 unpositioned.append(command_id & 0xFF)

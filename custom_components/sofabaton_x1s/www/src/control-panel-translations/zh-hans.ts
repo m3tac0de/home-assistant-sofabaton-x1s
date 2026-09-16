@@ -149,6 +149,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     entityStepActivityRename: "正在重命名活动…", entityStepBindingDelete: "正在清除按键分配…", entityStepBindingWrite: "正在写入按键分配…",
     entityStepCommandAdd: (id: number | null) => (id == null ? "正在添加命令…" : `正在设备 ${id} 上添加命令…`),
     entityStepCommandDelete: (id: number | null) => (id == null ? "正在删除命令…" : `正在设备 ${id} 上删除命令…`),
+    entityStepCommandSortRewrite: (id: number | null) => (id == null ? "正在更新命令顺序…" : `正在更新设备 ${id} 上的命令顺序…`),
     entityStepCommandPayload: (id: number | null) => (id == null ? "正在更新命令…" : `正在设备 ${id} 上更新命令…`),
     entityStepCommandRename: (id: number | null) => (id == null ? "正在重命名命令…" : `正在设备 ${id} 上重命名命令…`),
     entityStepDeviceIp: "正在更新 IP 地址…", entityStepDeviceRename: "正在重命名设备…",

@@ -253,6 +253,7 @@ var TOOLS_CARD_STRINGS_NL = {
     entityStepBindingWrite: "Knoptoewijzingen schrijven\u2026",
     entityStepCommandAdd: (id) => id == null ? "Een commando toevoegen\u2026" : `Een commando toevoegen op apparaat ${id}\u2026`,
     entityStepCommandDelete: (id) => id == null ? "Een commando verwijderen\u2026" : `Een commando verwijderen op apparaat ${id}\u2026`,
+    entityStepCommandSortRewrite: (id) => id == null ? "Commandovolgorde bijwerken\u2026" : `Commandovolgorde bijwerken op apparaat ${id}\u2026`,
     entityStepCommandPayload: (id) => id == null ? "Een commando bijwerken\u2026" : `Een commando bijwerken op apparaat ${id}\u2026`,
     entityStepCommandRename: (id) => id == null ? "Een commando hernoemen\u2026" : `Een commando hernoemen op apparaat ${id}\u2026`,
     entityStepDeviceIp: "IP-adres bijwerken\u2026",

@@ -373,7 +373,9 @@ async def main() -> int:
         results["plan"] = (res.get("result") or {}).get("steps")
         print(f"  plan: {kinds}")
         check("plan has exactly one command_delete", kinds.count("command_delete") == 1, str(kinds))
-        check("command_delete is the last step", bool(kinds) and kinds[-1] == "command_delete", str(kinds))
+        # Deletes go last, followed only by the one display-sort rewrite
+        # (the hub keeps a deleted id's slot in the family-0x61 table).
+        check("plan ends with command_delete, command_sort_rewrite", kinds[-2:] == ["command_delete", "command_sort_rewrite"], str(kinds))
         if prof["inputs"]:
             check("inputs page rewrite planned before the delete", "inputs_write" in kinds, str(kinds))
         if prof["dev_power_steps"] or prof["dev_macro_steps"]:
@@ -447,6 +449,20 @@ async def main() -> int:
             if not same:
                 results.setdefault("device_diffs", {})[key] = {"staged": staged_v, "hub": got_v}
             check(f"device {key} read back as {'on the baseline' if key == 'input_record' else 'staged'}", same, "" if same else "see json")
+
+        # Display-sort table: the deleted id must be gone; when the table
+        # orders anything it must enumerate every survivor once at 1..n.
+        sort_hex = str((arow.get("key_sort") or {}).get("msg_hex") or "").replace(" ", "")
+        sort_raw = bytes.fromhex(sort_hex) if sort_hex else b""
+        sort_pairs = [(sort_raw[i], sort_raw[i + 1]) for i in range(0, len(sort_raw) - 1, 2)]
+        results["sort_after"] = sort_pairs
+        check("sort table no longer lists the command", all(c != command_id for c, _ in sort_pairs), str(sort_pairs))
+        if any(1 <= p <= 0xFE for _, p in sort_pairs):
+            check("sort table enumerates every survivor once at 1..n",
+                  sorted(c for c, _ in sort_pairs) == ids_after and sorted(p for _, p in sort_pairs) == list(range(1, len(ids_after) + 1)),
+                  str(sort_pairs))
+        else:
+            check("sort table orders nothing (left alone)", True, str(sort_pairs))
 
         res, _ = await ha.call({"type": "sofabaton_x1s/blobs/fetch", "entry_id": entry_id, "device_id": device_id}, timeout=120)
         check("blobs/fetch after delete", res.get("success") is True, str(res.get("error")))

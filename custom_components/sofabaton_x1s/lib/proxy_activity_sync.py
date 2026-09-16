@@ -33,6 +33,8 @@ from .device_create import (
     build_macro_step_record,
     run_create_sequence,
     synthesize_command_code,
+    build_key_sort_steps,
+    encode_command_sort_body,
 )
 from .commands import build_descriptive_ir_blob_body, split_play_blob_tail
 from .devices import build_device_create_payload, parse_device_record
@@ -1600,6 +1602,76 @@ class ActivitySyncMixin:
             timeout=_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT,
         )
         return step.ok
+
+    def _sync_step_command_sort_rewrite(self, payload: Mapping[str, Any]) -> bool:
+        """Rewrite a device's family-0x61 display-sort table after command
+        deletes.
+
+        The hub keeps a deleted command's slot in the table (X2 bench
+        2026-09-16), so mirror the app: re-read the table, drop the removed
+        ids, keep the survivors in their existing order with every other
+        surviving command folded in after them (the add path's policy), and
+        renumber 1..n. A table that positions nothing (absent, or only
+        0x00/0xFF sentinels) orders nothing and is left alone. Best-effort
+        like the add-side registration: the deletes have already landed, a
+        stale slot is cosmetic, so a failed rewrite is logged, not fatal.
+        """
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        removed = {int(cid) & 0xFF for cid in payload.get("removed_command_ids") or []}
+        if not dev_lo:
+            return False
+        table = self.fetch_device_key_sort(dev_lo) or {}
+        try:
+            raw = bytes.fromhex(str(table.get("msg_hex") or "").replace(" ", ""))
+        except ValueError:
+            raw = b""
+        pairs = [(raw[i], raw[i + 1]) for i in range(0, len(raw) - 1, 2)]
+        positioned = [
+            (cmd, pos) for cmd, pos in pairs
+            if cmd not in removed and 1 <= pos <= 0xFE
+        ]
+        if not positioned:
+            self._log.info(
+                "[DEVICE_SYNC] sort rewrite dev=0x%02X: table positions nothing; left alone",
+                dev_lo,
+            )
+            return True
+        positioned.sort(key=lambda pair: pair[1])
+        listed = {cmd for cmd, _ in positioned}
+        known: set[int] = set()
+        known.update(int(c) & 0xFF for c in (self.state.commands.get(dev_lo) or {}))
+        known.update(int(c) & 0xFF for c in (self.state.command_metadata.get(dev_lo) or {}))
+        ordered = [cmd for cmd, _ in positioned] + sorted(
+            c for c in known if c not in listed and c not in removed
+        )
+        new_pairs = [(cmd, index + 1) for index, cmd in enumerate(ordered)]
+        try:
+            steps = build_key_sort_steps(
+                device_id=dev_lo,
+                msg_hex=encode_command_sort_body(new_pairs).hex(),
+                ack_timeout=5.0,
+            )
+        except ValueError as exc:
+            self._log.warning("[DEVICE_SYNC] sort rewrite dev=0x%02X: could not build: %s", dev_lo, exc)
+            return True
+        self.reset_ack_queues()
+        result = run_create_sequence(self, steps)
+        if not result.success:
+            self._log.warning(
+                "[DEVICE_SYNC] sort rewrite %s dev=0x%02X (deleted command may keep a stale slot until the next reorder)",
+                "rejected" if result.rejected else "timed out",
+                dev_lo,
+            )
+            return True
+        bucket = self.state.command_metadata.setdefault(dev_lo, {})
+        for cmd, pos in new_pairs:
+            if cmd in bucket:
+                bucket[cmd] = {**(bucket.get(cmd) or {}), "sort_id": pos}
+        self._log.info(
+            "[DEVICE_SYNC] sort rewrite dev=0x%02X: %d entries, removed %s",
+            dev_lo, len(new_pairs), sorted(removed),
+        )
+        return True
 
     def _sync_step_wifi_power_config(self, payload: Mapping[str, Any]) -> bool:
         """Rewrite a wifi device's POWER_ON/POWER_OFF command rows (chunk 1).

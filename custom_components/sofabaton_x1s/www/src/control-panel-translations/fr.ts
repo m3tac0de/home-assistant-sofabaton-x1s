@@ -117,6 +117,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     entityStepActivityRename: "Renommage de l’activité…", entityStepBindingDelete: "Suppression d’une attribution de touche…", entityStepBindingWrite: "Écriture des attributions de touches…",
     entityStepCommandAdd: (id: number | null) => (id == null ? "Ajout d’une commande…" : `Ajout d’une commande sur l’appareil ${id}…`),
     entityStepCommandDelete: (id: number | null) => (id == null ? "Suppression d’une commande…" : `Suppression d’une commande sur l’appareil ${id}…`),
+    entityStepCommandSortRewrite: (id: number | null) => (id == null ? "Mise à jour de l’ordre des commandes…" : `Mise à jour de l’ordre des commandes sur l’appareil ${id}…`),
     entityStepCommandPayload: (id: number | null) => (id == null ? "Mise à jour d’une commande…" : `Mise à jour d’une commande sur l’appareil ${id}…`),
     entityStepCommandRename: (id: number | null) => (id == null ? "Renommage d’une commande…" : `Renommage d’une commande sur l’appareil ${id}…`),
     entityStepDeviceIp: "Mise à jour de l’adresse IP…", entityStepDeviceRename: "Renommage de l’appareil…",

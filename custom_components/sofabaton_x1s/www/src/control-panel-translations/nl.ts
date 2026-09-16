@@ -151,6 +151,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     entityStepActivityRename: "Activiteit hernoemen…", entityStepBindingDelete: "Een knoptoewijzing wissen…", entityStepBindingWrite: "Knoptoewijzingen schrijven…",
     entityStepCommandAdd: (id: number | null) => (id == null ? "Een commando toevoegen…" : `Een commando toevoegen op apparaat ${id}…`),
     entityStepCommandDelete: (id: number | null) => (id == null ? "Een commando verwijderen…" : `Een commando verwijderen op apparaat ${id}…`),
+    entityStepCommandSortRewrite: (id: number | null) => (id == null ? "Commandovolgorde bijwerken…" : `Commandovolgorde bijwerken op apparaat ${id}…`),
     entityStepCommandPayload: (id: number | null) => (id == null ? "Een commando bijwerken…" : `Een commando bijwerken op apparaat ${id}…`),
     entityStepCommandRename: (id: number | null) => (id == null ? "Een commando hernoemen…" : `Een commando hernoemen op apparaat ${id}…`),
     entityStepDeviceIp: "IP-adres bijwerken…", entityStepDeviceRename: "Apparaat hernoemen…",
