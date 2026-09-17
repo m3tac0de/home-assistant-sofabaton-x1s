@@ -12141,8 +12141,9 @@ SofabatonServerPanel.styles = [
       .scrim-card .hint { font-size: 12px; }
 
       /* -- bottom dock -------------------------------------------------------- */
-      .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--sbp-panel); border-top: 1px solid var(--sbp-line); padding-bottom: env(safe-area-inset-bottom, 0px); }
-      .dock-inner { max-width: 1040px; margin: 0 auto; min-height: 48px; padding: 6px 16px; display: flex; align-items: center; gap: 10px; }
+      /* The dock is the column's width, centred like it, not the viewport's. */
+      .dock { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); width: 100%; max-width: 1040px; z-index: 30; background: var(--sbp-panel); border-top: 1px solid var(--sbp-line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+      .dock-inner { min-height: 48px; padding: 6px 16px; display: flex; align-items: center; gap: 10px; }
       .dock-center { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; }
       .dock-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .dock-detail { color: var(--sbp-muted); }

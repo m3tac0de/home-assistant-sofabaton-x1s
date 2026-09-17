@@ -246,6 +246,11 @@ test.describe("control panel, hubs", () => {
     await expect(seen).toHaveCount(2);
     await expect(seen.nth(0)).toContainText("registered as e26a44861b45");
     await expect(seen.nth(1).getByRole("button", { name: "Add" })).toBeVisible();
+    // The dock is the column's width, centred with it, never the viewport's.
+    const dock = await page.locator("#bottom-dock").boundingBox();
+    const column = await page.locator(".page").boundingBox();
+    expect(Math.round(dock.width)).toBe(Math.round(column.width));
+    expect(Math.abs(dock.x - column.x)).toBeLessThanOrEqual(1);
     await page.screenshot({ path: shot(testInfo, "setup"), fullPage: true });
   });
 
