@@ -71,6 +71,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     hub_manager = manager or HubManager(settings)
     discovery_service = discovery or DiscoveryService(settings, hub_manager)
     job_runner = JobRunner(problem_for=problem_body)
+    hub_manager.jobs = job_runner
     callback_service = callbacks or CallbackService(hub_manager, settings)
 
     @asynccontextmanager

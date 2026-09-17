@@ -10,10 +10,12 @@ import { installRemoteWebShims } from "../../remote-card/src/shims/index";
 import "../../remote-card/src/remote-card-translations";
 import { definePanel } from "./panel-element";
 import { defineApiView } from "./views/api-view";
+import { defineBackupView } from "./views/backup-view";
 import { defineCatalogView } from "./views/catalog-view";
 import { defineEventsView } from "./views/events-view";
 import { defineHubsView } from "./views/hubs-view";
 import { defineRemoteView } from "./views/remote-view";
+import { defineServerView } from "./views/server-view";
 
 export function bootstrapServerPanel(): void {
   installRemoteWebShims();
@@ -24,6 +26,8 @@ export function bootstrapServerPanel(): void {
   defineRemoteView();
   defineApiView();
   defineEventsView();
+  defineServerView();
+  defineBackupView();
   definePanel();
 }
 

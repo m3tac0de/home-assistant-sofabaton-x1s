@@ -11,6 +11,7 @@ import type { SofabatonRemoteCard } from "../../../remote-card/src/remote-card-e
 import { CARD_VERSION, TYPE } from "../../../remote-card/src/remote-card-shared";
 import { cardConfigForWebRemote } from "../../../remote-card/src/remote-web-config";
 import { problemText, type HubView, type PanelApi } from "../panel-api";
+import type { HubContext } from "../panel-context";
 import { formatWhen, hubDisplayName } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
@@ -19,7 +20,9 @@ export const REMOTE_VIEW_TAG = "sb-panel-remote";
 export class SbPanelRemote extends LitElement {
   static properties = {
     api: { attribute: false },
+    ctx: { attribute: false },
     hub: { attribute: false },
+    section: { attribute: false },
     _status: { state: true },
     _statusOk: { state: true },
     _banner: { state: true },
@@ -30,7 +33,7 @@ export class SbPanelRemote extends LitElement {
     PANEL_BASE_CSS,
     css`
       :host { display: block; height: 100%; }
-      .wrap { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 16px; align-items: start; }
+      .frame { max-width: 420px; margin: 0 auto; }
       .frame { background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); overflow: hidden; }
       .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sbp-line); font-size: 12px; color: var(--sbp-muted); white-space: nowrap; }
       .bar .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -38,12 +41,14 @@ export class SbPanelRemote extends LitElement {
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
       .foot { padding: 6px 10px 8px; color: var(--sbp-muted); font-size: 11px; text-align: center; }
       textarea { min-height: 260px; margin-top: 10px; }
-      @media (max-width: 960px) { .wrap { grid-template-columns: 1fr; } }
     `,
   ];
 
   api!: PanelApi;
+  ctx: HubContext | null = null;
   hub: HubView | null = null;
+  /** The Remote tab's subtab: the mounted card, or the layout document. */
+  section: "card" | "layout" = "card";
   private _status = "";
   private _statusOk = true;
   private _banner: string | null = null;
@@ -57,6 +62,10 @@ export class SbPanelRemote extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._unmount();
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
   }
 
   protected updated(changed: PropertyValues): void {
@@ -210,8 +219,11 @@ export class SbPanelRemote extends LitElement {
 
   render(): TemplateResult {
     const hub = this.hub;
+    return this.section === "layout" ? this._renderLayout(hub) : this._renderCard(hub);
+  }
+
+  private _renderCard(hub: HubView | null): TemplateResult {
     return html`
-      <div class="wrap">
         <div class="frame">
           <div class="bar">
             <span class="title" id="remote-title" title=${hub ? `web remote for ${hub.hub_id}` : ""}>${hub ? hubDisplayName(hub) : "no hub selected"}</span>
@@ -219,9 +231,14 @@ export class SbPanelRemote extends LitElement {
             <a class="hint" id="remote-link" href=${this.api.remoteUrl(hub?.hub_id ?? null)} target="_blank" rel="noopener" title="open the remote in its own tab">open ↗</a>
           </div>
           ${this._banner ? html`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
-          <div class="stage" id="stage">${hub ? "" : html`<div class="hint">Select a hub in the sidebar.</div>`}</div>
+          <div class="stage" id="stage">${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div>
           ${hub ? html`<div class="foot">${hubDisplayName(hub)} · remote card ${CARD_VERSION}</div>` : ""}
         </div>
+    `;
+  }
+
+  private _renderLayout(hub: HubView | null): TemplateResult {
+    return html`
         <div class="panel">
           <h2>Layout <span class="spacer"></span><span class="hint mono">PUT /hubs/{hub_id}/ui/remote-card</span></h2>
           <div class="hint">The card configuration for this hub, stored on the server and shared by every phone, tablet and wall panel that opens the remote: the Home Assistant card's YAML as JSON, minus <code>entity</code>, <code>theme</code> and Home Assistant actions. An empty object resets to the card's defaults. Saving applies it to the remote on the left.</div>
@@ -233,7 +250,6 @@ export class SbPanelRemote extends LitElement {
             <span class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status">${this._status}</span>
           </div>
         </div>
-      </div>
     `;
   }
 }

@@ -22,6 +22,7 @@ import {
   type SnapshotDocument,
   type SnapshotEntity,
 } from "../panel-api";
+import type { HubContext } from "../panel-context";
 import { formatWhen } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
@@ -84,7 +85,9 @@ const POWER: Record<number, string> = { 0: "off", 1: "on" };
 export class SbPanelCatalog extends LitElement {
   static properties = {
     api: { attribute: false },
+    ctx: { attribute: false },
     hub: { attribute: false },
+    kind: { attribute: false },
     _entries: { state: true },
     _snapshot: { state: true },
     _selected: { state: true },
@@ -128,7 +131,11 @@ export class SbPanelCatalog extends LitElement {
   ];
 
   api!: PanelApi;
+  /** The hub context the shell hands over (state plan, decision 3); `hub` follows it. */
+  ctx: HubContext | null = null;
   hub: HubView | null = null;
+  /** Which group to list: the Hub tab's Devices or Activities subtab; null lists both. */
+  kind: CatalogKind | null = null;
   private _entries: CatalogEntry[] = [];
   private _snapshot: SnapshotDocument | null = null;
   private _selected: string | null = null;              // "device:12" / "activity:101"
@@ -143,7 +150,15 @@ export class SbPanelCatalog extends LitElement {
   private _devices: Device[] = [];
   private _activities: Activity[] = [];
 
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
+
   protected updated(changed: PropertyValues): void {
+    if (changed.has("kind") && this.kind && this.selectedEntry && this.selectedEntry.kind !== this.kind) {
+      this._selected = null;
+      this._clearDetail();
+    }
     if (changed.has("hub")) {
       const id = this.hub?.hub_id ?? null;
       if (id !== this._loadedFor) {
@@ -299,9 +314,9 @@ export class SbPanelCatalog extends LitElement {
 
   render(): TemplateResult {
     const hub = this.hub;
-    if (!hub) return html`<div class="panel"><div class="hint">Select a hub in the sidebar.</div></div>`;
-    const devices = this._entries.filter((e) => e.kind === "device");
-    const activities = this._entries.filter((e) => e.kind === "activity");
+    if (!hub) return html`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
+    const devices = this.kind === "activity" ? [] : this._entries.filter((e) => e.kind === "device");
+    const activities = this.kind === "device" ? [] : this._entries.filter((e) => e.kind === "activity");
     const snap = this._snapshot;
     return html`
       <div class="wrap">
@@ -317,14 +332,14 @@ export class SbPanelCatalog extends LitElement {
             </button>
           </div>
           ${this._notice ? html`<div class="notice" id="catalog-notice" style="margin-top: 10px">${this._notice}</div>` : nothing}
-          <div class="group">
+          ${this.kind === "activity" ? nothing : html`<div class="group">
             <h3>Devices <span class="hint">${devices.length}</span></h3>
             ${devices.length ? devices.map((e) => this._renderEntry(e)) : html`<div class="hint">none</div>`}
-          </div>
-          <div class="group">
+          </div>`}
+          ${this.kind === "device" ? nothing : html`<div class="group">
             <h3>Activities <span class="hint">${activities.length}</span></h3>
             ${activities.length ? activities.map((e) => this._renderEntry(e)) : html`<div class="hint">none</div>`}
-          </div>
+          </div>`}
           <div class="hint" style="margin-top: 12px">Ids are what an integration sends: <code>entity_id</code> is a device's or an activity's id, <code>command_id</code> one of its commands. Rows come from the server's cache, read from the hub on first sight; a dot marks an entity read from the hub in full, which is what Refresh does.</div>
         </div>
         <div class="panel" id="catalog-detail">${this._renderDetail()}</div>

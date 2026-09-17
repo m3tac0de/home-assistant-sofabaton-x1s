@@ -61,23 +61,23 @@ var u = { toAttribute(t5, s7) {
   }
   return t5;
 }, fromAttribute(t5, s7) {
-  let i7 = t5;
+  let i8 = t5;
   switch (s7) {
     case Boolean:
-      i7 = null !== t5;
+      i8 = null !== t5;
       break;
     case Number:
-      i7 = null === t5 ? null : Number(t5);
+      i8 = null === t5 ? null : Number(t5);
       break;
     case Object:
     case Array:
       try {
-        i7 = JSON.parse(t5);
+        i8 = JSON.parse(t5);
       } catch (t6) {
-        i7 = null;
+        i8 = null;
       }
   }
-  return i7;
+  return i8;
 } };
 var f = (t5, s7) => !i2(t5, s7);
 var b = { attribute: true, type: String, converter: u, reflect: false, useDefault: false, hasChanged: f };
@@ -91,11 +91,11 @@ var y = class extends HTMLElement {
   }
   static createProperty(t5, s7 = b) {
     if (s7.state && (s7.attribute = false), this._$Ei(), this.prototype.hasOwnProperty(t5) && ((s7 = Object.create(s7)).wrapped = true), this.elementProperties.set(t5, s7), !s7.noAccessor) {
-      const i7 = /* @__PURE__ */ Symbol(), h6 = this.getPropertyDescriptor(t5, i7, s7);
+      const i8 = /* @__PURE__ */ Symbol(), h6 = this.getPropertyDescriptor(t5, i8, s7);
       void 0 !== h6 && e2(this.prototype, t5, h6);
     }
   }
-  static getPropertyDescriptor(t5, s7, i7) {
+  static getPropertyDescriptor(t5, s7, i8) {
     const { get: e6, set: r6 } = h(this.prototype, t5) ?? { get() {
       return this[s7];
     }, set(t6) {
@@ -103,7 +103,7 @@ var y = class extends HTMLElement {
     } };
     return { get: e6, set(s8) {
       const h6 = e6?.call(this);
-      r6?.call(this, s8), this.requestUpdate(t5, h6, i7);
+      r6?.call(this, s8), this.requestUpdate(t5, h6, i8);
     }, configurable: true, enumerable: true };
   }
   static getPropertyOptions(t5) {
@@ -118,31 +118,31 @@ var y = class extends HTMLElement {
     if (this.hasOwnProperty(d("finalized"))) return;
     if (this.finalized = true, this._$Ei(), this.hasOwnProperty(d("properties"))) {
       const t6 = this.properties, s7 = [...r2(t6), ...o2(t6)];
-      for (const i7 of s7) this.createProperty(i7, t6[i7]);
+      for (const i8 of s7) this.createProperty(i8, t6[i8]);
     }
     const t5 = this[Symbol.metadata];
     if (null !== t5) {
       const s7 = litPropertyMetadata.get(t5);
-      if (void 0 !== s7) for (const [t6, i7] of s7) this.elementProperties.set(t6, i7);
+      if (void 0 !== s7) for (const [t6, i8] of s7) this.elementProperties.set(t6, i8);
     }
     this._$Eh = /* @__PURE__ */ new Map();
     for (const [t6, s7] of this.elementProperties) {
-      const i7 = this._$Eu(t6, s7);
-      void 0 !== i7 && this._$Eh.set(i7, t6);
+      const i8 = this._$Eu(t6, s7);
+      void 0 !== i8 && this._$Eh.set(i8, t6);
     }
     this.elementStyles = this.finalizeStyles(this.styles);
   }
   static finalizeStyles(s7) {
-    const i7 = [];
+    const i8 = [];
     if (Array.isArray(s7)) {
       const e6 = new Set(s7.flat(1 / 0).reverse());
-      for (const s8 of e6) i7.unshift(c(s8));
-    } else void 0 !== s7 && i7.push(c(s7));
-    return i7;
+      for (const s8 of e6) i8.unshift(c(s8));
+    } else void 0 !== s7 && i8.push(c(s7));
+    return i8;
   }
   static _$Eu(t5, s7) {
-    const i7 = s7.attribute;
-    return false === i7 ? void 0 : "string" == typeof i7 ? i7 : "string" == typeof t5 ? t5.toLowerCase() : void 0;
+    const i8 = s7.attribute;
+    return false === i8 ? void 0 : "string" == typeof i8 ? i8 : "string" == typeof t5 ? t5.toLowerCase() : void 0;
   }
   constructor() {
     super(), this._$Ep = void 0, this.isUpdatePending = false, this.hasUpdated = false, this._$Em = null, this._$Ev();
@@ -158,7 +158,7 @@ var y = class extends HTMLElement {
   }
   _$E_() {
     const t5 = /* @__PURE__ */ new Map(), s7 = this.constructor.elementProperties;
-    for (const i7 of s7.keys()) this.hasOwnProperty(i7) && (t5.set(i7, this[i7]), delete this[i7]);
+    for (const i8 of s7.keys()) this.hasOwnProperty(i8) && (t5.set(i8, this[i8]), delete this[i8]);
     t5.size > 0 && (this._$Ep = t5);
   }
   createRenderRoot() {
@@ -173,35 +173,35 @@ var y = class extends HTMLElement {
   disconnectedCallback() {
     this._$EO?.forEach((t5) => t5.hostDisconnected?.());
   }
-  attributeChangedCallback(t5, s7, i7) {
-    this._$AK(t5, i7);
+  attributeChangedCallback(t5, s7, i8) {
+    this._$AK(t5, i8);
   }
   _$ET(t5, s7) {
-    const i7 = this.constructor.elementProperties.get(t5), e6 = this.constructor._$Eu(t5, i7);
-    if (void 0 !== e6 && true === i7.reflect) {
-      const h6 = (void 0 !== i7.converter?.toAttribute ? i7.converter : u).toAttribute(s7, i7.type);
+    const i8 = this.constructor.elementProperties.get(t5), e6 = this.constructor._$Eu(t5, i8);
+    if (void 0 !== e6 && true === i8.reflect) {
+      const h6 = (void 0 !== i8.converter?.toAttribute ? i8.converter : u).toAttribute(s7, i8.type);
       this._$Em = t5, null == h6 ? this.removeAttribute(e6) : this.setAttribute(e6, h6), this._$Em = null;
     }
   }
   _$AK(t5, s7) {
-    const i7 = this.constructor, e6 = i7._$Eh.get(t5);
+    const i8 = this.constructor, e6 = i8._$Eh.get(t5);
     if (void 0 !== e6 && this._$Em !== e6) {
-      const t6 = i7.getPropertyOptions(e6), h6 = "function" == typeof t6.converter ? { fromAttribute: t6.converter } : void 0 !== t6.converter?.fromAttribute ? t6.converter : u;
+      const t6 = i8.getPropertyOptions(e6), h6 = "function" == typeof t6.converter ? { fromAttribute: t6.converter } : void 0 !== t6.converter?.fromAttribute ? t6.converter : u;
       this._$Em = e6;
       const r6 = h6.fromAttribute(s7, t6.type);
       this[e6] = r6 ?? this._$Ej?.get(e6) ?? r6, this._$Em = null;
     }
   }
-  requestUpdate(t5, s7, i7, e6 = false, h6) {
+  requestUpdate(t5, s7, i8, e6 = false, h6) {
     if (void 0 !== t5) {
       const r6 = this.constructor;
-      if (false === e6 && (h6 = this[t5]), i7 ?? (i7 = r6.getPropertyOptions(t5)), !((i7.hasChanged ?? f)(h6, s7) || i7.useDefault && i7.reflect && h6 === this._$Ej?.get(t5) && !this.hasAttribute(r6._$Eu(t5, i7)))) return;
-      this.C(t5, s7, i7);
+      if (false === e6 && (h6 = this[t5]), i8 ?? (i8 = r6.getPropertyOptions(t5)), !((i8.hasChanged ?? f)(h6, s7) || i8.useDefault && i8.reflect && h6 === this._$Ej?.get(t5) && !this.hasAttribute(r6._$Eu(t5, i8)))) return;
+      this.C(t5, s7, i8);
     }
     false === this.isUpdatePending && (this._$ES = this._$EP());
   }
-  C(t5, s7, { useDefault: i7, reflect: e6, wrapped: h6 }, r6) {
-    i7 && !(this._$Ej ?? (this._$Ej = /* @__PURE__ */ new Map())).has(t5) && (this._$Ej.set(t5, r6 ?? s7 ?? this[t5]), true !== h6 || void 0 !== r6) || (this._$AL.has(t5) || (this.hasUpdated || i7 || (s7 = void 0), this._$AL.set(t5, s7)), true === e6 && this._$Em !== t5 && (this._$Eq ?? (this._$Eq = /* @__PURE__ */ new Set())).add(t5));
+  C(t5, s7, { useDefault: i8, reflect: e6, wrapped: h6 }, r6) {
+    i8 && !(this._$Ej ?? (this._$Ej = /* @__PURE__ */ new Map())).has(t5) && (this._$Ej.set(t5, r6 ?? s7 ?? this[t5]), true !== h6 || void 0 !== r6) || (this._$AL.has(t5) || (this.hasUpdated || i8 || (s7 = void 0), this._$AL.set(t5, s7)), true === e6 && this._$Em !== t5 && (this._$Eq ?? (this._$Eq = /* @__PURE__ */ new Set())).add(t5));
   }
   async _$EP() {
     this.isUpdatePending = true;
@@ -224,9 +224,9 @@ var y = class extends HTMLElement {
         this._$Ep = void 0;
       }
       const t6 = this.constructor.elementProperties;
-      if (t6.size > 0) for (const [s8, i7] of t6) {
-        const { wrapped: t7 } = i7, e6 = this[s8];
-        true !== t7 || this._$AL.has(s8) || void 0 === e6 || this.C(s8, void 0, i7, e6);
+      if (t6.size > 0) for (const [s8, i8] of t6) {
+        const { wrapped: t7 } = i8, e6 = this[s8];
+        true !== t7 || this._$AL.has(s8) || void 0 === e6 || this.C(s8, void 0, i8, e6);
       }
     }
     let t5 = false;
@@ -288,7 +288,7 @@ var p2 = RegExp(`>|${f2}(?:([^\\s"'>=/]+)(${f2}*=${f2}*(?:[^
 var g = /'/g;
 var $ = /"/g;
 var y2 = /^(?:script|style|textarea|title)$/i;
-var x = (t5) => (i7, ...s7) => ({ _$litType$: t5, strings: i7, values: s7 });
+var x = (t5) => (i8, ...s7) => ({ _$litType$: t5, strings: i8, values: s7 });
 var b2 = x(1);
 var w = x(2);
 var T = x(3);
@@ -296,44 +296,44 @@ var E = /* @__PURE__ */ Symbol.for("lit-noChange");
 var A = /* @__PURE__ */ Symbol.for("lit-nothing");
 var C = /* @__PURE__ */ new WeakMap();
 var P = l2.createTreeWalker(l2, 129);
-function V(t5, i7) {
+function V(t5, i8) {
   if (!u2(t5) || !t5.hasOwnProperty("raw")) throw Error("invalid template strings array");
-  return void 0 !== e3 ? e3.createHTML(i7) : i7;
+  return void 0 !== e3 ? e3.createHTML(i8) : i8;
 }
-var N = (t5, i7) => {
+var N = (t5, i8) => {
   const s7 = t5.length - 1, e6 = [];
-  let n7, l4 = 2 === i7 ? "<svg>" : 3 === i7 ? "<math>" : "", c7 = v;
-  for (let i8 = 0; i8 < s7; i8++) {
-    const s8 = t5[i8];
+  let n7, l4 = 2 === i8 ? "<svg>" : 3 === i8 ? "<math>" : "", c7 = v;
+  for (let i9 = 0; i9 < s7; i9++) {
+    const s8 = t5[i9];
     let a4, u6, d3 = -1, f4 = 0;
     for (; f4 < s8.length && (c7.lastIndex = f4, u6 = c7.exec(s8), null !== u6); ) f4 = c7.lastIndex, c7 === v ? "!--" === u6[1] ? c7 = _ : void 0 !== u6[1] ? c7 = m : void 0 !== u6[2] ? (y2.test(u6[2]) && (n7 = RegExp("</" + u6[2], "g")), c7 = p2) : void 0 !== u6[3] && (c7 = p2) : c7 === p2 ? ">" === u6[0] ? (c7 = n7 ?? v, d3 = -1) : void 0 === u6[1] ? d3 = -2 : (d3 = c7.lastIndex - u6[2].length, a4 = u6[1], c7 = void 0 === u6[3] ? p2 : '"' === u6[3] ? $ : g) : c7 === $ || c7 === g ? c7 = p2 : c7 === _ || c7 === m ? c7 = v : (c7 = p2, n7 = void 0);
-    const x2 = c7 === p2 && t5[i8 + 1].startsWith("/>") ? " " : "";
-    l4 += c7 === v ? s8 + r3 : d3 >= 0 ? (e6.push(a4), s8.slice(0, d3) + h2 + s8.slice(d3) + o3 + x2) : s8 + o3 + (-2 === d3 ? i8 : x2);
+    const x2 = c7 === p2 && t5[i9 + 1].startsWith("/>") ? " " : "";
+    l4 += c7 === v ? s8 + r3 : d3 >= 0 ? (e6.push(a4), s8.slice(0, d3) + h2 + s8.slice(d3) + o3 + x2) : s8 + o3 + (-2 === d3 ? i9 : x2);
   }
-  return [V(t5, l4 + (t5[s7] || "<?>") + (2 === i7 ? "</svg>" : 3 === i7 ? "</math>" : "")), e6];
+  return [V(t5, l4 + (t5[s7] || "<?>") + (2 === i8 ? "</svg>" : 3 === i8 ? "</math>" : "")), e6];
 };
 var S2 = class _S {
-  constructor({ strings: t5, _$litType$: i7 }, e6) {
+  constructor({ strings: t5, _$litType$: i8 }, e6) {
     let r6;
     this.parts = [];
     let l4 = 0, a4 = 0;
-    const u6 = t5.length - 1, d3 = this.parts, [f4, v3] = N(t5, i7);
-    if (this.el = _S.createElement(f4, e6), P.currentNode = this.el.content, 2 === i7 || 3 === i7) {
+    const u6 = t5.length - 1, d3 = this.parts, [f4, v3] = N(t5, i8);
+    if (this.el = _S.createElement(f4, e6), P.currentNode = this.el.content, 2 === i8 || 3 === i8) {
       const t6 = this.el.content.firstChild;
       t6.replaceWith(...t6.childNodes);
     }
     for (; null !== (r6 = P.nextNode()) && d3.length < u6; ) {
       if (1 === r6.nodeType) {
         if (r6.hasAttributes()) for (const t6 of r6.getAttributeNames()) if (t6.endsWith(h2)) {
-          const i8 = v3[a4++], s7 = r6.getAttribute(t6).split(o3), e7 = /([.?@])?(.*)/.exec(i8);
+          const i9 = v3[a4++], s7 = r6.getAttribute(t6).split(o3), e7 = /([.?@])?(.*)/.exec(i9);
           d3.push({ type: 1, index: l4, name: e7[2], strings: s7, ctor: "." === e7[1] ? I : "?" === e7[1] ? L : "@" === e7[1] ? z : H }), r6.removeAttribute(t6);
         } else t6.startsWith(o3) && (d3.push({ type: 6, index: l4 }), r6.removeAttribute(t6));
         if (y2.test(r6.tagName)) {
-          const t6 = r6.textContent.split(o3), i8 = t6.length - 1;
-          if (i8 > 0) {
+          const t6 = r6.textContent.split(o3), i9 = t6.length - 1;
+          if (i9 > 0) {
             r6.textContent = s2 ? s2.emptyScript : "";
-            for (let s7 = 0; s7 < i8; s7++) r6.append(t6[s7], c3()), P.nextNode(), d3.push({ type: 2, index: ++l4 });
-            r6.append(t6[i8], c3());
+            for (let s7 = 0; s7 < i9; s7++) r6.append(t6[s7], c3()), P.nextNode(), d3.push({ type: 2, index: ++l4 });
+            r6.append(t6[i9], c3());
           }
         }
       } else if (8 === r6.nodeType) if (r6.data === n3) d3.push({ type: 2, index: l4 });
@@ -344,20 +344,20 @@ var S2 = class _S {
       l4++;
     }
   }
-  static createElement(t5, i7) {
+  static createElement(t5, i8) {
     const s7 = l2.createElement("template");
     return s7.innerHTML = t5, s7;
   }
 };
-function M(t5, i7, s7 = t5, e6) {
-  if (i7 === E) return i7;
+function M(t5, i8, s7 = t5, e6) {
+  if (i8 === E) return i8;
   let h6 = void 0 !== e6 ? s7._$Co?.[e6] : s7._$Cl;
-  const o8 = a2(i7) ? void 0 : i7._$litDirective$;
-  return h6?.constructor !== o8 && (h6?._$AO?.(false), void 0 === o8 ? h6 = void 0 : (h6 = new o8(t5), h6._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h6 : s7._$Cl = h6), void 0 !== h6 && (i7 = M(t5, h6._$AS(t5, i7.values), h6, e6)), i7;
+  const o8 = a2(i8) ? void 0 : i8._$litDirective$;
+  return h6?.constructor !== o8 && (h6?._$AO?.(false), void 0 === o8 ? h6 = void 0 : (h6 = new o8(t5), h6._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h6 : s7._$Cl = h6), void 0 !== h6 && (i8 = M(t5, h6._$AS(t5, i8.values), h6, e6)), i8;
 }
 var R = class {
-  constructor(t5, i7) {
-    this._$AV = [], this._$AN = void 0, this._$AD = t5, this._$AM = i7;
+  constructor(t5, i8) {
+    this._$AV = [], this._$AN = void 0, this._$AD = t5, this._$AM = i8;
   }
   get parentNode() {
     return this._$AM.parentNode;
@@ -366,34 +366,34 @@ var R = class {
     return this._$AM._$AU;
   }
   u(t5) {
-    const { el: { content: i7 }, parts: s7 } = this._$AD, e6 = (t5?.creationScope ?? l2).importNode(i7, true);
+    const { el: { content: i8 }, parts: s7 } = this._$AD, e6 = (t5?.creationScope ?? l2).importNode(i8, true);
     P.currentNode = e6;
     let h6 = P.nextNode(), o8 = 0, n7 = 0, r6 = s7[0];
     for (; void 0 !== r6; ) {
       if (o8 === r6.index) {
-        let i8;
-        2 === r6.type ? i8 = new k(h6, h6.nextSibling, this, t5) : 1 === r6.type ? i8 = new r6.ctor(h6, r6.name, r6.strings, this, t5) : 6 === r6.type && (i8 = new Z(h6, this, t5)), this._$AV.push(i8), r6 = s7[++n7];
+        let i9;
+        2 === r6.type ? i9 = new k(h6, h6.nextSibling, this, t5) : 1 === r6.type ? i9 = new r6.ctor(h6, r6.name, r6.strings, this, t5) : 6 === r6.type && (i9 = new Z(h6, this, t5)), this._$AV.push(i9), r6 = s7[++n7];
       }
       o8 !== r6?.index && (h6 = P.nextNode(), o8++);
     }
     return P.currentNode = l2, e6;
   }
   p(t5) {
-    let i7 = 0;
-    for (const s7 of this._$AV) void 0 !== s7 && (void 0 !== s7.strings ? (s7._$AI(t5, s7, i7), i7 += s7.strings.length - 2) : s7._$AI(t5[i7])), i7++;
+    let i8 = 0;
+    for (const s7 of this._$AV) void 0 !== s7 && (void 0 !== s7.strings ? (s7._$AI(t5, s7, i8), i8 += s7.strings.length - 2) : s7._$AI(t5[i8])), i8++;
   }
 };
 var k = class _k {
   get _$AU() {
     return this._$AM?._$AU ?? this._$Cv;
   }
-  constructor(t5, i7, s7, e6) {
-    this.type = 2, this._$AH = A, this._$AN = void 0, this._$AA = t5, this._$AB = i7, this._$AM = s7, this.options = e6, this._$Cv = e6?.isConnected ?? true;
+  constructor(t5, i8, s7, e6) {
+    this.type = 2, this._$AH = A, this._$AN = void 0, this._$AA = t5, this._$AB = i8, this._$AM = s7, this.options = e6, this._$Cv = e6?.isConnected ?? true;
   }
   get parentNode() {
     let t5 = this._$AA.parentNode;
-    const i7 = this._$AM;
-    return void 0 !== i7 && 11 === t5?.nodeType && (t5 = i7.parentNode), t5;
+    const i8 = this._$AM;
+    return void 0 !== i8 && 11 === t5?.nodeType && (t5 = i8.parentNode), t5;
   }
   get startNode() {
     return this._$AA;
@@ -401,8 +401,8 @@ var k = class _k {
   get endNode() {
     return this._$AB;
   }
-  _$AI(t5, i7 = this) {
-    t5 = M(this, t5, i7), a2(t5) ? t5 === A || null == t5 || "" === t5 ? (this._$AH !== A && this._$AR(), this._$AH = A) : t5 !== this._$AH && t5 !== E && this._(t5) : void 0 !== t5._$litType$ ? this.$(t5) : void 0 !== t5.nodeType ? this.T(t5) : d2(t5) ? this.k(t5) : this._(t5);
+  _$AI(t5, i8 = this) {
+    t5 = M(this, t5, i8), a2(t5) ? t5 === A || null == t5 || "" === t5 ? (this._$AH !== A && this._$AR(), this._$AH = A) : t5 !== this._$AH && t5 !== E && this._(t5) : void 0 !== t5._$litType$ ? this.$(t5) : void 0 !== t5.nodeType ? this.T(t5) : d2(t5) ? this.k(t5) : this._(t5);
   }
   O(t5) {
     return this._$AA.parentNode.insertBefore(t5, this._$AB);
@@ -414,23 +414,23 @@ var k = class _k {
     this._$AH !== A && a2(this._$AH) ? this._$AA.nextSibling.data = t5 : this.T(l2.createTextNode(t5)), this._$AH = t5;
   }
   $(t5) {
-    const { values: i7, _$litType$: s7 } = t5, e6 = "number" == typeof s7 ? this._$AC(t5) : (void 0 === s7.el && (s7.el = S2.createElement(V(s7.h, s7.h[0]), this.options)), s7);
-    if (this._$AH?._$AD === e6) this._$AH.p(i7);
+    const { values: i8, _$litType$: s7 } = t5, e6 = "number" == typeof s7 ? this._$AC(t5) : (void 0 === s7.el && (s7.el = S2.createElement(V(s7.h, s7.h[0]), this.options)), s7);
+    if (this._$AH?._$AD === e6) this._$AH.p(i8);
     else {
       const t6 = new R(e6, this), s8 = t6.u(this.options);
-      t6.p(i7), this.T(s8), this._$AH = t6;
+      t6.p(i8), this.T(s8), this._$AH = t6;
     }
   }
   _$AC(t5) {
-    let i7 = C.get(t5.strings);
-    return void 0 === i7 && C.set(t5.strings, i7 = new S2(t5)), i7;
+    let i8 = C.get(t5.strings);
+    return void 0 === i8 && C.set(t5.strings, i8 = new S2(t5)), i8;
   }
   k(t5) {
     u2(this._$AH) || (this._$AH = [], this._$AR());
-    const i7 = this._$AH;
+    const i8 = this._$AH;
     let s7, e6 = 0;
-    for (const h6 of t5) e6 === i7.length ? i7.push(s7 = new _k(this.O(c3()), this.O(c3()), this, this.options)) : s7 = i7[e6], s7._$AI(h6), e6++;
-    e6 < i7.length && (this._$AR(s7 && s7._$AB.nextSibling, e6), i7.length = e6);
+    for (const h6 of t5) e6 === i8.length ? i8.push(s7 = new _k(this.O(c3()), this.O(c3()), this, this.options)) : s7 = i8[e6], s7._$AI(h6), e6++;
+    e6 < i8.length && (this._$AR(s7 && s7._$AB.nextSibling, e6), i8.length = e6);
   }
   _$AR(t5 = this._$AA.nextSibling, s7) {
     for (this._$AP?.(false, true, s7); t5 !== this._$AB; ) {
@@ -449,17 +449,17 @@ var H = class {
   get _$AU() {
     return this._$AM._$AU;
   }
-  constructor(t5, i7, s7, e6, h6) {
-    this.type = 1, this._$AH = A, this._$AN = void 0, this.element = t5, this.name = i7, this._$AM = e6, this.options = h6, s7.length > 2 || "" !== s7[0] || "" !== s7[1] ? (this._$AH = Array(s7.length - 1).fill(new String()), this.strings = s7) : this._$AH = A;
+  constructor(t5, i8, s7, e6, h6) {
+    this.type = 1, this._$AH = A, this._$AN = void 0, this.element = t5, this.name = i8, this._$AM = e6, this.options = h6, s7.length > 2 || "" !== s7[0] || "" !== s7[1] ? (this._$AH = Array(s7.length - 1).fill(new String()), this.strings = s7) : this._$AH = A;
   }
-  _$AI(t5, i7 = this, s7, e6) {
+  _$AI(t5, i8 = this, s7, e6) {
     const h6 = this.strings;
     let o8 = false;
-    if (void 0 === h6) t5 = M(this, t5, i7, 0), o8 = !a2(t5) || t5 !== this._$AH && t5 !== E, o8 && (this._$AH = t5);
+    if (void 0 === h6) t5 = M(this, t5, i8, 0), o8 = !a2(t5) || t5 !== this._$AH && t5 !== E, o8 && (this._$AH = t5);
     else {
       const e7 = t5;
       let n7, r6;
-      for (t5 = h6[0], n7 = 0; n7 < h6.length - 1; n7++) r6 = M(this, e7[s7 + n7], i7, n7), r6 === E && (r6 = this._$AH[n7]), o8 || (o8 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h6[n7 + 1]), this._$AH[n7] = r6;
+      for (t5 = h6[0], n7 = 0; n7 < h6.length - 1; n7++) r6 = M(this, e7[s7 + n7], i8, n7), r6 === E && (r6 = this._$AH[n7]), o8 || (o8 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h6[n7 + 1]), this._$AH[n7] = r6;
     }
     o8 && !e6 && this.j(t5);
   }
@@ -484,11 +484,11 @@ var L = class extends H {
   }
 };
 var z = class extends H {
-  constructor(t5, i7, s7, e6, h6) {
-    super(t5, i7, s7, e6, h6), this.type = 5;
+  constructor(t5, i8, s7, e6, h6) {
+    super(t5, i8, s7, e6, h6), this.type = 5;
   }
-  _$AI(t5, i7 = this) {
-    if ((t5 = M(this, t5, i7, 0) ?? A) === E) return;
+  _$AI(t5, i8 = this) {
+    if ((t5 = M(this, t5, i8, 0) ?? A) === E) return;
     const s7 = this._$AH, e6 = t5 === A && s7 !== A || t5.capture !== s7.capture || t5.once !== s7.once || t5.passive !== s7.passive, h6 = t5 !== A && (s7 === A || e6);
     e6 && this.element.removeEventListener(this.name, this, s7), h6 && this.element.addEventListener(this.name, this, t5), this._$AH = t5;
   }
@@ -497,8 +497,8 @@ var z = class extends H {
   }
 };
 var Z = class {
-  constructor(t5, i7, s7) {
-    this.element = t5, this.type = 6, this._$AN = void 0, this._$AM = i7, this.options = s7;
+  constructor(t5, i8, s7) {
+    this.element = t5, this.type = 6, this._$AN = void 0, this._$AM = i8, this.options = s7;
   }
   get _$AU() {
     return this._$AM._$AU;
@@ -510,12 +510,12 @@ var Z = class {
 var j = { M: h2, P: o3, A: n3, C: 1, L: N, R, D: d2, V: M, I: k, H, N: L, U: z, B: I, F: Z };
 var B = t2.litHtmlPolyfillSupport;
 B?.(S2, k), (t2.litHtmlVersions ?? (t2.litHtmlVersions = [])).push("3.3.2");
-var D = (t5, i7, s7) => {
-  const e6 = s7?.renderBefore ?? i7;
+var D = (t5, i8, s7) => {
+  const e6 = s7?.renderBefore ?? i8;
   let h6 = e6._$litPart$;
   if (void 0 === h6) {
     const t6 = s7?.renderBefore ?? null;
-    e6._$litPart$ = h6 = new k(i7.insertBefore(c3(), t6), t6, void 0, s7 ?? {});
+    e6._$litPart$ = h6 = new k(i8.insertBefore(c3(), t6), t6, void 0, s7 ?? {});
   }
   return h6._$AI(t5), h6;
 };
@@ -559,8 +559,8 @@ var i5 = class {
   get _$AU() {
     return this._$AM._$AU;
   }
-  _$AT(t5, e6, i7) {
-    this._$Ct = t5, this._$AM = e6, this._$Ci = i7;
+  _$AT(t5, e6, i8) {
+    this._$Ct = t5, this._$AM = e6, this._$Ci = i8;
   }
   _$AS(t5, e6) {
     return this.update(t5, e6);
@@ -578,8 +578,8 @@ var s4 = () => document.createComment("");
 var v2 = (o8, n7, e6) => {
   const l4 = o8._$AA.parentNode, d3 = void 0 === n7 ? o8._$AB : n7._$AA;
   if (void 0 === e6) {
-    const i7 = l4.insertBefore(s4(), d3), n8 = l4.insertBefore(s4(), d3);
-    e6 = new t4(i7, n8, o8, o8.options);
+    const i8 = l4.insertBefore(s4(), d3), n8 = l4.insertBefore(s4(), d3);
+    e6 = new t4(i8, n8, o8, o8.options);
   } else {
     const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o8;
     if (c7) {
@@ -596,7 +596,7 @@ var v2 = (o8, n7, e6) => {
   }
   return e6;
 };
-var u3 = (o8, t5, i7 = o8) => (o8._$AI(t5, i7), o8);
+var u3 = (o8, t5, i8 = o8) => (o8._$AI(t5, i8), o8);
 var m2 = {};
 var p3 = (o8, t5 = m2) => o8._$AH = t5;
 var M2 = (o8) => o8._$AH;
@@ -618,8 +618,8 @@ var c4 = e4(class extends i5 {
     let r6;
     void 0 === t5 ? t5 = s7 : void 0 !== s7 && (r6 = s7);
     const l4 = [], o8 = [];
-    let i7 = 0;
-    for (const s8 of e6) l4[i7] = r6 ? r6(s8, i7) : i7, o8[i7] = t5(s8, i7), i7++;
+    let i8 = 0;
+    for (const s8 of e6) l4[i8] = r6 ? r6(s8, i8) : i8, o8[i8] = t5(s8, i8), i8++;
     return { values: o8, keys: l4 };
   }
   render(e6, s7, t5) {
@@ -658,54 +658,54 @@ var c4 = e4(class extends i5 {
 });
 
 // node_modules/lit-html/async-directive.js
-var s5 = (i7, t5) => {
-  const e6 = i7._$AN;
+var s5 = (i8, t5) => {
+  const e6 = i8._$AN;
   if (void 0 === e6) return false;
-  for (const i8 of e6) i8._$AO?.(t5, false), s5(i8, t5);
+  for (const i9 of e6) i9._$AO?.(t5, false), s5(i9, t5);
   return true;
 };
-var o5 = (i7) => {
+var o5 = (i8) => {
   let t5, e6;
   do {
-    if (void 0 === (t5 = i7._$AM)) break;
-    e6 = t5._$AN, e6.delete(i7), i7 = t5;
+    if (void 0 === (t5 = i8._$AM)) break;
+    e6 = t5._$AN, e6.delete(i8), i8 = t5;
   } while (0 === e6?.size);
 };
-var r5 = (i7) => {
-  for (let t5; t5 = i7._$AM; i7 = t5) {
+var r5 = (i8) => {
+  for (let t5; t5 = i8._$AM; i8 = t5) {
     let e6 = t5._$AN;
     if (void 0 === e6) t5._$AN = e6 = /* @__PURE__ */ new Set();
-    else if (e6.has(i7)) break;
-    e6.add(i7), c5(t5);
+    else if (e6.has(i8)) break;
+    e6.add(i8), c5(t5);
   }
 };
-function h4(i7) {
-  void 0 !== this._$AN ? (o5(this), this._$AM = i7, r5(this)) : this._$AM = i7;
+function h4(i8) {
+  void 0 !== this._$AN ? (o5(this), this._$AM = i8, r5(this)) : this._$AM = i8;
 }
-function n4(i7, t5 = false, e6 = 0) {
+function n4(i8, t5 = false, e6 = 0) {
   const r6 = this._$AH, h6 = this._$AN;
-  if (void 0 !== h6 && 0 !== h6.size) if (t5) if (Array.isArray(r6)) for (let i8 = e6; i8 < r6.length; i8++) s5(r6[i8], false), o5(r6[i8]);
+  if (void 0 !== h6 && 0 !== h6.size) if (t5) if (Array.isArray(r6)) for (let i9 = e6; i9 < r6.length; i9++) s5(r6[i9], false), o5(r6[i9]);
   else null != r6 && (s5(r6, false), o5(r6));
-  else s5(this, i7);
+  else s5(this, i8);
 }
-var c5 = (i7) => {
-  i7.type == t3.CHILD && (i7._$AP ?? (i7._$AP = n4), i7._$AQ ?? (i7._$AQ = h4));
+var c5 = (i8) => {
+  i8.type == t3.CHILD && (i8._$AP ?? (i8._$AP = n4), i8._$AQ ?? (i8._$AQ = h4));
 };
 var f3 = class extends i5 {
   constructor() {
     super(...arguments), this._$AN = void 0;
   }
-  _$AT(i7, t5, e6) {
-    super._$AT(i7, t5, e6), r5(this), this.isConnected = i7._$AU;
+  _$AT(i8, t5, e6) {
+    super._$AT(i8, t5, e6), r5(this), this.isConnected = i8._$AU;
   }
-  _$AO(i7, t5 = true) {
-    i7 !== this.isConnected && (this.isConnected = i7, i7 ? this.reconnected?.() : this.disconnected?.()), t5 && (s5(this, i7), o5(this));
+  _$AO(i8, t5 = true) {
+    i8 !== this.isConnected && (this.isConnected = i8, i8 ? this.reconnected?.() : this.disconnected?.()), t5 && (s5(this, i8), o5(this));
   }
   setValue(t5) {
     if (r4(this._$Ct)) this._$Ct._$AI(t5, this);
     else {
-      const i7 = [...this._$Ct._$AH];
-      i7[this._$Ci] = t5, this._$Ct._$AI(i7, this, 0);
+      const i8 = [...this._$Ct._$AH];
+      i8[this._$Ci] = t5, this._$Ct._$AI(i8, this, 0);
     }
   }
   disconnected() {
@@ -720,18 +720,18 @@ var h5 = class {
 };
 var o6 = /* @__PURE__ */ new WeakMap();
 var n5 = e4(class extends f3 {
-  render(i7) {
+  render(i8) {
     return A;
   }
-  update(i7, [s7]) {
+  update(i8, [s7]) {
     const e6 = s7 !== this.G;
-    return e6 && void 0 !== this.G && this.rt(void 0), (e6 || this.lt !== this.ct) && (this.G = s7, this.ht = i7.options?.host, this.rt(this.ct = i7.element)), A;
+    return e6 && void 0 !== this.G && this.rt(void 0), (e6 || this.lt !== this.ct) && (this.G = s7, this.ht = i8.options?.host, this.rt(this.ct = i8.element)), A;
   }
   rt(t5) {
     if (this.isConnected || (t5 = void 0), "function" == typeof this.G) {
-      const i7 = this.ht ?? globalThis;
-      let s7 = o6.get(i7);
-      void 0 === s7 && (s7 = /* @__PURE__ */ new WeakMap(), o6.set(i7, s7)), void 0 !== s7.get(this.G) && this.G.call(this.ht, void 0), s7.set(this.G, t5), void 0 !== t5 && this.G.call(this.ht, t5);
+      const i8 = this.ht ?? globalThis;
+      let s7 = o6.get(i8);
+      void 0 === s7 && (s7 = /* @__PURE__ */ new WeakMap(), o6.set(i8, s7)), void 0 !== s7.get(this.G) && this.G.call(this.ht, void 0), s7.set(this.G, t5), void 0 !== t5 && this.G.call(this.ht, t5);
     } else this.G.value = t5;
   }
   get lt() {
@@ -4019,8 +4019,8 @@ var RemoteCardStore = class {
     const arr = this._config?.custom_favorites;
     if (!Array.isArray(arr)) return [];
     const out = [];
-    for (let i7 = 0; i7 < arr.length; i7++) {
-      const norm = normalizeCustomFavorite(arr[i7], i7);
+    for (let i8 = 0; i8 < arr.length; i8++) {
+      const norm = normalizeCustomFavorite(arr[i8], i8);
       if (norm) out.push(norm);
     }
     return out;
@@ -5358,12 +5358,12 @@ var s6 = (t5) => ({ _$litStatic$: t5, r: a3 });
 var l3 = /* @__PURE__ */ new Map();
 var n6 = (t5) => (r6, ...e6) => {
   const a4 = e6.length;
-  let s7, i7;
+  let s7, i8;
   const n7 = [], u6 = [];
   let c7, $3 = 0, f4 = false;
   for (; $3 < a4; ) {
-    for (c7 = r6[$3]; $3 < a4 && void 0 !== (i7 = e6[$3], s7 = o7(i7)); ) c7 += s7 + r6[++$3], f4 = true;
-    $3 !== a4 && u6.push(i7), n7.push(c7), $3++;
+    for (c7 = r6[$3]; $3 < a4 && void 0 !== (i8 = e6[$3], s7 = o7(i8)); ) c7 += s7 + r6[++$3], f4 = true;
+    $3 !== a4 && u6.push(i8), n7.push(c7), $3++;
   }
   if ($3 === a4 && n7.push(r6[a4]), f4) {
     const t6 = n7.join("$$lit$$");
@@ -6436,7 +6436,7 @@ function hexToRgbTriplet(value) {
   const hex = value.trim().slice(1);
   const full = hex.length === 3 ? hex.split("").map((c7) => c7 + c7).join("") : hex;
   if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
-  return [0, 2, 4].map((i7) => parseInt(full.slice(i7, i7 + 2), 16)).join(",");
+  return [0, 2, 4].map((i8) => parseInt(full.slice(i8, i8 + 2), 16)).join(",");
 }
 var SofabatonRemoteCard = class extends i4 {
   constructor() {
@@ -9730,6 +9730,322 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
 };
 registerRemoteCardTranslation("zh-hans", REMOTE_CARD_STRINGS_ZH_HANS);
 
+// node_modules/lit-html/directives/keyed.js
+var i7 = e4(class extends i5 {
+  constructor() {
+    super(...arguments), this.key = A;
+  }
+  render(r6, t5) {
+    return this.key = r6, t5;
+  }
+  update(r6, [t5, e6]) {
+    return t5 !== this.key && (p3(r6), this.key = t5), e6;
+  }
+});
+
+// server-panel/src/components/bottom-dock.ts
+function renderBottomDock(params) {
+  const { model, message } = params;
+  let tone = "";
+  let center;
+  if (model.kind === "running") {
+    tone = "dock--running";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>
+      ${model.cancellable ? b2`<button class="small dock-action" id="dock-cancel" type="button" ?disabled=${model.cancelling} @click=${params.onCancel}>${model.cancelling ? "Cancelling\u2026" : "Cancel"}</button>` : A}`;
+  } else if (message) {
+    tone = message.ok ? "dock--message" : "dock--error";
+    center = b2`<span class="dock-status" id="hubs-msg">${message.text}</span>`;
+  } else if (model.kind === "notice") {
+    tone = `dock--${model.notice.tone}`;
+    center = b2`<span class="dock-status" id="dock-status" title=${model.notice.detail ?? ""}>${model.notice.label}${model.notice.detail ? b2`<span class="dock-detail"> · ${model.notice.detail}</span>` : A}</span>
+      <button class="small dock-action" id="dock-dismiss" type="button" @click=${params.onDismiss}>Dismiss</button>`;
+  } else if (model.kind === "apply_stopped") {
+    tone = "dock--warn";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>
+      ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
+      <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
+  } else if (model.kind === "draft_stale") {
+    tone = "dock--warn";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>
+      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
+      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "dirty") {
+    tone = "dock--dirty";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>
+      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "gate") {
+    tone = "dock--gate";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+  } else if (params.docLink) {
+    center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
+  } else {
+    center = b2``;
+  }
+  const progress = model.kind === "running" ? model.progress : null;
+  const press = params.press;
+  return b2`
+    <footer class="dock ${tone}" id="bottom-dock">
+      <div class="dock-inner">
+        ${progress ? b2`<div class="dock-progress" id="dock-progress" data-indeterminate=${progress.indeterminate ? "true" : "false"} style=${progress.indeterminate || progress.percent == null ? "width: 35%" : `width: ${progress.percent}%`}></div>` : A}
+        ${press ? i7(press.at, b2`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`) : A}
+        <div class="dock-center">${center}</div>
+        <div class="dock-right">
+          ${params.hasHub ? b2`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
+                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
+                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected"}>App</span>
+              </div>` : A}
+        </div>
+      </div>
+    </footer>
+  `;
+}
+
+// server-panel/src/panel-route.ts
+var HUB_TABS = ["hub", "backup", "remote"];
+var SUBTABS = {
+  hub: ["devices", "activities"],
+  backup: ["make", "edit", "restore"],
+  remote: ["card", "layout"]
+};
+var TAB_LABELS = { hub: "Hub", backup: "Backup", remote: "Remote" };
+var TOOL_PAGES = ["setup", "server", "debug"];
+var TOOL_LABELS = { setup: "Hub setup", server: "Server", debug: "Debug" };
+var TOOL_SUBTABS = {
+  setup: ["hubs"],
+  server: ["status"],
+  debug: ["api", "events"]
+};
+var SUBTAB_LABELS = {
+  devices: "Devices",
+  activities: "Activities",
+  make: "Make",
+  edit: "Edit",
+  restore: "Restore",
+  card: "Card",
+  layout: "Layout",
+  hubs: "Hubs",
+  status: "Status",
+  api: "API console",
+  events: "Event stream"
+};
+function isHubTab(value) {
+  return typeof value === "string" && HUB_TABS.includes(value);
+}
+function isToolPage(value) {
+  return typeof value === "string" && TOOL_PAGES.includes(value);
+}
+function normalizeSub(tab, sub) {
+  const subs = SUBTABS[tab];
+  return sub && subs.includes(sub) ? sub : subs[0];
+}
+function hubRoute(hubId, tab = "hub", sub) {
+  return { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) };
+}
+function normalizeToolSub(page, sub) {
+  const subs = TOOL_SUBTABS[page];
+  return sub && subs.includes(sub) ? sub : subs[0];
+}
+function toolRoute(page, sub) {
+  return { kind: "tool", page, sub: normalizeToolSub(page, sub) };
+}
+var LEGACY = {
+  hubs: toolRoute("setup"),
+  catalog: hubRoute(null, "hub"),
+  remote: hubRoute(null, "remote"),
+  api: toolRoute("debug", "api"),
+  events: toolRoute("debug", "events")
+};
+function parseRoute(hash) {
+  const raw = hash.replace(/^#/, "");
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return LEGACY[raw] ?? null;
+  const parts = raw.split("/").filter(Boolean).map((p4) => {
+    try {
+      return decodeURIComponent(p4);
+    } catch {
+      return p4;
+    }
+  });
+  if (!parts.length) return null;
+  if (isToolPage(parts[0])) return toolRoute(parts[0], parts[1]);
+  if (parts.length === 1 && (parts[0] === "api" || parts[0] === "events")) return toolRoute("debug", parts[0]);
+  const [first, tab, sub] = parts;
+  const hubId = first === "-" ? null : first;
+  if (tab !== void 0 && !isHubTab(tab)) return hubRoute(hubId, "hub");
+  return hubRoute(hubId, tab ?? "hub", sub);
+}
+function hashFor(route) {
+  if (route.kind === "tool") return `#/${route.page}/${route.sub}`;
+  const hub = route.hubId ? encodeURIComponent(route.hubId) : "-";
+  return `#/${hub}/${route.tab}/${route.sub}`;
+}
+function sameRoute(a4, b3) {
+  return hashFor(a4) === hashFor(b3);
+}
+function withHub(route, hubId) {
+  return route.kind === "hub" ? { ...route, hubId } : route;
+}
+
+// server-panel/src/panel-state.ts
+function hubState(hub) {
+  if (!hub.enabled) return { text: "disabled", tone: "off" };
+  const s7 = hub.status;
+  if (!s7) return { text: "not running: the proxy did not start", tone: "err" };
+  if (s7.mode === "disconnected" || !s7.hub_connected) return { text: "waiting for the hub to connect", tone: "warn" };
+  if (s7.mode === "observe") return { text: s7.app_connected ? "observing: the app holds the hub" : "observing", tone: "warn" };
+  return { text: s7.catalog_ready ? "connected, in control" : "connected, first sync running", tone: "ok" };
+}
+function hubDisplayName(hub) {
+  return hub.config?.name || hub.hub_name || hub.hub_id;
+}
+function formatWhen(iso) {
+  if (!iso) return "never";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? String(iso) : date.toLocaleString();
+}
+function actionOutcome(action, record) {
+  if (action === "enable") return record?.enabled ? "started" : "enabled";
+  return action === "disable" ? "disabled" : "removed";
+}
+var THEMES = ["auto", "light", "dark"];
+function isTheme(value) {
+  return typeof value === "string" && THEMES.includes(value);
+}
+function nextTheme(current) {
+  return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+}
+var PREFS_KEY = "sofabaton-panel";
+function loadPrefs(storage) {
+  const prefs = { hub: null, tab: "hub", sub: SUBTABS.hub[0], theme: "auto" };
+  if (!storage) return prefs;
+  try {
+    const raw = storage.getItem(PREFS_KEY);
+    if (!raw) return prefs;
+    const data = JSON.parse(raw);
+    if (typeof data.hub === "string") prefs.hub = data.hub;
+    if (isHubTab(data.tab)) prefs.tab = data.tab;
+    else if (data.view === "remote") prefs.tab = "remote";
+    prefs.sub = normalizeSub(prefs.tab, typeof data.sub === "string" ? data.sub : null);
+    if (isTheme(data.theme)) prefs.theme = data.theme;
+  } catch {
+  }
+  return prefs;
+}
+function savePrefs(storage, prefs) {
+  if (!storage) return;
+  try {
+    storage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+  }
+}
+var HISTORY_KEY = "sofabaton-panel-history";
+var HISTORY_LIMIT = 30;
+function loadHistory(storage) {
+  if (!storage) return [];
+  try {
+    const data = JSON.parse(storage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(data) ? data.slice(0, HISTORY_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+function saveHistory(storage, history2) {
+  if (!storage) return;
+  try {
+    storage.setItem(HISTORY_KEY, JSON.stringify(history2.slice(0, HISTORY_LIMIT)));
+  } catch {
+  }
+}
+function prettyJson(text) {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+function parseHeaderLines(text) {
+  const out = {};
+  for (const line of text.split("\n")) {
+    const i8 = line.indexOf(":");
+    if (i8 < 0) continue;
+    const name = line.slice(0, i8).trim();
+    if (name) out[name] = line.slice(i8 + 1).trim();
+  }
+  return out;
+}
+
+// server-panel/src/components/hub-picker.ts
+function renderHubPicker(params) {
+  const selected = params.hubs.find((r6) => r6.hub.hub_id === params.selectedHubId) ?? null;
+  const label = selected ? hubDisplayName(selected.hub) : params.hubs.length ? "pick a hub" : "no hub";
+  const tone = selected ? hubState(selected.hub).tone : "off";
+  const interactive = params.hubs.length > 1 || !selected && params.hubs.length > 0;
+  if (!interactive) {
+    return b2`
+      <div class="hub-picker hub-picker--static" id="hub-picker">
+        <div class="hub-picker-btn hub-picker-btn--static" id="hub-picker-btn" title=${selected ? selected.hub.hub_id : "register a hub under the cog menu"}>
+          <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span>
+        </div>
+      </div>
+    `;
+  }
+  return b2`
+    <div class="hub-picker" id="hub-picker">
+      <button class="hub-picker-btn ${params.open ? "is-open" : ""}" id="hub-picker-btn" type="button" aria-haspopup="menu" aria-expanded=${String(params.open)} @click=${params.onToggle}>
+        <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span><span class="chip-arrow" aria-hidden="true">${params.open ? "\u25B4" : "\u25BE"}</span>
+      </button>
+      ${params.open ? b2`<div class="menu hub-picker-menu" id="hub-picker-menu" role="menu">
+            ${params.hubs.map(({ hub }) => {
+    const { text, tone: t5 } = hubState(hub);
+    return b2`<button class="menu-item hub-option ${hub.hub_id === params.selectedHubId ? "selected" : ""}" type="button" role="menuitemradio" data-hub=${hub.hub_id} aria-checked=${String(hub.hub_id === params.selectedHubId)} @click=${() => params.onSelect(hub.hub_id)}>
+                <span class="dot ${t5}"></span><span class="menu-main"><span class="menu-title">${hubDisplayName(hub)}</span><span class="menu-sub">${hub.config.host} · ${text}</span></span>
+              </button>`;
+  })}
+            <div class="menu-sep"></div>
+            <button class="menu-item" type="button" role="menuitem" id="hub-picker-setup" @click=${params.onSetup}><span class="menu-main"><span class="menu-title">Hub setup…</span></span></button>
+          </div>` : A}
+    </div>
+  `;
+}
+
+// server-panel/src/components/tab-bar.ts
+function renderTabBar(params) {
+  const route = params.route;
+  const onTool = route.kind === "tool";
+  return b2`
+    <div class="tabs" id="tabs">
+      <div class="tabs-scroll" role="tablist">
+        ${HUB_TABS.map(
+    (tab) => b2`<button class="tab-btn ${!onTool && route.tab === tab ? "active" : ""}" type="button" role="tab" data-tab=${tab} aria-selected=${String(!onTool && route.tab === tab)} @click=${() => params.onTab(tab)}>
+            <span class="tab-btn-label">${TAB_LABELS[tab]}</span>
+          </button>`
+  )}
+      </div>
+      <div class="tab-menu" id="cog">
+        <button class="tab-btn tab-btn--menu ${onTool ? "active" : ""} ${params.cogOpen ? "is-open" : ""}" id="cog-btn" type="button" aria-haspopup="menu" aria-expanded=${String(params.cogOpen)} title="setup and tools" @click=${params.onToggleCog}>
+          <span class="cog-icon" aria-hidden="true">⚙</span><span class="chip-arrow" aria-hidden="true">${params.cogOpen ? "\u25B4" : "\u25BE"}</span>
+        </button>
+        ${params.cogOpen ? b2`<div class="menu cog-menu" id="cog-menu" role="menu">
+              ${TOOL_PAGES.map(
+    (page) => b2`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
+                  <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? b2` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : A}</span></span>
+                </button>`
+  )}
+              <div class="menu-sep"></div>
+              <button class="menu-item" type="button" role="menuitem" id="theme-toggle" title="theme: ${params.theme}" @click=${params.onTheme}>
+                <span class="menu-main"><span class="menu-title">Theme: ${params.theme}</span><span class="menu-sub">tap to cycle auto, light, dark</span></span>
+              </button>
+            </div>` : A}
+      </div>
+    </div>
+    <div class="subtabs" id="subtabs" role="tablist" data-page=${onTool ? route.page : route.tab}>
+      ${(onTool ? TOOL_SUBTABS[route.page] : SUBTABS[route.tab]).map(
+    (sub) => b2`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>${SUBTAB_LABELS[sub] ?? sub}</button>`
+  )}
+    </div>
+  `;
+}
+
 // remote-card/src/backend/server-backend.ts
 var SERVER_API_PREFIX = "/api/v1";
 var MAX_RECONNECT_DELAY_MS = 3e4;
@@ -10468,6 +10784,12 @@ var PanelApi = class {
   serverInfo() {
     return this.request("GET", "server");
   }
+  callbackListener() {
+    return this.request("GET", "server/callback-listener");
+  }
+  retryCallbackListener() {
+    return this.request("POST", "server/callback-listener/retry");
+  }
   /** The operations from `openapi.json`, sorted by path then method. */
   async operations() {
     const response = await this.request(
@@ -10550,6 +10872,25 @@ var PanelApi = class {
   job(hubId, jobId) {
     return this.request("GET", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
   }
+  /** Recent jobs on the hub, newest first. */
+  listJobs(hubId) {
+    return this.request("GET", `${this._hub(hubId)}/jobs`);
+  }
+  cancelJob(hubId, jobId) {
+    return this.request("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
+  }
+  /** The hub's apply records, newest first, documents omitted. */
+  listApplies(hubId) {
+    return this.request("GET", `${this._hub(hubId)}/applies`);
+  }
+  /** Continue a stopped or cancelled apply; the 202 body is the job. */
+  resumeApply(hubId, applyId) {
+    return this.request("POST", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}/resume`);
+  }
+  /** Forget an apply record. */
+  discardApply(hubId, applyId) {
+    return this.request("DELETE", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}`);
+  }
   /**
    * Poll a job until it reaches a terminal state (or the poll count runs
    * out); `onUpdate` sees every answer. Resolves with the last view.
@@ -10559,7 +10900,7 @@ var PanelApi = class {
     const maxPolls = options.maxPolls ?? 600;
     const sleep2 = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     let last = null;
-    for (let i7 = 0; i7 < maxPolls; i7++) {
+    for (let i8 = 0; i8 < maxPolls; i8++) {
       const response = await this.job(hubId, jobId);
       if (!response.ok || !response.body) return last;
       last = response.body;
@@ -10571,98 +10912,148 @@ var PanelApi = class {
   }
 };
 
-// server-panel/src/panel-state.ts
-function hubState(hub) {
-  if (!hub.enabled) return { text: "disabled", tone: "off" };
-  const s7 = hub.status;
-  if (!s7) return { text: "not running: the proxy did not start", tone: "err" };
-  if (s7.mode === "disconnected" || !s7.hub_connected) return { text: "waiting for the hub to connect", tone: "warn" };
-  if (s7.mode === "observe") return { text: s7.app_connected ? "observing: the app holds the hub" : "observing", tone: "warn" };
-  return { text: s7.catalog_ready ? "connected, in control" : "connected, first sync running", tone: "ok" };
+// server-panel/src/panel-selectors.ts
+function runtimeFor(snapshot, hubId) {
+  if (!hubId) return null;
+  return snapshot.hubs.find((r6) => r6.hub.hub_id === hubId) ?? null;
 }
-function hubDisplayName(hub) {
-  return hub.config?.name || hub.hub_id;
+function selectedRuntime(snapshot) {
+  return runtimeFor(snapshot, snapshot.selectedHubId);
 }
-function formatWhen(iso) {
-  if (!iso) return "never";
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? String(iso) : date.toLocaleString();
+function selectedHub(snapshot) {
+  return selectedRuntime(snapshot)?.hub ?? null;
 }
-function actionOutcome(action, record) {
-  if (action === "enable") return record?.enabled ? "started" : "enabled";
-  return action === "disable" ? "disabled" : "removed";
+function gateFor(snapshot, runtime) {
+  if (!snapshot.server.reachable) return "server_unreachable";
+  if (!runtime) return "pass";
+  const hub = runtime.hub;
+  if (!hub.enabled || !hub.status) return "hub_disabled";
+  if (!hub.status.hub_connected || hub.status.mode === "disconnected") return "hub_offline";
+  if (hub.status.mode === "observe") return "app_holds_hub";
+  if (!hub.status.catalog_ready) return "first_sync";
+  return "pass";
 }
-var VIEWS = ["hubs", "catalog", "remote", "api", "events"];
-function isView(value) {
-  return typeof value === "string" && VIEWS.includes(value);
+var GATE_LABELS = {
+  server_unreachable: "The server is not answering",
+  hub_disabled: "This hub is disabled",
+  hub_offline: "Waiting for the hub to connect",
+  app_holds_hub: "The Sofabaton app holds the hub",
+  first_sync: "First sync running"
+};
+function activeJob(hub) {
+  const job = hub?.active_job ?? null;
+  return job && !TERMINAL_JOB_STATES.has(job.status) ? job : null;
 }
-function viewFromHash(hash, fallback = "hubs") {
-  const name = hash.replace(/^#/, "");
-  return isView(name) ? name : fallback;
+function busyFor(runtime) {
+  if (!runtime) return null;
+  const job = activeJob(runtime.hub);
+  if (job) return { kind: "job", job };
+  if (runtime.localBusy) return { kind: "local", key: runtime.localBusy.key, label: runtime.localBusy.label };
+  return null;
 }
-var THEMES = ["auto", "light", "dark"];
-function isTheme(value) {
-  return typeof value === "string" && THEMES.includes(value);
+function interactionFor(snapshot, runtime) {
+  const gate = gateFor(snapshot, runtime);
+  if (gate !== "pass") return { kind: "blocked", reason: gate, label: GATE_LABELS[gate] };
+  const busy = busyFor(runtime);
+  if (busy?.kind === "job") return { kind: "blocked", reason: "job", label: jobNarration(busy.job) };
+  if (busy?.kind === "local") return { kind: "blocked", reason: "local", label: busy.label };
+  return { kind: "free" };
 }
-function nextTheme(current) {
-  return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+var JOB_LABELS = {
+  refresh: "Refreshing the hub",
+  refresh_entity: "Refreshing an entity",
+  sync_device: "Writing a device",
+  sync_activity: "Writing an activity",
+  sync_hub: "Applying the document",
+  resume_apply: "Resuming the apply",
+  backup: "Making a backup",
+  restore: "Restoring",
+  erase: "Erasing the hub",
+  learn_ir: "Learning an IR code",
+  deploy_callback_device: "Deploying the callback device",
+  update_callback_device: "Updating the callback device",
+  remove_callback_device: "Removing the callback device",
+  redeploy_callback_device: "Redeploying the callback device"
+};
+function jobLabel(kind) {
+  return JOB_LABELS[kind] ?? kind;
 }
-var PREFS_KEY = "sofabaton-panel";
-function loadPrefs(storage) {
-  const prefs = { hub: null, view: "hubs", theme: "auto" };
-  if (!storage) return prefs;
-  try {
-    const raw = storage.getItem(PREFS_KEY);
-    if (!raw) return prefs;
-    const data = JSON.parse(raw);
-    if (typeof data.hub === "string") prefs.hub = data.hub;
-    if (isView(data.view)) prefs.view = data.view;
-    if (isTheme(data.theme)) prefs.theme = data.theme;
-  } catch {
+function jobProgress(job) {
+  const p4 = job?.progress ?? null;
+  const total = Number(p4?.total_steps ?? 0);
+  const current = Number(p4?.completed_steps ?? 0);
+  const hasTotal = Number.isFinite(total) && total > 0;
+  const percent = hasTotal ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
+  return { current: Number.isFinite(current) ? current : null, total: hasTotal ? total : null, percent, indeterminate: !hasTotal };
+}
+function jobNarration(job) {
+  const parts = [jobLabel(job.kind)];
+  const p4 = job.progress ?? {};
+  const message = typeof p4.message === "string" ? p4.message.trim() : "";
+  if (message) parts.push(message);
+  const entityKind = typeof p4.entity_kind === "string" ? p4.entity_kind : null;
+  const entityId = typeof p4.entity_id === "number" ? p4.entity_id : null;
+  if (entityId !== null && !message.includes(String(entityId))) parts.push(`${entityKind ?? "entity"} ${entityId}`);
+  const itemIndex = typeof p4.item_index === "number" ? p4.item_index : null;
+  const itemCount = typeof p4.item_count === "number" ? p4.item_count : null;
+  if (itemIndex !== null && itemCount !== null && itemCount > 0) parts.push(`item ${itemIndex + 1}/${itemCount}`);
+  const progress = jobProgress(job);
+  if (!progress.indeterminate) parts.push(`${progress.current ?? 0}/${progress.total}`);
+  else if (job.status === "queued") parts.push("queued");
+  return parts.join(" \xB7 ");
+}
+function noticeForJob(job, at) {
+  if (!TERMINAL_JOB_STATES.has(job.status)) return null;
+  const label = jobLabel(job.kind);
+  if (job.status === "failed") {
+    const problem = job.error;
+    const head = problem?.title || problem?.type || "failed";
+    return { tone: "error", label: `${label}: ${head}`, detail: problem?.detail ?? null, jobId: job.job_id, sticky: true, at };
   }
-  return prefs;
+  if (job.status === "cancelled") return { tone: "neutral", label: `${label}: cancelled`, detail: null, jobId: job.job_id, sticky: false, at };
+  return { tone: "success", label: `${label}: done`, detail: null, jobId: job.job_id, sticky: false, at };
 }
-function savePrefs(storage, prefs) {
-  if (!storage) return;
-  try {
-    storage.setItem(PREFS_KEY, JSON.stringify(prefs));
-  } catch {
-  }
+function draftFor(runtime) {
+  if (!runtime?.draft) return null;
+  return { draft: runtime.draft, check: runtime.draftCheck };
 }
-var HISTORY_KEY = "sofabaton-panel-history";
-var HISTORY_LIMIT = 30;
-function loadHistory(storage) {
-  if (!storage) return [];
-  try {
-    const data = JSON.parse(storage.getItem(HISTORY_KEY) || "[]");
-    return Array.isArray(data) ? data.slice(0, HISTORY_LIMIT) : [];
-  } catch {
-    return [];
-  }
+function hasDirtyDraft(runtime) {
+  return Boolean(runtime?.draft);
 }
-function saveHistory(storage, history2) {
-  if (!storage) return;
-  try {
-    storage.setItem(HISTORY_KEY, JSON.stringify(history2.slice(0, HISTORY_LIMIT)));
-  } catch {
+function dockModel(snapshot, runtime) {
+  const job = activeJob(runtime?.hub);
+  if (job) {
+    const cancelling = runtime?.cancelRequestedJobId === job.job_id;
+    return { kind: "running", job, text: cancelling ? `${jobNarration(job)} \xB7 cancelling` : jobNarration(job), progress: jobProgress(job), cancellable: job.cancellable, cancelling };
   }
+  if (runtime?.notice) return { kind: "notice", notice: runtime.notice };
+  const stopped = runtime?.stoppedApplies[0];
+  if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `An apply stopped (${stopped.status}); ${stopped.resumable ? "resume or discard it" : "discard it"}` };
+  const draft = draftFor(runtime);
+  if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
+  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: "Unsaved changes" };
+  const gate = gateFor(snapshot, runtime);
+  if (gate === "server_unreachable" || gate !== "pass" && runtime) return { kind: "gate", gate, text: GATE_LABELS[gate] };
+  return { kind: "idle" };
 }
-function prettyJson(text) {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return text;
-  }
+function connectivityFor(runtime) {
+  const status = runtime?.hub.status ?? null;
+  return { hub: Boolean(status?.hub_connected), app: Boolean(status?.app_connected) };
 }
-function parseHeaderLines(text) {
-  const out = {};
-  for (const line of text.split("\n")) {
-    const i7 = line.indexOf(":");
-    if (i7 < 0) continue;
-    const name = line.slice(0, i7).trim();
-    if (name) out[name] = line.slice(i7 + 1).trim();
-  }
-  return out;
+
+// server-panel/src/panel-context.ts
+function hubContextFor(snapshot, api) {
+  const runtime = selectedRuntime(snapshot);
+  const interaction = interactionFor(snapshot, runtime);
+  return {
+    hub: runtime?.hub ?? null,
+    runtime,
+    gate: gateFor(snapshot, runtime),
+    busy: busyFor(runtime),
+    interaction,
+    free: interaction.kind === "free",
+    api
+  };
 }
 
 // server-panel/src/panel-stream.ts
@@ -10789,6 +11180,555 @@ function isHubRefreshTrigger(data) {
   return false;
 }
 
+// server-panel/src/panel-store.ts
+var ACKS_KEY = "sofabaton-panel-acks";
+var DRAFT_PREFIX = "sofabaton-panel-draft:";
+var STOPPED_APPLY_STATES = /* @__PURE__ */ new Set(["stopped", "cancelled"]);
+var CONFLICT_TYPE = "hub_job_running";
+var PanelStore = class {
+  constructor(options) {
+    this._listeners = /* @__PURE__ */ new Set();
+    this._acks = {};
+    this._connected = false;
+    this._offStream = [];
+    this._tick = null;
+    this._debounce = null;
+    this._retry = null;
+    this._messageTimer = null;
+    this._noticeTimers = /* @__PURE__ */ new Map();
+    this._hubsKey = "";
+    this._api = options.api;
+    this._stream = options.stream;
+    this._storage = options.storage ?? null;
+    this._now = options.now ?? (() => Date.now());
+    this._setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
+    this._clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle));
+    this._isVisible = options.isVisible ?? (() => typeof document === "undefined" || document.visibilityState === "visible");
+    this._tickMs = options.tickMs ?? 5e3;
+    this._debounceMs = options.debounceMs ?? 300;
+    this._noticeTtlMs = options.noticeTtlMs ?? 6e3;
+    this._noticeWindowMs = options.noticeWindowMs ?? 24 * 60 * 60 * 1e3;
+    this._messageTtlMs = options.messageTtlMs ?? 8e3;
+    this._retryMinMs = options.retryMinMs ?? 2e3;
+    this._retryMaxMs = options.retryMaxMs ?? 1e4;
+    this._retryDelay = this._retryMinMs;
+    const prefs = loadPrefs(this._storage);
+    this._acks = loadAcks(this._storage);
+    this._lastHubTab = { tab: prefs.tab, sub: prefs.sub };
+    const initial = options.initialRoute ?? hubRoute(prefs.hub, prefs.tab, prefs.sub);
+    const selected = initial.kind === "hub" && initial.hubId ? initial.hubId : prefs.hub;
+    if (initial.kind === "hub") this._lastHubTab = { tab: initial.tab, sub: initial.sub };
+    this._snapshot = {
+      server: { info: null, reachable: true, error: null, instanceId: null },
+      stream: { connected: false, messageCount: 0 },
+      hubs: [],
+      listLoaded: false,
+      seen: [],
+      operations: [],
+      selectedHubId: selected,
+      route: initial.kind === "hub" ? withHub(initial, selected) : initial,
+      routeReplace: true,
+      theme: prefs.theme,
+      message: null
+    };
+  }
+  get snapshot() {
+    return this._snapshot;
+  }
+  subscribe(listener) {
+    this._listeners.add(listener);
+    return () => this._listeners.delete(listener);
+  }
+  _set(patch) {
+    this._snapshot = { ...this._snapshot, ...patch };
+    for (const listener of this._listeners) listener(this._snapshot);
+  }
+  _patchRuntime(hubId, patch) {
+    const index = this._snapshot.hubs.findIndex((r6) => r6.hub.hub_id === hubId);
+    if (index < 0) return false;
+    const hubs = this._snapshot.hubs.slice();
+    hubs[index] = { ...hubs[index], ...patch };
+    this._set({ hubs });
+    return true;
+  }
+  // -- lifecycle -----------------------------------------------------------------------
+  connect() {
+    if (this._connected) return;
+    this._connected = true;
+    this._offStream = [
+      this._stream.onState((connected) => this._onStreamState(connected)),
+      this._stream.onMessage((message) => this._onStreamMessage(message))
+    ];
+    this._stream.start();
+    void this._api.operations().then((operations) => this._set({ operations })).catch(() => void 0);
+    void this.refreshAll();
+    this._scheduleTick();
+  }
+  disconnect() {
+    if (!this._connected) return;
+    this._connected = false;
+    for (const off of this._offStream) off();
+    this._offStream = [];
+    this._stream.stop();
+    this._clearHandle("_tick");
+    this._clearHandle("_debounce");
+    this._clearHandle("_retry");
+    this._clearHandle("_messageTimer");
+    for (const handle of this._noticeTimers.values()) this._clearTimer(handle);
+    this._noticeTimers.clear();
+  }
+  _clearHandle(name) {
+    const handle = this[name];
+    if (handle !== null) this._clearTimer(handle);
+    this[name] = null;
+  }
+  _scheduleTick() {
+    this._clearHandle("_tick");
+    if (!this._connected) return;
+    this._tick = this._setTimer(() => {
+      this._tick = null;
+      if (this._isVisible() && this._snapshot.server.reachable) {
+        void this.refreshHubs();
+        const route = this._snapshot.route;
+        if (route.kind === "tool" && route.page === "setup") void this.refreshSeen();
+      }
+      this._scheduleTick();
+    }, this._tickMs);
+  }
+  // -- selection, route, theme, message ----------------------------------------------------------
+  selectHub(hubId) {
+    if (hubId === this._snapshot.selectedHubId) return;
+    const route = this._snapshot.route;
+    const patch = { selectedHubId: hubId };
+    if (route.kind === "hub" && route.hubId !== hubId) {
+      patch.route = withHub(route, hubId);
+      patch.routeReplace = true;
+    }
+    this._set(patch);
+    this._savePrefs();
+    if (hubId) {
+      void this._loadApplies(hubId);
+      void this._checkDraft(hubId);
+    }
+  }
+  /** Go somewhere (decision 9). A hub route without a hub takes the selected one; a hub in it becomes the selection. */
+  navigate(route, { replace = false } = {}) {
+    let next = route;
+    if (next.kind === "hub") {
+      const hubId = next.hubId ?? this._snapshot.selectedHubId;
+      next = { kind: "hub", hubId, tab: next.tab, sub: normalizeSub(next.tab, next.sub) };
+      this._lastHubTab = { tab: next.tab, sub: next.sub };
+    } else {
+      next = { kind: "tool", page: next.page, sub: normalizeToolSub(next.page, next.sub) };
+    }
+    if (sameRoute(next, this._snapshot.route)) {
+      if (replace !== this._snapshot.routeReplace) this._set({ routeReplace: replace });
+    } else {
+      this._set({ route: next, routeReplace: replace });
+    }
+    if (next.kind === "hub" && next.hubId && next.hubId !== this._snapshot.selectedHubId) this.selectHub(next.hubId);
+    this._savePrefs();
+  }
+  /** The hub route to return to from a tool page: the last tab and subtab on the selected hub. */
+  lastHubRoute() {
+    return hubRoute(this._snapshot.selectedHubId, this._lastHubTab.tab, this._lastHubTab.sub);
+  }
+  cycleTheme() {
+    this._set({ theme: nextTheme(this._snapshot.theme) });
+    this._savePrefs();
+  }
+  say(text, ok = true) {
+    this._set({ message: { text, ok } });
+    this._clearHandle("_messageTimer");
+    this._messageTimer = this._setTimer(() => {
+      this._messageTimer = null;
+      if (this._snapshot.message?.text === text) this._set({ message: null });
+    }, this._messageTtlMs);
+  }
+  clearMessage() {
+    this._clearHandle("_messageTimer");
+    if (this._snapshot.message) this._set({ message: null });
+  }
+  _savePrefs() {
+    savePrefs(this._storage, { hub: this._snapshot.selectedHubId, tab: this._lastHubTab.tab, sub: this._lastHubTab.sub, theme: this._snapshot.theme });
+  }
+  // -- loading and resync ---------------------------------------------------------------------
+  /** The full resync (decision 5): server info, the hub list, the discovered list, the selected hub's applies. */
+  async refreshAll() {
+    const selectedBefore = this._snapshot.selectedHubId;
+    await Promise.all([this._loadServer(), this.refreshHubs(), this.refreshSeen()]);
+    const selected = this._snapshot.selectedHubId;
+    if (selected && selected === selectedBefore) {
+      await this._loadApplies(selected);
+      await this._checkDraft(selected);
+    }
+  }
+  /** Reload the hub list soon, coalescing bursts of triggers. */
+  refreshSoon() {
+    this._clearHandle("_debounce");
+    this._debounce = this._setTimer(() => {
+      this._debounce = null;
+      void this.refreshHubs();
+      void this.refreshSeen();
+    }, this._debounceMs);
+  }
+  async _loadServer() {
+    try {
+      const response = await this._api.serverInfo();
+      if (response.ok && response.body) this._set({ server: { ...this._snapshot.server, info: response.body, error: null } });
+      else this._set({ server: { ...this._snapshot.server, error: `server answered ${response.status}` } });
+    } catch (err) {
+      this._set({ server: { ...this._snapshot.server, error: `server unreachable: ${String(err)}` } });
+    }
+  }
+  async refreshHubs() {
+    let hubs = null;
+    try {
+      const response = await this._api.listHubs();
+      hubs = response.ok && Array.isArray(response.body) ? response.body : null;
+    } catch {
+      hubs = null;
+    }
+    if (!hubs) {
+      this._markUnreachable();
+      return;
+    }
+    this._markReachable();
+    this._applyHubList(hubs);
+  }
+  async refreshSeen() {
+    try {
+      const response = await this._api.discoveredHubs();
+      if (response.ok && Array.isArray(response.body)) {
+        if (JSON.stringify(response.body) !== JSON.stringify(this._snapshot.seen)) this._set({ seen: response.body });
+      }
+    } catch {
+    }
+  }
+  async _loadApplies(hubId) {
+    try {
+      const response = await this._api.listApplies(hubId);
+      if (!response.ok || !Array.isArray(response.body)) return;
+      const stopped = response.body.filter((a4) => STOPPED_APPLY_STATES.has(a4.status));
+      const current = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+      if (current && JSON.stringify(current.stoppedApplies) !== JSON.stringify(stopped)) this._patchRuntime(hubId, { stoppedApplies: stopped });
+    } catch {
+    }
+  }
+  _markUnreachable() {
+    if (this._snapshot.server.reachable) this._retryDelay = this._retryMinMs;
+    this._set({ server: { ...this._snapshot.server, reachable: false } });
+    this._scheduleRetry();
+  }
+  _markReachable() {
+    if (!this._snapshot.server.reachable) {
+      this._set({ server: { ...this._snapshot.server, reachable: true } });
+      this._clearHandle("_retry");
+      this._retryDelay = this._retryMinMs;
+    }
+  }
+  _scheduleRetry() {
+    if (!this._connected || this._retry !== null) return;
+    const delay = this._retryDelay;
+    this._retryDelay = Math.min(this._retryMaxMs, Math.round(delay * 1.5));
+    this._retry = this._setTimer(() => {
+      this._retry = null;
+      if (!this._connected || this._snapshot.server.reachable) return;
+      void this.refreshHubs();
+    }, delay);
+  }
+  /** A fresh hub list: keep each hub's panel-side record, notice finished jobs, follow the selection and the route. */
+  _applyHubList(hubs) {
+    const key = JSON.stringify(hubs);
+    const previous = new Map(this._snapshot.hubs.map((r6) => [r6.hub.hub_id, r6]));
+    if (key !== this._hubsKey) {
+      this._hubsKey = key;
+      const runtimes = hubs.map((hub) => {
+        const old = previous.get(hub.hub_id);
+        if (old) return { ...old, hub };
+        const draft = loadDraft(this._storage, hub.hub_id);
+        return { hub, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft, draftCheck: draft?.acceptedStale ? "kept" : "unchecked" };
+      });
+      this._set({ hubs: runtimes, listLoaded: true });
+      for (const hub of hubs) if (hub.last_job) this._noteFinished(hub.hub_id, hub.last_job, { onLoad: !previous.has(hub.hub_id) });
+    } else if (!this._snapshot.listLoaded) {
+      this._set({ listLoaded: true });
+    }
+    const selected = this._snapshot.selectedHubId;
+    if (hubs.length && !hubs.some((h6) => h6.hub_id === selected)) this.selectHub(hubs[0].hub_id);
+    if (!hubs.length) {
+      if (selected !== null) this.selectHub(null);
+      if (this._snapshot.route.kind === "hub") this.navigate(toolRoute("setup"), { replace: true });
+    }
+  }
+  // -- the stream ------------------------------------------------------------------------------
+  _onStreamState(connected) {
+    this._set({ stream: { ...this._snapshot.stream, connected } });
+    if (connected) void this.refreshAll();
+  }
+  _onStreamMessage(message) {
+    this._set({ stream: { ...this._snapshot.stream, messageCount: this._stream.messages.length } });
+    const data = message.data;
+    switch (data.type) {
+      case "hello":
+        this._onHello(typeof data.instance_id === "string" ? data.instance_id : null);
+        return;
+      case "job_event": {
+        const job = data.job;
+        if (job && typeof data.hub_id === "string") this._onJobEvent(data.hub_id, job);
+        return;
+      }
+      case "press":
+        if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      default:
+        if (isHubRefreshTrigger(data)) this.refreshSoon();
+    }
+  }
+  _onHello(instanceId) {
+    const previous = this._snapshot.server.instanceId;
+    if (instanceId && previous && instanceId !== previous) {
+      for (const handle of this._noticeTimers.values()) this._clearTimer(handle);
+      this._noticeTimers.clear();
+      this._set({ hubs: this._snapshot.hubs.map((r6) => ({ ...r6, notice: null, localBusy: null })) });
+      this.say("The server restarted; state reloaded.");
+      this._hubsKey = "";
+      void this.refreshAll();
+    }
+    if (instanceId && instanceId !== previous) this._set({ server: { ...this._snapshot.server, instanceId } });
+  }
+  /** A job frame mutates the hub's record directly; a terminal one reloads the hub afterwards. */
+  _onJobEvent(hubId, job) {
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    if (!runtime) {
+      this.refreshSoon();
+      return;
+    }
+    const hub = runtime.hub;
+    if (TERMINAL_JOB_STATES.has(job.status)) {
+      const active = hub.active_job && hub.active_job.job_id === job.job_id ? null : hub.active_job ?? null;
+      const cancelRequestedJobId = runtime.cancelRequestedJobId === job.job_id ? null : runtime.cancelRequestedJobId;
+      this._patchRuntime(hubId, { hub: { ...hub, active_job: active, last_job: job }, cancelRequestedJobId });
+      this._noteFinished(hubId, job, { onLoad: false });
+      this.refreshSoon();
+    } else {
+      this._patchRuntime(hubId, { hub: { ...hub, active_job: job } });
+    }
+  }
+  _onPress(hubId, data) {
+    const press = {
+      seq: typeof data.seq === "number" ? data.seq : 0,
+      deviceId: typeof data.device_id === "number" ? data.device_id : null,
+      label: typeof data.label === "string" ? data.label : null,
+      pressType: typeof data.press_type === "string" ? data.press_type : "short",
+      at: this._now()
+    };
+    this._patchRuntime(hubId, { lastPress: press });
+  }
+  // -- notices (decision 6) --------------------------------------------------------------------------
+  _noteFinished(hubId, job, { onLoad }) {
+    if (!TERMINAL_JOB_STATES.has(job.status)) return;
+    if (this._acks[hubId] === job.job_id) return;
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    if (!runtime || runtime.notice?.jobId === job.job_id) return;
+    const now = this._now();
+    if (onLoad) {
+      const finished = job.finished_at ? Date.parse(job.finished_at) : NaN;
+      if (Number.isFinite(finished) && now - finished > this._noticeWindowMs) return;
+    }
+    const notice = noticeForJob(job, now);
+    if (!notice) return;
+    this._patchRuntime(hubId, { notice });
+    const old = this._noticeTimers.get(hubId);
+    if (old !== void 0) this._clearTimer(old);
+    this._noticeTimers.delete(hubId);
+    if (!notice.sticky) {
+      this._noticeTimers.set(
+        hubId,
+        this._setTimer(() => {
+          this._noticeTimers.delete(hubId);
+          const current = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+          if (current?.notice?.jobId === notice.jobId) this.dismissNotice(hubId);
+        }, this._noticeTtlMs)
+      );
+    }
+  }
+  /** Drop the hub's notice and remember its job as seen, so a reload does not repeat it. */
+  dismissNotice(hubId) {
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    if (!runtime?.notice) return;
+    if (runtime.notice.jobId) {
+      this._acks = { ...this._acks, [hubId]: runtime.notice.jobId };
+      saveAcks(this._storage, this._acks);
+    }
+    const handle = this._noticeTimers.get(hubId);
+    if (handle !== void 0) this._clearTimer(handle);
+    this._noticeTimers.delete(hubId);
+    this._patchRuntime(hubId, { notice: null });
+  }
+  // -- short calls, conflicts, jobs (decision 4) -------------------------------------------------------
+  /** Run a short non-job call with the hub marked busy for its duration. */
+  async runLocal(hubId, key, label, fn) {
+    this._patchRuntime(hubId, { localBusy: { key, label } });
+    try {
+      return await fn();
+    } finally {
+      const current = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+      if (current?.localBusy?.key === key) this._patchRuntime(hubId, { localBusy: null });
+    }
+  }
+  /** A 409 because a job holds the hub is not an error: the store resyncs instead. Returns true when it was one. */
+  noteResponse(hubId, response) {
+    const body = response.body;
+    if (response.status === 409 && body && typeof body === "object" && body.type === CONFLICT_TYPE) {
+      void this.refreshHubs();
+      return true;
+    }
+    return false;
+  }
+  /** Cancel the hub's active job, when it has one that allows it. The job
+   *  stays active until the server drains it; the record remembers the ask. */
+  async cancelActiveJob(hubId) {
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    const job = runtime?.hub.active_job;
+    if (!job || !job.cancellable || TERMINAL_JOB_STATES.has(job.status)) return false;
+    if (runtime?.cancelRequestedJobId === job.job_id) return true;
+    this._patchRuntime(hubId, { cancelRequestedJobId: job.job_id });
+    try {
+      const response = await this._api.cancelJob(hubId, job.job_id);
+      if (!response.ok) {
+        this._patchRuntime(hubId, { cancelRequestedJobId: null });
+        this.say(`Cancel refused: HTTP ${response.status}`, false);
+      }
+      return response.ok;
+    } catch (err) {
+      this._patchRuntime(hubId, { cancelRequestedJobId: null });
+      this.say(`Cancel failed: ${String(err)}`, false);
+      return false;
+    }
+  }
+  // -- stopped applies (decision 6) --------------------------------------------------------------------
+  /** Continue a stopped apply as a job; the job frames take it from there. */
+  async resumeApply(hubId, applyId) {
+    try {
+      const response = await this._api.resumeApply(hubId, applyId);
+      if (response.status === 202 && response.body) {
+        const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+        if (runtime) this._patchRuntime(hubId, { hub: { ...runtime.hub, active_job: response.body } });
+        await this._loadApplies(hubId);
+        return true;
+      }
+      if (!this.noteResponse(hubId, response)) this.say(`Resume refused: ${problemLine(response)}`, false);
+      return false;
+    } catch (err) {
+      this.say(`Resume failed: ${String(err)}`, false);
+      return false;
+    }
+  }
+  /** Forget a stopped apply record. */
+  async discardApply(hubId, applyId) {
+    try {
+      const response = await this._api.discardApply(hubId, applyId);
+      if (response.status === 204 || response.ok) {
+        const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+        if (runtime) this._patchRuntime(hubId, { stoppedApplies: runtime.stoppedApplies.filter((a4) => a4.apply_id !== applyId) });
+        await this._loadApplies(hubId);
+        return true;
+      }
+      this.say(`Discard refused: ${problemLine(response)}`, false);
+      return false;
+    } catch (err) {
+      this.say(`Discard failed: ${String(err)}`, false);
+      return false;
+    }
+  }
+  // -- drafts (decision 8) -------------------------------------------------------------------------
+  /** An editor's unsaved work: kept on the record and mirrored to storage. Null clears it. */
+  setDraft(hubId, draft) {
+    const full = draft ? { ...draft, updatedAt: this._now() } : null;
+    if (this._patchRuntime(hubId, { draft: full, draftCheck: full ? "fresh" : "unchecked" })) saveDraft(this._storage, hubId, full);
+  }
+  /** Drop the hub's draft, in memory and in storage. */
+  discardDraft(hubId) {
+    this.setDraft(hubId, null);
+  }
+  /** The stale prompt's "Keep editing": the draft stays, marked as accepted so a reload does not ask again. */
+  keepStaleDraft(hubId) {
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    if (!runtime?.draft) return;
+    const draft = { ...runtime.draft, acceptedStale: true };
+    this._patchRuntime(hubId, { draft, draftCheck: "kept" });
+    saveDraft(this._storage, hubId, draft);
+  }
+  /** A restored draft is checked against the hub's current snapshot once: the same id is fresh, another is stale (the prompt). */
+  async _checkDraft(hubId) {
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    if (!runtime?.draft || runtime.draftCheck !== "unchecked") return;
+    try {
+      const response = await this._api.snapshot(hubId);
+      if (!response.ok || !response.body) return;
+      const current = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+      if (!current?.draft || current.draftCheck !== "unchecked") return;
+      this._patchRuntime(hubId, { draftCheck: response.body.snapshot_id === current.draft.snapshotId ? "fresh" : "stale" });
+    } catch {
+    }
+  }
+};
+function problemLine(response) {
+  const body = response.body;
+  if (body && typeof body === "object" && (body.type || body.detail)) return [body.type, body.detail].filter(Boolean).join(": ");
+  return `HTTP ${response.status}`;
+}
+function loadAcks(storage) {
+  if (!storage) return {};
+  try {
+    const data = JSON.parse(storage.getItem(ACKS_KEY) || "{}");
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    const out = {};
+    for (const [hub, job] of Object.entries(data)) if (typeof job === "string") out[hub] = job;
+    return out;
+  } catch {
+    return {};
+  }
+}
+function saveAcks(storage, acks) {
+  if (!storage) return;
+  try {
+    storage.setItem(ACKS_KEY, JSON.stringify(acks));
+  } catch {
+  }
+}
+function draftKey(hubId) {
+  return `${DRAFT_PREFIX}${hubId}`;
+}
+function loadDraft(storage, hubId) {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(draftKey(hubId));
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object" || typeof data.scope !== "string" || typeof data.snapshotId !== "string") return null;
+    return {
+      scope: data.scope,
+      snapshotId: data.snapshotId,
+      data: data.data,
+      updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
+      ...data.acceptedStale ? { acceptedStale: true } : {}
+    };
+  } catch {
+    return null;
+  }
+}
+function saveDraft(storage, hubId, draft) {
+  if (!storage) return;
+  try {
+    if (draft) storage.setItem(draftKey(hubId), JSON.stringify(draft));
+    else if (storage.removeItem) storage.removeItem(draftKey(hubId));
+    else storage.setItem(draftKey(hubId), "");
+  } catch {
+  }
+}
+
 // server-panel/src/panel-styles.ts
 var PANEL_BASE_CSS = i`
   :host {
@@ -10887,304 +11827,358 @@ var PANEL_BASE_CSS = i`
 
 // server-panel/src/panel-element.ts
 var PANEL_TAG = "sofabaton-server-panel";
-var VIEW_LABELS = { hubs: "Hubs", catalog: "Catalog", remote: "Remote", api: "API", events: "Events" };
-var REFRESH_TICK_MS = 5e3;
-var REFRESH_DEBOUNCE_MS = 300;
+var README = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/README.md";
+var DOC_LINKS = {
+  hub: { href: `${README}#control-panel`, label: "Control panel docs" },
+  backup: { href: `${README}#ir-payloads-backup-restore`, label: "Backup and restore docs" },
+  remote: { href: `${README}#web-remote`, label: "Web remote docs" }
+};
+function storageOrNull() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 var SofabatonServerPanel = class extends i4 {
   constructor() {
     super();
-    this._hubs = [];
-    this._seen = [];
-    this._selected = null;
-    this._view = "hubs";
-    this._server = null;
-    this._serverError = null;
-    this._streamOn = false;
-    this._messageCount = 0;
-    this._message = null;
-    this._theme = "auto";
-    this._operations = [];
-    this._listUnavailable = false;
-    this._hubsKey = "";
-    this._storage = null;
-    this._tickTimer = null;
-    this._debounceTimer = null;
-    this._offStream = [];
-    this._onHashChange = () => this._setView(viewFromHash(location.hash, this._view), { fromHash: true });
+    this._pickerOpen = false;
+    this._cogOpen = false;
+    this._unsubscribe = null;
+    this._onHashChange = () => {
+      const parsed = parseRoute(location.hash);
+      if (parsed) this.store.navigate(parsed, { replace: true });
+      else this._syncHash();
+    };
+    this._onDocumentClick = (event) => {
+      if (!this._pickerOpen && !this._cogOpen) return;
+      const path = event.composedPath();
+      const inside = (id) => {
+        const el = this.renderRoot.querySelector(`#${id}`);
+        return Boolean(el && path.includes(el));
+      };
+      if (this._pickerOpen && !inside("hub-picker")) this._pickerOpen = false;
+      if (this._cogOpen && !inside("cog")) this._cogOpen = false;
+    };
+    this._onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        this._pickerOpen = false;
+        this._cogOpen = false;
+      }
+    };
     this.api = new PanelApi(serverBaseFromPanelUrl(location.href));
     this.stream = new PanelStream({ apiRoot: this.api.apiRoot });
+    this.store = new PanelStore({ api: this.api, stream: this.stream, storage: storageOrNull(), initialRoute: parseRoute(location.hash) });
+    this._snapshot = this.store.snapshot;
   }
   connectedCallback() {
     super.connectedCallback();
-    try {
-      this._storage = window.localStorage;
-    } catch {
-      this._storage = null;
-    }
-    const prefs = loadPrefs(this._storage);
-    this._selected = prefs.hub;
-    this._theme = prefs.theme;
-    this._applyTheme();
-    this._view = location.hash ? viewFromHash(location.hash, prefs.view) : prefs.view;
-    window.addEventListener("hashchange", this._onHashChange);
-    this._offStream = [
-      this.stream.onState((connected) => {
-        this._streamOn = connected;
-      }),
-      this.stream.onMessage((message) => {
-        this._messageCount = this.stream.messages.length;
-        if (isHubRefreshTrigger(message.data)) this._refreshSoon();
-      })
-    ];
-    this.stream.start();
-    void this._loadServer();
-    void this._loadHubs();
-    void this._loadSeen();
-    void this.api.operations().then((ops) => {
-      this._operations = ops;
+    this._unsubscribe = this.store.subscribe((snapshot) => {
+      this._snapshot = snapshot;
+      this._applyTheme();
+      this._syncHash();
     });
-    this._tickTimer = setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void this._loadHubs();
-      if (this._view === "hubs") void this._loadSeen();
-    }, REFRESH_TICK_MS);
+    this._applyTheme();
+    this._syncHash();
+    window.addEventListener("hashchange", this._onHashChange);
+    document.addEventListener("click", this._onDocumentClick);
+    document.addEventListener("keydown", this._onKeyDown);
+    this.store.connect();
   }
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("hashchange", this._onHashChange);
-    for (const off of this._offStream) off();
-    this._offStream = [];
-    this.stream.stop();
-    if (this._tickTimer !== null) clearInterval(this._tickTimer);
-    this._tickTimer = null;
-    if (this._debounceTimer !== null) clearTimeout(this._debounceTimer);
-    this._debounceTimer = null;
+    document.removeEventListener("click", this._onDocumentClick);
+    document.removeEventListener("keydown", this._onKeyDown);
+    this._unsubscribe?.();
+    this._unsubscribe = null;
+    this.store.disconnect();
   }
   // -- state --------------------------------------------------------------------
   get selectedHub() {
-    return this._hubs.find((h6) => h6.hub_id === this._selected) ?? null;
+    return selectedHub(this._snapshot);
   }
-  _savePrefs() {
-    const prefs = { hub: this._selected, view: this._view, theme: this._theme };
-    savePrefs(this._storage, prefs);
+  get route() {
+    return this._snapshot.route;
   }
-  _setView(view, { fromHash = false } = {}) {
-    if (!isView(view)) view = "hubs";
-    this._view = view;
-    this._savePrefs();
-    if (!fromHash && location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
-  }
-  _select(hubId) {
-    this._selected = hubId;
-    this._savePrefs();
-  }
-  _cycleTheme() {
-    this._theme = nextTheme(this._theme);
-    this._applyTheme();
-    this._savePrefs();
+  _syncHash() {
+    const want = hashFor(this._snapshot.route);
+    if (location.hash === want) return;
+    if (this._snapshot.routeReplace) history.replaceState(null, "", want);
+    else location.hash = want;
   }
   _applyTheme() {
-    if (this._theme === "auto") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = this._theme;
+    const theme = this._snapshot.theme;
+    if (theme === "auto") delete document.documentElement.dataset.theme;
+    else if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
   }
-  _say(text, ok = true) {
-    this._message = { text, ok };
+  /** Leaving the draft's screen or its hub with unsaved work asks first (decision 8); nothing is lost either way. */
+  _confirmLeave(target) {
+    const runtime = selectedRuntime(this._snapshot);
+    if (!runtime || !hasDirtyDraft(runtime)) return true;
+    const scope = runtime.draft.scope;
+    const current = this._snapshot.route;
+    const currentScope = current.kind === "hub" ? `${current.tab}/${current.sub}` : null;
+    if (currentScope !== scope) return true;
+    const leavingHub = target.hubId !== void 0 && target.hubId !== runtime.hub.hub_id;
+    const targetScope = target.route ? target.route.kind === "hub" ? `${target.route.tab}/${target.route.sub}` : `${target.route.page}/${target.route.sub}` : null;
+    const leavingScope = targetScope !== null && targetScope !== scope;
+    if (!leavingHub && !leavingScope) return true;
+    return confirm("You have unsaved changes here. They are kept for when you come back.\n\nLeave anyway?");
   }
-  // -- loading --------------------------------------------------------------------
-  async _loadServer() {
-    try {
-      const response = await this.api.serverInfo();
-      if (response.ok && response.body) {
-        this._server = response.body;
-        this._serverError = null;
-      } else {
-        this._serverError = `server answered ${response.status}`;
-      }
-    } catch (err) {
-      this._serverError = `server unreachable: ${String(err)}`;
-    }
+  _go(route) {
+    this._pickerOpen = false;
+    this._cogOpen = false;
+    if (!this._confirmLeave({ route })) return;
+    this.store.navigate(route);
   }
-  async _loadHubs() {
-    let hubs = null;
-    try {
-      const response = await this.api.listHubs();
-      hubs = response.ok && Array.isArray(response.body) ? response.body : null;
-    } catch {
-      hubs = null;
-    }
-    if (!hubs) {
-      this._listUnavailable = true;
-      return;
-    }
-    this._listUnavailable = false;
-    const key = JSON.stringify(hubs);
-    if (key !== this._hubsKey) {
-      this._hubsKey = key;
-      this._hubs = hubs;
-    }
-    if (hubs.length && !hubs.some((h6) => h6.hub_id === this._selected)) this._select(hubs[0].hub_id);
-    if (!hubs.length && this._selected !== null) this._select(null);
+  _goTab(tab) {
+    const current = this._snapshot.route;
+    const sub = current.kind === "hub" && current.tab === tab ? current.sub : void 0;
+    this._go(hubRoute(null, tab, sub));
   }
-  async _loadSeen() {
-    try {
-      const response = await this.api.discoveredHubs();
-      if (response.ok && Array.isArray(response.body)) {
-        const key = JSON.stringify(response.body);
-        if (key !== JSON.stringify(this._seen)) this._seen = response.body;
-      }
-    } catch {
-    }
+  _goSub(sub) {
+    const current = this._snapshot.route;
+    this._go(current.kind === "hub" ? hubRoute(null, current.tab, sub) : toolRoute(current.page, sub));
   }
-  _refreshSoon() {
-    if (this._debounceTimer !== null) clearTimeout(this._debounceTimer);
-    this._debounceTimer = setTimeout(() => {
-      this._debounceTimer = null;
-      void this._loadHubs();
-      void this._loadSeen();
-    }, REFRESH_DEBOUNCE_MS);
+  _goPage(page) {
+    this._go(toolRoute(page));
   }
-  _refreshAll() {
-    void this._loadHubs();
-    void this._loadSeen();
-    void this._loadServer();
-  }
-  // -- events from the views -----------------------------------------------------------
-  _onMessage(event) {
-    this._say(event.detail.text, event.detail.ok);
-  }
-  _onHubsChanged() {
-    this._refreshAll();
-  }
-  _onSelectHub(event) {
-    this._select(event.detail.hubId);
-    void this._loadHubs();
-  }
-  _onOpenView(event) {
-    this._setView(event.detail.view);
-  }
-  _goAdd() {
-    this._setView("hubs");
+  _goSetup() {
+    this._goPage("setup");
     void this.updateComplete.then(() => {
       const view = this.renderRoot.querySelector("sb-panel-hubs");
       view?.focusAddress();
     });
   }
+  // -- events from the views -----------------------------------------------------------
+  _onMessage(event) {
+    this.store.say(event.detail.text, event.detail.ok);
+  }
+  _onHubsChanged() {
+    void this.store.refreshAll();
+  }
+  _onSelectHub(event) {
+    this.store.selectHub(event.detail.hubId);
+    void this.store.refreshHubs();
+  }
+  _onNavigate(event) {
+    const d3 = event.detail;
+    if (d3.page) this._go(toolRoute(d3.page));
+    else if (d3.tab) this._go(hubRoute(null, d3.tab, d3.sub));
+  }
   // -- render ---------------------------------------------------------------------------
-  _serverMeta() {
-    if (this._serverError) return this._serverError;
-    const info = this._server;
-    if (!info) return "connecting\u2026";
-    const l4 = info.callback_listener ?? {};
-    const listener = l4.bound ? `on :${l4.bound_port}` : l4.wanted ? "wanted, not bound" : "idle";
-    return `server ${info.version} \xB7 library ${info.library_version} \xB7 api ${info.api_version} \xB7 callback listener ${listener}`;
-  }
-  _renderSidebar() {
-    const connected = this._hubs.filter((h6) => h6.status?.hub_connected).length;
-    const summary = this._listUnavailable ? "list unavailable" : this._hubs.length ? `${connected}/${this._hubs.length} connected` : "";
-    return b2`
-      <aside>
-        <h3>Hubs <span class="hint" id="hubs-summary">${summary}</span><span class="spacer"></span>
-          <button class="small" id="hubs-refresh" title="reload the hub list" @click=${this._refreshAll}>↻</button></h3>
-        <div class="hub-list" id="hub-list">
-          ${this._hubs.length ? this._hubs.map((h6) => {
-      const { text, tone } = hubState(h6);
-      return b2`<div class="hub-item ${this._selected === h6.hub_id ? "sel" : ""}" data-hub=${h6.hub_id} @click=${() => this._select(h6.hub_id)}>
-                  <span class="dot ${tone}"></span><span class="name">${hubDisplayName(h6)}</span><span class="sub">${h6.config.host} · ${text}</span>
-                </div>`;
-    }) : b2`<div class="hint">No hubs registered yet. Add one by address, or pick one from the discovered list.</div>`}
-        </div>
-        <div class="foot"><button class="primary" id="go-add" @click=${this._goAdd}>Add a hub</button></div>
-      </aside>
-    `;
-  }
-  _renderView() {
-    const hub = this.selectedHub;
-    switch (this._view) {
-      case "catalog":
-        return b2`<sb-panel-catalog .api=${this.api} .hub=${hub}></sb-panel-catalog>`;
+  _renderView(ctx) {
+    const s7 = this._snapshot;
+    const route = s7.route;
+    if (route.kind === "tool") {
+      switch (route.page) {
+        case "server":
+          return b2`<sb-panel-server .api=${this.api} .info=${s7.server.info} .error=${s7.server.error} .reachable=${s7.server.reachable} .streamOn=${s7.stream.connected} .hubCount=${s7.hubs.length}></sb-panel-server>`;
+        case "debug":
+          return route.sub === "events" ? b2`<sb-panel-events .stream=${this.stream}></sb-panel-events>` : b2`<sb-panel-api .api=${this.api} .ctx=${ctx} .operations=${s7.operations} @sb-request-sent=${() => void this.store.refreshAll()}></sb-panel-api>`;
+        default:
+          return b2`<sb-panel-hubs .api=${this.api} .ctx=${ctx} .hubs=${s7.hubs.map((r6) => r6.hub)} .seen=${s7.seen}></sb-panel-hubs>`;
+      }
+    }
+    switch (route.tab) {
+      case "backup":
+        return b2`<sb-panel-backup .ctx=${ctx} .section=${route.sub}></sb-panel-backup>`;
       case "remote":
-        return b2`<sb-panel-remote .api=${this.api} .hub=${hub}></sb-panel-remote>`;
-      case "api":
-        return b2`<sb-panel-api .api=${this.api} .hub=${hub} .operations=${this._operations} @sb-request-sent=${() => void this._loadServer()}></sb-panel-api>`;
-      case "events":
-        return b2`<sb-panel-events .stream=${this.stream}></sb-panel-events>`;
+        return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
       default:
-        return b2`<sb-panel-hubs .api=${this.api} .hubs=${this._hubs} .hub=${hub} .seen=${this._seen}></sb-panel-hubs>`;
+        return b2`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }
   }
   render() {
+    const s7 = this._snapshot;
+    const ctx = hubContextFor(s7, this.api);
+    const runtime = selectedRuntime(s7);
+    const route = s7.route;
+    const viewId = route.kind === "tool" ? `${route.page}-${route.sub}` : route.tab;
+    const blocked = route.kind === "hub" && ctx.hub !== null && ctx.interaction.kind === "blocked" ? ctx.interaction : null;
+    const streamOn = s7.stream.connected;
+    const streamLost = !streamOn && s7.server.reachable && s7.listLoaded;
     return b2`
-      <header>
-        <div class="brand"><b>Sofabaton X</b><span>control panel</span></div>
-        <div class="meta">
-          <span class="server" id="server-meta" title=${this._server?.instance_id ? `instance ${this._server.instance_id}` : ""}>${this._serverMeta()}</span>
-          <span class="stream" title="event stream"><span class="dot ${this._streamOn ? "ok" : "off"}" id="ws-dot"></span><span id="ws-state">${this._streamOn ? "stream live" : "stream off"}</span></span>
-          <button class="theme" id="theme-toggle" title="theme: ${this._theme}" @click=${this._cycleTheme}>${this._theme === "auto" ? "auto" : this._theme}</button>
-        </div>
-      </header>
-      <div class="shell">
-        ${this._renderSidebar()}
-        <div class="main" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-open-view=${this._onOpenView}>
-          <nav id="views">
-            ${VIEWS.map((v3) => b2`<button data-view=${v3} class=${this._view === v3 ? "on" : ""} @click=${() => this._setView(v3)}>${VIEW_LABELS[v3]}${v3 === "events" ? b2`<span class="badge" id="ws-badge">${this._messageCount}</span>` : ""}</button>`)}
-            <span class="spacer"></span>
-            <span class="note hint ${this._message ? this._message.ok ? "msg-ok" : "msg-err" : ""}" id="hubs-msg">${this._message?.text ?? ""}</span>
-          </nav>
-          <div class="view" id="view-${this._view}">${this._renderView()}</div>
-        </div>
+      <div class="page">
+        <header class="top-dock">
+          <div class="top-row">
+            <div class="brand"><b>Sofabaton X</b><span>control panel</span></div>
+            <div class="picker-slot">
+              ${renderHubPicker({
+      hubs: s7.hubs,
+      selectedHubId: s7.selectedHubId,
+      open: this._pickerOpen,
+      onToggle: () => {
+        this._pickerOpen = !this._pickerOpen;
+        this._cogOpen = false;
+      },
+      onSelect: (hubId) => {
+        this._pickerOpen = false;
+        if (!this._confirmLeave({ hubId })) return;
+        this.store.selectHub(hubId);
+      },
+      onSetup: () => this._goSetup()
+    })}
+            </div>
+            <div class="top-right">
+              <span class="stream ${streamLost ? "lost" : ""}" id="stream-state" title=${streamOn ? "event stream live" : "event stream off, reconnecting"}><span class="dot ${streamOn ? "ok" : streamLost ? "warn" : "off"}" id="ws-dot"></span><span class="stream-label" id="ws-state">${streamOn ? "stream live" : streamLost ? "live updates paused, reconnecting" : "stream off"}</span></span>
+            </div>
+          </div>
+          ${renderTabBar({
+      route,
+      cogOpen: this._cogOpen,
+      theme: s7.theme,
+      eventCount: s7.stream.messageCount,
+      onTab: (tab) => this._goTab(tab),
+      onSub: (sub) => this._goSub(sub),
+      onToggleCog: () => {
+        this._cogOpen = !this._cogOpen;
+        this._pickerOpen = false;
+      },
+      onPage: (page) => this._goPage(page),
+      onTheme: () => this.store.cycleTheme()
+    })}
+        </header>
+        <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
+          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
+          ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>${blocked.reason === "job" || blocked.reason === "local" ? "Hub busy" : "Hub unavailable"}</b><div class="hint">${blocked.label}</div></div></div>` : A}
+        </main>
+        ${renderBottomDock({
+      model: dockModel(s7, runtime),
+      message: s7.message,
+      connectivity: connectivityFor(runtime),
+      hasHub: ctx.hub !== null,
+      press: runtime?.lastPress ?? null,
+      docLink: route.kind === "hub" ? DOC_LINKS[route.tab] : null,
+      onDismiss: () => {
+        if (s7.selectedHubId) this.store.dismissNotice(s7.selectedHubId);
+      },
+      onCancel: () => {
+        if (s7.selectedHubId) void this.store.cancelActiveJob(s7.selectedHubId);
+      },
+      onResume: (applyId) => {
+        if (s7.selectedHubId) void this.store.resumeApply(s7.selectedHubId, applyId);
+      },
+      onDiscard: (applyId) => {
+        if (s7.selectedHubId && confirm("Discard this stopped apply? Its record is forgotten; the hub is not changed.")) void this.store.discardApply(s7.selectedHubId, applyId);
+      },
+      onKeepDraft: () => {
+        if (s7.selectedHubId) this.store.keepStaleDraft(s7.selectedHubId);
+      },
+      onDiscardDraft: () => {
+        if (s7.selectedHubId && confirm("Discard your unsaved changes? The hub is not changed.")) this.store.discardDraft(s7.selectedHubId);
+      }
+    })}
       </div>
     `;
   }
 };
 SofabatonServerPanel.properties = {
-  _hubs: { state: true },
-  _seen: { state: true },
-  _selected: { state: true },
-  _view: { state: true },
-  _server: { state: true },
-  _serverError: { state: true },
-  _streamOn: { state: true },
-  _messageCount: { state: true },
-  _message: { state: true },
-  _theme: { state: true },
-  _operations: { state: true },
-  _listUnavailable: { state: true }
+  _snapshot: { state: true },
+  _pickerOpen: { state: true },
+  _cogOpen: { state: true }
 };
 SofabatonServerPanel.styles = [
   PANEL_BASE_CSS,
   i`
-      :host { display: flex; flex-direction: column; height: 100%; background: var(--sbp-bg); }
-      header { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--sbp-line); background: var(--sbp-panel); }
-      header .brand { display: flex; align-items: baseline; gap: 8px; }
-      header .brand b { font-size: 16px; font-weight: 650; letter-spacing: 0.01em; }
-      header .brand span { color: var(--sbp-muted); font-size: 12px; }
-      header .meta { color: var(--sbp-muted); font-size: 12px; margin-left: auto; display: flex; align-items: center; gap: 12px; }
-      header .meta .stream { display: inline-flex; align-items: center; gap: 5px; }
-      header button.theme { font-size: 12px; padding: 3px 9px; }
-      .shell { flex: 1; display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 0; }
-      aside { border-right: 1px solid var(--sbp-line); background: var(--sbp-panel); display: flex; flex-direction: column; min-height: 0; }
-      aside h3 { margin: 0; padding: 12px 14px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sbp-muted); display: flex; align-items: center; gap: 8px; }
-      .hub-list { overflow: auto; min-height: 0; padding: 0 8px; }
-      .hub-item { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; padding: 8px 10px; border-radius: var(--sbp-radius); cursor: pointer; border: 1px solid transparent; }
-      .hub-item:hover { background: var(--sbp-panel-2); }
-      .hub-item.sel { background: rgba(var(--sbp-accent-rgb), 0.12); border-color: rgba(var(--sbp-accent-rgb), 0.35); }
-      .hub-item .name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .hub-item .sub { grid-column: 2; color: var(--sbp-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .hub-list .hint { padding: 6px 12px; }
-      aside .foot { margin-top: auto; padding: 10px; border-top: 1px solid var(--sbp-line); }
-      aside .foot button { width: 100%; }
-      .main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-      nav { display: flex; gap: 2px; padding: 8px 14px 0; border-bottom: 1px solid var(--sbp-line); background: var(--sbp-panel); }
-      nav button { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--sbp-muted); padding: 8px 12px; font-weight: 500; }
-      nav button:hover { color: var(--sbp-text); }
-      nav button.on { color: var(--sbp-text); border-bottom-color: var(--sbp-accent); }
-      nav .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--sbp-panel-2); color: var(--sbp-muted); font-size: 11px; margin-left: 6px; text-align: center; }
-      nav .note { align-self: center; font-size: 12px; padding-right: 4px; }
-      .view { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
-      @media (max-width: 960px) {
-        .shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-        aside { border-right: 0; border-bottom: 1px solid var(--sbp-line); max-height: 40vh; }
-        header .meta .server { display: none; }
+      :host { display: block; min-height: 100%; background: var(--sbp-bg); container-type: inline-size; }
+      .page { max-width: 1040px; margin: 0 auto; padding: 0 16px calc(72px + env(safe-area-inset-bottom, 0px)); }
+
+      /* -- top dock -------------------------------------------------------- */
+      .top-dock { position: sticky; top: 0; z-index: 30; margin: 0 -16px; padding: 0 16px; background: var(--sbp-panel); border-bottom: 1px solid var(--sbp-line); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03); }
+      .top-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 4px 0; }
+      .brand { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; }
+      .brand b { font-size: 15px; font-weight: 650; letter-spacing: 0.01em; white-space: nowrap; }
+      .brand span { color: var(--sbp-muted); font-size: 12px; white-space: nowrap; }
+      .picker-slot { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; }
+      .top-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+      .stream { display: inline-flex; align-items: center; gap: 5px; color: var(--sbp-muted); font-size: 12px; }
+
+      .hub-picker { position: relative; max-width: 100%; }
+      .hub-picker-btn { display: inline-flex; align-items: center; gap: 6px; max-width: min(100%, 420px); min-height: 32px; border: 1px solid var(--sbp-line); border-radius: 999px; padding: 0 12px 0 10px; background: rgba(var(--sbp-accent-rgb), 0.06); color: var(--sbp-text); user-select: none; }
+      button.hub-picker-btn { cursor: pointer; }
+      button.hub-picker-btn:hover, button.hub-picker-btn.is-open { border-color: var(--sbp-accent); }
+      .hub-picker-btn--static { cursor: default; }
+      .chip-prefix { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sbp-muted); }
+      .chip-name { font-size: 13px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .chip-arrow { font-size: 11px; color: var(--sbp-muted); }
+      .hub-picker-menu { left: 50%; right: auto; transform: translateX(-50%); }
+
+      .menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; display: flex; flex-direction: column; min-width: 220px; max-width: calc(100vw - 24px); padding: 4px 0; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); }
+      .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 0; background: transparent; text-align: left; white-space: normal; }
+      .menu-item:hover { background: var(--sbp-panel-2); border-color: transparent; }
+      .menu-item.selected { background: rgba(var(--sbp-accent-rgb), 0.12); }
+      .menu-main { display: flex; flex-direction: column; min-width: 0; }
+      .menu-title { font-size: 13px; font-weight: 600; }
+      .menu-sub { font-size: 11px; color: var(--sbp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .menu-sep { border-top: 1px solid var(--sbp-line); margin: 4px 0; }
+      .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--sbp-panel-2); color: var(--sbp-muted); font-size: 11px; text-align: center; font-weight: 500; }
+
+      .tabs { display: flex; align-items: stretch; border-top: 1px solid var(--sbp-line); }
+      .tabs-scroll { display: flex; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+      .tabs-scroll::-webkit-scrollbar { display: none; }
+      .tab-btn { flex: 0 0 auto; min-height: 44px; padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--sbp-muted); font-weight: 600; }
+      .tab-btn:hover { color: var(--sbp-text); border-color: transparent; border-bottom-color: var(--sbp-line); }
+      .tab-btn.active { color: var(--sbp-text); border-bottom-color: var(--sbp-accent); }
+      .tab-menu { position: relative; flex: 0 0 auto; margin-left: auto; display: flex; }
+      .tab-btn--menu { display: inline-flex; align-items: center; gap: 3px; padding: 8px 10px; }
+      .cog-icon { font-size: 18px; line-height: 1; }
+      .subtabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 0 10px; }
+      .subtabs::-webkit-scrollbar { display: none; }
+      .subtab-btn { flex: 0 0 auto; min-height: 36px; padding: 6px 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--sbp-muted); font-size: 13px; font-weight: 600; }
+      .subtab-btn:hover { color: var(--sbp-text); border-color: var(--sbp-line); }
+      .subtab-btn.active { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.12); border-color: rgba(var(--sbp-accent-rgb), 0.35); }
+
+      /* -- the view and its scrim ------------------------------------------- */
+      .view { position: relative; padding: 16px 0 8px; min-height: 40vh; }
+      .stage { min-width: 0; }
+      .stage[inert] { opacity: 0.5; filter: saturate(0.5); pointer-events: none; }
+      .scrim { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
+      .scrim-card { max-width: 420px; padding: 14px 18px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); text-align: center; }
+      .scrim-card b { display: block; font-size: 14px; margin-bottom: 4px; }
+      .scrim-card .hint { font-size: 12px; }
+
+      /* -- bottom dock -------------------------------------------------------- */
+      .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--sbp-panel); border-top: 1px solid var(--sbp-line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+      .dock-inner { max-width: 1040px; margin: 0 auto; min-height: 48px; padding: 6px 16px; display: flex; align-items: center; gap: 10px; }
+      .dock-center { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+      .dock-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .dock-detail { color: var(--sbp-muted); }
+      .dock-link { font-size: 12px; color: var(--sbp-muted); text-decoration: none; }
+      .dock-link:hover { color: var(--sbp-accent); }
+      .dock-action { flex: 0 0 auto; }
+      .dock--running .dock-status { color: var(--sbp-accent); font-weight: 600; }
+      .dock--success .dock-status, .dock--message .dock-status { color: var(--sbp-ok); }
+      .dock--error .dock-status { color: var(--sbp-err); }
+      .dock--warn .dock-status { color: var(--sbp-warn); }
+      .dock--dirty .dock-status { color: var(--sbp-warn); font-weight: 600; }
+      .dock--neutral .dock-status, .dock--gate .dock-status, .dock--info .dock-status { color: var(--sbp-muted); }
+      .dock-right { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+      .dock-pill-pair { display: inline-flex; border: 1px solid var(--sbp-line); border-radius: 999px; overflow: hidden; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+      .dock-pill-half { padding: 4px 9px; color: var(--sbp-muted); }
+      .dock-pill-half.on { background: rgba(var(--rgb-success-color, 67, 160, 71), 0.16); color: var(--sbp-ok); }
+      .dock-pill-half + .dock-pill-half { border-left: 1px solid var(--sbp-line); }
+      .dock-inner { position: relative; }
+      .dock-progress { position: absolute; top: -1px; left: 0; height: 3px; border-radius: 2px; background: linear-gradient(90deg, rgba(var(--sbp-accent-rgb), 0.6), var(--sbp-accent) 45%, rgba(var(--sbp-accent-rgb), 0.75) 55%, var(--sbp-accent)); box-shadow: 0 0 8px rgba(var(--sbp-accent-rgb), 0.7); transition: width 180ms ease; animation: dockProgressPulse 1.4s ease-in-out infinite; }
+      .dock-progress[data-indeterminate="true"] { width: 35% !important; animation: dockProgressIndeterminate 1.2s ease-in-out infinite, dockProgressPulse 1.4s ease-in-out infinite; }
+      @keyframes dockProgressIndeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
+      @keyframes dockProgressPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+      /* A press on the physical remote: one soft accent band sweeps the dock left to right, as in the HA card. */
+      .dock-flash { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .dock-flash::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 38%; background: linear-gradient(90deg, transparent 0%, rgba(var(--sbp-accent-rgb), 0.22) 35%, rgba(var(--sbp-accent-rgb), 0.38) 50%, rgba(var(--sbp-accent-rgb), 0.22) 65%, transparent 100%); transform: translateX(-100%); animation: dockPressWipe 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
+      @keyframes dockPressWipe { 0% { transform: translateX(-100%); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(280%); opacity: 0; } }
+      .stream.lost { color: var(--sbp-warn); }
+      @media (prefers-reduced-motion: reduce) {
+        .dock-progress, .dock-progress[data-indeterminate="true"] { animation: none; }
+        .dock-flash::before { animation: none; opacity: 0; }
+      }
+
+      /* -- narrow ------------------------------------------------------------- */
+      @container (max-width: 600px) {
+        .brand span, .stream-label { display: none; }
+        .view { padding-top: 12px; }
       }
     `
 ];
@@ -11198,6 +12192,7 @@ var TERMINAL_JOB = /* @__PURE__ */ new Set(["done", "failed", "cancelled"]);
 var SbPanelApi = class extends i4 {
   constructor() {
     super(...arguments);
+    this.ctx = null;
     this.hub = null;
     this.operations = [];
     this._request = "nothing sent yet";
@@ -11208,6 +12203,9 @@ var SbPanelApi = class extends i4 {
     this._sending = false;
     this._lastJob = null;
     this._storage = null;
+  }
+  willUpdate(changed) {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
   }
   connectedCallback() {
     super.connectedCallback();
@@ -11284,7 +12282,7 @@ var SbPanelApi = class extends i4 {
       this._response = { ok: false, status: 0, statusText: "no 202 job to follow yet", headers: [], text: "", body: null };
       return;
     }
-    for (let i7 = 0; i7 < 600; i7++) {
+    for (let i8 = 0; i8 < 600; i8++) {
       await this._send({ method: "GET", path: `/hubs/${job.hub_id}/jobs/${job.job_id}`, query: "", body: "", headers: {} });
       const status = this._response?.body?.status;
       if (!status || TERMINAL_JOB.has(status)) break;
@@ -11315,7 +12313,7 @@ var SbPanelApi = class extends i4 {
           <label>Operation (from openapi.json)</label>
           <select id="op" @change=${this._pickOperation}>
             <option value="">custom…</option>
-            ${this.operations.map((op, i7) => b2`<option value=${String(i7)}>${op.method.padEnd(6)} ${op.path}  —  ${op.summary}</option>`)}
+            ${this.operations.map((op, i8) => b2`<option value=${String(i8)}>${op.method.padEnd(6)} ${op.path}  —  ${op.summary}</option>`)}
           </select>
           <div class="row">
             <div class="fixed" style="width: 110px"><label>Method</label>
@@ -11361,6 +12359,7 @@ var SbPanelApi = class extends i4 {
 };
 SbPanelApi.properties = {
   api: { attribute: false },
+  ctx: { attribute: false },
   hub: { attribute: false },
   operations: { attribute: false },
   _request: { state: true },
@@ -11384,6 +12383,43 @@ SbPanelApi.styles = [
 ];
 function defineApiView() {
   if (!customElements.get(API_VIEW_TAG)) customElements.define(API_VIEW_TAG, SbPanelApi);
+}
+
+// server-panel/src/views/backup-view.ts
+var BACKUP_VIEW_TAG = "sb-panel-backup";
+var COPY = {
+  make: { title: "Make a backup", body: "Reads the whole hub into a bundle you can download and restore later. Coming with the editor plan; today `POST /hubs/{hub_id}/backup` in the API console does the same." },
+  edit: { title: "Edit a backup", body: "Open a bundle, change devices and activities, and restore or apply the result. Coming with the editor plan." },
+  restore: { title: "Restore", body: "Erase the hub and write a bundle back, or apply it in place. Coming with the editor plan; today `POST /hubs/{hub_id}/restore` in the API console does the same." }
+};
+var SbPanelBackup = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.ctx = null;
+    this.hub = null;
+    this.section = "make";
+  }
+  willUpdate(changed) {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
+  render() {
+    const copy = COPY[this.section] ?? COPY.make;
+    return b2`
+      <div class="panel" id="backup-placeholder">
+        <h2>${copy.title}</h2>
+        <div class="hint">${this.hub ? copy.body : "Pick a hub above."}</div>
+      </div>
+    `;
+  }
+};
+SbPanelBackup.properties = {
+  ctx: { attribute: false },
+  hub: { attribute: false },
+  section: { attribute: false }
+};
+SbPanelBackup.styles = [PANEL_BASE_CSS, i`:host { display: block; }`];
+function defineBackupView() {
+  if (!customElements.get(BACKUP_VIEW_TAG)) customElements.define(BACKUP_VIEW_TAG, SbPanelBackup);
 }
 
 // server-panel/src/views/catalog-view.ts
@@ -11412,7 +12448,11 @@ var POWER = { 0: "off", 1: "on" };
 var SbPanelCatalog = class extends i4 {
   constructor() {
     super(...arguments);
+    /** The hub context the shell hands over (state plan, decision 3); `hub` follows it. */
+    this.ctx = null;
     this.hub = null;
+    /** Which group to list: the Hub tab's Devices or Activities subtab; null lists both. */
+    this.kind = null;
     this._entries = [];
     this._snapshot = null;
     this._selected = null;
@@ -11428,7 +12468,14 @@ var SbPanelCatalog = class extends i4 {
     this._devices = [];
     this._activities = [];
   }
+  willUpdate(changed) {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
   updated(changed) {
+    if (changed.has("kind") && this.kind && this.selectedEntry && this.selectedEntry.kind !== this.kind) {
+      this._selected = null;
+      this._clearDetail();
+    }
     if (changed.has("hub")) {
       const id = this.hub?.hub_id ?? null;
       if (id !== this._loadedFor) {
@@ -11568,9 +12615,9 @@ var SbPanelCatalog = class extends i4 {
   // -- render -------------------------------------------------------------------------------
   render() {
     const hub = this.hub;
-    if (!hub) return b2`<div class="panel"><div class="hint">Select a hub in the sidebar.</div></div>`;
-    const devices = this._entries.filter((e6) => e6.kind === "device");
-    const activities = this._entries.filter((e6) => e6.kind === "activity");
+    if (!hub) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
+    const devices = this.kind === "activity" ? [] : this._entries.filter((e6) => e6.kind === "device");
+    const activities = this.kind === "device" ? [] : this._entries.filter((e6) => e6.kind === "activity");
     const snap = this._snapshot;
     return b2`
       <div class="wrap">
@@ -11586,14 +12633,14 @@ var SbPanelCatalog = class extends i4 {
             </button>
           </div>
           ${this._notice ? b2`<div class="notice" id="catalog-notice" style="margin-top: 10px">${this._notice}</div>` : A}
-          <div class="group">
+          ${this.kind === "activity" ? A : b2`<div class="group">
             <h3>Devices <span class="hint">${devices.length}</span></h3>
             ${devices.length ? devices.map((e6) => this._renderEntry(e6)) : b2`<div class="hint">none</div>`}
-          </div>
-          <div class="group">
+          </div>`}
+          ${this.kind === "device" ? A : b2`<div class="group">
             <h3>Activities <span class="hint">${activities.length}</span></h3>
             ${activities.length ? activities.map((e6) => this._renderEntry(e6)) : b2`<div class="hint">none</div>`}
-          </div>
+          </div>`}
           <div class="hint" style="margin-top: 12px">Ids are what an integration sends: <code>entity_id</code> is a device's or an activity's id, <code>command_id</code> one of its commands. Rows come from the server's cache, read from the hub on first sight; a dot marks an entity read from the hub in full, which is what Refresh does.</div>
         </div>
         <div class="panel" id="catalog-detail">${this._renderDetail()}</div>
@@ -11679,7 +12726,9 @@ var SbPanelCatalog = class extends i4 {
 };
 SbPanelCatalog.properties = {
   api: { attribute: false },
+  ctx: { attribute: false },
   hub: { attribute: false },
+  kind: { attribute: false },
   _entries: { state: true },
   _snapshot: { state: true },
   _selected: { state: true },
@@ -11831,6 +12880,7 @@ var HUBS_VIEW_TAG = "sb-panel-hubs";
 var SbPanelHubs = class extends i4 {
   constructor() {
     super(...arguments);
+    this.ctx = null;
     this.hubs = [];
     this.hub = null;
     this.seen = [];
@@ -11838,7 +12888,10 @@ var SbPanelHubs = class extends i4 {
     this._scanning = false;
     this._adding = false;
   }
-  /** Focus the address field (the sidebar's "Add a hub" lands here). */
+  willUpdate(changed) {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
+  /** Focus the address field (the picker's "Add a hub" lands here). */
   focusAddress() {
     const input = this.renderRoot.querySelector("#add-host");
     input?.focus();
@@ -11931,7 +12984,7 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
         <form id="hub-add" @submit=${this._submitAdd}>
           <div class="row">
             <div><input id="add-host" placeholder="192.168.1.50" autocomplete="off" required></div>
-            <div style="flex: 0 0 180px"><input id="add-name" placeholder="name (optional)"></div>
+            <div class="name"><input id="add-name" placeholder="name (optional)"></div>
             <button class="primary fixed" id="add-send" type="submit" ?disabled=${this._adding}>Add hub</button>
           </div>
           <div style="margin-top: 8px"><label class="inline"><input type="checkbox" id="add-disabled"> start disabled (register only, connect later)</label></div>
@@ -11978,7 +13031,7 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
   }
   _renderDetail() {
     const h6 = this.hub;
-    if (!h6) return b2`<div class="hint">No hub selected. Register one below, then manage it here.</div>`;
+    if (!h6) return b2`<div class="hint">${this.hubs.length ? "No hub selected." : "No hubs registered yet."} Register one below by address, or add one from the discovered list, then manage it here.</div>`;
     const { text, tone } = hubState(h6);
     const s7 = h6.status;
     const busy = this._busy.has(h6.hub_id);
@@ -12002,14 +13055,15 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
         ${h6.enabled && !s7 ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Retry start</button>` : A}
         ${h6.enabled ? b2`<button ?disabled=${busy} @click=${() => this._act(h6.hub_id, "disable")}>Disable</button>` : A}
         <button class="danger" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>Remove</button>
-        <button @click=${() => this._emit("sb-open-view", { view: "catalog" })}>Open catalog</button>
-        <button @click=${() => this._emit("sb-open-view", { view: "remote" })}>Open remote</button>
+        <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
+        <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
       </div>
     `;
   }
 };
 SbPanelHubs.properties = {
   api: { attribute: false },
+  ctx: { attribute: false },
   hubs: { attribute: false },
   hub: { attribute: false },
   seen: { attribute: false },
@@ -12028,7 +13082,9 @@ SbPanelHubs.styles = [
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      form .row { max-width: 720px; }
+      form .row { max-width: 720px; flex-wrap: wrap; }
+      form .row > div:first-child { flex: 1 1 200px; min-width: 160px; }
+      form .row > .name { flex: 1 1 140px; }
     `
 ];
 function defineHubsView() {
@@ -12040,7 +13096,10 @@ var REMOTE_VIEW_TAG = "sb-panel-remote";
 var SbPanelRemote = class extends i4 {
   constructor() {
     super(...arguments);
+    this.ctx = null;
     this.hub = null;
+    /** The Remote tab's subtab: the mounted card, or the layout document. */
+    this.section = "card";
     this._status = "";
     this._statusOk = true;
     this._banner = null;
@@ -12054,6 +13113,9 @@ var SbPanelRemote = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._unmount();
+  }
+  willUpdate(changed) {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
   }
   updated(changed) {
     if (changed.has("hub")) {
@@ -12190,8 +13252,10 @@ var SbPanelRemote = class extends i4 {
   }
   render() {
     const hub = this.hub;
+    return this.section === "layout" ? this._renderLayout(hub) : this._renderCard(hub);
+  }
+  _renderCard(hub) {
     return b2`
-      <div class="wrap">
         <div class="frame">
           <div class="bar">
             <span class="title" id="remote-title" title=${hub ? `web remote for ${hub.hub_id}` : ""}>${hub ? hubDisplayName(hub) : "no hub selected"}</span>
@@ -12199,9 +13263,13 @@ var SbPanelRemote = class extends i4 {
             <a class="hint" id="remote-link" href=${this.api.remoteUrl(hub?.hub_id ?? null)} target="_blank" rel="noopener" title="open the remote in its own tab">open ↗</a>
           </div>
           ${this._banner ? b2`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
-          <div class="stage" id="stage">${hub ? "" : b2`<div class="hint">Select a hub in the sidebar.</div>`}</div>
+          <div class="stage" id="stage">${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div>
           ${hub ? b2`<div class="foot">${hubDisplayName(hub)} · remote card ${CARD_VERSION}</div>` : ""}
         </div>
+    `;
+  }
+  _renderLayout(hub) {
+    return b2`
         <div class="panel">
           <h2>Layout <span class="spacer"></span><span class="hint mono">PUT /hubs/{hub_id}/ui/remote-card</span></h2>
           <div class="hint">The card configuration for this hub, stored on the server and shared by every phone, tablet and wall panel that opens the remote: the Home Assistant card's YAML as JSON, minus <code>entity</code>, <code>theme</code> and Home Assistant actions. An empty object resets to the card's defaults. Saving applies it to the remote on the left.</div>
@@ -12213,13 +13281,14 @@ var SbPanelRemote = class extends i4 {
             <span class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status">${this._status}</span>
           </div>
         </div>
-      </div>
     `;
   }
 };
 SbPanelRemote.properties = {
   api: { attribute: false },
+  ctx: { attribute: false },
   hub: { attribute: false },
+  section: { attribute: false },
   _status: { state: true },
   _statusOk: { state: true },
   _banner: { state: true },
@@ -12229,7 +13298,7 @@ SbPanelRemote.styles = [
   PANEL_BASE_CSS,
   i`
       :host { display: block; height: 100%; }
-      .wrap { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 16px; align-items: start; }
+      .frame { max-width: 420px; margin: 0 auto; }
       .frame { background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); overflow: hidden; }
       .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sbp-line); font-size: 12px; color: var(--sbp-muted); white-space: nowrap; }
       .bar .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -12237,11 +13306,96 @@ SbPanelRemote.styles = [
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
       .foot { padding: 6px 10px 8px; color: var(--sbp-muted); font-size: 11px; text-align: center; }
       textarea { min-height: 260px; margin-top: 10px; }
-      @media (max-width: 960px) { .wrap { grid-template-columns: 1fr; } }
     `
 ];
 function defineRemoteView() {
   if (!customElements.get(REMOTE_VIEW_TAG)) customElements.define(REMOTE_VIEW_TAG, SbPanelRemote);
+}
+
+// server-panel/src/views/server-view.ts
+var SERVER_VIEW_TAG = "sb-panel-server";
+var SbPanelServer = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.info = null;
+    this.error = null;
+    this.reachable = true;
+    this.streamOn = false;
+    this.hubCount = 0;
+    this._listener = null;
+    this._status = "";
+    this._retrying = false;
+  }
+  _emit(name, detail) {
+    this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
+  }
+  async _retry() {
+    if (this._retrying) return;
+    this._retrying = true;
+    try {
+      const response = await this.api.retryCallbackListener();
+      if (response.ok && response.body) {
+        this._listener = response.body;
+        this._status = response.body.bound ? `listener bound on :${response.body.bound_port}` : "listener still not bound";
+      } else {
+        this._status = problemText(response);
+      }
+    } catch (err) {
+      this._status = String(err);
+    } finally {
+      this._retrying = false;
+    }
+    this._emit("sb-hubs-changed");
+  }
+  render() {
+    const info = this.info;
+    const listener = this._listener ?? info?.callback_listener ?? null;
+    const listenerText = !listener ? "unknown" : listener.bound ? `bound on :${listener.bound_port}` : listener.wanted ? "wanted, not bound" : "idle (no callback devices)";
+    const facts = [
+      ["server", this.error ?? (info ? info.version : "connecting\u2026")],
+      ["library", info?.library_version ?? "?"],
+      ["api", info?.api_version ?? "?"],
+      ["instance", info?.instance_id ?? "?"],
+      ["hubs", String(this.hubCount)],
+      ["event stream", this.streamOn ? "live" : "off"],
+      ["callback listener", listenerText]
+    ];
+    return b2`
+      <div class="panel" id="server-detail">
+        <h2>Server <span class="spacer"></span><span class="hint mono" id="server-meta">${info ? `server ${info.version} \xB7 library ${info.library_version} \xB7 api ${info.api_version}` : this.error ?? ""}</span></h2>
+        <dl class="facts">${facts.map(([k2, v3]) => b2`<div><dt>${k2}</dt><dd>${v3}</dd></div>`)}</dl>
+        <div class="actions">
+          <button class="small" id="listener-retry" ?disabled=${this._retrying || !this.reachable} @click=${this._retry} title="POST /server/callback-listener/retry">${this._retrying ? "retrying\u2026" : "Retry callback listener"}</button>
+          <span class="msg" id="server-status">${this._status}</span>
+        </div>
+        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The event stream is this page's live feed from the server.</div>
+      </div>
+    `;
+  }
+};
+SbPanelServer.properties = {
+  api: { attribute: false },
+  info: { attribute: false },
+  error: { attribute: false },
+  reachable: { attribute: false },
+  streamOn: { attribute: false },
+  hubCount: { attribute: false },
+  _listener: { state: true },
+  _status: { state: true },
+  _retrying: { state: true }
+};
+SbPanelServer.styles = [
+  PANEL_BASE_CSS,
+  i`
+      :host { display: block; }
+      .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 18px; margin: 6px 0 14px; padding: 0; }
+      .facts div { min-width: 0; }
+      .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+      .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    `
+];
+function defineServerView() {
+  if (!customElements.get(SERVER_VIEW_TAG)) customElements.define(SERVER_VIEW_TAG, SbPanelServer);
 }
 
 // server-panel/src/panel.ts
@@ -12254,6 +13408,8 @@ function bootstrapServerPanel() {
   defineRemoteView();
   defineApiView();
   defineEventsView();
+  defineServerView();
+  defineBackupView();
   definePanel();
 }
 if (typeof window !== "undefined" && typeof customElements !== "undefined") {

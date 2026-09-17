@@ -1,0 +1,13 @@
+{
+  "name": "Sofabaton X control panel",
+  "short_name": "Sofabaton X",
+  "description": "The control panel sofabaton-x-server serves: hub setup, catalog, remote, jobs.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#009ac7",
+  "icons": [
+    { "src": "remote/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

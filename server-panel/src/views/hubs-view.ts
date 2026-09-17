@@ -2,11 +2,13 @@
 // selected hub's detail with its lifecycle actions, registration by
 // address, and the hubs discovered on the LAN. Talks to the server
 // through the PanelApi it is given and reports back through events the
-// shell listens to: sb-message, sb-hubs-changed, sb-select-hub, sb-open-view.
+// shell listens to: sb-message, sb-hubs-changed, sb-select-hub, sb-navigate.
+// Since the state plan's SP3 it is the Hub setup page under the cog menu.
 
-import { LitElement, html, nothing, css, type TemplateResult } from "lit";
+import { LitElement, html, nothing, css, type PropertyValues, type TemplateResult } from "lit";
 
 import { problemText, type HubCreate, type HubView, type PanelApi, type SeenHub } from "../panel-api";
+import type { HubContext } from "../panel-context";
 import { actionOutcome, formatWhen, hubDisplayName, hubState } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
@@ -17,6 +19,7 @@ type LifecycleAction = "enable" | "disable" | "remove";
 export class SbPanelHubs extends LitElement {
   static properties = {
     api: { attribute: false },
+    ctx: { attribute: false },
     hubs: { attribute: false },
     hub: { attribute: false },
     seen: { attribute: false },
@@ -36,11 +39,14 @@ export class SbPanelHubs extends LitElement {
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      form .row { max-width: 720px; }
+      form .row { max-width: 720px; flex-wrap: wrap; }
+      form .row > div:first-child { flex: 1 1 200px; min-width: 160px; }
+      form .row > .name { flex: 1 1 140px; }
     `,
   ];
 
   api!: PanelApi;
+  ctx: HubContext | null = null;
   hubs: HubView[] = [];
   hub: HubView | null = null;
   seen: SeenHub[] = [];
@@ -48,7 +54,11 @@ export class SbPanelHubs extends LitElement {
   private _scanning = false;
   private _adding = false;
 
-  /** Focus the address field (the sidebar's "Add a hub" lands here). */
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
+
+  /** Focus the address field (the picker's "Add a hub" lands here). */
   focusAddress(): void {
     const input = this.renderRoot.querySelector<HTMLInputElement>("#add-host");
     input?.focus();
@@ -153,7 +163,7 @@ export class SbPanelHubs extends LitElement {
         <form id="hub-add" @submit=${this._submitAdd}>
           <div class="row">
             <div><input id="add-host" placeholder="192.168.1.50" autocomplete="off" required></div>
-            <div style="flex: 0 0 180px"><input id="add-name" placeholder="name (optional)"></div>
+            <div class="name"><input id="add-name" placeholder="name (optional)"></div>
             <button class="primary fixed" id="add-send" type="submit" ?disabled=${this._adding}>Add hub</button>
           </div>
           <div style="margin-top: 8px"><label class="inline"><input type="checkbox" id="add-disabled"> start disabled (register only, connect later)</label></div>
@@ -208,7 +218,7 @@ export class SbPanelHubs extends LitElement {
 
   private _renderDetail(): TemplateResult {
     const h = this.hub;
-    if (!h) return html`<div class="hint">No hub selected. Register one below, then manage it here.</div>`;
+    if (!h) return html`<div class="hint">${this.hubs.length ? "No hub selected." : "No hubs registered yet."} Register one below by address, or add one from the discovered list, then manage it here.</div>`;
     const { text, tone } = hubState(h);
     const s = h.status;
     const busy = this._busy.has(h.hub_id);
@@ -232,8 +242,8 @@ export class SbPanelHubs extends LitElement {
         ${h.enabled && !s ? html`<button class="primary" ?disabled=${busy} @click=${() => this._act(h.hub_id, "enable")}>Retry start</button>` : nothing}
         ${h.enabled ? html`<button ?disabled=${busy} @click=${() => this._act(h.hub_id, "disable")}>Disable</button>` : nothing}
         <button class="danger" ?disabled=${busy} @click=${() => this._act(h.hub_id, "remove")}>Remove</button>
-        <button @click=${() => this._emit("sb-open-view", { view: "catalog" })}>Open catalog</button>
-        <button @click=${() => this._emit("sb-open-view", { view: "remote" })}>Open remote</button>
+        <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
+        <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
       </div>
     `;
   }

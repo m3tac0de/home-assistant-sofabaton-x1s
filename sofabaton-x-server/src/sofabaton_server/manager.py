@@ -15,13 +15,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from sofabaton import AsyncXProxy, HubConfig, HubEvent, HubStatus, StateDocumentError
 
 from .config import Settings
 from .models import HubRecord, HubView, mac_key, now_iso
 from .store import HubStore, StateStore, UiDocumentStore
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .jobs import JobRunner
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +84,10 @@ class HubManager:
         # The web remote's per-hub card configuration (web-remote plan,
         # section 7); follows the hub through re-key and removal.
         self.ui_documents = ui_store or UiDocumentStore(settings.data_dir)
+        # The job runner, attached by create_app once it exists: a hub
+        # view then carries the hub's active and last job. Left None,
+        # views simply omit them (the manager's own tests).
+        self.jobs: Optional[JobRunner] = None
         self._records: dict[str, HubRecord] = {}
         self._proxies: dict[str, AsyncXProxy] = {}
         self._watchers: dict[str, asyncio.Task] = {}
@@ -176,6 +183,12 @@ class HubManager:
         proxy = self._proxies.get(hub_id)
         if proxy is not None:
             status = await proxy.status()
+        jobs = self.jobs
+        hub_name = record.hub_name
+        if hub_name is None and proxy is not None:
+            # Not yet remembered (a record from before this field): the cached banner, no traffic.
+            info = await proxy.hub_info()
+            hub_name = info.name if info.known else None
         return HubView(
             hub_id=record.hub_id,
             enabled=record.enabled,
@@ -183,6 +196,9 @@ class HubManager:
             added_at=record.added_at,
             last_seen=record.last_seen,
             status=status,
+            active_job=jobs.active(hub_id) if jobs is not None else None,
+            last_job=jobs.last_finished(hub_id) if jobs is not None else None,
+            hub_name=hub_name,
         )
 
     async def views(self) -> list[HubView]:
@@ -361,6 +377,8 @@ class HubManager:
             return hub_id
         record.last_seen = now_iso()
         info = await proxy.hub_info()
+        if info.known and info.name:
+            record.hub_name = info.name
         if info.known and info.mac:
             new_id = mac_key(info.mac)
             if new_id != record.hub_id and new_id not in self._records:

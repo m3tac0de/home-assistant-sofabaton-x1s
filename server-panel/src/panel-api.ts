@@ -32,7 +32,9 @@ export interface HubConfig {
   [key: string]: unknown;
 }
 
-/** One row of `GET /hubs` (openapi `HubView`). */
+/** One row of `GET /hubs` (openapi `HubView`). `active_job` is the job
+ *  queued or running on the hub now, `last_job` the newest finished one
+ *  (server panel state plan, decision 1); older fixtures may omit them. */
 export interface HubView {
   hub_id: string;
   enabled: boolean;
@@ -40,6 +42,10 @@ export interface HubView {
   added_at: string;
   last_seen: string | null;
   status: HubStatus | null;
+  active_job?: JobView | null;
+  last_job?: JobView | null;
+  /** The hub's own name from its banner; shown when no name was configured. */
+  hub_name?: string | null;
 }
 
 /** One row of `GET /discovery/hubs` (openapi `SeenHub`). */
@@ -62,12 +68,22 @@ export interface Problem {
   mode?: string | null;
 }
 
+/** `GET /server/callback-listener` (openapi `CallbackListener`), also embedded in `ServerInfo`. */
+export interface CallbackListener {
+  wanted?: boolean;
+  bound?: boolean;
+  bound_port?: number | null;
+  [key: string]: unknown;
+}
+
 export interface ServerInfo {
   version: string;
   library_version: string;
   api_version: string;
   instance_id?: string;
-  callback_listener?: { wanted?: boolean; bound?: boolean; bound_port?: number | null };
+  hubs?: number;
+  callback_listener?: CallbackListener;
+  [key: string]: unknown;
 }
 
 export interface RemoteCardDocument {
@@ -200,6 +216,22 @@ export interface JobView {
 
 export const TERMINAL_JOB_STATES: ReadonlySet<string> = new Set(["done", "failed", "cancelled"]);
 
+/** One row of `GET /hubs/{id}/applies` (openapi `ApplySummary`). */
+export interface ApplySummary {
+  apply_id: string;
+  hub_id: string;
+  status: string;
+  resumable: boolean;
+  job_id: string | null;
+  created_at: string;
+  updated_at: string;
+  runs?: number;
+  cursor?: number;
+  item_count?: number;
+  writes?: number;
+  [key: string]: unknown;
+}
+
 /** `POST /snapshot/refresh` body: one entity, or neither for the whole hub. */
 export type RefreshScope = { device_id: number } | { activity_id: number } | Record<string, never>;
 
@@ -275,6 +307,14 @@ export class PanelApi {
 
   serverInfo(): Promise<ApiResponse<ServerInfo>> {
     return this.request<ServerInfo>("GET", "server");
+  }
+
+  callbackListener(): Promise<ApiResponse<CallbackListener>> {
+    return this.request<CallbackListener>("GET", "server/callback-listener");
+  }
+
+  retryCallbackListener(): Promise<ApiResponse<CallbackListener>> {
+    return this.request<CallbackListener>("POST", "server/callback-listener/retry");
   }
 
   /** The operations from `openapi.json`, sorted by path then method. */
@@ -384,6 +424,30 @@ export class PanelApi {
 
   job(hubId: string, jobId: string): Promise<ApiResponse<JobView>> {
     return this.request<JobView>("GET", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  /** Recent jobs on the hub, newest first. */
+  listJobs(hubId: string): Promise<ApiResponse<JobView[]>> {
+    return this.request<JobView[]>("GET", `${this._hub(hubId)}/jobs`);
+  }
+
+  cancelJob(hubId: string, jobId: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  /** The hub's apply records, newest first, documents omitted. */
+  listApplies(hubId: string): Promise<ApiResponse<ApplySummary[]>> {
+    return this.request<ApplySummary[]>("GET", `${this._hub(hubId)}/applies`);
+  }
+
+  /** Continue a stopped or cancelled apply; the 202 body is the job. */
+  resumeApply(hubId: string, applyId: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}/resume`);
+  }
+
+  /** Forget an apply record. */
+  discardApply(hubId: string, applyId: string): Promise<ApiResponse<never>> {
+    return this.request<never>("DELETE", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}`);
   }
 
   /**

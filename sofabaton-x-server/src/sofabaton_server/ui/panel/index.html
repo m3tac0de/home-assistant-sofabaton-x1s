@@ -6,9 +6,12 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#009ac7">
   <title>Sofabaton X control panel</title>
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="remote/icon.svg" type="image/svg+xml">
   <style>
     html, body { margin: 0; height: 100%; }
+    /* The gutter is reserved whether or not the page scrolls, so the column never shifts sideways. */
+    html { scrollbar-gutter: stable; }
     body { background: var(--primary-background-color, #fafafa); color: var(--primary-text-color, #141414); }
     sofabaton-server-panel { display: block; height: 100%; }
     noscript { display: block; padding: 24px; font-family: system-ui, sans-serif; }

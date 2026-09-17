@@ -355,7 +355,10 @@ restore and erase. Follow
 it on the event stream (`job_event` messages carry the full record:
 `status`, the last `progress`, the `result` or a `Problem` in `error`)
 or poll `GET /hubs/{id}/jobs/{job_id}`; `GET /hubs/{id}/jobs` lists
-recent ones. One job runs per hub at a time (`409 hub_job_running`). Reads
+recent ones, and every hub view (`GET /hubs`, `GET /hubs/{id}`) carries
+`active_job` (queued or running now) and `last_job` (the newest finished
+one, whatever its outcome), so one list call tells a client what each
+hub is doing. One job runs per hub at a time (`409 hub_job_running`). Reads
 are not rejected merely because a job runs, but a read that needs hub
 traffic can wait or fail; keep the hub idle during IR learning.
 Check the job's `cancellable` field before requesting cancellation with

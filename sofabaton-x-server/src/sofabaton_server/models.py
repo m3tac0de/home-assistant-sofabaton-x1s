@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from sofabaton import HubConfig, HubStatus
+from sofabaton import HubConfig, HubStatus, WriteProgress
 
 
 def now_iso() -> str:
@@ -42,6 +42,9 @@ class HubRecord:
     enabled: bool = True
     added_at: str = field(default_factory=now_iso)
     last_seen: Optional[str] = None
+    # The hub's own name from its connect banner, learned on the first
+    # ready sync and kept so a disabled hub still has a name to show.
+    hub_name: Optional[str] = None
     # The callback device record (callbacks plan, section 8), owned by
     # the callback service; stored verbatim as ``callback_device``.
     callback_device: Optional[dict[str, Any]] = None
@@ -54,6 +57,8 @@ class HubRecord:
             "added_at": self.added_at,
             "last_seen": self.last_seen,
         }
+        if self.hub_name is not None:
+            data["hub_name"] = self.hub_name
         if self.callback_device is not None:
             data["callback_device"] = dict(self.callback_device)
         return data
@@ -67,6 +72,7 @@ class HubRecord:
             enabled=bool(data.get("enabled", True)),
             added_at=str(data.get("added_at") or now_iso()),
             last_seen=data.get("last_seen"),
+            hub_name=str(data["hub_name"]) if data.get("hub_name") else None,
             callback_device=dict(callback) if isinstance(callback, dict) else None,
         )
 
@@ -74,9 +80,40 @@ class HubRecord:
 # -- response views ----------------------------------------------------------
 
 
+JobStatus = Literal["queued", "running", "done", "failed", "cancelled"]
+
+
+# Defined here rather than in jobs.py because HubView embeds it: the runner
+# mutates the same object as the job progresses, and a response serialises
+# it at the moment it is built.
+@dataclass
+class JobView:
+    """One job as the API shows it."""
+
+    job_id: str
+    hub_id: str
+    kind: str
+    status: JobStatus
+    cancellable: bool
+    created_at: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    progress: Optional[WriteProgress] = None
+    result: Optional[dict[str, Any]] = None
+    error: Optional["Problem"] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 @dataclass(frozen=True)
 class HubView:
-    """What ``/hubs`` returns per hub: the record plus a status snapshot."""
+    """What ``/hubs`` returns per hub: the record, a status snapshot and
+    the hub's jobs (``active_job``: the one queued or running now;
+    ``last_job``: the newest finished one, whatever its outcome), so a
+    client rebuilds "what is this hub doing" from the one list call
+    (server panel state plan, decision 1). ``hub_name`` is the hub's own
+    name from its banner, for display when ``config.name`` is not set."""
 
     hub_id: str
     enabled: bool
@@ -84,6 +121,9 @@ class HubView:
     added_at: str
     last_seen: Optional[str]
     status: Optional[HubStatus]
+    active_job: Optional[JobView] = None
+    last_job: Optional[JobView] = None
+    hub_name: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

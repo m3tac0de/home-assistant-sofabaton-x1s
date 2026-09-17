@@ -89,6 +89,21 @@ def test_assets_are_served_with_types_and_revalidation(rig) -> None:
     assert client.get("/ui/remote/nope.js").json()["type"] == "ui_asset_not_found"
 
 
+def test_panel_manifest_installs_the_page(rig) -> None:
+    """State plan decision 10: the panel installs to a phone's home screen
+    like the remote does; its icon is the remote's, served already."""
+
+    client, _, _ = rig
+    manifest = client.get("/ui/manifest.webmanifest")
+    assert manifest.status_code == 200 and manifest.headers["content-type"] == "application/manifest+json"
+    body = json.loads(manifest.text)
+    assert body["start_url"] == "./" and body["scope"] == "./" and body["display"] == "standalone"
+    assert body["icons"][0]["src"] == "remote/icon.svg"
+    assert client.get("/ui/remote/icon.svg").status_code == 200
+    assert 'rel="manifest" href="manifest.webmanifest"' in client.get("/ui/").text
+    assert client.get("/ui/manifest.webmanifest", headers={"if-none-match": manifest.headers["etag"]}).status_code == 304
+
+
 def test_page_routes_are_outside_the_api_contract(rig) -> None:
     client, _, _ = rig
     spec = client.get(f"{API_PREFIX}/openapi.json").json()

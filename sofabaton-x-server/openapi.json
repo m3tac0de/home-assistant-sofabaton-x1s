@@ -1910,8 +1910,18 @@
         "type": "object"
       },
       "HubView": {
-        "description": "What ``/hubs`` returns per hub: the record plus a status snapshot.",
+        "description": "What ``/hubs`` returns per hub: the record, a status snapshot and\nthe hub's jobs (``active_job``: the one queued or running now;\n``last_job``: the newest finished one, whatever its outcome), so a\nclient rebuilds \"what is this hub doing\" from the one list call\n(server panel state plan, decision 1). ``hub_name`` is the hub's own\nname from its banner, for display when ``config.name`` is not set.",
         "properties": {
+          "active_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "added_at": {
             "title": "Added At",
             "type": "string"
@@ -1926,6 +1936,27 @@
           "hub_id": {
             "title": "Hub Id",
             "type": "string"
+          },
+          "hub_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Name"
+          },
+          "last_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_seen": {
             "anyOf": [
