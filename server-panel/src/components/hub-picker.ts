@@ -5,6 +5,7 @@
 // one hub, as there.
 
 import { html, nothing, type TemplateResult } from "lit";
+import { mdiChevronDown, mdiChevronUp } from "@mdi/js";
 
 import { hubDisplayName, hubState } from "../panel-state";
 import type { HubRuntime } from "../panel-store";
@@ -24,7 +25,7 @@ export function renderHubPicker(params: {
   if (!interactive) {
     return html`
       <div class="hub-picker hub-picker--static" id="hub-picker">
-        <div class="hub-picker-btn hub-picker-btn--static" id="hub-picker-btn" title=${selected ? selected.hub.hub_id : "register a hub under the cog menu"}>
+        <div class="hub-picker-btn hub-picker-btn--static" id="hub-picker-btn" title=${selected ? `${label} · ${selected.hub.hub_id}` : "register a hub under the cog menu"}>
           <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span>
         </div>
       </div>
@@ -32,8 +33,8 @@ export function renderHubPicker(params: {
   }
   return html`
     <div class="hub-picker" id="hub-picker">
-      <button class="hub-picker-btn ${params.open ? "is-open" : ""}" id="hub-picker-btn" type="button" aria-haspopup="menu" aria-expanded=${String(params.open)} @click=${params.onToggle}>
-        <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span><span class="chip-arrow" aria-hidden="true">${params.open ? "▴" : "▾"}</span>
+      <button class="hub-picker-btn ${params.open ? "is-open" : ""}" id="hub-picker-btn" type="button" title=${label} aria-haspopup="menu" aria-expanded=${String(params.open)} @click=${params.onToggle}>
+        <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.open ? mdiChevronUp : mdiChevronDown}></path></svg>
       </button>
       ${params.open
         ? html`<div class="menu hub-picker-menu" id="hub-picker-menu" role="menu">

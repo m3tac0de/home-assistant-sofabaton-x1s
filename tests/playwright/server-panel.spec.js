@@ -185,6 +185,76 @@ const actions = (page) => page.locator("#hub-actions");
 const msg = (page) => page.locator("#hubs-msg");
 const shot = (testInfo, name) => `test-results/server-panel-${name}-${testInfo.project.name}.png`;
 
+test.describe("control panel, responsive docks", () => {
+  for (const width of [320, 390, 600, 768, 844, 1040, 1440]) {
+    test(`docks and menus fit at ${width}px with long names and two actions`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: width === 844 ? 390 : 844 });
+      const longName = "Living room and home cinema upstairs — family hub";
+      await mockServer(page, {
+        hubs: [{ ...LIVING, config: { ...LIVING.config, name: longName } }, OFFICE], seen: [],
+        applies: [{ apply_id: "ap1", hub_id: LIVING.hub_id, status: "stopped", resumable: true, job_id: null, created_at: "t", updated_at: "t", runs: 1, cursor: 2, item_count: 5, writes: 2 }],
+      });
+      await page.goto(PAGE);
+      await expect(page.locator("#dock-resume")).toBeVisible();
+      const inViewport = async (selector) => {
+        const box = await page.locator(selector).boundingBox();
+        expect(box.x, selector).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width, selector).toBeLessThanOrEqual(width);
+        return box;
+      };
+      const brand = await inViewport(".brand");
+      const picker = await inViewport("#hub-picker-btn");
+      expect(brand.x + brand.width).toBeLessThanOrEqual(picker.x);
+      await chip(page).click();
+      await inViewport("#hub-picker-menu");
+      await expect(options(page).first()).toContainText(longName);
+      await page.keyboard.press("Escape");
+      await page.click("#cog-btn");
+      await inViewport("#cog-menu");
+      await expect(page.locator("#theme-toggle")).toBeInViewport();
+      await page.keyboard.press("Escape");
+
+      for (const selector of ["#dock-status", "#dock-resume", "#dock-discard", "#dock-pill", "#cog-btn", "#subtabs"]) {
+        await inViewport(selector);
+      }
+      const status = page.locator("#dock-status");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      expect(await status.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      expect(await status.evaluate((el) => getComputedStyle(el).whiteSpace)).not.toBe("nowrap");
+      await expect.poll(() => page.locator(".page").evaluate((el) => {
+        const dock = el.querySelector("#bottom-dock");
+        return parseFloat(getComputedStyle(el).paddingBottom) >= dock.getBoundingClientRect().height + 15;
+      })).toBe(true);
+
+      await page.mouse.move(0, 400);
+      await page.screenshot({ path: shot(testInfo, `docks-${width}-light`) });
+      await page.evaluate(() => document.documentElement.dataset.theme = "dark");
+      await page.screenshot({ path: shot(testInfo, `docks-${width}-dark`) });
+    });
+  }
+
+  test("scrolling keeps both docks visible and the last content clear of a wrapped notice", async ({ page }, testInfo) => {
+    const error = "The hub disconnected while restoring the living room devices. Reconnect the hub, then check its configuration before continuing. ".repeat(4).trim();
+    await mockServer(page, {
+      hubs: [{ ...LIVING, last_job: job({ status: "failed", finished_at: new Date().toISOString(), error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: error } }) }],
+      seen: [SEEN_NEW],
+    });
+    await page.goto(`${PAGE}#/setup/hubs`);
+    await expect(page.locator("#dock-status")).toContainText(error);
+    // A long view exercises sticky positioning even on a tall desktop.
+    await page.locator("#stage-wrap").evaluate((el) => el.style.minHeight = "1600px");
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => page.locator(".top-dock").evaluate((el) => Math.round(el.getBoundingClientRect().top))).toBe(0);
+    const dock = await page.locator("#bottom-dock").boundingBox();
+    const content = await page.locator("#stage-wrap").boundingBox();
+    expect(content.y + content.height).toBeLessThan(dock.y);
+    expect(Math.round(dock.y + dock.height)).toBe(page.viewportSize().height);
+    await page.screenshot({ path: shot(testInfo, "docks-scrolled-notice") });
+    await page.click("#dock-dismiss");
+    await expect.poll(async () => (await page.locator("#bottom-dock").boundingBox()).height).toBeLessThan(dock.height);
+  });
+});
+
 async function pickHub(page, hubId) {
   await chip(page).click();
   await page.locator(`#hub-picker-menu .hub-option[data-hub="${hubId}"]`).click();

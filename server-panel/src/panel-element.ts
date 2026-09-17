@@ -50,52 +50,61 @@ export class SofabatonServerPanel extends LitElement {
     PANEL_BASE_CSS,
     css`
       :host { display: block; min-height: 100%; background: var(--sbp-bg); container-type: inline-size; }
-      .page { max-width: 1040px; margin: 0 auto; padding: 0 16px calc(72px + env(safe-area-inset-bottom, 0px)); }
+      .page {
+        --dock-surface: linear-gradient(180deg, color-mix(in srgb, var(--sbp-accent) 8%, var(--sbp-panel)), color-mix(in srgb, var(--sbp-accent) 4%, var(--sbp-panel)));
+        --page-gutter: 16px;
+        max-width: 1040px; min-height: 100dvh; margin: 0 auto;
+        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + 16px);
+      }
+      button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
       /* -- top dock -------------------------------------------------------- */
-      .top-dock { position: sticky; top: 0; z-index: 30; margin: 0 -16px; padding: 0 16px; background: var(--sbp-panel); border-bottom: 1px solid var(--sbp-line); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03); }
-      .top-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 4px 0; }
-      .brand { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; }
-      .brand b { font-size: 15px; font-weight: 650; letter-spacing: 0.01em; white-space: nowrap; }
-      .brand span { color: var(--sbp-muted); font-size: 12px; white-space: nowrap; }
-      .picker-slot { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; }
-      .top-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-      .stream { display: inline-flex; align-items: center; gap: 5px; color: var(--sbp-muted); font-size: 12px; }
+      .top-dock { position: sticky; top: 0; z-index: 40; margin: 0 calc(-1 * var(--page-gutter)); padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0; background: var(--sbp-panel); border-bottom: 1px solid var(--sbp-line); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.03); }
+      .top-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0 calc(-1 * var(--page-gutter)); padding: 6px var(--page-gutter); background: var(--dock-surface); border-bottom: 1px solid var(--sbp-line); }
+      .brand { display: flex; align-items: baseline; gap: 8px; flex: 0 0 auto; }
+      .brand b { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
+      .brand span { color: var(--sbp-muted); font-size: 11px; white-space: nowrap; }
+      .picker-slot { flex: 1 1 auto; min-width: 0; display: flex; justify-content: flex-end; }
+      .top-right { display: flex; align-items: center; flex: 0 0 auto; }
+      .stream { display: inline-flex; align-items: center; gap: 6px; color: var(--sbp-muted); font-size: 11px; }
+      .stream-label { max-width: 120px; line-height: 1.4; }
 
       .hub-picker { position: relative; max-width: 100%; }
-      .hub-picker-btn { display: inline-flex; align-items: center; gap: 6px; max-width: min(100%, 420px); min-height: 32px; border: 1px solid var(--sbp-line); border-radius: 999px; padding: 0 12px 0 10px; background: rgba(var(--sbp-accent-rgb), 0.06); color: var(--sbp-text); user-select: none; }
+      .hub-picker-btn { display: flex; align-items: center; gap: 6px; max-width: min(100%, 360px); min-height: 36px; border: 1px solid var(--sbp-line); border-radius: 999px; padding: 0 12px 0 10px; background: var(--sbp-panel); color: var(--sbp-text); user-select: none; }
       button.hub-picker-btn { cursor: pointer; }
       button.hub-picker-btn:hover, button.hub-picker-btn.is-open { border-color: var(--sbp-accent); }
       .hub-picker-btn--static { cursor: default; }
-      .chip-prefix { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sbp-muted); }
-      .chip-name { font-size: 13px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .chip-arrow { font-size: 11px; color: var(--sbp-muted); }
-      .hub-picker-menu { left: 50%; right: auto; transform: translateX(-50%); }
+      .chip-prefix { flex: 0 0 auto; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sbp-muted); }
+      .chip-name { font-size: 12px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .chip-arrow { flex: 0 0 auto; width: 16px; height: 16px; color: var(--sbp-muted); }
+      .hub-picker-menu { width: 300px; }
 
-      .menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; display: flex; flex-direction: column; min-width: 220px; max-width: calc(100vw - 24px); padding: 4px 0; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); }
+      .menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; display: flex; flex-direction: column; min-width: 220px; max-width: calc(100vw - 48px); max-height: calc(100dvh - 160px); overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); }
       .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 0; background: transparent; text-align: left; white-space: normal; }
       .menu-item:hover { background: var(--sbp-panel-2); border-color: transparent; }
       .menu-item.selected { background: rgba(var(--sbp-accent-rgb), 0.12); }
-      .menu-main { display: flex; flex-direction: column; min-width: 0; }
-      .menu-title { font-size: 13px; font-weight: 600; }
+      .menu-main { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 3px; }
+      .menu-title { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
       .menu-sub { font-size: 11px; color: var(--sbp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .menu-sep { border-top: 1px solid var(--sbp-line); margin: 4px 0; }
       .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--sbp-panel-2); color: var(--sbp-muted); font-size: 11px; text-align: center; font-weight: 500; }
 
-      .tabs { display: flex; align-items: stretch; border-top: 1px solid var(--sbp-line); }
+      .tabs { display: flex; align-items: stretch; min-width: 0; }
       .tabs-scroll { display: flex; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
       .tabs-scroll::-webkit-scrollbar { display: none; }
-      .tab-btn { flex: 0 0 auto; min-height: 44px; padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--sbp-muted); font-weight: 600; }
+      .tab-btn { flex: 0 0 auto; min-height: 46px; padding: 10px 18px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--sbp-muted); font-weight: 600; }
       .tab-btn:hover { color: var(--sbp-text); border-color: transparent; border-bottom-color: var(--sbp-line); }
-      .tab-btn.active { color: var(--sbp-text); border-bottom-color: var(--sbp-accent); }
+      .tab-btn.active { color: var(--sbp-text); border-bottom-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.05); }
       .tab-menu { position: relative; flex: 0 0 auto; margin-left: auto; display: flex; }
-      .tab-btn--menu { display: inline-flex; align-items: center; gap: 3px; padding: 8px 10px; }
-      .cog-icon { font-size: 18px; line-height: 1; }
-      .subtabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 0 10px; }
+      .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 10px; min-width: 44px; }
+      .tab-btn--menu.is-open { color: var(--sbp-accent); }
+      .cog-icon { width: 20px; height: 20px; }
+      .subtabs { display: flex; overflow-x: auto; scrollbar-width: none; margin: 8px 0 0; border: 1px solid var(--sbp-line); border-bottom: 0; border-radius: 12px 12px 0 0; background: linear-gradient(180deg, var(--sbp-panel), color-mix(in srgb, var(--sbp-panel-2) 45%, var(--sbp-panel))); }
       .subtabs::-webkit-scrollbar { display: none; }
-      .subtab-btn { flex: 0 0 auto; min-height: 36px; padding: 6px 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--sbp-muted); font-size: 13px; font-weight: 600; }
-      .subtab-btn:hover { color: var(--sbp-text); border-color: var(--sbp-line); }
-      .subtab-btn.active { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.12); border-color: rgba(var(--sbp-accent-rgb), 0.35); }
+      .subtab-btn { flex: 1 0 auto; min-height: 42px; padding: 10px 16px; border: 0; border-right: 1px solid var(--sbp-line); border-radius: 0; background: transparent; color: var(--sbp-muted); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
+      .subtab-btn:last-child { border-right: 0; }
+      .subtab-btn:hover { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.05); }
+      .subtab-btn.active { color: var(--sbp-text); background: var(--sbp-panel); box-shadow: inset 0 -3px 0 var(--sbp-accent); }
 
       /* -- the view and its scrim ------------------------------------------- */
       .view { position: relative; padding: 16px 0 8px; min-height: 40vh; }
@@ -108,22 +117,26 @@ export class SofabatonServerPanel extends LitElement {
 
       /* -- bottom dock -------------------------------------------------------- */
       /* The dock is the column's width, centred like it, not the viewport's. */
-      .dock { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); width: 100%; max-width: 1040px; z-index: 30; background: var(--sbp-panel); border-top: 1px solid var(--sbp-line); padding-bottom: env(safe-area-inset-bottom, 0px); }
-      .dock-inner { min-height: 48px; padding: 6px 16px; display: flex; align-items: center; gap: 10px; }
-      .dock-center { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; }
-      .dock-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .dock { position: fixed; left: 0; right: 0; bottom: 0; margin-inline: auto; max-width: 1040px; z-index: 30; background: var(--dock-surface); border-top: 1px solid var(--sbp-line); padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 0 -3px 8px rgba(0, 0, 0, 0.03); overflow: hidden; }
+      .dock-inner { min-height: 48px; padding: 6px var(--page-gutter); display: flex; align-items: center; gap: 16px; }
+      .dock-center { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; align-items: center; font-size: 12px; line-height: 1.5; }
+      .dock-status { min-width: 0; overflow-wrap: anywhere; max-height: 30dvh; overflow-y: auto; }
       .dock-detail { color: var(--sbp-muted); }
       .dock-link { font-size: 12px; color: var(--sbp-muted); text-decoration: none; }
       .dock-link:hover { color: var(--sbp-accent); }
-      .dock-action { flex: 0 0 auto; }
+      .dock-actions { display: flex; align-items: center; gap: 6px; }
+      .dock-action { flex: 0 0 auto; min-height: 36px; }
+      .dock--success, .dock--message { --dock-surface: color-mix(in srgb, var(--sbp-ok) 8%, var(--sbp-panel)); border-top-color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-line)); }
+      .dock--error { --dock-surface: color-mix(in srgb, var(--sbp-err) 8%, var(--sbp-panel)); border-top-color: color-mix(in srgb, var(--sbp-err) 40%, var(--sbp-line)); }
+      .dock--warn, .dock--dirty { --dock-surface: color-mix(in srgb, var(--sbp-warn) 8%, var(--sbp-panel)); border-top-color: color-mix(in srgb, var(--sbp-warn) 40%, var(--sbp-line)); }
       .dock--running .dock-status { color: var(--sbp-accent); font-weight: 600; }
       .dock--success .dock-status, .dock--message .dock-status { color: var(--sbp-ok); }
       .dock--error .dock-status { color: var(--sbp-err); }
-      .dock--warn .dock-status { color: var(--sbp-warn); }
-      .dock--dirty .dock-status { color: var(--sbp-warn); font-weight: 600; }
+      .dock--warn .dock-status { color: var(--sbp-text); }
+      .dock--dirty .dock-status { color: var(--sbp-text); font-weight: 600; }
       .dock--neutral .dock-status, .dock--gate .dock-status, .dock--info .dock-status { color: var(--sbp-muted); }
-      .dock-right { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-      .dock-pill-pair { display: inline-flex; border: 1px solid var(--sbp-line); border-radius: 999px; overflow: hidden; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+      .dock-right { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
+      .dock-pill-pair { display: inline-flex; flex: 0 0 auto; border: 1px solid var(--sbp-line); border-radius: 999px; overflow: hidden; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--sbp-panel); }
       .dock-pill-half { padding: 4px 9px; color: var(--sbp-muted); }
       .dock-pill-half.on { background: rgba(var(--rgb-success-color, 67, 160, 71), 0.16); color: var(--sbp-ok); }
       .dock-pill-half + .dock-pill-half { border-left: 1px solid var(--sbp-line); }
@@ -145,6 +158,16 @@ export class SofabatonServerPanel extends LitElement {
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
         .brand span, .stream-label { display: none; }
+        .page { --page-gutter: 12px; }
+        .top-row { gap: 8px; }
+        .brand b { font-size: 10px; letter-spacing: 0.06em; }
+        .hub-picker-btn { min-height: 40px; padding-inline: 9px; }
+        .tab-btn { padding-inline: 14px; }
+        .dock-inner { gap: 8px; }
+        .dock:has(.dock-actions) .dock-inner { flex-direction: column; align-items: stretch; padding-block: 8px; }
+        .dock:has(.dock-actions) .dock-center { justify-content: flex-start; }
+        .dock:has(.dock-actions) .dock-right { justify-content: space-between; }
+        .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
       }
     `,
@@ -157,6 +180,7 @@ export class SofabatonServerPanel extends LitElement {
   private _pickerOpen = false;
   private _cogOpen = false;
   private _unsubscribe: (() => void) | null = null;
+  private _dockObserver: ResizeObserver | null = null;
   private readonly _onHashChange = () => {
     const parsed = parseRoute(location.hash);
     if (parsed) this.store.navigate(parsed, { replace: true });
@@ -200,6 +224,18 @@ export class SofabatonServerPanel extends LitElement {
     document.addEventListener("click", this._onDocumentClick);
     document.addEventListener("keydown", this._onKeyDown);
     this.store.connect();
+    void this.updateComplete.then(() => {
+      if (!this.isConnected) return;
+      this._dockObserver?.disconnect();
+      this._dockObserver = new ResizeObserver(([entry]) => {
+        // Notices can wrap, actions can take a second row, and safe-area
+        // padding varies by device. Reserve the actual height, not a guess.
+        const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+        this.style.setProperty("--bottom-dock-height", `${height}px`);
+      });
+      const dock = this.renderRoot.querySelector("#bottom-dock");
+      if (dock) this._dockObserver.observe(dock);
+    });
   }
 
   disconnectedCallback(): void {
@@ -209,6 +245,8 @@ export class SofabatonServerPanel extends LitElement {
     document.removeEventListener("keydown", this._onKeyDown);
     this._unsubscribe?.();
     this._unsubscribe = null;
+    this._dockObserver?.disconnect();
+    this._dockObserver = null;
     this.store.disconnect();
   }
 

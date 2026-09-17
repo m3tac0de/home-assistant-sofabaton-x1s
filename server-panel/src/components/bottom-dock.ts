@@ -35,33 +35,36 @@ export function renderBottomDock(params: {
   const { model, message } = params;
   let tone = "";
   let center: TemplateResult;
+  let actions: TemplateResult | typeof nothing = nothing;
   if (model.kind === "running") {
     tone = "dock--running";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>
-      ${model.cancellable
-        ? html`<button class="small dock-action" id="dock-cancel" type="button" ?disabled=${model.cancelling} @click=${params.onCancel}>${model.cancelling ? "Cancelling…" : "Cancel"}</button>`
-        : nothing}`;
+    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = model.cancellable
+      ? html`<button class="small dock-action" id="dock-cancel" type="button" ?disabled=${model.cancelling} @click=${params.onCancel}>${model.cancelling ? "Cancelling…" : "Cancel"}</button>`
+      : nothing;
   } else if (message) {
     tone = message.ok ? "dock--message" : "dock--error";
     center = html`<span class="dock-status" id="hubs-msg">${message.text}</span>`;
   } else if (model.kind === "notice") {
     tone = `dock--${model.notice.tone}`;
-    center = html`<span class="dock-status" id="dock-status" title=${model.notice.detail ?? ""}>${model.notice.label}${model.notice.detail ? html`<span class="dock-detail"> · ${model.notice.detail}</span>` : nothing}</span>
-      <button class="small dock-action" id="dock-dismiss" type="button" @click=${params.onDismiss}>Dismiss</button>`;
+    center = html`<span class="dock-status" id="dock-status">${model.notice.label}${model.notice.detail ? html`<span class="dock-detail"> · ${model.notice.detail}</span>` : nothing}</span>`;
+    actions = html`<button class="small dock-action" id="dock-dismiss" type="button" @click=${params.onDismiss}>Dismiss</button>`;
   } else if (model.kind === "apply_stopped") {
     tone = "dock--warn";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>
+    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = html`
       ${model.resumable ? html`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : nothing}
       <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
   } else if (model.kind === "draft_stale") {
     tone = "dock--warn";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>
+    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = html`
       <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
       <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>
-      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = html`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "gate") {
     tone = "dock--gate";
     center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
@@ -81,8 +84,9 @@ export function renderBottomDock(params: {
         ${press
           ? keyed(press.at, html`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`)
           : nothing}
-        <div class="dock-center">${center}</div>
+        <div class="dock-center" role="status" aria-live="polite">${center}</div>
         <div class="dock-right">
+          ${actions !== nothing ? html`<div class="dock-actions">${actions}</div>` : nothing}
           ${params.hasHub
             ? html`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
                 <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
