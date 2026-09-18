@@ -589,9 +589,35 @@ print("Saved command", command_id)
 ```
 
 `IrPayload.from_pronto(text)`, `from_raw_timings(timings_us, carrier_hz)`
-and `from_hex(text)` accept the other input formats. `read_payload(device_id,
-command_id)` returns `None` when no payload is stored, so check it before
-calling `play()`. `cancel_learn()` ends an active capture wait.
+and `from_hex(text)` accept the other input formats. `cancel_learn()` ends an
+active capture wait.
+
+### Reading a stored payload
+
+`read_payload(device_id, command_id)` reads any command's stored payload and
+types it by the device's class. It returns `None` when nothing is stored.
+
+| Device class | Returned type |
+| --- | --- |
+| IR, RF | `IrPayload` |
+| `wifi_ip`, `wifi_roku`, `wifi_hue`, `wifi_sonos` | `NetworkCommand` (see below) |
+| Bluetooth, `wifi_mqtt`, anything undecodable | `CommandRecord` |
+
+All three have `blob`, `hex`, `to_command_row()` and `to_dict()`, and the edit
+helpers save any of them on a device of the same class. A `CommandRecord`'s
+`fields` holds the structured form where the class has one (`wifi_mqtt`:
+`device_id` and `command_id`, which the hub ignores) and is `None` otherwise.
+Only an `IrPayload` can be passed to `play()`:
+
+```python
+from sofabaton import IrPayload
+
+p = await proxy.read_payload(5, 2)
+if isinstance(p, IrPayload):
+    await proxy.play(p)
+elif p is not None:
+    print(type(p).__name__, p.hex)
+```
 
 ### Network commands
 
@@ -623,7 +649,9 @@ carries the target address (set the device block's `ip_address` in the bundle
 and sync the device) and the hub always POSTs to port 8060.
 `NetworkCommand.hue(path, body_block)` and `.sonos(path, body_block)` cover the
 two REST-over-head-address classes. `set_command_payload` takes a
-`NetworkCommand` too.
+`NetworkCommand` too. A command read back with `read_payload` keeps the
+record's opaque trailer bytes in `trailer_hex`, so its `blob` is exactly what
+the hub stores.
 
 ### Managed wifi devices
 

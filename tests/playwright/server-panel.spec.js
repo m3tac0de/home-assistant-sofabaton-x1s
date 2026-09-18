@@ -1312,9 +1312,11 @@ test.describe("control panel, views", () => {
     await dialog.locator("#payload-raw").fill(RAW_HEX.replace("02 30 00 00 00 00", "02 58 00 00 00 00"));
     await dialog.locator("#payload-save").click();
     await expect(dialog).toHaveCount(0);
-    // A command without a stored payload says so above the list.
+    // A command without a stored payload says so in the bottom dock, in the error tone.
     await commands.filter({ hasText: "Command ID 17" }).locator(".command-payload").click();
-    await expect(editor.locator("#payload-fetch-error")).toHaveText("The hub returned no payload for this command.");
+    await expect(msg(page)).toHaveText("The hub returned no payload for this command.");
+    await expect(page.locator("#bottom-dock")).toHaveClass(/dock--error/);
+    await expect(editor.locator("#payload-fetch-error")).toHaveCount(0);
     // Add command on an X1S IR device: the empty hex tabs; a pasted Pronto code becomes the bytes.
     await editor.locator("#editor-add-command").click();
     await expect(dialog.locator(".dialog-title")).toHaveText("Add command");

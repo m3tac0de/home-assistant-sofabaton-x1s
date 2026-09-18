@@ -1,34 +1,40 @@
-# payloads.py: the IR payload value type of the asyncio facade.
+# payloads.py: the command payload value types of the asyncio facade.
 #
-# ``IrPayload`` wraps one command's ``library_data`` body (the bytes the hub
-# stores and replays; the same bytes ``play_ir_blob`` takes and a blob dump
-# returns, without the replay-tail checksum byte). Its only jobs are to be
-# built from the formats payloads circulate in and to produce the bundle
-# row fields a ``sync_device`` command add needs. New source formats are new
-# constructors, never new facade methods (phase 3 plan, W3).
+# A command's payload is its ``library_data`` body (the bytes the hub stores
+# and replays; the same bytes a blob dump returns, without the replay-tail
+# checksum byte), typed by what the device class makes of it: ``IrPayload``
+# for IR, ``NetworkCommand`` for the structured network classes, and
+# ``CommandRecord`` for every other body (a Bluetooth key, a ``wifi_mqtt``
+# record). All three expose ``blob`` / ``hex`` / ``to_command_row`` /
+# ``to_dict``; ``read_payload`` returns whichever fits (``payload_from_body``).
+# New source formats are new constructors, never new facade methods (phase 3
+# plan, W3).
 from __future__ import annotations
 
 import ipaddress
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping, Optional, Sequence
+from typing import Any, Literal, Mapping, Optional, Sequence, Union
 
 from .blob_decoders import (
     build_raw_ir_blob_body,
     encode_decoded_blob,
     looks_like_descriptive_ir_blob,
     parse_pronto_hex,
+    try_decode_blob,
 )
 from .commands import build_descriptive_ir_blob_body
 from .protocol_const import (
+    DEVICE_CLASS_BLUETOOTH,
     DEVICE_CLASS_BY_CODE,
     DEVICE_CLASS_WIFI_HUE,
     DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_SONOS,
     normalize_device_class,
 )
 
-__all__ = ["IrPayload", "NetworkCommand", "MIN_PAYLOAD_BYTES"]
+__all__ = ["IrPayload", "NetworkCommand", "CommandRecord", "CommandPayload", "payload_from_body", "MIN_PAYLOAD_BYTES"]
 
 # The persist path refuses anything shorter (proxy_ir_blob.persist_ir_blob).
 MIN_PAYLOAD_BYTES = 10
@@ -202,10 +208,14 @@ class NetworkCommand:
 
     ``device_class`` must match the device the command goes on; the
     edit helpers refuse a mismatch before anything is planned.
+    ``trailer_hex`` holds the opaque bytes a stored record may carry after
+    its fields; a command read from the hub keeps them so its ``blob`` is
+    the stored body, a built one leaves it empty.
     """
 
     device_class: str
     fields: Mapping[str, Any]
+    trailer_hex: str = ""
 
     def __post_init__(self) -> None:
         cls = normalize_device_class(self.device_class)
@@ -216,6 +226,11 @@ class NetworkCommand:
             )
         object.__setattr__(self, "device_class", cls)
         object.__setattr__(self, "fields", dict(self.fields))
+        try:
+            trailer = bytes.fromhex(str(self.trailer_hex or "").replace(" ", ""))
+        except ValueError as err:
+            raise ValueError(f"trailer_hex {self.trailer_hex!r} is not hex") from err
+        object.__setattr__(self, "trailer_hex", trailer.hex(" "))
         # Encode once so a malformed command fails here, not in a sync job.
         self.blob  # noqa: B018 - validation through the property
 
@@ -303,25 +318,26 @@ class NetworkCommand:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "NetworkCommand":
-        """The inverse of :meth:`to_dict` (``{"device_class", "fields"}``)."""
+        """The inverse of :meth:`to_dict` (``{"device_class", "fields", "trailer_hex"}``,
+        the trailer optional)."""
 
         if not isinstance(data, Mapping):
             raise ValueError("a network command is a {device_class, fields} mapping")
         fields = data.get("fields")
         if not isinstance(fields, Mapping):
             raise ValueError("a network command needs a 'fields' mapping")
-        return cls(str(data.get("device_class") or ""), fields)
+        return cls(str(data.get("device_class") or ""), fields, str(data.get("trailer_hex") or ""))
 
     # -- views ----------------------------------------------------------------
 
     @property
     def decoded(self) -> dict[str, Any]:
-        """The ``restore_data.decoded`` block (edited, empty trailer)."""
+        """The ``restore_data.decoded`` block (marked edited, so a sync writes it)."""
 
         return {
             "class": self.device_class,
             "fields": dict(self.fields),
-            "trailer_hex": "",
+            "trailer_hex": self.trailer_hex,
             "edited": True,
         }
 
@@ -330,6 +346,10 @@ class NetworkCommand:
         """The record body the canonical writer produces for these fields."""
 
         return encode_decoded_blob(self.decoded)
+
+    @property
+    def hex(self) -> str:
+        return self.blob.hex(" ")
 
     @property
     def library_type(self) -> int:
@@ -355,4 +375,103 @@ class NetworkCommand:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        return {"device_class": self.device_class, "fields": dict(self.fields)}
+        return {"device_class": self.device_class, "fields": dict(self.fields), "trailer_hex": self.trailer_hex}
+
+
+# ---------------------------------------------------------------------------
+# Every other stored body (bluetooth, wifi_mqtt, undecodable records)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CommandRecord:
+    """A stored command body no richer type describes.
+
+    A Bluetooth key, a two-byte ``wifi_mqtt`` record (whose bytes the hub
+    ignores), or a network-class body that does not decode. ``fields`` is
+    the structured form where the class has one (``wifi_mqtt``:
+    ``device_id`` / ``command_id``), else None; ``blob`` is authoritative.
+    Save it on a device of the same class with :meth:`to_command_row` or
+    ``set_command_payload``.
+    """
+
+    device_class: Optional[str]
+    blob: bytes
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.blob, (bytes, bytearray)):
+            raise TypeError("CommandRecord.blob must be bytes")
+        if not self.blob:
+            raise ValueError("a command record has at least one byte")
+        object.__setattr__(self, "blob", bytes(self.blob))
+        object.__setattr__(self, "device_class", normalize_device_class(self.device_class))
+
+    @classmethod
+    def from_hex(cls, device_class: Optional[str], text: str) -> "CommandRecord":
+        """A stored body as hex text, for a device of ``device_class``."""
+
+        return cls(device_class, _parse_hex(text))
+
+    @property
+    def fields(self) -> Optional[dict[str, Any]]:
+        decoded = try_decode_blob(self.device_class, self.blob) if self.device_class else None
+        return dict(decoded["fields"]) if decoded else None
+
+    @property
+    def hex(self) -> str:
+        return self.blob.hex(" ")
+
+    @property
+    def library_type(self) -> int:
+        for code, name in DEVICE_CLASS_BY_CODE.items():
+            if name == self.device_class:
+                return int(code) & 0xFF
+        raise ValueError(f"no class code for {self.device_class or 'an unknown class'}")
+
+    def to_command_row(self, command_id: int, name: str) -> dict[str, Any]:
+        """The ``commands`` row a ``sync_device`` command add takes (the bytes as stored)."""
+
+        return {
+            "command_id": int(command_id) & 0xFF,
+            "name": str(name or "").strip() or f"Command {int(command_id) & 0xFF}",
+            "restore_data": {
+                "transport": "hub_code_record",
+                "library_type": self.library_type,
+                "button_code": 0,
+                "data_hex": self.blob.hex(),
+                "new": True,
+            },
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"device_class": self.device_class, "hex": self.hex, "fields": self.fields}
+
+
+# What ``AsyncXProxy.read_payload`` returns and the edit helpers take.
+CommandPayload = Union[IrPayload, NetworkCommand, CommandRecord]
+
+_RECORD_CLASSES = (DEVICE_CLASS_BLUETOOTH, DEVICE_CLASS_WIFI_MQTT)
+
+
+def payload_from_body(device_class: Any, body: bytes) -> CommandPayload:
+    """Type a stored body by its device's class.
+
+    A network class whose body decodes (and re-encodes to the same bytes)
+    is a :class:`NetworkCommand`; Bluetooth, ``wifi_mqtt``, an undecodable
+    network body and anything shorter than an IR payload is a
+    :class:`CommandRecord`; everything else (IR, RF, an unknown class) is an
+    :class:`IrPayload`.
+    """
+
+    cls = normalize_device_class(device_class)
+    body = bytes(body)
+    if cls in _NETWORK_CLASSES:
+        decoded = try_decode_blob(cls, body)
+        if decoded is not None:
+            command = NetworkCommand(cls, decoded["fields"], str(decoded.get("trailer_hex") or ""))
+            if command.blob == body:
+                return command
+        return CommandRecord(cls, body)
+    if cls in _RECORD_CLASSES or len(body) < MIN_PAYLOAD_BYTES:
+        return CommandRecord(cls, body)
+    return IrPayload(body)

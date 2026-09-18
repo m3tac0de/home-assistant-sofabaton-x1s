@@ -82,7 +82,7 @@ from .models import (
     SYNC_PRE_WRITE_FAILURES,
     snapshot_content_id,
 )
-from .payloads import MIN_PAYLOAD_BYTES, IrPayload
+from .payloads import CommandPayload, IrPayload, payload_from_body
 from .hub_apply import ApplyState, HubSyncResult, run_sync_hub
 from .version import __version__
 from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
@@ -295,10 +295,12 @@ class AsyncXProxy:
       when the hub cannot be written and :class:`HubRejectedError` when
       the hub refused, and rebase like a sync.
     * **payloads** — :class:`IrPayload` built from Pronto, raw timings, a
-      descriptor or hub hex; :meth:`read_payload`, :meth:`play`,
-      :meth:`learn_ir` / :meth:`cancel_learn`. Saving a payload as a new
-      command is a row edit: :meth:`IrPayload.to_command_row` then
-      :meth:`sync_device`.
+      descriptor or hub hex, :class:`NetworkCommand` for the network
+      classes, :class:`CommandRecord` for any other stored body;
+      :meth:`read_payload` returns the one the device's class calls for.
+      :meth:`play`, :meth:`learn_ir` / :meth:`cancel_learn` are IR only.
+      Saving a payload as a new command is a row edit: ``to_command_row``
+      then :meth:`sync_device`.
 
     Anything else in :data:`PROXY_METHODS` (provisioning, cache export,
     explicit requests) is awaitable too and delegates to the engine in
@@ -1968,8 +1970,16 @@ class AsyncXProxy:
 
     async def read_payload(
         self, device_id: int, command_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
-    ) -> Optional[IrPayload]:
-        """Read one command's stored payload from the hub, None when it has none."""
+    ) -> Optional[CommandPayload]:
+        """Read one command's stored payload from the hub, None when it has none.
+
+        The payload is typed by the device's class: an :class:`IrPayload`
+        on an IR (or RF) device, a :class:`NetworkCommand` on a network
+        class whose record decodes (its trailer kept, so ``blob`` is the
+        stored body), and a :class:`CommandRecord` for everything else (a
+        Bluetooth key, a ``wifi_mqtt`` record, an undecodable body). Each
+        saves back through ``to_command_row`` / ``edits.set_command_payload``.
+        """
 
         dev_lo, cmd_lo = int(device_id) & 0xFF, int(command_id) & 0xFF
         self._raise_if_cannot_fetch(f"payload:{dev_lo}:{cmd_lo}")
@@ -1982,10 +1992,8 @@ class AsyncXProxy:
         for command in (normalized or {}).get("commands") or []:
             if int(command.get("command_id") or 0) & 0xFF != cmd_lo:
                 continue
-            body_hex = str(command.get("command_blob") or "").strip()
-            if len(bytes.fromhex(body_hex)) >= MIN_PAYLOAD_BYTES if body_hex else False:
-                return IrPayload.from_hex(body_hex)
-            return None
+            body = bytes.fromhex(str(command.get("command_blob") or "").strip())
+            return payload_from_body(command.get("device_class"), body) if body else None
         return None
 
     async def play(self, payload: "IrPayload | bytes") -> None:

@@ -288,7 +288,6 @@ export class SbPanelDeviceEditor extends LitElement {
     _stepDialog: { state: true },
     _payloadDialog: { state: true },
     _payloadFetching: { state: true },
-    _payloadFetchError: { state: true },
     _addCommandPreparing: { state: true },
     _syncing: { state: true },
     _syncFailed: { state: true },
@@ -526,7 +525,6 @@ export class SbPanelDeviceEditor extends LitElement {
   /** The payload dialog's inputs (the card's add / edit modes), or null when closed. */
   private _payloadDialog: { mode: "add" | "edit"; commandId: number; snapshot: BackupCommandDecodedBlock | null; rawHex: string; fetchedHex: string } | null = null;
   private _payloadFetching: number | null = null;
-  private _payloadFetchError: string | null = null;
   private _addCommandPreparing = false;
   private _syncing = false;
   private _syncFailed: { stale: boolean; message: string } | null = null;
@@ -579,7 +577,6 @@ export class SbPanelDeviceEditor extends LitElement {
     this._sorter.cancel();
     this._payloadDialog = null;
     this._payloadFetching = null;
-    this._payloadFetchError = null;
     this._addCommandPreparing = false;
     this._syncing = false;
     this._syncFailed = null;
@@ -709,29 +706,33 @@ export class SbPanelDeviceEditor extends LitElement {
     return { className: className as BackupCommandDecodedBlock["className"], fields: { ...decoded.fields }, trailerHex: String(decoded.trailer_hex ?? ""), edited: false };
   }
 
+  /** A payload fetch / add failure, shown in the bottom dock (the shell's sb-message) where it is always in view. */
+  private _dockError(text: string): void {
+    this.dispatchEvent(new CustomEvent("sb-message", { bubbles: true, composed: true, detail: { text, ok: false } }));
+  }
+
   /** The braces: fetch the command's payload from the hub, then open the dialog on it. */
   private async _fetchAndEditPayload(commandId: number): Promise<void> {
     const hubId = this._hub?.hub_id;
     const deviceId = this.deviceId;
     if (!hubId || deviceId == null || this._payloadFetching != null) return;
     this._payloadFetching = commandId;
-    this._payloadFetchError = null;
     try {
       const response = await this.api.commandPayload(hubId, deviceId, commandId);
       if (!response.ok || !response.body) {
-        this._payloadFetchError = response.status === 404 && (response.body as { type?: string } | null)?.type === "payload_not_found" ? S.noPayloadReturned : problemText(response);
+        this._dockError(response.status === 404 && (response.body as { type?: string } | null)?.type === "payload_not_found" ? S.noPayloadReturned : problemText(response));
         return;
       }
       const payload = response.body;
       const hex = String(payload.hex ?? "").trim();
       if (!hex) {
-        this._payloadFetchError = S.noPayloadReturned;
+        this._dockError(S.noPayloadReturned);
         return;
       }
       const snapshot = this._snapshotFromPayload(payload);
       this._payloadDialog = { mode: "edit", commandId, snapshot, rawHex: snapshot ? "" : normalizeCommandPayloadHex(hex) ?? hex, fetchedHex: hex };
     } catch (err) {
-      this._payloadFetchError = err instanceof Error ? err.message : String(err);
+      this._dockError(err instanceof Error ? err.message : String(err));
     } finally {
       this._payloadFetching = null;
     }
@@ -742,7 +743,6 @@ export class SbPanelDeviceEditor extends LitElement {
     const hubId = this._hub?.hub_id;
     const deviceId = this.deviceId;
     if (!hubId || deviceId == null || !this._working || this._addCommandPreparing) return;
-    this._payloadFetchError = null;
     const deviceClass = this._deviceClass.toLowerCase();
     const open = (snapshot: BackupCommandDecodedBlock | null) => {
       this._payloadDialog = { mode: "add", commandId: 0, snapshot, rawHex: "", fetchedHex: "" };
@@ -762,12 +762,12 @@ export class SbPanelDeviceEditor extends LitElement {
       try {
         const response = await this.api.commandPayload(hubId, deviceId, existing[0].commandId);
         if (!response.ok || !response.body) {
-          this._payloadFetchError = problemText(response);
+          this._dockError(problemText(response));
           return;
         }
         open(this._snapshotFromPayload(response.body));
       } catch (err) {
-        this._payloadFetchError = err instanceof Error ? err.message : String(err);
+        this._dockError(err instanceof Error ? err.message : String(err));
       } finally {
         this._addCommandPreparing = false;
       }
@@ -794,7 +794,7 @@ export class SbPanelDeviceEditor extends LitElement {
     let data = restoreData;
     const newId = nextFreeDeviceCommandId(this._working, deviceId);
     if (newId == null) {
-      this._payloadFetchError = S.noFreeCommandSlot;
+      this._dockError(S.noFreeCommandSlot);
       this._payloadDialog = null;
       return;
     }
@@ -1549,7 +1549,6 @@ export class SbPanelDeviceEditor extends LitElement {
             ? nothing
             : html`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S.addCommand}</span></button></div>`}
         </div>
-        ${this._payloadFetchError ? html`<div class="section-status error" id="payload-fetch-error" role="alert">${icon(mdiAlertCircleOutline)}<span>${this._payloadFetchError}</span></div>` : nothing}
         ${items.length
           ? html`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => html`<div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>

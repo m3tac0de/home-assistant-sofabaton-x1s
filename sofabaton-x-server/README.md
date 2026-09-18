@@ -513,7 +513,9 @@ A code in any format your platform has (`{"pronto": ...}`,
 once with `POST /hubs/{id}/play`, saved as a new command with `POST
 .../devices/{did}/commands`, or written over an existing one with `PUT
 .../commands/{cid}/payload`; `GET .../commands/{cid}/payload` reads what
-the hub holds. `POST /hubs/{id}/learn` arms the hub's receiver and
+the hub holds for a command of any device class, with `kind` `raw` or
+`descriptive` (IR), `network` (a decoded wifi request) or `record` (a
+Bluetooth key, a `wifi_mqtt` record). Only IR payloads play. `POST /hubs/{id}/learn` arms the hub's receiver and
 returns the captured code as the job result.
 
 `POST /hubs/{id}/backup` returns a full, restorable bundle in the completed

@@ -144,6 +144,8 @@ CURATED_EXPORTS = {
     "RestoreResult",
     "IrPayload",
     "NetworkCommand",
+    "CommandRecord",
+    "CommandPayload",
     "edits",
     # managed wifi device value types
     "WIFI_SLOT_COUNT",

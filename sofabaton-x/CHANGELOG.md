@@ -18,6 +18,24 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   scope. The server's `PUT /hubs/{id}/devices/{did}` and its plan preview
   pass it, so the control panel's device editor can delete commands as the
   Home Assistant card does.
+- **Breaking:** `AsyncXProxy.read_payload()` returns a payload typed by the
+  device's class instead of always an `IrPayload`: an `IrPayload` on IR and
+  RF devices, a `NetworkCommand` on `wifi_ip` / `wifi_roku` / `wifi_hue` /
+  `wifi_sonos` devices, and the new `CommandRecord` for everything else (a
+  Bluetooth key, a `wifi_mqtt` record, a network body that does not decode).
+  It used to return `None` for Bluetooth and `wifi_mqtt` commands, whose
+  bodies are shorter than an IR payload, and an `IrPayload` with a
+  meaningless `kind` and `carrier_hz` for network commands. Check the type
+  (`isinstance(p, IrPayload)`) before reading IR-only attributes or calling
+  `play()`. The `CommandPayload` alias names the union.
+- `NetworkCommand` carries `trailer_hex`, the opaque bytes a stored record
+  may have after its fields, so one read from the hub re-encodes to the
+  stored body. It is empty for a built command and is included in
+  `to_dict()` / accepted by `from_dict()`. `NetworkCommand.hex` is new.
+- `edits.add_command()` and `edits.set_command_payload()` accept a
+  `CommandRecord` on a device of the same class, so any payload
+  `read_payload()` returns can be saved back. An `IrPayload` is now also
+  refused on a Bluetooth device.
 
 ## 0.2.0 (2026-09-16)
 

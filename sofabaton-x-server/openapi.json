@@ -2324,7 +2324,7 @@
         "type": "object"
       },
       "PayloadView": {
-        "description": "A stored payload: its kind, the hub body as hex, and what could be read from it.\n\n``decoded`` is the library's structured block for the classes it can\nround-trip (a descriptive IR payload, the wifi classes):\n``{\"class\", \"fields\", \"trailer_hex\"}`` as ``restore_data.decoded``\ncarries it; null when the body stays raw.",
+        "description": "A stored payload: its kind, the hub body as hex, and what could be read from it.\n\n``kind`` follows the library's payload types: ``raw`` or\n``descriptive`` for an IR payload, ``network`` for a decoded network\ncommand (``wifi_ip`` / ``wifi_roku`` / ``wifi_hue`` / ``wifi_sonos``)\nand ``record`` for any other stored body (a Bluetooth key, a two-byte\n``wifi_mqtt`` record, an undecodable network body). Only IR payloads\ncan be fired with ``POST /play``. ``decoded`` is the library's\nstructured block for the payloads that have one (a descriptive IR\npayload, a network command, a ``wifi_mqtt`` record):\n``{\"class\", \"fields\", \"trailer_hex\"}`` as ``restore_data.decoded``\ncarries it; null when the body stays raw.",
         "properties": {
           "carrier_hz": {
             "anyOf": [
@@ -7240,7 +7240,7 @@
             "description": "Gateway Timeout"
           }
         },
-        "summary": "Read a command's stored IR payload from the hub",
+        "summary": "Read a command's stored payload from the hub (any device class)",
         "tags": [
           "payload"
         ]

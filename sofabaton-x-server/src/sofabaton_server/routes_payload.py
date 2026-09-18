@@ -26,7 +26,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from sofabaton import AsyncXProxy, IrPayload
+from sofabaton import AsyncXProxy, CommandPayload, IrPayload, NetworkCommand
 from sofabaton.blob_decoders import try_decode_blob
 
 from . import API_PREFIX
@@ -88,8 +88,14 @@ class PayloadSpec(BaseModel):
 class PayloadView(BaseModel):
     """A stored payload: its kind, the hub body as hex, and what could be read from it.
 
-    ``decoded`` is the library's structured block for the classes it can
-    round-trip (a descriptive IR payload, the wifi classes):
+    ``kind`` follows the library's payload types: ``raw`` or
+    ``descriptive`` for an IR payload, ``network`` for a decoded network
+    command (``wifi_ip`` / ``wifi_roku`` / ``wifi_hue`` / ``wifi_sonos``)
+    and ``record`` for any other stored body (a Bluetooth key, a two-byte
+    ``wifi_mqtt`` record, an undecodable network body). Only IR payloads
+    can be fired with ``POST /play``. ``decoded`` is the library's
+    structured block for the payloads that have one (a descriptive IR
+    payload, a network command, a ``wifi_mqtt`` record):
     ``{"class", "fields", "trailer_hex"}`` as ``restore_data.decoded``
     carries it; null when the body stays raw.
     """
@@ -137,11 +143,24 @@ def _view(payload: IrPayload, device_class: Optional[str] = None) -> PayloadView
                        decoded=decoded)
 
 
+def _stored_view(payload: CommandPayload, device_class: Optional[str]) -> PayloadView:
+    """The view of what ``read_payload`` returned, by its type."""
+
+    if isinstance(payload, IrPayload):
+        return _view(payload, device_class)
+    if isinstance(payload, NetworkCommand):
+        decoded = {"class": payload.device_class, "fields": dict(payload.fields), "trailer_hex": payload.trailer_hex}
+        return PayloadView(kind="network", hex=payload.hex, decoded=decoded)
+    fields = payload.fields
+    decoded = {"class": payload.device_class, "fields": fields, "trailer_hex": ""} if fields is not None else None
+    return PayloadView(kind="record", hex=payload.hex, decoded=decoded)
+
+
 # -- payloads ---------------------------------------------------------------------
 
 
 @router.get("/devices/{device_id}/commands/{command_id}/payload", operation_id="getCommandPayload",
-            response_model=PayloadView, summary="Read a command's stored IR payload from the hub",
+            response_model=PayloadView, summary="Read a command's stored payload from the hub (any device class)",
             responses=_HUB_ERRORS)
 async def get_command_payload(request: Request, hub_id: str, device_id: int, command_id: int) -> PayloadView:
     proxy = _proxy(request, hub_id)
@@ -153,7 +172,7 @@ async def get_command_payload(request: Request, hub_id: str, device_id: int, com
     if payload is None:
         raise ApiProblem(404, "payload_not_found", "The command has no stored payload",
                          detail=f"device {device_id} command {command_id}", hub_id=hub_id)
-    return _view(payload, _device_class(snap.bundle, device_id))
+    return _stored_view(payload, _device_class(snap.bundle, device_id))
 
 
 def _device_class(bundle: dict[str, Any], device_id: int) -> Optional[str]:

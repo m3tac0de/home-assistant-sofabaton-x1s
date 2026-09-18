@@ -15686,7 +15686,6 @@ var SbPanelDeviceEditor = class extends i4 {
     /** The payload dialog's inputs (the card's add / edit modes), or null when closed. */
     this._payloadDialog = null;
     this._payloadFetching = null;
-    this._payloadFetchError = null;
     this._addCommandPreparing = false;
     this._syncing = false;
     this._syncFailed = null;
@@ -15871,7 +15870,6 @@ var SbPanelDeviceEditor = class extends i4 {
     this._sorter.cancel();
     this._payloadDialog = null;
     this._payloadFetching = null;
-    this._payloadFetchError = null;
     this._addCommandPreparing = false;
     this._syncing = false;
     this._syncFailed = null;
@@ -15980,29 +15978,32 @@ var SbPanelDeviceEditor = class extends i4 {
     if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
     return { className, fields: { ...decoded.fields }, trailerHex: String(decoded.trailer_hex ?? ""), edited: false };
   }
+  /** A payload fetch / add failure, shown in the bottom dock (the shell's sb-message) where it is always in view. */
+  _dockError(text) {
+    this.dispatchEvent(new CustomEvent("sb-message", { bubbles: true, composed: true, detail: { text, ok: false } }));
+  }
   /** The braces: fetch the command's payload from the hub, then open the dialog on it. */
   async _fetchAndEditPayload(commandId) {
     const hubId = this._hub?.hub_id;
     const deviceId = this.deviceId;
     if (!hubId || deviceId == null || this._payloadFetching != null) return;
     this._payloadFetching = commandId;
-    this._payloadFetchError = null;
     try {
       const response = await this.api.commandPayload(hubId, deviceId, commandId);
       if (!response.ok || !response.body) {
-        this._payloadFetchError = response.status === 404 && response.body?.type === "payload_not_found" ? S3.noPayloadReturned : problemText(response);
+        this._dockError(response.status === 404 && response.body?.type === "payload_not_found" ? S3.noPayloadReturned : problemText(response));
         return;
       }
       const payload = response.body;
       const hex = String(payload.hex ?? "").trim();
       if (!hex) {
-        this._payloadFetchError = S3.noPayloadReturned;
+        this._dockError(S3.noPayloadReturned);
         return;
       }
       const snapshot = this._snapshotFromPayload(payload);
       this._payloadDialog = { mode: "edit", commandId, snapshot, rawHex: snapshot ? "" : normalizeCommandPayloadHex(hex) ?? hex, fetchedHex: hex };
     } catch (err) {
-      this._payloadFetchError = err instanceof Error ? err.message : String(err);
+      this._dockError(err instanceof Error ? err.message : String(err));
     } finally {
       this._payloadFetching = null;
     }
@@ -16012,7 +16013,6 @@ var SbPanelDeviceEditor = class extends i4 {
     const hubId = this._hub?.hub_id;
     const deviceId = this.deviceId;
     if (!hubId || deviceId == null || !this._working || this._addCommandPreparing) return;
-    this._payloadFetchError = null;
     const deviceClass = this._deviceClass.toLowerCase();
     const open = (snapshot) => {
       this._payloadDialog = { mode: "add", commandId: 0, snapshot, rawHex: "", fetchedHex: "" };
@@ -16032,12 +16032,12 @@ var SbPanelDeviceEditor = class extends i4 {
       try {
         const response = await this.api.commandPayload(hubId, deviceId, existing[0].commandId);
         if (!response.ok || !response.body) {
-          this._payloadFetchError = problemText(response);
+          this._dockError(problemText(response));
           return;
         }
         open(this._snapshotFromPayload(response.body));
       } catch (err) {
-        this._payloadFetchError = err instanceof Error ? err.message : String(err);
+        this._dockError(err instanceof Error ? err.message : String(err));
       } finally {
         this._addCommandPreparing = false;
       }
@@ -16059,7 +16059,7 @@ var SbPanelDeviceEditor = class extends i4 {
     let data = restoreData;
     const newId = nextFreeDeviceCommandId(this._working, deviceId);
     if (newId == null) {
-      this._payloadFetchError = S3.noFreeCommandSlot;
+      this._dockError(S3.noFreeCommandSlot);
       this._payloadDialog = null;
       return;
     }
@@ -16628,7 +16628,6 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="quick-access-head-main"><div class="quick-access-title">${S3.detailCommands}</div><div class="quick-access-sub">${S3.commandsLiveHelp}</div></div>
           ${callback ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon2(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S3.addCommand}</span></button></div>`}
         </div>
-        ${this._payloadFetchError ? b2`<div class="section-status error" id="payload-fetch-error" role="alert">${icon2(mdiAlertCircleOutline)}<span>${this._payloadFetchError}</span></div>` : A}
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
                 <div class="quick-access-row">
@@ -16829,7 +16828,6 @@ SbPanelDeviceEditor.properties = {
   _stepDialog: { state: true },
   _payloadDialog: { state: true },
   _payloadFetching: { state: true },
-  _payloadFetchError: { state: true },
   _addCommandPreparing: { state: true },
   _syncing: { state: true },
   _syncFailed: { state: true },

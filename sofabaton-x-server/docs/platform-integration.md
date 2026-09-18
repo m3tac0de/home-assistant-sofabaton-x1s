@@ -444,7 +444,11 @@ A code in any format your platform has (`{"pronto": "..."}`,
 once with `POST /hubs/{id}/play`, saved as a new command with `POST
 /hubs/{id}/devices/{did}/commands` (`{"name": ..., "payload": {...}}`),
 or written over an existing command with `PUT .../commands/{cid}/payload`.
-`GET .../commands/{cid}/payload` reads what the hub holds. `POST
+`GET .../commands/{cid}/payload` reads what the hub holds for a command
+of any device class; `kind` is `raw` or `descriptive` for IR, `network` for
+a decoded wifi request and `record` for any other body (a Bluetooth key, a
+`wifi_mqtt` record), and `decoded` carries the structured fields where the
+class has them. `POST
 /hubs/{id}/learn` arms the hub's receiver and returns the captured code
 as the job result; cancel the job to stop waiting.
 

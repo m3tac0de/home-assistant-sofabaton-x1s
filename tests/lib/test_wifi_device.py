@@ -301,3 +301,33 @@ def test_edit_helpers_refuse_a_class_mismatch_before_planning() -> None:
         edits.add_command(base, 5, ir, "Wrong")                 # IR on a wifi_ip device
     added, _ = edits.add_command(base, 7, ir, "Fine")           # IR on the TV still works
     assert _device_plan(base, added, 7)[0][0] == "command_add"
+
+
+def test_command_records_save_back_on_a_device_of_their_class() -> None:
+    base = _bundle()
+    base["devices"].append(_wifi_device_entry(8, "bluetooth", {1: "Home"}))
+    base["devices"].append(_wifi_device_entry(9, "wifi_mqtt", {1: "Up"}))
+    key = _pkg.CommandRecord("bluetooth", bytes([0x07, 0x00, 0x27]))
+    added, slot = edits.add_command(base, 8, key, "Back")
+    plan = _device_plan(base, added, 8)
+    assert slot == 2 and [k for k, _ in plan] == ["command_add"]
+    rd = plan[0][1]["restore_data"]
+    assert rd["data_hex"] == "070027" and rd["library_type"] == 0x03 and rd["new"]
+
+    replaced = edits.set_command_payload(base, 9, 1, _pkg.CommandRecord("wifi_mqtt", bytes([0x09, 0x01])))
+    plan = _device_plan(base, replaced, 9)
+    assert [k for k, _ in plan] == ["command_payload"]
+    assert plan[0][1]["restore_data"]["data_hex"] == "0901" and plan[0][1]["restore_data"]["library_type"] == 0x20
+
+    with pytest.raises(ValueError):
+        edits.add_command(base, 9, key, "Wrong")                # a Bluetooth key on a wifi_mqtt device
+    with pytest.raises(ValueError):
+        edits.add_command(base, 8, _pkg.IrPayload.from_descriptor("P:NEC1 D:4 S:5 F:21"), "Wrong")   # IR on Bluetooth
+
+
+def test_network_command_trailer_round_trips() -> None:
+    cmd = NetworkCommand("wifi_roku", {"path": "keypress/Home"}, "F1")
+    assert cmd.trailer_hex == "f1" and cmd.blob.endswith(b"\xf1") and cmd.hex == cmd.blob.hex(" ")
+    assert NetworkCommand.from_dict(cmd.to_dict()) == cmd
+    assert cmd.decoded["trailer_hex"] == "f1"
+    assert _pkg.payloads.payload_from_body("wifi_roku", cmd.blob) == cmd

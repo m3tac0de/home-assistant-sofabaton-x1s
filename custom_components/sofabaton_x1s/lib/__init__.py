@@ -157,7 +157,7 @@ from .errors import (  # noqa: F401
     WifiUpdateFailed,
     IrLearnError,
 )
-from .payloads import IrPayload, NetworkCommand  # noqa: F401
+from .payloads import CommandPayload, CommandRecord, IrPayload, NetworkCommand  # noqa: F401
 from . import edits  # noqa: F401
 
 # Managed wifi device value types (deploy / update through the facade).
@@ -285,6 +285,8 @@ _CURATED = [
     "RestoreResult",
     "IrPayload",
     "NetworkCommand",
+    "CommandRecord",
+    "CommandPayload",
     "edits",
     # managed wifi device value types
     "WIFI_SLOT_COUNT",

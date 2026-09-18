@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from sofabaton import IrPayload, NetworkCommand
+from sofabaton import CommandRecord, IrPayload, NetworkCommand
 
 from sofabaton_server import API_PREFIX
 from sofabaton_server.app import create_app
@@ -58,11 +58,23 @@ def test_read_and_play_payloads_in_every_format(tmp_path: Path) -> None:
         assert r.json()["decoded"]["class"] == "ir" and r.json()["decoded"]["fields"] == {"descriptor": "P:NEC1 D:4 S:5 F:21"}
         # ... and a Roku keypress on a wifi_roku device (the wifi classes' structured forms edit these fields).
         proxy.device_blocks[1] = {"device_class": "wifi_roku"}
-        roku = NetworkCommand.roku("/keypress/Home")
-        proxy.payloads[(1, 5)] = IrPayload.from_bytes(roku.blob)
+        roku = NetworkCommand("wifi_roku", {"path": "keypress/Home"}, "f1")
+        proxy.payloads[(1, 5)] = roku
         r = client.get(f"{H}/devices/1/commands/5/payload")
-        assert r.status_code == 200
-        assert r.json()["decoded"]["class"] == "wifi_roku" and r.json()["decoded"]["fields"] == dict(roku.fields)
+        assert r.status_code == 200 and r.json()["kind"] == "network" and r.json()["hex"] == roku.hex
+        assert r.json()["decoded"] == {"class": "wifi_roku", "fields": {"path": "keypress/Home"}, "trailer_hex": "f1"}
+        assert r.json()["carrier_hz"] is None
+        # Every other stored body is a record: a two-byte wifi_mqtt record decodes ...
+        proxy.device_blocks[1] = {"device_class": "wifi_mqtt"}
+        proxy.payloads[(1, 6)] = CommandRecord("wifi_mqtt", bytes([0x07, 0x06]))
+        r = client.get(f"{H}/devices/1/commands/6/payload")
+        assert r.status_code == 200 and r.json()["kind"] == "record" and r.json()["hex"] == "07 06"
+        assert r.json()["decoded"] == {"class": "wifi_mqtt", "trailer_hex": "", "fields": {"device_id": 7, "command_id": 6}}
+        # ... and a Bluetooth key stays raw.
+        proxy.device_blocks[1] = {"device_class": "bluetooth"}
+        proxy.payloads[(1, 7)] = CommandRecord("bluetooth", bytes([0x00, 0x4F, 0x01]))
+        r = client.get(f"{H}/devices/1/commands/7/payload")
+        assert r.status_code == 200 and r.json() == {"kind": "record", "hex": "00 4f 01", "descriptor": None, "carrier_hz": None, "decoded": None}
         proxy.device_blocks.pop(1, None)
         r = client.get(f"{H}/devices/1/commands/3/payload")
         assert r.status_code == 404 and r.json()["type"] == "payload_not_found"

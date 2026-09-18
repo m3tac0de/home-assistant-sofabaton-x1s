@@ -292,7 +292,7 @@ class FakeProxy:
         ]}
 
     def _resolve_device_class(self, device_id):
-        return "ir"
+        return getattr(self, "classes", {}).get(device_id, "ir")
 
     def play_ir_blob(self, blob, **kwargs):
         self.write_calls.append(("play", bytes(blob)))
@@ -2131,6 +2131,30 @@ def test_payload_read_play_and_learn() -> None:
         assert got == raw and got.kind == "raw" and got.carrier_hz == 38000
         assert await proxy.read_payload(5, 3) is None
         assert fake.write_calls[:2] == [("dump", 5, 2), ("dump", 5, 3)]
+        # The payload is typed by the device's class: a short body on an IR-class device is a record ...
+        fake.payloads[(5, 4)] = bytes([0x05, 0x04])
+        short = await proxy.read_payload(5, 4)
+        assert isinstance(short, _pkg.CommandRecord) and short.blob == bytes([0x05, 0x04])
+        # ... a wifi_mqtt record decodes its fields, a Bluetooth key stays bytes ...
+        fake.classes = {6: "wifi_mqtt"}
+        fake.payloads[(6, 1)] = bytes([0x06, 0x01])
+        mqtt = await proxy.read_payload(6, 1)
+        assert isinstance(mqtt, _pkg.CommandRecord) and mqtt.device_class == "wifi_mqtt"
+        assert mqtt.fields == {"device_id": 6, "command_id": 1}
+        fake.classes[7] = "bluetooth"
+        fake.payloads[(7, 1)] = bytes([0x07, 0x00, 0x27])
+        bt = await proxy.read_payload(7, 1)
+        assert isinstance(bt, _pkg.CommandRecord) and bt.fields is None and bt.hex == "07 00 27"
+        # ... and a network record is a NetworkCommand that keeps its trailer, so blob is the stored body.
+        fake.classes[8] = "wifi_roku"
+        stored = _pkg.NetworkCommand("wifi_roku", {"path": "keypress/Home"}, "f1").blob
+        fake.payloads[(8, 1)] = stored
+        roku = await proxy.read_payload(8, 1)
+        assert isinstance(roku, _pkg.NetworkCommand) and roku.fields == {"path": "keypress/Home"}
+        assert roku.trailer_hex == "f1" and roku.blob == stored
+        # A network body that does not decode stays a record rather than being misread.
+        fake.payloads[(8, 2)] = bytes([0xFF] * 12)
+        assert isinstance(await proxy.read_payload(8, 2), _pkg.CommandRecord)
 
         await proxy.play(got)
         await proxy.play(got.blob)
