@@ -7564,7 +7564,7 @@ var SofabatonRemoteCard = class extends i4 {
     }
     if (this._layoutSignatureCache === nextSignature) return;
     this._layoutSignatureCache = nextSignature;
-    if (this._prefersReducedMotion()) {
+    if (this._store.backend?.kind === "server" || this._prefersReducedMotion()) {
       this._clearLayoutOverlay();
       return;
     }
@@ -8933,12 +8933,12 @@ var SbHaSelect = class extends HTMLElement {
         }
         .option + .option { margin-top: 2px; }
       </style>
-      <button class="trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
-        <span class="label"></span>
-        <span class="value"></span>
+      <button class="trigger" part="trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="options">
+        <span class="label" part="label"></span>
+        <span class="value" part="value"></span>
         <span class="caret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"></path></svg></span>
       </button>
-      <div class="menu" role="listbox"></div>
+      <div class="menu" part="menu" id="options" role="listbox"></div>
     `;
     this._labelEl = this._shadow.querySelector(".label");
     this._valueEl = this._shadow.querySelector(".value");
@@ -8974,6 +8974,21 @@ var SbHaSelect = class extends HTMLElement {
         const next = event.relatedTarget;
         if (next && this._shadow.contains(next)) return;
         if (this.hasAttribute("open")) this._closeMenu();
+      });
+      this._menu?.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this._closeMenu();
+          this._trigger?.focus();
+          return;
+        }
+        const buttons = Array.from(this._menu?.querySelectorAll(".option") ?? []);
+        const index = buttons.indexOf(this._shadow.activeElement);
+        const next = event.key === "ArrowDown" ? Math.min(buttons.length - 1, index + 1) : event.key === "ArrowUp" ? Math.max(0, index - 1) : event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : null;
+        if (next != null) {
+          event.preventDefault();
+          buttons[next]?.focus();
+        }
       });
     }
     this._observer.observe(this, { childList: true, subtree: true, characterData: true });
@@ -9019,7 +9034,8 @@ var SbHaSelect = class extends HTMLElement {
     const items = Array.from(this.children);
     this._options = items.map((item) => ({
       value: String(item.value ?? item.getAttribute("value") ?? item.textContent ?? ""),
-      label: (item.textContent ?? "").trim()
+      label: (item.textContent ?? "").trim(),
+      defaultLayout: item.classList.contains("sb-option-default")
     }));
     if (!this._options.some((option) => option.value === current)) {
       this._value = this._options[0]?.value ?? "";
@@ -9039,6 +9055,8 @@ var SbHaSelect = class extends HTMLElement {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "option";
+      button.setAttribute("part", option.defaultLayout ? "option default-option" : "option");
+      button.dataset.value = option.value;
       button.setAttribute("role", "option");
       button.textContent = option.label;
       button.dataset.selected = String(option.value === this._value);
@@ -9074,7 +9092,8 @@ var SbHaSelect = class extends HTMLElement {
     this.dispatchEvent(new Event("closed", { bubbles: true, composed: true }));
   }
   /**
-   * Put the fixed menu under the trigger. Measured as a delta from where
+   * Put the fixed menu on the roomier side of the trigger, within the
+   * visible card where possible. Measured as a delta from where
    * the menu lands at (0, 0): a transformed ancestor (the card animates
    * with one) makes itself the containing block for fixed descendants,
    * and a zoomed ancestor (the page's zoom= parameter) scales the length
@@ -9093,6 +9112,21 @@ var SbHaSelect = class extends HTMLElement {
     menu.style.left = `${(anchor.left - origin.left) / zoom}px`;
     menu.style.top = `${(anchor.bottom + 4 - origin.top) / zoom}px`;
     menu.style.width = `${anchor.width / zoom}px`;
+    const card = this.closest("ha-card")?.getBoundingClientRect();
+    const viewportTop = 8;
+    const viewportBottom = window.innerHeight - 8;
+    let top = Math.max(viewportTop, card ? card.top + 8 : viewportTop);
+    let bottom = Math.min(viewportBottom, card ? card.bottom - 8 : viewportBottom);
+    const minimumHeight = Math.min(menu.scrollHeight * zoom, 64 * zoom);
+    if (Math.max(anchor.top - 4 - top, bottom - anchor.bottom - 4) < minimumHeight) {
+      top = viewportTop;
+      bottom = viewportBottom;
+    }
+    const below = Math.max(0, bottom - anchor.bottom - 4);
+    const above = Math.max(0, anchor.top - 4 - top);
+    const upwards = above > below;
+    menu.style.maxHeight = `${Math.min(window.innerHeight * 0.6, upwards ? above : below) / zoom}px`;
+    if (upwards) menu.style.top = `${(anchor.top - 4 - origin.top - menu.getBoundingClientRect().height) / zoom}px`;
   }
 };
 function effectiveZoom(element) {

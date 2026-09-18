@@ -185,6 +185,11 @@ const actions = (page) => page.locator("#hub-actions");
 const msg = (page) => page.locator("#hubs-msg");
 const shot = (testInfo, name) => `test-results/server-panel-${name}-${testInfo.project.name}.png`;
 
+async function selectRemoteLayout(select, value) {
+  await select.locator(".trigger").click();
+  await select.locator(`.option[data-value="${value}"]`).click();
+}
+
 test.describe("control panel, responsive docks", () => {
   for (const width of [320, 390, 600, 768, 844, 1040, 1440]) {
     test(`docks and menus fit at ${width}px with long names and two actions`, async ({ page }, testInfo) => {
@@ -569,7 +574,7 @@ test.describe("control panel, shell", () => {
 
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs[0].active_job = null;
-    state.hubs[0].last_job = job({ status: "done", finished_at: "2026-09-17T10:00:09Z" });
+    state.hubs[0].last_job = job({ status: "done", finished_at: new Date().toISOString() });
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: state.hubs[0].last_job }));
     await expect(page.locator("#blocked-scrim")).toHaveCount(0);
     await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
@@ -579,7 +584,7 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-link")).toBeVisible();
 
     // A failure stays until dismissed, and survives a reload until then.
-    const failed = job({ job_id: "j2", status: "failed", finished_at: "2026-09-17T10:05:00Z", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
+    const failed = job({ job_id: "j2", status: "failed", finished_at: new Date().toISOString(), error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
     state.hubs[0].last_job = failed;
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: failed }));
     await expect(page.locator("#dock-status")).toContainText("Restoring: Hub disconnected");
@@ -787,6 +792,7 @@ test.describe("control panel, views", () => {
 
     await page.click('#subtabs button[data-sub="layout"]');
     await expect(page).toHaveURL(/#\/e26a44861b45\/remote\/layout$/);
+    await page.click("#remote-json");
     await expect(page.locator("#remote-doc")).toHaveValue(/"show_dpad": false/);
     await expect(page.locator("#remote-status")).toContainText("stored document");
     // Saving a document applies it to the mounted card at once.
@@ -818,6 +824,231 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-link")).toHaveAttribute("href", /\/ui\/remote\/\?hub=192\.168\.1\.60$/);
     await expect.poll(() => calls.some((c) => c.key === "GET /hubs/192.168.1.60/ui/remote-card")).toBe(true);
     await expect(page.locator("#remote-banner")).toBeVisible();
+  });
+
+  test("remote visual editor previews, inherits layouts, reorders and round-trips JSON", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], document: { show_dpad: false, custom_favorites: [{ name: "Home", device_id: 1, command_id: 9 }], future_setting: { keep: true } } };
+    const { calls } = await mockServer(page, state);
+    await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
+    const editor = page.locator("sb-panel-remote-editor");
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    const layout = editor.locator("#layout-select");
+    await expect(layout.locator('mwc-list-item[value="101"]')).toHaveCount(1);
+    const dpad = editor.locator('[data-group="dpad"] input');
+    const preview = page.locator("#stage sofabaton-virtual-remote");
+    await expect(dpad).not.toBeChecked();
+    await dpad.check();
+    await expect(preview.locator(".dpad >> visible=true").first()).toBeVisible();
+    await expect(page.locator("#remote-status")).toContainText("Unsaved");
+    expect(calls.filter((c) => c.key.startsWith("PUT "))).toHaveLength(0);
+    await expect(page.locator("#stage")).toHaveAttribute("inert", "");
+    await expect(preview).toHaveJSProperty("editMode", true);
+
+    // A per-activity override does not alter the shared default.
+    await selectRemoteLayout(layout, "101");
+    await dpad.uncheck();
+    await expect(preview.locator(".dpad >> visible=true")).toHaveCount(0);
+    await selectRemoteLayout(layout, "default");
+    await expect(dpad).toBeChecked();
+    const groups = editor.locator("[data-group]");
+    const initial = await groups.evaluateAll((rows) => rows.map((r) => r.dataset.group));
+    const handle = groups.nth(1).locator(".handle");
+    await handle.scrollIntoViewIfNeeded();
+    const from = await handle.boundingBox();
+    const to = await groups.nth(0).boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, to.y + 4, { steps: 8 });
+    await page.mouse.up();
+    await expect(groups.nth(0)).toHaveAttribute("data-group", initial[1]);
+    await groups.nth(0).locator(".handle").focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(groups.nth(0)).toHaveAttribute("data-group", initial[0]);
+    // Keyed rows keep focus, so consecutive keyboard moves work.
+    await page.keyboard.press("ArrowDown");
+    await expect(groups.nth(2)).toHaveAttribute("data-group", initial[1]);
+
+    await page.click("#remote-json");
+    const json = JSON.parse(await page.locator("#remote-doc").inputValue());
+    expect(json.layouts["101"].show_dpad).toBe(false);
+    expect(json.future_setting).toEqual({ keep: true });
+    expect(json.custom_favorites).toHaveLength(1);
+    await page.fill("#remote-doc", "{broken");
+    await page.click("#remote-visual");
+    await expect(page.locator("#remote-status")).toContainText("not valid JSON");
+    await expect(page.locator("#remote-doc")).toHaveValue("{broken");
+    await page.fill("#remote-doc", JSON.stringify(json));
+    await page.click("#remote-visual");
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    expect(state.document).toEqual(json);
+    expect(calls.filter((c) => c.key.includes("/send"))).toHaveLength(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: shot(testInfo, "remote-visual-editor"), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+
+  test("remote visual editor edits styling, long press, device layouts and shortcuts", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], document: { key_style: "panel" } };
+    await mockServer(page, state);
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/entities/1/buttons`, (route) => route.fulfill({ json: [] }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/1/commands`, (route) => route.fulfill({ json: [{ command_id: 9, label: "Home" }, { command_id: 17, label: "Up" }] }));
+    await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
+    const editor = page.locator("sb-panel-remote-editor");
+    await editor.locator("summary").filter({ hasText: "General options" }).click();
+    await editor.getByRole("switch", { name: "Enable hold-to-repeat", exact: true }).check();
+    await editor.locator(".sub").getByRole("switch", { name: "Volume", exact: true }).uncheck();
+    await editor.locator("summary").filter({ hasText: "Styling options" }).click();
+    await editor.getByLabel("Button style", { exact: true }).selectOption("glossy");
+    await editor.getByRole("switch", { name: "Customize background color", exact: true }).check();
+    await editor.getByLabel("Background color", { exact: true }).fill("#102030");
+    await editor.getByLabel("Maximum width (px)", { exact: true }).fill("400");
+    await editor.getByLabel("Maximum width (px)", { exact: true }).press("Tab");
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    const layout = editor.locator("#layout-select");
+    await expect(layout.locator('mwc-list-item[value="device:1"]')).toHaveCount(1);
+    await selectRemoteLayout(layout, "device:default");
+    await editor.locator('[data-group="dpad"] input').uncheck();
+    await selectRemoteLayout(layout, "device:1");
+    await expect(editor.locator('[data-group="dpad"] input')).not.toBeChecked();
+    await editor.locator('[data-group="dpad"] input').check();
+    await editor.locator(".slots button").first().click();
+    await editor.getByLabel("Shortcut icon", { exact: true }).fill("mdi:home");
+    await editor.getByLabel("Shortcut command", { exact: true }).selectOption("9");
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    expect(state.document).toMatchObject({
+      key_style: "glossy", tinted_panels: true, max_width: 400, background_override: [16, 32, 48],
+      hold_repeat: { enabled: true, volume: false },
+      device_mode: { layouts: { default: { show_dpad: false }, "1": { show_dpad: true } }, shortcuts: { "1": { left: { icon: "mdi:home", command_id: 9 } } } },
+    });
+    await editor.getByRole("button", { name: "Reset layout", exact: true }).click();
+    await expect(editor.locator('[data-group="dpad"] input')).not.toBeChecked();
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    expect(state.document.device_mode.layouts["1"]).toBeUndefined();
+    expect(state.document.device_mode.shortcuts["1"].left.command_id).toBe(9);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: shot(testInfo, "remote-device-layout"), fullPage: true });
+  });
+
+  test("remote editor groups layout choices and keeps field focus clear of labels", async ({ page }, testInfo) => {
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
+    const editor = page.locator("sb-panel-remote-editor");
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    const layout = editor.locator("#layout-select");
+    await expect(layout.locator('mwc-list-item[value="device:1"]')).toHaveCount(1);
+    await layout.locator(".trigger").click();
+    const headers = layout.locator('[part~="default-option"]');
+    await expect(headers).toHaveText(["Default activity layout", "Default device layout"]);
+    await expect(headers.first()).toHaveCSS("border-bottom-width", "2px");
+    await expect(layout.locator(".menu")).toBeVisible();
+    await page.screenshot({ path: shot(testInfo, "remote-layout-menu"), fullPage: true });
+    await layout.locator(".trigger").press("ArrowDown");
+    await expect(layout.getByRole("option", { name: "Watch TV", exact: true })).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(layout.getByRole("option", { name: "TV", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(layout.locator(".menu")).not.toBeVisible();
+    await expect(layout.locator(".trigger")).toBeFocused();
+    await expect(layout.locator(".value")).toHaveText("Default activity layout");
+
+    const general = editor.locator("details").filter({ hasText: "General options" });
+    await general.locator("summary").click();
+    await expect(editor.locator("details[open]")).toHaveCount(1);
+    await expect(general).toHaveAttribute("open", "");
+    await expect(layout).not.toBeVisible();
+    const initial = general.getByRole("combobox", { name: "Initial view", exact: true });
+    await initial.focus();
+    expect(await initial.evaluate((input) => {
+      const label = input.parentElement.querySelector(".field-label").getBoundingClientRect();
+      return label.bottom <= input.getBoundingClientRect().top && getComputedStyle(input).outlineStyle === "none";
+    })).toBe(true);
+    await expect(general.locator("summary")).toHaveCSS("min-height", "48px");
+    const feature = general.locator(".feature").first();
+    expect(await feature.evaluate((row) => {
+      const text = row.querySelector(".option span").getBoundingClientRect();
+      const toggle = row.querySelector("input").getBoundingClientRect();
+      return Math.abs(text.top - toggle.top) < 2 && toggle.left >= text.right;
+    })).toBe(true);
+    await page.screenshot({ path: shot(testInfo, "remote-general-focus"), fullPage: true });
+
+    await editor.locator("summary").filter({ hasText: "Layout options" }).press("Enter");
+    await expect(editor.locator("details[open]")).toHaveCount(1);
+    await expect(general).not.toHaveAttribute("open", "");
+    const increment = editor.getByRole("button", { name: "More visible rows" });
+    await expect(increment).toBeDisabled();
+    await editor.getByRole("switch", { name: "Macros/Favorites as rows", exact: true }).check();
+    await expect(increment).toBeEnabled();
+    await increment.click();
+    await expect(editor.locator(".stepper output")).toHaveText("3");
+  });
+
+  test("remote configuration actions stay above the dock while scrolling", async ({ page }, testInfo) => {
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
+    const editor = page.locator("sb-panel-remote-editor");
+    await expect(editor.locator("details")).toHaveCount(3);
+    await expect(editor.locator("details[open]")).toHaveCount(0);
+    const assertActionsVisible = async () => {
+      const dock = await page.locator("#bottom-dock").boundingBox();
+      for (const id of ["remote-save", "remote-load", "remote-delete"]) {
+        const button = page.locator(`#${id}`);
+        await expect(button).toBeInViewport({ ratio: 1 });
+        const bounds = await button.boundingBox();
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(dock.y);
+      }
+    };
+    await assertActionsVisible();
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    await page.evaluate(() => window.scrollTo(0, 300));
+    await assertActionsVisible();
+    await page.screenshot({ path: shot(testInfo, "remote-sticky-actions") });
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await assertActionsVisible();
+    await page.click("#remote-json");
+    await page.fill("#remote-doc", "{invalid");
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("not valid JSON");
+    await assertActionsVisible();
+    await page.fill("#remote-doc", "{}");
+    await page.click("#remote-visual");
+    await expect(editor.locator("details[open]")).toHaveCount(0);
+    await editor.locator("summary").filter({ hasText: "Styling options" }).click();
+    await editor.locator("summary").filter({ hasText: "Styling options" }).press("Enter");
+    await expect(editor.locator("details[open]")).toHaveCount(0);
+  });
+
+  test("remote editor retains failed saves and ignores responses after switching hubs", async ({ page }) => {
+    const state = { hubs: [LIVING, OFFICE], seen: [], document: { show_dpad: false } };
+    await mockServer(page, state);
+    await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
+    await page.locator("sb-panel-remote-editor summary").filter({ hasText: "Layout options" }).click();
+    await page.locator('sb-panel-remote-editor [data-group="dpad"] input').check();
+    const url = `**${API}/hubs/${LIVING.hub_id}/ui/remote-card`;
+    await page.route(url, async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await route.fulfill({ status: 500, json: { type: "save_failed", detail: "Storage unavailable" } });
+    });
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("Storage unavailable");
+    await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).toBeChecked();
+    let finish;
+    const gate = new Promise((resolve) => { finish = resolve; });
+    await page.route(url, async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await gate;
+      await route.fulfill({ json: { document: { show_dpad: true }, updated_at: "2026-09-18T00:00:00Z" } });
+    });
+    const pending = page.waitForRequest((r) => r.method() === "PUT");
+    await page.click("#remote-save");
+    await pending;
+    await pickHub(page, OFFICE.hub_id);
+    await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).not.toBeChecked();
+    finish();
+    await expect(page.locator("#remote-status")).toContainText("stored document");
+    await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).not.toBeChecked();
   });
 
   test("the hub tab navigates the cache as the card does: one drawer at a time, badges, a refresh per row and Refresh all", async ({ page }, testInfo) => {

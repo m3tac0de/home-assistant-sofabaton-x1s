@@ -255,10 +255,19 @@ DELETE /hubs/{id}/ui/remote-card        back to the card's defaults
 The document holds the same keys as the Home Assistant card's YAML,
 minus `entity`, `theme` and Home Assistant actions (custom favourites
 that call a Home Assistant action are dropped; those that name a hub
-command stay). The control panel's Remote view (`/ui/`) shows the
-remote next to an editor for this document and applies a saved document
-to the remote at once; a Home Assistant user can paste the card's YAML
-converted to JSON. The page never stores anything in the browser.
+command stay). Open **Remote → Layout** in the control panel (`/ui/`)
+for the visual editor: general options, styling, default and per-activity
+or per-device layouts, and device shortcuts. Drag the handles to reorder
+groups, or focus a handle and use the arrow keys. The preview updates as
+you edit and does not send commands to the hub. **Save** stores the shared
+configuration; other open web remotes pick it up when reloaded.
+
+The **JSON** editor remains available for custom favourites and advanced
+options, or to paste the Home Assistant card's YAML converted to JSON.
+Switching between editors preserves additional configuration keys.
+**Reload document** discards local edits; **Reset to defaults** deletes
+the hub's stored configuration. Unsaved edits are local to the current
+view and are not retained after switching hubs or reloading the page.
 
 **Icons.** The page bundles the icons the card itself uses plus a set of
 common `mdi:` names for favourites and shortcuts; an icon outside that

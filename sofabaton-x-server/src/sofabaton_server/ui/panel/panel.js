@@ -302,21 +302,21 @@ function V(t5, i8) {
 }
 var N = (t5, i8) => {
   const s7 = t5.length - 1, e6 = [];
-  let n7, l4 = 2 === i8 ? "<svg>" : 3 === i8 ? "<math>" : "", c7 = v;
+  let n7, l5 = 2 === i8 ? "<svg>" : 3 === i8 ? "<math>" : "", c7 = v;
   for (let i9 = 0; i9 < s7; i9++) {
     const s8 = t5[i9];
     let a4, u6, d3 = -1, f4 = 0;
     for (; f4 < s8.length && (c7.lastIndex = f4, u6 = c7.exec(s8), null !== u6); ) f4 = c7.lastIndex, c7 === v ? "!--" === u6[1] ? c7 = _ : void 0 !== u6[1] ? c7 = m : void 0 !== u6[2] ? (y2.test(u6[2]) && (n7 = RegExp("</" + u6[2], "g")), c7 = p2) : void 0 !== u6[3] && (c7 = p2) : c7 === p2 ? ">" === u6[0] ? (c7 = n7 ?? v, d3 = -1) : void 0 === u6[1] ? d3 = -2 : (d3 = c7.lastIndex - u6[2].length, a4 = u6[1], c7 = void 0 === u6[3] ? p2 : '"' === u6[3] ? $ : g) : c7 === $ || c7 === g ? c7 = p2 : c7 === _ || c7 === m ? c7 = v : (c7 = p2, n7 = void 0);
     const x2 = c7 === p2 && t5[i9 + 1].startsWith("/>") ? " " : "";
-    l4 += c7 === v ? s8 + r3 : d3 >= 0 ? (e6.push(a4), s8.slice(0, d3) + h2 + s8.slice(d3) + o3 + x2) : s8 + o3 + (-2 === d3 ? i9 : x2);
+    l5 += c7 === v ? s8 + r3 : d3 >= 0 ? (e6.push(a4), s8.slice(0, d3) + h2 + s8.slice(d3) + o3 + x2) : s8 + o3 + (-2 === d3 ? i9 : x2);
   }
-  return [V(t5, l4 + (t5[s7] || "<?>") + (2 === i8 ? "</svg>" : 3 === i8 ? "</math>" : "")), e6];
+  return [V(t5, l5 + (t5[s7] || "<?>") + (2 === i8 ? "</svg>" : 3 === i8 ? "</math>" : "")), e6];
 };
 var S2 = class _S {
   constructor({ strings: t5, _$litType$: i8 }, e6) {
     let r6;
     this.parts = [];
-    let l4 = 0, a4 = 0;
+    let l5 = 0, a4 = 0;
     const u6 = t5.length - 1, d3 = this.parts, [f4, v3] = N(t5, i8);
     if (this.el = _S.createElement(f4, e6), P.currentNode = this.el.content, 2 === i8 || 3 === i8) {
       const t6 = this.el.content.firstChild;
@@ -326,22 +326,22 @@ var S2 = class _S {
       if (1 === r6.nodeType) {
         if (r6.hasAttributes()) for (const t6 of r6.getAttributeNames()) if (t6.endsWith(h2)) {
           const i9 = v3[a4++], s7 = r6.getAttribute(t6).split(o3), e7 = /([.?@])?(.*)/.exec(i9);
-          d3.push({ type: 1, index: l4, name: e7[2], strings: s7, ctor: "." === e7[1] ? I : "?" === e7[1] ? L : "@" === e7[1] ? z : H }), r6.removeAttribute(t6);
-        } else t6.startsWith(o3) && (d3.push({ type: 6, index: l4 }), r6.removeAttribute(t6));
+          d3.push({ type: 1, index: l5, name: e7[2], strings: s7, ctor: "." === e7[1] ? I : "?" === e7[1] ? L : "@" === e7[1] ? z : H }), r6.removeAttribute(t6);
+        } else t6.startsWith(o3) && (d3.push({ type: 6, index: l5 }), r6.removeAttribute(t6));
         if (y2.test(r6.tagName)) {
           const t6 = r6.textContent.split(o3), i9 = t6.length - 1;
           if (i9 > 0) {
             r6.textContent = s2 ? s2.emptyScript : "";
-            for (let s7 = 0; s7 < i9; s7++) r6.append(t6[s7], c3()), P.nextNode(), d3.push({ type: 2, index: ++l4 });
+            for (let s7 = 0; s7 < i9; s7++) r6.append(t6[s7], c3()), P.nextNode(), d3.push({ type: 2, index: ++l5 });
             r6.append(t6[i9], c3());
           }
         }
-      } else if (8 === r6.nodeType) if (r6.data === n3) d3.push({ type: 2, index: l4 });
+      } else if (8 === r6.nodeType) if (r6.data === n3) d3.push({ type: 2, index: l5 });
       else {
         let t6 = -1;
-        for (; -1 !== (t6 = r6.data.indexOf(o3, t6 + 1)); ) d3.push({ type: 7, index: l4 }), t6 += o3.length - 1;
+        for (; -1 !== (t6 = r6.data.indexOf(o3, t6 + 1)); ) d3.push({ type: 7, index: l5 }), t6 += o3.length - 1;
       }
-      l4++;
+      l5++;
     }
   }
   static createElement(t5, i8) {
@@ -576,9 +576,9 @@ var i6 = (o8) => o8;
 var r4 = (o8) => void 0 === o8.strings;
 var s4 = () => document.createComment("");
 var v2 = (o8, n7, e6) => {
-  const l4 = o8._$AA.parentNode, d3 = void 0 === n7 ? o8._$AB : n7._$AA;
+  const l5 = o8._$AA.parentNode, d3 = void 0 === n7 ? o8._$AB : n7._$AA;
   if (void 0 === e6) {
-    const i8 = l4.insertBefore(s4(), d3), n8 = l4.insertBefore(s4(), d3);
+    const i8 = l5.insertBefore(s4(), d3), n8 = l5.insertBefore(s4(), d3);
     e6 = new t4(i8, n8, o8, o8.options);
   } else {
     const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o8;
@@ -590,7 +590,7 @@ var v2 = (o8, n7, e6) => {
       let o9 = e6._$AA;
       for (; o9 !== t5; ) {
         const t6 = i6(o9).nextSibling;
-        i6(l4).insertBefore(o9, d3), o9 = t6;
+        i6(l5).insertBefore(o9, d3), o9 = t6;
       }
     }
   }
@@ -607,7 +607,7 @@ var h3 = (o8) => {
 // node_modules/lit-html/directives/repeat.js
 var u4 = (e6, s7, t5) => {
   const r6 = /* @__PURE__ */ new Map();
-  for (let l4 = s7; l4 <= t5; l4++) r6.set(e6[l4], l4);
+  for (let l5 = s7; l5 <= t5; l5++) r6.set(e6[l5], l5);
   return r6;
 };
 var c4 = e4(class extends i5 {
@@ -617,10 +617,10 @@ var c4 = e4(class extends i5 {
   dt(e6, s7, t5) {
     let r6;
     void 0 === t5 ? t5 = s7 : void 0 !== s7 && (r6 = s7);
-    const l4 = [], o8 = [];
+    const l5 = [], o8 = [];
     let i8 = 0;
-    for (const s8 of e6) l4[i8] = r6 ? r6(s8, i8) : i8, o8[i8] = t5(s8, i8), i8++;
-    return { values: o8, keys: l4 };
+    for (const s8 of e6) l5[i8] = r6 ? r6(s8, i8) : i8, o8[i8] = t5(s8, i8), i8++;
+    return { values: o8, keys: l5 };
   }
   render(e6, s7, t5) {
     return this.dt(e6, s7, t5).values;
@@ -785,8 +785,18 @@ var LAYOUT_KEYS = [
   "mf_row_visible_rows"
 ];
 var DEVICE_LAYOUT_PREFIX = "device:";
+var DEVICE_DEFAULT_LAYOUT_KEY = "device:default";
 function deviceLayoutKey(deviceId) {
   return `${DEVICE_LAYOUT_PREFIX}${deviceId == null ? "default" : String(deviceId)}`;
+}
+function isDeviceLayoutKey(selection) {
+  return typeof selection === "string" && selection.startsWith(DEVICE_LAYOUT_PREFIX);
+}
+function parseDeviceLayoutKey(selection) {
+  if (!isDeviceLayoutKey(selection)) return null;
+  const rest = String(selection).slice(DEVICE_LAYOUT_PREFIX.length);
+  const id = Number(rest);
+  return Number.isFinite(id) ? id : null;
 }
 var DEVICE_LAYOUT_KEYS = [
   "group_order",
@@ -847,6 +857,13 @@ function resolveStoredDeviceLayer(layer) {
     resolved[DEVICE_INTERNAL_KEY_FOR[key] ?? key] = value;
   }
   return resolved;
+}
+function toStoredDeviceLayer(layer) {
+  const stored = {};
+  for (const [key, value] of Object.entries(layer)) {
+    stored[DEVICE_STORED_KEY_FOR[key] ?? key] = value;
+  }
+  return stored;
 }
 var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_activity: true,
@@ -1014,6 +1031,18 @@ function normalizedGroupOrder(configured) {
   }
   return order;
 }
+var GROUP_VISIBILITY_KEYS = {
+  activity: "show_activity",
+  dpad: "show_dpad",
+  nav: "show_nav",
+  mid: "show_mid",
+  media: "show_media",
+  colors: "show_colors",
+  abc: "show_abc",
+  // Device layouts only: the editor never lists the group for activity
+  // selections, so the key is never written on the activity side.
+  shortcuts: "show_shortcuts"
+};
 var ID = {
   UP: 174,
   DOWN: 178,
@@ -1246,8 +1275,8 @@ var REMOTE_CARD_STRINGS_EN = {
     macrosFavoritesAsRows: "Macros/Favorites as rows",
     commandsAsRows: "Commands as rows",
     visibleRows: "Visible rows",
-    moveGroupUp: (groupLabel) => `Move ${groupLabel} up`,
-    moveGroupDown: (groupLabel) => `Move ${groupLabel} down`,
+    moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
+    moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -2632,6 +2661,7 @@ function drawerVisibilityState({
 }
 
 // remote-card/src/remote-card-long-press.ts
+var LONG_PRESS_GROUPS = ["volume", "channel", "dpad"];
 var LONG_PRESS_GROUP_FOR_KEY = {
   volup: "volume",
   voldn: "volume",
@@ -2663,6 +2693,29 @@ function longPressEnabledForKey(config, key) {
   const group = longPressGroupForKey(key);
   if (!group) return false;
   return longPressSettings(config)[group];
+}
+function longPressSelectedGroups(config) {
+  const settings = longPressSettings(config);
+  return LONG_PRESS_GROUPS.filter((group) => settings[group]);
+}
+function longPressEnabledPatch(enabled) {
+  return enabled ? { enabled: true } : void 0;
+}
+function longPressGroupsPatch(current, selected) {
+  const wanted = new Set(
+    (Array.isArray(selected) ? selected : []).map((value) => String(value)).filter(
+      (value) => LONG_PRESS_GROUPS.includes(value)
+    )
+  );
+  const next = { ...current, enabled: true };
+  for (const group of LONG_PRESS_GROUPS) {
+    if (wanted.has(group)) {
+      delete next[group];
+    } else {
+      next[group] = false;
+    }
+  }
+  return next;
 }
 function hubLongPressBinding(attributes, scopeId, buttonId) {
   if (scopeId == null || buttonId == null) return null;
@@ -6929,7 +6982,7 @@ var SofabatonRemoteCard = class extends i4 {
     }
     if (this._layoutSignatureCache === nextSignature) return;
     this._layoutSignatureCache = nextSignature;
-    if (this._prefersReducedMotion()) {
+    if (this._store.backend?.kind === "server" || this._prefersReducedMotion()) {
       this._clearLayoutOverlay();
       return;
     }
@@ -8252,12 +8305,12 @@ var SbHaSelect = class extends HTMLElement {
         }
         .option + .option { margin-top: 2px; }
       </style>
-      <button class="trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
-        <span class="label"></span>
-        <span class="value"></span>
+      <button class="trigger" part="trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="options">
+        <span class="label" part="label"></span>
+        <span class="value" part="value"></span>
         <span class="caret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5z"></path></svg></span>
       </button>
-      <div class="menu" role="listbox"></div>
+      <div class="menu" part="menu" id="options" role="listbox"></div>
     `;
     this._labelEl = this._shadow.querySelector(".label");
     this._valueEl = this._shadow.querySelector(".value");
@@ -8293,6 +8346,21 @@ var SbHaSelect = class extends HTMLElement {
         const next = event.relatedTarget;
         if (next && this._shadow.contains(next)) return;
         if (this.hasAttribute("open")) this._closeMenu();
+      });
+      this._menu?.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this._closeMenu();
+          this._trigger?.focus();
+          return;
+        }
+        const buttons = Array.from(this._menu?.querySelectorAll(".option") ?? []);
+        const index = buttons.indexOf(this._shadow.activeElement);
+        const next = event.key === "ArrowDown" ? Math.min(buttons.length - 1, index + 1) : event.key === "ArrowUp" ? Math.max(0, index - 1) : event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : null;
+        if (next != null) {
+          event.preventDefault();
+          buttons[next]?.focus();
+        }
       });
     }
     this._observer.observe(this, { childList: true, subtree: true, characterData: true });
@@ -8338,7 +8406,8 @@ var SbHaSelect = class extends HTMLElement {
     const items = Array.from(this.children);
     this._options = items.map((item) => ({
       value: String(item.value ?? item.getAttribute("value") ?? item.textContent ?? ""),
-      label: (item.textContent ?? "").trim()
+      label: (item.textContent ?? "").trim(),
+      defaultLayout: item.classList.contains("sb-option-default")
     }));
     if (!this._options.some((option) => option.value === current)) {
       this._value = this._options[0]?.value ?? "";
@@ -8358,6 +8427,8 @@ var SbHaSelect = class extends HTMLElement {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "option";
+      button.setAttribute("part", option.defaultLayout ? "option default-option" : "option");
+      button.dataset.value = option.value;
       button.setAttribute("role", "option");
       button.textContent = option.label;
       button.dataset.selected = String(option.value === this._value);
@@ -8393,7 +8464,8 @@ var SbHaSelect = class extends HTMLElement {
     this.dispatchEvent(new Event("closed", { bubbles: true, composed: true }));
   }
   /**
-   * Put the fixed menu under the trigger. Measured as a delta from where
+   * Put the fixed menu on the roomier side of the trigger, within the
+   * visible card where possible. Measured as a delta from where
    * the menu lands at (0, 0): a transformed ancestor (the card animates
    * with one) makes itself the containing block for fixed descendants,
    * and a zoomed ancestor (the page's zoom= parameter) scales the length
@@ -8412,6 +8484,21 @@ var SbHaSelect = class extends HTMLElement {
     menu.style.left = `${(anchor.left - origin.left) / zoom}px`;
     menu.style.top = `${(anchor.bottom + 4 - origin.top) / zoom}px`;
     menu.style.width = `${anchor.width / zoom}px`;
+    const card = this.closest("ha-card")?.getBoundingClientRect();
+    const viewportTop = 8;
+    const viewportBottom = window.innerHeight - 8;
+    let top = Math.max(viewportTop, card ? card.top + 8 : viewportTop);
+    let bottom = Math.min(viewportBottom, card ? card.bottom - 8 : viewportBottom);
+    const minimumHeight = Math.min(menu.scrollHeight * zoom, 64 * zoom);
+    if (Math.max(anchor.top - 4 - top, bottom - anchor.bottom - 4) < minimumHeight) {
+      top = viewportTop;
+      bottom = viewportBottom;
+    }
+    const below = Math.max(0, bottom - anchor.bottom - 4);
+    const above = Math.max(0, anchor.top - 4 - top);
+    const upwards = above > below;
+    menu.style.maxHeight = `${Math.min(window.innerHeight * 0.6, upwards ? above : below) / zoom}px`;
+    if (upwards) menu.style.top = `${(anchor.top - 4 - origin.top - menu.getBoundingClientRect().height) / zoom}px`;
   }
 };
 function effectiveZoom(element) {
@@ -8680,8 +8767,8 @@ var REMOTE_CARD_STRINGS_AR = {
     macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
     commandsAsRows: "\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0641\u064A \u0635\u0641\u0648\u0641",
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
-    moveGroupUp: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
-    moveGroupDown: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
+    moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
+    moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
@@ -8896,8 +8983,8 @@ var REMOTE_CARD_STRINGS_DE = {
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
     commandsAsRows: "Befehle als Zeilen",
     visibleRows: "Sichtbare Zeilen",
-    moveGroupUp: (groupLabel) => `${groupLabel} nach oben verschieben`,
-    moveGroupDown: (groupLabel) => `${groupLabel} nach unten verschieben`,
+    moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
+    moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
@@ -9091,8 +9178,8 @@ var REMOTE_CARD_STRINGS_ES = {
     macrosFavoritesAsRows: "Macros/favoritos como filas",
     commandsAsRows: "Comandos como filas",
     visibleRows: "Filas visibles",
-    moveGroupUp: (groupLabel) => `Mover ${groupLabel} hacia arriba`,
-    moveGroupDown: (groupLabel) => `Mover ${groupLabel} hacia abajo`,
+    moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
+    moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
     macros: "Macros",
     favorites: "Favoritos",
     volume: "Volumen",
@@ -9286,8 +9373,8 @@ var REMOTE_CARD_STRINGS_FR = {
     macrosFavoritesAsRows: "Macros/favoris sous forme de lignes",
     commandsAsRows: "Commandes sous forme de lignes",
     visibleRows: "Lignes visibles",
-    moveGroupUp: (groupLabel) => `D\xE9placer ${groupLabel} vers le haut`,
-    moveGroupDown: (groupLabel) => `D\xE9placer ${groupLabel} vers le bas`,
+    moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
+    moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",
@@ -9480,8 +9567,8 @@ var REMOTE_CARD_STRINGS_NL = {
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
     commandsAsRows: "Commando's als rijen",
     visibleRows: "Zichtbare rijen",
-    moveGroupUp: (groupLabel) => `Verplaats ${groupLabel} omhoog`,
-    moveGroupDown: (groupLabel) => `Verplaats ${groupLabel} omlaag`,
+    moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
+    moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
     macros: "Macro's",
     favorites: "Favorieten",
     volume: "Volume",
@@ -9674,8 +9761,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     macrosFavoritesAsRows: "\u5C06\u5B8F/\u6536\u85CF\u663E\u793A\u4E3A\u884C",
     commandsAsRows: "\u5C06\u547D\u4EE4\u663E\u793A\u4E3A\u884C",
     visibleRows: "\u53EF\u89C1\u884C",
-    moveGroupUp: (groupLabel) => `\u5C06${groupLabel}\u4E0A\u79FB`,
-    moveGroupDown: (groupLabel) => `\u5C06${groupLabel}\u4E0B\u79FB`,
+    moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
+    moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
     macros: "\u5B8F",
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",
@@ -15301,6 +15388,83 @@ function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
   };
 }
 
+// server-panel/src/pointer-reorder.ts
+var PointerReorder = class {
+  constructor(rows, changed, moved, top = () => 0) {
+    this.rows = rows;
+    this.changed = changed;
+    this.moved = moved;
+    this.top = top;
+    this.state = null;
+    this.handle = null;
+  }
+  start(event, index) {
+    if (event.button !== 0 || this.state) return;
+    const rect = this.rows()[index]?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    this.handle = event.currentTarget;
+    this.handle.setPointerCapture(event.pointerId);
+    window.getSelection()?.removeAllRanges();
+    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
+    this.changed();
+  }
+  move(event) {
+    const drag = this.state;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    event.preventDefault();
+    if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
+    else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
+    this.state = { ...drag, over: this.slot(event.clientY), dy: event.clientY - drag.startY };
+    this.changed();
+  }
+  offset(index) {
+    const drag = this.state;
+    if (!drag) return 0;
+    if (index === drag.from) return drag.dy;
+    if (drag.from < drag.over && index > drag.from && index <= drag.over) return -drag.height;
+    if (drag.over < drag.from && index >= drag.over && index < drag.from) return drag.height;
+    return 0;
+  }
+  slot(clientY) {
+    const drag = this.state;
+    const rows = this.rows();
+    const rects = rows.map((row) => row.getBoundingClientRect());
+    const offset = (index) => {
+      const transform = getComputedStyle(rows[index]).transform;
+      return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
+    };
+    const own = rects[drag.from];
+    if (!own) return drag.from;
+    const centre = own.top - offset(drag.from) + own.height / 2 + clientY - drag.startY;
+    let over = drag.from;
+    rects.forEach((rect, index) => {
+      const mid = rect.top - offset(index) + rect.height / 2;
+      if (index < drag.from && centre < mid) over = Math.min(over, index);
+      if (index > drag.from && centre > mid) over = index;
+    });
+    return over;
+  }
+  end(event) {
+    const drag = this.state;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const over = this.slot(event.clientY);
+    this.cancel();
+    if (over !== drag.from) this.moved(drag.from, over);
+  }
+  cancel(event) {
+    if (event && event.pointerId !== this.state?.pointerId) return;
+    const id = this.state?.pointerId;
+    this.state = null;
+    if (id != null && this.handle?.hasPointerCapture(id)) this.handle.releasePointerCapture(id);
+    this.handle = null;
+    this.changed();
+  }
+  transform(index) {
+    return this.state ? `translateY(${this.offset(index)}px)` : "";
+  }
+};
+
 // server-panel/src/views/device-editor-state.ts
 var MIN_SUPPORTED_FIRMWARE = { X1: 17, X1S: 5, X2: 5 };
 function firmwareUnsupported(hubVersion, firmware) {
@@ -15513,7 +15677,12 @@ var SbPanelDeviceEditor = class extends i4 {
     this._stepEditor = null;
     this._stepDialog = null;
     /** A step drag in flight: the row picked up, the slot it hovers, the pointer's travel and the row's height. */
-    this._drag = null;
+    this._sorter = new PointerReorder(
+      () => Array.from(this.renderRoot.querySelectorAll("[data-step-index]")),
+      () => this.requestUpdate(),
+      (from, to) => this._moveStep(from, to - from),
+      () => this._stickyOffset()
+    );
     /** The payload dialog's inputs (the card's add / edit modes), or null when closed. */
     this._payloadDialog = null;
     this._payloadFetching = null;
@@ -15662,6 +15831,9 @@ var SbPanelDeviceEditor = class extends i4 {
       this._binding = null;
     };
   }
+  get _drag() {
+    return this._sorter.state;
+  }
   // -- lifecycle ---------------------------------------------------------------------------------
   connectedCallback() {
     super.connectedCallback();
@@ -15669,6 +15841,7 @@ var SbPanelDeviceEditor = class extends i4 {
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._sorter.cancel();
     window.removeEventListener("scroll", this._onWindowScroll);
   }
   updated(changed) {
@@ -15695,7 +15868,7 @@ var SbPanelDeviceEditor = class extends i4 {
     this._exitConfirm = null;
     this._stepEditor = null;
     this._stepDialog = null;
-    this._drag = null;
+    this._sorter.cancel();
     this._payloadDialog = null;
     this._payloadFetching = null;
     this._payloadFetchError = null;
@@ -15938,63 +16111,20 @@ var SbPanelDeviceEditor = class extends i4 {
     this._commit(reorderDeviceMacroSteps(this._working, this.deviceId, editor.buttonId, order));
   }
   // -- drag and drop on pointer events (the card uses ha-sortable) ------------------------------
-  _stepItemRects() {
-    return Array.from(this.renderRoot.querySelectorAll("[data-step-index]")).map((el) => el.getBoundingClientRect());
-  }
   _dragStart(event, index) {
-    if (event.button !== 0 || this._drag) return;
-    const handle = event.currentTarget;
-    const rects = this._stepItemRects();
-    const rect = rects[index];
-    if (!rect) return;
-    event.preventDefault();
-    handle.setPointerCapture(event.pointerId);
-    this.renderRoot.getSelection?.()?.removeAllRanges();
-    window.getSelection()?.removeAllRanges();
-    this._drag = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
+    this._sorter.start(event, index);
   }
   _dragMove(event) {
-    const drag = this._drag;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    event.preventDefault();
-    const top = this._stickyOffset();
-    if (event.clientY < top + 32) window.scrollBy(0, -10);
-    else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
-    this._drag = { ...drag, over: this._dragSlot(drag, event.clientY), dy: event.clientY - drag.startY };
-  }
-  /** The slot the dragged row's centre sits over for a pointer at `clientY` (rows are measured untransformed: the dragged row's own rect moves with it, so its start is recovered from the travel). */
-  _dragSlot(drag, clientY) {
-    const rects = this._stepItemRects();
-    const own = rects[drag.from];
-    if (!own) return drag.from;
-    const centre = own.top - drag.dy + own.height / 2 + (clientY - drag.startY);
-    let over = drag.from;
-    for (let i8 = 0; i8 < rects.length; i8++) {
-      const mid = rects[i8].top + rects[i8].height / 2;
-      if (i8 < drag.from && centre < mid) over = Math.min(over, i8);
-      if (i8 > drag.from && centre > mid) over = i8;
-    }
-    return over;
+    this._sorter.move(event);
   }
   _dragEnd(event) {
-    const drag = this._drag;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-    const over = this._dragSlot(drag, event.clientY);
-    this._drag = null;
-    if (over !== drag.from) this._moveStep(drag.from, over - drag.from);
+    this._sorter.end(event);
   }
   _dragCancel(event) {
-    if (this._drag && event.pointerId === this._drag.pointerId) this._drag = null;
+    this._sorter.cancel(event);
   }
-  /** Where a row sits while a drag is in flight: the dragged row follows the pointer, the rows it crossed slide by its height. */
   _dragTransform(index) {
-    const drag = this._drag;
-    if (!drag) return "";
-    if (index === drag.from) return `translateY(${drag.dy}px)`;
-    if (drag.from < drag.over && index > drag.from && index <= drag.over) return `translateY(${-drag.height}px)`;
-    if (drag.over < drag.from && index >= drag.over && index < drag.from) return `translateY(${drag.height}px)`;
-    return "";
+    return this._sorter.transform(index);
   }
   _setStepWait(item, event) {
     const editor = this._stepEditor;
@@ -16697,7 +16827,6 @@ SbPanelDeviceEditor.properties = {
   _exitConfirm: { state: true },
   _stepEditor: { state: true },
   _stepDialog: { state: true },
-  _drag: { state: true },
   _payloadDialog: { state: true },
   _payloadFetching: { state: true },
   _payloadFetchError: { state: true },
@@ -17984,6 +18113,641 @@ function defineHubsView() {
   if (!customElements.get(HUBS_VIEW_TAG)) customElements.define(HUBS_VIEW_TAG, SbPanelHubs);
 }
 
+// node_modules/lit-html/directives/live.js
+var l4 = e4(class extends i5 {
+  constructor(r6) {
+    if (super(r6), r6.type !== t3.PROPERTY && r6.type !== t3.ATTRIBUTE && r6.type !== t3.BOOLEAN_ATTRIBUTE) throw Error("The `live` directive is not allowed on child or event bindings");
+    if (!r4(r6)) throw Error("`live` bindings can only contain a single expression");
+  }
+  render(r6) {
+    return r6;
+  }
+  update(i8, [t5]) {
+    if (t5 === E || t5 === A) return t5;
+    const o8 = i8.element, l5 = i8.name;
+    if (i8.type === t3.PROPERTY) {
+      if (t5 === o8[l5]) return E;
+    } else if (i8.type === t3.BOOLEAN_ATTRIBUTE) {
+      if (!!t5 === o8.hasAttribute(l5)) return E;
+    } else if (i8.type === t3.ATTRIBUTE && o8.getAttribute(l5) === t5 + "") return E;
+    return p3(i8), t5;
+  }
+});
+
+// remote-card/src/remote-card-editor-layout.ts
+function deviceStoredLayerKey(selection) {
+  const id = parseDeviceLayoutKey(selection);
+  return id == null ? "default" : String(id);
+}
+function layoutHasCustomOverride(config, selection) {
+  if (isDeviceLayoutKey(selection)) {
+    return Boolean(storedDeviceLayer(config, deviceStoredLayerKey(selection)));
+  }
+  const layouts = config?.layouts;
+  if (!layouts || typeof layouts !== "object") return false;
+  const key = String(selection ?? "");
+  const override = layouts[key] ?? (Number.isFinite(Number(selection)) ? layouts[Number(selection)] : null);
+  return Boolean(override && typeof override === "object");
+}
+function layoutSelectionNote(config, selection) {
+  if (selection === "default") {
+    return str().editor.noteDefaultLayout;
+  }
+  if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
+    return str().editor.noteDeviceDefaultLayout;
+  }
+  const isDevice = isDeviceLayoutKey(selection);
+  if (layoutHasCustomOverride(config, selection)) {
+    return isDevice ? str().editor.noteCustomDeviceLayout : str().editor.noteCustomActivityLayout;
+  }
+  return isDevice ? str().editor.noteUsingDeviceDefault : str().editor.noteUsingActivityDefault;
+}
+function editorActivitiesFromState(state) {
+  const list = state?.attributes?.activities;
+  if (!Array.isArray(list)) return [];
+  return list.map((activity) => ({
+    id: Number(activity?.id),
+    name: String(activity?.name ?? "")
+  })).filter((activity) => Number.isFinite(activity.id) && activity.name);
+}
+function editorDevicesFromState(state) {
+  const list = state?.attributes?.devices;
+  if (!Array.isArray(list)) return [];
+  return list.map((device) => ({
+    id: Number(device?.id),
+    name: String(device?.name ?? "")
+  })).filter((device) => Number.isFinite(device.id) && device.name);
+}
+function layoutConfigForSelection(config, selection) {
+  if (selection === "default") {
+    return layoutDefaultConfig(config);
+  }
+  if (isDeviceLayoutKey(selection)) {
+    return layoutConfigForDevice(config, parseDeviceLayoutKey(selection));
+  }
+  return layoutConfigForActivity(config, selection);
+}
+var ACTIVITY_LAYOUT_DEFAULTS = Object.freeze({
+  show_activity: true,
+  show_dpad: true,
+  show_nav: true,
+  show_mid: true,
+  show_volume: true,
+  show_channel: true,
+  show_media: true,
+  show_dvr: true,
+  show_colors: true,
+  show_abc: true,
+  show_macros_button: true,
+  show_favorites_button: true,
+  show_device_toggle: true,
+  mf_as_rows: false,
+  mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
+});
+var sameLayoutValue = (a4, b3) => JSON.stringify(a4) === JSON.stringify(b3);
+function effectiveValueFor(key, raw, defaults) {
+  switch (key) {
+    case "show_volume":
+      return volumeGroupEnabled(raw);
+    case "show_channel":
+      return channelGroupEnabled(raw);
+    case "show_macros_button":
+      return macrosButtonEnabled(raw);
+    case "show_favorites_button":
+      return favoritesButtonEnabled(raw);
+    case "group_order":
+      return normalizedGroupOrder(raw.group_order);
+    default:
+      return raw[key] !== void 0 ? raw[key] : defaults[key];
+  }
+}
+function pruneLayoutLayer(layer, rawBase, defaults) {
+  const pruned = {};
+  const withLayer = { ...rawBase, ...layer };
+  for (const [key, value] of Object.entries(layer)) {
+    if (value === void 0) continue;
+    const without = { ...withLayer };
+    if (rawBase[key] !== void 0) {
+      without[key] = rawBase[key];
+    } else {
+      delete without[key];
+    }
+    const kept = effectiveValueFor(key, withLayer, defaults);
+    const dropped = effectiveValueFor(key, without, defaults);
+    if (dropped !== void 0 && sameLayoutValue(kept, dropped)) continue;
+    pruned[key] = value;
+  }
+  return pruned;
+}
+function setOrDelete(target, key, value) {
+  if (Object.keys(value).length) {
+    target[key] = value;
+  } else {
+    delete target[key];
+  }
+}
+function applyLayoutConfigPatch(config, selection, patch) {
+  const next = { ...config || {} };
+  if (isDeviceLayoutKey(selection)) {
+    const layerKey = deviceStoredLayerKey(selection);
+    const block = { ...next.device_mode || {} };
+    const layouts2 = { ...block.layouts || {} };
+    const current = resolveStoredDeviceLayer(storedDeviceLayer(next, layerKey));
+    const rawBase = layerKey === "default" ? {} : resolveStoredDeviceLayer(storedDeviceLayer(next, "default"));
+    const merged2 = pruneLayoutLayer(
+      { ...current, ...patch },
+      rawBase,
+      DEVICE_LAYOUT_DEFAULTS
+    );
+    setOrDelete(layouts2, layerKey, toStoredDeviceLayer(merged2));
+    setOrDelete(block, "layouts", layouts2);
+    setOrDelete(next, "device_mode", block);
+    return { nextConfig: next };
+  }
+  if (selection === "default") {
+    const defaultLayout = next.layouts?.default;
+    const existing2 = defaultLayout && typeof defaultLayout === "object" ? defaultLayout : {};
+    const merged2 = pruneLayoutLayer(
+      { ...layoutBaseConfig(next), ...existing2, ...patch },
+      {},
+      ACTIVITY_LAYOUT_DEFAULTS
+    );
+    for (const key of LAYOUT_KEYS) delete next[key];
+    const layouts2 = { ...next.layouts || {} };
+    setOrDelete(layouts2, "default", merged2);
+    setOrDelete(next, "layouts", layouts2);
+    return { nextConfig: next };
+  }
+  const layouts = { ...next.layouts || {} };
+  const selectionKey = String(selection);
+  const existing = layouts[selectionKey] && typeof layouts[selectionKey] === "object" ? layouts[selectionKey] : {};
+  const merged = pruneLayoutLayer(
+    { ...existing, ...patch },
+    layoutDefaultConfig(next),
+    ACTIVITY_LAYOUT_DEFAULTS
+  );
+  setOrDelete(layouts, selectionKey, merged);
+  setOrDelete(next, "layouts", layouts);
+  return { nextConfig: next };
+}
+function groupOrderListForEditor(config, selection) {
+  const layout = layoutConfigForSelection(config, selection);
+  return normalizedGroupOrder(layout?.group_order);
+}
+function editorGroupVisible(config, selection, key, isX2) {
+  if (!isX2 && key === "abc") return false;
+  const device = isDeviceLayoutKey(selection);
+  if (key === "shortcuts") return device;
+  const rows = mfAsRowsForEditor(config, selection);
+  if (key === "macro_favorites") return !rows;
+  if (key === "macros_row") return rows;
+  if (key === "favorites_row") return !device && rows;
+  return true;
+}
+function resetEditorLayout(config, selection) {
+  const next = { ...config };
+  if (isDeviceLayoutKey(selection)) {
+    const block = { ...next.device_mode || {} };
+    const layouts = { ...block.layouts || {} };
+    delete layouts[deviceStoredLayerKey(selection)];
+    setOrDelete(block, "layouts", layouts);
+    setOrDelete(next, "device_mode", block);
+  } else {
+    const layouts = { ...next.layouts || {} };
+    delete layouts[selection];
+    if (selection === "default") for (const key of LAYOUT_KEYS) delete next[key];
+    else if (Number.isFinite(Number(selection))) delete layouts[String(Number(selection))];
+    setOrDelete(next, "layouts", layouts);
+  }
+  return next;
+}
+function groupLabel(key) {
+  return str().groups[key] || key;
+}
+function isGroupEnabled(config, selection, key) {
+  const prop = GROUP_VISIBILITY_KEYS[key];
+  if (!prop) return true;
+  const layout = layoutConfigForSelection(config, selection);
+  return layout?.[prop] ?? true;
+}
+function macroTogglePatch(enabled) {
+  return { show_macros_button: !!enabled };
+}
+function favoritesTogglePatch(enabled) {
+  return { show_favorites_button: !!enabled };
+}
+function commandsEnabled(config, selection) {
+  return commandsButtonEnabled(layoutConfigForSelection(config, selection));
+}
+function commandsTogglePatch(enabled) {
+  return { show_commands_button: !!enabled };
+}
+function powerEnabled(config, selection) {
+  return powerButtonEnabled(layoutConfigForSelection(config, selection));
+}
+function powerTogglePatch(enabled) {
+  return { show_power_button: !!enabled };
+}
+function applyShortcutSlotPatch(config, deviceId, slot, value) {
+  const next = { ...config || {} };
+  const block = { ...next.device_mode || {} };
+  const shortcuts = {
+    ...block.shortcuts || {}
+  };
+  const key = String(deviceId);
+  const entry = {
+    ...shortcuts[key] || {}
+  };
+  const normalized = normalizedShortcutSlot(value);
+  if (normalized) {
+    entry[slot] = normalized;
+  } else {
+    delete entry[slot];
+  }
+  setOrDelete(shortcuts, key, entry);
+  setOrDelete(block, "shortcuts", shortcuts);
+  setOrDelete(next, "device_mode", block);
+  return { nextConfig: next };
+}
+function deviceToggleEnabledForEditor(config, selection) {
+  return deviceToggleEnabled(layoutConfigForSelection(config, selection));
+}
+function deviceTogglePatch(enabled) {
+  return { show_device_toggle: !!enabled };
+}
+function mfAsRowsForEditor(config, selection) {
+  return mfAsRows(layoutConfigForSelection(config, selection));
+}
+function mfRowVisibleRowsForEditor(config, selection) {
+  return mfRowVisibleRows(layoutConfigForSelection(config, selection));
+}
+function mfAsRowsPatch(enabled) {
+  return { mf_as_rows: !!enabled };
+}
+function mfRowVisibleRowsPatch(value) {
+  return { mf_row_visible_rows: value };
+}
+function volumeTogglePatch(enabled) {
+  return { show_volume: !!enabled };
+}
+function channelTogglePatch(enabled) {
+  return { show_channel: !!enabled };
+}
+function dvrTogglePatch(enabled) {
+  return {
+    show_dvr: !!enabled
+  };
+}
+function groupEnabledPatch(key, enabled) {
+  const prop = GROUP_VISIBILITY_KEYS[key];
+  return prop ? { [prop]: !!enabled } : null;
+}
+function moveVisibleGroup(order, isVisible, fromVisible, toVisible) {
+  const visibleOrder = order.filter(isVisible);
+  if (!Number.isInteger(fromVisible) || !Number.isInteger(toVisible) || fromVisible < 0 || fromVisible >= visibleOrder.length || toVisible < 0 || toVisible >= visibleOrder.length || fromVisible === toVisible) {
+    return null;
+  }
+  const nextVisible = visibleOrder.slice();
+  const [moved] = nextVisible.splice(fromVisible, 1);
+  nextVisible.splice(toVisible, 0, moved);
+  let vi = 0;
+  return order.map((key) => isVisible(key) ? nextVisible[vi++] : key);
+}
+
+// remote-card/src/editor-sections/general-options.ts
+function longPressGroupLabel(group) {
+  if (group === "volume") return str().editor.volume;
+  if (group === "channel") return str().editor.channel;
+  if (group === "dpad") return str().groups.dpad || group;
+  return group;
+}
+
+// server-panel/src/views/remote-editor.ts
+var SbPanelRemoteEditor = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.config = {};
+    this.backend = null;
+    this.selection = "default";
+    this._slot = null;
+    this._icon = "";
+    this._command = "";
+    this._keymaps = /* @__PURE__ */ new Map();
+    this._announcement = "";
+    this._sorter = new PointerReorder(
+      () => Array.from(this.renderRoot.querySelectorAll("[data-group]")),
+      () => this.requestUpdate(),
+      (from, to) => this._move(from, to),
+      () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0
+    );
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._sorter.cancel();
+  }
+  willUpdate(changed) {
+    if (changed.has("selection")) {
+      this._sorter.cancel();
+      this._slot = null;
+    }
+    if (changed.has("backend")) {
+      this._keymaps.clear();
+      this._slot = null;
+      this._sorter.cancel();
+    }
+  }
+  _emit(config) {
+    this.config = config;
+    this.dispatchEvent(new CustomEvent("document-changed", { detail: { document: config }, bubbles: true, composed: true }));
+  }
+  _set(patch) {
+    const next = { ...this.config, ...patch };
+    for (const key of Object.keys(next)) if (next[key] === void 0) delete next[key];
+    this._emit(next);
+  }
+  _device(patch) {
+    const block = { ...this.config.device_mode || {}, ...patch };
+    for (const key of Object.keys(block)) if (block[key] === void 0) delete block[key];
+    this._set({ device_mode: Object.keys(block).length ? block : void 0 });
+  }
+  _patch(patch) {
+    if (patch) this._emit(applyLayoutConfigPatch(this.config, this.selection, patch).nextConfig);
+  }
+  _select(value) {
+    this._sorter.cancel();
+    this.selection = value;
+    this._slot = null;
+    this.dispatchEvent(new CustomEvent("layout-selected", { detail: { selection: value }, bubbles: true, composed: true }));
+  }
+  _visible(key) {
+    return editorGroupVisible(this.config, this.selection, key, String(this.snapshot?.attributes?.hub_version || "").toUpperCase().includes("X2"));
+  }
+  _move(from, to) {
+    const order = groupOrderListForEditor(this.config, this.selection);
+    const visible = order.filter((key) => this._visible(key));
+    const next = moveVisibleGroup(order, (key) => this._visible(key), from, to);
+    if (!next) return;
+    const handle = this.renderRoot.activeElement;
+    this._announcement = `${groupLabel(visible[from])} moved to position ${to + 1} of ${visible.length}`;
+    this._patch({ group_order: next });
+    if (handle?.classList.contains("handle")) void this.updateComplete.then(() => handle.focus());
+  }
+  _toggle(label, checked, set, description = "", disabled = false) {
+    return b2`<label class="option"><input type="checkbox" role="switch" aria-label=${label} .checked=${checked} ?disabled=${disabled}
+      @change=${(event) => set(event.target.checked)}><span>${label}${description ? b2`<small>${description}</small>` : A}</span></label>`;
+  }
+  _selectField(label, value, options, set) {
+    return b2`<div class="field"><label><span class="field-label">${label}</span><select aria-label=${label} @change=${(event) => set(event.target.value)}>
+      ${options.map((option) => b2`<option value=${option.value} .selected=${option.value === value}>${option.label}</option>`)}</select></label></div>`;
+  }
+  _heading(label, icon4) {
+    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon4}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
+  }
+  _groups() {
+    const c7 = this.config, s7 = this.selection, e6 = str().editor;
+    const layout = layoutConfigForSelection(c7, s7);
+    const device = isDeviceLayoutKey(s7);
+    const rows = mfAsRowsForEditor(c7, s7);
+    const order = groupOrderListForEditor(c7, s7).filter((key) => this._visible(key));
+    const toggle = (label, value, patch) => this._toggle(label, value, (v3) => this._patch(patch(v3)));
+    const cells = (key) => {
+      if (device && (key === "macro_favorites" || key === "macros_row")) return b2`${toggle(e6.commands, commandsEnabled(c7, s7), commandsTogglePatch)}${toggle(e6.power, powerEnabled(c7, s7), powerTogglePatch)}`;
+      if (key === "macro_favorites") return b2`${toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch)}${toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch)}`;
+      if (key === "macros_row") return toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch);
+      if (key === "favorites_row") return toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
+      if (key === "mid") return b2`${toggle(e6.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e6.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
+      if (key === "media") return b2`${toggle(e6.mediaControls, mediaGroupEnabled(layout), (v3) => groupEnabledPatch("media", v3))}${toggle(e6.dvr, dvrGroupEnabled(layout), dvrTogglePatch)}`;
+      return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
+        ${key === "activity" && deviceModeEnabledInConfig(c7) ? this._toggle(e6.modeToggle, isGroupEnabled(c7, s7, key) && deviceToggleEnabledForEditor(c7, s7), (v3) => this._patch(deviceTogglePatch(v3)), "", !isGroupEnabled(c7, s7, key)) : A}`;
+    };
+    return b2`
+      ${c4(order, (key) => key, (key, index) => b2`
+        <div data-group=${key} class="group ${this._sorter.state?.from === index ? "dragging" : this._sorter.state ? "shifting" : ""}" style=${`transform: ${this._sorter.transform(index) || "none"}`}>
+          <div class="group-options">${cells(key)}</div>
+          <button class="handle" type="button" aria-label=${`Move ${groupLabel(key)}`} title="Drag to reorder (arrow keys move the group)"
+            @pointerdown=${(ev) => this._sorter.start(ev, index)} @pointermove=${(ev) => this._sorter.move(ev)}
+            @pointerup=${(ev) => this._sorter.end(ev)} @pointercancel=${(ev) => this._sorter.cancel(ev)}
+            @lostpointercapture=${(ev) => this._sorter.cancel(ev)}
+            @keydown=${(ev) => {
+      if (ev.key === "Escape") this._sorter.cancel();
+      if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
+        ev.preventDefault();
+        this._move(index, index + (ev.key === "ArrowUp" ? -1 : 1));
+      }
+    }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDragVerticalVariant}></path></svg></button>
+        </div>`)}
+      <div class="hint notice" role="status" aria-live="polite">${this._announcement}</div>
+      ${parseDeviceLayoutKey(s7) != null ? this._shortcuts() : A}
+      <div class="rows-control">
+        ${this._toggle(device ? e6.commandsAsRows : e6.macrosFavoritesAsRows, rows, (v3) => this._patch(mfAsRowsPatch(v3)))}
+        <div class="stepper" aria-disabled=${!rows}><span>${e6.visibleRows}</span>
+          <button type="button" aria-label="Fewer visible rows" ?disabled=${!rows || mfRowVisibleRowsForEditor(c7, s7) <= MIN_ROW_VISIBLE_ROWS} @click=${() => this._patch(mfRowVisibleRowsPatch(mfRowVisibleRowsForEditor(c7, s7) - 1))}>−</button>
+          <output aria-label=${e6.visibleRows}>${mfRowVisibleRowsForEditor(c7, s7)}</output>
+          <button type="button" aria-label="More visible rows" ?disabled=${!rows || mfRowVisibleRowsForEditor(c7, s7) >= MAX_ROW_VISIBLE_ROWS} @click=${() => this._patch(mfRowVisibleRowsPatch(mfRowVisibleRowsForEditor(c7, s7) + 1))}>+</button>
+        </div>
+      </div>
+      <div class="layout-footer"><button type="button" @click=${() => {
+      this._sorter.cancel();
+      this._emit(resetEditorLayout(c7, s7));
+    }}>${e6.resetDefaultLayout}</button></div>`;
+  }
+  async _loadCommands(id) {
+    if (this._keymaps.has(id) || !this.backend) return;
+    const backend = this.backend;
+    this._keymaps.set(id, { status: "Loading commands\u2026", commands: [] });
+    this.requestUpdate();
+    try {
+      const response = await backend.deviceKeymap(id);
+      if (this.backend !== backend) return;
+      const commands = (response?.keymap?.commands || []).map((c7) => ({ command_id: Number(c7.command_id), name: String(c7.name || c7.command_id) })).filter((c7) => Number.isFinite(c7.command_id));
+      this._keymaps.set(id, { status: commands.length ? "" : "No cached commands available. Sync this hub's catalog and retry.", commands });
+    } catch {
+      if (this.backend !== backend) return;
+      this._keymaps.set(id, { status: "Could not load commands. Retry when the hub is available.", commands: [] });
+    }
+    this.requestUpdate();
+  }
+  _openSlot(slot) {
+    const id = parseDeviceLayoutKey(this.selection);
+    this._slot = this._slot === slot ? null : slot;
+    const stored = deviceShortcutsFromConfig(this.config, id)[slot];
+    this._icon = stored?.icon || "";
+    this._command = stored ? String(stored.command_id) : "";
+    if (this._slot) void this._loadCommands(id);
+  }
+  _writeSlot() {
+    const id = parseDeviceLayoutKey(this.selection);
+    if (id == null || !this._slot || !this._icon.trim() || !this._command) return;
+    this._emit(applyShortcutSlotPatch(this.config, id, this._slot, { icon: this._icon.trim(), command_id: Number(this._command) }).nextConfig);
+  }
+  _shortcuts() {
+    const id = parseDeviceLayoutKey(this.selection);
+    const stored = deviceShortcutsFromConfig(this.config, id);
+    const keymap = this._keymaps.get(id);
+    const commands = keymap?.commands || [];
+    return b2`<h3>Device shortcuts</h3><div class="slots">${SHORTCUT_SLOTS.map((slot) => b2`
+      <button type="button" aria-pressed=${this._slot === slot} @click=${() => this._openSlot(slot)}>${stored[slot] ? b2`<ha-icon icon=${stored[slot].icon}></ha-icon>` : "+"} ${slot}</button>`)}</div>
+      ${this._slot ? b2`<div class="slot-editor">
+        <div class="field"><label><span class="field-label">Icon (for example mdi:home)</span><input aria-label="Shortcut icon" placeholder="mdi:home" .value=${l4(this._icon)} @input=${(ev) => {
+      this._icon = ev.target.value;
+      this._writeSlot();
+    }}></label></div>
+        ${this._selectField("Shortcut command", this._command, [
+      { value: "", label: "Choose a command" },
+      ...this._command && !commands.some((c7) => String(c7.command_id) === this._command) ? [{ value: this._command, label: `Command ${this._command} (stored)` }] : [],
+      ...commands.map((c7) => ({ value: String(c7.command_id), label: c7.name }))
+    ], (v3) => {
+      this._command = v3;
+      this._writeSlot();
+    })}
+        ${keymap?.status ? b2`<div class="hint">${keymap.status}</div>${keymap.status.startsWith("Loading") ? A : b2`<button @click=${() => {
+      this._keymaps.delete(id);
+      void this._loadCommands(id);
+    }}>Retry commands</button>`}` : A}
+        <div class="hint">Both an icon and a command are needed to update this slot.</div>
+        <button @click=${() => {
+      this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
+      this._icon = "";
+      this._command = "";
+    }}>Clear shortcut</button>
+      </div>` : A}`;
+  }
+  render() {
+    const c7 = this.config, e6 = str().editor;
+    const devices = editorDevicesFromState(this.snapshot);
+    const activities = editorActivitiesFromState(this.snapshot);
+    const enabled = deviceModeEnabledInConfig(c7);
+    const longPress = longPressSettings(c7);
+    const selected = longPressSelectedGroups(c7);
+    const color = Array.isArray(c7.background_override) ? c7.background_override : [255, 255, 255];
+    const hex = `#${color.map((v3) => Math.max(0, Math.min(255, Math.round(Number(v3)))).toString(16).padStart(2, "0")).join("")}`;
+    return b2`
+      <details name="remote-options">${this._heading(e6.generalOptionsTitle, mdiTune)}<div class="body">
+        <div class="feature">
+          ${this._toggle(e6.enableDeviceMode, enabled, (v3) => {
+      this._device({ enabled: v3 ? void 0 : false, ...!v3 ? { open_device: void 0 } : {} });
+      if (!v3 && isDeviceLayoutKey(this.selection)) this._select("default");
+    }, e6.deviceModeDescription)}
+          ${enabled ? b2`${this._selectField(e6.initialView, String(openDeviceFromConfig(c7) ?? "current"), [{ value: "current", label: e6.openOnCurrentActivity }, ...devices.map((d3) => ({ value: String(d3.id), label: d3.name }))], (v3) => this._device({ open_device: v3 === "current" ? void 0 : Number(v3) }))}<p class="field-help">${e6.initialViewHelper}</p>` : A}
+        </div>
+        <div class="feature">
+          ${this._toggle(e6.longPress, longPress.enabled, (v3) => this._set({ hold_repeat: longPressEnabledPatch(v3) }), e6.longPressDescription)}
+          ${longPress.enabled ? b2`<div class="sub">${LONG_PRESS_GROUPS.map((group) => this._toggle(longPressGroupLabel(group), selected.includes(group), (v3) => this._set({ hold_repeat: longPressGroupsPatch(longPressBlock(c7), v3 ? [...selected, group] : selected.filter((g2) => g2 !== group)) })))}</div>` : A}
+        </div>
+      </div></details>
+      <details name="remote-options">${this._heading(e6.stylingOptions, mdiPalette)}<div class="body">
+        <div class="feature"><div class="field"><label><span class="field-label">Maximum width (px)</span><input aria-label="Maximum width (px)" type="number" min="230" max="1200" step="5" .value=${l4(String(c7.max_width ?? 360))} @change=${(ev) => {
+      const input = ev.target;
+      if (input.value && input.checkValidity()) this._set({ max_width: input.valueAsNumber === 360 ? void 0 : input.valueAsNumber });
+    }}></label></div></div>
+        <div class="feature">${this._selectField(e6.fieldLabels.key_style || "Key style", keyStyleFromConfig(c7), [{ value: "flat", label: e6.keyStyleFlat }, { value: "tinted", label: e6.keyStyleTinted }, { value: "elevated", label: e6.keyStyleElevated }, { value: "glossy", label: e6.keyStyleGlossy }], (v3) => this._set({ key_style: v3 === "flat" ? void 0 : v3, ...c7.key_style === "panel" ? { tinted_panels: true } : {} }))}</div>
+        <div class="feature">${this._toggle(e6.tintedPanels, tintedPanelsFromConfig(c7), (v3) => this._set({ tinted_panels: v3 || void 0, ...c7.key_style === "panel" ? { key_style: void 0 } : {} }), e6.tintedPanelsDescription)}</div>
+        <div class="feature">
+          ${this._toggle(e6.fieldLabels.use_background_override, !!c7.background_override, (v3) => this._set({ background_override: v3 ? [255, 255, 255] : void 0, use_background_override: void 0 }))}
+          ${c7.background_override ? b2`<div class="field"><label><span class="field-label">Background color</span><input type="color" aria-label="Background color" .value=${l4(hex)} @input=${(ev) => {
+      const value = ev.target.value;
+      this._set({ background_override: [1, 3, 5].map((i8) => parseInt(value.slice(i8, i8 + 2), 16)) });
+    }}></label></div>` : A}
+        </div>
+      </div></details>
+      <details name="remote-options">${this._heading(e6.layoutOptions, mdiSort)}<div class="body"><div class="layout-card">
+        <ha-select id="layout-select" .label=${e6.layoutSelectLabel} .value=${this.selection}
+          @selected=${(ev) => {
+      ev.stopPropagation();
+      this._select(ev.detail.value);
+    }}>
+          <mwc-list-item class="sb-option-default" .value=${"default"}>${e6.defaultLayoutOption}</mwc-list-item>
+          ${activities.map((a4) => b2`<mwc-list-item .value=${String(a4.id)}>${a4.name}</mwc-list-item>`)}
+          ${enabled ? b2`<mwc-list-item class="sb-option-default" .value=${"device:default"}>${e6.allDevicesOption}</mwc-list-item>
+            ${devices.map((d3) => b2`<mwc-list-item .value=${`device:${d3.id}`}>${d3.name}</mwc-list-item>`)}` : A}
+        </ha-select>
+        <p class="layout-note">${layoutSelectionNote(c7, this.selection)}</p>
+        ${this._groups()}
+      </div></div></details>`;
+  }
+};
+SbPanelRemoteEditor.properties = {
+  config: { attribute: false },
+  backend: { attribute: false },
+  snapshot: { attribute: false },
+  selection: { state: true },
+  _slot: { state: true },
+  _icon: { state: true },
+  _command: { state: true }
+};
+SbPanelRemoteEditor.styles = [PANEL_BASE_CSS, i`
+    :host { display: block; min-width: 0; container-type: inline-size; }
+    *, *::before, *::after { box-sizing: border-box; }
+    details { border: 1px solid var(--sbp-line); border-radius: 12px; margin-top: 12px; }
+    summary { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 12px; min-height: 48px; font-size: 14px; font-weight: 600; list-style: none; border-radius: 12px; }
+    summary::-webkit-details-marker { display: none; }
+    details[open] > summary { background: var(--sbp-panel-2); border-radius: 12px 12px 0 0; }
+    .mdi { display: block; width: 22px; height: 22px; fill: currentColor; flex: 0 0 auto; }
+    .chevron { margin-left: auto; width: 20px; height: 20px; transition: transform 120ms; }
+    details[open] .chevron { transform: rotate(180deg); }
+    .body { padding: 8px 12px 12px; }
+    .feature { padding: 10px 0; }
+    .feature + .feature { border-top: 1px solid var(--sbp-line); }
+    .option { display: flex; align-items: center; gap: 8px; margin: 0; padding: 6px 0; color: var(--sbp-text); font-size: 13px; text-transform: none; letter-spacing: 0; line-height: 1.3; cursor: pointer; }
+    .option span { flex: 1; min-width: 0; }
+    .option small { display: block; margin-top: 5px; font-size: 13px; font-weight: 400; color: var(--sbp-muted); line-height: 1.35; }
+    .feature > .option { flex-direction: row-reverse; align-items: flex-start; padding: 0; gap: 12px; font-size: 14px; font-weight: 600; }
+    input[type=checkbox] { appearance: none; box-sizing: border-box; width: 46px; height: 24px; flex: 0 0 auto; padding: 0; margin: 0; border: 1px solid var(--sbp-muted); border-radius: 20px; background: var(--sbp-input); cursor: pointer; }
+    input[type=checkbox]::before { content: ""; display: block; height: 18px; width: 18px; border-radius: 50%; margin: 2px; background: var(--sbp-muted); box-shadow: 0 1px 2px #0002; transition: transform 120ms; }
+    input[type=checkbox]:checked { background: rgba(var(--sbp-accent-rgb), .12); border-color: var(--sbp-accent); }
+    input[type=checkbox]:checked::before { transform: translateX(22px); background: var(--sbp-accent); }
+    input:disabled, .option:has(input:disabled) { opacity: .45; cursor: default; }
+    button:focus-visible, summary:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
+    input[type=checkbox]:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 2px; }
+    .sub { padding: 10px 0 0 16px; }
+    .field { margin: 10px 0 0; }
+    .feature > .field:first-child { margin-top: 0; }
+    .field > label { display: block; margin: 0; padding: 10px 0 1px; border-radius: 4px 4px 0 0; background: var(--sbp-input); color: var(--sbp-muted); box-shadow: inset 0 -1px 0 var(--sbp-muted); font-size: 12px; text-transform: none; letter-spacing: 0; }
+    .field-label { display: block; padding: 0 16px; line-height: 16px; }
+    .field > label:focus-within { box-shadow: inset 0 -2px 0 var(--sbp-accent); }
+    .field > label:focus-within .field-label { color: var(--sbp-accent); }
+    .field input, .field select { display: block; box-sizing: border-box; min-width: 0; max-width: 100%; width: 100%; min-height: 30px; margin: 0; padding: 3px 16px 9px; border: 0; border-radius: 0; background: transparent; color: var(--sbp-text); font-size: 14px; line-height: 20px; outline: none; box-shadow: none; }
+    .field select option { background: var(--sbp-panel); }
+    .field input[type=color] { height: 36px; padding: 3px 16px 8px; }
+    .field-help { margin: 6px 16px 0; font-size: 12px; color: var(--sbp-muted); line-height: 1.4; }
+    .layout-card { border: 1px solid var(--sbp-line); border-radius: 12px; padding: 16px 10px 10px; }
+    .layout-note { margin: 6px 0; text-align: end; font-size: 12px; color: var(--sbp-muted); line-height: 1.4; }
+    ha-select { --sb-select-selected-text: var(--sbp-text); }
+    ha-select::part(trigger) { border-radius: 4px 4px 0 0; }
+    ha-select::part(label) { font-size: 11px; }
+    ha-select::part(value), ha-select::part(option) { font-size: 14px; }
+    ha-select::part(menu) { border-radius: 0 0 6px 6px; padding: 4px; z-index: 60; overscroll-behavior: contain; }
+    ha-select::part(option) { min-height: 40px; padding: 10px 14px; border-radius: 4px; }
+    ha-select::part(default-option) { background: rgba(var(--sbp-accent-rgb), .06); border-bottom: 2px solid rgba(var(--sbp-accent-rgb), .45); }
+    ha-select::part(default-option):hover, ha-select::part(default-option):focus-visible { background: rgba(var(--sbp-accent-rgb), .14); }
+    .group { display: flex; align-items: center; gap: 10px; background: var(--sbp-panel); min-height: 45px; padding: 4px 0; }
+    .group + .group { border-top: 1px solid var(--sbp-line); }
+    .group-options { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 10px; min-width: 0; }
+    .group-options .option:only-child { grid-column: 1 / -1; }
+    .handle { touch-action: none; user-select: none; cursor: grab; border: 0; background: transparent; padding: 4px; width: 28px; height: 32px; flex: 0 0 auto; color: var(--sbp-muted); }
+    .handle .mdi { width: 20px; height: 20px; }
+    .dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px #0003; }
+    .shifting { transition: transform 120ms ease; }
+    .rows-control { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 6px 10px; margin-top: 10px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-text) 3%, var(--sbp-panel)); }
+    .stepper { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sbp-muted); }
+    .stepper[aria-disabled=true] { opacity: .45; }
+    .stepper button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; font-size: 22px; border-radius: 12px; background: transparent; }
+    .stepper output { min-width: 24px; text-align: center; font-size: 14px; font-weight: 600; }
+    .layout-footer { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .layout-footer button { border-radius: 12px; }
+    .slots { display: flex; gap: 8px; margin: 12px 0; }
+    .slots button { flex: 1; min-width: 0; text-transform: capitalize; }
+    .slots button[aria-pressed=true] { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .1); }
+    .slot-editor { border: 1px solid var(--sbp-line); padding: 12px; border-radius: 8px; }
+    .slot-editor button { margin-top: 12px; }
+    .notice { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    @container (max-width: 340px) { .group-options { gap: 6px; } .group { gap: 4px; } .group .option { gap: 5px; font-size: 12px; } .group input[type=checkbox] { width: 38px; } .group input[type=checkbox]:checked::before { transform: translateX(14px); } }
+  `];
+function defineRemoteEditor() {
+  if (!customElements.get("sb-panel-remote-editor")) customElements.define("sb-panel-remote-editor", SbPanelRemoteEditor);
+}
+
 // server-panel/src/views/remote-view.ts
 var REMOTE_VIEW_TAG = "sb-panel-remote";
 var SbPanelRemote = class extends i4 {
@@ -17997,6 +18761,12 @@ var SbPanelRemote = class extends i4 {
     this._statusOk = true;
     this._banner = null;
     this._documentText = "";
+    this._mode = "visual";
+    this._busy = false;
+    this._loaded = false;
+    this._draft = {};
+    this._selection = "default";
+    this._generation = 0;
     this._backend = null;
     this._card = null;
     this._unsubscribe = null;
@@ -18018,10 +18788,17 @@ var SbPanelRemote = class extends i4 {
         if (id) void this._mount(id);
       }
     }
+    if (changed.has("section")) this._updateCard();
     const stage = this.renderRoot.querySelector("#stage");
     if (stage && this._card && this._card.parentElement !== stage) stage.appendChild(this._card);
   }
   _unmount() {
+    this._generation++;
+    this._loaded = false;
+    this._busy = false;
+    this._draft = {};
+    this._snapshot = void 0;
+    this._selection = "default";
     this._unsubscribe?.();
     this._unsubscribe = null;
     this._card?.setBackend(null);
@@ -18037,16 +18814,26 @@ var SbPanelRemote = class extends i4 {
   }
   async _mount(hubId) {
     this._mountedFor = hubId;
-    const response = await this.api.remoteCardDocument(hubId);
-    if (this._mountedFor !== hubId) return;
-    if (response.ok && response.body) {
+    this._busy = true;
+    this._setStatus("Loading configuration\u2026");
+    const generation = this._generation;
+    let response;
+    try {
+      response = await this.api.remoteCardDocument(hubId);
+    } catch (error) {
+      if (generation === this._generation) this._setStatus(String(error), false);
+    }
+    if (generation !== this._generation) return;
+    if (response?.ok && response.body) {
+      this._loaded = true;
+      this._draft = response.body.document || {};
       this._document = response.body.document;
       this._documentText = this._document ? JSON.stringify(this._document, null, 2) : "";
       this._setStatus(this._document ? `stored document (updated ${formatWhen(response.body.updated_at)})` : "no document stored: the card uses its defaults");
     } else {
       this._document = null;
       this._documentText = "";
-      this._setStatus(problemText(response), false);
+      if (response) this._setStatus(problemText(response), false);
     }
     const backend = new ServerRemoteBackend({ baseUrl: this.api.baseUrl });
     backend.setTarget(hubId);
@@ -18056,14 +18843,17 @@ var SbPanelRemote = class extends i4 {
     card.setLanguage(navigator.language);
     card.setBackend(backend);
     this._card = card;
+    this._updateCard();
     this._unsubscribe = backend.subscribe(() => this._syncBanner());
     this._syncBanner();
+    this._busy = false;
     this.requestUpdate();
   }
   _syncBanner() {
     const backend = this._backend;
     if (!backend) return;
     const snapshot = backend.snapshot();
+    this._snapshot = snapshot;
     const unavailable = !snapshot || snapshot.state === "unavailable";
     this._banner = unavailable ? backend.lastError ? `The server cannot reach the hub (${backend.lastError}).` : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected)." : null;
   }
@@ -18072,7 +18862,7 @@ var SbPanelRemote = class extends i4 {
     this._statusOk = ok;
   }
   _readDocument() {
-    const text = this._textarea()?.value.trim() ?? "";
+    const text = this._documentText.trim();
     let parsed;
     try {
       parsed = text ? JSON.parse(text) : {};
@@ -18091,18 +18881,48 @@ var SbPanelRemote = class extends i4 {
   }
   _apply(document2) {
     this._document = document2;
+    this._draft = document2 || {};
+    this._loaded = true;
     this._documentText = document2 ? JSON.stringify(document2, null, 2) : "";
     const textarea = this._textarea();
     if (textarea) textarea.value = this._documentText;
-    if (this._card && this._mountedFor) this._card.setConfig(cardConfigForWebRemote(this._mountedFor, document2));
+    this._updateCard();
+  }
+  _updateCard() {
+    if (!this._card || !this._mountedFor) return;
+    const editing = this.section === "layout";
+    if (!deviceModeEnabledInConfig(this._draft) && isDeviceLayoutKey(this._selection)) this._selection = "default";
+    const config = cardConfigForWebRemote(this._mountedFor, editing ? this._draft : this._document);
+    this._card.editMode = editing;
+    config.preview_activity = editing && this._selection !== "default" ? this._selection : "";
+    this._card.setConfig(config);
+  }
+  _edit(document2) {
+    this._draft = document2;
+    this._documentText = JSON.stringify(document2, null, 2);
+    this._setStatus("Unsaved changes \u2014 preview updated. Save to share this configuration.");
+    this._updateCard();
+  }
+  _switchMode(mode) {
+    if (mode === this._mode) return;
+    if (mode === "visual") {
+      const parsed = this._readDocument();
+      if (!parsed) return;
+      this._draft = parsed;
+      this._updateCard();
+    }
+    this._mode = mode;
   }
   async _save() {
     const hubId = this._mountedFor;
-    if (!hubId) return;
-    const document2 = this._readDocument();
+    if (!hubId || this._busy || !this._loaded) return;
+    const generation = this._generation;
+    const document2 = this._mode === "json" ? this._readDocument() : this._draft;
     if (!document2) return;
+    this._busy = true;
     try {
       const response = await this.api.putRemoteCardDocument(hubId, document2);
+      if (generation !== this._generation) return;
       if (!response.ok || !response.body) {
         this._setStatus(problemText(response), false);
         return;
@@ -18110,14 +18930,19 @@ var SbPanelRemote = class extends i4 {
       this._apply(response.body.document);
       this._setStatus(`saved (updated ${formatWhen(response.body.updated_at)}); applied to the remote`);
     } catch (err) {
-      this._setStatus(String(err), false);
+      if (generation === this._generation) this._setStatus(String(err), false);
+    } finally {
+      if (generation === this._generation) this._busy = false;
     }
   }
   async _reload() {
     const hubId = this._mountedFor;
-    if (!hubId) return;
+    if (!hubId || this._busy) return;
+    const generation = this._generation;
+    this._busy = true;
     try {
       const response = await this.api.remoteCardDocument(hubId);
+      if (generation !== this._generation) return;
       if (!response.ok || !response.body) {
         this._setStatus(problemText(response), false);
         return;
@@ -18125,14 +18950,19 @@ var SbPanelRemote = class extends i4 {
       this._apply(response.body.document);
       this._setStatus(response.body.document ? `stored document (updated ${formatWhen(response.body.updated_at)})` : "no document stored: the card uses its defaults");
     } catch (err) {
-      this._setStatus(String(err), false);
+      if (generation === this._generation) this._setStatus(String(err), false);
+    } finally {
+      if (generation === this._generation) this._busy = false;
     }
   }
   async _reset() {
     const hubId = this._mountedFor;
-    if (!hubId) return;
+    if (!hubId || this._busy) return;
+    const generation = this._generation;
+    this._busy = true;
     try {
       const response = await this.api.deleteRemoteCardDocument(hubId);
+      if (generation !== this._generation) return;
       if (response.status !== 204) {
         this._setStatus(problemText(response), false);
         return;
@@ -18140,7 +18970,9 @@ var SbPanelRemote = class extends i4 {
       this._apply(null);
       this._setStatus("reset: the card uses its defaults");
     } catch (err) {
-      this._setStatus(String(err), false);
+      if (generation === this._generation) this._setStatus(String(err), false);
+    } finally {
+      if (generation === this._generation) this._busy = false;
     }
   }
   render() {
@@ -18162,19 +18994,53 @@ var SbPanelRemote = class extends i4 {
     `;
   }
   _renderLayout(hub) {
+    const dirty = this._documentText !== (this._document ? JSON.stringify(this._document, null, 2) : "");
     return b2`
-        <div class="panel">
-          <h2>Layout <span class="spacer"></span><span class="hint mono">PUT /hubs/{hub_id}/ui/remote-card</span></h2>
-          <div class="hint">The card configuration for this hub, stored on the server and shared by every phone, tablet and wall panel that opens the remote: the Home Assistant card's YAML as JSON, minus <code>entity</code>, <code>theme</code> and Home Assistant actions. An empty object resets to the card's defaults. Saving applies it to the remote on the left.</div>
-          <textarea id="remote-doc" .value=${this._documentText} ?disabled=${!hub} placeholder='{ "show_dpad": true, "group_order": ["activity", "dpad", "nav"] }'></textarea>
-          <div class="actions" style="margin-top: 10px">
-            <button class="primary" id="remote-save" ?disabled=${!hub} @click=${this._save}>Save</button>
-            <button id="remote-load" ?disabled=${!hub} @click=${this._reload}>Reload document</button>
-            <button class="danger" id="remote-delete" ?disabled=${!hub} @click=${this._reset}>Reset to defaults</button>
-            <span class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status">${this._status}</span>
+      <div class="layout-content">
+        <h2>Remote configuration <span class="spacer"></span><span class="hint">${dirty ? "Unsaved changes" : "Saved configuration"}</span></h2>
+        <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save.</div>
+        <div class="layout-grid">
+          <div class="editor">
+            <fieldset ?disabled=${!hub || !this._loaded || this._busy}>
+              <div class="mode-tabs" aria-label="Configuration editor">
+                <button id="remote-visual" aria-pressed=${this._mode === "visual"} @click=${() => this._switchMode("visual")}>Visual editor</button>
+                <button id="remote-json" aria-pressed=${this._mode === "json"} @click=${() => this._switchMode("json")}>JSON</button>
+              </div>
+              ${this._mode === "visual" ? b2`
+                <sb-panel-remote-editor ?inert=${!hub || !this._loaded || this._busy} .selection=${this._selection} .config=${this._draft} .backend=${this._backend} .snapshot=${this._snapshot}
+                  @document-changed=${(ev) => {
+      ev.stopPropagation();
+      this._edit(ev.detail.document);
+    }}
+                  @layout-selected=${(ev) => {
+      ev.stopPropagation();
+      this._selection = ev.detail.selection;
+      this._updateCard();
+    }}
+                ></sb-panel-remote-editor>` : b2`
+                <textarea id="remote-doc" aria-label="Remote configuration JSON" .value=${this._documentText} @input=${(ev) => {
+      this._documentText = ev.target.value;
+      this._setStatus("Unsaved JSON changes");
+    }} placeholder='{ "show_dpad": true }'></textarea>
+                <button @click=${() => {
+      const parsed = this._readDocument();
+      if (parsed) this._edit(parsed);
+    }}>Update preview</button>`}
+            </fieldset>
           </div>
+          <aside class="preview"><h3>Preview</h3><p class="hint">Preview only — buttons do not control the hub.</p>
+            <div class="frame"><div class="stage" id="stage" inert></div></div>
+          </aside>
         </div>
-    `;
+        <footer class="layout-actions" aria-label="Remote configuration actions">
+            <div class="actions">
+              <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._save}>${this._busy ? "Working\u2026" : "Save"}</button>
+              <button id="remote-load" ?disabled=${!hub || this._busy} @click=${this._reload}>Reload document</button>
+              <button class="danger" id="remote-delete" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._reset}>Reset to defaults</button>
+            </div>
+            <p class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status" role="status">${this._status}</p>
+        </footer>
+      </div>`;
   }
 };
 SbPanelRemote.properties = {
@@ -18185,7 +19051,12 @@ SbPanelRemote.properties = {
   _status: { state: true },
   _statusOk: { state: true },
   _banner: { state: true },
-  _documentText: { state: true }
+  _documentText: { state: true },
+  _mode: { state: true },
+  _busy: { state: true },
+  _loaded: { state: true },
+  _draft: { state: true },
+  _snapshot: { state: true }
 };
 SbPanelRemote.styles = [
   PANEL_BASE_CSS,
@@ -18198,7 +19069,24 @@ SbPanelRemote.styles = [
       .stage { padding: 10px; }
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
       .foot { padding: 6px 10px 8px; color: var(--sbp-muted); font-size: 11px; text-align: center; }
-      textarea { min-height: 260px; margin-top: 10px; }
+      textarea { min-height: 380px; margin-top: 10px; }
+      .layout-content { min-width: 0; }
+      .layout-content h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+      .layout-content h2 .hint { font-weight: 400; }
+      .layout-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 380px); gap: 20px; align-items: start; }
+      .preview { position: sticky; top: calc(var(--top-dock-height, 0px) + 12px); min-width: 0; }
+      .preview h3 { margin-top: 0; }
+      .preview .frame { max-width: none; }
+      .preview .stage { overflow: auto; }
+      .editor { min-width: 0; }
+      .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; }
+      .mode-tabs button[aria-pressed=true] { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .08); }
+      fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+      .actions { flex-wrap: wrap; }
+      .layout-actions { position: sticky; bottom: var(--bottom-dock-height, 56px); z-index: 20; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--sbp-line); background: var(--dock-surface, var(--sbp-panel)); box-shadow: 0 -3px 8px #00000008; }
+      .layout-actions .msg { margin: 8px 0 0; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; max-height: 15dvh; overflow-y: auto; }
+      @media (max-width: 900px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .preview .frame { max-width: 420px; } }
+
     `
 ];
 function defineRemoteView() {
@@ -18300,6 +19188,7 @@ function bootstrapServerPanel() {
   defineCatalogView();
   defineDeviceEditor();
   definePayloadDialog();
+  defineRemoteEditor();
   defineRemoteView();
   defineApiView();
   defineEventsView();

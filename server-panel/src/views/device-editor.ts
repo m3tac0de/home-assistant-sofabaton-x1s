@@ -92,6 +92,7 @@ import { problemText, type HubInfo, type HubView, type PanelApi, type PayloadVie
 import type { HubContext } from "../panel-context";
 import type { PanelStore } from "../panel-store";
 import { PANEL_BASE_CSS } from "../panel-styles";
+import { PointerReorder } from "../pointer-reorder";
 import type { PayloadSaveDetail } from "./payload-dialog";
 import {
   IP_HEAD_DEVICE_CLASSES,
@@ -285,7 +286,6 @@ export class SbPanelDeviceEditor extends LitElement {
     _exitConfirm: { state: true },
     _stepEditor: { state: true },
     _stepDialog: { state: true },
-    _drag: { state: true },
     _payloadDialog: { state: true },
     _payloadFetching: { state: true },
     _payloadFetchError: { state: true },
@@ -516,7 +516,13 @@ export class SbPanelDeviceEditor extends LitElement {
   private _stepEditor: { buttonId: number; name: string } | null = null;
   private _stepDialog: { editIndex: number | null; commandId: number | null; hold: string; error: string } | null = null;
   /** A step drag in flight: the row picked up, the slot it hovers, the pointer's travel and the row's height. */
-  private _drag: { from: number; over: number; dy: number; height: number; pointerId: number; startY: number } | null = null;
+  private _sorter = new PointerReorder(
+    () => Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-step-index]")),
+    () => this.requestUpdate(),
+    (from, to) => this._moveStep(from, to - from),
+    () => this._stickyOffset(),
+  );
+  private get _drag() { return this._sorter.state; }
   /** The payload dialog's inputs (the card's add / edit modes), or null when closed. */
   private _payloadDialog: { mode: "add" | "edit"; commandId: number; snapshot: BackupCommandDecodedBlock | null; rawHex: string; fetchedHex: string } | null = null;
   private _payloadFetching: number | null = null;
@@ -540,6 +546,7 @@ export class SbPanelDeviceEditor extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._sorter.cancel();
     window.removeEventListener("scroll", this._onWindowScroll);
   }
 
@@ -569,7 +576,7 @@ export class SbPanelDeviceEditor extends LitElement {
     this._exitConfirm = null;
     this._stepEditor = null;
     this._stepDialog = null;
-    this._drag = null;
+    this._sorter.cancel();
     this._payloadDialog = null;
     this._payloadFetching = null;
     this._payloadFetchError = null;
@@ -882,73 +889,11 @@ export class SbPanelDeviceEditor extends LitElement {
 
   // -- drag and drop on pointer events (the card uses ha-sortable) ------------------------------
 
-  private _stepItemRects(): DOMRect[] {
-    return Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-step-index]")).map((el) => el.getBoundingClientRect());
-  }
-
-  private _dragStart(event: PointerEvent, index: number): void {
-    if (event.button !== 0 || this._drag) return;
-    const handle = event.currentTarget as HTMLElement;
-    const rects = this._stepItemRects();
-    const rect = rects[index];
-    if (!rect) return;
-    event.preventDefault();
-    handle.setPointerCapture(event.pointerId);
-    // A synthetic press can still start a text selection before the styles land; drop it.
-    (this.renderRoot as unknown as { getSelection?: () => Selection | null }).getSelection?.()?.removeAllRanges();
-    window.getSelection()?.removeAllRanges();
-    this._drag = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
-  }
-
-  private _dragMove(event: PointerEvent): void {
-    const drag = this._drag;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    event.preventDefault();
-    // The page scrolls when the pointer nears the viewport's edges, so long sequences can be dragged across.
-    const top = this._stickyOffset();
-    if (event.clientY < top + 32) window.scrollBy(0, -10);
-    else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
-    this._drag = { ...drag, over: this._dragSlot(drag, event.clientY), dy: event.clientY - drag.startY };
-  }
-
-  /** The slot the dragged row's centre sits over for a pointer at `clientY` (rows are measured untransformed: the dragged row's own rect moves with it, so its start is recovered from the travel). */
-  private _dragSlot(drag: NonNullable<typeof this._drag>, clientY: number): number {
-    const rects = this._stepItemRects();
-    const own = rects[drag.from];
-    if (!own) return drag.from;
-    const centre = own.top - drag.dy + own.height / 2 + (clientY - drag.startY);
-    let over = drag.from;
-    for (let i = 0; i < rects.length; i++) {
-      const mid = rects[i].top + rects[i].height / 2;
-      if (i < drag.from && centre < mid) over = Math.min(over, i);
-      if (i > drag.from && centre > mid) over = i;
-    }
-    return over;
-  }
-
-  private _dragEnd(event: PointerEvent): void {
-    const drag = this._drag;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
-    // A release that arrives without a move in between (an automated drag) still lands on its slot.
-    const over = this._dragSlot(drag, event.clientY);
-    this._drag = null;
-    if (over !== drag.from) this._moveStep(drag.from, over - drag.from);
-  }
-
-  private _dragCancel(event: PointerEvent): void {
-    if (this._drag && event.pointerId === this._drag.pointerId) this._drag = null;
-  }
-
-  /** Where a row sits while a drag is in flight: the dragged row follows the pointer, the rows it crossed slide by its height. */
-  private _dragTransform(index: number): string {
-    const drag = this._drag;
-    if (!drag) return "";
-    if (index === drag.from) return `translateY(${drag.dy}px)`;
-    if (drag.from < drag.over && index > drag.from && index <= drag.over) return `translateY(${-drag.height}px)`;
-    if (drag.over < drag.from && index >= drag.over && index < drag.from) return `translateY(${drag.height}px)`;
-    return "";
-  }
+  private _dragStart(event: PointerEvent, index: number): void { this._sorter.start(event, index); }
+  private _dragMove(event: PointerEvent): void { this._sorter.move(event); }
+  private _dragEnd(event: PointerEvent): void { this._sorter.end(event); }
+  private _dragCancel(event: PointerEvent): void { this._sorter.cancel(event); }
+  private _dragTransform(index: number): string { return this._sorter.transform(index); }
 
   private _setStepWait(item: BackupMacroStepItem, event: Event): void {
     const editor = this._stepEditor;

@@ -153,6 +153,44 @@ test.describe("web remote page", () => {
     await page.screenshot({ path: "test-results/web-remote-page.png", fullPage: true });
   });
 
+  test("activity changes never paint a default selector over the live remote", async ({ page }) => {
+    let release;
+    const state = { document: { layouts: { "102": { show_dpad: false } } }, running: STATUS.status.running_activity, holds: {} };
+    const { sockets } = await mockServer(page, state);
+    await page.goto(`${PAGE}?hub=${encodeURIComponent(HUB)}`);
+    const remote = card(page);
+    await expect(remote.locator("ha-select.sb-activity-select .value").first()).toHaveText("Watch TV");
+    await expect.poll(() => sockets.length).toBe(1);
+    // Sample every painted frame, including the temporary animation layer.
+    await remote.evaluate((element) => {
+      element.dataset.labels = "[]";
+      const labels = [];
+      const sample = () => {
+        for (const select of element.shadowRoot.querySelectorAll("ha-select.sb-activity-select")) {
+          if (select.getBoundingClientRect().height) labels.push(select.shadowRoot.querySelector(".value").textContent);
+        }
+        element.dataset.labels = JSON.stringify(labels);
+        if (!element.hasAttribute("data-stop-sampling")) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    state.holds[`GET /hubs/${HUB}/entities/102/buttons`] = new Promise((resolve) => { release = resolve; });
+    state.running = { activity_id: 102, name: "Listen" };
+    sockets[0].send(JSON.stringify({ type: "hub_event", hub_id: HUB, event: { seq: 2, kind: "activity_changed", payload: state.running } }));
+    await expect(remote.locator(".dpad >> visible=true")).toHaveCount(0);
+    await expect(remote.locator("ha-select.sb-activity-select .value").first()).toHaveText("Listen");
+    release();
+    await expect(remote.locator(".loadIndicator").first()).not.toHaveClass(/is-loading/);
+    // Include the whole transition, rather than only checking its final state.
+    await page.waitForTimeout(350);
+    const labels = await remote.evaluate((element) => {
+      element.setAttribute("data-stop-sampling", "");
+      return JSON.parse(element.dataset.labels);
+    });
+    expect(labels).toContain("Listen");
+    expect([...new Set(labels)].filter((label) => label !== "Watch TV" && label !== "Listen")).toEqual([]);
+  });
+
   test("nothing alarming shows before the server's first answer", async ({ page }) => {
     let releaseStatus;
     const held = new Promise((resolve) => (releaseStatus = resolve));
@@ -257,6 +295,33 @@ test.describe("web remote page", () => {
     expect(menu.y - (trigger.y + trigger.height)).toBeGreaterThan(2);
     expect(menu.y - (trigger.y + trigger.height)).toBeLessThan(12);
   });
+
+  for (const zoom of [1, 1.5]) {
+    for (const device of [false, true]) {
+      test(`the bottom ${device ? "device" : "activity"} selector opens inside the card at zoom ${zoom}`, async ({ page }) => {
+        const order = ["dpad", "nav", "mid", "media", "colors", "shortcuts", "macro_favorites", "activity"];
+        await mockServer(page, {
+          document: { group_order: order, device_mode: { layouts: { default: { group_order: order } } } },
+          running: STATUS.status.running_activity,
+        });
+        await page.goto(`${PAGE}?hub=${encodeURIComponent(HUB)}&zoom=${zoom}${device ? "&device=1" : ""}`);
+        const remote = card(page);
+        const select = remote.locator("ha-select.sb-activity-select >> visible=true").first();
+        await expect(select.locator(".value")).toHaveText(device ? "TV" : "Watch TV");
+        await select.locator(".trigger").click();
+        const trigger = await select.locator(".trigger").boundingBox();
+        const menu = await select.locator(".menu").boundingBox();
+        const bounds = await remote.locator("ha-card").boundingBox();
+        expect(menu.y + menu.height).toBeLessThan(trigger.y);
+        expect(menu.y).toBeGreaterThanOrEqual(Math.max(0, bounds.y));
+        expect(Math.abs(menu.x - trigger.x)).toBeLessThan(2);
+        expect(Math.abs(menu.width - trigger.width)).toBeLessThan(2);
+        await expect(select.locator(".option").last()).toBeInViewport({ ratio: 1 });
+        await select.locator(".trigger").press("Escape");
+        await expect(select.locator(".menu")).not.toBeVisible();
+      });
+    }
+  }
 
   test("a stored background override paints the card without Home Assistant", async ({ page }) => {
     await mockServer(page, {
