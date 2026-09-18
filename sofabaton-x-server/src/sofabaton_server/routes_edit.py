@@ -232,9 +232,11 @@ def _button_code(token: str, hub_id: str) -> int:
 
 
 def _plan(kind: str, baseline: dict[str, Any], edited: dict[str, Any], entity_id: int, hub_id: str) -> SyncPlan:
-    build = build_device_sync_plan if kind == "device" else build_activity_sync_plan
     try:
-        steps = build(baseline, edited, entity_id)
+        # A device edit may drop commands (the HA card's live editor does; the
+        # hub cascades the references and the sort table is rewritten once).
+        steps = (build_device_sync_plan(baseline, edited, entity_id, allow_command_removal=True)
+                 if kind == "device" else build_activity_sync_plan(baseline, edited, entity_id))
     except ValueError as err:
         raise ApiProblem(422, "out_of_scope", "The edit touches more than the entity",
                          detail=str(err), hub_id=hub_id) from err
@@ -253,10 +255,12 @@ async def _sync_job(
     sync = proxy.sync_device if kind == "device" else proxy.sync_activity
     id_kw = "device_id" if kind == "device" else "activity_id"
 
+    extra: dict[str, Any] = {"allow_command_removal": True} if kind == "device" else {}
+
     async def run(progress) -> dict[str, Any]:
         result: SyncResult = await sync(
             baseline=snap.bundle, edited=edited, snapshot_id=snap.snapshot_id,
-            progress=progress, **{id_kw: entity_id},
+            progress=progress, **{id_kw: entity_id}, **extra,
         )
         if not result.ok:
             raise SyncFailed(result)

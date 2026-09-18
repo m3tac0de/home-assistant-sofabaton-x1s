@@ -80,7 +80,7 @@ test("theme cycling", () => {
 test("preferences and history survive a round trip and tolerate a broken store", () => {
   const store = new Map<string, string>();
   const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
-  const fresh = { hub: null, tab: "hub" as const, sub: "devices", theme: "auto" as const };
+  const fresh = { hub: null, tab: "hub" as const, sub: "activities", theme: "auto" as const };
   assert.deepEqual(loadPrefs(storage), fresh);
   savePrefs(storage, { hub: "h", tab: "backup", sub: "restore", theme: "dark" });
   assert.deepEqual(loadPrefs(storage), { hub: "h", tab: "backup", sub: "restore", theme: "dark" });

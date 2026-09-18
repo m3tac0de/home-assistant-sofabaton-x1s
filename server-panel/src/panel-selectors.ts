@@ -170,6 +170,13 @@ export function hasDirtyDraft(runtime: HubRuntime | null): boolean {
   return Boolean(runtime?.draft);
 }
 
+/** An editor's draft (a scope with an entity id, `hub/devices/12`) carries the
+ *  HA card's banner; other drafts keep the panel's wording (device editor
+ *  plan, decision 3). */
+export function draftBannerText(scope: string): string {
+  return /\/\d+$/.test(scope) ? "Unsynced changes — sync to the hub to apply them" : "Unsaved changes";
+}
+
 /** What the bottom dock narrates for a hub, by the card's precedence: a
  *  running job, then a notice, then a stopped apply, then a gate, then idle.
  *  An unreachable server is said even with no hub selected. */
@@ -184,7 +191,7 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null): 
   if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `An apply stopped (${stopped.status}); ${stopped.resumable ? "resume or discard it" : "discard it"}` };
   const draft = draftFor(runtime);
   if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
-  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: "Unsaved changes" };
+  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || (gate !== "pass" && runtime)) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };

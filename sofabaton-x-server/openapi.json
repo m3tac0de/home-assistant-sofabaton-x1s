@@ -2324,7 +2324,7 @@
         "type": "object"
       },
       "PayloadView": {
-        "description": "A stored payload: its kind, the hub body as hex, and what could be read from it.",
+        "description": "A stored payload: its kind, the hub body as hex, and what could be read from it.\n\n``decoded`` is the library's structured block for the classes it can\nround-trip (a descriptive IR payload, the wifi classes):\n``{\"class\", \"fields\", \"trailer_hex\"}`` as ``restore_data.decoded``\ncarries it; null when the body stays raw.",
         "properties": {
           "carrier_hz": {
             "anyOf": [
@@ -2336,6 +2336,18 @@
               }
             ],
             "title": "Carrier Hz"
+          },
+          "decoded": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decoded"
           },
           "descriptor": {
             "anyOf": [

@@ -1374,6 +1374,7 @@ class AsyncXProxy:
         progress: Optional[Callable] = None,
         snapshot_id: Optional[str] = None,
         strict: bool = False,
+        allow_command_removal: bool = False,
     ) -> SyncResult:
         """Device-scoped counterpart of :meth:`sync_activity`.
 
@@ -1381,6 +1382,11 @@ class AsyncXProxy:
         device id as the entity being edited (command adds and renames,
         payload edits, idle behaviour, input records). Its live comparison
         covers bindings and macros; it does not compare every device field.
+
+        ``allow_command_removal`` also accepts command rows present in the
+        baseline but absent from the edit: each is deleted on the hub (the
+        hub cascades the references) and the device's display-sort table
+        is rewritten once. Without it any removed id is out of scope.
         """
 
         self._raise_if_cannot_fetch(f"sync_device({int(device_id) & 0xFF})")
@@ -1391,6 +1397,7 @@ class AsyncXProxy:
             edited=edited,
             device_id=device_id,
             progress_callback=self._engine_progress(progress),
+            **({"allow_command_removal": True} if allow_command_removal else {}),
             **({"strict_preflight": True} if strict else {}),
         )
         new_id = await self._rebase_after_write(result, device_ids=(int(device_id) & 0xFF,))

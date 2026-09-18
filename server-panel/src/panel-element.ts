@@ -15,12 +15,13 @@ import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
 import { PanelApi, serverBaseFromPanelUrl, type HubView } from "./panel-api";
 import { hubContextFor, type HubContext } from "./panel-context";
-import { hashFor, hubRoute, parseRoute, toolRoute, type HubTab, type Route, type ToolPage } from "./panel-route";
+import { hashFor, hubRoute, parseRoute, routeScope, toolRoute, type HubTab, type Route, type ToolPage } from "./panel-route";
 import { connectivityFor, dockModel, hasDirtyDraft, selectedHub, selectedRuntime } from "./panel-selectors";
 import { PanelStore, type PanelSnapshot } from "./panel-store";
 import { PanelStream } from "./panel-stream";
 import { PANEL_BASE_CSS } from "./panel-styles";
 import type { SbPanelHubs } from "./views/hubs-view";
+import type { SbPanelDeviceEditor } from "./views/device-editor";
 
 export const PANEL_TAG = "sofabaton-server-panel";
 
@@ -59,7 +60,8 @@ export class SofabatonServerPanel extends LitElement {
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
       /* -- top dock -------------------------------------------------------- */
-      .top-dock { position: sticky; top: 0; z-index: 40; margin: 0 calc(-1 * var(--page-gutter)); padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0; background: var(--sbp-panel); border-bottom: 1px solid var(--sbp-line); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.03); }
+      /* The dock's lower band, where the subtab row sits, shares the page's background with the area under it; only the two tab rows carry the panel colour. */
+      .top-dock { position: sticky; top: 0; z-index: 40; margin: 0 calc(-1 * var(--page-gutter)); padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0; background: var(--sbp-bg); }
       .top-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0 calc(-1 * var(--page-gutter)); padding: 6px var(--page-gutter); background: var(--dock-surface); border-bottom: 1px solid var(--sbp-line); }
       .brand { display: flex; align-items: baseline; gap: 8px; flex: 0 0 auto; }
       .brand b { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
@@ -89,27 +91,32 @@ export class SofabatonServerPanel extends LitElement {
       .menu-sep { border-top: 1px solid var(--sbp-line); margin: 4px 0; }
       .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--sbp-panel-2); color: var(--sbp-muted); font-size: 11px; text-align: center; font-weight: 500; }
 
-      .tabs { display: flex; align-items: stretch; min-width: 0; }
-      .tabs-scroll { display: flex; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+      .tabs { display: flex; align-items: stretch; gap: 2px; min-width: 0; margin: 0 calc(-1 * var(--page-gutter)); padding: 0 var(--page-gutter); border-bottom: 1px solid var(--sbp-line); background: var(--sbp-panel); }
+      .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
       .tabs-scroll::-webkit-scrollbar { display: none; }
-      .tab-btn { flex: 0 0 auto; min-height: 46px; padding: 10px 18px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--sbp-muted); font-weight: 600; }
-      .tab-btn:hover { color: var(--sbp-text); border-color: transparent; border-bottom-color: var(--sbp-line); }
-      .tab-btn.active { color: var(--sbp-text); border-bottom-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.05); }
+      .tab-btn { position: relative; flex: 0 0 auto; border: 0; border-radius: 0; background: transparent; color: var(--sbp-muted); font-size: 14px; font-weight: 700; padding: 12px 16px; user-select: none; }
+      .tab-btn:hover { color: var(--sbp-text); border-color: transparent; }
+      .tab-btn.active { color: var(--sbp-text); box-shadow: inset 0 -3px 0 var(--sbp-accent); }
       .tab-menu { position: relative; flex: 0 0 auto; margin-left: auto; display: flex; }
-      .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 10px; min-width: 44px; }
+      .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 12px 8px 10px; min-width: 44px; }
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
-      .subtabs { display: flex; overflow-x: auto; scrollbar-width: none; margin: 8px 0 0; border: 1px solid var(--sbp-line); border-bottom: 0; border-radius: 12px 12px 0 0; background: linear-gradient(180deg, var(--sbp-panel), color-mix(in srgb, var(--sbp-panel-2) 45%, var(--sbp-panel))); }
+      .page { --connected-inline: 16px; --connected-radius: 21px; }
+      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: 10px var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
       .subtabs::-webkit-scrollbar { display: none; }
-      .subtab-btn { flex: 1 0 auto; min-height: 42px; padding: 10px 16px; border: 0; border-right: 1px solid var(--sbp-line); border-radius: 0; background: transparent; color: var(--sbp-muted); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
+      .subtab-btn { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 16px; border: 0; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 86%, transparent); border-radius: 0; background: transparent; color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+      .subtab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      .subtab-icon { width: 18px; height: 18px; flex: 0 0 auto; }
+      .subtab-count { flex: 0 0 auto; padding: 0 5px; border: 1px solid var(--sbp-line); border-radius: 999px; font-size: 9px; font-weight: 700; line-height: 1.2; background: color-mix(in srgb, var(--sbp-panel) 92%, transparent); }
       .subtab-btn:last-child { border-right: 0; }
       .subtab-btn:hover { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.05); }
-      .subtab-btn.active { color: var(--sbp-text); background: var(--sbp-panel); box-shadow: inset 0 -3px 0 var(--sbp-accent); }
+      .subtab-btn.active { color: var(--sbp-text); background: transparent; box-shadow: inset 0 -3px 0 var(--sbp-accent); }
 
       /* -- the view and its scrim ------------------------------------------- */
-      .view { position: relative; padding: 16px 0 8px; min-height: 40vh; }
-      .stage { min-width: 0; }
+      .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
+      .stage { min-width: 0; padding: 12px 16px 16px; }
       .stage[inert] { opacity: 0.5; filter: saturate(0.5); pointer-events: none; }
+      .scrim { border-radius: 0 0 var(--connected-radius) var(--connected-radius); }
       .scrim { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
       .scrim-card { max-width: 420px; padding: 14px 18px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); text-align: center; }
       .scrim-card b { display: block; font-size: 14px; margin-bottom: 4px; }
@@ -162,7 +169,15 @@ export class SofabatonServerPanel extends LitElement {
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
         .hub-picker-btn { min-height: 40px; padding-inline: 9px; }
-        .tab-btn { padding-inline: 14px; }
+        .tab-btn { padding-inline: 6px; }
+        .tabs-scroll { gap: 0; }
+        .page { --connected-inline: 12px; }
+        .subtabs { min-height: 34px; margin-top: 7px; }
+        /* Narrow: the label gets every pixel, as on the card; the icon is decorative. */
+        .subtab-icon { display: none; }
+        .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
+        .subtab-count { padding: 1px 5px; }
+        .stage { padding: 12px 12px 12px; }
         .dock-inner { gap: 8px; }
         .dock:has(.dock-actions) .dock-inner { flex-direction: column; align-items: stretch; padding-block: 8px; }
         .dock:has(.dock-actions) .dock-center { justify-content: flex-start; }
@@ -227,14 +242,20 @@ export class SofabatonServerPanel extends LitElement {
     void this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this._dockObserver?.disconnect();
-      this._dockObserver = new ResizeObserver(([entry]) => {
+      this._dockObserver = new ResizeObserver((entries) => {
         // Notices can wrap, actions can take a second row, and safe-area
         // padding varies by device. Reserve the actual height, not a guess.
-        const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
-        this.style.setProperty("--bottom-dock-height", `${height}px`);
+        // The top dock's height is what a view's sticky headers (the Hub
+        // tab's open drawer) pin under, since the page scrolls under it.
+        for (const entry of entries) {
+          const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+          this.style.setProperty(entry.target.id === "top-dock" ? "--top-dock-height" : "--bottom-dock-height", `${height}px`);
+        }
       });
-      const dock = this.renderRoot.querySelector("#bottom-dock");
-      if (dock) this._dockObserver.observe(dock);
+      for (const id of ["#bottom-dock", "#top-dock"]) {
+        const dock = this.renderRoot.querySelector(id);
+        if (dock) this._dockObserver.observe(dock);
+      }
     });
   }
 
@@ -274,18 +295,27 @@ export class SofabatonServerPanel extends LitElement {
     else if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
   }
 
-  /** Leaving the draft's screen or its hub with unsaved work asks first (decision 8); nothing is lost either way. */
+  /** Leaving the draft's screen or its hub with unsaved work asks first (decision 8); nothing is lost either way.
+   *  An open editor asks with the card's own "Unsynced changes" dialog and finishes the move itself (device editor plan, decision 3). */
   private _confirmLeave(target: { hubId?: string | null; route?: Route }): boolean {
     const runtime = selectedRuntime(this._snapshot);
     if (!runtime || !hasDirtyDraft(runtime)) return true;
     const scope = runtime.draft!.scope;
     const current = this._snapshot.route;
-    const currentScope = current.kind === "hub" ? `${current.tab}/${current.sub}` : null;
+    const currentScope = current.kind === "hub" ? routeScope(current) : null;
     if (currentScope !== scope) return true;                       // not on the draft's screen: nothing to interrupt
     const leavingHub = target.hubId !== undefined && target.hubId !== runtime.hub.hub_id;
-    const targetScope = target.route ? (target.route.kind === "hub" ? `${target.route.tab}/${target.route.sub}` : `${target.route.page}/${target.route.sub}`) : null;
+    const targetScope = target.route ? routeScope(target.route) : null;
     const leavingScope = targetScope !== null && targetScope !== scope;
     if (!leavingHub && !leavingScope) return true;
+    const editor = this.renderRoot.querySelector<SbPanelDeviceEditor>("sb-panel-device-editor");
+    if (editor && editor.hasUnsyncedChanges()) {
+      editor.askToLeave(() => {
+        if (target.route) this.store.navigate(target.route);
+        else if (target.hubId !== undefined) this.store.selectHub(target.hubId);
+      });
+      return false;
+    }
     return confirm("You have unsaved changes here. They are kept for when you come back.\n\nLeave anyway?");
   }
 
@@ -334,10 +364,10 @@ export class SofabatonServerPanel extends LitElement {
     void this.store.refreshHubs();
   }
 
-  private _onNavigate(event: CustomEvent<{ tab?: HubTab; sub?: string; page?: ToolPage }>): void {
+  private _onNavigate(event: CustomEvent<{ tab?: HubTab; sub?: string; page?: ToolPage; entity?: number }>): void {
     const d = event.detail;
     if (d.page) this._go(toolRoute(d.page));
-    else if (d.tab) this._go(hubRoute(null, d.tab, d.sub));
+    else if (d.tab) this._go(hubRoute(null, d.tab, d.sub, d.entity));
   }
 
   // -- render ---------------------------------------------------------------------------
@@ -363,6 +393,9 @@ export class SofabatonServerPanel extends LitElement {
       case "remote":
         return html`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
       default:
+        if (route.entity !== undefined && route.sub === "devices") {
+          return html`<sb-panel-device-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .deviceId=${route.entity}></sb-panel-device-editor>`;
+        }
         return html`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }
   }
@@ -379,7 +412,7 @@ export class SofabatonServerPanel extends LitElement {
     const streamLost = !streamOn && s.server.reachable && s.listLoaded;
     return html`
       <div class="page">
-        <header class="top-dock">
+        <header class="top-dock" id="top-dock">
           <div class="top-row">
             <div class="brand"><b>Sofabaton X</b><span>control panel</span></div>
             <div class="picker-slot">
@@ -409,6 +442,9 @@ export class SofabatonServerPanel extends LitElement {
             cogOpen: this._cogOpen,
             theme: s.theme,
             eventCount: s.stream.messageCount,
+            subCounts: route.kind === "hub" && route.tab === "hub" && ctx.hub?.status
+              ? { activities: ctx.hub.status.activities_cached, devices: ctx.hub.status.devices_cached }
+              : undefined,
             onTab: (tab) => this._goTab(tab),
             onSub: (sub) => this._goSub(sub),
             onToggleCog: () => {

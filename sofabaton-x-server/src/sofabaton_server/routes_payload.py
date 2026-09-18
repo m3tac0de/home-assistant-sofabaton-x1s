@@ -27,6 +27,7 @@ from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sofabaton import AsyncXProxy, IrPayload
+from sofabaton.blob_decoders import try_decode_blob
 
 from . import API_PREFIX
 from .jobs import JobView
@@ -85,12 +86,19 @@ class PayloadSpec(BaseModel):
 
 
 class PayloadView(BaseModel):
-    """A stored payload: its kind, the hub body as hex, and what could be read from it."""
+    """A stored payload: its kind, the hub body as hex, and what could be read from it.
+
+    ``decoded`` is the library's structured block for the classes it can
+    round-trip (a descriptive IR payload, the wifi classes):
+    ``{"class", "fields", "trailer_hex"}`` as ``restore_data.decoded``
+    carries it; null when the body stays raw.
+    """
 
     kind: str
     hex: str
     descriptor: Optional[str] = None
     carrier_hz: Optional[int] = None
+    decoded: Optional[dict[str, Any]] = None
 
 
 class NewCommandRequest(BaseModel):
@@ -123,8 +131,10 @@ def _parse_payload(spec: PayloadSpec, hub_id: str) -> IrPayload:
         raise ApiProblem(422, "invalid_payload", "The payload could not be parsed", detail=str(err), hub_id=hub_id) from err
 
 
-def _view(payload: IrPayload) -> PayloadView:
-    return PayloadView(kind=payload.kind, hex=payload.hex, descriptor=payload.descriptor, carrier_hz=payload.carrier_hz)
+def _view(payload: IrPayload, device_class: Optional[str] = None) -> PayloadView:
+    decoded = try_decode_blob(device_class, payload.blob) if device_class else None
+    return PayloadView(kind=payload.kind, hex=payload.hex, descriptor=payload.descriptor, carrier_hz=payload.carrier_hz,
+                       decoded=decoded)
 
 
 # -- payloads ---------------------------------------------------------------------
@@ -135,14 +145,25 @@ def _view(payload: IrPayload) -> PayloadView:
             responses=_HUB_ERRORS)
 async def get_command_payload(request: Request, hub_id: str, device_id: int, command_id: int) -> PayloadView:
     proxy = _proxy(request, hub_id)
-    if (await proxy.snapshot()).entity("device", device_id) is None:
+    snap = await proxy.snapshot()
+    if snap.entity("device", device_id) is None:
         raise ApiProblem(404, "device_not_found", "Unknown device", hub_id=hub_id)
     async with hub_errors(hub_id):
         payload = await proxy.read_payload(device_id, command_id)
     if payload is None:
         raise ApiProblem(404, "payload_not_found", "The command has no stored payload",
                          detail=f"device {device_id} command {command_id}", hub_id=hub_id)
-    return _view(payload)
+    return _view(payload, _device_class(snap.bundle, device_id))
+
+
+def _device_class(bundle: dict[str, Any], device_id: int) -> Optional[str]:
+    """The device's class from its snapshot element, for the decoder."""
+    for element in bundle.get("devices") or []:
+        block = element.get("device") if isinstance(element, dict) else None
+        if isinstance(block, dict) and int(block.get("device_id") or 0) == int(device_id):
+            value = block.get("device_class")
+            return str(value) if value else None
+    return None
 
 
 @router.post("/play", operation_id="playPayload", response_model=Accepted,

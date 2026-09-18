@@ -907,10 +907,10 @@ function shortcutsRowEnabled(layout) {
 var SHORTCUT_SLOTS = ["left", "middle", "right"];
 function normalizedShortcutSlot(value) {
   if (!value || typeof value !== "object") return null;
-  const icon = String(value.icon ?? "").trim();
+  const icon4 = String(value.icon ?? "").trim();
   const commandId = Number(value.command_id);
-  if (!icon || !Number.isFinite(commandId)) return null;
-  return { icon, command_id: commandId };
+  if (!icon4 || !Number.isFinite(commandId)) return null;
+  return { icon: icon4, command_id: commandId };
 }
 function deviceShortcutsFromConfig(config, deviceId) {
   const result = {};
@@ -3249,7 +3249,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   if (!item || typeof item !== "object") return null;
   const name = String(item.name ?? item.label ?? "").trim();
   if (!name) return null;
-  const icon = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+  const icon4 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
   const action = item.action && typeof item.action === "object" ? item.action : item.tap_action && typeof item.tap_action === "object" ? item.tap_action : null;
   const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
   const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
@@ -3261,7 +3261,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   return {
     __custom: true,
     name,
-    icon,
+    icon: icon4,
     action: hasAction ? action : null,
     command_id: Number.isFinite(cmd) ? cmd : null,
     device_id: Number.isFinite(dev) ? dev : null,
@@ -4596,12 +4596,12 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
   const label = capture.label || str().assist.automationAssistName;
-  const icon = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
+  const icon4 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
     `name: ${label}`,
-    `icon: ${icon}`,
+    `icon: ${icon4}`,
     "tap_action:",
     "  action: perform-action",
     "  perform_" + serviceYaml.substring(2),
@@ -5807,16 +5807,16 @@ var SbKeyButton = class extends BaseElement {
     control.type = "button";
     control.className = "sb-key-control";
     control.disabled = this._disabled;
-    const icon = document.createElement("ha-icon");
-    icon.className = "sb-key-control__icon";
+    const icon4 = document.createElement("ha-icon");
+    icon4.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
     const trailingIcon = document.createElement("ha-icon");
     trailingIcon.className = "sb-key-control__trailing-icon";
-    control.append(icon, label, trailingIcon);
+    control.append(icon4, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
-    this._iconEl = icon;
+    this._iconEl = icon4;
     this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
@@ -7472,6 +7472,7 @@ var mdiChevronLeft = "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.
 var mdiChevronRight = "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z";
 var mdiChevronUp = "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z";
 var mdiChevronUpCircleOutline = "M22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12M20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12M7.4,15.4L12,10.8L16.6,15.4L18,14L12,8L6,14L7.4,15.4Z";
+var mdiChip = "M6,4H18V5H21V7H18V9H21V11H18V13H21V15H18V17H21V19H18V20H6V19H3V17H6V15H3V13H6V11H3V9H6V7H3V5H6V4M11,15V18H12V15H11M13,15V18H14V15H13M15,15V18H16V15H15Z";
 var mdiCircle = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiCircleOutline = "M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiClock = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M16.2,16.2L11,13V7H12.5V12.2L17,14.9L16.2,16.2Z";
@@ -7481,6 +7482,7 @@ var mdiCloseCircle = "M12,2C17.53,2 22,6.47 22,12C22,17.53 17.53,22 12,22C6.47,2
 var mdiCloseCircleOutline = "M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2C6.47,2 2,6.47 2,12C2,17.53 6.47,22 12,22C17.53,22 22,17.53 22,12C22,6.47 17.53,2 12,2M14.59,8L12,10.59L9.41,8L8,9.41L10.59,12L8,14.59L9.41,16L12,13.41L14.59,16L16,14.59L13.41,12L16,9.41L14.59,8Z";
 var mdiClosedCaption = "M18,11H16.5V10.5H14.5V13.5H16.5V13H18V14A1,1 0 0,1 17,15H14A1,1 0 0,1 13,14V10A1,1 0 0,1 14,9H17A1,1 0 0,1 18,10M11,11H9.5V10.5H7.5V13.5H9.5V13H11V14A1,1 0 0,1 10,15H7A1,1 0 0,1 6,14V10A1,1 0 0,1 7,9H10A1,1 0 0,1 11,10M19,4H5C3.89,4 3,4.89 3,6V18A2,2 0 0,0 5,20H19A2,2 0 0,0 21,18V6C21,4.89 20.1,4 19,4Z";
 var mdiClosedCaptionOutline = "M5,4C4.45,4 4,4.18 3.59,4.57C3.2,4.96 3,5.44 3,6V18C3,18.56 3.2,19.04 3.59,19.43C4,19.82 4.45,20 5,20H19C19.5,20 20,19.81 20.39,19.41C20.8,19 21,18.53 21,18V6C21,5.47 20.8,5 20.39,4.59C20,4.19 19.5,4 19,4H5M4.5,5.5H19.5V18.5H4.5V5.5M7,9C6.7,9 6.47,9.09 6.28,9.28C6.09,9.47 6,9.7 6,10V14C6,14.3 6.09,14.53 6.28,14.72C6.47,14.91 6.7,15 7,15H10C10.27,15 10.5,14.91 10.71,14.72C10.91,14.53 11,14.3 11,14V13H9.5V13.5H7.5V10.5H9.5V11H11V10C11,9.7 10.91,9.47 10.71,9.28C10.5,9.09 10.27,9 10,9H7M14,9C13.73,9 13.5,9.09 13.29,9.28C13.09,9.47 13,9.7 13,10V14C13,14.3 13.09,14.53 13.29,14.72C13.5,14.91 13.73,15 14,15H17C17.3,15 17.53,14.91 17.72,14.72C17.91,14.53 18,14.3 18,14V13H16.5V13.5H14.5V10.5H16.5V11H18V10C18,9.7 17.91,9.47 17.72,9.28C17.53,9.09 17.3,9 17,9H14Z";
+var mdiCodeBraces = "M8,3A2,2 0 0,0 6,5V9A2,2 0 0,1 4,11H3V13H4A2,2 0 0,1 6,15V19A2,2 0 0,0 8,21H10V19H8V14A2,2 0 0,0 6,12A2,2 0 0,0 8,10V5H10V3M16,3A2,2 0 0,1 18,5V9A2,2 0 0,0 20,11H21V13H20A2,2 0 0,0 18,15V19A2,2 0 0,1 16,21H14V19H16V14A2,2 0 0,1 18,12A2,2 0 0,1 16,10V5H14V3H16Z";
 var mdiCoffee = "M2,21H20V19H2M20,8H18V5H20M20,3H4V13A4,4 0 0,0 8,17H14A4,4 0 0,0 18,13V10H20A2,2 0 0,0 22,8V5C22,3.89 21.1,3 20,3Z";
 var mdiCoffeeOutline = "M2,21V19H20V21H2M20,8V5H18V8H20M20,3A2,2 0 0,1 22,5V8A2,2 0 0,1 20,10H18V13A4,4 0 0,1 14,17H8A4,4 0 0,1 4,13V3H20M16,5H6V13A2,2 0 0,0 8,15H14A2,2 0 0,0 16,13V5Z";
 var mdiCog = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
@@ -7490,6 +7492,7 @@ var mdiControllerClassic = "M6,7H18A5,5 0 0,1 23,12A5,5 0 0,1 18,17C16.36,17 14.
 var mdiControllerClassicOutline = "M17.5,7A5.5,5.5 0 0,1 23,12.5A5.5,5.5 0 0,1 17.5,18C15.79,18 14.27,17.22 13.26,16H10.74C9.73,17.22 8.21,18 6.5,18A5.5,5.5 0 0,1 1,12.5A5.5,5.5 0 0,1 6.5,7H17.5M6.5,9A3.5,3.5 0 0,0 3,12.5A3.5,3.5 0 0,0 6.5,16C7.9,16 9.1,15.18 9.66,14H14.34C14.9,15.18 16.1,16 17.5,16A3.5,3.5 0 0,0 21,12.5A3.5,3.5 0 0,0 17.5,9H6.5M5.75,10.25H7.25V11.75H8.75V13.25H7.25V14.75H5.75V13.25H4.25V11.75H5.75V10.25M16.75,12.5A1,1 0 0,1 17.75,13.5A1,1 0 0,1 16.75,14.5A1,1 0 0,1 15.75,13.5A1,1 0 0,1 16.75,12.5M18.75,10.5A1,1 0 0,1 19.75,11.5A1,1 0 0,1 18.75,12.5A1,1 0 0,1 17.75,11.5A1,1 0 0,1 18.75,10.5Z";
 var mdiCurtains = "M23 3H1V1H23V3M2 22H6C6 19 4 17 4 17C10 13 11 4 11 4H2V22M22 4H13C13 4 14 13 20 17C20 17 18 19 18 22H22V4Z";
 var mdiCurtainsClosed = "M23 3H1V1H23V3M2 22H11V4H2V22M22 4H13V22H22V4Z";
+var mdiDatabaseRefreshOutline = "M6 12.45V9.64C7.47 10.47 9.61 11 12 11S16.53 10.47 18 9.64V12.03C18.17 12 18.33 12 18.5 12C19 12 19.5 12.07 20 12.18V7C20 4.79 16.42 3 12 3S4 4.79 4 7V17C4 19.21 7.59 21 12 21C12.17 21 12.33 21 12.5 21C12.24 20.37 12.09 19.7 12.03 19L12 19C8.13 19 6 17.5 6 17V14.77C7.61 15.55 9.72 16 12 16C12.17 16 12.34 16 12.5 16C12.85 15.18 13.34 14.46 13.95 13.86C13.32 13.95 12.67 14 12 14C9.58 14 7.3 13.4 6 12.45M12 5C15.87 5 18 6.5 18 7S15.87 9 12 9 6 7.5 6 7 8.13 5 12 5M18 18.5L19.77 16.73C19.32 16.28 18.69 16 18 16C16.62 16 15.5 17.12 15.5 18.5S16.62 21 18 21C18.82 21 19.54 20.61 20 20H21.71C21.12 21.47 19.68 22.5 18 22.5C15.79 22.5 14 20.71 14 18.5S15.79 14.5 18 14.5C19.11 14.5 20.11 14.95 20.83 15.67L22 14.5V18.5H18Z";
 var mdiDesktopTower = "M8,2H16A2,2 0 0,1 18,4V20A2,2 0 0,1 16,22H8A2,2 0 0,1 6,20V4A2,2 0 0,1 8,2M8,4V6H16V4H8M16,8H8V10H16V8M16,18H14V20H16V18Z";
 var mdiDisc = "M12,14C10.89,14 10,13.1 10,12C10,10.89 10.89,10 12,10C13.11,10 14,10.89 14,12A2,2 0 0,1 12,14M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiDiscPlayer = "M14.5,10.37C15.54,10.37 16.38,9.53 16.38,8.5C16.38,7.46 15.54,6.63 14.5,6.63C13.46,6.63 12.63,7.46 12.63,8.5A1.87,1.87 0 0,0 14.5,10.37M14.5,1A7.5,7.5 0 0,1 22,8.5C22,10.67 21.08,12.63 19.6,14H9.4C7.93,12.63 7,10.67 7,8.5C7,4.35 10.36,1 14.5,1M6,21V22H4V21H2V15H22V21H20V22H18V21H6M4,18V19H13V18H4M15,17V19H17V17H15M19,17A1,1 0 0,0 18,18A1,1 0 0,0 19,19A1,1 0 0,0 20,18A1,1 0 0,0 19,17Z";
@@ -7511,8 +7514,11 @@ var mdiFilmstrip = "M18,9H16V7H18M18,13H16V11H18M18,17H16V15H18M8,9H6V7H8M8,13H6
 var mdiFire = "M17.66 11.2C17.43 10.9 17.15 10.64 16.89 10.38C16.22 9.78 15.46 9.35 14.82 8.72C13.33 7.26 13 4.85 13.95 3C13 3.23 12.17 3.75 11.46 4.32C8.87 6.4 7.85 10.07 9.07 13.22C9.11 13.32 9.15 13.42 9.15 13.55C9.15 13.77 9 13.97 8.8 14.05C8.57 14.15 8.33 14.09 8.14 13.93C8.08 13.88 8.04 13.83 8 13.76C6.87 12.33 6.69 10.28 7.45 8.64C5.78 10 4.87 12.3 5 14.47C5.06 14.97 5.12 15.47 5.29 15.97C5.43 16.57 5.7 17.17 6 17.7C7.08 19.43 8.95 20.67 10.96 20.92C13.1 21.19 15.39 20.8 17.03 19.32C18.86 17.66 19.5 15 18.56 12.72L18.43 12.46C18.22 12 17.66 11.2 17.66 11.2M14.5 17.5C14.22 17.74 13.76 18 13.4 18.1C12.28 18.5 11.16 17.94 10.5 17.28C11.69 17 12.4 16.12 12.61 15.23C12.78 14.43 12.46 13.77 12.33 13C12.21 12.26 12.23 11.63 12.5 10.94C12.69 11.32 12.89 11.7 13.13 12C13.9 13 15.11 13.44 15.37 14.8C15.41 14.94 15.43 15.08 15.43 15.23C15.46 16.05 15.1 16.95 14.5 17.5H14.5Z";
 var mdiFireplace = "M22,22H2V20H22V22M22,6H2V3H22V6M20,7V19H17V11C17,11 14.5,10 12,10C9.5,10 7,11 7,11V19H4V7H20M14.5,14.67H14.47L14.81,15.22L14.87,15.34C15.29,16.35 15,17.5 14.21,18.24C13.5,18.9 12.5,19.07 11.58,18.95C10.71,18.84 9.9,18.29 9.45,17.53C9.3,17.3 9.19,17.03 9.13,16.77L9,16.11C8.96,15.15 9.34,14.14 10.06,13.54C9.73,14.26 9.81,15.16 10.3,15.79L10.36,15.87C10.44,15.94 10.55,15.97 10.64,15.92C10.73,15.89 10.8,15.8 10.8,15.7L10.76,15.56C10.23,14.17 10.68,12.55 11.79,11.63C12.1,11.38 12.5,11.15 12.87,11.05C12.46,11.87 12.61,12.93 13.25,13.57L14.14,14.3L14.5,14.67M13.11,17.44V17.44C13.37,17.2 13.53,16.8 13.5,16.44V16.25C13.38,15.65 12.85,15.46 12.5,15L12.26,14.55C12.13,14.85 12.12,15.13 12.17,15.46C12.23,15.8 12.37,16.09 12.29,16.44C12.2,16.83 11.9,17.22 11.37,17.35C11.67,17.64 12.15,17.87 12.64,17.71L13.11,17.44Z";
 var mdiFireplaceOff = "M22,22H2V20H22V22M22,6H2V3H22V6M20,7V19H17V11C17,11 14.5,10 12,10C9.5,10 7,11 7,11V19H4V7H20Z";
+var mdiFlashOutline = "M7,2H17L13.5,9H17L10,22V14H7V2M9,4V12H12V14.66L14,11H10.24L13.76,4H9Z";
 var mdiFloorLamp = "M15,2L17,9H7L9,2M11,10H13V20H16V22H8V20H11V10Z";
 var mdiFormatColorFill = "M19,11.5C19,11.5 17,13.67 17,15A2,2 0 0,0 19,17A2,2 0 0,0 21,15C21,13.67 19,11.5 19,11.5M5.21,10L10,5.21L14.79,10M16.56,8.94L7.62,0L6.21,1.41L8.59,3.79L3.44,8.94C2.85,9.5 2.85,10.47 3.44,11.06L8.94,16.56C9.23,16.85 9.62,17 10,17C10.38,17 10.77,16.85 11.06,16.56L16.56,11.06C17.15,10.47 17.15,9.5 16.56,8.94Z";
+var mdiFormatListBulleted = "M7,5H21V7H7V5M7,13V11H21V13H7M4,4.5A1.5,1.5 0 0,1 5.5,6A1.5,1.5 0 0,1 4,7.5A1.5,1.5 0 0,1 2.5,6A1.5,1.5 0 0,1 4,4.5M4,10.5A1.5,1.5 0 0,1 5.5,12A1.5,1.5 0 0,1 4,13.5A1.5,1.5 0 0,1 2.5,12A1.5,1.5 0 0,1 4,10.5M7,19V17H21V19H7M4,16.5A1.5,1.5 0 0,1 5.5,18A1.5,1.5 0 0,1 4,19.5A1.5,1.5 0 0,1 2.5,18A1.5,1.5 0 0,1 4,16.5Z";
+var mdiFormatListNumbered = "M7,13V11H21V13H7M7,19V17H21V19H7M7,7V5H21V7H7M3,8V5H2V4H4V8H3M2,17V16H5V20H2V19H4V18.5H3V17.5H4V17H2M4.25,10A0.75,0.75 0 0,1 5,10.75C5,10.95 4.92,11.14 4.79,11.27L3.12,13H5V14H2V13.08L4,11H2V10H4.25Z";
 var mdiFridge = "M7,2H17A2,2 0 0,1 19,4V9H5V4A2,2 0 0,1 7,2M19,19A2,2 0 0,1 17,21V22H15V21H9V22H7V21A2,2 0 0,1 5,19V10H19V19M8,5V7H10V5H8M8,12V15H10V12H8Z";
 var mdiFullscreen = "M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z";
 var mdiFullscreenExit = "M14,14H19V16H16V19H14V14M5,14H10V19H8V16H5V14M8,5H10V10H5V8H8V5M19,8V10H14V5H16V8H19Z";
@@ -7552,6 +7558,7 @@ var mdiKeyboardReturn = "M19,7V11H5.83L9.41,7.41L8,6L2,12L8,18L9.41,16.58L5.83,1
 var mdiKeyboardSpace = "M3 15H5V19H19V15H21V19C21 20.1 20.1 21 19 21H5C3.9 21 3 20.1 3 19V15Z";
 var mdiKodi = "M12.03,1C11.82,1 11.6,1.11 11.41,1.31C10.56,2.16 9.72,3 8.88,3.84C8.66,4.06 8.6,4.18 8.38,4.38C8.09,4.62 7.96,4.91 7.97,5.28C8,6.57 8,7.84 8,9.13C8,10.46 8,11.82 8,13.16C8,13.26 8,13.34 8.03,13.44C8.11,13.75 8.31,13.82 8.53,13.59C9.73,12.39 10.8,11.3 12,10.09C13.36,8.73 14.73,7.37 16.09,6C16.5,5.6 16.5,5.15 16.09,4.75C14.94,3.6 13.77,2.47 12.63,1.31C12.43,1.11 12.24,1 12.03,1M18.66,7.66C18.45,7.66 18.25,7.75 18.06,7.94C16.91,9.1 15.75,10.24 14.59,11.41C14.2,11.8 14.2,12.23 14.59,12.63C15.74,13.78 16.88,14.94 18.03,16.09C18.43,16.5 18.85,16.5 19.25,16.09C20.36,15 21.5,13.87 22.59,12.75C22.76,12.58 22.93,12.42 23,12.19V11.88C22.93,11.64 22.76,11.5 22.59,11.31C21.47,10.19 20.37,9.06 19.25,7.94C19.06,7.75 18.86,7.66 18.66,7.66M4.78,8.09C4.65,8.04 4.58,8.14 4.5,8.22C3.35,9.39 2.34,10.43 1.19,11.59C0.93,11.86 0.93,12.24 1.19,12.5C1.81,13.13 2.44,13.75 3.06,14.38C3.6,14.92 4,15.33 4.56,15.88C4.72,16.03 4.86,16 4.94,15.81C5,15.71 5,15.58 5,15.47C5,14.29 5,13.37 5,12.19C5,11 5,9.81 5,8.63C5,8.55 5,8.45 4.97,8.38C4.95,8.25 4.9,8.14 4.78,8.09M12.09,14.25C11.89,14.25 11.66,14.34 11.47,14.53C10.32,15.69 9.18,16.87 8.03,18.03C7.63,18.43 7.63,18.85 8.03,19.25C9.14,20.37 10.26,21.47 11.38,22.59C11.54,22.76 11.71,22.93 11.94,23H12.22C12.44,22.94 12.62,22.79 12.78,22.63C13.9,21.5 15.03,20.38 16.16,19.25C16.55,18.85 16.5,18.4 16.13,18C14.97,16.84 13.84,15.69 12.69,14.53C12.5,14.34 12.3,14.25 12.09,14.25Z";
 var mdiLamp = "M8,2H16L20,14H4L8,2M11,15H13V20H18V22H6V20H11V15Z";
+var mdiLanConnect = "M4,1C2.89,1 2,1.89 2,3V7C2,8.11 2.89,9 4,9H1V11H13V9H10C11.11,9 12,8.11 12,7V3C12,1.89 11.11,1 10,1H4M4,3H10V7H4V3M3,13V18L3,20H10V18H5V13H3M14,13C12.89,13 12,13.89 12,15V19C12,20.11 12.89,21 14,21H11V23H23V21H20C21.11,21 22,20.11 22,19V15C22,13.89 21.11,13 20,13H14M14,15H20V19H14V15Z";
 var mdiLaptop = "M4,6H20V16H4M20,18A2,2 0 0,0 22,16V6C22,4.89 21.1,4 20,4H4C2.89,4 2,4.89 2,6V16A2,2 0 0,0 4,18H0V20H24V18H20Z";
 var mdiLedStrip = "M2.81,8.46L14.83,20.5L15.54,19.78L16.95,21.19L18.36,19.78L16.95,18.36L18.36,16.95L19.78,18.36L21.19,16.95L19.78,15.54L20.5,14.83L8.46,2.81L2.81,8.46M5.64,8.46L8.46,5.64L17.66,14.83L14.83,17.66L5.64,8.46M7.05,8.46L8.46,9.88L9.88,8.46L8.46,7.05L7.05,8.46M9.17,10.59L10.59,12L12,10.59L10.59,9.17L9.17,10.59M11.29,12.71L12.71,14.12L14.12,12.71L12.71,11.29L11.29,12.71M13.41,14.83L14.83,16.24L16.24,14.83L14.83,13.41L13.41,14.83Z";
 var mdiLedStripVariant = "M2.95 3L2 6.91L19.34 11.25L20.29 7.34L2.95 3M6.09 6.89L4.16 6.41L4.64 4.46L6.57 4.94L6.09 6.89M9.94 7.86L8 7.38L8.5 5.42L10.42 5.91L9.94 7.86M13.8 8.82L11.87 8.34L12.35 6.39L14.27 6.87L13.8 8.82M17.65 9.79L15.72 9.31L16.2 7.35L18.13 7.84L17.65 9.79M4.66 12.75L3.71 16.66L21.05 21L22 17.1L4.66 12.75M7.8 16.65L5.88 16.16L6.35 14.21L8.28 14.69L7.8 16.65M11.65 17.61L9.73 17.13L10.2 15.18L12.13 15.66L11.65 17.61M15.5 18.58L13.58 18.09L14.06 16.14L16 16.62L15.5 18.58M19.36 19.54L17.43 19.06L17.91 17.11L19.84 17.59L19.36 19.54M6.25 12.11L11 10.2L17.75 11.89L13 13.8L6.25 12.11Z";
@@ -7561,6 +7568,8 @@ var mdiLightbulbGroupOff = "M20.84 22.73L18.09 20C18.06 20 18.03 20 18 20H16.83C
 var mdiLightbulbOff = "M12,2C9.76,2 7.78,3.05 6.5,4.68L16.31,14.5C17.94,13.21 19,11.24 19,9A7,7 0 0,0 12,2M3.28,4L2,5.27L5.04,8.3C5,8.53 5,8.76 5,9C5,11.38 6.19,13.47 8,14.74V17A1,1 0 0,0 9,18H14.73L18.73,22L20,20.72L3.28,4M9,20V21A1,1 0 0,0 10,22H14A1,1 0 0,0 15,21V20H9Z";
 var mdiLightbulbOn = "M12,6A6,6 0 0,1 18,12C18,14.22 16.79,16.16 15,17.2V19A1,1 0 0,1 14,20H10A1,1 0 0,1 9,19V17.2C7.21,16.16 6,14.22 6,12A6,6 0 0,1 12,6M14,21V22A1,1 0 0,1 13,23H11A1,1 0 0,1 10,22V21H14M20,11H23V13H20V11M1,11H4V13H1V11M13,1V4H11V1H13M4.92,3.5L7.05,5.64L5.63,7.05L3.5,4.93L4.92,3.5M16.95,5.63L19.07,3.5L20.5,4.93L18.37,7.05L16.95,5.63Z";
 var mdiLightbulbOutline = "M12,2A7,7 0 0,1 19,9C19,11.38 17.81,13.47 16,14.74V17A1,1 0 0,1 15,18H9A1,1 0 0,1 8,17V14.74C6.19,13.47 5,11.38 5,9A7,7 0 0,1 12,2M9,21V20H15V21A1,1 0 0,1 14,22H10A1,1 0 0,1 9,21M12,4A5,5 0 0,0 7,9C7,11.05 8.23,12.81 10,13.58V16H14V13.58C15.77,12.81 17,11.05 17,9A5,5 0 0,0 12,4Z";
+var mdiLinkVariant = "M10.59,13.41C11,13.8 11,14.44 10.59,14.83C10.2,15.22 9.56,15.22 9.17,14.83C7.22,12.88 7.22,9.71 9.17,7.76V7.76L12.71,4.22C14.66,2.27 17.83,2.27 19.78,4.22C21.73,6.17 21.73,9.34 19.78,11.29L18.29,12.78C18.3,11.96 18.17,11.14 17.89,10.36L18.36,9.88C19.54,8.71 19.54,6.81 18.36,5.64C17.19,4.46 15.29,4.46 14.12,5.64L10.59,9.17C9.41,10.34 9.41,12.24 10.59,13.41M13.41,9.17C13.8,8.78 14.44,8.78 14.83,9.17C16.78,11.12 16.78,14.29 14.83,16.24V16.24L11.29,19.78C9.34,21.73 6.17,21.73 4.22,19.78C2.27,17.83 2.27,14.66 4.22,12.71L5.71,11.22C5.7,12.04 5.83,12.86 6.11,13.65L5.64,14.12C4.46,15.29 4.46,17.19 5.64,18.36C6.81,19.54 8.71,19.54 9.88,18.36L13.41,14.83C14.59,13.66 14.59,11.76 13.41,10.59C13,10.2 13,9.56 13.41,9.17Z";
+var mdiLoading = "M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z";
 var mdiLock = "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z";
 var mdiLockOpen = "M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V10A2,2 0 0,1 6,8H15V6A3,3 0 0,0 12,3A3,3 0 0,0 9,6H7A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,17A2,2 0 0,0 14,15A2,2 0 0,0 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17Z";
 var mdiLockOpenVariant = "M18 1C15.24 1 13 3.24 13 6V8H4C2.9 8 2 8.89 2 10V20C2 21.11 2.9 22 4 22H16C17.11 22 18 21.11 18 20V10C18 8.9 17.11 8 16 8H15V6C15 4.34 16.34 3 18 3C19.66 3 21 4.34 21 6V8H23V6C23 3.24 20.76 1 18 1M10 13C11.1 13 12 13.89 12 15C12 16.11 11.11 17 10 17C8.9 17 8 16.11 8 15C8 13.9 8.9 13 10 13Z";
@@ -7594,6 +7603,7 @@ var mdiPaletteOutline = "M12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2C17.5,2 22,6 22
 var mdiPause = "M14,19H18V5H14M6,19H10V5H6V19Z";
 var mdiPauseCircle = "M15,16H13V8H15M11,16H9V8H11M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiPauseCircleOutline = "M13,16V8H15V16H13M9,16V8H11V16H9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
+var mdiPencil = "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z";
 var mdiPictureInPictureBottomRight = "M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19M21,19H3V4.97H21V19Z";
 var mdiPlay = "M8,5.14V19.14L19,12.14L8,5.14Z";
 var mdiPlayCircle = "M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
@@ -7608,8 +7618,10 @@ var mdiPower = "M16.56,5.44L15.11,6.89C16.84,7.94 18,9.83 18,12A6,6 0 0,1 12,18A
 var mdiPowerCycle = "M12,3A9,9 0 0,0 3,12A9,9 0 0,0 12,21A9,9 0 0,0 21,12A9,9 0 0,0 12,3M12,19A7,7 0 0,1 5,12A7,7 0 0,1 12,5A7,7 0 0,1 19,12A7,7 0 0,1 12,19M13,17H11V7H13V17Z";
 var mdiPowerOff = "M12,3A9,9 0 0,0 3,12A9,9 0 0,0 12,21A9,9 0 0,0 21,12A9,9 0 0,0 12,3M12,19A7,7 0 0,1 5,12A7,7 0 0,1 12,5A7,7 0 0,1 19,12A7,7 0 0,1 12,19Z";
 var mdiPowerOn = "M11,3H13V21H11V3Z";
+var mdiPowerPlugOutline = "M16 7V3H14V7H10V3H8V7C7 7 6 8 6 9V14.5L9.5 18V21H14.5V18L18 14.5V9C18 8 17 7 16 7M16 13.67L13.09 16.59L12.67 17H11.33L10.92 16.59L8 13.67V9.09C8 9.06 8.06 9 8.09 9H15.92C15.95 9 16 9.06 16 9.09V13.67Z";
 var mdiPowerSleep = "M18.73,18C15.4,21.69 9.71,22 6,18.64C2.33,15.31 2.04,9.62 5.37,5.93C6.9,4.25 9,3.2 11.27,3C7.96,6.7 8.27,12.39 12,15.71C13.63,17.19 15.78,18 18,18C18.25,18 18.5,18 18.73,18Z";
 var mdiPowerStandby = "M13,3H11V13H13V3M17.83,5.17L16.41,6.59C18.05,7.91 19,9.9 19,12A7,7 0 0,1 12,19C8.14,19 5,15.88 5,12C5,9.91 5.95,7.91 7.58,6.58L6.17,5.17C2.38,8.39 1.92,14.07 5.14,17.86C8.36,21.64 14.04,22.1 17.83,18.88C19.85,17.17 21,14.65 21,12C21,9.37 19.84,6.87 17.83,5.17Z";
+var mdiProgressClock = "M13,2.03V2.05L13,4.05C17.39,4.59 20.5,8.58 19.96,12.97C19.5,16.61 16.64,19.5 13,19.93V21.93C18.5,21.38 22.5,16.5 21.95,11C21.5,6.25 17.73,2.5 13,2.03M11,2.06C9.05,2.25 7.19,3 5.67,4.26L7.1,5.74C8.22,4.84 9.57,4.26 11,4.06V2.06M4.26,5.67C3,7.19 2.25,9.04 2.05,11H4.05C4.24,9.58 4.8,8.23 5.69,7.1L4.26,5.67M2.06,13C2.26,14.96 3.03,16.81 4.27,18.33L5.69,16.9C4.81,15.77 4.24,14.42 4.06,13H2.06M7.1,18.37L5.67,19.74C7.18,21 9.04,21.79 11,22V20C9.58,19.82 8.23,19.25 7.1,18.37M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z";
 var mdiProjector = "M16,6C14.87,6 13.77,6.35 12.84,7H4C2.89,7 2,7.89 2,9V15C2,16.11 2.89,17 4,17H5V18A1,1 0 0,0 6,19H8A1,1 0 0,0 9,18V17H15V18A1,1 0 0,0 16,19H18A1,1 0 0,0 19,18V17H20C21.11,17 22,16.11 22,15V9C22,7.89 21.11,7 20,7H19.15C18.23,6.35 17.13,6 16,6M16,7.5A3.5,3.5 0 0,1 19.5,11A3.5,3.5 0 0,1 16,14.5A3.5,3.5 0 0,1 12.5,11A3.5,3.5 0 0,1 16,7.5M4,9H8V10H4V9M16,9A2,2 0 0,0 14,11A2,2 0 0,0 16,13A2,2 0 0,0 18,11A2,2 0 0,0 16,9M4,11H8V12H4V11M4,13H8V14H4V13Z";
 var mdiProjectorScreen = "M4,2A1,1 0 0,0 3,3V4A1,1 0 0,0 4,5H5V14H11V16.59L6.79,20.79L8.21,22.21L11,19.41V22H13V19.41L15.79,22.21L17.21,20.79L13,16.59V14H19V5H20A1,1 0 0,0 21,4V3A1,1 0 0,0 20,2H4Z";
 var mdiRadiator = "M7.95,3L6.53,5.19L7.95,7.4H7.94L5.95,10.5L4.22,9.6L5.64,7.39L4.22,5.19L6.22,2.09L7.95,3M13.95,2.89L12.53,5.1L13.95,7.3L13.94,7.31L11.95,10.4L10.22,9.5L11.64,7.3L10.22,5.1L12.22,2L13.95,2.89M20,2.89L18.56,5.1L20,7.3V7.31L18,10.4L16.25,9.5L17.67,7.3L16.25,5.1L18.25,2L20,2.89M2,22V14A2,2 0 0,1 4,12H20A2,2 0 0,1 22,14V22H20V20H4V22H2M6,14A1,1 0 0,0 5,15V17A1,1 0 0,0 6,18A1,1 0 0,0 7,17V15A1,1 0 0,0 6,14M10,14A1,1 0 0,0 9,15V17A1,1 0 0,0 10,18A1,1 0 0,0 11,17V15A1,1 0 0,0 10,14M14,14A1,1 0 0,0 13,15V17A1,1 0 0,0 14,18A1,1 0 0,0 15,17V15A1,1 0 0,0 14,14M18,14A1,1 0 0,0 17,15V17A1,1 0 0,0 18,18A1,1 0 0,0 19,17V15A1,1 0 0,0 18,14Z";
@@ -7669,6 +7681,7 @@ var mdiSubtitles = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6
 var mdiSubtitlesOutline = "M20,4A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4H20M20,18V6H4V18H20M6,10H8V12H6V10M6,14H14V16H6V14M16,14H18V16H16V14M10,10H18V12H10V10Z";
 var mdiSurroundSound = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M7.76,16.24L6.35,17.65C4.78,16.1 4,14.05 4,12C4,9.95 4.78,7.9 6.34,6.34L7.75,7.75C6.59,8.93 6,10.46 6,12C6,13.54 6.59,15.07 7.76,16.24M12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16M17.66,17.66L16.25,16.25C17.41,15.07 18,13.54 18,12C18,10.46 17.41,8.93 16.24,7.76L17.65,6.35C19.22,7.9 20,9.95 20,12C20,14.05 19.22,16.1 17.66,17.66M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
 var mdiSync = "M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z";
+var mdiSyncAlert = "M11,13H13V7H11M21,4H15V10L17.24,7.76C18.32,8.85 19,10.34 19,12C19,14.61 17.33,16.83 15,17.65V19.74C18.45,18.85 21,15.73 21,12C21,9.79 20.09,7.8 18.64,6.36M11,17H13V15H11M3,12C3,14.21 3.91,16.2 5.36,17.64L3,20H9V14L6.76,16.24C5.68,15.15 5,13.66 5,12C5,9.39 6.67,7.17 9,6.35V4.26C5.55,5.15 3,8.27 3,12Z";
 var mdiTablet = "M19,18H5V6H19M21,4H3C1.89,4 1,4.89 1,6V18A2,2 0 0,0 3,20H21A2,2 0 0,0 23,18V6C23,4.89 22.1,4 21,4Z";
 var mdiTelevision = "M21,17H3V5H21M21,3H3A2,2 0 0,0 1,5V17A2,2 0 0,0 3,19H8V21H16V19H21A2,2 0 0,0 23,17V5A2,2 0 0,0 21,3Z";
 var mdiTelevisionClassic = "M8.16,3L6.75,4.41L9.34,7H4C2.89,7 2,7.89 2,9V19C2,20.11 2.89,21 4,21H20C21.11,21 22,20.11 22,19V9C22,7.89 21.11,7 20,7H14.66L17.25,4.41L15.84,3L12,6.84L8.16,3M4,9H17V19H4V9M19.5,9A1,1 0 0,1 20.5,10A1,1 0 0,1 19.5,11A1,1 0 0,1 18.5,10A1,1 0 0,1 19.5,9M19.5,12A1,1 0 0,1 20.5,13A1,1 0 0,1 19.5,14A1,1 0 0,1 18.5,13A1,1 0 0,1 19.5,12Z";
@@ -7683,6 +7696,7 @@ var mdiTimerOutline = "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 
 var mdiToggleSwitch = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z";
 var mdiToggleSwitchOff = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M7,15A3,3 0 0,1 4,12A3,3 0 0,1 7,9A3,3 0 0,1 10,12A3,3 0 0,1 7,15Z";
 var mdiTranslate = "M12.87,15.07L10.33,12.56L10.36,12.53C12.1,10.59 13.34,8.36 14.07,6H17V4H10V2H8V4H1V6H12.17C11.5,7.92 10.44,9.75 9,11.35C8.07,10.32 7.3,9.19 6.69,8H4.69C5.42,9.63 6.42,11.17 7.67,12.56L2.58,17.58L4,19L9,14L12.11,17.11L12.87,15.07M18.5,10H16.5L12,22H14L15.12,19H19.87L21,22H23L18.5,10M15.88,17L17.5,12.67L19.12,17H15.88Z";
+var mdiTrashCanOutline = "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z";
 var mdiTriangle = "M1,21H23L12,2";
 var mdiTriangleOutline = "M12,2L1,21H23M12,6L19.53,19H4.47";
 var mdiTune = "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z";
@@ -7715,6 +7729,7 @@ var mdiWeatherNight = "M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11
 var mdiWeatherRainy = "M6,14.03A1,1 0 0,1 7,15.03C7,15.58 6.55,16.03 6,16.03C3.24,16.03 1,13.79 1,11.03C1,8.27 3.24,6.03 6,6.03C7,3.68 9.3,2.03 12,2.03C15.43,2.03 18.24,4.69 18.5,8.06L19,8.03A4,4 0 0,1 23,12.03C23,14.23 21.21,16.03 19,16.03H18C17.45,16.03 17,15.58 17,15.03C17,14.47 17.45,14.03 18,14.03H19A2,2 0 0,0 21,12.03A2,2 0 0,0 19,10.03H17V9.03C17,6.27 14.76,4.03 12,4.03C9.5,4.03 7.45,5.84 7.06,8.21C6.73,8.09 6.37,8.03 6,8.03A3,3 0 0,0 3,11.03A3,3 0 0,0 6,14.03M12,14.15C12.18,14.39 12.37,14.66 12.56,14.94C13,15.56 14,17.03 14,18C14,19.11 13.1,20 12,20A2,2 0 0,1 10,18C10,17.03 11,15.56 11.44,14.94C11.63,14.66 11.82,14.4 12,14.15M12,11.03L11.5,11.59C11.5,11.59 10.65,12.55 9.79,13.81C8.93,15.06 8,16.56 8,18A4,4 0 0,0 12,22A4,4 0 0,0 16,18C16,16.56 15.07,15.06 14.21,13.81C13.35,12.55 12.5,11.59 12.5,11.59";
 var mdiWeatherSunny = "M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z";
 var mdiWifi = "M12,21L15.6,16.2C14.6,15.45 13.35,15 12,15C10.65,15 9.4,15.45 8.4,16.2L12,21M12,3C7.95,3 4.21,4.34 1.2,6.6L3,9C5.5,7.12 8.62,6 12,6C15.38,6 18.5,7.12 21,9L22.8,6.6C19.79,4.34 16.05,3 12,3M12,9C9.3,9 6.81,9.89 4.8,11.4L6.6,13.8C8.1,12.67 9.97,12 12,12C14.03,12 15.9,12.67 17.4,13.8L19.2,11.4C17.19,9.89 14.7,9 12,9Z";
+var mdiWifiCog = "M12 12C9.97 12 8.1 12.67 6.6 13.8L4.8 11.4C6.81 9.89 9.3 9 12 9S17.19 9.89 19.2 11.4L18.74 12C17.66 12.05 16.63 12.33 15.73 12.81C14.6 12.29 13.33 12 12 12M21 9L22.8 6.6C19.79 4.34 16.05 3 12 3S4.21 4.34 1.2 6.6L3 9C5.5 7.12 8.62 6 12 6S18.5 7.12 21 9M12 15C10.65 15 9.4 15.45 8.4 16.2L12 21L12.22 20.71C12.08 20.16 12 19.59 12 19C12 17.57 12.43 16.24 13.17 15.13C12.79 15.05 12.4 15 12 15M23.8 20.4C23.9 20.4 23.9 20.5 23.8 20.6L22.8 22.3C22.7 22.4 22.6 22.4 22.5 22.4L21.3 22C21 22.2 20.8 22.3 20.5 22.5L20.3 23.8C20.3 23.9 20.2 24 20.1 24H18.1C18 24 17.9 23.9 17.8 23.8L17.6 22.5C17.3 22.4 17 22.2 16.8 22L15.6 22.5C15.5 22.5 15.4 22.5 15.3 22.4L14.3 20.7C14.2 20.6 14.3 20.5 14.4 20.4L15.5 19.6V18.6L14.4 17.8C14.3 17.7 14.3 17.6 14.3 17.5L15.3 15.8C15.4 15.7 15.5 15.7 15.6 15.7L16.8 16.2C17.1 16 17.3 15.9 17.6 15.7L17.8 14.4C17.8 14.3 17.9 14.2 18.1 14.2H20.1C20.2 14.2 20.3 14.3 20.3 14.4L20.5 15.7C20.8 15.8 21.1 16 21.4 16.2L22.6 15.7C22.7 15.7 22.9 15.7 22.9 15.8L23.9 17.5C24 17.6 23.9 17.7 23.8 17.8L22.7 18.6V19.6L23.8 20.4M20.5 19C20.5 18.2 19.8 17.5 19 17.5S17.5 18.2 17.5 19 18.2 20.5 19 20.5 20.5 19.8 20.5 19Z";
 var mdiWifiOff = "M2.28,3L1,4.27L2.47,5.74C2.04,6 1.61,6.29 1.2,6.6L3,9C3.53,8.6 4.08,8.25 4.66,7.93L6.89,10.16C6.15,10.5 5.44,10.91 4.8,11.4L6.6,13.8C7.38,13.22 8.26,12.77 9.2,12.47L11.75,15C10.5,15.07 9.34,15.5 8.4,16.2L12,21L14.46,17.73L17.74,21L19,19.72M12,3C9.85,3 7.8,3.38 5.9,4.07L8.29,6.47C9.5,6.16 10.72,6 12,6C15.38,6 18.5,7.11 21,9L22.8,6.6C19.79,4.34 16.06,3 12,3M12,9C11.62,9 11.25,9 10.88,9.05L14.07,12.25C15.29,12.53 16.43,13.07 17.4,13.8L19.2,11.4C17.2,9.89 14.7,9 12,9Z";
 var mdiWindowClosed = "M6,11H10V9H14V11H18V4H6V11M18,13H6V20H18V13M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2Z";
 var mdiWindowOpen = "M6,8H10V6H14V8H18V4H6V8M18,10H6V15H18V10M6,20H18V17H6V20M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2Z";
@@ -8053,8 +8068,8 @@ var MDI_ICON_PATHS = {
 
 // remote-card/src/shims/ha-icon.ts
 var FALLBACK_PATH = "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z";
-function mdiPathFor(icon) {
-  const name = String(icon ?? "").trim().replace(/^mdi:/, "");
+function mdiPathFor(icon4) {
+  const name = String(icon4 ?? "").trim().replace(/^mdi:/, "");
   if (!name) return null;
   return MDI_ICON_PATHS[name] ?? null;
 }
@@ -8081,10 +8096,10 @@ var SbHaIcon = class extends HTMLElement {
     this._render();
   }
   _render() {
-    const icon = this.icon;
-    if (this._rendered === icon) return;
-    this._rendered = icon;
-    const path = mdiPathFor(icon) ?? FALLBACK_PATH;
+    const icon4 = this.icon;
+    if (this._rendered === icon4) return;
+    this._rendered = icon4;
+    const path = mdiPathFor(icon4) ?? FALLBACK_PATH;
     this._shadow.innerHTML = `
       <style>
         :host {
@@ -9807,7 +9822,7 @@ function renderBottomDock(params) {
 // server-panel/src/panel-route.ts
 var HUB_TABS = ["hub", "backup", "remote"];
 var SUBTABS = {
-  hub: ["devices", "activities"],
+  hub: ["activities", "devices"],
   backup: ["make", "edit", "restore"],
   remote: ["card", "layout"]
 };
@@ -9820,8 +9835,8 @@ var TOOL_SUBTABS = {
   debug: ["api", "events"]
 };
 var SUBTAB_LABELS = {
-  devices: "Devices",
   activities: "Activities",
+  devices: "Devices",
   make: "Make",
   edit: "Edit",
   restore: "Restore",
@@ -9842,8 +9857,14 @@ function normalizeSub(tab, sub) {
   const subs = SUBTABS[tab];
   return sub && subs.includes(sub) ? sub : subs[0];
 }
-function hubRoute(hubId, tab = "hub", sub) {
-  return { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) };
+function normalizeEntity(tab, entity) {
+  if (tab !== "hub") return void 0;
+  const id = typeof entity === "number" ? entity : typeof entity === "string" && /^\d+$/.test(entity) ? Number(entity) : NaN;
+  return Number.isInteger(id) && id > 0 ? id : void 0;
+}
+function hubRoute(hubId, tab = "hub", sub, entity) {
+  const id = normalizeEntity(tab, entity);
+  return id === void 0 ? { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) } : { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub), entity: id };
 }
 function normalizeToolSub(page, sub) {
   const subs = TOOL_SUBTABS[page];
@@ -9873,15 +9894,19 @@ function parseRoute(hash) {
   if (!parts.length) return null;
   if (isToolPage(parts[0])) return toolRoute(parts[0], parts[1]);
   if (parts.length === 1 && (parts[0] === "api" || parts[0] === "events")) return toolRoute("debug", parts[0]);
-  const [first, tab, sub] = parts;
+  const [first, tab, sub, entity] = parts;
   const hubId = first === "-" ? null : first;
   if (tab !== void 0 && !isHubTab(tab)) return hubRoute(hubId, "hub");
-  return hubRoute(hubId, tab ?? "hub", sub);
+  return hubRoute(hubId, tab ?? "hub", sub, normalizeEntity(tab ?? "hub", entity));
 }
 function hashFor(route) {
   if (route.kind === "tool") return `#/${route.page}/${route.sub}`;
   const hub = route.hubId ? encodeURIComponent(route.hubId) : "-";
-  return `#/${hub}/${route.tab}/${route.sub}`;
+  return `#/${hub}/${route.tab}/${route.sub}${route.entity !== void 0 ? `/${route.entity}` : ""}`;
+}
+function routeScope(route) {
+  if (route.kind === "tool") return `${route.page}/${route.sub}`;
+  return `${route.tab}/${route.sub}${route.entity !== void 0 ? `/${route.entity}` : ""}`;
 }
 function sameRoute(a4, b3) {
   return hashFor(a4) === hashFor(b3);
@@ -10013,6 +10038,7 @@ function renderHubPicker(params) {
 }
 
 // server-panel/src/components/tab-bar.ts
+var SUBTAB_ICONS = { activities: mdiPlayCircleOutline, devices: mdiAudioVideo };
 function renderTabBar(params) {
   const route = params.route;
   const onTool = route.kind === "tool";
@@ -10044,7 +10070,15 @@ function renderTabBar(params) {
     </div>
     <div class="subtabs" id="subtabs" role="tablist" aria-label=${onTool ? TOOL_LABELS[route.page] : TAB_LABELS[route.tab]} data-page=${onTool ? route.page : route.tab}>
       ${(onTool ? TOOL_SUBTABS[route.page] : SUBTABS[route.tab]).map(
-    (sub) => b2`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>${SUBTAB_LABELS[sub] ?? sub}</button>`
+    (sub) => {
+      const count = params.subCounts?.[sub];
+      const iconPath = SUBTAB_ICONS[sub];
+      return b2`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>
+            ${iconPath ? b2`<svg class="subtab-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${iconPath}></path></svg>` : A}
+            <span class="subtab-label">${SUBTAB_LABELS[sub] ?? sub}</span>
+            ${typeof count === "number" ? b2`<span class="subtab-count">${count}</span>` : A}
+          </button>`;
+    }
   )}
     </div>
   `;
@@ -10851,6 +10885,25 @@ var PanelApi = class {
   snapshot(hubId) {
     return this.request("GET", `${this._hub(hubId)}/snapshot`);
   }
+  hubInfo(hubId) {
+    return this.request("GET", `${this._hub(hubId)}/info`);
+  }
+  /** A command's stored payload, read from the hub (404 `payload_not_found` when it has none). */
+  commandPayload(hubId, deviceId, commandId) {
+    return this.request("GET", `${this._hub(hubId)}/devices/${deviceId}/commands/${commandId}/payload`);
+  }
+  /** Fire a payload from the hub's blaster once; nothing is saved. */
+  playPayload(hubId, spec) {
+    return this.request("POST", `${this._hub(hubId)}/play`, { body: spec });
+  }
+  /** Write an edited device element (the snapshot's `devices[]` entry) as a job; `If-Match` carries the snapshot it was edited on. */
+  editDevice(hubId, deviceId, element, snapshotId) {
+    return this.request("PUT", `${this._hub(hubId)}/devices/${deviceId}`, { body: element, headers: { "If-Match": `"${snapshotId}"` } });
+  }
+  /** Delete a device (a job); the hub cascades the removal into its activities. */
+  removeDevice(hubId, deviceId) {
+    return this.request("DELETE", `${this._hub(hubId)}/devices/${deviceId}`);
+  }
   devices(hubId) {
     return this.request("GET", `${this._hub(hubId)}/devices`);
   }
@@ -11024,6 +11077,9 @@ function draftFor(runtime) {
 function hasDirtyDraft(runtime) {
   return Boolean(runtime?.draft);
 }
+function draftBannerText(scope) {
+  return /\/\d+$/.test(scope) ? "Unsynced changes \u2014 sync to the hub to apply them" : "Unsaved changes";
+}
 function dockModel(snapshot, runtime) {
   const job = activeJob(runtime?.hub);
   if (job) {
@@ -11035,7 +11091,7 @@ function dockModel(snapshot, runtime) {
   if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `An apply stopped (${stopped.status}); ${stopped.resumable ? "resume or discard it" : "discard it"}` };
   const draft = draftFor(runtime);
   if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
-  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: "Unsaved changes" };
+  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || gate !== "pass" && runtime) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };
@@ -11320,8 +11376,8 @@ var PanelStore = class {
     let next = route;
     if (next.kind === "hub") {
       const hubId = next.hubId ?? this._snapshot.selectedHubId;
-      next = { kind: "hub", hubId, tab: next.tab, sub: normalizeSub(next.tab, next.sub) };
-      this._lastHubTab = { tab: next.tab, sub: next.sub };
+      this._lastHubTab = { tab: next.tab, sub: normalizeSub(next.tab, next.sub) };
+      next = hubRoute(hubId, next.tab, next.sub, next.entity);
     } else {
       next = { kind: "tool", page: next.page, sub: normalizeToolSub(next.page, next.sub) };
     }
@@ -11893,12 +11949,16 @@ var SofabatonServerPanel = class extends i4 {
     void this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this._dockObserver?.disconnect();
-      this._dockObserver = new ResizeObserver(([entry]) => {
-        const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
-        this.style.setProperty("--bottom-dock-height", `${height}px`);
+      this._dockObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+          this.style.setProperty(entry.target.id === "top-dock" ? "--top-dock-height" : "--bottom-dock-height", `${height}px`);
+        }
       });
-      const dock = this.renderRoot.querySelector("#bottom-dock");
-      if (dock) this._dockObserver.observe(dock);
+      for (const id of ["#bottom-dock", "#top-dock"]) {
+        const dock = this.renderRoot.querySelector(id);
+        if (dock) this._dockObserver.observe(dock);
+      }
     });
   }
   disconnectedCallback() {
@@ -11930,18 +11990,27 @@ var SofabatonServerPanel = class extends i4 {
     if (theme === "auto") delete document.documentElement.dataset.theme;
     else if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
   }
-  /** Leaving the draft's screen or its hub with unsaved work asks first (decision 8); nothing is lost either way. */
+  /** Leaving the draft's screen or its hub with unsaved work asks first (decision 8); nothing is lost either way.
+   *  An open editor asks with the card's own "Unsynced changes" dialog and finishes the move itself (device editor plan, decision 3). */
   _confirmLeave(target) {
     const runtime = selectedRuntime(this._snapshot);
     if (!runtime || !hasDirtyDraft(runtime)) return true;
     const scope = runtime.draft.scope;
     const current = this._snapshot.route;
-    const currentScope = current.kind === "hub" ? `${current.tab}/${current.sub}` : null;
+    const currentScope = current.kind === "hub" ? routeScope(current) : null;
     if (currentScope !== scope) return true;
     const leavingHub = target.hubId !== void 0 && target.hubId !== runtime.hub.hub_id;
-    const targetScope = target.route ? target.route.kind === "hub" ? `${target.route.tab}/${target.route.sub}` : `${target.route.page}/${target.route.sub}` : null;
+    const targetScope = target.route ? routeScope(target.route) : null;
     const leavingScope = targetScope !== null && targetScope !== scope;
     if (!leavingHub && !leavingScope) return true;
+    const editor = this.renderRoot.querySelector("sb-panel-device-editor");
+    if (editor && editor.hasUnsyncedChanges()) {
+      editor.askToLeave(() => {
+        if (target.route) this.store.navigate(target.route);
+        else if (target.hubId !== void 0) this.store.selectHub(target.hubId);
+      });
+      return false;
+    }
     return confirm("You have unsaved changes here. They are kept for when you come back.\n\nLeave anyway?");
   }
   _go(route) {
@@ -11983,7 +12052,7 @@ var SofabatonServerPanel = class extends i4 {
   _onNavigate(event) {
     const d3 = event.detail;
     if (d3.page) this._go(toolRoute(d3.page));
-    else if (d3.tab) this._go(hubRoute(null, d3.tab, d3.sub));
+    else if (d3.tab) this._go(hubRoute(null, d3.tab, d3.sub, d3.entity));
   }
   // -- render ---------------------------------------------------------------------------
   _renderView(ctx) {
@@ -12005,6 +12074,9 @@ var SofabatonServerPanel = class extends i4 {
       case "remote":
         return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
       default:
+        if (route.entity !== void 0 && route.sub === "devices") {
+          return b2`<sb-panel-device-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .deviceId=${route.entity}></sb-panel-device-editor>`;
+        }
         return b2`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }
   }
@@ -12019,7 +12091,7 @@ var SofabatonServerPanel = class extends i4 {
     const streamLost = !streamOn && s7.server.reachable && s7.listLoaded;
     return b2`
       <div class="page">
-        <header class="top-dock">
+        <header class="top-dock" id="top-dock">
           <div class="top-row">
             <div class="brand"><b>Sofabaton X</b><span>control panel</span></div>
             <div class="picker-slot">
@@ -12048,6 +12120,7 @@ var SofabatonServerPanel = class extends i4 {
       cogOpen: this._cogOpen,
       theme: s7.theme,
       eventCount: s7.stream.messageCount,
+      subCounts: route.kind === "hub" && route.tab === "hub" && ctx.hub?.status ? { activities: ctx.hub.status.activities_cached, devices: ctx.hub.status.devices_cached } : void 0,
       onTab: (tab) => this._goTab(tab),
       onSub: (sub) => this._goSub(sub),
       onToggleCog: () => {
@@ -12110,7 +12183,8 @@ SofabatonServerPanel.styles = [
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
       /* -- top dock -------------------------------------------------------- */
-      .top-dock { position: sticky; top: 0; z-index: 40; margin: 0 calc(-1 * var(--page-gutter)); padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0; background: var(--sbp-panel); border-bottom: 1px solid var(--sbp-line); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.03); }
+      /* The dock's lower band, where the subtab row sits, shares the page's background with the area under it; only the two tab rows carry the panel colour. */
+      .top-dock { position: sticky; top: 0; z-index: 40; margin: 0 calc(-1 * var(--page-gutter)); padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0; background: var(--sbp-bg); }
       .top-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0 calc(-1 * var(--page-gutter)); padding: 6px var(--page-gutter); background: var(--dock-surface); border-bottom: 1px solid var(--sbp-line); }
       .brand { display: flex; align-items: baseline; gap: 8px; flex: 0 0 auto; }
       .brand b { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
@@ -12140,27 +12214,32 @@ SofabatonServerPanel.styles = [
       .menu-sep { border-top: 1px solid var(--sbp-line); margin: 4px 0; }
       .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--sbp-panel-2); color: var(--sbp-muted); font-size: 11px; text-align: center; font-weight: 500; }
 
-      .tabs { display: flex; align-items: stretch; min-width: 0; }
-      .tabs-scroll { display: flex; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+      .tabs { display: flex; align-items: stretch; gap: 2px; min-width: 0; margin: 0 calc(-1 * var(--page-gutter)); padding: 0 var(--page-gutter); border-bottom: 1px solid var(--sbp-line); background: var(--sbp-panel); }
+      .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
       .tabs-scroll::-webkit-scrollbar { display: none; }
-      .tab-btn { flex: 0 0 auto; min-height: 46px; padding: 10px 18px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--sbp-muted); font-weight: 600; }
-      .tab-btn:hover { color: var(--sbp-text); border-color: transparent; border-bottom-color: var(--sbp-line); }
-      .tab-btn.active { color: var(--sbp-text); border-bottom-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.05); }
+      .tab-btn { position: relative; flex: 0 0 auto; border: 0; border-radius: 0; background: transparent; color: var(--sbp-muted); font-size: 14px; font-weight: 700; padding: 12px 16px; user-select: none; }
+      .tab-btn:hover { color: var(--sbp-text); border-color: transparent; }
+      .tab-btn.active { color: var(--sbp-text); box-shadow: inset 0 -3px 0 var(--sbp-accent); }
       .tab-menu { position: relative; flex: 0 0 auto; margin-left: auto; display: flex; }
-      .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 10px; min-width: 44px; }
+      .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 12px 8px 10px; min-width: 44px; }
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
-      .subtabs { display: flex; overflow-x: auto; scrollbar-width: none; margin: 8px 0 0; border: 1px solid var(--sbp-line); border-bottom: 0; border-radius: 12px 12px 0 0; background: linear-gradient(180deg, var(--sbp-panel), color-mix(in srgb, var(--sbp-panel-2) 45%, var(--sbp-panel))); }
+      .page { --connected-inline: 16px; --connected-radius: 21px; }
+      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: 10px var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
       .subtabs::-webkit-scrollbar { display: none; }
-      .subtab-btn { flex: 1 0 auto; min-height: 42px; padding: 10px 16px; border: 0; border-right: 1px solid var(--sbp-line); border-radius: 0; background: transparent; color: var(--sbp-muted); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
+      .subtab-btn { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 16px; border: 0; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 86%, transparent); border-radius: 0; background: transparent; color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+      .subtab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      .subtab-icon { width: 18px; height: 18px; flex: 0 0 auto; }
+      .subtab-count { flex: 0 0 auto; padding: 0 5px; border: 1px solid var(--sbp-line); border-radius: 999px; font-size: 9px; font-weight: 700; line-height: 1.2; background: color-mix(in srgb, var(--sbp-panel) 92%, transparent); }
       .subtab-btn:last-child { border-right: 0; }
       .subtab-btn:hover { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.05); }
-      .subtab-btn.active { color: var(--sbp-text); background: var(--sbp-panel); box-shadow: inset 0 -3px 0 var(--sbp-accent); }
+      .subtab-btn.active { color: var(--sbp-text); background: transparent; box-shadow: inset 0 -3px 0 var(--sbp-accent); }
 
       /* -- the view and its scrim ------------------------------------------- */
-      .view { position: relative; padding: 16px 0 8px; min-height: 40vh; }
-      .stage { min-width: 0; }
+      .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
+      .stage { min-width: 0; padding: 12px 16px 16px; }
       .stage[inert] { opacity: 0.5; filter: saturate(0.5); pointer-events: none; }
+      .scrim { border-radius: 0 0 var(--connected-radius) var(--connected-radius); }
       .scrim { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
       .scrim-card { max-width: 420px; padding: 14px 18px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); text-align: center; }
       .scrim-card b { display: block; font-size: 14px; margin-bottom: 4px; }
@@ -12213,7 +12292,15 @@ SofabatonServerPanel.styles = [
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
         .hub-picker-btn { min-height: 40px; padding-inline: 9px; }
-        .tab-btn { padding-inline: 14px; }
+        .tab-btn { padding-inline: 6px; }
+        .tabs-scroll { gap: 0; }
+        .page { --connected-inline: 12px; }
+        .subtabs { min-height: 34px; margin-top: 7px; }
+        /* Narrow: the label gets every pixel, as on the card; the icon is decorative. */
+        .subtab-icon { display: none; }
+        .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
+        .subtab-count { padding: 1px 5px; }
+        .stage { padding: 12px 12px 12px; }
         .dock-inner { gap: 8px; }
         .dock:has(.dock-actions) .dock-inner { flex-direction: column; align-items: stretch; padding-block: 8px; }
         .dock:has(.dock-actions) .dock-center { justify-content: flex-start; }
@@ -12465,47 +12552,106 @@ function defineBackupView() {
 
 // server-panel/src/views/catalog-view.ts
 var CATALOG_VIEW_TAG = "sb-panel-catalog";
+var REFRESH_ALL_KEY = "all";
+function entryKey(kind, id) {
+  return `${kind}:${id}`;
+}
+function tableLength(entity, key) {
+  const rows = entity?.[key];
+  return Array.isArray(rows) ? rows.length : void 0;
+}
+function countsFromSnapshot(kind, entity) {
+  if (!entity) return null;
+  if (kind === "device") {
+    const commands = tableLength(entity, "commands");
+    return commands === void 0 ? null : { commands };
+  }
+  const favorites = tableLength(entity, "favorite_slots");
+  const macros = tableLength(entity, "macros");
+  const buttons = tableLength(entity, "button_bindings");
+  if (favorites === void 0 && macros === void 0 && buttons === void 0) return null;
+  return { favorites: favorites ?? 0, macros: macros ?? 0, buttons: buttons ?? 0 };
+}
 function buildCatalog(devices, activities, snapshot) {
   const provenance = /* @__PURE__ */ new Map();
-  for (const e6 of snapshot?.devices ?? []) provenance.set(`device:${e6.device.device_id}`, e6);
-  for (const e6 of snapshot?.activities ?? []) provenance.set(`activity:${e6.device.device_id}`, e6);
+  for (const e6 of snapshot?.devices ?? []) provenance.set(entryKey("device", e6.device.device_id), e6);
+  for (const e6 of snapshot?.activities ?? []) provenance.set(entryKey("activity", e6.device.device_id), e6);
   const entries = [];
   for (const d3 of devices) {
-    const p4 = provenance.get(`device:${d3.device_id}`);
-    entries.push({ kind: "device", id: d3.device_id, name: d3.name, device: d3, activity: null, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false });
+    const p4 = provenance.get(entryKey("device", d3.device_id));
+    entries.push({ kind: "device", id: d3.device_id, name: d3.name, device: d3, activity: null, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("device", p4) });
   }
   for (const a4 of activities) {
-    const p4 = provenance.get(`activity:${a4.activity_id}`);
-    entries.push({ kind: "activity", id: a4.activity_id, name: a4.name, device: null, activity: a4, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false });
+    const p4 = provenance.get(entryKey("activity", a4.activity_id));
+    entries.push({ kind: "activity", id: a4.activity_id, name: a4.name, device: null, activity: a4, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("activity", p4) });
   }
   return entries;
+}
+function countLine(kind, counts) {
+  if (!counts) return null;
+  if (kind === "device") {
+    const n7 = counts.commands ?? 0;
+    return `${n7} ${n7 === 1 ? "cmd" : "cmds"}`;
+  }
+  const f4 = counts.favorites ?? 0;
+  const m3 = counts.macros ?? 0;
+  const b3 = counts.buttons ?? 0;
+  return `${f4} ${f4 === 1 ? "fav" : "favs"} / ${m3} ${m3 === 1 ? "macro" : "macros"} / ${b3} ${b3 === 1 ? "button" : "buttons"}`;
+}
+function boundButtons(buttons) {
+  return buttons.filter((b3) => b3.device_id != null || b3.command_id != null);
 }
 function jobPhrase(job) {
   const p4 = job.progress;
   const steps = p4 && p4.total_steps != null ? ` ${p4.completed_steps ?? 0}/${p4.total_steps}` : "";
   return `${job.status}${steps}`;
 }
-var POWER = { 0: "off", 1: "on" };
+function deviceClassIconPath(deviceClass) {
+  switch (String(deviceClass ?? "").trim().toLowerCase()) {
+    case "ir":
+      return mdiRemote;
+    case "bluetooth":
+      return mdiBluetooth;
+    case "wifi_roku":
+    case "wifi_hue":
+    case "wifi_mqtt":
+    case "wifi_ip":
+    case "wifi_sonos":
+      return mdiWifi;
+    default:
+      return mdiRadioTower;
+  }
+}
+function icon(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+var DEV_ID_BADGE = "DevID";
+var FAV_ID_BADGE = "FavID";
+var COM_ID_BADGE = "ComID";
+function badge(type, value) {
+  return b2`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
+}
 var SbPanelCatalog = class extends i4 {
   constructor() {
     super(...arguments);
     /** The hub context the shell hands over (state plan, decision 3); `hub` follows it. */
     this.ctx = null;
     this.hub = null;
-    /** Which group to list: the Hub tab's Devices or Activities subtab; null lists both. */
+    /** Which list to show: the Hub tab's Activities or Devices subtab; null lists both. */
     this.kind = null;
     this._entries = [];
     this._snapshot = null;
-    this._selected = null;
-    // "device:12" / "activity:101"
-    this._deviceDetail = null;
-    this._activityDetail = null;
-    this._notice = null;
+    /** The open drawer's key ("activity:101"); one at a time, as on the card. */
+    this._open = null;
+    this._details = {};
+    this._detailLoading = null;
     this._detailNotice = null;
+    this._notice = null;
     this._refresh = null;
     this._loading = false;
     this._loadedFor = null;
-    this._detailFor = null;
+    this._lastJobId = null;
+    this._pendingScroll = null;
     this._devices = [];
     this._activities = [];
   }
@@ -12513,36 +12659,54 @@ var SbPanelCatalog = class extends i4 {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
   }
   updated(changed) {
-    if (changed.has("kind") && this.kind && this.selectedEntry && this.selectedEntry.kind !== this.kind) {
-      this._selected = null;
-      this._clearDetail();
+    if (changed.has("kind") && this.kind && this.openEntry && this.openEntry.kind !== this.kind) {
+      this._open = null;
+      this._detailNotice = null;
     }
     if (changed.has("hub")) {
       const id = this.hub?.hub_id ?? null;
       if (id !== this._loadedFor) {
         this._loadedFor = id;
+        this._lastJobId = this.hub?.last_job?.job_id ?? null;
         this._entries = [];
         this._snapshot = null;
-        this._selected = null;
-        this._clearDetail();
+        this._open = null;
+        this._details = {};
+        this._detailNotice = null;
         this._notice = null;
         if (id) void this._load();
+      } else {
+        const jobId = this.hub?.last_job?.job_id ?? null;
+        if (jobId && jobId !== this._lastJobId) {
+          this._lastJobId = jobId;
+          if (!this._refresh) void this._reloadAll();
+        }
       }
     }
+    if (this._pendingScroll) {
+      const key = this._pendingScroll;
+      this._pendingScroll = null;
+      requestAnimationFrame(() => this._scrollEntityToTop(key));
+    }
   }
-  _clearDetail() {
-    this._deviceDetail = null;
-    this._activityDetail = null;
-    this._detailNotice = null;
-    this._detailFor = null;
+  /** As the card does on opening a drawer: the row lands at the top of the view, under the top dock. */
+  _scrollEntityToTop(key) {
+    const block = this.renderRoot.querySelector(`[data-entity="${CSS.escape(key)}"]`);
+    if (!block) return;
+    const dock = parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0;
+    const top = window.scrollY + block.getBoundingClientRect().top - dock - 8;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   }
-  get selectedEntry() {
-    if (!this._selected) return null;
-    const [kind, id] = this._selected.split(":");
-    return this._entries.find((e6) => e6.kind === kind && String(e6.id) === id) ?? null;
+  get openEntry() {
+    if (!this._open) return null;
+    return this._entries.find((e6) => entryKey(e6.kind, e6.id) === this._open) ?? null;
+  }
+  /** The card's lock: a running refresh, or a hub the view may not act on. */
+  get _locked() {
+    return Boolean(this._refresh) || (this.ctx ? !this.ctx.free : false);
   }
   // -- loading ---------------------------------------------------------------------------
-  /** The lists and the snapshot header; keeps the selection when it still exists. */
+  /** The lists and the snapshot header; keeps the open drawer when its entity still exists. */
   async _load() {
     const hubId = this.hub?.hub_id;
     if (!hubId) return;
@@ -12561,49 +12725,62 @@ var SbPanelCatalog = class extends i4 {
       this._activities = activities.body ?? [];
       this._snapshot = snapshot.ok ? snapshot.body : null;
       this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
-      if (this._selected && !this.selectedEntry) {
-        this._selected = null;
-        this._clearDetail();
-      }
+      if (this._open && !this.openEntry) this._open = null;
     } catch (err) {
       this._notice = String(err);
     } finally {
       this._loading = false;
     }
   }
-  async _select(entry) {
-    const key = `${entry.kind}:${entry.id}`;
-    if (this._selected === key) return;
-    this._selected = key;
-    await this._loadDetail(entry);
+  /** The lists and every loaded drawer again (after a refresh, or a job that ended elsewhere). */
+  async _reloadAll() {
+    await this._load();
+    const open = this.openEntry;
+    this._details = {};
+    if (open) await this._loadDetail(open);
+  }
+  _toggle(entry) {
+    const key = entryKey(entry.kind, entry.id);
+    const opening = this._open !== key;
+    this._open = opening ? key : null;
+    this._detailNotice = null;
+    if (!opening) return;
+    this._pendingScroll = key;
+    if (!this._details[key]) void this._loadDetail(entry);
   }
   async _loadDetail(entry) {
     const hubId = this.hub?.hub_id;
     if (!hubId) return;
-    const key = `${entry.kind}:${entry.id}`;
-    this._detailFor = key;
-    this._deviceDetail = null;
-    this._activityDetail = null;
+    const key = entryKey(entry.kind, entry.id);
+    this._detailLoading = key;
     this._detailNotice = null;
+    let detail = null;
     try {
       if (entry.kind === "device") {
         const commands = await this.api.deviceCommands(hubId, entry.id);
-        if (this._detailFor !== key) return;
+        if (this._loadedFor !== hubId) return;
         if (!commands.ok) this._detailNotice = problemText(commands);
-        else this._deviceDetail = { commands: commands.body ?? [] };
+        else detail = { kind: "device", commands: commands.body ?? [] };
       } else {
         const [buttons, macros, favorites] = await Promise.all([
           this.api.entityButtons(hubId, entry.id),
           this.api.activityMacros(hubId, entry.id),
           this.api.activityFavorites(hubId, entry.id)
         ]);
-        if (this._detailFor !== key) return;
+        if (this._loadedFor !== hubId) return;
         const failed = [buttons, macros, favorites].find((r6) => !r6.ok);
         if (failed) this._detailNotice = problemText(failed);
-        this._activityDetail = { buttons: buttons.body ?? [], macros: macros.body ?? [], favorites: favorites.body ?? [] };
+        detail = { kind: "activity", buttons: buttons.body ?? [], macros: macros.body ?? [], favorites: favorites.body ?? [] };
       }
     } catch (err) {
-      if (this._detailFor === key) this._detailNotice = String(err);
+      this._detailNotice = String(err);
+    } finally {
+      if (this._detailLoading === key) this._detailLoading = null;
+    }
+    if (detail) {
+      this._details = { ...this._details, [key]: detail };
+      if (this._open === key) this._pendingScroll = key;
+      this._entries = this._entries.map((e6) => entryKey(e6.kind, e6.id) === key ? { ...e6, counts: countsOf(detail) } : e6);
     }
     await this._reloadProvenance(hubId);
   }
@@ -12612,15 +12789,20 @@ var SbPanelCatalog = class extends i4 {
       const snapshot = await this.api.snapshot(hubId);
       if (this._loadedFor !== hubId || !snapshot.ok) return;
       this._snapshot = snapshot.body;
-      this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
+      const previous = new Map(this._entries.map((e6) => [entryKey(e6.kind, e6.id), e6]));
+      this._entries = buildCatalog(this._devices, this._activities, this._snapshot).map((e6) => {
+        const key = entryKey(e6.kind, e6.id);
+        const detail = this._details[key];
+        return detail ? { ...e6, counts: countsOf(detail) } : { ...e6, counts: e6.counts ?? previous.get(key)?.counts ?? null };
+      });
     } catch {
     }
   }
   // -- refresh (the explicit hub read) ------------------------------------------------------
-  async _refreshScope(scope, label) {
+  async _refreshScope(scope, key, label) {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
-    this._refresh = { scope: label, text: "starting\u2026" };
+    this._refresh = { key, text: "starting\u2026" };
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
@@ -12629,139 +12811,126 @@ var SbPanelCatalog = class extends i4 {
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
         onUpdate: (j2) => {
-          this._refresh = { scope: label, text: jobPhrase(j2) };
+          this._refresh = { key, text: jobPhrase(j2) };
         }
       });
       if (!job) this._notice = `refresh ${label}: the job could not be followed`;
       else if (job.status !== "done") this._notice = `refresh ${label}: ${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
       else this._notice = null;
+      if (job) this._lastJobId = job.job_id;
     } catch (err) {
       this._notice = `refresh ${label}: ${String(err)}`;
     } finally {
       this._refresh = null;
     }
-    await this._load();
-    const entry = this.selectedEntry;
-    if (entry) await this._loadDetail(entry);
+    await this._reloadAll();
   }
   _refreshAll() {
-    void this._refreshScope({}, "whole hub");
+    if (this._locked) return;
+    void this._refreshScope({}, REFRESH_ALL_KEY, "whole hub");
   }
-  _refreshSelected() {
-    const entry = this.selectedEntry;
-    if (!entry) return;
+  /** The card's wrench: open the entity's editor (device editor plan, decision 2). */
+  _edit(entry) {
+    if (this._locked) return;
+    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: entry.kind === "device" ? "devices" : "activities", entity: entry.id } }));
+  }
+  _refreshEntry(entry) {
+    if (this._locked) return;
     const scope = entry.kind === "device" ? { device_id: entry.id } : { activity_id: entry.id };
-    void this._refreshScope(scope, `${entry.kind} ${entry.id}`);
+    void this._refreshScope(scope, entryKey(entry.kind, entry.id), `${entry.kind} ${entry.id}`);
   }
   // -- render -------------------------------------------------------------------------------
   render() {
     const hub = this.hub;
-    if (!hub) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
-    const devices = this.kind === "activity" ? [] : this._entries.filter((e6) => e6.kind === "device");
-    const activities = this.kind === "device" ? [] : this._entries.filter((e6) => e6.kind === "activity");
+    if (!hub) return b2`<div class="panel"><div class="cache-state">Pick a hub above.</div></div>`;
+    const kind = this.kind ?? "activity";
+    const rows = this._entries.filter((e6) => e6.kind === kind);
     const snap = this._snapshot;
+    const locked = this._locked;
+    const allSpinning = this._refresh?.key === REFRESH_ALL_KEY;
     return b2`
-      <div class="wrap">
-        <div class="panel" id="catalog-list">
-          <div class="toolbar">
-            <span class="status" id="catalog-status" title=${snap ? `snapshot ${snap.snapshot_id}` : ""}>
-              ${snap ? b2`captured ${formatWhen(snap.captured_at)} · ${snap.complete ? "complete" : "partial"}` : this._loading ? "loading\u2026" : "no snapshot"}
-            </span>
-            <span class="spacer"></span>
-            <button class="small" id="catalog-reload" ?disabled=${this._loading} @click=${() => void this._load()} title="re-read the server's cache">reload</button>
-            <button class="small primary" id="catalog-refresh-all" ?disabled=${Boolean(this._refresh)} @click=${this._refreshAll} title="POST /snapshot/refresh: read the whole hub">
-              ${this._refresh?.scope === "whole hub" ? this._refresh.text : "Refresh all"}
-            </button>
-          </div>
-          ${this._notice ? b2`<div class="notice" id="catalog-notice" style="margin-top: 10px">${this._notice}</div>` : A}
-          ${this.kind === "activity" ? A : b2`<div class="group">
-            <h3>Devices <span class="hint">${devices.length}</span></h3>
-            ${devices.length ? devices.map((e6) => this._renderEntry(e6)) : b2`<div class="hint">none</div>`}
-          </div>`}
-          ${this.kind === "device" ? A : b2`<div class="group">
-            <h3>Activities <span class="hint">${activities.length}</span></h3>
-            ${activities.length ? activities.map((e6) => this._renderEntry(e6)) : b2`<div class="hint">none</div>`}
-          </div>`}
-          <div class="hint" style="margin-top: 12px">Ids are what an integration sends: <code>entity_id</code> is a device's or an activity's id, <code>command_id</code> one of its commands. Rows come from the server's cache, read from the hub on first sight; a dot marks an entity read from the hub in full, which is what Refresh does.</div>
+      <div class="panel" id="catalog-list">
+        <div class="cache-panel-header">
+          <span class="status" id="catalog-status" title=${snap ? `snapshot ${snap.snapshot_id}` : ""}>
+            ${snap ? b2`captured ${formatWhen(snap.captured_at)} · ${snap.complete ? "complete" : "partial"}` : this._loading ? "loading\u2026" : "no snapshot"}
+          </span>
+          <span class="spacer"></span>
+          <span class="refresh-action">
+            <span
+              class="refresh-list-label"
+              id="catalog-refresh-all-label"
+              role="button"
+              tabindex=${locked ? -1 : 0}
+              aria-disabled=${String(locked)}
+              @click=${locked ? null : this._refreshAll}
+              @keydown=${locked ? null : (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this._refreshAll();
+      }
+    }}
+            >${allSpinning ? this._refresh?.text : "Refresh all"}</span>
+            <button class="icon-btn ${allSpinning ? "spinning" : ""}" id="catalog-refresh-all" type="button" ?disabled=${locked} title="POST /snapshot/refresh: read the whole hub" aria-label="Refresh all" @click=${this._refreshAll}>${icon(mdiRefresh)}</button>
+          </span>
         </div>
-        <div class="panel" id="catalog-detail">${this._renderDetail()}</div>
+        ${this._notice ? b2`<div class="notice" id="catalog-notice">${this._notice}</div>` : A}
+        <div class="cache-panel-body" id="catalog-rows">
+          ${rows.length ? rows.map((e6) => this._renderEntry(e6)) : b2`<div class="cache-state">${this._loading ? "Loading\u2026" : kind === "device" ? "No devices." : "No activities."}</div>`}
+        </div>
+        <div class="hint ids-hint">DevID is what <code>POST /send</code> takes as <code>entity_id</code>, ComID as <code>command_id</code>. Rows come from the server's cache, read from the hub on first sight; the refresh button on a row re-reads that entity from the hub.</div>
       </div>
     `;
   }
   _renderEntry(e6) {
-    const key = `${e6.kind}:${e6.id}`;
-    const sub = e6.kind === "device" ? [e6.device?.device_class, e6.device?.power_state != null ? `power ${POWER[e6.device.power_state] ?? e6.device.power_state}` : null].filter(Boolean).join(" \xB7 ") : [e6.activity?.active ? "running" : null, e6.activity?.needs_confirm ? "needs confirm" : null].filter(Boolean).join(" \xB7 ");
-    return b2`<div class="ent ${this._selected === key ? "sel" : ""}" data-entity=${key} @click=${() => void this._select(e6)}>
-      <span class="id">${e6.id}</span>
-      <span class="name">${e6.name}</span>
-      <span class="dot ${e6.complete ? "ok" : e6.fetched_at ? "warn" : "off"}" title=${e6.fetched_at ? `refreshed from the hub ${formatWhen(e6.fetched_at)}${e6.complete ? "" : ", incomplete"}` : "not refreshed from the hub yet; rows come from the server's cache"}></span>
-      <span class="sub">${sub || (e6.kind === "device" ? "device" : "activity")}</span>
+    const key = entryKey(e6.kind, e6.id);
+    const isOpen = this._open === key;
+    const locked = this._locked;
+    const spinning = this._refresh?.key === key;
+    const count = countLine(e6.kind, e6.counts) ?? (e6.kind === "device" ? e6.device?.device_class ?? "device" : "activity");
+    const fetched = e6.fetched_at ? `read from the hub ${formatWhen(e6.fetched_at)}${e6.complete ? "" : ", incomplete"}` : "not read from the hub in full yet";
+    return b2`<div class="entity-block ${isOpen ? "open" : ""}" data-entity=${key} data-entity-id=${e6.id}>
+      <div class="entity-summary" @click=${() => this._toggle(e6)}>
+        <span class="entity-name">
+          <span class="entity-name-icon">${icon(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
+          <span class="entity-name-copy">
+            <span class="entity-name-label">${e6.name}</span>
+            <span class="entity-count">${count}</span>
+          </span>
+        </span>
+        <span class="entity-meta">
+          ${badge(DEV_ID_BADGE, e6.id)}
+          ${e6.kind === "device" ? b2`<button class="icon-btn entity-edit" type="button" ?disabled=${locked} title="Edit device" aria-label="Edit device" @click=${(event) => {
+      event.stopPropagation();
+      this._edit(e6);
+    }}>${icon(mdiWrench)}</button>` : A}
+          <button class="icon-btn entity-refresh ${spinning ? "spinning" : ""}" type="button" ?disabled=${locked} title=${`${e6.kind === "device" ? "Refresh device" : "Refresh activity"} (${fetched})`} aria-label=${e6.kind === "device" ? "Refresh device" : "Refresh activity"} @click=${(event) => {
+      event.stopPropagation();
+      this._refreshEntry(e6);
+    }}>${icon(mdiRefresh)}</button>
+          <span class="entity-chevron">▼</span>
+        </span>
+      </div>
+      ${isOpen ? b2`<div class="entity-body">${this._renderBody(e6, key)}</div>` : A}
     </div>`;
   }
-  _renderDetail() {
-    const e6 = this.selectedEntry;
-    if (!e6) return b2`<div class="hint">Select a device or an activity to see its ids and rows.</div>`;
-    const busy = Boolean(this._refresh);
-    const label = `${e6.kind} ${e6.id}`;
-    const refreshText = this._refresh?.scope === label ? this._refresh.text : e6.kind === "device" ? "Refresh device" : "Refresh activity";
-    const facts = [
-      ["entity id", String(e6.id)],
-      // The library stamps an entity only on a full read (Refresh); rows
-      // read on demand fill the cache without a stamp.
-      ["refreshed", e6.fetched_at ? `${formatWhen(e6.fetched_at)}${e6.complete ? "" : " (incomplete)"}` : "never (rows come from the server's cache)"]
-    ];
-    if (e6.device) {
-      facts.push(["class", `${e6.device.device_class ?? "?"}${e6.device.device_class_code != null ? ` (${e6.device.device_class_code})` : ""}`]);
-      facts.push(["power", e6.device.power_state != null ? POWER[e6.device.power_state] ?? String(e6.device.power_state) : "unknown"]);
-      facts.push(["idle behaviour", e6.device.idle_behavior != null ? String(e6.device.idle_behavior) : "none"]);
+  _renderBody(e6, key) {
+    const detail = this._details[key];
+    if (!detail) {
+      if (this._detailNotice) return b2`<div class="inner-notice" id="catalog-detail-notice">${this._detailNotice}</div>`;
+      return b2`<div class="inner-empty">Loading…</div>`;
     }
-    if (e6.activity) {
-      facts.push(["state", e6.activity.active ? "running" : "not running"], ["needs confirm", e6.activity.needs_confirm ? "yes" : "no"]);
+    const notice = this._detailNotice ? b2`<div class="inner-notice" id="catalog-detail-notice">${this._detailNotice}</div>` : A;
+    if (detail.kind === "device") {
+      return b2`${notice}${detail.commands.length ? detail.commands.map((c7) => b2`<div class="inner-row"><span class="inner-label">${c7.label}</span><span class="inner-badges">${badge(COM_ID_BADGE, c7.command_id)}</span></div>`) : b2`<div class="inner-empty">No cached commands.</div>`}`;
     }
-    return b2`
-      <div class="headline"><span class="kind">${e6.kind}</span><span class="title">${e6.name}</span><span class="spacer"></span>
-        <button class="small" id="catalog-refresh-entity" ?disabled=${busy} @click=${this._refreshSelected} title="POST /snapshot/refresh for this entity">${refreshText}</button></div>
-      <dl class="facts">${facts.map(([k2, v3]) => b2`<div><dt>${k2}</dt><dd>${v3}</dd></div>`)}</dl>
-      ${this._detailNotice ? b2`<div class="notice" id="catalog-detail-notice">${this._detailNotice}</div>` : A}
-      ${e6.kind === "device" ? this._renderDevice(e6) : this._renderActivity(e6)}
-    `;
-  }
-  _renderDevice(e6) {
-    const detail = this._deviceDetail;
-    return b2`<div class="section">
-      <h3>Commands <span class="hint">${detail ? detail.commands.length : "\u2026"}</span><span class="spacer"></span><span class="hint mono">POST /send {"entity_id": ${e6.id}, "command_id": …}</span></h3>
-      ${detail ? detail.commands.length ? b2`<div class="scroll-x"><table class="list" id="catalog-commands">
-              <thead><tr><th>command id</th><th>label</th></tr></thead>
-              <tbody>${detail.commands.map((c7) => b2`<tr><td class="num">${c7.command_id}</td><td>${c7.label}</td></tr>`)}</tbody>
-            </table></div>` : b2`<div class="hint">no commands</div>` : this._detailNotice ? A : b2`<div class="hint">loading…</div>`}
-    </div>`;
-  }
-  _renderActivity(e6) {
-    const d3 = this._activityDetail;
-    if (!d3) return this._detailNotice ? b2`` : b2`<div class="hint">loading…</div>`;
-    const bound = d3.buttons.filter((b3) => b3.device_id != null || b3.command_id != null);
-    return b2`
-      <div class="section">
-        <h3>Buttons <span class="hint">${bound.length} bound of ${d3.buttons.length}</span><span class="spacer"></span><span class="hint mono">POST /send {"entity_id": ${e6.id}, "command_id": button code}</span></h3>
-        ${d3.buttons.length ? b2`<div class="scroll-x"><table class="list" id="catalog-buttons">
-              <thead><tr><th>button code</th><th>name</th><th>device</th><th>command</th><th>long press</th></tr></thead>
-              <tbody>${d3.buttons.map((b3) => b2`<tr>
-                <td class="num">${b3.button_code}</td><td>${b3.name ?? ""}</td>
-                <td class="num">${b3.device_id ?? b2`<span class="sub">–</span>`}</td><td class="num">${b3.command_id ?? b2`<span class="sub">–</span>`}</td>
-                <td class="num">${b3.long_press_device_id != null && b3.long_press_command_id != null ? `${b3.long_press_device_id} / ${b3.long_press_command_id}` : b2`<span class="sub">–</span>`}</td>
-              </tr>`)}</tbody>
-            </table></div>` : b2`<div class="hint">no buttons</div>`}
-      </div>
-      <div class="section">
-        <h3>Macros <span class="hint">${d3.macros.length}</span><span class="spacer"></span><span class="hint mono">POST /send {"entity_id": ${e6.id}, "command_id": …}</span></h3>
-        ${d3.macros.length ? b2`<table class="list" id="catalog-macros"><thead><tr><th>command id</th><th>label</th></tr></thead>
-              <tbody>${d3.macros.map((m3) => b2`<tr><td class="num">${m3.command_id}</td><td>${m3.label ?? ""}</td></tr>`)}</tbody></table>` : b2`<div class="hint">no macros</div>`}
-      </div>
-      <div class="section">
-        <h3>Favourites <span class="hint">${d3.favorites.length}</span><span class="spacer"></span><span class="hint mono">POST /send {"entity_id": device, "command_id": …}</span></h3>
-        ${d3.favorites.length ? b2`<table class="list" id="catalog-favorites"><thead><tr><th>device</th><th>command id</th><th>label</th></tr></thead>
-              <tbody>${d3.favorites.map((f4) => b2`<tr><td class="num">${f4.device_id}</td><td class="num">${f4.command_id}</td><td>${f4.label ?? ""}</td></tr>`)}</tbody></table>` : b2`<div class="hint">no favourites</div>`}
-      </div>
+    const bound = boundButtons(detail.buttons);
+    const half = Math.ceil(bound.length / 2);
+    const columns = [bound.slice(0, half), bound.slice(half)];
+    return b2`${notice}
+      ${detail.favorites.length ? b2`<div class="inner-section-label">Favorites</div>${detail.favorites.map((f4) => b2`<div class="inner-row"><span class="inner-label">${f4.label || `Favorite ${f4.command_id}`}</span><span class="inner-badges">${badge(DEV_ID_BADGE, f4.device_id)}${badge(COM_ID_BADGE, f4.command_id)}</span></div>`)}` : A}
+      ${detail.macros.length ? b2`<div class="inner-section-label">Macros</div>${detail.macros.map((m3) => b2`<div class="inner-row"><span class="inner-label">${m3.label || `Macro ${m3.command_id}`}</span><span class="inner-badges">${badge(FAV_ID_BADGE, m3.command_id)}${badge(COM_ID_BADGE, m3.command_id)}</span></div>`)}` : A}
+      ${bound.length ? b2`<div class="inner-section-label">Buttons</div><div class="buttons-grid">${columns.map((column) => b2`<div class="buttons-col">${column.map((b3) => b2`<div class="inner-row"><span class="inner-label">${b3.name || `Button ${b3.button_code}`}</span><span class="inner-badges">${badge(COM_ID_BADGE, b3.button_code)}</span></div>`)}</div>`)}</div>` : A}
+      ${!detail.favorites.length && !detail.macros.length && !bound.length ? b2`<div class="inner-empty">No cached data yet.</div>` : A}
     `;
   }
 };
@@ -12772,46 +12941,4729 @@ SbPanelCatalog.properties = {
   kind: { attribute: false },
   _entries: { state: true },
   _snapshot: { state: true },
-  _selected: { state: true },
-  _deviceDetail: { state: true },
-  _activityDetail: { state: true },
-  _notice: { state: true },
+  _open: { state: true },
+  _details: { state: true },
+  _detailLoading: { state: true },
   _detailNotice: { state: true },
+  _notice: { state: true },
   _refresh: { state: true },
   _loading: { state: true }
 };
 SbPanelCatalog.styles = [
   PANEL_BASE_CSS,
   i`
-      :host { display: block; }
-      .wrap { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
-      .group { margin-top: 10px; }
-      .group h3 { margin: 6px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--sbp-muted); display: flex; gap: 8px; align-items: center; }
-      .ent { display: grid; grid-template-columns: 44px 1fr auto; gap: 2px 10px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
-      .ent:hover { background: var(--sbp-panel-2); }
-      .ent.sel { background: rgba(var(--sbp-accent-rgb), 0.12); border-color: rgba(var(--sbp-accent-rgb), 0.35); }
-      .ent .id { grid-column: 1; grid-row: 1 / span 2; font-family: var(--sbp-mono); font-size: 12px; color: var(--sbp-muted); }
-      .ent .name { grid-column: 2; grid-row: 1; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .ent .sub { grid-column: 2; grid-row: 2; color: var(--sbp-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .ent .dot { grid-column: 3; grid-row: 1 / span 2; }
-      .headline { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
-      .headline .title { font-size: 17px; font-weight: 650; }
-      .headline .kind { color: var(--sbp-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
-      .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px 18px; margin: 6px 0 12px; padding: 0; }
-      .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
-      .facts dd { margin: 0; font-size: 13px; }
-      table.list td.num { font-family: var(--sbp-mono); }
-      .section { margin-top: 14px; }
-      .section h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-      .section h3 .hint { font-weight: 400; }
+      :host { display: block; container-type: inline-size; }
+      /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
+      #catalog-list.panel { border: 0; border-radius: 0; padding: 0; background: transparent; }
+      .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
+      .cache-panel-header { display: flex; align-items: center; gap: 18px; min-height: 34px; margin: 0 0 8px; }
+      .cache-panel-header .status { font-size: 12px; color: var(--sbp-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .refresh-action { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .refresh-list-label { color: var(--sbp-muted); font-size: 13px; cursor: pointer; user-select: none; }
+      .refresh-list-label:hover { color: var(--sbp-text); }
+      .refresh-list-label[aria-disabled="true"] { cursor: default; }
+      .refresh-list-label[aria-disabled="true"]:hover { color: var(--sbp-muted); }
+      .icon-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; background: transparent; color: var(--sbp-muted); cursor: pointer; padding: 0; line-height: 1; transition: color 120ms, border-color 120ms, background 120ms; }
+      .icon-btn:hover { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.05); }
+      .icon-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+      .icon-btn.spinning { color: var(--sbp-accent); border-color: var(--sbp-accent); opacity: 1 !important; pointer-events: none; }
+      .icon-btn.spinning .mdi { animation: spin 0.7s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
       .notice { padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; margin-bottom: 10px; }
-      .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-      .toolbar .status { font-size: 12px; color: var(--sbp-muted); }
-      @media (max-width: 960px) { .wrap { grid-template-columns: 1fr; } }
+      .cache-panel-body { display: grid; gap: 6px; align-content: start; min-width: 0; }
+      .cache-state { padding: 24px 16px; text-align: center; font-size: 13px; color: var(--sbp-muted); }
+      .entity-block { width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--sbp-line); border-radius: 12px; background: var(--sbp-panel-2); overflow-x: clip; transition: border-color 120ms ease; }
+      .entity-block:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: 12px; transition: background-color 120ms ease; }
+      .entity-summary:hover { background: color-mix(in srgb, var(--sbp-accent) 5%, var(--sbp-panel-2)); }
+      /* The card pins the open drawer's header at the top of its scroll body;
+         here the page scrolls under the shell's sticky top dock, so the
+         header pins just under it (the shell measures the dock's height). */
+      .entity-block.open > .entity-summary { position: sticky; top: var(--top-dock-height, 0px); z-index: 2; background: var(--sbp-panel-2); border-bottom: 1px solid var(--sbp-line); border-radius: 12px 12px 0 0; }
+      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; color: var(--sbp-text); }
+      .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--sbp-muted); flex-shrink: 0; }
+      .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+      .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .entity-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--sbp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .entity-chevron { font-size: 8px; color: var(--sbp-muted); transition: transform 150ms; flex-shrink: 0; }
+      .entity-block.open .entity-chevron { transform: rotate(180deg); }
+      .entity-body { display: none; }
+      .entity-block.open .entity-body { display: block; }
+      .id-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; font-family: var(--sbp-mono); background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: 5px; padding: 2px 5px; flex-shrink: 0; white-space: nowrap; min-width: 68px; justify-content: space-between; }
+      .id-badge span:first-child { color: var(--sbp-muted); }
+      .id-badge span:last-child { color: var(--sbp-text); text-align: right; }
+      .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sbp-muted); background: var(--sbp-bg); border-top: 1px solid var(--sbp-line); margin-top: 2px; }
+      .inner-section-label:first-child { border-top: none; margin-top: 0; }
+      .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
+      .inner-row:hover { background: rgba(var(--sbp-accent-rgb), 0.05); }
+      .inner-label { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .inner-badges { display: flex; gap: 4px; flex-shrink: 0; }
+      .buttons-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }
+      .buttons-col { display: flex; flex-direction: column; min-width: 0; }
+      .inner-empty { padding: 8px 12px; font-size: 11px; color: var(--sbp-muted); font-style: italic; }
+      .inner-notice { padding: 8px 12px; font-size: 12px; color: var(--sbp-err); }
+      .ids-hint { margin-top: 12px; }
+      @container (max-width: 480px) {
+        /* The rows are tight enough on a phone that the "DevID:" prefix costs more than it explains; keep the number. */
+        .entity-meta .id-badge { min-width: 0; justify-content: center; }
+        .entity-meta .id-badge span:first-child { display: none; }
+        .entity-chevron { display: none; }
+        .cache-panel-header { gap: 12px; }
+      }
     `
 ];
+function countsOf(detail) {
+  if (detail.kind === "device") return { commands: detail.commands.length };
+  return { favorites: detail.favorites.length, macros: detail.macros.length, buttons: boundButtons(detail.buttons).length };
+}
 function defineCatalogView() {
   if (!customElements.get(CATALOG_VIEW_TAG)) customElements.define(CATALOG_VIEW_TAG, SbPanelCatalog);
+}
+
+// custom_components/sofabaton_x1s/www/src/strings.ts
+var TOOLS_CARD_STRINGS_EN = {
+  common: {
+    cancel: "Cancel",
+    save: "Save",
+    complete: "Complete",
+    loading: "Loading\u2026",
+    noHubsFound: "No hubs found.",
+    homeAssistantUnavailable: "Home Assistant is not available",
+    homeAssistantContextUnavailable: "Home Assistant context is unavailable",
+    unknownError: "Unknown error",
+    unknownErrorWithLogs: "Unknown error (check Home Assistant logs)",
+    commandFallback: (id) => `Command ${id}`,
+    buttonFallback: (id) => `Button ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
+    activityFallback: (id) => `Activity ${id}`,
+    macroFallback: (id) => `Macro ${id}`,
+    favoriteFallback: (id) => `Favorite ${id}`,
+    inputFallback: (id) => `Input ${id}`,
+    noInput: "no input"
+  },
+  card: {
+    connectivityAria: "Connectivity",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version) => `SOFABATON CONTROL PANEL - v${version}`,
+    wifiDeviceFallback: "Wifi device",
+    wifiCommandFallback: "Wifi command",
+    irLongPress: (device, command) => `${device} \u2022 ${command} (long press)`,
+    irPress: (device, command) => `${device} \u2022 ${command}`,
+    previewDescription: "Tools, cache, backups, logs & automations for your hub",
+    editorHeight: "Card height",
+    editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
+    pickerName: "Sofabaton Control Panel",
+    pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wifi Commands."
+  },
+  docs: {
+    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
+    commandPayloadsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md"
+  },
+  tabs: {
+    cache: "Hub",
+    wifiCommands: "Automation",
+    backup: "Backup",
+    settings: "Settings",
+    logs: "Logs"
+  },
+  tabDocs: {
+    wifi_commands: "Automation documentation",
+    backup: "Backup documentation"
+  },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them",
+    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup"
+  },
+  backend: {
+    unavailableTitle: "Backend not available",
+    unavailableCopy: "Waiting for the Sofabaton X integration to finish starting\u2026",
+    versionMismatchTitle: "Refresh required to update the Sofabaton Control Panel card",
+    versionMismatchCopy: "This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant. Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.",
+    backendExpects: "Backend expects",
+    cardLoaded: "Card loaded",
+    unknownVersion: "unknown",
+    refreshingCache: "Refreshing cache\u2026",
+    hubCommandInProgress: "Hub command in progress\u2026"
+  },
+  hubUnavailable: {
+    title: "Hub unavailable",
+    copy: "This hub is not connected, so the control panel is unavailable until the hub reconnects."
+  },
+  availability: {
+    operationRunning: "Operation running",
+    working: "Working\u2026",
+    appConnectedOnlyLogs: "Only Logs is available while the Sofabaton app is connected.",
+    hubCommandInProgress: "Hub command in progress\u2026",
+    refreshingCache: "Refreshing cache\u2026",
+    unavailable: "Unavailable",
+    refreshDashboard: "Refresh the dashboard to load the updated Sofabaton Control Panel card.",
+    automationUnavailable: "Automation unavailable",
+    backupUnavailable: "Backup unavailable",
+    automationBlockedByProxy: "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    backupBlockedByProxy: "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    blockedByFirmware: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} is the minimum supported version for Control Panel features that change the hub configuration. Update the hub using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`
+  },
+  buttonNames: {
+    151: "C",
+    152: "B",
+    153: "A",
+    154: "Exit",
+    155: "DVR",
+    156: "Play",
+    157: "Guide",
+    174: "Up",
+    175: "Left",
+    176: "OK",
+    177: "Right",
+    178: "Down",
+    179: "Back",
+    180: "Home",
+    181: "Menu",
+    182: "Vol +",
+    183: "Ch +",
+    184: "Mute",
+    185: "Vol -",
+    186: "Ch -",
+    187: "Rew",
+    188: "Pause",
+    189: "Fwd",
+    190: "Red",
+    191: "Green",
+    192: "Yellow",
+    193: "Blue",
+    198: "Power on",
+    199: "Power off"
+  },
+  errors: {
+    backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
+    irLearnNoSocket: "Learning is unavailable without a websocket connection",
+    logsNoSocket: "Live logs are unavailable without a websocket connection",
+    wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
+    hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    anotherOperation: "Another hub operation is already running.",
+    noHubSelected: "No hub selected.",
+    noHubSelectedLong: "No hub is selected.",
+    cacheRefreshFailed: "Cache refresh failed.",
+    syncFailed: "Sync failed.",
+    activityIdMissing: "The hub did not return the new activity id.",
+    deviceIdMissing: "The hub did not return the new device id.",
+    deviceCreateFailed: "The device could not be created on the hub.",
+    deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
+    deviceTypeUnsupported: "This device type cannot be created on this hub.",
+    selectedHubUnavailable: "The selected hub is no longer available."
+  },
+  settings: {
+    loading: "Loading\u2026",
+    noHubsFound: "No hubs found.",
+    unknownHubName: "Unknown",
+    activities: "Activities",
+    devices: "Devices",
+    persistentCacheTitle: "Persistent Cache",
+    persistentCacheDescription: "Store activity and device data locally for faster access.",
+    persistentCacheFooter: "GLOBAL",
+    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
+    hubClickActionTitle: "Hub Tab Clicks",
+    hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "Do nothing",
+    hubClickActionOptionSend: "Send the command",
+    hubClickActionOptionCopy: "Copy the command",
+    hexLoggingTitle: "Hex Logging",
+    hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
+    wifiDeviceTitle: "Wifi Device",
+    wifiDeviceDescription: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
+    findRemoteTitle: "Find Remote",
+    findRemoteDescription: "Make the remote beep so you can locate it.",
+    syncRemoteTitle: "Sync Remote",
+    syncRemoteDescription: "Push the latest configuration to the physical remote."
+  },
+  cache: {
+    loading: "Loading\u2026",
+    noHubsFound: "No hubs found.",
+    persistentCacheOffTitle: "Persistent cache is off",
+    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
+    enablingPersistentCache: "Enabling\u2026",
+    enablePersistentCache: "Enable persistent cache",
+    activityFallback: (id) => `Activity ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
+    favoriteFallback: (commandId) => `Favorite ${commandId}`,
+    macroFallback: (commandId) => `Macro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
+    deviceCommandCount: (count) => `${count} ${count === 1 ? "cmd" : "cmds"}`,
+    favorites: "Favorites",
+    macros: "Macros",
+    buttons: "Buttons",
+    noCachedData: "No cached data yet.",
+    noCachedCommands: "No cached commands.",
+    staleBanner: "Cache was updated externally. Refresh to see latest data.",
+    refresh: "Refresh",
+    activities: "Activities",
+    devices: "Devices",
+    refreshList: "Refresh list",
+    refreshAll: "Refresh all",
+    editActivity: "Edit activity",
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add activity",
+    addDevice: "Add device",
+    reorderSync: "Sync to Hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026",
+    reorderingActivities: "Reordering activities\u2026",
+    reorderingDevices: "Reordering devices\u2026",
+    creatingActivity: "Creating activity\u2026",
+    addDeviceTitle: "Add device",
+    addDeviceBody: "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
+    addDevicePlaceholder: "Device name",
+    addDeviceClass: "Device type",
+    addDeviceCancel: "Cancel",
+    addDeviceConfirm: "Create",
+    addDeviceCreating: "Creating\u2026",
+    addDeviceWifiHint: "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
+    creatingDevice: "Creating device\u2026",
+    deviceClassLabels: {
+      ir: "Infrared",
+      wifi_roku: "Roku",
+      wifi_hue: "Hue",
+      wifi_sonos: "Sonos",
+      wifi_ip: "Generic HTTP",
+      wifi_mqtt: "MQTT"
+    }
+  },
+  // Hub-tab row clicks ("send the command" / "copy the command" modes).
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Activity",
+    contextDevice: "Device",
+    kindLabels: {
+      favorite: "Favorite",
+      macro: "Macro",
+      button: "Button",
+      command: "Command"
+    },
+    lovelaceHeading: "Lovelace button code",
+    lovelaceHint: "Copy this to your dashboard YAML:",
+    actionHeading: "Service call (automation)",
+    actionHint: "Use this in your scripts or automations:",
+    noRemoteEntity: "The hub's remote entity is unavailable.",
+    copied: (label) => `Copied "${label}" to notifications.`,
+    sendTooltip: "Click to send this command to the hub",
+    copyTooltip: "Click to copy this command to a notification"
+  },
+  logs: {
+    loading: "Loading log stream\u2026",
+    empty: "No log lines captured for this hub yet.",
+    liveConsole: "Live Console"
+  },
+  cacheRefresh: {
+    label: "Refresh all",
+    running: "Refreshing\u2026",
+    starting: "Starting hub cache refresh\u2026",
+    working: "Reading your hub's configuration\u2026",
+    done: "Hub cache refreshed."
+  },
+  progress: {
+    homeAssistant: "Home Assistant",
+    sofabatonHub: "Sofabaton Hub",
+    working: "Working\u2026",
+    backupTitle: "Creating backup",
+    restoreTitle: "Restoring backup"
+  },
+  backendState: {
+    // Progress/status labels for a running operation — never button
+    // imperatives. Translations must use a progressive/status form.
+    operationBackup: "Creating backup",
+    operationRestore: "Restoring backup",
+    operationCacheRefresh: "Refreshing hub cache",
+    operationEntitySync: "Syncing with hub",
+    operationWifiDeploy: "Syncing Wifi Commands",
+    working: "Working\u2026",
+    step: (current, total) => `Step ${current} of ${total}`,
+    backupPreparing: "Preparing backup\u2026",
+    backupDevice: (id) => `Backing up device ${id}\u2026`,
+    backupActivity: (id) => `Backing up activity ${id}\u2026`,
+    backupFinalizing: "Finalizing backup\u2026",
+    restoreValidating: "Validating backup\u2026",
+    restoreErasing: "Erasing the destination hub\u2026",
+    restoreDevice: (id) => `Restoring device ${id}\u2026`,
+    restoreActivity: (id) => `Restoring activity ${id}\u2026`,
+    restoreHub: "Restoring hub settings\u2026",
+    restoreCache: "Refreshing the restored hub cache\u2026",
+    cachePreparing: "Preparing hub cache refresh\u2026",
+    cacheDevice: (id) => `Refreshing device ${id}\u2026`,
+    cacheActivity: (id) => `Refreshing activity ${id}\u2026`,
+    cacheFinalizing: "Finalizing hub cache\u2026",
+    entityChecking: "Checking for changes on the hub\u2026",
+    entityWriting: "Applying changes to the hub\u2026",
+    entitySettling: "Waiting for the hub to finish processing the changes\u2026",
+    entityRefreshing: "Refreshing the cached hub state\u2026",
+    entityComplete: "Synced to hub.",
+    // Live-sync engine write steps, keyed by the `step_kind` the engine
+    // reports (proxy_activity_sync). Kinds that target a specific device
+    // take its id; null when the engine did not name one.
+    entityStepActivityRename: "Renaming the activity\u2026",
+    entityStepBindingDelete: "Clearing a button assignment\u2026",
+    entityStepBindingWrite: "Writing button assignments\u2026",
+    entityStepCommandAdd: (id) => id == null ? "Adding a command\u2026" : `Adding a command on device ${id}\u2026`,
+    entityStepCommandDelete: (id) => id == null ? "Removing a command\u2026" : `Removing a command on device ${id}\u2026`,
+    entityStepCommandSortRewrite: (id) => id == null ? "Updating the command order\u2026" : `Updating the command order on device ${id}\u2026`,
+    entityStepCommandPayload: (id) => id == null ? "Updating a command\u2026" : `Updating a command on device ${id}\u2026`,
+    entityStepCommandRename: (id) => id == null ? "Renaming a command\u2026" : `Renaming a command on device ${id}\u2026`,
+    entityStepDeviceIp: "Updating the IP address\u2026",
+    entityStepDeviceRename: "Renaming the device\u2026",
+    entityStepFavoriteAdd: "Adding a shortcut\u2026",
+    entityStepFavoriteDelete: "Removing a shortcut\u2026",
+    entityStepFavoriteOrder: "Reordering shortcuts\u2026",
+    entityStepIdleBehavior: "Updating automatic power control\u2026",
+    entityStepInputsWrite: (id) => id == null ? "Updating inputs\u2026" : `Updating inputs on device ${id}\u2026`,
+    entityStepMacroDelete: "Removing a macro\u2026",
+    entityStepMacroPowerOn: "Updating the start sequence\u2026",
+    entityStepMacroPowerOff: "Updating the end sequence\u2026",
+    entityStepMacroCustom: "Updating a macro\u2026",
+    entityStepMemberReplay: "Adding a device to the activity\u2026",
+    entityStepRemoteSync: "Syncing the remote\u2026",
+    wifiSyncing: "Syncing Wifi Commands\u2026",
+    // Deploy pipeline stages, keyed by the `phase` the hub reports.
+    wifiStarting: "Starting the sync\u2026",
+    wifiReadingDevice: "Reading the deployed Wifi Device\u2026",
+    wifiEnablingDevice: "Enabling the Wifi Device\u2026",
+    wifiDisablingDevice: "Disabling the Wifi Device\u2026",
+    wifiValidatingActivities: "Checking activities against the hub\u2026",
+    wifiCreatingDevice: "Creating the Wifi Device on the hub\u2026",
+    wifiDeletingDevice: "Removing the previous Wifi Device\u2026",
+    wifiAddingToActivities: "Adding the Wifi Device to activities\u2026",
+    wifiApplyingFavorites: "Applying activity shortcuts\u2026",
+    wifiApplyingBindings: "Applying activity button assignments\u2026",
+    wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
+    wifiResyncingRemote: "Resyncing the physical remote\u2026",
+    wifiUpdatedInPlace: "Wifi Device updated.",
+    wifiAlreadyCurrent: "Wifi Device already up to date.",
+    wifiDeviceRemoved: "Wifi Device removed \u2014 no commands configured.",
+    wifiComplete: "Wifi Commands synced.",
+    // In-place deploy write steps, keyed by the `step_kind` the pipeline
+    // reports. The command steps carry the user's own command label.
+    wifiStepCommandAdd: (name) => name == null ? "Adding a command\u2026" : `Adding command \u201C${name}\u201D\u2026`,
+    wifiStepCommandPayload: (name) => name == null ? "Updating a command\u2026" : `Updating command \u201C${name}\u201D\u2026`,
+    wifiStepCommandRename: (name) => name == null ? "Renaming a command\u2026" : `Renaming command to \u201C${name}\u201D\u2026`,
+    wifiStepCommandDelete: (name) => name == null ? "Removing a command\u2026" : `Removing command \u201C${name}\u201D\u2026`,
+    wifiStepPowerConfig: "Updating automatic power control\u2026",
+    wifiStepInputConfig: "Updating input configuration\u2026",
+    wifiStepInputSelect: "Updating input selection\u2026",
+    wifiStepActivityJoin: "Adding the device to an activity\u2026",
+    wifiStepActivityLeave: "Removing the device from an activity\u2026",
+    wifiStepHeadCommit: "Saving the device\u2026",
+    wifiStepBindingWrite: "Assigning a button\u2026"
+  },
+  activities: {
+    loading: "Loading activities\u2026",
+    selectHub: "Select a hub to edit its activities.",
+    activityFallback: (id) => `Activity ${id}`,
+    // Guard panels (§4.1), rendered inside the editor view.
+    appConnectedTitle: "The Sofabaton app is connected",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
+    firmwareUnsupportedTitle: "Hub firmware update required",
+    firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
+    operationRunningTitle: "Another operation is running",
+    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
+    // Capture flow (§4.2).
+    captureTitle: "Reading your hub",
+    captureMessage: "Reading your hub's configuration\u2026",
+    captureMessageWithStep: (current, total) => `Reading your hub's configuration\u2026 (device ${current} of ${total})`,
+    captureFailedTitle: "Couldn't read the hub",
+    captureFailedBody: "The hub stopped responding before we finished reading it.",
+    retry: "Retry",
+    back: "Back",
+    // Cache-sourced capture (blob-free structural bundle).
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
+    needsRefreshTitle: "Refresh the hub cache to edit",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
+    // Session restore banner (§4.6).
+    // Live-mode edit header (§4.3). The header mirrors the Wifi command
+    // editor: a single stateful Sync button (no dirty chip, no review/discard).
+    syncToHub: "Sync to Hub",
+    syncUpToDate: "Up to date",
+    // Immediate entity delete (executed on the hub right away).
+    deletingTitle: (kind) => `Deleting ${kind}`,
+    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
+    // Sync flow (§4.5).
+    syncingTitle: "Syncing to your hub",
+    syncingMessage: "Writing your changes to the hub\u2026",
+    wifiEventsPhaseMessage: "Deploying Wifi Events to the hub first\u2026 this can take a minute the first time.",
+    syncSuccess: "Synced to hub.",
+    syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
+    syncFailedTitle: "Sync didn't finish",
+    syncFailedStep: (step) => `The hub stopped at: ${step}`,
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
+    syncRetry: "Retry sync",
+    syncReload: "Reload from hub",
+    syncKeepEditing: "Keep editing",
+    exitUnsyncedTitle: "Unsynced changes",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
+    exitSyncNow: "Sync now",
+    exitWithoutSync: "Leave without syncing",
+    // Dismiss label reused by the sync-success / delete-error banners.
+    discardConfirmCancel: "Keep editing",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
+      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device) => `"${device}" input cleared.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group, device) => `${group} now control "${device}".`,
+      roleCustomized: (group) => `${group} customized.`,
+      roleCleared: (group) => `${group} no longer assigned.`,
+      shortcutAdded: (name) => `Added "${name}".`,
+      shortcutRemoved: (name) => `Removed "${name}".`,
+      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons"
+      },
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub"
+      }
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "On/Off",
+      sectionNetwork: "Network",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name) => `Added macro "${name}".`,
+      macroRemoved: (name) => `Removed macro "${name}".`,
+      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
+      macroChanged: (name) => `Edited macro "${name}".`,
+      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button) => `"${button}" is no longer assigned.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
+    }
+  },
+  backup: {
+    sectionMake: "Make",
+    sectionEdit: "Edit",
+    sectionRestore: "Restore",
+    loading: "Loading backup tools\u2026",
+    selectHub: "Select a hub to manage backups.",
+    creatingSubtitle: "The hub is creating your backup.",
+    readySubtitle: "Your backup is ready.",
+    chooseSubtitle: "Choose what to include in this backup.",
+    enablePersistentCache: "Enable persistent cache to choose backup contents from the card.",
+    completedTitle: "Backup completed",
+    expired: "Backup expired. Start a new backup to download again.",
+    downloaded: "Downloaded",
+    downloadAgain: "Download again",
+    downloadBackup: "Download backup",
+    complete: "Complete",
+    restoreCompletedTitle: "Restore completed",
+    restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
+    restoreCompletedStatus: "Restore completed.",
+    restoreCompletedSuccessfully: "Restore completed successfully.",
+    backupCompletedSuccessfully: "Backup completed successfully.",
+    wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
+    restoreRunningSubtitle: "The hub is restoring your backup.",
+    restoreFinishedSubtitle: "Your restore has completed.",
+    restoreChooseSubtitle: "Load a backup file, then choose exactly what to restore. Activities automatically pull in the devices they depend on.",
+    itemsToRestore: "Items to restore",
+    eraseExisting: "Erase existing devices and activities",
+    startRestore: "Start restore",
+    startingBackup: "Starting backup\u2026",
+    startingRestore: "Starting restore\u2026",
+    backupFailed: "Backup failed.",
+    restoreFailed: "Restore failed.",
+    backupInProgress: "Backup in progress\u2026",
+    restoreInProgress: "Restore in progress\u2026",
+    failedPrepareDownload: "Failed to prepare edited backup for download.",
+    enterName: "Enter a name to continue.",
+    renameDialogTitle: "Rename hub",
+    linked: "linked",
+    hubNameRestoreOnlyAria: "Hub name is only applied at restore time when the user opts to wipe the hub.",
+    entireHub: "Entire hub",
+    selectedDevices: "Selected devices",
+    devicesToInclude: "Devices to include",
+    selectedCount: (count) => `${count} selected`,
+    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
+    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favorite" : "favorites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
+    linkedDevices: (count) => `${count} linked ${count === 1 ? "device" : "devices"}`,
+    deselectAll: "Deselect all",
+    selectAll: "Select all",
+    noDevicesAvailable: "No devices available.",
+    working: "Working",
+    startBackup: "Start backup",
+    editLoadPrompt: "Load a backup file, then choose an activity or device to edit.",
+    chooseBackupFile: "Choose backup file",
+    reorderHint: " Drag the handle on any row to reorder activities and devices.",
+    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
+    macroStepsHelp: "Each step plays a command; set the following wait below the step.",
+    hubName: "Hub name",
+    hubNameNotSet: "(not set)",
+    renameHub: "Rename hub",
+    activities: "Activities",
+    noActivitiesInFile: "This backup file has no activities.",
+    devices: "Devices",
+    noDevicesInFile: "This backup file has no devices.",
+    downloadEditedBackup: "Download edited backup",
+    deleteActivityTitle: (name) => `Delete activity "${name}"?`,
+    deleteDeviceTitle: (name) => `Delete device "${name}"?`,
+    deleteCommandTitle: (name) => `Delete command "${name}"?`,
+    deleteFavoriteTitle: (name) => `Delete shortcut "${name}"?`,
+    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
+    deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
+    deleteSimpleBody: "This removes it from the loaded backup.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
+    deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+    deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
+    // Live-edit variants: deletions here act on the hub, not a backup file.
+    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
+    deleteSimpleBodyLive: "This removes it.",
+    deleteImmediateNote: "This is applied to the hub immediately.",
+    deleteSyncNote: "This change is written to the hub on the next Sync.",
+    deleteCancel: "Cancel",
+    deleteConfirm: "Delete",
+    deleteActivityAria: "Delete activity",
+    deleteDeviceAria: "Delete device",
+    deleteCommandAria: "Delete command",
+    addFavoriteTitle: "Add command shortcut",
+    addFavoriteDevice: "Device",
+    addFavoriteCommand: "Command",
+    addFavoriteAdd: "Add",
+    addFavoriteCancel: "Cancel",
+    addFavoriteNoDevices: "This backup has no devices with commands to add.",
+    addFavoriteNoCommands: "This device has no commands to add.",
+    buttonBindingsTitle: "Button assignments",
+    buttonBindingsActivitySub: "Assign remote buttons to a device's command within this activity.",
+    buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
+    buttonBindingsEmpty: "No button assignments configured.",
+    addBinding: "Add assignment",
+    bindingButton: "Button",
+    bindingTargetDevice: "Device",
+    bindingCommand: "Command",
+    bindingEnableLongPress: "Enable long-press assignment",
+    bindingLongPressDevice: "Long-press device",
+    bindingLongPressCommand: "Long-press command",
+    bindingIncomplete: "Choose a button and target first.",
+    bindingNoButtons: "Every button on this hub model is already assigned.",
+    bindingNoCommands: "This device has no commands to assign.",
+    bindingNoDevices: "This backup has no devices with commands to assign.",
+    bindingAdd: "Add",
+    bindingSave: "Save",
+    bindingCancel: "Cancel",
+    bindingDialogAddTitle: "Add button assignment",
+    bindingDialogEditTitle: (name) => `Edit ${name} assignment`,
+    bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Delete ${name} assignment?`,
+    deleteBindingAria: "Delete assignment",
+    deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
+    macrosTitle: "Macros",
+    macrosDeviceSub: "Edit the command sequences this device plays, including its power on/off.",
+    macroPowerChip: "on/off",
+    // These headings name the hub's switching *behaviour*, not the electrical
+    // supply. Translating the bare noun "Power" led every catalogue to the
+    // wattage word (Voeding / Stromversorgung / Alimentación / Alimentation),
+    // which reads as a PSU spec — or, in nl/es/fr, as nutrition. Keep the
+    // English explicit so the behaviour is what gets translated.
+    powerSetupTitle: "Power control",
+    powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
+    powerSetupActivitySub: "The startup and shutdown sequence this activity runs.",
+    powerOnLabel: "Power-on sequence",
+    powerOffLabel: "Power-off sequence",
+    // Activity membership (power-only members). The sequences are the
+    // management surface: Add device sits beside Add step in the sequence
+    // editor, deleting a power-ref row removes the device, and the power
+    // section shows a one-line roster summary.
+    memberSummary: (names) => `Devices: ${names}`,
+    memberSummaryEmpty: 'No devices yet. Open a sequence and use "Add device".',
+    addMemberButton: "Add device",
+    addMemberTitle: "Add device to this activity",
+    addMemberHelper: "The device is added to both power sequences. Assign buttons or shortcuts later, or leave them empty.",
+    addMemberConfirm: "Add",
+    addMemberNoneLeft: "All devices are already part of this activity.",
+    removeMemberAria: "Remove device from this activity",
+    // Automatic-power dropdown (device only). One hub byte encodes the whole
+    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
+    powerControlTitle: "Automatic power control",
+    powerControlUnset: "Not captured",
+    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+    powerControlDisabled: "Don't control power",
+    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+    powerControlAutoOff: "Turn off when idle",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
+    powerControlStayOn: "Stay on between activities",
+    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+    powerControlAlwaysOn: "Always stay on",
+    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
+    inputStepTitle: "Set input",
+    inputStepCommand: "Input command",
+    inputStepNone: "\u2014 no input \u2014",
+    macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
+    noMacroSteps: "No steps yet.",
+    addStep: "Add step",
+    stepDialogAddTitle: "Add step",
+    stepDialogEditTitle: "Edit step",
+    stepDevice: "Device",
+    stepCommand: "Command",
+    stepHoldSeconds: "Hold (seconds, 0 = short press)",
+    holdLabel: (seconds) => `Hold ${seconds}s`,
+    stepAdd: "Add",
+    stepSave: "Save",
+    stepCancel: "Cancel",
+    stepNoCommands: "This device has no commands.",
+    stepWaitAria: "Wait after this step (seconds)",
+    stepWaitLabel: "Delay",
+    stepWaitUnit: "s",
+    renameMacroAria: "Rename macro",
+    deleteStepAria: "Delete step",
+    editStepAria: "Edit step",
+    newMacroName: "Macro",
+    shortcutChipCommand: "command",
+    shortcutChipAction: "macro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
+    powerSectionTitle: "Power control",
+    powerActivitySub: "Each device the activity uses powers on here. Pick its input and adjust the timing.",
+    powerInputLabel: "Input",
+    powerInputNone: "\u2014 none \u2014",
+    powerDelayLabel: "Delay (s)",
+    powerNoDevices: "No devices yet. Add a favorite, assignment, or macro that uses one.",
+    powerOnSequence: "Power-on sequence",
+    powerOffSequence: "Power-off sequence",
+    powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
+    macroRenameAria: "Rename macro",
+    editStepsAria: "Edit steps",
+    crumbActivities: "Activities",
+    crumbDevices: "Devices",
+    // Activity-detail copy.
+    activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
+    activityRunningTitle: "Buttons on the remote",
+    activityRunningSub: "Which device each remote button controls in this activity.",
+    activityShortcutsTitle: "Shortcuts on the remote screen",
+    activityShortcutsSubSortable: "Commands and macros shown on the remote's screen. Drag the handle to reorder.",
+    activityShortcutsSubStatic: "Commands and macros shown on the remote's screen. Use the move buttons to reorder.",
+    activityShortcutsEmpty: "No shortcuts yet. Add a command or a macro.",
+    // Role-based button assignment (Phase B).
+    roleVolume: "Volume buttons control",
+    roleNavigation: "Navigation and OK control",
+    rolePlayback: "Playback buttons control",
+    roleChannels: "Channel buttons control",
+    roleNotUsed: "Not used",
+    roleCustom: "Custom",
+    roleCustomized: (name) => `${name} (customized)`,
+    roleMappedNote: (bound, total) => `${bound} of ${total} ${total === 1 ? "button" : "buttons"} mapped`,
+    roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
+    roleMenuAria: (roleLabel) => `Choose a device for: ${roleLabel}`,
+    roleConfirmTitle: "Replace custom button setup?",
+    roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
+    roleConfirmReplace: "Replace",
+    roleConfirmCancel: "Cancel",
+    customizeButtonsToggle: "Customize individual buttons",
+    bindingsViewTitle: "Individual buttons",
+    bindingsConfiguredCount: (count) => `${count} configured`,
+    bindingsNoneConfigured: "None customized",
+    // Unified "add to shortcuts" flow.
+    addShortcutButton: "Add",
+    addShortcutTitle: "Add to shortcuts",
+    addShortcutKindLabel: "Type",
+    shortcutKindCommand: "Device command",
+    shortcutKindAction: "Macro",
+    shortcutKindWifiEvent: "Wifi Event",
+    macroTargetLabel: "Macro",
+    macroTargetCreateNew: "Create new macro",
+    macroTargetNoExisting: "No macros yet. Create one below.",
+    wifiEventTargetLabel: "Wifi Event",
+    wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
+    wifiEventNameLabel: "Event name",
+    wifiEventNameHelper: "The event is staged now and deployed to the hub when you press Sync; attach an action to it in Automation \u2192 Events.",
+    wifiEventDeploying: "Staging the Wifi Event\u2026",
+    wifiEventNoneYet: "No Wifi Events yet. Create one below.",
+    wifiEventNeedsSync: (name) => `${name} (needs sync)`,
+    wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
+    wifiEventNameRequired: "Enter a name for the new Wifi Event.",
+    wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation \u2192 Events.",
+    addShortcutActionName: "Name",
+    addShortcutActionHelper: "You'll pick the steps next.",
+    addShortcutCommandHelper: "The shortcut shows up under the command's name.",
+    unsaved: "Unsaved",
+    unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
+    renameKind: (kind) => `Rename ${kind}`,
+    managedWifiTitle: "Managed by Wifi Commands",
+    managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
+    managedWifiBody: "Its commands, power, input, and button assignments are configured there \u2014 editing them here would be overwritten on the next sync.",
+    managedWifiRename: "You can still rename it here; the new name stays in sync with your Wifi Commands configuration.",
+    detailPower: "On/Off",
+    detailNetwork: "Network",
+    detailCommands: "Commands",
+    detailButtons: "Buttons",
+    detailSectionsAria: "Detail sections",
+    editBindingAria: "Edit assignment",
+    editIpAria: "Edit IP address",
+    networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
+    ipv4Description: "IPv4 dotted-decimal address",
+    addCommand: "Add command",
+    addCommandTitle: "Add command",
+    editPayloadTitle: "Edit payload",
+    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit.",
+    commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
+    newCommandChip: "new command",
+    commandChip: "command",
+    buttonChip: "button",
+    ipChip: "ip",
+    thisItem: "this item",
+    noDeviceCommands: "This device does not currently have any commands.",
+    renameCommandAria: "Rename command",
+    commandId: "Command ID",
+    editPayloadAria: "Edit payload",
+    fetchEditCommandAria: "Fetch and edit this command's payload",
+    moveUpAria: "Move up",
+    moveDownAria: "Move down",
+    deviceClass: "Device class",
+    name: "Name",
+    nameHelper: "Shown on the remote and in every command picker.",
+    verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
+    verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
+    test: "Test",
+    payloadDocsLink: "Payload documentation",
+    sendingToHub: "Sending to the hub\u2026",
+    sentToHub: "Sent to the hub for one-shot playback.",
+    testFailed: "Test failed.",
+    rawPayload: "Raw payload",
+    rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
+    payloadHex: "Payload (hex bytes)",
+    payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
+    prontoHexTab: "Pronto Hex",
+    sofabatonHexTab: "Sofabaton Hex",
+    descriptorTab: "Descriptor",
+    prontoHexHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB \u2026", or a supported Unfolded Circle HEX code such as "3;0x4B36D32C;32;0". The editor converts it to Sofabaton bytes automatically.',
+    prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+    invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
+    descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+    // Unfolded Circle HEX import (converted on the backend through infrared-protocols).
+    ucHexConverting: "Converting the Unfolded Circle HEX code\u2026",
+    ucHexInvalid: "This is not a valid Unfolded Circle HEX code.",
+    ucHexUnknownProtocol: "an unknown protocol",
+    ucHexUnsupported: (protocol) => `This Unfolded Circle HEX code uses ${protocol}, which is not supported. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.`,
+    ucHexUnrepresentable: "This Unfolded Circle HEX code does not match its IR protocol's format rules and cannot be converted. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.",
+    ucHexUnavailable: "Unfolded Circle HEX conversion is unavailable because the required infrared-protocols library cannot be loaded in this Home Assistant installation.",
+    ucHexNoHost: "This editor cannot convert Unfolded Circle HEX codes because conversion requires a connection to Home Assistant.",
+    ucHexFailed: "The Unfolded Circle HEX code could not be converted.",
+    // Payload-editor learn mode (IR9).
+    learn: "Learn",
+    learnAria: "Learn a payload from another remote or from Home Assistant",
+    learnBack: "Back",
+    learnTryAgain: "Try again",
+    learnFromHub: "From another remote",
+    learnFromHubDescription: "The hub's receiver listens for one button press from the IR remote whose command you want to learn.",
+    learnFromHa: "From Home Assistant",
+    learnFromHaDescription: "Anything another integration sends through the hub's infrared emitter lands here, ready to save.",
+    learnHaChecking: "Checking which integrations use the hub's emitter\u2026",
+    learnHubArming: "Arming the hub's receiver\u2026",
+    learnHubListening: "Point that remote at the hub and press the button once.",
+    learnHubCountdown: (left) => `Listening\u2026 ${left}`,
+    learnHubLearned: (timings, khz) => `Learned from the source remote: ${timings} timing values at ${khz} kHz. Test it, then Save.`,
+    learnHubLearnedRaw: "Learned from the source remote. Test it, then Save.",
+    learnHubTimedOut: "No signal arrived before the hub's learning window closed.",
+    learnHubInterrupted: (by) => `Other hub traffic ended the learning window (${by}).`,
+    learnHubCancelled: "Learning cancelled.",
+    learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
+    learnHubFailed: "Learning failed.",
+    learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
+    learnHaHelper: "Send a command from Home Assistant through the hub's emitter; it appears below the moment the hub plays it. You can leave this page and come back.",
+    learnHaConsumers: "Integrations using this hub's emitter",
+    learnHaEmpty: "Nothing captured yet.",
+    learnHaNew: "new",
+    learnHaUse: "Use",
+    learnHaSentCount: (count) => `\xD7${count}`,
+    learnHaCaptured: (label) => `Captured from Home Assistant: ${label}. Test it, then Save.`,
+    learnHaUnavailable: "Could not load recently emitted IR commands.",
+    learnJustNow: "just now",
+    learnSecondsAgo: (seconds) => `${seconds} s ago`,
+    learnMinutesAgo: (minutes) => `${minutes} min ago`,
+    learnHoursAgo: (hours) => `${hours} h ago`,
+    rename: "Rename",
+    renameActivity: "Rename activity",
+    renameDevice: "Rename device",
+    renameMacro: "Rename macro",
+    renameFavorite: "Rename favorite",
+    renameCommand: "Rename command",
+    ipAddress: "IP address",
+    noPayloadReturned: "The hub returned no payload for this command.",
+    noTemplateCommand: "This device has no commands to use as a template \u2014 add its first command with the Sofabaton app.",
+    newCommandNameRequired: "Enter a name for the new command.",
+    descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
+    noFreeCommandSlot: "This device has no free command slot left.",
+    nothingToTest: "Nothing to test yet.",
+    ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
+    steps: "Steps",
+    buttonCatalog: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      home: "Home",
+      back: "Back",
+      menu: "Menu",
+      volumeUp: "Volume up",
+      volumeDown: "Volume down",
+      mute: "Mute",
+      channelUp: "Channel up",
+      channelDown: "Channel down",
+      rewind: "Rewind",
+      pause: "Pause",
+      forward: "Fast forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      exit: "Exit",
+      dvr: "DVR",
+      play: "Play",
+      guide: "Guide",
+      navigation: "Navigation",
+      volumeChannel: "Volume & channel",
+      transport: "Playback",
+      colour: "Color",
+      extra: "Extra",
+      unknown: (code) => `Button 0x${code}`
+    },
+    powerOn: "Power on",
+    powerOff: "Power off",
+    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
+    inputStepLabel: (device, input) => `Input \xB7 ${device}: ${input}`,
+    macroTargetLabelText: (name) => `Macro \xB7 ${name}`
+  },
+  hub: {
+    loading: "Loading\u2026",
+    unknown: "Unknown",
+    connectionStatusAria: "Hub connection status",
+    hubConnected: "Hub connected",
+    hubNotConnected: "Hub not connected",
+    appConnected: "App connected",
+    appNotConnected: "App not connected",
+    version: "Version",
+    ipAddress: "IP address",
+    activities: "Activities",
+    devices: "Devices",
+    integrationVersion: "Integration version",
+    firmwareVersion: (version) => `FW: v${version}`,
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateRequired: "Firmware update required",
+    firmwareUpdateRecommended: "Firmware update recommended",
+    firmwareUpdateTooltip: (recommended, required, unsupported) => {
+      const update = "Update the hub using the Sofabaton app.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required) ? "" : ` Firmware version ${recommended} or newer is recommended because it contains fixes for known issues.`;
+        return `Firmware version ${required} or newer is required for Control Panel configuration changes.${recommendation} ${update}`;
+      }
+      return `Firmware version ${recommended} or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. ${update}`;
+    }
+  },
+  decodedPayload: {
+    httpTitle: "HTTP request",
+    httpSubtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    hostIpv4: "Host (IPv4)",
+    hostExample: "e.g. 192.168.2.77",
+    port: "Port",
+    httpMethod: "HTTP method",
+    httpMethodExample: "e.g. GET, POST",
+    path: "Path",
+    extraHeaders: "Extra headers",
+    extraHeadersHelper: "One header per line. Host and Content-Length are added automatically.",
+    contentType: "Content type",
+    body: "Body",
+    rokuTitle: "Roku ECP request",
+    ecpPath: "ECP URL path",
+    ecpPathExample: "e.g. /launch/12 or /keypress/Home",
+    hueTitle: "Hue REST request",
+    sonosTitle: "Sonos UPnP request",
+    bodyBlockSubtitle: "Body block is injected verbatim between Host headers and the network write.",
+    urlPath: "URL path",
+    bodyBlock: "Body block (raw wire string)",
+    bodyBlockHelper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count.",
+    mqttTitle: "MQTT identifiers",
+    mqttSubtitle: "Both bytes are ignored by the hub: at press time it publishes its own device and key IDs to the broker. There is nothing to configure.",
+    mqttDeviceId: "Device ID (ignored by the hub)",
+    mqttCommandId: "Command ID (ignored by the hub)",
+    irTitle: "Descriptive IR payload",
+    irSubtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
+    descriptor: "Descriptor",
+    descriptorExample: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "Backup file must contain a JSON object.",
+    invalidBundle: "Backup file is not a Sofabaton hub bundle.",
+    invalidSchema: (expected, actual) => `Backup file schema_version must be ${expected} (got ${String(actual)}).`,
+    structuralBundle: "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
+    missingArrays: "Backup file is missing devices or activities arrays.",
+    missingSourceModel: "Backup file is missing its source hub model, so compatibility cannot be verified.",
+    unknownDestinationModel: "The destination hub model is unknown, so restore compatibility cannot be verified.",
+    incompatibleModels: (source, destination) => `This backup was created on a Sofabaton ${source} hub and cannot be restored onto a Sofabaton ${destination} hub.`
+  },
+  wifiCommands: {
+    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    sectionLabel: "Wifi Devices",
+    deployingTitle: "Deploying Wifi Commands",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
+    addDeviceButton: "Add",
+    addDevice: "Add Wifi Device",
+    deleteDeviceAria: "Delete Wifi Device",
+    emptyDevices: "No Wifi Devices configured yet. Add one to start assigning command slots.",
+    maximumDevices: "Maximum number of devices reached",
+    configuredSlots: (count) => `${count} slot${count === 1 ? "" : "s"}`,
+    unableSaveAction: "Unable to save Action",
+    hubCommandInProgress: "Hub command in progress\u2026",
+    idle: "Idle",
+    unableLoadSyncStatus: "Unable to load sync status",
+    noTargetEntity: "No target entity",
+    commandNameLeadingSpace: "Command name must start with a non-space character.",
+    navigationGroup: "Navigation",
+    transportGroup: "Volume & Channel",
+    mediaGroup: "Playback",
+    abcGroup: "ABC",
+    colorGroup: "Color",
+    inputCommand: "Input command",
+    inputFor: (activity) => `Input for ${activity}`,
+    inActivities: (count) => `in ${count} ${count === 1 ? "activity" : "activities"}`,
+    unconfiguredCommand: "Unconfigured command",
+    powerBothCommand: "Power ON and OFF command",
+    powerOnCommand: "Power ON command",
+    powerOffCommand: "Power OFF command",
+    thisDevice: "this device",
+    replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
+    replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
+    none: "None",
+    commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
+    syncingDeviceFallback: "Syncing Wifi Device\u2026",
+    syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}\u2026`,
+    syncInProgress: "Sync in progress",
+    // Status line while the sync spins up — not the Sync button label.
+    startSync: "Starting sync",
+    syncFailedToStart: "Sync failed to start",
+    syncMessageRemoteUnavailable: "Remote entity unavailable. Is the app connected?",
+    syncMessageFailed: "Last sync failed.",
+    syncMessageNeeded: "Command config changes need to be synced to the hub.",
+    syncMessageUpToDate: "Hub command configuration is up to date.",
+    syncMessageIdle: "No sync needed.",
+    syncShortUnavailable: "Unavailable",
+    syncShortRunning: "Syncing",
+    syncShortFailed: "Sync failed",
+    syncShortNeeded: "Sync needed",
+    syncShortUpToDate: "Up to date",
+    syncShortIdle: "Idle",
+    deviceDeleting: "Deleting\u2026",
+    deviceSynced: "Synced",
+    seeDocumentation: "See documentation",
+    actionButtonUnavailable: "Unavailable",
+    actionButtonSyncing: "Syncing\u2026",
+    actionButtonBusy: "Busy",
+    actionButtonSyncToHub: "Sync to Hub",
+    actionButtonUpToDate: "Up to date",
+    createDeviceBusy: "Creating Wifi Device\u2026",
+    deviceName: "Device name",
+    createDeviceNameRequired: "Device name is required.",
+    createDeviceFailed: "Unable to create Wifi Device",
+    deleteDeviceBusy: "Deleting Wifi Device\u2026",
+    deleteDeviceFailed: "Unable to delete Wifi Device",
+    createModalCancel: "Cancel",
+    createModalCreate: "Create",
+    transportLabel: "Delivery method",
+    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
+    transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
+    transportPillDeployedTitle: "Current delivery method",
+    transportPillPreviewTitle: "Selected delivery method",
+    deleteModalTitle: "Delete Wifi Device?",
+    deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
+    deleteModalDelete: "Delete",
+    clearSlotTitle: "Clear command slot?",
+    clearSlotSubtitle: "Resets configuration.",
+    clearSlotNo: "No",
+    clearSlotYes: "Yes",
+    makeCommand: "Make Command",
+    noActionConfigured: "No Action configured",
+    commandSlotTitle: (slotIndex) => `Command Slot ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Command Slot ${slotIndex + 1} Action`,
+    commandDisplayName: "Command Display Name",
+    advanced: "Advanced",
+    activityInput: "Perform this command when an activity starts",
+    activityInputHint: "The command is set as the activity's input on the hub, so it runs during the activity's startup sequence.",
+    activityInputReplaces: (slotName, activityName) => `Replaces "${slotName}" when ${activityName} starts`,
+    noActivitiesForHub: "No activities available for this hub.",
+    activityInputLabel: "Activity that performs this command",
+    devicePowerOnLabel: "When the hub turns this device ON",
+    devicePowerOffLabel: "When the hub turns this device OFF",
+    devicePowerNothing: "Nothing",
+    devicePowerHint: "Runs as part of this device's power sequence in your activities. Synced to the hub.",
+    devicePowerPerform: (commandName) => `perform ${commandName}`,
+    hubEventsTitle: "Hub Events",
+    hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
+    hubEventPowerOff: "When the hub is switched OFF",
+    hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
+    hubEventActivityStart: "When any activity starts",
+    hubEventActivityStops: "and when one stops",
+    hubEventActivityStopModalTitle: "When any activity stops",
+    hubEventDoNothing: "do nothing",
+    hubEventPerform: (service) => `perform ${service}`,
+    hubEventClearTitle: "Reset to do nothing",
+    hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Events",
+    wifiEventsTitle: "Wifi Events",
+    wifiEventsSubtitle: "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
+    wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
+    // Shared by the WIFI EVENTS and ACTIVITY EVENTS sections: the header
+    // count pill and the expander link that reveals unconfigured rows.
+    eventsConfiguredPill: (configured, total) => `${configured} of ${total} configured`,
+    eventsShowUnconfigured: (count) => `Show ${count} unconfigured\u2026`,
+    wifiEventRowPress: (name) => `When ${name} is pressed`,
+    wifiEventRowLongPress: "and when it's pressed and held",
+    wifiEventModalTitle: (name) => `When ${name} is pressed`,
+    wifiEventLongModalTitle: (name) => `When ${name} is pressed and held`,
+    wifiEventLongPressToggleTitle: "Enable long press",
+    wifiEventNeedsSyncBadge: "needs sync",
+    wifiEventRetrySync: "Retry sync",
+    // Orphaned-config notice, split around the clickable phrase so locales
+    // can place it anywhere in the sentence.
+    wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
+    wifiEventsStaleNoticeLink: "remove this configuration from Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
+    wifiEventsStaleConfirmRemove: "Remove",
+    wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
+    wifiEventDeleteTitle: "Delete Wifi Event",
+    wifiEventDeleteConfirmTitle: (name) => `Delete "${name}"?`,
+    wifiEventDeleteScanning: "Checking what references this event\u2026",
+    wifiEventDeleteNoRefs: "Nothing on the hub references this event.",
+    wifiEventDeleteRefs: (favorites, bindings, steps) => `The hub will also remove ${favorites} shortcut${favorites === 1 ? "" : "s"} and ${bindings} button assignment${bindings === 1 ? "" : "s"} that reference it, and the step is removed from ${steps} macro${steps === 1 ? "" : "s"} (a macro left with no steps is removed).`,
+    wifiEventDeleteConfirm: "Delete",
+    wifiEventDeleteFailed: "Deleting the Wifi Event failed.",
+    activityEventsTitle: "Activity Events",
+    activityEventsSubtitle: "Perform a Home Assistant Action when a specific activity starts or stops. Switching between activities stops the old one and starts the new one.",
+    activityEventStarts: (name) => `When ${name} starts`,
+    activityEventStops: "and when it stops",
+    activityEventStartModalTitle: (name) => `When ${name} starts`,
+    activityEventStopModalTitle: (name) => `When ${name} stops`,
+    activityEventFallbackName: (id) => `Activity ${id}`,
+    noActivitiesForEvents: "No activities on this hub yet.",
+    favorite: "Set as favorite",
+    physicalButtonAssignment: "Physical button assignment",
+    enableLongPress: "Enable long press",
+    applyToActivities: "Apply to these activities",
+    actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
+    shortPress: "Short press",
+    longPress: "Long press",
+    selectLongPressAction: "Select long-press action",
+    selectTriggeredAction: "Select triggered action",
+    action: "Action",
+    save: "Save",
+    keyLabels: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      back: "Back",
+      home: "Home",
+      menu: "Menu",
+      volup: "Vol +",
+      voldn: "Vol -",
+      mute: "Mute",
+      chup: "Ch +",
+      chdn: "Ch -",
+      guide: "Guide",
+      dvr: "DVR",
+      play: "Play",
+      exit: "Exit",
+      rew: "Rewind",
+      pause: "Pause",
+      fwd: "Fast forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  }
+};
+var currentStrings2 = TOOLS_CARD_STRINGS_EN;
+function isPlainObject3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function valueAtPath(path) {
+  let value = currentStrings2;
+  for (const key of path) value = value?.[key];
+  return value;
+}
+var proxyCache = /* @__PURE__ */ new Map();
+function liveStringsProxy(path) {
+  const cacheKey = path.map(String).join(".");
+  const cached = proxyCache.get(cacheKey);
+  if (cached) return cached;
+  const proxy = new Proxy(() => void 0, {
+    get(_target, property) {
+      const value = valueAtPath([...path, property]);
+      if (typeof value === "function" || isPlainObject3(value)) {
+        return liveStringsProxy([...path, property]);
+      }
+      return value;
+    },
+    apply(_target, _thisArg, args) {
+      const value = valueAtPath(path);
+      return typeof value === "function" ? value(...args) : void 0;
+    },
+    ownKeys() {
+      const value = valueAtPath(path);
+      return isPlainObject3(value) ? Reflect.ownKeys(value) : [];
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      const value = valueAtPath(path);
+      if (!isPlainObject3(value) || !(property in value)) return void 0;
+      return { configurable: true, enumerable: true };
+    }
+  });
+  proxyCache.set(cacheKey, proxy);
+  return proxy;
+}
+var TOOLS_CARD_STRINGS = liveStringsProxy([]);
+
+// custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+function decodedClassFormSpecs() {
+  const S5 = TOOLS_CARD_STRINGS.decodedPayload;
+  return {
+    wifi_ip: {
+      title: S5.httpTitle,
+      subtitle: S5.httpSubtitle,
+      fields: [
+        { key: "host", label: S5.hostIpv4, helper: S5.hostExample },
+        { key: "port", label: S5.port, numeric: true },
+        { key: "method", label: S5.httpMethod, helper: S5.httpMethodExample },
+        { key: "path", label: S5.path },
+        {
+          key: "header",
+          label: S5.extraHeaders,
+          multiline: true,
+          crlfOnWire: true,
+          helper: S5.extraHeadersHelper
+        },
+        { key: "content_type", label: S5.contentType },
+        { key: "body", label: S5.body, multiline: true }
+      ]
+    },
+    wifi_roku: {
+      title: S5.rokuTitle,
+      fields: [
+        { key: "path", label: S5.ecpPath, helper: S5.ecpPathExample }
+      ]
+    },
+    wifi_hue: {
+      title: S5.hueTitle,
+      subtitle: S5.bodyBlockSubtitle,
+      fields: [
+        { key: "path", label: S5.urlPath },
+        {
+          key: "body_block",
+          label: S5.bodyBlock,
+          multiline: true,
+          escapedDisplay: true,
+          helper: S5.bodyBlockHelper
+        }
+      ]
+    },
+    wifi_sonos: {
+      title: S5.sonosTitle,
+      subtitle: S5.bodyBlockSubtitle,
+      fields: [
+        { key: "path", label: S5.urlPath },
+        {
+          key: "body_block",
+          label: S5.bodyBlock,
+          multiline: true,
+          escapedDisplay: true,
+          helper: S5.bodyBlockHelper
+        }
+      ]
+    },
+    wifi_mqtt: {
+      title: S5.mqttTitle,
+      subtitle: S5.mqttSubtitle,
+      fields: [
+        { key: "device_id", label: S5.mqttDeviceId, numeric: true, readonly: true },
+        { key: "command_id", label: S5.mqttCommandId, numeric: true, readonly: true }
+      ]
+    },
+    ir: {
+      title: S5.irTitle,
+      subtitle: S5.irSubtitle,
+      fields: [
+        {
+          key: "descriptor",
+          label: S5.descriptor,
+          helper: S5.descriptorExample
+        }
+      ]
+    }
+  };
+}
+var DECODED_CLASS_FORM_SPECS = new Proxy(
+  {},
+  {
+    get(_target, property) {
+      return decodedClassFormSpecs()[property];
+    },
+    has(_target, property) {
+      return property in decodedClassFormSpecs();
+    },
+    ownKeys() {
+      return Reflect.ownKeys(decodedClassFormSpecs());
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      if (!(property in decodedClassFormSpecs())) return void 0;
+      return { configurable: true, enumerable: true };
+    }
+  }
+);
+function normalizeDecodableClass(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized in DECODED_CLASS_FORM_SPECS) {
+    return normalized;
+  }
+  return null;
+}
+function normalizeCommandPayloadHex(raw) {
+  const cleaned = String(raw ?? "").replace(/0x/gi, "").replace(/[\s,]+/g, "");
+  if (!cleaned || cleaned.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) {
+    return null;
+  }
+  return (cleaned.toLowerCase().match(/.{2}/g) ?? []).join(" ");
+}
+function setCommandRestoreData(bundle, deviceId, commandId, restoreData) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, restore_data: restoreData };
+        })
+      };
+    })
+  };
+}
+var INTERNAL_POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
+var ACTIVITY_ENTITY_ID_MIN = 101;
+function normalizeHubVersion(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized.includes("X1S")) return "X1S";
+  if (normalized.includes("X2")) return "X2";
+  if (normalized.includes("X1")) return "X1";
+  return null;
+}
+function renameInList(list, id, name) {
+  const trimmed = String(name ?? "").trim();
+  return (list ?? []).map((entry) => {
+    const block = entry?.device;
+    if (!block || Number(block.device_id || 0) !== id) return entry;
+    return {
+      ...entry,
+      device: { ...block, name: trimmed || block.name || TOOLS_CARD_STRINGS.common.deviceFallback(id) }
+    };
+  });
+}
+function renameBundleDevice(bundle, deviceId, name) {
+  return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
+}
+function updateActivity(bundle, activityId, updater) {
+  const normalizedId = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).map((activity) => {
+      if (Number(activity?.device?.device_id || 0) !== normalizedId) return activity;
+      return updater(activity);
+    })
+  };
+}
+function updateDeviceCommandLabel(bundle, deviceId, commandId, name) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, name: trimmed };
+        })
+      };
+    })
+  };
+  return next;
+}
+function commandLabelFor(bundle, deviceId, commandId) {
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
+  return String(command?.name || "").trim();
+}
+function deviceCommandItems(bundle, deviceId) {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
+  );
+  if (!device) return [];
+  const items = [];
+  for (const row of device.commands ?? []) {
+    const commandId = Number(row?.command_id || 0);
+    if (commandId <= 0) continue;
+    const label = String(row?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(commandId);
+    items.push({ deviceId: normalizedDeviceId, commandId, label });
+  }
+  return items.sort((left, right) => left.commandId - right.commandId);
+}
+function bundleDeviceClass(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device) return null;
+  return String(device.device?.device_class ?? "").trim().toLowerCase() || null;
+}
+function bundleDeviceBrand(bundle, deviceId) {
+  if (!bundle) return "";
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  return String(device?.device?.brand ?? "").trim();
+}
+function isManagedWifiBrand(brand) {
+  const text = String(brand ?? "").trim();
+  for (const prefix of ["m3-", "m3tac0de-"]) {
+    if (text.startsWith(prefix) && text.slice(prefix.length).trim()) return true;
+  }
+  return false;
+}
+function isWifiEventsBrand(brand) {
+  const text = String(brand ?? "").trim();
+  return text.startsWith("m3-haevents-") && Boolean(text.slice("m3-haevents-".length).trim());
+}
+function deviceIpAddress(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = String(device.device.ip_address ?? "").trim();
+  return raw || null;
+}
+function updateBundleDeviceIp(bundle, deviceId, ip) {
+  const normalizedId = Number(deviceId);
+  const trimmed = String(ip ?? "").trim();
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, ip_address: trimmed || null }
+      };
+    })
+  };
+}
+var IDLE_BEHAVIOR_AUTO_OFF = 1;
+var IDLE_BEHAVIOR_ALWAYS_ON = 2;
+var IDLE_BEHAVIOR_STAY_ON = 3;
+var IDLE_BEHAVIOR_DISABLED = 4;
+function deviceIdleBehavior(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = device.device.idle_behavior;
+  if (raw == null) return null;
+  const mode = Number(raw);
+  return Number.isFinite(mode) ? mode & 255 : null;
+}
+function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
+  const normalizedId = Number(deviceId);
+  const normalizedMode = Number(mode) & 255;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, idle_behavior: normalizedMode }
+      };
+    })
+  };
+}
+function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
+  return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
+}
+function defaultDecodedSnapshotForClass(deviceClass, options) {
+  const className = normalizeDecodableClass(deviceClass);
+  if (!className || className === "ir") return null;
+  let fields;
+  switch (className) {
+    case "wifi_ip":
+      fields = { host: "", port: 80, method: "GET", path: "/", header: "", content_type: "", body: "" };
+      break;
+    case "wifi_roku":
+      fields = { path: "keypress/" };
+      break;
+    case "wifi_hue":
+      fields = { path: "api/", body_block: "" };
+      break;
+    case "wifi_sonos":
+      fields = { path: "MediaRenderer/AVTransport/Control", body_block: "" };
+      break;
+    case "wifi_mqtt":
+      fields = { device_id: options.deviceId & 255, command_id: (options.commandId ?? 1) & 255 };
+      break;
+    default:
+      return null;
+  }
+  return { className, fields, trailerHex: "", edited: false };
+}
+function nextFreeDeviceCommandId(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device) return null;
+  const used = new Set(
+    (device.commands ?? []).map((command) => Number(command?.command_id || 0))
+  );
+  for (let candidate = 1; candidate <= 255; candidate += 1) {
+    if (!used.has(candidate)) return candidate;
+  }
+  return null;
+}
+function addBundleDeviceCommand(bundle, deviceId, commandId, name, restoreData) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  if (normalizedCommandId < 1 || normalizedCommandId > 255) return bundle;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      const commands = device.commands ?? [];
+      const taken = commands.some(
+        (command) => Number(command?.command_id || 0) === normalizedCommandId
+      );
+      if (taken) return device;
+      return {
+        ...device,
+        commands: [
+          ...commands,
+          {
+            command_id: normalizedCommandId,
+            name: trimmed || TOOLS_CARD_STRINGS.common.commandFallback(normalizedCommandId),
+            restore_data: { ...restoreData, new: true }
+          }
+        ]
+      };
+    })
+  };
+}
+function stepMatchesDevice(step, deviceId) {
+  return Number(step?.device_id || 0) === deviceId;
+}
+function stepMatchesCommand(step, deviceId, commandId) {
+  return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
+}
+function deviceMacroStepMatchesCommand(step, commandId) {
+  return !isMacroDelayStep(step) && Number(step?.command_id || 0) === commandId;
+}
+var MACRO_DELAY_SENTINEL = 255;
+function isMacroDelayStep(step) {
+  return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
+}
+function filterMacroSteps(steps, shouldRemove) {
+  const list = steps ?? [];
+  const result = [];
+  for (let index = 0; index < list.length; index += 1) {
+    if (shouldRemove(list[index])) {
+      while (index + 1 < list.length && isMacroDelayStep(list[index + 1])) {
+        index += 1;
+      }
+      continue;
+    }
+    result.push(list[index]);
+  }
+  return result;
+}
+function countRemovedMacroSteps(steps, shouldRemove) {
+  const original = (steps ?? []).length;
+  return original - filterMacroSteps(steps, shouldRemove).length;
+}
+function clearBindingLongPress(binding) {
+  const { long_press_device_id, long_press_command_id, ...rest } = binding;
+  return rest;
+}
+function cascadeBindingForDeletedDevice(binding, deviceId) {
+  if (Number(binding?.device_id || 0) === deviceId) return null;
+  if (Number(binding?.long_press_device_id || 0) === deviceId) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedCommand(binding, deviceId, commandId, deviceScoped) {
+  const shortMatches = deviceScoped ? Number(binding?.command_id || 0) === commandId : Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId;
+  if (shortMatches) return null;
+  const longMatches = deviceScoped ? Number(binding?.long_press_command_id || 0) === commandId : Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedMacro(binding, activityId, macroButtonId) {
+  const shortMatches = Number(binding?.device_id || 0) === activityId && Number(binding?.command_id || 0) === macroButtonId;
+  if (shortMatches) return null;
+  const longMatches = Number(binding?.long_press_device_id || 0) === activityId && Number(binding?.long_press_command_id || 0) === macroButtonId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function applyBindingCascade(bindings, transform) {
+  const result = [];
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next !== null) result.push(next);
+  }
+  return result;
+}
+function countAffectedBindings(bindings, transform) {
+  let count = 0;
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next === null || next !== binding) count += 1;
+  }
+  return count;
+}
+function bundleDeleteImpact(bundle, target) {
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  if (!bundle) return empty;
+  if (target.kind === "device") {
+    const deviceId = Number(target.deviceId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let activities = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      if ((activity?.referenced_source_device_ids ?? []).some((id) => Number(id) === deviceId)) {
+        activities += 1;
+      }
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId) favorites += 1;
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+      );
+    }
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
+  }
+  if (target.kind === "command") {
+    const deviceId = Number(target.deviceId);
+    const commandId = Number(target.commandId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) {
+          favorites += 1;
+        }
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, deviceId, commandId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, false)
+      );
+    }
+    const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === deviceId);
+    bindings += countAffectedBindings(
+      device?.button_bindings,
+      (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
+    );
+    let powerSteps = 0;
+    for (const macro of device?.macros ?? []) {
+      const removed = countRemovedMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, commandId));
+      if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
+      else macroSteps += removed;
+    }
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
+  }
+  if (target.kind === "activity_member") {
+    return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
+  }
+  return empty;
+}
+function backupDeleteHasCascade(impact) {
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+}
+function deleteBundleActivity(bundle, activityId) {
+  const id = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).filter((activity) => Number(activity?.device?.device_id || 0) !== id)
+  };
+}
+function stripDeviceFromActivity(activity, deviceId) {
+  return {
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (id) => Number(id) !== deviceId
+    ),
+    favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.device_id || 0) !== deviceId),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId))
+    })),
+    button_bindings: applyBindingCascade(
+      activity.button_bindings,
+      (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+    )
+  };
+}
+function deleteBundleDevice(bundle, deviceId) {
+  const id = Number(deviceId);
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).filter((device) => Number(device?.device?.device_id || 0) !== id),
+    activities: (bundle.activities ?? []).map((activity) => stripDeviceFromActivity(activity, id))
+  };
+  return reconcileBundlePowerMacros(next);
+}
+function deleteBundleDeviceCommand(bundle, deviceId, commandId, options = {}) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).filter((command) => Number(command?.command_id || 0) !== cId),
+        button_bindings: applyBindingCascade(
+          device.button_bindings,
+          (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
+        ),
+        // The device's own macros (power on/off sequences and user macros)
+        // reference commands by id — prune those steps too, or the bundle
+        // keeps dangling references sync validation rejects.
+        macros: (device.macros ?? []).map((macro) => ({
+          ...macro,
+          steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId))
+        })),
+        // Same for the inputs page: an input entry that plays this command
+        // is dropped (surviving entries keep their ordinals, so activity
+        // input steps that point at them stay valid). Sync validation
+        // insists on this prune; the live sync's inputs_write is a no-op
+        // (the page is a restore-only write), so the hub keeps the entry
+        // and the post-sync rebase shows it again (bench_240, 2026-09-16).
+        ...device.input_record?.entries ? {
+          input_record: {
+            ...device.input_record,
+            entries: device.input_record.entries.filter(
+              (entry) => Number(entry?.command_id || 0) !== cId
+            )
+          }
+        } : {}
+      };
+    }),
+    activities: (bundle.activities ?? []).map((activity) => ({
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).filter(
+        (slot) => !(Number(slot?.device_id || 0) === dId && Number(slot?.command_id || 0) === cId)
+      ),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: filterMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, dId, cId))
+      })),
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, false)
+      )
+    }))
+  };
+  if (options.reconcileMembership === false) return next;
+  return reconcileBundleMembershipChange(bundle, next);
+}
+function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    if (kind === "favorite") {
+      return {
+        ...activity,
+        favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.button_id || 0) !== bId)
+      };
+    }
+    return {
+      ...activity,
+      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
+      // A button bound to this macro now dangles — drop it (or clear the
+      // long press if only that referenced the macro).
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedMacro(binding, Number(activityId), bId)
+      )
+    };
+  });
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
+}
+function applyBundleDelete(bundle, target, options = {}) {
+  switch (target.kind) {
+    case "activity":
+      return deleteBundleActivity(bundle, target.activityId);
+    case "device":
+      return deleteBundleDevice(bundle, target.deviceId);
+    case "command":
+      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId, options);
+    case "favorite":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "favorite", target.buttonId);
+    case "macro":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "macro", target.buttonId);
+    case "activity_binding":
+      return deleteActivityButtonBinding(bundle, target.activityId, target.buttonId);
+    case "device_binding":
+      return deleteDeviceButtonBinding(bundle, target.deviceId, target.buttonId);
+    case "activity_member":
+      return removeActivityMemberDevice(bundle, target.activityId, target.deviceId);
+  }
+}
+var POWER_ON_MACRO_BUTTON_ID = 198;
+var POWER_OFF_MACRO_BUTTON_ID = 199;
+var DEVICE_POWER_ON_REF_COMMAND = 198;
+var DEVICE_POWER_OFF_REF_COMMAND = 199;
+var DEVICE_INPUT_REF_COMMAND = 197;
+var POWER_MACRO_DELAY_BUTTON_CODE = 281474976710655;
+var POWER_STEP_DEFAULT_DELAY = 255;
+function powerMacroDelayRow(delay) {
+  return {
+    device_id: 255,
+    command_id: 255,
+    button_code: POWER_MACRO_DELAY_BUTTON_CODE,
+    duration: 255,
+    delay: delay & 255
+  };
+}
+function powerStep(deviceId, commandId, duration = 0) {
+  return {
+    device_id: Number(deviceId),
+    command_id: commandId,
+    button_code: 0,
+    duration: duration & 255,
+    delay: POWER_STEP_DEFAULT_DELAY
+  };
+}
+function activityPowerDeviceIds(activity) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const macro of activity.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID) continue;
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step)) continue;
+      const command = Number(step?.command_id || 0);
+      if (command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND) {
+        const deviceId = Number(step?.device_id || 0);
+        if (deviceId > 0 && deviceId < ACTIVITY_ENTITY_ID_MIN) ids.add(deviceId);
+      }
+    }
+  }
+  return ids;
+}
+function activityUsageDeviceIds(activity) {
+  const selfId = Number(activity?.device?.device_id || 0);
+  const ids = /* @__PURE__ */ new Set();
+  const add = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && id < ACTIVITY_ENTITY_ID_MIN && id !== selfId) ids.add(id);
+  };
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
+      add(step?.device_id);
+    }
+  }
+  return ids;
+}
+function activityMemberDeviceIds(activity) {
+  const ids = activityPowerDeviceIds(activity);
+  for (const id of activityUsageDeviceIds(activity)) ids.add(id);
+  return [...ids].sort((left, right) => left - right);
+}
+function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
+  const memberSet = new Set(members);
+  const { prefix, groups } = groupMacroSteps(existingSteps);
+  const kept = flattenMacroGroups(prefix, groups.filter((group) => {
+    const deviceId = Number(group.head?.device_id || 0);
+    if (deviceId >= ACTIVITY_ENTITY_ID_MIN && deviceId !== 255) return true;
+    return deviceId > 0 ? memberSet.has(deviceId) : true;
+  }));
+  const out = [...kept];
+  const memberOrder = new Map(members.map((id, index) => [id, index]));
+  const findRef = (deviceId, command) => out.findIndex(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, command)
+  );
+  const indexAfterGroupAt = (headIndex) => {
+    let index = headIndex + 1;
+    while (index < out.length && isMacroDelayStep(out[index])) index += 1;
+    return index;
+  };
+  const insertIndexFor = (deviceId, command) => {
+    if (command === DEVICE_POWER_ON_REF_COMMAND) {
+      const inputIndex = findRef(deviceId, DEVICE_INPUT_REF_COMMAND);
+      if (inputIndex >= 0) return inputIndex;
+    }
+    if (command === DEVICE_INPUT_REF_COMMAND) {
+      const powerIndex = findRef(deviceId, DEVICE_POWER_ON_REF_COMMAND);
+      if (powerIndex >= 0) return indexAfterGroupAt(powerIndex);
+    }
+    const myOrder = memberOrder.get(deviceId) ?? members.length;
+    const laterIndex = out.findIndex((step) => {
+      if (isMacroDelayStep(step) || !isPowerRefStep(step)) return false;
+      const otherOrder = memberOrder.get(Number(step?.device_id || 0));
+      return otherOrder != null && otherOrder > myOrder;
+    });
+    return laterIndex >= 0 ? laterIndex : out.length;
+  };
+  for (const deviceId of members) {
+    for (const command of refCommands) {
+      const present = out.some(
+        (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
+      );
+      if (!present) out.splice(insertIndexFor(deviceId, command), 0, powerStep(deviceId, command));
+    }
+  }
+  return out;
+}
+function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
+  return updateActivity(bundle, activityId, (activity) => {
+    const selfId = Number(activity?.device?.device_id || 0);
+    const memberSet = new Set(activityMemberDeviceIds(activity));
+    for (const id of extraMemberIds) {
+      const extraId = Number(id || 0);
+      if (extraId > 0 && extraId < ACTIVITY_ENTITY_ID_MIN && extraId !== selfId) memberSet.add(extraId);
+    }
+    const members = [...memberSet].sort((left, right) => left - right);
+    const macros = [...activity.macros ?? []];
+    const ensure = (buttonId, name, refCommands) => {
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
+      const existing = index >= 0 ? macros[index] : null;
+      if (!existing && members.length === 0) return;
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
+      const next = {
+        ...existing ?? {},
+        button_id: buttonId,
+        // The POWER_* label is protocol, not user data — the hub hides
+        // power macros by it. Always write the canonical name so a bad
+        // label (empty, or a UI fallback from the #263 bug) self-heals.
+        name,
+        steps
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+    };
+    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", [DEVICE_POWER_ON_REF_COMMAND, DEVICE_INPUT_REF_COMMAND]);
+    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", [DEVICE_POWER_OFF_REF_COMMAND]);
+    return { ...activity, macros, referenced_source_device_ids: members };
+  });
+}
+function reconcileBundlePowerMacros(bundle) {
+  let next = bundle;
+  for (const activity of bundle.activities ?? []) {
+    const id = Number(activity?.device?.device_id || 0);
+    if (id > 0) next = reconcileActivityPowerMacros(next, id);
+  }
+  return next;
+}
+function reconcileActivityMembershipChange(before, after, activityId) {
+  const aId = Number(activityId);
+  const beforeActivity = (before.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId
+  );
+  const afterActivity = (after.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId
+  );
+  if (!afterActivity) return after;
+  const beforeUsage = beforeActivity ? activityUsageDeviceIds(beforeActivity) : /* @__PURE__ */ new Set();
+  const afterUsage = activityUsageDeviceIds(afterActivity);
+  const lost = new Set([...beforeUsage].filter((deviceId) => !afterUsage.has(deviceId)));
+  if (lost.size === 0) return reconcileActivityPowerMacros(after, aId);
+  const pruned = updateActivity(after, aId, (activity) => ({
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (deviceId) => !lost.has(Number(deviceId))
+    ),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(
+        macro.steps,
+        (step) => isPowerRefStep(step) && lost.has(Number(step?.device_id || 0))
+      )
+    }))
+  }));
+  return reconcileActivityPowerMacros(pruned, aId);
+}
+function reconcileBundleMembershipChange(before, after) {
+  let next = after;
+  for (const activity of after.activities ?? []) {
+    const activityId = Number(activity?.device?.device_id || 0);
+    if (activityId > 0) next = reconcileActivityMembershipChange(before, next, activityId);
+  }
+  return next;
+}
+function findBundleActivity(bundle, activityId) {
+  return (bundle?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
+  );
+}
+function removeActivityMemberDevice(bundle, activityId, deviceId) {
+  const aId = Number(activityId);
+  const next = updateActivity(
+    bundle,
+    aId,
+    (activity) => stripDeviceFromActivity(activity, Number(deviceId))
+  );
+  return reconcileActivityPowerMacros(next, aId);
+}
+function activityMemberRemovalImpact(bundle, activityId, deviceId) {
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  const activity = findBundleActivity(bundle, activityId);
+  if (!activity) return empty;
+  const dId = Number(deviceId);
+  let favorites = 0;
+  for (const slot of activity.favorite_slots ?? []) {
+    if (Number(slot?.device_id || 0) === dId) favorites += 1;
+  }
+  let macroSteps = 0;
+  for (const macro of activity.macros ?? []) {
+    if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) {
+      for (const step of macro?.steps ?? []) {
+        if (!isMacroDelayStep(step) && !isPowerRefStep(step) && stepMatchesDevice(step, dId)) {
+          macroSteps += 1;
+        }
+      }
+    } else {
+      macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, dId));
+    }
+  }
+  const bindings = countAffectedBindings(
+    activity.button_bindings,
+    (binding) => cascadeBindingForDeletedDevice(binding, dId)
+  );
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
+}
+var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
+function synthesizeCommandCode(commandId) {
+  return SYNTHETIC_COMMAND_CODE_BASE + (Number(commandId) & 255);
+}
+function findDevice(bundle, deviceId) {
+  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+}
+function isPowerRefStep(step) {
+  const command = Number(step?.command_id || 0);
+  return command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND;
+}
+function defaultMacroName(buttonId) {
+  if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
+  if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
+  return TOOLS_CARD_STRINGS.common.macroFallback(buttonId);
+}
+function deviceMacroDelayStep(delay) {
+  return { command_id: 255, duration: 255, delay: Number(delay) & 255 };
+}
+function groupMacroSteps(steps) {
+  const prefix = [];
+  const groups = [];
+  for (const step of steps ?? []) {
+    if (isMacroDelayStep(step)) {
+      if (groups.length === 0) prefix.push(step);
+      else groups[groups.length - 1].trailing.push(step);
+    } else {
+      groups.push({ head: step, trailing: [] });
+    }
+  }
+  return { prefix, groups };
+}
+function flattenMacroGroups(prefix, groups) {
+  const out = [...prefix];
+  for (const group of groups) out.push(group.head, ...group.trailing);
+  return out;
+}
+function groupWait(group) {
+  return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
+}
+function applyGroupWait(group, waitByte, isActivity) {
+  const value = Number(waitByte) & 255;
+  if (group.trailing.length > 0) {
+    group.trailing = [{ ...group.trailing[0], delay: value }, ...group.trailing.slice(1)];
+  } else if (value > 0) {
+    group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
+  }
+}
+function zeroTrailingGroupWait(steps, isActivity) {
+  const { prefix, groups } = groupMacroSteps(steps);
+  const last = groups[groups.length - 1];
+  if (!last || groupWait(last) === 0) return steps;
+  applyGroupWait(last, 0, isActivity);
+  return flattenMacroGroups(prefix, groups);
+}
+function deviceMacroStepItems(bundle, deviceId, buttonId) {
+  const device = findDevice(bundle, deviceId);
+  const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const commandId = Number(group.head?.command_id || 0);
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId: null,
+      label: commandNameOrFallback(bundle, Number(deviceId), commandId),
+      hold: Number(group.head?.duration || 0),
+      wait: groupWait(group)
+    };
+  });
+}
+function updateDeviceMacro(bundle, deviceId, buttonId, transform) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      const macros = [...device.macros ?? []];
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+      const existing = index >= 0 ? macros[index] : null;
+      const next = {
+        ...existing ?? {},
+        button_id: bId,
+        name: existing?.name ?? defaultMacroName(bId),
+        steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), false)
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+      return { ...device, macros };
+    })
+  };
+}
+function patchMacroStep(step, patch, isActivityMacro) {
+  const next = { ...step };
+  if (isMacroDelayStep(step)) {
+    if (patch.wait !== void 0) next.delay = Number(patch.wait) & 255;
+    return next;
+  }
+  if (patch.commandId !== void 0) {
+    next.command_id = Number(patch.commandId);
+    if (isActivityMacro) next.button_code = synthesizeCommandCode(Number(patch.commandId));
+  }
+  if (patch.deviceId !== void 0 && isActivityMacro) next.device_id = Number(patch.deviceId);
+  if (patch.hold !== void 0) next.duration = Number(patch.hold) & 255;
+  return next;
+}
+function addDeviceMacroCommandStep(bundle, deviceId, buttonId, commandId, hold = 0) {
+  if (Number(commandId) <= 0) return bundle;
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [
+    ...steps,
+    { command_id: Number(commandId), duration: Number(hold) & 255, delay: 255 }
+  ]);
+}
+function updateDeviceMacroStep(bundle, deviceId, buttonId, index, patch) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setDeviceMacroStepWait(bundle, deviceId, buttonId, index, wait) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeDeviceMacroStep(bundle, deviceId, buttonId, index) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    if (Number(index) < 0 || Number(index) >= groups.length) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderDeviceMacroSteps(bundle, deviceId, buttonId, orderedIndices) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i8) => groups[Number(i8)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
+function sharedButtonCatalog() {
+  const S5 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 174, name: S5.up, group: S5.navigation },
+    { code: 178, name: S5.down, group: S5.navigation },
+    { code: 175, name: S5.left, group: S5.navigation },
+    { code: 177, name: S5.right, group: S5.navigation },
+    { code: 176, name: S5.ok, group: S5.navigation },
+    { code: 180, name: S5.home, group: S5.navigation },
+    { code: 179, name: S5.back, group: S5.navigation },
+    { code: 181, name: S5.menu, group: S5.navigation },
+    { code: 182, name: S5.volumeUp, group: S5.volumeChannel },
+    { code: 185, name: S5.volumeDown, group: S5.volumeChannel },
+    { code: 184, name: S5.mute, group: S5.volumeChannel },
+    { code: 183, name: S5.channelUp, group: S5.volumeChannel },
+    { code: 186, name: S5.channelDown, group: S5.volumeChannel },
+    { code: 187, name: S5.rewind, group: S5.transport },
+    { code: 188, name: S5.pause, group: S5.transport },
+    { code: 189, name: S5.forward, group: S5.transport },
+    { code: 190, name: S5.red, group: S5.colour },
+    { code: 191, name: S5.green, group: S5.colour },
+    { code: 192, name: S5.yellow, group: S5.colour },
+    { code: 193, name: S5.blue, group: S5.colour }
+  ];
+}
+function x2ExtraButtonCatalog() {
+  const S5 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 153, name: "A", group: S5.extra },
+    { code: 152, name: "B", group: S5.extra },
+    { code: 151, name: "C", group: S5.extra },
+    { code: 154, name: S5.exit, group: S5.extra },
+    { code: 155, name: S5.dvr, group: S5.extra },
+    { code: 156, name: S5.play, group: S5.extra },
+    { code: 157, name: S5.guide, group: S5.extra }
+  ];
+}
+function bundleButtonCatalog(bundle) {
+  if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
+    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()];
+  }
+  return sharedButtonCatalog();
+}
+function buttonName(code) {
+  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()].find((entry) => entry.code === Number(code));
+  return known?.name ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
+}
+function commandNameOrFallback(bundle, deviceId, commandId) {
+  return commandLabelFor(bundle, deviceId, commandId) || TOOLS_CARD_STRINGS.common.commandFallback(Number(commandId));
+}
+function sortBindingsByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function deviceButtonBindingItems(bundle, deviceId) {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId);
+  if (!device) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(device.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || commandId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      commandId,
+      shortPressLabel: commandNameOrFallback(bundle, normalizedDeviceId, commandId)
+    };
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpCommandId > 0) {
+      item.longPress = {
+        commandId: lpCommandId,
+        label: commandNameOrFallback(bundle, normalizedDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+function boundButtonIds(rows) {
+  return new Set((rows ?? []).map((row) => Number(row?.button_id || 0)).filter((id) => id > 0));
+}
+function unboundButtonsForDevice(bundle, deviceId) {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const used = boundButtonIds(device?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
+function upsertBindingRow(rows, row) {
+  const buttonId = Number(row.button_id || 0);
+  const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
+  next.push(row);
+  return sortBindingsByButtonId(next);
+}
+function upsertDeviceButtonBinding(bundle, deviceId, input) {
+  const normalizedDeviceId = Number(deviceId);
+  const buttonId = Number(input.buttonId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || commandId <= 0) return bundle;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    command_id: commandId,
+    command_name: commandLabelFor(bundle, normalizedDeviceId, commandId) || void 0
+  };
+  const lpCommandId = Number(input.longPressCommandId || 0);
+  if (lpCommandId > 0) row.long_press_command_id = lpCommandId;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return { ...device, button_bindings: upsertBindingRow(device.button_bindings, row) };
+    })
+  };
+}
+function deleteActivityButtonBinding(bundle, activityId, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+  }));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
+}
+function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        button_bindings: (device.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+      };
+    })
+  };
+}
+
+// server-panel/src/views/device-editor-state.ts
+var MIN_SUPPORTED_FIRMWARE = { X1: 17, X1S: 5, X2: 5 };
+function firmwareUnsupported(hubVersion, firmware) {
+  const required = MIN_SUPPORTED_FIRMWARE[String(hubVersion ?? "").toUpperCase()];
+  if (required === void 0 || firmware == null) return null;
+  return firmware < required ? { installed: firmware, required } : null;
+}
+function snapshotAsBundle(snapshot) {
+  const doc = snapshot;
+  return {
+    ...doc,
+    kind: typeof doc.kind === "string" ? doc.kind : "hub_bundle",
+    schema_version: typeof doc.schema_version === "number" ? doc.schema_version : 1,
+    devices: Array.isArray(doc.devices) ? doc.devices : [],
+    activities: Array.isArray(doc.activities) ? doc.activities : []
+  };
+}
+function deviceElement(bundle, deviceId) {
+  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id ?? -1) === Number(deviceId)) ?? null;
+}
+function withDeviceElement(bundle, deviceId, element) {
+  const id = Number(deviceId);
+  return { ...bundle, devices: bundle.devices.map((entry) => Number(entry?.device?.device_id ?? -1) === id ? element : entry) };
+}
+function elementsEqual(a4, b3) {
+  return JSON.stringify(a4) === JSON.stringify(b3);
+}
+function deviceDraftScope(deviceId) {
+  return `hub/devices/${Number(deviceId)}`;
+}
+function draftElementFor(draft, deviceId) {
+  if (!draft || draft.scope !== deviceDraftScope(deviceId)) return null;
+  const data = draft.data;
+  const element = data?.element;
+  if (!element || typeof element !== "object") return null;
+  if (Number(element.device?.device_id ?? -1) !== Number(deviceId)) return null;
+  return element;
+}
+function supportsUnicodeNames(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return version.includes("X2") || version.includes("X1S");
+}
+function sanitizeName(hubVersion, value) {
+  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "").slice(0, 30);
+}
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function wifiEventsSlotCount(element) {
+  return Math.floor((element?.commands?.length ?? 0) / 2);
+}
+function isLongRecord(element, commandId) {
+  const slots = wifiEventsSlotCount(element);
+  return slots > 0 && Number(commandId) > slots;
+}
+
+// server-panel/src/views/device-editor.ts
+var DEVICE_EDITOR_TAG = "sb-panel-device-editor";
+var S3 = {
+  crumbDevices: "Devices",
+  renameDevice: "Rename device",
+  deleteDeviceAria: "Delete device",
+  syncToHub: "Sync to Hub",
+  syncUpToDate: "Up to date",
+  detailPower: "On/Off",
+  detailNetwork: "Network",
+  detailCommands: "Commands",
+  detailButtons: "Buttons",
+  detailSectionsAria: "Detail sections",
+  powerSetupTitle: "Power control",
+  powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
+  powerOnLabel: "Power-on sequence",
+  powerOffLabel: "Power-off sequence",
+  macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
+  powerControlTitle: "Automatic power control",
+  powerControlUnset: "Not captured",
+  powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+  powerControlDisabled: "Don't control power",
+  powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+  powerControlAutoOff: "Turn off when idle",
+  powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
+  powerControlStayOn: "Stay on between activities",
+  powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+  powerControlAlwaysOn: "Always stay on",
+  powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+  powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
+  networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
+  hubNameNotSet: "(not set)",
+  ipChip: "ip",
+  ipv4Description: "IPv4 dotted-decimal address",
+  editIpAria: "Edit IP address",
+  ipAddress: "IP address",
+  commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit.",
+  addCommand: "Add command",
+  noDeviceCommands: "This device does not currently have any commands.",
+  commandChip: "command",
+  newCommandChip: "new command",
+  commandId: "Command ID",
+  renameCommandAria: "Rename command",
+  renameCommand: "Rename command",
+  editPayloadAria: "Edit payload",
+  fetchEditCommandAria: "Fetch and edit this command's payload",
+  deleteCommandAria: "Delete command",
+  buttonBindingsTitle: "Button assignments",
+  buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
+  buttonBindingsEmpty: "No button assignments configured.",
+  addBinding: "Add assignment",
+  buttonChip: "button",
+  bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
+  editBindingAria: "Edit assignment",
+  deleteBindingAria: "Delete assignment",
+  bindingButton: "Button",
+  bindingCommand: "Command",
+  bindingEnableLongPress: "Enable long-press assignment",
+  bindingLongPressCommand: "Long-press command",
+  bindingIncomplete: "Choose a button and target first.",
+  bindingNoButtons: "Every button on this hub model is already assigned.",
+  bindingNoCommands: "This device has no commands to assign.",
+  bindingAdd: "Add",
+  bindingSave: "Save",
+  bindingCancel: "Cancel",
+  bindingDialogAddTitle: "Add button assignment",
+  bindingDialogEditTitle: (name) => `Edit ${name} assignment`,
+  deleteBindingTitle: (name) => `Delete ${name} assignment?`,
+  deleteDeviceTitle: (name) => `Delete device "${name}"?`,
+  deleteCommandTitle: (name) => `Delete command "${name}"?`,
+  deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
+  deleteSimpleBodyLive: "This removes it.",
+  deleteImmediateNote: "This is applied to the hub immediately.",
+  deleteSyncNote: "This change is written to the hub on the next Sync.",
+  deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
+  deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
+  deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+  deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+  deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
+  deleteCancel: "Cancel",
+  deleteConfirm: "Delete",
+  thisItem: "this item",
+  name: "Name",
+  enterName: "Enter a name to continue.",
+  ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
+  cancel: "Cancel",
+  save: "Save",
+  // The live host's screens.
+  firmwareUnsupportedTitle: "Hub firmware update required",
+  firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
+  needsRefreshTitle: "Refresh the hub cache to edit",
+  needsRefreshBody: "This device isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.",
+  refreshDevice: "Refresh device",
+  back: "Back",
+  syncFailedTitle: "Sync didn't finish",
+  syncStaleTitle: "This device changed on the hub",
+  syncStaleBody: "The device was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
+  syncRetry: "Retry sync",
+  syncReload: "Reload from hub",
+  syncKeepEditing: "Keep editing",
+  exitUnsyncedTitle: "Unsynced changes",
+  exitUnsyncedBody: "This device has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
+  exitSyncNow: "Sync now",
+  exitWithoutSync: "Leave without syncing",
+  // The step editor (the card's macro step editor, device scope).
+  steps: "Steps",
+  macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
+  noMacroSteps: "No steps yet.",
+  addStep: "Add step",
+  stepDialogAddTitle: "Add step",
+  stepDialogEditTitle: "Edit step",
+  stepCommand: "Command",
+  stepHoldSeconds: "Hold (seconds, 0 = short press)",
+  holdLabel: (seconds) => `Hold ${seconds}s`,
+  stepAdd: "Add",
+  stepSave: "Save",
+  stepCancel: "Cancel",
+  stepNoCommands: "This device has no commands.",
+  stepWaitAria: "Wait after this step (seconds)",
+  stepWaitLabel: "Delay",
+  stepWaitUnit: "s",
+  deleteStepAria: "Delete step",
+  editStepAria: "Edit step",
+  dragStepAria: "Drag to reorder (arrow keys move the step)",
+  stepChipCommand: "command",
+  // The panel's own lines (plan decisions 11 and 12).
+  managedWifiWarning: "This device is managed by Home Assistant's Wifi Commands. Changes made here are written to the hub, and that configuration will disagree with the hub after a sync.",
+  callbackDeviceNote: "This is the server's callback device (its Wifi Events). Button assignments can be edited here; renaming it or its events lands with the next phase.",
+  deviceMissing: "This device is not in the hub's snapshot.",
+  noPayloadReturned: "The hub returned no payload for this command.",
+  noFreeCommandSlot: "This device has no free command slot left."
+};
+function icon2(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+var SbPanelDeviceEditor = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.ctx = null;
+    this.deviceId = null;
+    this._stage = "loading";
+    this._snapshot = null;
+    this._baseline = null;
+    this._working = null;
+    this._info = null;
+    this._callbackDeviceId = null;
+    this._activeSection = "power";
+    this._powerMenuOpen = false;
+    this._rename = null;
+    this._deleteConfirm = null;
+    this._binding = null;
+    this._exitConfirm = null;
+    /** The open power sequence (the card's macro editor sub-view, device scope). */
+    this._stepEditor = null;
+    this._stepDialog = null;
+    /** A step drag in flight: the row picked up, the slot it hovers, the pointer's travel and the row's height. */
+    this._drag = null;
+    /** The payload dialog's inputs (the card's add / edit modes), or null when closed. */
+    this._payloadDialog = null;
+    this._payloadFetching = null;
+    this._payloadFetchError = null;
+    this._addCommandPreparing = false;
+    this._syncing = false;
+    this._syncFailed = null;
+    this._refreshing = false;
+    this._deleting = false;
+    this._notice = null;
+    this._loadedKey = null;
+    this._loadSeq = 0;
+    this._onWindowScroll = () => this._trackSection();
+    this._requestClose = () => {
+      this.askToLeave(() => this._goToList());
+    };
+    this._closePayloadDialog = () => {
+      this._payloadDialog = null;
+    };
+    this._closeStepEditor = () => {
+      this._stepEditor = null;
+      this._stepDialog = null;
+    };
+    this._openAddStep = () => {
+      if (!this._working || this.deviceId == null) return;
+      const commands = deviceCommandItems(this._working, this.deviceId);
+      this._stepDialog = { editIndex: null, commandId: commands[0]?.commandId ?? null, hold: "0", error: "" };
+    };
+    this._closeStepDialog = () => {
+      this._stepDialog = null;
+    };
+    this._applyStep = () => {
+      const dialog = this._stepDialog;
+      const editor = this._stepEditor;
+      const deviceId = this.deviceId;
+      if (!dialog || !editor || deviceId == null || !this._working) return;
+      const commandId = Number(dialog.commandId);
+      if (!commandId) {
+        this._stepDialog = { ...dialog, error: S3.stepNoCommands };
+        return;
+      }
+      const hold = this._secondsToByte(dialog.hold);
+      const next = dialog.editIndex === null ? addDeviceMacroCommandStep(this._working, deviceId, editor.buttonId, commandId, hold) : updateDeviceMacroStep(this._working, deviceId, editor.buttonId, dialog.editIndex, { commandId, hold });
+      this._commit(next);
+      this._stepDialog = null;
+    };
+    this._leaveWithoutSync = () => {
+      const then = this._exitConfirm?.then;
+      this._exitConfirm = null;
+      const hubId = this._hub?.hub_id;
+      if (hubId) this.store.discardDraft(hubId);
+      if (this._baseline) this._working = structuredClone(this._baseline);
+      then?.();
+    };
+    this._syncAndLeave = () => {
+      const then = this._exitConfirm?.then;
+      this._exitConfirm = null;
+      void this._sync().then((ok) => {
+        if (ok) then?.();
+      });
+    };
+    this._retrySync = () => {
+      this._stage = "editing";
+      this._syncFailed = null;
+      void this._sync();
+    };
+    this._keepEditing = () => {
+      this._stage = "editing";
+      this._syncFailed = null;
+    };
+    this._closeRename = () => {
+      this._rename = null;
+    };
+    this._renameInput = (event) => {
+      if (!this._rename) return;
+      const input = event.currentTarget;
+      if (this._rename.target.kind === "device_ip") {
+        this._rename = { ...this._rename, draft: input.value, error: "" };
+      } else {
+        const value = sanitizeName(this._hubVersion, input.value);
+        input.value = value;
+        this._rename = { ...this._rename, draft: value, error: "" };
+      }
+    };
+    this._applyRename = () => {
+      const dialog = this._rename;
+      const deviceId = this.deviceId;
+      if (!dialog || deviceId == null || !this._working) return;
+      if (dialog.target.kind === "device_ip") {
+        const draft = dialog.draft.trim();
+        if (draft && !IPV4_PATTERN.test(draft)) {
+          this._rename = { ...dialog, error: S3.ipv4Required };
+          return;
+        }
+        this._commit(updateBundleDeviceIp(this._working, deviceId, draft));
+        this._rename = null;
+        return;
+      }
+      const next = sanitizeName(this._hubVersion, dialog.draft);
+      if (!next) {
+        this._rename = { ...dialog, error: S3.enterName };
+        return;
+      }
+      if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
+      else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
+      this._rename = null;
+    };
+    this._closeDeleteConfirm = () => {
+      this._deleteConfirm = null;
+    };
+    this._confirmDelete = () => {
+      const dialog = this._deleteConfirm;
+      const deviceId = this.deviceId;
+      if (!dialog || deviceId == null || !this._working) return;
+      const target = dialog.target;
+      if (target.kind === "device") {
+        this._deleteConfirm = null;
+        void this._deleteDevice();
+        return;
+      }
+      let next = applyBundleDelete(this._working, target, { reconcileMembership: false });
+      if (target.kind === "command" && this._pairedRecords) {
+        const slots = wifiEventsSlotCount(this._workingElement);
+        if (slots > 0 && Number(target.commandId) <= slots) {
+          next = applyBundleDelete(next, { kind: "command", deviceId, commandId: Number(target.commandId) + slots }, { reconcileMembership: false });
+        }
+      }
+      this._commit(next);
+      this._deleteConfirm = null;
+    };
+    this._closeBinding = () => {
+      this._binding = null;
+    };
+    this._applyBinding = () => {
+      const dialog = this._binding;
+      const deviceId = this.deviceId;
+      if (!dialog || deviceId == null || !this._working) return;
+      const buttonId = Number(dialog.buttonId);
+      const commandId = Number(dialog.commandId);
+      if (!buttonId || !commandId) {
+        this._binding = { ...dialog, error: S3.bindingIncomplete };
+        return;
+      }
+      const longPressCommandId = dialog.longPress && dialog.longPressCommandId ? Number(dialog.longPressCommandId) : null;
+      this._commit(upsertDeviceButtonBinding(this._working, deviceId, { buttonId, commandId, longPressCommandId }));
+      this._binding = null;
+    };
+  }
+  // -- lifecycle ---------------------------------------------------------------------------------
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("scroll", this._onWindowScroll, { passive: true });
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener("scroll", this._onWindowScroll);
+  }
+  updated(changed) {
+    if (changed.has("ctx") || changed.has("deviceId")) {
+      const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.deviceId ?? ""}`;
+      if (key !== this._loadedKey) {
+        this._loadedKey = key;
+        this._reset();
+        if (this.ctx?.hub && this.deviceId != null) void this._load();
+      } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
+        this._working = this._baseline ? structuredClone(this._baseline) : null;
+      }
+    }
+  }
+  _reset() {
+    this._stage = "loading";
+    this._snapshot = null;
+    this._baseline = null;
+    this._working = null;
+    this._powerMenuOpen = false;
+    this._rename = null;
+    this._deleteConfirm = null;
+    this._binding = null;
+    this._exitConfirm = null;
+    this._stepEditor = null;
+    this._stepDialog = null;
+    this._drag = null;
+    this._payloadDialog = null;
+    this._payloadFetching = null;
+    this._payloadFetchError = null;
+    this._addCommandPreparing = false;
+    this._syncing = false;
+    this._syncFailed = null;
+    this._notice = null;
+    this._activeSection = "power";
+  }
+  get _hub() {
+    return this.ctx?.hub ?? null;
+  }
+  get _hubVersion() {
+    return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
+  }
+  // -- loading: the snapshot, the banner (firmware floor), the callback device -------------------
+  async _load(options = {}) {
+    const hubId = this._hub?.hub_id;
+    const deviceId = this.deviceId;
+    if (!hubId || deviceId == null) return;
+    const seq = ++this._loadSeq;
+    const [snapshot, info, callback] = await Promise.all([
+      this.api.snapshot(hubId),
+      this.api.hubInfo(hubId).catch(() => null),
+      this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
+    ]);
+    if (seq !== this._loadSeq) return;
+    this._info = info?.ok ? info.body : null;
+    this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
+    if (!snapshot.ok || !snapshot.body) {
+      this._notice = problemText(snapshot);
+      this._stage = "missing";
+      return;
+    }
+    const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
+    if (floor) {
+      this._snapshot = snapshot.body;
+      this._stage = "guard_firmware";
+      return;
+    }
+    const bundle = snapshotAsBundle(snapshot.body);
+    const element = deviceElement(bundle, deviceId);
+    if (!element) {
+      this._snapshot = snapshot.body;
+      this._stage = "missing";
+      return;
+    }
+    if (element.complete === false) {
+      this._snapshot = snapshot.body;
+      this._baseline = bundle;
+      this._working = null;
+      this._stage = "needs_refresh";
+      return;
+    }
+    this._snapshot = snapshot.body;
+    this._baseline = bundle;
+    const runtime = this.ctx?.runtime ?? null;
+    const draft = runtime?.draft ?? null;
+    const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
+    const draftElement = restorable ? draftElementFor(draft, deviceId) : null;
+    this._working = draftElement ? withDeviceElement(bundle, deviceId, draftElement) : structuredClone(bundle);
+    if (!draftElement && draft?.scope === deviceDraftScope(deviceId)) this.store.discardDraft(hubId);
+    this._stage = "editing";
+    this._syncFailed = null;
+  }
+  // -- the working copy --------------------------------------------------------------------------
+  get _workingElement() {
+    return this.deviceId != null ? deviceElement(this._working, this.deviceId) : null;
+  }
+  get _baselineElement() {
+    return this.deviceId != null ? deviceElement(this._baseline, this.deviceId) : null;
+  }
+  get _dirty() {
+    return this._stage === "editing" && !elementsEqual(this._workingElement, this._baselineElement);
+  }
+  /** The card's `_commitEditBundleEdit`: replace the working bundle, mirror the element into the draft slot. */
+  _commit(next) {
+    const hubId = this._hub?.hub_id;
+    const deviceId = this.deviceId;
+    if (!hubId || deviceId == null || !this._snapshot) return;
+    this._working = next;
+    const element = deviceElement(next, deviceId);
+    if (element && !elementsEqual(element, this._baselineElement)) {
+      this.store.setDraft(hubId, { scope: deviceDraftScope(deviceId), snapshotId: this._snapshot.snapshot_id, data: { element } });
+    } else {
+      this.store.discardDraft(hubId);
+    }
+  }
+  /** For the shell: leaving with unsynced edits goes through the card's dialog (plan decision 3). */
+  hasUnsyncedChanges() {
+    return this._dirty;
+  }
+  askToLeave(then) {
+    if (!this._dirty) {
+      then();
+      return;
+    }
+    this._exitConfirm = { then };
+  }
+  // -- the payload dialog (the card's add / edit payload, live mode) ------------------------------
+  get _deviceClass() {
+    return this.deviceId != null ? bundleDeviceClass(this._working, this.deviceId) ?? "" : "";
+  }
+  /** The card's `_decodedSnapshotFromFetch`: the server's decoded block becomes the form's pristine block. */
+  _snapshotFromPayload(payload) {
+    const decoded = payload.decoded;
+    if (!decoded) return null;
+    const className = String(decoded.class ?? "").trim().toLowerCase();
+    if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
+    return { className, fields: { ...decoded.fields }, trailerHex: String(decoded.trailer_hex ?? ""), edited: false };
+  }
+  /** The braces: fetch the command's payload from the hub, then open the dialog on it. */
+  async _fetchAndEditPayload(commandId) {
+    const hubId = this._hub?.hub_id;
+    const deviceId = this.deviceId;
+    if (!hubId || deviceId == null || this._payloadFetching != null) return;
+    this._payloadFetching = commandId;
+    this._payloadFetchError = null;
+    try {
+      const response = await this.api.commandPayload(hubId, deviceId, commandId);
+      if (!response.ok || !response.body) {
+        this._payloadFetchError = response.status === 404 && response.body?.type === "payload_not_found" ? S3.noPayloadReturned : problemText(response);
+        return;
+      }
+      const payload = response.body;
+      const hex = String(payload.hex ?? "").trim();
+      if (!hex) {
+        this._payloadFetchError = S3.noPayloadReturned;
+        return;
+      }
+      const snapshot = this._snapshotFromPayload(payload);
+      this._payloadDialog = { mode: "edit", commandId, snapshot, rawHex: snapshot ? "" : normalizeCommandPayloadHex(hex) ?? hex, fetchedHex: hex };
+    } catch (err) {
+      this._payloadFetchError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this._payloadFetching = null;
+    }
+  }
+  /** Add command: the card's per-class seeding (an empty hex form or descriptor on IR, the first command as a template on a wifi class, neutral defaults on an empty one, raw hex otherwise). */
+  async _openAddCommand() {
+    const hubId = this._hub?.hub_id;
+    const deviceId = this.deviceId;
+    if (!hubId || deviceId == null || !this._working || this._addCommandPreparing) return;
+    this._payloadFetchError = null;
+    const deviceClass = this._deviceClass.toLowerCase();
+    const open = (snapshot) => {
+      this._payloadDialog = { mode: "add", commandId: 0, snapshot, rawHex: "", fetchedHex: "" };
+    };
+    if (deviceClass === "ir") {
+      const x2 = String(this._hubVersion ?? "").toUpperCase().includes("X2");
+      open(x2 ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false } : null);
+      return;
+    }
+    const existing = deviceCommandItems(this._working, deviceId);
+    if (!existing.length) {
+      open(defaultDecodedSnapshotForClass(deviceClass, { deviceId, commandId: nextFreeDeviceCommandId(this._working, deviceId) }));
+      return;
+    }
+    if (deviceClass in DECODED_CLASS_FORM_SPECS) {
+      this._addCommandPreparing = true;
+      try {
+        const response = await this.api.commandPayload(hubId, deviceId, existing[0].commandId);
+        if (!response.ok || !response.body) {
+          this._payloadFetchError = problemText(response);
+          return;
+        }
+        open(this._snapshotFromPayload(response.body));
+      } catch (err) {
+        this._payloadFetchError = err instanceof Error ? err.message : String(err);
+      } finally {
+        this._addCommandPreparing = false;
+      }
+      return;
+    }
+    open(null);
+  }
+  /** Save from the dialog: an edit marks the row (`edited`), an add appends a row at the next free id (`new`). */
+  _applyPayloadSave(event) {
+    const dialog = this._payloadDialog;
+    const deviceId = this.deviceId;
+    if (!dialog || deviceId == null || !this._working) return;
+    const { name, restoreData } = event.detail;
+    if (dialog.mode === "edit") {
+      this._commit(setCommandRestoreData(this._working, deviceId, dialog.commandId, restoreData));
+      this._payloadDialog = null;
+      return;
+    }
+    let data = restoreData;
+    const newId = nextFreeDeviceCommandId(this._working, deviceId);
+    if (newId == null) {
+      this._payloadFetchError = S3.noFreeCommandSlot;
+      this._payloadDialog = null;
+      return;
+    }
+    const decoded = data.decoded;
+    if (decoded?.class === "wifi_mqtt" && decoded.fields) {
+      data = { ...data, decoded: { ...decoded, fields: { ...decoded.fields, device_id: deviceId & 255, command_id: newId & 255 } } };
+    }
+    this._commit(addBundleDeviceCommand(this._working, deviceId, newId, name, data));
+    this._payloadDialog = null;
+  }
+  // -- the step editor sub-view (the card's macro editor, device scope) -------------------------
+  _openStepEditor(buttonId, name) {
+    this._stepEditor = { buttonId, name };
+    this._stepDialog = null;
+    window.scrollTo({ top: 0 });
+  }
+  /** Macro time bytes are in 0.5 s units (a byte of 4 = 2.0 s); 0 = a click / no wait. */
+  _byteToSeconds(byteValue) {
+    return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
+  }
+  _secondsToByte(value) {
+    const seconds = parseFloat(String(value));
+    if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+    return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+  }
+  _stepItems() {
+    const editor = this._stepEditor;
+    if (!editor || !this._working || this.deviceId == null) return [];
+    return deviceMacroStepItems(this._working, this.deviceId, editor.buttonId);
+  }
+  _openEditStep(item) {
+    this._stepDialog = { editIndex: item.index, commandId: item.commandId, hold: this._byteToSeconds(item.hold), error: "" };
+  }
+  _removeStep(index) {
+    const editor = this._stepEditor;
+    if (!editor || this.deviceId == null || !this._working) return;
+    this._commit(removeDeviceMacroStep(this._working, this.deviceId, editor.buttonId, index));
+  }
+  /** The arrow keys on the drag handle move a step one place (the pointer drags it). */
+  _moveStep(index, delta) {
+    const editor = this._stepEditor;
+    if (!editor || this.deviceId == null || !this._working) return;
+    const items = this._stepItems();
+    const target = index + delta;
+    if (target < 0 || target >= items.length) return;
+    const order = items.map((_2, i8) => i8);
+    const [moved] = order.splice(index, 1);
+    order.splice(target, 0, moved);
+    this._commit(reorderDeviceMacroSteps(this._working, this.deviceId, editor.buttonId, order));
+  }
+  // -- drag and drop on pointer events (the card uses ha-sortable) ------------------------------
+  _stepItemRects() {
+    return Array.from(this.renderRoot.querySelectorAll("[data-step-index]")).map((el) => el.getBoundingClientRect());
+  }
+  _dragStart(event, index) {
+    if (event.button !== 0 || this._drag) return;
+    const handle = event.currentTarget;
+    const rects = this._stepItemRects();
+    const rect = rects[index];
+    if (!rect) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    this.renderRoot.getSelection?.()?.removeAllRanges();
+    window.getSelection()?.removeAllRanges();
+    this._drag = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
+  }
+  _dragMove(event) {
+    const drag = this._drag;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    event.preventDefault();
+    const top = this._stickyOffset();
+    if (event.clientY < top + 32) window.scrollBy(0, -10);
+    else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
+    this._drag = { ...drag, over: this._dragSlot(drag, event.clientY), dy: event.clientY - drag.startY };
+  }
+  /** The slot the dragged row's centre sits over for a pointer at `clientY` (rows are measured untransformed: the dragged row's own rect moves with it, so its start is recovered from the travel). */
+  _dragSlot(drag, clientY) {
+    const rects = this._stepItemRects();
+    const own = rects[drag.from];
+    if (!own) return drag.from;
+    const centre = own.top - drag.dy + own.height / 2 + (clientY - drag.startY);
+    let over = drag.from;
+    for (let i8 = 0; i8 < rects.length; i8++) {
+      const mid = rects[i8].top + rects[i8].height / 2;
+      if (i8 < drag.from && centre < mid) over = Math.min(over, i8);
+      if (i8 > drag.from && centre > mid) over = i8;
+    }
+    return over;
+  }
+  _dragEnd(event) {
+    const drag = this._drag;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    const over = this._dragSlot(drag, event.clientY);
+    this._drag = null;
+    if (over !== drag.from) this._moveStep(drag.from, over - drag.from);
+  }
+  _dragCancel(event) {
+    if (this._drag && event.pointerId === this._drag.pointerId) this._drag = null;
+  }
+  /** Where a row sits while a drag is in flight: the dragged row follows the pointer, the rows it crossed slide by its height. */
+  _dragTransform(index) {
+    const drag = this._drag;
+    if (!drag) return "";
+    if (index === drag.from) return `translateY(${drag.dy}px)`;
+    if (drag.from < drag.over && index > drag.from && index <= drag.over) return `translateY(${-drag.height}px)`;
+    if (drag.over < drag.from && index >= drag.over && index < drag.from) return `translateY(${drag.height}px)`;
+    return "";
+  }
+  _setStepWait(item, event) {
+    const editor = this._stepEditor;
+    if (!editor || this.deviceId == null || !this._working) return;
+    const input = event.target;
+    const wait = this._secondsToByte(input.value);
+    input.value = this._byteToSeconds(wait);
+    this._commit(setDeviceMacroStepWait(this._working, this.deviceId, editor.buttonId, item.index, wait));
+  }
+  _goToList() {
+    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: "devices" } }));
+  }
+  // -- sync: PUT /devices/{id} with If-Match, followed as a job (plan decision 4) -------------------
+  async _sync() {
+    const hubId = this._hub?.hub_id;
+    const deviceId = this.deviceId;
+    const element = this._workingElement;
+    const snapshot = this._snapshot;
+    if (!hubId || deviceId == null || !element || !snapshot || this._syncing) return false;
+    this._syncing = true;
+    this._syncFailed = null;
+    try {
+      const started = await this.api.editDevice(hubId, deviceId, element, snapshot.snapshot_id);
+      if (started.status === 412) {
+        this._syncFailed = { stale: true, message: problemText(started) };
+        this._stage = "sync_failed";
+        return false;
+      }
+      if (started.status !== 202 || !started.body) {
+        this.store.noteResponse(hubId, started);
+        this._syncFailed = { stale: false, message: problemText(started) };
+        this._stage = "sync_failed";
+        return false;
+      }
+      const job = await this.api.followJob(hubId, started.body.job_id);
+      if (!job || job.status !== "done") {
+        const error = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
+        const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
+        this._syncFailed = { stale, message: error };
+        this._stage = "sync_failed";
+        return false;
+      }
+      this.store.discardDraft(hubId);
+      await this._load({ keepDraft: false });
+      return true;
+    } catch (err) {
+      this._syncFailed = { stale: false, message: String(err) };
+      this._stage = "sync_failed";
+      return false;
+    } finally {
+      this._syncing = false;
+    }
+  }
+  /** "Reload from hub": read this device from the hub as a job, then re-open it; the local edit is discarded. */
+  async _reloadFromHub() {
+    const hubId = this._hub?.hub_id;
+    const deviceId = this.deviceId;
+    if (!hubId || deviceId == null || this._refreshing) return;
+    this._refreshing = true;
+    try {
+      this.store.discardDraft(hubId);
+      const started = await this.api.refreshSnapshot(hubId, { device_id: deviceId });
+      if (started.status === 202 && started.body) await this.api.followJob(hubId, started.body.job_id);
+      else this.store.noteResponse(hubId, started);
+    } finally {
+      this._refreshing = false;
+    }
+    await this._load({ keepDraft: false });
+  }
+  // -- delete device (immediate, a job) ---------------------------------------------------------------
+  async _deleteDevice() {
+    const hubId = this._hub?.hub_id;
+    const deviceId = this.deviceId;
+    if (!hubId || deviceId == null || this._deleting) return;
+    this._deleting = true;
+    try {
+      const started = await this.api.removeDevice(hubId, deviceId);
+      if (started.status !== 202 || !started.body) {
+        this.store.noteResponse(hubId, started);
+        this.store.say(`Delete refused: ${problemText(started)}`, false);
+        return;
+      }
+      const job = await this.api.followJob(hubId, started.body.job_id);
+      if (!job || job.status !== "done") {
+        this.store.say(`Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.type}` : ""}`, false);
+        return;
+      }
+      this.store.discardDraft(hubId);
+      this._goToList();
+    } finally {
+      this._deleting = false;
+    }
+  }
+  // -- section nav -------------------------------------------------------------------------------------
+  _sectionItems() {
+    const deviceClass = this.deviceId != null ? bundleDeviceClass(this._working, this.deviceId) ?? "" : "";
+    const hasNetwork = IP_HEAD_DEVICE_CLASSES.has(deviceClass);
+    return [
+      { id: "power", icon: mdiPowerPlugOutline, label: S3.detailPower },
+      ...hasNetwork ? [{ id: "network", icon: mdiLanConnect, label: S3.detailNetwork }] : [],
+      { id: "commands", icon: mdiFormatListBulleted, label: S3.detailCommands },
+      { id: "bindings", icon: mdiGestureTapButton, label: S3.detailButtons }
+    ];
+  }
+  /** The offset the sticky top dock and the sticky header take from the viewport's top. */
+  _stickyOffset() {
+    const dock = parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0;
+    const header = this.renderRoot.querySelector(".sticky-header")?.getBoundingClientRect().height ?? 0;
+    return dock + header;
+  }
+  _scrollToSection(id) {
+    const section = this.renderRoot.querySelector(`[data-edit-section="${id}"]`);
+    if (!section) return;
+    const top = window.scrollY + section.getBoundingClientRect().top - this._stickyOffset() - 8;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    this._activeSection = id;
+  }
+  _trackSection() {
+    if (this._stage !== "editing") return;
+    const sections = Array.from(this.renderRoot.querySelectorAll("[data-edit-section]"));
+    if (!sections.length) return;
+    const atBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+    if (atBottom) {
+      const last = sections[sections.length - 1].dataset.editSection;
+      if (last !== this._activeSection) this._activeSection = last;
+      return;
+    }
+    const marker = this._stickyOffset() + 24;
+    let active = sections[0].dataset.editSection;
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= marker) active = section.dataset.editSection;
+    }
+    if (active !== this._activeSection) this._activeSection = active;
+  }
+  // -- classification -----------------------------------------------------------------------------------
+  get _brand() {
+    return this.deviceId != null ? bundleDeviceBrand(this._working, this.deviceId) : "";
+  }
+  /** A Wifi Commands device deployed by Home Assistant: editable with a warning (plan decision 11). */
+  get _managedByHa() {
+    return isManagedWifiBrand(this._brand) && !isWifiEventsBrand(this._brand);
+  }
+  /** The server's callback device: its spec-owned parts wait for DE6 (plan decision 12). */
+  get _isCallbackDevice() {
+    return this._callbackDeviceId != null && this.deviceId === this._callbackDeviceId;
+  }
+  /** The card's Wifi Events pairing applies to both the HA events device and the server's callback device. */
+  get _pairedRecords() {
+    return isWifiEventsBrand(this._brand) || this._isCallbackDevice;
+  }
+  get _title() {
+    return String(this._workingElement?.device?.name ?? "").trim();
+  }
+  // -- rename dialog --------------------------------------------------------------------------------------
+  _openRename(target) {
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return;
+    let draft = "";
+    if (target.kind === "device") draft = this._title;
+    else if (target.kind === "device_ip") draft = deviceIpAddress(this._working, deviceId) || "";
+    else draft = deviceCommandItems(this._working, deviceId).find((c7) => c7.commandId === target.commandId)?.label ?? "";
+    this._rename = { target, draft, error: "" };
+  }
+  // -- delete confirm ---------------------------------------------------------------------------------------
+  _openDeleteConfirm(target, label) {
+    this._deleteConfirm = { target, label };
+  }
+  _deleteTitle(target, label) {
+    const name = label || S3.thisItem;
+    switch (target.kind) {
+      case "device":
+        return S3.deleteDeviceTitle(name);
+      case "command":
+        return S3.deleteCommandTitle(name);
+      case "device_binding":
+        return S3.deleteBindingTitle(name);
+      default:
+        return name;
+    }
+  }
+  // -- power control ------------------------------------------------------------------------------------------
+  _powerOptions() {
+    return [
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S3.powerControlDisabled, sub: S3.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S3.powerControlAutoOff, sub: S3.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S3.powerControlStayOn, sub: S3.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S3.powerControlAlwaysOn, sub: S3.powerControlAlwaysOnSub }
+    ];
+  }
+  _selectPower(mode) {
+    this._powerMenuOpen = false;
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return;
+    if (deviceIdleBehavior(this._working, deviceId) === mode) return;
+    this._commit(updateBundleDeviceIdleBehavior(this._working, deviceId, mode));
+  }
+  // -- binding dialog -----------------------------------------------------------------------------------------
+  _openAddBinding() {
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return;
+    const unbound = unboundButtonsForDevice(this._working, deviceId);
+    if (!unbound.length) return;
+    const commands = deviceCommandItems(this._working, deviceId);
+    this._binding = { editButtonId: null, buttonId: unbound[0].code, commandId: commands[0]?.commandId ?? null, longPress: false, longPressCommandId: commands[0]?.commandId ?? null, error: "" };
+  }
+  _openEditBinding(buttonId) {
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return;
+    const item = deviceButtonBindingItems(this._working, deviceId).find((entry) => entry.buttonId === Number(buttonId));
+    if (!item) return;
+    this._binding = { editButtonId: item.buttonId, buttonId: item.buttonId, commandId: item.commandId, longPress: Boolean(item.longPress), longPressCommandId: item.longPress?.commandId ?? null, error: "" };
+  }
+  // -- render --------------------------------------------------------------------------------------------------
+  render() {
+    if (!this._hub || this.deviceId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
+    switch (this._stage) {
+      case "loading":
+        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">Loading device from the hub cache…</div></div></div>`;
+      case "guard_firmware": {
+        const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
+        return this._renderGuard(mdiChip, S3.firmwareUnsupportedTitle, S3.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S3.back}</button>`, "guard-firmware");
+      }
+      case "needs_refresh":
+        return this._renderGuard(mdiDatabaseRefreshOutline, S3.needsRefreshTitle, S3.needsRefreshBody, b2`
+          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S3.refreshDevice}</button>
+          <button class="btn" @click=${this._goToList}>${S3.back}</button>`, "guard-refresh");
+      case "missing":
+        return this._renderGuard(mdiAlertCircleOutline, "Device not found", this._notice ?? S3.deviceMissing, b2`<button class="btn" @click=${this._goToList}>${S3.back}</button>`, "guard-missing");
+      case "sync_failed": {
+        const failed = this._syncFailed;
+        const stale = Boolean(failed?.stale);
+        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S3.syncStaleTitle : S3.syncFailedTitle, stale ? S3.syncStaleBody : failed?.message ?? "", b2`
+          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S3.syncRetry}</button>`}
+          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S3.syncReload}</button>
+          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S3.syncKeepEditing}</button>`, "sync-failed");
+      }
+      default:
+        return this._stepEditor ? this._renderStepEditor(this._stepEditor) : this._renderEditor();
+    }
+  }
+  _renderStepEditor(editor) {
+    const items = this._stepItems();
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view ${this._drag ? "is-sorting" : ""}" id="step-editor">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" id="step-back" type="button" aria-label=${S3.back} @click=${this._closeStepEditor}>${icon2(mdiArrowLeft)}</button>
+                <div class="detail-title-stack">
+                  <div class="detail-crumbs">
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S3.crumbDevices}</button>
+                    <span class="detail-crumb-sep" aria-hidden="true">›</span>
+                    <button class="detail-crumb" type="button" @click=${this._closeStepEditor}>${this._title}</button>
+                    <span class="detail-crumb-sep" aria-hidden="true">›</span>
+                  </div>
+                  <div class="detail-title" id="step-title">${editor.name}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main"><div class="quick-access-title">${S3.steps}</div><div class="quick-access-sub">${S3.macroStepsSortableHelp}</div></div>
+                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon2(mdiPlus)}<span>${S3.addStep}</span></button></div>
+              </div>
+              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S3.noMacroSteps}</div>`}
+            </div>
+          </div>
+        </div>
+        ${this._renderStepDialog()}
+        ${this._renderExitConfirmDialog()}
+      </div>
+    `;
+  }
+  _renderStepRow(item, position, count) {
+    const meta = item.kind === "command" && item.hold > 0 ? S3.holdLabel(this._byteToSeconds(item.hold)) : "";
+    const isLast = position === count - 1;
+    const drag = this._drag;
+    const dragging = drag?.from === position;
+    const transform = this._dragTransform(position);
+    return b2`
+      <div class="quick-access-sortable-item ${dragging ? "is-dragging" : drag ? "is-shifting" : ""}" data-step-index=${item.index} style=${transform ? `transform: ${transform}` : ""}>
+        <div class="quick-access-row quick-access-row--step">
+          <button class="quick-access-drag step-handle" type="button" aria-label=${S3.dragStepAria} title=${S3.dragStepAria}
+            @mousedown=${(event) => event.preventDefault()}
+            @pointerdown=${(event) => this._dragStart(event, position)}
+            @pointermove=${(event) => this._dragMove(event)}
+            @pointerup=${(event) => this._dragEnd(event)}
+            @pointercancel=${(event) => this._dragCancel(event)}
+            @keydown=${(event) => {
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        this._moveStep(item.index, -1);
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        this._moveStep(item.index, 1);
+      }
+    }}
+          >${icon2(mdiDragVerticalVariant)}</button>
+          <div class="quick-access-main">
+            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S3.stepChipCommand}</div></div>
+            ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
+          </div>
+          <div class="quick-access-actions">
+            <button class="icon-btn step-edit" type="button" aria-label=${S3.editStepAria} title=${S3.editStepAria} @click=${() => this._openEditStep(item)}>${icon2(mdiPencil)}</button>
+            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S3.deleteStepAria} title=${S3.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon2(mdiTrashCanOutline)}</button>
+          </div>
+        </div>
+        ${isLast ? A : b2`<label class="step-wait" title=${S3.stepWaitAria}>
+              <span class="step-wait-caption">${S3.stepWaitLabel}</span>
+              <span class="step-wait-field">
+                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S3.stepWaitAria} .value=${this._byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
+                <span class="step-wait-unit">${S3.stepWaitUnit}</span>
+              </span>
+            </label>`}
+      </div>
+    `;
+  }
+  _renderStepDialog() {
+    const dialog = this._stepDialog;
+    const deviceId = this.deviceId;
+    if (!dialog || deviceId == null || !this._working) return A;
+    const commands = deviceCommandItems(this._working, deviceId);
+    const isEdit = dialog.editIndex !== null;
+    const canSave = dialog.commandId != null;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeStepDialog}>
+        <div class="dialog small" id="step-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${isEdit ? S3.stepDialogEditTitle : S3.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S3.stepCancel} @click=${this._closeStepDialog}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-body">
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-step-command">${S3.stepCommand}</label>
+              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S3.stepNoCommands}</div>` : b2`<select id="sb-step-command" class="decoded-field-input" @change=${(event) => {
+      const raw = event.currentTarget.value;
+      this._stepDialog = { ...dialog, commandId: raw === "" ? null : Number(raw), error: "" };
+    }}>
+                    ${commands.map((command) => b2`<option value=${command.commandId} ?selected=${command.commandId === dialog.commandId}>${command.label}</option>`)}
+                  </select>`}
+            </div>
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-step-hold">${S3.stepHoldSeconds}</label>
+              <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
+                @input=${(event) => {
+      this._stepDialog = { ...dialog, hold: event.currentTarget.value };
+    }}
+                @change=${(event) => {
+      this._stepDialog = { ...dialog, hold: this._byteToSeconds(this._secondsToByte(event.currentTarget.value)) };
+    }} />
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${dialog.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S3.stepCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S3.stepSave : S3.stepAdd}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderGuard(iconPath, title, body, actions, id) {
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view" id=${id}>
+          <div class="capture-error">
+            <div class="guard-icon">${icon2(iconPath)}</div>
+            <div class="capture-error-title">${title}</div>
+            <div class="guard-sub">${body}</div>
+            <div class="action-row">${actions}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderEditor() {
+    const deviceId = this.deviceId;
+    const sections = this._sectionItems();
+    const dirty = this._dirty;
+    const callback = this._isCallbackDevice;
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view" id="device-editor">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" id="editor-back" type="button" aria-label=${S3.back} @click=${this._requestClose}>${icon2(mdiArrowLeft)}</button>
+                <div class="detail-title-stack">
+                  <div class="detail-crumbs">
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S3.crumbDevices}</button>
+                    <span class="detail-crumb-sep" aria-hidden="true">›</span>
+                  </div>
+                  <div class="detail-title" id="editor-title">${this._title}</div>
+                </div>
+                <div class="detail-title-actions">
+                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S3.renameDevice} title=${S3.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon2(mdiPencil)}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S3.deleteDeviceAria} title=${S3.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon2(mdiTrashCanOutline)}</button>`}
+                  <button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing\u2026" : dirty ? S3.syncToHub : S3.syncUpToDate}</button>
+                </div>
+              </div>
+            </div>
+            ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S3.detailSectionsAria}>
+                  ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon2(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
+                </div>` : A}
+          </div>
+          <div class="detail-scroll">
+            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon2(mdiWifiCog)}<span>${S3.managedWifiWarning}</span></div>` : A}
+            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon2(mdiInformationOutline)}<span>${S3.callbackDeviceNote}</span></div>` : A}
+            ${this._renderPowerSection(deviceId)}
+            ${this._renderNetworkSection(deviceId)}
+            ${this._renderCommandsSection(deviceId)}
+            ${this._renderBindingsSection(deviceId)}
+          </div>
+        </div>
+        ${this._renderRenameDialog()}
+        ${this._renderDeleteConfirmDialog()}
+        ${this._renderBindingDialog()}
+        ${this._renderExitConfirmDialog()}
+        ${this._payloadDialog ? b2`<sb-payload-dialog .api=${this.api} .hubId=${this._hub?.hub_id ?? ""} .hubVersion=${this._hubVersion} .deviceClass=${this._deviceClass} .mode=${this._payloadDialog.mode} .snapshot=${this._payloadDialog.snapshot} .rawHex=${this._payloadDialog.rawHex} .fetchedHex=${this._payloadDialog.fetchedHex} @sb-payload-close=${this._closePayloadDialog} @sb-payload-save=${(event) => this._applyPayloadSave(event)}></sb-payload-dialog>` : A}
+      </div>
+    `;
+  }
+  _renderPowerSection(deviceId) {
+    const mode = deviceIdleBehavior(this._working, deviceId);
+    const disabled = mode === IDLE_BEHAVIOR_DISABLED;
+    const options = this._powerOptions();
+    const selected = options.find((opt) => opt.mode === mode) ?? null;
+    const open = this._powerMenuOpen;
+    const row = (buttonId, label) => {
+      const count = deviceMacroStepItems(this._working, deviceId, buttonId).length;
+      return b2`<div class="quick-access-sortable-item">
+        <button class="edit-selection-row" type="button" data-sequence=${buttonId} aria-disabled=${disabled ? "true" : "false"} tabindex=${disabled ? "-1" : "0"} @click=${() => {
+        if (!disabled) this._openStepEditor(buttonId, label);
+      }}>
+          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S3.macroStepsCount(count)}</span></span>
+          <span class="selection-chevron">${icon2(mdiChevronRight)}</span>
+        </button>
+      </div>`;
+    };
+    return b2`
+      <div class="quick-access-section" data-edit-section="power">
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S3.powerSetupTitle}</div><div class="quick-access-sub">${S3.powerSetupDeviceSub}</div></div></div>
+        ${this._isCallbackDevice ? A : b2`<div class="power-control" id="power-control" data-open=${open ? "true" : "false"}>
+              <button class="power-control-trigger" type="button" aria-haspopup="listbox" aria-expanded=${String(open)} @click=${() => {
+      this._powerMenuOpen = !open;
+    }}>
+                <span class="selection-main"><span class="selection-label">${selected ? selected.label : S3.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S3.powerControlUnsetSub}</span></span>
+                <span class="selection-chevron">${icon2(mdiChevronDown)}</span>
+              </button>
+              ${open ? b2`<button class="power-control-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
+      this._powerMenuOpen = false;
+    }}></button>
+                    <div class="power-control-menu" role="listbox" aria-label=${S3.powerControlTitle}>
+                      ${options.map((opt) => b2`<button class="power-control-option" type="button" role="option" data-mode=${opt.mode} aria-selected=${String(opt.mode === mode)} aria-checked=${String(opt.mode === mode)} @click=${() => this._selectPower(opt.mode)}>
+                        <span class="selection-main"><span class="selection-label">${opt.label}</span><span class="selection-sub">${opt.sub}</span></span>
+                        <span class="selection-chevron">${opt.mode === mode ? icon2(mdiCheck) : A}</span>
+                      </button>`)}
+                    </div>` : A}
+            </div>`}
+        <div class="quick-access-list">
+          ${disabled ? b2`<div class="power-sequences-note">${S3.powerSequencesDisabledNote}</div>` : A}
+          <div class="quick-access-sortable-container power-sequences" data-disabled=${disabled ? "true" : "false"}>
+            ${row(198, S3.powerOnLabel)}
+            ${row(199, S3.powerOffLabel)}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderNetworkSection(deviceId) {
+    const deviceClass = bundleDeviceClass(this._working, deviceId) ?? "";
+    if (!IP_HEAD_DEVICE_CLASSES.has(deviceClass)) return A;
+    const ip = deviceIpAddress(this._working, deviceId);
+    return b2`
+      <div class="quick-access-section" data-edit-section="network">
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S3.detailNetwork}</div><div class="quick-access-sub">${S3.networkDescription}</div></div></div>
+        <div class="quick-access-list"><div class="quick-access-sortable-container"><div class="quick-access-sortable-item">
+          <div class="quick-access-row">
+            <div class="quick-access-main">
+              <div class="quick-access-label-row"><div class="quick-access-label" id="editor-ip">${ip || S3.hubNameNotSet}</div><div class="quick-access-chip">${S3.ipChip}</div></div>
+              <div class="quick-access-meta">${S3.ipv4Description}</div>
+            </div>
+            <div class="quick-access-actions">
+              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S3.editIpAria} title=${S3.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon2(mdiPencil)}</button>
+            </div>
+          </div>
+        </div></div></div>
+      </div>
+    `;
+  }
+  _renderCommandsSection(deviceId) {
+    const items = deviceCommandItems(this._working, deviceId);
+    const element = this._workingElement;
+    const callback = this._isCallbackDevice;
+    const pendingAdd = (commandId) => Boolean((element?.commands ?? []).find((row) => Number(row?.command_id) === commandId)?.restore_data?.new);
+    return b2`
+      <div class="quick-access-section" data-edit-section="commands">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main"><div class="quick-access-title">${S3.detailCommands}</div><div class="quick-access-sub">${S3.commandsLiveHelp}</div></div>
+          ${callback ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon2(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S3.addCommand}</span></button></div>`}
+        </div>
+        ${this._payloadFetchError ? b2`<div class="section-status error" id="payload-fetch-error" role="alert">${icon2(mdiAlertCircleOutline)}<span>${this._payloadFetchError}</span></div>` : A}
+        ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
+              ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
+                <div class="quick-access-row">
+                  <div class="quick-access-main">
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${pendingAdd(item.commandId) ? S3.newCommandChip : S3.commandChip}</div></div>
+                    <div class="quick-access-meta">${S3.commandId} ${item.commandId}</div>
+                  </div>
+                  <div class="quick-access-actions">
+                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S3.renameCommandAria} title=${S3.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon2(mdiPencil)}</button>
+                          ${pendingAdd(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S3.editPayloadAria} title=${S3.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon2(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
+                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S3.deleteCommandAria} title=${S3.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon2(mdiTrashCanOutline)}</button>`}`}
+                  </div>
+                </div>
+              </div>`)}
+            </div></div>` : b2`<div class="quick-access-empty">${S3.noDeviceCommands}</div>`}
+      </div>
+    `;
+  }
+  _renderBindingsSection(deviceId) {
+    const items = deviceButtonBindingItems(this._working, deviceId);
+    const unbound = unboundButtonsForDevice(this._working, deviceId);
+    return b2`
+      <div class="quick-access-section" data-edit-section="bindings">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main"><div class="quick-access-title">${S3.buttonBindingsTitle}</div><div class="quick-access-sub">${S3.buttonBindingsDeviceSub}</div></div>
+          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon2(mdiPlus)}<span>${S3.addBinding}</span></button>
+        </div>
+        ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
+              ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
+                <div class="quick-access-row">
+                  <div class="quick-access-main">
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${S3.buttonChip}</div></div>
+                    <div class="quick-access-meta">${item.shortPressLabel}</div>
+                    ${item.longPress ? b2`<div class="quick-access-meta">${S3.bindingLongPressMeta(item.longPress.label)}</div>` : A}
+                  </div>
+                  <div class="quick-access-actions">
+                    <button class="icon-btn binding-edit" type="button" aria-label=${S3.editBindingAria} title=${S3.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon2(mdiPencil)}</button>
+                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S3.deleteBindingAria} title=${S3.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon2(mdiTrashCanOutline)}</button>
+                  </div>
+                </div>
+              </div>`)}
+            </div></div>` : b2`<div class="quick-access-empty">${S3.buttonBindingsEmpty}</div>`}
+      </div>
+    `;
+  }
+  // -- dialogs --------------------------------------------------------------------------------------------------
+  _renderRenameDialog() {
+    const dialog = this._rename;
+    if (!dialog) return A;
+    const isIp = dialog.target.kind === "device_ip";
+    const title = dialog.target.kind === "device" ? S3.renameDevice : isIp ? S3.editIpAria : S3.renameCommand;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeRename}>
+        <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.cancel} @click=${this._closeRename}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-body">
+            <label class="decoded-field">
+              <span class="decoded-field-label">${isIp ? S3.ipAddress : S3.name}</span>
+              <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyRename();
+      }
+    }} />
+            </label>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" @click=${this._closeRename}>${S3.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${S3.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderDeleteConfirmDialog() {
+    const dialog = this._deleteConfirm;
+    if (!dialog || !this._working) return A;
+    const impact = bundleDeleteImpact(this._working, dialog.target);
+    const hasCascade = backupDeleteHasCascade(impact);
+    const immediate = dialog.target.kind === "device";
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
+        <div class="dialog small" id="delete-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S3.deleteCancel} @click=${this._closeDeleteConfirm}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-body">
+            <div class="backup-drawer-sub">${hasCascade ? S3.deleteCascadeIntroLive : S3.deleteSimpleBodyLive}</div>
+            ${hasCascade ? b2`<ul class="delete-impact-list" id="delete-impact">
+                  ${impact.activities > 0 ? b2`<li>${icon2(mdiLinkVariant)}<span>${S3.deleteImpactActivities(impact.activities)}</span></li>` : A}
+                  ${impact.favorites > 0 ? b2`<li>${icon2(mdiStarOutline)}<span>${S3.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+                  ${impact.macroSteps > 0 ? b2`<li>${icon2(mdiFormatListNumbered)}<span>${S3.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                  ${impact.powerSteps > 0 ? b2`<li>${icon2(mdiPower)}<span>${S3.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
+                  ${impact.bindings > 0 ? b2`<li>${icon2(mdiGestureTapButton)}<span>${S3.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+                </ul>` : A}
+            <div class="delete-replace-note">${icon2(mdiInformationOutline)}<span>${immediate ? S3.deleteImmediateNote : S3.deleteSyncNote}</span></div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${S3.deleteCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${S3.deleteConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderBindingDialog() {
+    const dialog = this._binding;
+    const deviceId = this.deviceId;
+    if (!dialog || deviceId == null || !this._working) return A;
+    const isEdit = dialog.editButtonId != null;
+    const unbound = unboundButtonsForDevice(this._working, deviceId);
+    const commands = deviceCommandItems(this._working, deviceId);
+    const canSave = dialog.buttonId != null && dialog.commandId != null;
+    const title = isEdit ? S3.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : S3.bindingDialogAddTitle;
+    const select = (id, label, value, options, empty, onChange) => b2`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for=${id}>${label}</label>
+        ${options.length === 0 ? b2`<div class="quick-access-empty">${empty}</div>` : b2`<select id=${id} class="decoded-field-input" @change=${(event) => onChange(Number(event.currentTarget.value))}>
+              ${options.map((option) => b2`<option value=${option.value} ?selected=${option.value === value}>${option.label}</option>`)}
+            </select>`}
+      </div>`;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeBinding}>
+        <div class="dialog small" id="binding-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.bindingCancel} @click=${this._closeBinding}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-body">
+            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S3.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S3.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S3.bindingNoButtons, (value) => {
+      this._binding = { ...dialog, buttonId: value, error: "" };
+    })}
+            ${select("sb-binding-command", S3.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S3.bindingNoCommands, (value) => {
+      this._binding = { ...dialog, commandId: value, error: "" };
+    })}
+            <div class="binding-toggle-row">
+              <span class="decoded-field-label">${S3.bindingEnableLongPress}</span>
+              <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => {
+      this._binding = { ...dialog, longPress: event.currentTarget.checked };
+    }} />
+            </div>
+            ${dialog.longPress ? select("sb-binding-lp-command", S3.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S3.bindingNoCommands, (value) => {
+      this._binding = { ...dialog, longPressCommandId: value };
+    }) : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${dialog.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S3.bindingCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S3.bindingSave : S3.bindingAdd}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderExitConfirmDialog() {
+    if (!this._exitConfirm) return A;
+    const close = () => {
+      this._exitConfirm = null;
+    };
+    return b2`
+      <div class="modal-backdrop" @click=${close}>
+        <div class="dialog small" id="exit-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${S3.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S3.syncKeepEditing} @click=${close}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-body"><div class="dialog-text">${S3.exitUnsyncedBody}</div></div>
+          <div class="dialog-footer">
+            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S3.exitWithoutSync}</button>
+            <div class="dialog-footer-actions">
+              <button class="btn" id="exit-keep" type="button" @click=${close}>${S3.syncKeepEditing}</button>
+              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S3.exitSyncNow}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+};
+SbPanelDeviceEditor.properties = {
+  api: { attribute: false },
+  ctx: { attribute: false },
+  store: { attribute: false },
+  deviceId: { attribute: false },
+  _stage: { state: true },
+  _snapshot: { state: true },
+  _baseline: { state: true },
+  _working: { state: true },
+  _info: { state: true },
+  _callbackDeviceId: { state: true },
+  _activeSection: { state: true },
+  _powerMenuOpen: { state: true },
+  _rename: { state: true },
+  _deleteConfirm: { state: true },
+  _binding: { state: true },
+  _exitConfirm: { state: true },
+  _stepEditor: { state: true },
+  _stepDialog: { state: true },
+  _drag: { state: true },
+  _payloadDialog: { state: true },
+  _payloadFetching: { state: true },
+  _payloadFetchError: { state: true },
+  _addCommandPreparing: { state: true },
+  _syncing: { state: true },
+  _syncFailed: { state: true },
+  _refreshing: { state: true },
+  _deleting: { state: true },
+  _notice: { state: true }
+};
+SbPanelDeviceEditor.styles = [
+  PANEL_BASE_CSS,
+  i`
+      :host {
+        display: block;
+        container-type: inline-size;
+        --de-radius-sm: 10px;
+        --de-radius-md: 12px;
+        --de-radius-lg: 16px;
+        --de-radius-xl: 22px;
+      }
+      .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
+      button { border: 0; background: transparent; padding: 0; }
+      /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
+      .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
+      .quick-access-section, .detail-scroll, .power-control { min-width: 0; }
+
+      /* -- frame (the card's .tab-panel--detail / .detail-view) ------------------------------- */
+      .tab-panel--detail { min-width: 0; padding: 0; }
+      .detail-view { min-width: 0; display: flex; flex-direction: column; margin: -12px -16px -16px; }
+      /* The card pins its header inside its own scroll box; the panel's page scrolls under the shell's top dock, so pin under it. */
+      .sticky-header { position: sticky; top: var(--top-dock-height, 0px); z-index: 3; min-width: 0; background: var(--sbp-panel); }
+      .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--sbp-line); }
+      .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
+      .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; overflow: hidden; }
+      .detail-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 11px; line-height: 1.1; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--sbp-muted); }
+      .detail-crumb { flex: 0 1 auto; min-width: 0; font: inherit; color: var(--sbp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
+      .detail-crumb:hover { color: var(--sbp-text); text-decoration: underline; text-decoration-color: var(--sbp-accent); }
+      .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
+      .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .back-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .back-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .back-btn .mdi { width: 18px; height: 18px; }
+      .detail-sync-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease; }
+      .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+      .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
+      .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: #2e7d32; opacity: 1; }
+      .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
+      .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
+      .icon-btn:active, .dialog-close:active { transform: translateY(1px); }
+      .icon-btn:disabled { opacity: 0.45; cursor: default; }
+      .icon-btn--danger:hover:not(:disabled) { border-color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 10%, var(--sbp-panel)); color: var(--sbp-err); }
+
+      /* -- section nav ---------------------------------------------------------------------------- */
+      .detail-section-nav { display: flex; align-items: stretch; min-height: 34px; margin: 10px 16px; border: 1px solid color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); overflow: hidden; background: color-mix(in srgb, var(--sbp-panel-2) 76%, transparent); }
+      .detail-section-nav-btn { flex: 1 1 0; min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 82%, transparent); color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font: inherit; cursor: pointer; white-space: nowrap; border-radius: 0; }
+      .detail-section-nav-btn:last-child { border-right: none; }
+      .detail-section-nav-btn:hover { background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-text); }
+      .detail-section-nav-btn.active { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.1); box-shadow: inset 0 -2px 0 var(--sbp-accent); }
+      .detail-section-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+      /* -- body ------------------------------------------------------------------------------------- */
+      .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+      .notice-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--de-radius-sm); border: 1px solid color-mix(in srgb, var(--sbp-warn) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, transparent); font-size: 12.5px; line-height: 1.45; color: var(--sbp-text); }
+      .notice-banner .mdi { color: var(--sbp-warn); width: 18px; height: 18px; }
+      .notice-banner--info { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.08); }
+      .notice-banner--info .mdi { color: var(--sbp-accent); }
+      @keyframes sb-spin { to { transform: rotate(360deg); } }
+      .mdi.sb-spin { animation: sb-spin 720ms linear infinite; }
+      .section-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
+      .section-status .mdi { width: 18px; height: 18px; }
+      .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
+      .quick-access-section { display: grid; gap: 12px; scroll-margin-top: 16px; }
+      .quick-access-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .quick-access-head-main { min-width: 0; flex: 1 1 200px; display: grid; gap: 4px; }
+      .quick-access-head-actions { flex: 0 0 auto; }
+      .quick-access-title { color: var(--sbp-text); font-size: 14px; font-weight: 700; }
+      .quick-access-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
+      .quick-access-list { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); overflow: hidden; display: flex; flex-direction: column; }
+      .quick-access-sortable-container { display: block; }
+      .quick-access-sortable-item { display: block; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
+      .quick-access-sortable-item:first-child { border-top: none; }
+      .quick-access-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; }
+      .quick-access-row--step { grid-template-columns: auto minmax(0, 1fr) auto; }
+      .quick-access-drag { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: -6px; border-radius: 8px; color: var(--sbp-muted); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+      .quick-access-drag:hover { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.08); }
+      .quick-access-drag:active { cursor: grabbing; }
+      .quick-access-drag .mdi { width: 18px; height: 18px; }
+      .quick-access-sortable-item.is-shifting { transition: transform 150ms ease; }
+      .quick-access-sortable-item.is-dragging { position: relative; z-index: 2; background: var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); border-top-color: transparent; }
+      .detail-view.is-sorting, .quick-access-row--step { user-select: none; -webkit-user-select: none; }
+      .step-wait { display: flex; align-items: center; gap: 6px; padding: 3px 14px 6px; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
+      .step-wait-caption { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--sbp-muted); pointer-events: none; }
+      .step-wait-field { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px 2px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); }
+      .step-wait-field:focus-within { border-color: var(--sbp-accent); }
+      .step-wait-input { width: 42px; min-width: 0; padding: 0; border: none; background: transparent; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 600; text-align: right; outline: none; -moz-appearance: textfield; }
+      .step-wait-input::-webkit-outer-spin-button, .step-wait-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      .step-wait-unit { color: var(--sbp-muted); font-size: 12px; font-weight: 600; }
+      .quick-access-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+      .quick-access-label-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .quick-access-label { min-width: 0; color: var(--sbp-text); font-size: 13px; font-weight: 700; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .quick-access-chip { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 74%, transparent); }
+      .quick-access-meta { color: var(--sbp-muted); font-size: 12px; line-height: 1.4; }
+      .quick-access-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .quick-access-empty { border: 1px dashed color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); padding: 12px 14px; color: var(--sbp-muted); font-size: 13px; line-height: 1.5; background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
+      .quick-access-add-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--de-radius-md); border: 1px solid color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.1); color: var(--sbp-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: border-color 120ms ease, background 120ms ease; }
+      .quick-access-add-btn:hover:not(:disabled) { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-text); }
+      .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
+      .quick-access-add-btn .mdi { color: var(--sbp-accent); }
+
+      /* -- power control ---------------------------------------------------------------------------- */
+      .power-control { position: relative; display: block; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); }
+      .power-control-trigger { width: 100%; border-radius: inherit; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; }
+      .power-control-trigger:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
+      .power-control-trigger .selection-chevron .mdi { transition: transform 120ms ease; }
+      .power-control[data-open="true"] .power-control-trigger .selection-chevron .mdi { transform: rotate(180deg); }
+      .power-control-backdrop { position: fixed; inset: 0; z-index: 30; cursor: default; }
+      .power-control-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 31; display: flex; flex-direction: column; background: var(--sbp-panel); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); overflow: hidden; }
+      .power-control-option { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 50%, transparent); cursor: pointer; border-radius: 0; }
+      .power-control-option:first-child { border-top: none; }
+      .power-control-option:hover { background: rgba(var(--sbp-accent-rgb), 0.08); }
+      .power-control-option[aria-checked="true"] .selection-label { color: var(--sbp-text); font-weight: 700; }
+      .power-control-option .selection-chevron .mdi { color: var(--sbp-accent); }
+      .selection-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; }
+      .selection-label { color: var(--sbp-text); font-size: 13px; font-weight: 600; }
+      .selection-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
+      .selection-chevron { color: var(--sbp-muted); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
+      .selection-chevron .mdi { width: 18px; height: 18px; }
+      .edit-selection-row { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border-radius: 0; }
+      .edit-selection-row:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
+      .edit-selection-row[aria-disabled="true"] { cursor: default; }
+      .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
+      .power-sequences-note { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; padding: 8px 14px 0; }
+
+      /* -- guard screens (the live host's) --------------------------------------------------------- */
+      .capture-error { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.55; }
+      .guard-icon { color: var(--sbp-muted); }
+      .guard-icon .mdi { width: 40px; height: 40px; }
+      .capture-error-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
+      .guard-sub { max-width: 360px; font-size: 13px; }
+      .action-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+      .btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 14px; cursor: pointer; }
+      .btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .btn:disabled { opacity: 0.5; cursor: default; }
+      .btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+      .btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
+
+      /* -- dialogs ---------------------------------------------------------------------------------- */
+      .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+      .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--de-radius-lg); border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); overflow: hidden; color: var(--sbp-text); }
+      .dialog.small { width: min(500px, calc(100vw - 36px)); }
+      .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+      .dialog-header { border-bottom: 1px solid var(--sbp-line); }
+      .dialog-title { font-size: 16px; flex: 1; color: var(--sbp-text); }
+      .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+      .dialog-text { font-size: 14px; line-height: 1.55; color: var(--sbp-text); }
+      .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
+      .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
+      .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
+      .dialog-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 12px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+      .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+      .dialog-btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
+      .dialog-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--sbp-err) 18%, transparent); }
+      .dialog-btn:disabled { opacity: 0.45; cursor: default; }
+      .backup-drawer-sub { color: var(--sbp-muted); font-size: 13px; line-height: 1.5; }
+      .delete-impact-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+      .delete-impact-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--sbp-text); }
+      .delete-impact-list .mdi { width: 18px; height: 18px; color: var(--sbp-muted); }
+      .delete-replace-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sbp-muted); line-height: 1.45; }
+      /* The panel's base styles every <label> as a small uppercase caption; the card's field wrapper is a plain block. */
+      label.decoded-field, .decoded-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: inherit; letter-spacing: 0; text-transform: none; color: inherit; }
+      .decoded-field-label { font-size: 12px; font-weight: 600; color: var(--sbp-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      .decoded-field-input { width: 100%; font: inherit; font-size: 13px; color: var(--sbp-text); background: var(--sbp-input); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 10px; }
+      .decoded-field-input:focus { outline: none; border-color: var(--sbp-accent); }
+      select.decoded-field-input { cursor: pointer; }
+      .binding-static-field { font-size: 13px; font-weight: 600; color: var(--sbp-text); padding: 8px 10px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
+      .binding-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      /* A switch in place of ha-switch. */
+      .sb-switch { position: relative; width: 40px; height: 22px; flex: 0 0 auto; appearance: none; margin: 0; border-radius: 999px; background: var(--sbp-line); cursor: pointer; transition: background 120ms ease; }
+      .sb-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--sbp-panel); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 120ms ease; }
+      .sb-switch:checked { background: var(--sbp-accent); }
+      .sb-switch:checked::after { transform: translateX(18px); }
+
+      @container (max-width: 480px) {
+        .detail-section-nav-btn { gap: 0; }
+        .detail-section-nav-btn .mdi { display: none; }
+      }
+      @container (max-width: 480px) {
+        .detail-view { margin: -12px -12px -12px; }
+      }
+      @container (max-width: 360px) {
+        .detail-title-actions { gap: 6px; min-width: max-content; }
+        .detail-section-nav { overflow-x: auto; scrollbar-width: none; }
+        .detail-section-nav::-webkit-scrollbar { display: none; }
+        .detail-section-nav-btn { flex-basis: auto; min-width: max-content; padding-inline: 12px; }
+        .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+        .dialog, .dialog.small { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: var(--de-radius-xl) var(--de-radius-xl) 0 0; }
+        .dialog-footer { flex-direction: column; align-items: stretch; }
+        .dialog-footer-actions { width: 100%; }
+        .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
+        .dialog-footer-note { min-height: 0; }
+      }
+    `
+];
+function defineDeviceEditor() {
+  if (!customElements.get(DEVICE_EDITOR_TAG)) customElements.define(DEVICE_EDITOR_TAG, SbPanelDeviceEditor);
+}
+
+// custom_components/sofabaton_x1s/www/src/shared/ir-format.ts
+var IrFormatError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "IrFormatError";
+  }
+};
+var RAW_IR_DEFAULT_TRAILING_GAP_US = 4e4;
+var PRONTO_REFERENCE_HZ = 4145146;
+var PRONTO_MAX_WORD = 65535;
+function roundHalfEven(value) {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (diff > 0.5) return floor + 1;
+  if (diff < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+function parseProntoHex(text) {
+  const tokens = text.trim().split(/\s+/).filter((t5) => t5.length > 0);
+  const words = tokens.map((token) => {
+    const value = /^[0-9a-fA-F]+$/.test(token) ? parseInt(token, 16) : NaN;
+    if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
+    return value;
+  });
+  if (words.length < 6) {
+    throw new IrFormatError("ir-format/pronto-too-short");
+  }
+  if (words.some((w2) => w2 < 0 || w2 > 65535)) {
+    throw new IrFormatError("ir-format/pronto-word-range");
+  }
+  const [preamble, freqWord, oncePairs, repeatPairs] = words;
+  if (preamble !== 0) {
+    throw new IrFormatError("ir-format/pronto-not-learned-format");
+  }
+  if (freqWord === 0) throw new IrFormatError("ir-format/pronto-zero-frequency");
+  const expected = 4 + 2 * (oncePairs + repeatPairs);
+  if (words.length !== expected) {
+    throw new IrFormatError("ir-format/pronto-count-mismatch");
+  }
+  const carrierHz = roundHalfEven(PRONTO_REFERENCE_HZ / freqWord);
+  let count;
+  if (oncePairs > 0) {
+    count = 2 * oncePairs;
+  } else if (repeatPairs > 0) {
+    count = 2 * repeatPairs;
+  } else {
+    throw new IrFormatError("ir-format/pronto-empty");
+  }
+  const section = words.slice(4, 4 + count);
+  if (section.some((w2) => w2 === 0)) throw new IrFormatError("ir-format/pronto-zero-timing");
+  const cycleUs = 1e6 / carrierHz;
+  const timingsUs = section.map((w2) => Math.max(1, roundHalfEven(w2 * cycleUs)));
+  return { timingsUs, carrierHz };
+}
+function renderProntoHex(signal) {
+  const { carrierHz } = signal;
+  const durations = normalizeTimings(signal);
+  const freqWord = Math.max(
+    1,
+    Math.min(PRONTO_MAX_WORD, roundHalfEven(PRONTO_REFERENCE_HZ / carrierHz))
+  );
+  const cyclesPerUs = carrierHz / 1e6;
+  const words = [0, freqWord, durations.length / 2, 0];
+  for (const value of durations) {
+    words.push(Math.max(1, Math.min(PRONTO_MAX_WORD, roundHalfEven(value * cyclesPerUs))));
+  }
+  return words.map((w2) => w2.toString(16).toUpperCase().padStart(4, "0")).join(" ");
+}
+function parseSofabatonBlob(hexText) {
+  const blob = hexToBytes(hexText);
+  if (blob.length < 8 + 2 * 4 + 4) {
+    throw new IrFormatError("ir-format/blob-too-short");
+  }
+  if (looksLikeDescriptorBlob(blob)) {
+    throw new IrFormatError("ir-format/blob-descriptive");
+  }
+  const carrierHz = blob[6] << 8 | blob[7];
+  if (carrierHz < 1e4 || carrierHz > 5e5) {
+    throw new IrFormatError("ir-format/blob-carrier");
+  }
+  const wordAt = (pos) => blob[pos] * 16777216 + blob[pos + 1] * 65536 + blob[pos + 2] * 256 + blob[pos + 3];
+  let timingsUs = [];
+  const declaredBytes = (blob[0] << 8 | blob[1]) + (blob[2] << 8 | blob[3]);
+  if (declaredBytes > 0 && declaredBytes % 4 === 0 && 8 + declaredBytes + 4 <= blob.length) {
+    for (let pos = 8; pos < 8 + declaredBytes; pos += 4) timingsUs.push(wordAt(pos));
+    if (timingsUs.some((v3) => v3 === 0)) timingsUs = [];
+  }
+  if (timingsUs.length === 0) {
+    let terminated = false;
+    for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
+      const word = wordAt(pos);
+      if (word === 0) {
+        terminated = true;
+        break;
+      }
+      timingsUs.push(word);
+    }
+    if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  }
+  if (timingsUs.length < 2) {
+    throw new IrFormatError("ir-format/blob-too-few-timings");
+  }
+  if (timingsUs.some((v3) => v3 < 20 || v3 > 2e6)) {
+    throw new IrFormatError("ir-format/blob-timing-range");
+  }
+  return { timingsUs, carrierHz };
+}
+function buildSofabatonBlob(signal) {
+  const { carrierHz } = signal;
+  if (!(carrierHz > 0 && carrierHz < 65536)) {
+    throw new IrFormatError("ir-format/carrier-range");
+  }
+  const durations = normalizeTimings(signal);
+  if (4 * durations.length >= 65536) {
+    throw new IrFormatError("ir-format/too-many-timings");
+  }
+  const bytes = [];
+  pushBe16(bytes, 4 * durations.length);
+  bytes.push(0, 0, 0, 0);
+  pushBe16(bytes, carrierHz);
+  for (const value of durations) {
+    if (value >= 4294967296) throw new IrFormatError("ir-format/timing-range");
+    bytes.push(value >>> 24 & 255, value >>> 16 & 255, value >>> 8 & 255, value & 255);
+  }
+  bytes.push(0, 0, 0, 0);
+  return bytes.map((b3) => b3.toString(16).padStart(2, "0")).join("");
+}
+var UC_HEX_RE = /^\s*([A-Za-z_0-9]+)\s*;\s*(?:0[xX])?([0-9A-Fa-f]+)\s*;\s*(\d+)\s*;\s*(\d+)\s*$/;
+function isUcHexCode(text) {
+  return UC_HEX_RE.test(text);
+}
+function unwrapUcCodesetRow(text) {
+  const trimmed = text.trim();
+  if (!trimmed.includes(",")) return null;
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '"') {
+      if (quoted && trimmed[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  const values = cells.map((cell) => cell.trim());
+  const formatIndex = values.findIndex((cell) => /^(HEX|PRONTO)$/i.test(cell));
+  if (formatIndex < 0 || formatIndex + 1 >= values.length) return null;
+  const format = values[formatIndex].toUpperCase();
+  const code = values.slice(formatIndex + 1).join(",").trim();
+  if (!code) return null;
+  const name = formatIndex > 0 ? values.slice(0, formatIndex).join(",").trim() : "";
+  return { name: name || null, format, code };
+}
+function detectIrPayloadFormat(text) {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return "unknown";
+  if (/^P:/i.test(trimmed)) return "descriptor";
+  if (isUcHexCode(trimmed)) return "uc_hex";
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length >= 6 && tokens.every((t5) => /^[0-9a-fA-F]{4}$/.test(t5)) && parseInt(tokens[0], 16) === 0) {
+    const once = parseInt(tokens[2], 16);
+    const repeat = parseInt(tokens[3], 16);
+    if (tokens.length === 4 + 2 * (once + repeat)) return "pronto";
+  }
+  if (/^[0-9a-fA-F\s]+$/.test(trimmed)) return "sofabaton";
+  return "unknown";
+}
+function normalizeTimings(signal) {
+  if (signal.timingsUs.length === 0) {
+    throw new IrFormatError("ir-format/empty");
+  }
+  const durations = signal.timingsUs.map((v3) => Math.abs(Math.trunc(v3)));
+  if (durations.some((v3) => v3 === 0)) {
+    throw new IrFormatError("ir-format/zero-timing");
+  }
+  if (durations.length % 2 === 1) durations.push(RAW_IR_DEFAULT_TRAILING_GAP_US);
+  return durations;
+}
+function looksLikeDescriptorBlob(blob) {
+  const magic = [0, 0, 17, 0, 148, 112];
+  return blob.length >= 8 && magic.every((b3, i8) => blob[2 + i8] === b3);
+}
+function pushBe16(bytes, value) {
+  bytes.push(value >>> 8 & 255, value & 255);
+}
+function hexToBytes(hexText) {
+  const clean = hexText.replace(/\s+/g, "");
+  if (clean.length === 0 || clean.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(clean)) {
+    throw new IrFormatError("ir-format/not-hex-bytes");
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i8 = 0; i8 < out.length; i8 += 1) {
+    out[i8] = parseInt(clean.slice(2 * i8, 2 * i8 + 2), 16);
+  }
+  return out;
+}
+function formatHexForDisplay(hexText) {
+  const clean = hexText.replace(/\s+/g, "").toLowerCase();
+  return clean.replace(/(..)/g, "$1 ").trim();
+}
+
+// server-panel/src/views/payload-dialog.ts
+var PAYLOAD_DIALOG_TAG = "sb-payload-dialog";
+var DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md";
+var S4 = {
+  addCommandTitle: "Add command",
+  editPayloadTitle: "Edit payload",
+  deviceClass: "Device class",
+  name: "Name",
+  nameHelper: "Shown on the remote and in every command picker.",
+  prontoHexTab: "Pronto Hex",
+  sofabatonHexTab: "Sofabaton Hex",
+  descriptorTab: "Descriptor",
+  prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+  prontoHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB \u2026". The editor converts it to Sofabaton bytes automatically.',
+  payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
+  invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
+  descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+  ucHexUnsupported: "Unfolded Circle HEX codes are not supported here. Paste a Pronto Hex code or the Sofabaton bytes instead.",
+  rawPayload: "Raw payload",
+  rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
+  payloadHex: "Payload (hex bytes)",
+  verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
+  sendingToHub: "Sending to the hub\u2026",
+  sentToHub: "Sent to the hub for one-shot playback.",
+  testFailed: "Test failed.",
+  nothingToTest: "Nothing to test yet.",
+  test: "Test",
+  cancel: "Cancel",
+  save: "Save",
+  payloadDocs: "Payload documentation",
+  newCommandNameRequired: "Enter a name for the new command.",
+  descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
+  payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine)."
+};
+function icon3(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+function fieldValueToDraft(spec, value) {
+  if (value === null || value === void 0) return "";
+  if (spec.numeric) return String(Number(value) || 0);
+  if (spec.escapedDisplay) return String(value).replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+  return String(value);
+}
+function draftToFieldValue(spec, draft) {
+  if (spec.numeric) {
+    const n7 = Number(draft);
+    return Number.isFinite(n7) ? n7 : 0;
+  }
+  if (spec.escapedDisplay) return draft.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+  if (spec.crlfOnWire) return draft.replace(/\r\n|\r|\n/g, "\r\n");
+  return draft;
+}
+function irFormatMessage(err) {
+  return err instanceof IrFormatError ? `${S4.invalidProntoHex} (${err.code})` : S4.invalidProntoHex;
+}
+var SbPayloadDialog = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.hubId = "";
+    this.hubVersion = null;
+    this.deviceClass = "";
+    this.mode = "edit";
+    /** The pristine structured block (null for the hex or raw body). */
+    this.snapshot = null;
+    /** The pristine Sofabaton / raw hex when there is no structured block. */
+    this.rawHex = "";
+    /** The fetched body, kept on a structured live save (the card's `_payloadLiveFetched.dataHex`). */
+    this.fetchedHex = "";
+    this._name = "";
+    this._decoded = null;
+    this._drafts = {};
+    this._raw = "";
+    this._rawSnapshot = "";
+    this._hexTab = "pronto";
+    this._pronto = "";
+    this._prontoAvailable = true;
+    this._formatError = "";
+    this._error = "";
+    this._testStatus = "idle";
+    this._testError = "";
+    this._seeded = false;
+    this._onProntoInput = (event) => {
+      const text = event.currentTarget.value;
+      this._error = "";
+      this._pronto = text;
+      if (this._ucPaste(text)) return;
+      const format = detectIrPayloadFormat(text);
+      if (format === "descriptor") {
+        if (this._isX2) this._morphToDescriptor(text);
+        else this._formatError = S4.descriptorX2Only;
+        return;
+      }
+      if (format === "sofabaton") {
+        try {
+          parseSofabatonBlob(text);
+          this._morphToHex(text, "sofabaton");
+          return;
+        } catch {
+        }
+      }
+      this._applyProntoDraft(text);
+    };
+    this._onRawInput = (event) => {
+      const text = event.currentTarget.value;
+      this._error = "";
+      if (!this._isIr) {
+        this._raw = text;
+        return;
+      }
+      if (this._ucPaste(text)) {
+        this._raw = text;
+        return;
+      }
+      const format = detectIrPayloadFormat(text);
+      if (format === "pronto") {
+        this._morphToHex(text, "pronto");
+        return;
+      }
+      if (format === "descriptor") {
+        if (this._isX2) this._morphToDescriptor(text);
+        else {
+          this._raw = text;
+          this._formatError = S4.descriptorX2Only;
+        }
+        return;
+      }
+      this._raw = text;
+      this._formatError = "";
+      this._syncProntoFromRaw();
+    };
+    this._close = () => {
+      this.dispatchEvent(new CustomEvent("sb-payload-close", { bubbles: true, composed: true }));
+    };
+    this._save = () => {
+      if (this._formatError) {
+        this._error = this._formatError;
+        return;
+      }
+      const detail = this.mode === "add" ? this._addDetail() : this._editDetail();
+      if (detail === void 0) return;
+      if (detail === null) {
+        this._close();
+        return;
+      }
+      this.dispatchEvent(new CustomEvent("sb-payload-save", { bubbles: true, composed: true, detail }));
+    };
+  }
+  willUpdate(changed) {
+    if (!this._seeded || changed.has("snapshot") || changed.has("rawHex") || changed.has("mode")) {
+      this._seeded = true;
+      this._seed();
+    }
+  }
+  _seed() {
+    this._name = "";
+    this._decoded = this.snapshot ? { ...this.snapshot, fields: { ...this.snapshot.fields } } : null;
+    this._drafts = this._decoded ? this._initialDrafts(this._decoded) : {};
+    this._rawSnapshot = this.rawHex;
+    this._raw = this.rawHex;
+    this._error = "";
+    this._testStatus = "idle";
+    this._testError = "";
+    this._resetHexTabs();
+  }
+  get _isIr() {
+    return String(this.deviceClass ?? "").trim().toLowerCase() === "ir";
+  }
+  get _isX2() {
+    return String(this.hubVersion ?? "").toUpperCase().includes("X2");
+  }
+  _initialDrafts(block) {
+    const spec = DECODED_CLASS_FORM_SPECS[block.className];
+    const drafts = {};
+    for (const field of spec?.fields ?? []) drafts[field.key] = fieldValueToDraft(field, block.fields[field.key]);
+    return drafts;
+  }
+  // -- IR hex tabs: the two projections stay in sync (the card's converters) ------------------
+  _resetHexTabs() {
+    this._formatError = "";
+    this._hexTab = "pronto";
+    this._pronto = "";
+    this._prontoAvailable = true;
+    if (!this._isIr) return;
+    if (this._raw.trim()) {
+      this._syncProntoFromRaw();
+      if (!this._prontoAvailable) this._hexTab = "sofabaton";
+    }
+  }
+  _syncProntoFromRaw() {
+    try {
+      this._pronto = renderProntoHex(parseSofabatonBlob(this._raw));
+      this._prontoAvailable = true;
+    } catch {
+      this._pronto = "";
+      this._prontoAvailable = false;
+    }
+  }
+  _applyProntoDraft(text) {
+    this._pronto = text;
+    if (!text.trim()) {
+      this._formatError = "";
+      return;
+    }
+    try {
+      this._raw = formatHexForDisplay(buildSofabatonBlob(parseProntoHex(text)));
+      this._formatError = "";
+    } catch (err) {
+      this._formatError = irFormatMessage(err);
+    }
+  }
+  _morphToHex(text, tab) {
+    this._decoded = null;
+    this._drafts = {};
+    this._formatError = "";
+    if (tab === "pronto") {
+      this._hexTab = "pronto";
+      this._prontoAvailable = true;
+      this._applyProntoDraft(text);
+    } else {
+      this._hexTab = "sofabaton";
+      this._raw = text;
+      this._syncProntoFromRaw();
+    }
+  }
+  _morphToDescriptor(text) {
+    this._decoded = { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false };
+    this._drafts = { descriptor: text.trim() };
+    this._formatError = "";
+  }
+  /** A pasted Unfolded Circle code: detected as the card does, refused with a hint (no converter on the server). */
+  _ucPaste(text) {
+    const row = unwrapUcCodesetRow(text);
+    const code = row && /^HEX$/i.test(row.format) ? row.code : text;
+    if (!isUcHexCode(code)) return false;
+    this._formatError = S4.ucHexUnsupported;
+    return true;
+  }
+  _onFieldInput(field, event) {
+    const value = event.currentTarget.value;
+    this._error = "";
+    if (this._decoded?.className === "ir" && field.key === "descriptor") {
+      if (this._ucPaste(value)) {
+        this._drafts = { ...this._drafts, [field.key]: value };
+        return;
+      }
+      const format = detectIrPayloadFormat(value);
+      if (format === "pronto") {
+        this._morphToHex(value, "pronto");
+        return;
+      }
+      if (format === "sofabaton") {
+        try {
+          parseSofabatonBlob(value);
+          this._morphToHex(value, "sofabaton");
+          return;
+        } catch {
+        }
+      }
+      this._formatError = "";
+    }
+    this._drafts = { ...this._drafts, [field.key]: value };
+  }
+  _selectHexTab(tab) {
+    if (tab === "pronto" && !this._prontoAvailable) return;
+    this._hexTab = tab;
+    this._formatError = "";
+  }
+  // -- test and save --------------------------------------------------------------------------------
+  async _test() {
+    if (this._formatError) {
+      this._testStatus = "error";
+      this._testError = this._formatError;
+      return;
+    }
+    const descriptor = this._decoded?.className === "ir" ? String(this._drafts.descriptor ?? "").trim() : "";
+    const raw = this._raw.trim();
+    const value = descriptor || raw;
+    if (!value) {
+      this._testStatus = "error";
+      this._testError = S4.nothingToTest;
+      return;
+    }
+    this._testStatus = "testing";
+    this._testError = "";
+    try {
+      const response = await this.api.playPayload(this.hubId, descriptor ? { descriptor } : { hex: raw });
+      if (!response.ok) {
+        this._testStatus = "error";
+        this._testError = problemText(response);
+        return;
+      }
+      this._testStatus = "success";
+    } catch (err) {
+      this._testStatus = "error";
+      this._testError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  _changedFields(block) {
+    const spec = DECODED_CLASS_FORM_SPECS[block.className];
+    if (!spec) return null;
+    const changed = {};
+    let touched = false;
+    for (const field of spec.fields) {
+      const draft = this._drafts[field.key] ?? "";
+      if (draft === fieldValueToDraft(field, block.fields[field.key])) continue;
+      changed[field.key] = draftToFieldValue(field, draft);
+      touched = true;
+    }
+    return touched ? changed : null;
+  }
+  /** The card's live edit: a structured or raw `restore_data` with the `edited` marker; null when nothing changed; undefined on an error shown. */
+  _editDetail() {
+    const block = this._decoded;
+    if (block) {
+      const changed = this._changedFields(block);
+      if (!changed) return null;
+      return {
+        name: "",
+        restoreData: {
+          transport: "hub_code_record",
+          data_hex: this.fetchedHex,
+          decoded: { class: block.className, trailer_hex: block.trailerHex, fields: { ...block.fields, ...changed }, edited: true }
+        }
+      };
+    }
+    const normalized = normalizeCommandPayloadHex(this._raw);
+    if (!normalized) {
+      this._error = S4.payloadHexRequired;
+      return void 0;
+    }
+    if (normalized === (normalizeCommandPayloadHex(this._rawSnapshot) ?? "")) return null;
+    return { name: "", restoreData: { transport: "hub_code_record", data_hex: normalized, edited: true } };
+  }
+  /** The card's add: every field serialised (no baseline), or the normalised bytes. */
+  _addDetail() {
+    const name = sanitizeName(this.hubVersion, this._name).trim();
+    if (!name) {
+      this._error = S4.newCommandNameRequired;
+      return void 0;
+    }
+    const block = this._decoded;
+    if (block) {
+      const spec = DECODED_CLASS_FORM_SPECS[block.className];
+      const fields = { ...block.fields };
+      for (const field of spec?.fields ?? []) fields[field.key] = draftToFieldValue(field, this._drafts[field.key] ?? "");
+      if (block.className === "ir" && !/^P:/i.test(String(fields.descriptor ?? "").trim())) {
+        this._error = S4.descriptiveIrRequired;
+        return void 0;
+      }
+      return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: block.trailerHex, fields, edited: true } } };
+    }
+    const normalized = normalizeCommandPayloadHex(this._raw);
+    if (!normalized) {
+      this._error = S4.payloadHexRequired;
+      return void 0;
+    }
+    return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
+  }
+  // -- render ---------------------------------------------------------------------------------------
+  render() {
+    const isAdd = this.mode === "add";
+    const deviceClass = String(this.deviceClass ?? "").trim();
+    const body = this._decoded ? this._renderDecodedForm(this._decoded) : this._isIr ? this._renderIrHexForm() : this._renderRawForm();
+    return b2`
+      <div class="modal-backdrop" @click=${this._close}>
+        <div class="dialog" id="payload-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title-group">
+              <div class="dialog-title">${isAdd ? S4.addCommandTitle : S4.editPayloadTitle}</div>
+              ${deviceClass ? b2`<span class="payload-class-badge" title=${S4.deviceClass}>${deviceClass}</span>` : A}
+            </div>
+            <button class="dialog-close" type="button" aria-label=${S4.cancel} @click=${this._close}>${icon3(mdiClose)}</button>
+          </div>
+          <div class="dialog-body">
+            ${isAdd ? b2`<label class="decoded-field">
+                  <span class="decoded-field-label">${S4.name}</span>
+                  <input class="decoded-field-input" id="payload-name" type="text" maxlength="20" .value=${this._name} @input=${(event) => {
+      const input = event.currentTarget;
+      const value = sanitizeName(this.hubVersion, input.value);
+      input.value = value;
+      this._name = value;
+      this._error = "";
+    }} />
+                  <span class="decoded-field-helper">${S4.nameHelper}</span>
+                </label>` : A}
+            ${body}
+            ${this._isIr ? b2`<div class="payload-test-note">${icon3(mdiFlashOutline)}<span>${S4.verifyPayloadLive}</span></div>` : A}
+            ${this._testStatus === "idle" ? A : b2`<div class="section-status payload-test-status ${this._testStatus}" id="payload-test-status" role="status" aria-live="polite">
+                  ${icon3(this._testStatus === "testing" ? mdiProgressClock : this._testStatus === "success" ? mdiCheckCircleOutline : mdiAlertCircleOutline)}
+                  <span>${this._testStatus === "testing" ? S4.sendingToHub : this._testStatus === "success" ? S4.sentToHub : this._testError || S4.testFailed}</span>
+                </div>`}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note payload-dialog-note">
+              <a class="payload-doc-link" href=${DOCS_URL} target="_blank" rel="noreferrer noopener">${S4.payloadDocs}</a>
+              ${this._error ? b2`<span class="payload-dialog-error" id="payload-error">${this._error}</span>` : A}
+            </div>
+            <div class="dialog-footer-actions">
+              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon3(mdiFlashOutline)}<span>${S4.test}</span></button>` : A}
+              <button class="dialog-btn" type="button" @click=${this._close}>${S4.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S4.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderIrHexForm() {
+    const active = this._prontoAvailable ? this._hexTab : "sofabaton";
+    const helper = this._formatError || (active === "pronto" ? S4.prontoHelper : S4.payloadHexHelper);
+    return b2`
+      <div class="decoded-form">
+        <div class="payload-format-tabs" role="tablist">
+          <button class="payload-format-tab ${active === "pronto" ? "active" : ""}" type="button" role="tab" data-tab="pronto" aria-selected=${String(active === "pronto")} ?disabled=${!this._prontoAvailable} title=${this._prontoAvailable ? "" : S4.prontoUnavailable} @click=${() => this._selectHexTab("pronto")}>${S4.prontoHexTab}</button>
+          <button class="payload-format-tab ${active === "sofabaton" ? "active" : ""}" type="button" role="tab" data-tab="sofabaton" aria-selected=${String(active === "sofabaton")} @click=${() => this._selectHexTab("sofabaton")}>${S4.sofabatonHexTab}</button>
+        </div>
+        <label class="decoded-field">
+          ${active === "pronto" ? b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-pronto" rows="6" spellcheck="false" .value=${this._pronto} @input=${this._onProntoInput}></textarea>` : b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>`}
+          <span class="decoded-field-helper ${this._formatError ? "payload-format-error" : ""}" id="payload-helper">${helper}</span>
+        </label>
+      </div>
+    `;
+  }
+  _renderRawForm() {
+    return b2`
+      <div class="decoded-form">
+        <div class="decoded-form-head"><div class="decoded-form-title">${S4.rawPayload}</div><div class="decoded-form-sub">${S4.rawPayloadDescription}</div></div>
+        <label class="decoded-field">
+          <span class="decoded-field-label">${S4.payloadHex}</span>
+          <textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>
+          <span class="decoded-field-helper" id="payload-helper">${S4.payloadHexHelper}</span>
+        </label>
+      </div>
+    `;
+  }
+  _renderDecodedForm(block) {
+    const spec = DECODED_CLASS_FORM_SPECS[block.className];
+    const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S4.descriptorTab}</button></div>
+          ${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}` : b2`<div class="decoded-form-head"><div class="decoded-form-title">${spec?.title ?? block.className}</div>${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}</div>`;
+    return b2`
+      <div class="decoded-form" data-class=${block.className}>
+        ${head}
+        ${(spec?.fields ?? []).map((field) => this._renderField(field))}
+      </div>
+    `;
+  }
+  _renderField(field) {
+    const value = this._drafts[field.key] ?? "";
+    const helper = field.key === "descriptor" && this._formatError ? this._formatError : field.helper;
+    const helperClass = field.key === "descriptor" && this._formatError ? "payload-format-error" : "";
+    return b2`
+      <label class="decoded-field" data-field=${field.key}>
+        <span class="decoded-field-label">${field.label}</span>
+        ${field.multiline ? b2`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows="4" spellcheck="false" .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)}></textarea>` : b2`<input class="decoded-field-input" type=${field.numeric ? "number" : "text"} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)} />`}
+        ${helper ? b2`<span class="decoded-field-helper ${helperClass}">${helper}</span>` : A}
+      </label>
+    `;
+  }
+};
+SbPayloadDialog.properties = {
+  api: { attribute: false },
+  hubId: { attribute: false },
+  hubVersion: { attribute: false },
+  deviceClass: { attribute: false },
+  mode: { attribute: false },
+  snapshot: { attribute: false },
+  rawHex: { attribute: false },
+  fetchedHex: { attribute: false },
+  _name: { state: true },
+  _decoded: { state: true },
+  _drafts: { state: true },
+  _raw: { state: true },
+  _hexTab: { state: true },
+  _pronto: { state: true },
+  _prontoAvailable: { state: true },
+  _formatError: { state: true },
+  _error: { state: true },
+  _testStatus: { state: true },
+  _testError: { state: true }
+};
+SbPayloadDialog.styles = [
+  PANEL_BASE_CSS,
+  i`
+      :host { display: contents; }
+      .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
+      .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+      .dialog { width: min(640px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); overflow: hidden; color: var(--sbp-text); }
+      .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+      .dialog-header { border-bottom: 1px solid var(--sbp-line); }
+      .dialog-title-group { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+      .dialog-title { font-size: 16px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sbp-text); }
+      .payload-class-badge { flex: 0 0 auto; font-family: var(--sbp-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.12); }
+      .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; padding: 0; }
+      .dialog-close:hover { border-color: var(--sbp-accent); color: var(--sbp-text); }
+      .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+      .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
+      .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
+      .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
+      .payload-dialog-note { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+      .payload-doc-link { color: var(--sbp-accent); text-decoration: underline; text-decoration-color: var(--sbp-accent); font-weight: 400; font-size: 13px; white-space: nowrap; }
+      .payload-doc-link:hover { color: var(--sbp-text); }
+      .dialog-btn { border: 1px solid var(--sbp-line); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+      .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+      .dialog-btn:disabled { opacity: 0.45; cursor: default; }
+      .payload-test-btn { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
+      .decoded-form { display: flex; flex-direction: column; gap: 10px; }
+      .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
+      .decoded-form-title { font-size: 13px; font-weight: 600; color: var(--sbp-text); }
+      .decoded-form-sub { font-size: 12px; color: var(--sbp-muted); line-height: 1.4; }
+      .payload-format-tabs { display: flex; gap: 2px; align-items: flex-end; }
+      .payload-format-tab { appearance: none; border: none; background: none; padding: 4px 10px 5px; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sbp-muted); border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; cursor: pointer; }
+      .payload-format-tab:hover:not(:disabled):not(.active) { color: var(--sbp-text); background: color-mix(in srgb, var(--sbp-text) 10%, transparent); }
+      .payload-format-tab.active { color: var(--sbp-accent); border-bottom-color: var(--sbp-accent); cursor: default; }
+      .payload-format-tab:disabled { opacity: 0.45; cursor: not-allowed; }
+      .payload-format-error { color: var(--sbp-err); }
+      /* The panel's base styles every <label> as a small uppercase caption; the card's field wrapper is a plain block. */
+      label.decoded-field, .decoded-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: inherit; letter-spacing: 0; text-transform: none; color: inherit; }
+      .decoded-field-label { font-size: 12px; font-weight: 600; color: var(--sbp-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      .decoded-field-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; color: var(--sbp-text); background: var(--sbp-input); border: 1px solid var(--sbp-line); border-radius: 10px; padding: 8px 10px; }
+      .decoded-field-input:focus { outline: none; border-color: var(--sbp-accent); }
+      .decoded-field-input:disabled { opacity: 0.6; }
+      .decoded-field-input--multiline { font-family: var(--sbp-mono); resize: vertical; min-height: 60px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .decoded-field-input--escaped { white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; }
+      .decoded-field-helper { font-size: 11px; color: var(--sbp-muted); line-height: 1.35; }
+      .payload-test-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--sbp-warn) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, transparent); color: var(--sbp-text); font-size: 12.5px; line-height: 1.45; }
+      .payload-test-note .mdi { width: 18px; height: 18px; color: var(--sbp-warn); margin-top: 1px; }
+      .section-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
+      .section-status .mdi { width: 18px; height: 18px; }
+      .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
+      .section-status.success { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 30%, var(--sbp-line)); background: color-mix(in srgb, #2e7d32 6%, var(--sbp-panel)); }
+      @media (max-width: 640px) {
+        .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+        .dialog { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: 22px 22px 0 0; }
+        .dialog-footer { flex-direction: column; align-items: stretch; }
+        .dialog-footer-actions { width: 100%; }
+        .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
+        .payload-test-btn { margin-right: 0; }
+      }
+    `
+];
+function definePayloadDialog() {
+  if (!customElements.get(PAYLOAD_DIALOG_TAG)) customElements.define(PAYLOAD_DIALOG_TAG, SbPayloadDialog);
 }
 
 // server-panel/src/views/events-view.ts
@@ -13446,6 +18298,8 @@ function bootstrapServerPanel() {
   if (!customElements.get(TYPE)) customElements.define(TYPE, SofabatonRemoteCard);
   defineHubsView();
   defineCatalogView();
+  defineDeviceEditor();
+  definePayloadDialog();
   defineRemoteView();
   defineApiView();
   defineEventsView();

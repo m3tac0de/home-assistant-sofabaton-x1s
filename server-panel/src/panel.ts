@@ -12,6 +12,8 @@ import { definePanel } from "./panel-element";
 import { defineApiView } from "./views/api-view";
 import { defineBackupView } from "./views/backup-view";
 import { defineCatalogView } from "./views/catalog-view";
+import { defineDeviceEditor } from "./views/device-editor";
+import { definePayloadDialog } from "./views/payload-dialog";
 import { defineEventsView } from "./views/events-view";
 import { defineHubsView } from "./views/hubs-view";
 import { defineRemoteView } from "./views/remote-view";
@@ -23,6 +25,8 @@ export function bootstrapServerPanel(): void {
   if (!customElements.get(TYPE)) customElements.define(TYPE, SofabatonRemoteCard);
   defineHubsView();
   defineCatalogView();
+  defineDeviceEditor();
+  definePayloadDialog();
   defineRemoteView();
   defineApiView();
   defineEventsView();

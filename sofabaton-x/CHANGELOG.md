@@ -11,7 +11,13 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
-Nothing yet.
+- `AsyncXProxy.sync_device` takes `allow_command_removal`: with it, command
+  rows present in the baseline but absent from the edit are deleted on the
+  hub (the hub cascades their references) and the device's display-sort
+  table is rewritten once. The default stays refusing removals as out of
+  scope. The server's `PUT /hubs/{id}/devices/{did}` and its plan preview
+  pass it, so the control panel's device editor can delete commands as the
+  Home Assistant card does.
 
 ## 0.2.0 (2026-09-16)
 

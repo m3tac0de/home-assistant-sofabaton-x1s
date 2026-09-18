@@ -11,6 +11,16 @@ export interface RunningActivity {
   name?: string | null;
 }
 
+/** `GET /hubs/{id}/info`: identity from the connect banner; `known` false until read. */
+export interface HubInfo {
+  known: boolean;
+  model: string | null;
+  name: string | null;
+  mac: string | null;
+  firmware_version: number | null;
+  production_batch: string | null;
+}
+
 export interface HubStatus {
   hub_connected: boolean;
   app_connected: boolean;
@@ -235,6 +245,19 @@ export interface ApplySummary {
 /** `POST /snapshot/refresh` body: one entity, or neither for the whole hub. */
 export type RefreshScope = { device_id: number } | { activity_id: number } | Record<string, never>;
 
+/** `GET .../commands/{cid}/payload`: the stored body and what the library could read from it. */
+export interface PayloadView {
+  kind: "raw" | "descriptive" | string;
+  hex: string;
+  descriptor: string | null;
+  carrier_hz: number | null;
+  /** The library's structured block for the classes it round-trips (`restore_data.decoded`'s shape); null when the body stays raw. */
+  decoded: { class: string; fields: Record<string, unknown>; trailer_hex?: string } | null;
+}
+
+/** One payload in any supported source format (exactly one field), for `POST /play`. */
+export type PayloadSpec = { hex: string } | { pronto: string } | { descriptor: string } | { timings_us: number[]; carrier_hz: number };
+
 /** The base the panel derives from its own URL: the page lives at `<base>/ui/`. */
 export function serverBaseFromPanelUrl(href: string): string {
   return serverBaseFromPageUrl(href, "/ui/");
@@ -391,6 +414,30 @@ export class PanelApi {
 
   snapshot(hubId: string): Promise<ApiResponse<SnapshotDocument>> {
     return this.request<SnapshotDocument>("GET", `${this._hub(hubId)}/snapshot`);
+  }
+
+  hubInfo(hubId: string): Promise<ApiResponse<HubInfo>> {
+    return this.request<HubInfo>("GET", `${this._hub(hubId)}/info`);
+  }
+
+  /** A command's stored payload, read from the hub (404 `payload_not_found` when it has none). */
+  commandPayload(hubId: string, deviceId: number, commandId: number): Promise<ApiResponse<PayloadView>> {
+    return this.request<PayloadView>("GET", `${this._hub(hubId)}/devices/${deviceId}/commands/${commandId}/payload`);
+  }
+
+  /** Fire a payload from the hub's blaster once; nothing is saved. */
+  playPayload(hubId: string, spec: PayloadSpec): Promise<ApiResponse<{ accepted: boolean; mode: string }>> {
+    return this.request<{ accepted: boolean; mode: string }>("POST", `${this._hub(hubId)}/play`, { body: spec });
+  }
+
+  /** Write an edited device element (the snapshot's `devices[]` entry) as a job; `If-Match` carries the snapshot it was edited on. */
+  editDevice(hubId: string, deviceId: number, element: SnapshotEntity, snapshotId: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/devices/${deviceId}`, { body: element, headers: { "If-Match": `"${snapshotId}"` } });
+  }
+
+  /** Delete a device (a job); the hub cascades the removal into its activities. */
+  removeDevice(hubId: string, deviceId: number): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/devices/${deviceId}`);
   }
 
   devices(hubId: string): Promise<ApiResponse<Device[]>> {

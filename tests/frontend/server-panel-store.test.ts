@@ -473,11 +473,11 @@ test("routes: the URL wins over the preferences, a hub route follows the selecti
   assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "a", tab: "backup", sub: "restore" });
   // A tab click keeps the hub; a tool page keeps the selection and remembers the way back.
   deep.store.navigate(hubRoute(null, "hub", "nonsense"));
-  assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "a", tab: "hub", sub: "devices" });
+  assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "a", tab: "hub", sub: "activities" });
   assert.equal(deep.store.snapshot.routeReplace, false);
   deep.store.navigate(toolRoute("debug", "api"));
   assert.deepEqual(deep.store.snapshot.route, { kind: "tool", page: "debug", sub: "api" });
-  assert.deepEqual(deep.store.lastHubRoute(), { kind: "hub", hubId: "a", tab: "hub", sub: "devices" });
+  assert.deepEqual(deep.store.lastHubRoute(), { kind: "hub", hubId: "a", tab: "hub", sub: "activities" });
   assert.equal(JSON.parse(storage.getItem("sofabaton-panel")!).tab, "hub");
   // Picking another hub on a tool page changes the selection only; on a hub route the route follows.
   deep.store.selectHub("b");
@@ -491,7 +491,7 @@ test("routes: the URL wins over the preferences, a hub route follows the selecti
   deep.store.navigate(hubRoute("zzz", "hub"));
   await deep.clock.advance(5000);
   assert.equal(deep.store.snapshot.selectedHubId, "a");
-  assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "a", tab: "hub", sub: "devices" });
+  assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "a", tab: "hub", sub: "activities" });
   api.hubs = [];
   await deep.clock.advance(5000);
   assert.deepEqual(deep.store.snapshot.route, { kind: "tool", page: "setup", sub: "hubs" });

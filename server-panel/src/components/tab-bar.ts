@@ -7,16 +7,21 @@
 // HA control panel card's tab bar.
 
 import { html, nothing, type TemplateResult } from "lit";
-import { mdiCogOutline, mdiChevronDown, mdiChevronUp } from "@mdi/js";
+import { mdiAudioVideo, mdiCogOutline, mdiChevronDown, mdiChevronUp, mdiPlayCircleOutline } from "@mdi/js";
 
 import { HUB_TABS, SUBTAB_LABELS, SUBTABS, TAB_LABELS, TOOL_LABELS, TOOL_PAGES, TOOL_SUBTABS, type HubTab, type Route, type ToolPage } from "../panel-route";
 import type { ThemeChoice } from "../panel-state";
+
+/** The subtabs that carry an icon, as the HA card's Activities / Devices row does. */
+const SUBTAB_ICONS: Record<string, string> = { activities: mdiPlayCircleOutline, devices: mdiAudioVideo };
 
 export function renderTabBar(params: {
   route: Route;
   cogOpen: boolean;
   theme: ThemeChoice;
   eventCount: number;
+  /** A count pill per subtab (the card's cached activity and device counts); absent subtabs show none. */
+  subCounts?: Record<string, number>;
   onTab: (tab: HubTab) => void;
   onSub: (sub: string) => void;
   onToggleCog: () => void;
@@ -55,7 +60,15 @@ export function renderTabBar(params: {
     </div>
     <div class="subtabs" id="subtabs" role="tablist" aria-label=${onTool ? TOOL_LABELS[route.page] : TAB_LABELS[route.tab]} data-page=${onTool ? route.page : route.tab}>
       ${(onTool ? TOOL_SUBTABS[route.page] : SUBTABS[route.tab]).map(
-        (sub) => html`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>${SUBTAB_LABELS[sub] ?? sub}</button>`,
+        (sub) => {
+          const count = params.subCounts?.[sub];
+          const iconPath = SUBTAB_ICONS[sub];
+          return html`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>
+            ${iconPath ? html`<svg class="subtab-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${iconPath}></path></svg>` : nothing}
+            <span class="subtab-label">${SUBTAB_LABELS[sub] ?? sub}</span>
+            ${typeof count === "number" ? html`<span class="subtab-count">${count}</span>` : nothing}
+          </button>`;
+        },
       )}
     </div>
   `;

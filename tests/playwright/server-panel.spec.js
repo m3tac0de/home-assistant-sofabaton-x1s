@@ -270,7 +270,7 @@ test.describe("control panel, hubs", () => {
   test("lists the registered hubs in the picker, selects the first, the setup page shows its detail", async ({ page }, testInfo) => {
     await mockServer(page, { hubs: [LIVING, OFFICE], seen: [SEEN_KNOWN, SEEN_NEW] });
     await page.goto(PAGE);
-    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
     await expect(chip(page)).toContainText("Living room");
     await expect(page.locator("#ws-dot")).toHaveClass(/ok/);
     await expect(page.locator("#dock-pill .dock-pill-half").nth(0)).toHaveClass(/on/);
@@ -290,7 +290,7 @@ test.describe("control panel, hubs", () => {
     expect(box.x + box.width).toBeLessThanOrEqual(width);
     await options(page).nth(1).click();
     await expect(chip(page)).toContainText("192.168.1.60");
-    await expect(page).toHaveURL(/#\/192\.168\.1\.60\/hub\/devices$/);
+    await expect(page).toHaveURL(/#\/192\.168\.1\.60\/hub\/activities$/);
     await expect(page.locator("#hub-picker-menu")).toHaveCount(0);
 
     await openPage(page, "setup");
@@ -486,11 +486,14 @@ test.describe("control panel, shell", () => {
     await page.goto(PAGE);
     await expect(page.locator("#view-hub")).toBeVisible();
     await expect(page.locator('#tabs button[data-tab="hub"]')).toHaveClass(/active/);
-    await expect(page.locator('#subtabs button[data-sub="devices"]')).toHaveClass(/active/);
+    await expect(page.locator('#subtabs button[data-sub="activities"]')).toHaveClass(/active/);
+    // The Hub subtabs carry the card's icon and count pills.
+    await expect(page.locator('#subtabs button[data-sub="activities"] .subtab-count')).toHaveText("2");
+    await expect(page.locator('#subtabs button[data-sub="devices"] .subtab-count')).toHaveText("2");
     await expect(page.locator("#dock-link")).toHaveText("Control panel docs");
 
-    await page.click('#subtabs button[data-sub="activities"]');
-    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
+    await page.click('#subtabs button[data-sub="devices"]');
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
     await page.click('#tabs button[data-tab="backup"]');
     await expect(page).toHaveURL(/#\/e26a44861b45\/backup\/make$/);
     await expect(page.locator("#backup-placeholder")).toContainText("Make a backup");
@@ -520,7 +523,7 @@ test.describe("control panel, shell", () => {
 
     // A tab click from a tool page returns to the hub route; the back button walks the history.
     await page.click('#tabs button[data-tab="hub"]');
-    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
     await page.goBack();
     await expect(page).toHaveURL(/#\/server\/status$/);
     await expect(page.locator("#view-server-status")).toBeVisible();
@@ -817,7 +820,7 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-banner")).toBeVisible();
   });
 
-  test("the hub tab lists devices and activities by subtab with ids and rows, and refreshes through a job", async ({ page }, testInfo) => {
+  test("the hub tab navigates the cache as the card does: one drawer at a time, badges, a refresh per row and Refresh all", async ({ page }, testInfo) => {
     const state = { hubs: [LIVING], seen: [] };
     const { calls } = await mockServer(page, state);
     // The catalog's own routes: the snapshot header with provenance, a
@@ -842,54 +845,359 @@ test.describe("control panel, views", () => {
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ job_id: "j1", hub_id: LIVING.hub_id, kind: "refresh_entity", status, cancellable: false, created_at: "t", started_at: "t", finished_at: null, progress: { completed_steps: polls, total_steps: 3 }, result: null, error: null }) });
     });
 
+    // The legacy #catalog hash lands on the Hub tab, Activities first as on the card.
     await page.goto(`${PAGE}#catalog`);
-    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
     await expect(page.locator("#catalog-status")).toContainText("partial");
-    const entries = page.locator("#catalog-list .ent");
-    // The Devices subtab: the one device.
-    await expect(entries).toHaveCount(1);
-    await expect(entries.nth(0)).toContainText("1");
-    await expect(entries.nth(0)).toContainText("TV");
-    await expect(entries.nth(0)).toContainText("ir · power off");
-    await expect(entries.nth(0)).not.toContainText("Sony");
-    await expect(entries.nth(0).locator(".dot")).toHaveClass(/ok/);
-    await expect(page.locator("#catalog-detail")).toContainText("Select a device or an activity");
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator(".entity-name-label")).toHaveText("Watch TV");
+    await expect(rows.nth(0).locator(".entity-meta .id-badge")).toContainText("101");
+    await expect(rows.nth(1).locator(".entity-name-label")).toHaveText("Listen");
+    await expect(page.locator("#catalog-rows .entity-block.open")).toHaveCount(0);
 
-    // A device: its facts and its commands with ids.
-    await entries.nth(0).click();
-    await expect(page.locator("#catalog-detail")).toContainText("entity id");
-    await expect(page.locator("#catalog-commands tbody tr")).toHaveCount(2);
-    await expect(page.locator("#catalog-commands tbody tr").nth(1)).toContainText("17");
-    await expect(page.locator("#catalog-commands tbody tr").nth(1)).toContainText("Up");
-    await expect(page.locator("#catalog-detail")).toContainText('"entity_id": 1');
+    // Opening a row shows its drawer: the bound buttons with their codes; the count line follows the rows.
+    await rows.nth(0).locator(".entity-summary").click();
+    await expect(rows.nth(0)).toHaveClass(/open/);
+    // The open drawer's header is sticky under the shell's top dock, whose height the shell measures.
+    const dockHeight = await page.locator("#top-dock").evaluate((el) => el.getBoundingClientRect().height);
+    expect(dockHeight).toBeGreaterThan(80);
+    await expect(rows.nth(0).locator(".entity-summary")).toHaveCSS("position", "sticky");
+    await expect(rows.nth(0).locator(".entity-summary")).toHaveCSS("top", `${dockHeight}px`);
+    await expect(rows.nth(0).locator(".inner-section-label")).toHaveText(["Buttons"]);
+    await expect(rows.nth(0).locator(".inner-row")).toHaveCount(2);
+    await expect(rows.nth(0).locator(".inner-row").nth(1)).toContainText("UP");
+    await expect(rows.nth(0).locator(".inner-row").nth(1).locator(".id-badge")).toContainText("174");
+    await expect(rows.nth(0).locator(".entity-count")).toHaveText("0 favs / 0 macros / 2 buttons");
 
-    // The Activities subtab: the card fixture's two activities (101 fetched per the snapshot, 102 never); the device selection is dropped.
-    await page.click('#subtabs button[data-sub="activities"]');
-    await expect(entries).toHaveCount(2);
-    await expect(entries.nth(0)).toContainText("101");
-    await expect(entries.nth(0)).toContainText("Watch TV");
-    await expect(entries.nth(0).locator(".dot")).toHaveClass(/off/);
-    await expect(entries.nth(1)).toContainText("102");
-    await expect(page.locator("#catalog-detail")).toContainText("Select a device or an activity");
-    await entries.nth(0).click();
-    await expect(page.locator("#catalog-buttons tbody tr")).toHaveCount(2);
-    await expect(page.locator("#catalog-buttons tbody tr").nth(1)).toContainText("174");
-    await expect(page.locator("#catalog-detail")).toContainText("2 bound of 2");
-    await expect(page.locator("#catalog-detail")).toContainText("never (rows come from the server's cache)");
-    await expect(page.locator("#catalog-detail")).not.toContainText("brand");
+    // One drawer at a time: opening the second closes the first; a second click closes it again.
+    await rows.nth(1).locator(".entity-summary").click();
+    await expect(rows.nth(1)).toHaveClass(/open/);
+    await expect(rows.nth(0)).not.toHaveClass(/open/);
+    await expect(rows.nth(1).locator(".inner-empty")).toHaveText("No cached data yet.");
+    await rows.nth(1).locator(".entity-summary").click();
+    await expect(page.locator("#catalog-rows .entity-block.open")).toHaveCount(0);
 
-    // Refresh this activity: the job is followed to done, then the rows and provenance reload.
-    await page.click("#catalog-refresh-entity");
+    // The row's refresh button reads that activity from the hub as a job, followed to done.
+    await expect(rows.nth(0).locator(".entity-refresh")).toHaveAttribute("title", /not read from the hub in full yet/);
+    await rows.nth(0).locator(".entity-refresh").click();
     await expect.poll(() => calls.filter((c) => c.key === `POST /hubs/${LIVING.hub_id}/snapshot/refresh`).map((c) => c.body)).toEqual([{ activity_id: 101 }]);
     await expect.poll(() => polls).toBeGreaterThanOrEqual(3);
-    await expect(page.locator("#catalog-refresh-entity")).toHaveText("Refresh activity");
-    await expect(entries.nth(0).locator(".dot")).toHaveClass(/ok/);
-    await expect(page.locator("#catalog-detail")).not.toContainText("never (rows");
+    await expect(rows.nth(0).locator(".entity-refresh")).not.toHaveClass(/spinning/);
+    await expect(rows.nth(0).locator(".entity-refresh")).toHaveAttribute("title", /read from the hub 9\/16\/2026/);
 
-    // Refresh all sends an empty scope.
+    // The Devices subtab: the one device, its commands with ComID badges once opened.
+    await page.click('#subtabs button[data-sub="devices"]');
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
+    await expect(rows).toHaveCount(1);
+    await expect(rows.nth(0).locator(".entity-name-label")).toHaveText("TV");
+    await expect(rows.nth(0).locator(".entity-count")).toHaveText("ir");
+    await expect(rows.nth(0).locator(".entity-meta .id-badge")).toContainText("1");
+    await rows.nth(0).locator(".entity-summary").click();
+    await expect(rows.nth(0).locator(".inner-row")).toHaveCount(2);
+    await expect(rows.nth(0).locator(".inner-row").nth(1)).toContainText("Up");
+    await expect(rows.nth(0).locator(".inner-row").nth(1).locator(".id-badge")).toContainText("17");
+    await expect(rows.nth(0).locator(".entity-count")).toHaveText("2 cmds");
+
+    // Refresh all sends an empty scope; the label narrates the job and returns.
     await page.click("#catalog-refresh-all");
     await expect.poll(() => calls.filter((c) => c.key === `POST /hubs/${LIVING.hub_id}/snapshot/refresh`).map((c) => c.body)).toEqual([{ activity_id: 101 }, {}]);
-    await expect(page.locator("#catalog-refresh-all")).toHaveText("Refresh all");
+    await expect(page.locator("#catalog-refresh-all-label")).toHaveText("Refresh all");
+    await expect(page.locator("#catalog-refresh-all")).not.toHaveClass(/spinning/);
+    await expect(rows.nth(0)).toHaveClass(/open/);
     await page.screenshot({ path: shot(testInfo, "catalog"), fullPage: true });
+  });
+
+  test("the device editor recreates the card's Edit device screen: guards, draft edits, the exit dialog, one Sync with If-Match, the stale state", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    const snapshot = {
+      snapshot_id: "snap-1", captured_at: "2026-09-18T00:00:00Z", engine_generation: 1, complete: true, payload_profile: "structural",
+      hub: { name: "Living room", version: "X1S" },
+      devices: [{
+        kind: "device_backup", complete: true, editable: true, fetched_at: "2026-09-18T00:00:00Z",
+        device: { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", idle_behavior: 1 },
+        commands: [{ command_id: 1, name: "Power" }, { command_id: 17, name: "Up" }],
+        button_bindings: [{ button_id: 151, button_name: "OK", command_id: 1, command_name: "Power" }],
+        macros: [{ button_id: 198, name: "Power on", steps: [{ command_id: 1 }] }],
+        key_sort: null, input_record: null,
+      }, {
+        kind: "device_backup", complete: true, editable: true, fetched_at: "2026-09-18T00:00:00Z",
+        device: { device_id: 2, name: "Roku", brand: "Roku", device_class: "wifi_roku", idle_behavior: 4 },
+        commands: [{ command_id: 1, name: "Home" }], button_bindings: [], macros: [], key_sort: null, input_record: null,
+      }],
+      activities: [{
+        kind: "activity_backup", complete: true, editable: true, fetched_at: "t",
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1],
+        favorite_slots: [{ button_id: 1, device_id: 1, command_id: 1 }],
+        button_bindings: [{ button_id: 174, button_name: "UP", device_id: 1, command_id: 17, command_name: "Up" }],
+        macros: [],
+      }],
+    };
+    let stale = false;
+    let polls = 0;
+    const puts = [];
+    const plays = [];
+    // A raw IR payload as the hub stores it: 4 timings at 38 kHz (BE16 length, zeros, BE16 carrier, BE32 timings, terminator).
+    const RAW_HEX = "00 10 00 00 00 00 94 70 00 00 23 28 00 00 11 94 00 00 02 30 00 00 02 30 00 00 00 00";
+    const ROKU_HEX = "47 45 54 20 2f 6b 65 79 70 72 65 73 73 2f 48 6f 6d 65";
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/1/commands/1/payload`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ kind: "raw", hex: RAW_HEX, descriptor: null, carrier_hz: 38000, decoded: null }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/1/commands/17/payload`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "payload_not_found", title: "The command has no stored payload", status: 404 }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/2/commands/1/payload`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ kind: "raw", hex: ROKU_HEX, descriptor: null, carrier_hz: null, decoded: { class: "wifi_roku", trailer_hex: "f1", fields: { path: "/keypress/Home" } } }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/play`, (route) => {
+      plays.push(route.request().postDataJSON());
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ accepted: true, mode: "control" }) });
+    });
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/2`, (route) => {
+      puts.push({ method: route.request().method(), ifMatch: route.request().headers()["if-match"], body: route.request().postDataJSON() });
+      polls = 0;
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_device", status: "queued" })) });
+    });
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/info`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ known: true, model: "X1S", name: "Living room", mac: "E2:6A:44:86:1B:45", firmware_version: 5, production_batch: null }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "No callback device", status: 404 }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/1`, (route) => {
+      const request = route.request();
+      puts.push({ method: request.method(), ifMatch: request.headers()["if-match"], body: request.postDataJSON() });
+      if (stale) {
+        route.fulfill({ status: 412, contentType: "application/json", body: JSON.stringify({ type: "snapshot_outdated", title: "The snapshot moved", status: 412, detail: "the edit was made on another snapshot" }) });
+        return;
+      }
+      // The write lands: the hub's next snapshot carries the edited element.
+      snapshot.devices[0] = { ...snapshot.devices[0], ...request.postDataJSON() };
+      snapshot.snapshot_id = "snap-2";
+      polls = 0;
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_device", status: "queued" })) });
+    });
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/jobs/j1`, (route) => {
+      polls++;
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_device", status: polls < 2 ? "running" : "done", progress: { completed_steps: polls, total_steps: 2 } })) });
+    });
+
+    // The wrench on the row opens the editor at its own route.
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(1);
+    await rows.nth(0).locator(".entity-edit").click();
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices\/1$/);
+    const editor = page.locator("sb-panel-device-editor");
+    await expect(editor.locator("#editor-title")).toHaveText("TV");
+    await expect(editor.locator(".detail-crumb")).toHaveText("Devices");
+    await expect(editor.locator(".detail-section-nav-btn")).toHaveText(["On/Off", "Commands", "Buttons"]);
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await expect(editor.locator("#editor-sync")).toBeDisabled();
+    await expect(editor.locator(".power-control .selection-label")).toHaveText("Turn off when idle");
+    await expect(editor.locator('[data-sequence="198"] .selection-sub')).toHaveText("1 step");
+    await expect(editor.locator('[data-kind="command"]')).toHaveCount(2);
+    await expect(editor.locator('[data-kind="command"]').nth(1)).toContainText("Up");
+    await expect(editor.locator('[data-kind="command"]').nth(1)).toContainText("Command ID 17");
+    await expect(editor.locator('[data-kind="binding"]')).toHaveCount(1);
+    await expect(editor.locator('[data-kind="binding"]').nth(0)).toContainText("Power");
+    await expect(editor.locator("#editor-managed-warning")).toHaveCount(0);
+    await expect(page.locator('#subtabs button[data-sub="devices"]')).toHaveClass(/active/);
+
+    // Rename the device: a draft edit; the Sync button carries the dirty signal; the dock says it the card's way.
+    await editor.locator("#editor-rename").click();
+    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename device");
+    await editor.locator("#rename-input").fill("Living TV!");
+    await editor.locator("#rename-save").click();
+    await expect(editor.locator("#editor-title")).toHaveText("Living TV!");
+    await expect(editor.locator("#editor-sync")).toHaveText("Sync to Hub");
+    await expect(editor.locator("#editor-sync")).toBeEnabled();
+    await expect(page.locator("#dock-status")).toHaveText("Unsynced changes — sync to the hub to apply them");
+
+    // The draft survives a reload on the editor's own route.
+    await page.reload();
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices\/1$/);
+    await expect(editor.locator("#editor-title")).toHaveText("Living TV!");
+    await expect(editor.locator("#editor-sync")).toHaveText("Sync to Hub");
+
+    // The power-on sequence opens the step editor: steps with their attached wait, add, edit, move, delete.
+    await editor.locator('[data-sequence="198"]').click();
+    await expect(editor.locator("#step-title")).toHaveText("Power-on sequence");
+    await expect(editor.locator(".detail-crumb")).toHaveText(["Devices", "Living TV!"]);
+    const steps = editor.locator("[data-step-index]");
+    await expect(steps).toHaveCount(1);
+    await expect(steps.nth(0).locator(".quick-access-label")).toHaveText("Power");
+    await expect(steps.nth(0).locator(".step-wait")).toHaveCount(0);
+    await editor.locator("#step-add").click();
+    await expect(editor.locator("#step-dialog .dialog-title")).toHaveText("Add step");
+    await editor.locator("#sb-step-command").selectOption("17");
+    await editor.locator("#sb-step-hold").fill("2");
+    await editor.locator("#step-save").click();
+    await expect(steps).toHaveCount(2);
+    await expect(steps.nth(1).locator(".quick-access-label")).toHaveText("Up");
+    await expect(steps.nth(1).locator(".quick-access-meta")).toHaveText("Hold 2s");
+    await expect(steps.nth(0).locator(".step-wait")).toHaveCount(1);
+    await expect(steps.nth(1).locator(".step-wait")).toHaveCount(0);
+    // The wait after the first step snaps to the hub's half-second grid.
+    await steps.nth(0).locator(".step-wait-input").fill("1.3");
+    await steps.nth(0).locator(".step-wait-input").dispatchEvent("change");
+    await expect(steps.nth(0).locator(".step-wait-input")).toHaveValue("1.5");
+    // Drag the new step above the first one by its handle (pointer events, as a finger or a mouse would).
+    const fromHandle = await steps.nth(1).locator(".step-handle").boundingBox();
+    const toRow = await steps.nth(0).boundingBox();
+    await page.mouse.move(fromHandle.x + fromHandle.width / 2, fromHandle.y + fromHandle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(fromHandle.x + fromHandle.width / 2, toRow.y + 4, { steps: 8 });
+    await expect(steps.nth(1)).toHaveClass(/is-dragging/);
+    await page.mouse.up();
+    await expect(steps.nth(0).locator(".quick-access-label")).toHaveText("Up");
+    // The arrow keys on the handle move a step too: down, then back up.
+    await steps.nth(0).locator(".step-handle").focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(steps.nth(0).locator(".quick-access-label")).toHaveText("Power");
+    await steps.nth(1).locator(".step-handle").focus();
+    await page.keyboard.press("ArrowUp");
+    await expect(steps.nth(0).locator(".quick-access-label")).toHaveText("Up");
+    await expect(steps.nth(1).locator(".quick-access-label")).toHaveText("Power");
+    await steps.nth(1).locator(".step-edit").click();
+    await expect(editor.locator("#step-dialog .dialog-title")).toHaveText("Edit step");
+    await editor.locator("#sb-step-hold").fill("0.5");
+    await editor.locator("#step-save").click();
+    await expect(steps.nth(1).locator(".quick-access-meta")).toHaveText("Hold 0.5s");
+    await steps.nth(1).locator(".step-delete").click();
+    await expect(steps).toHaveCount(1);
+    await editor.locator("#step-back").click();
+    await expect(editor.locator("#editor-title")).toHaveText("Living TV!");
+    await expect(editor.locator('[data-sequence="198"] .selection-sub')).toHaveText("1 step");
+
+    // The braces fetch the payload from the hub and open the card's dialog on the IR hex tabs.
+    const commands = editor.locator('[data-kind="command"]');
+    await commands.nth(0).locator(".command-payload").click();
+    const dialog = editor.locator("sb-payload-dialog");
+    await expect(dialog.locator(".dialog-title")).toHaveText("Edit payload");
+    await expect(dialog.locator(".payload-class-badge")).toHaveText("ir");
+    await expect(dialog.locator('.payload-format-tab[data-tab="pronto"]')).toHaveClass(/active/);
+    await expect(dialog.locator("#payload-pronto")).toHaveValue(/^0000 006D 0002 0000 /);
+    await dialog.locator('.payload-format-tab[data-tab="sofabaton"]').click();
+    await expect(dialog.locator("#payload-raw")).toHaveValue(RAW_HEX);
+    // Test plays the current bytes; nothing is saved.
+    await dialog.locator("#payload-test").click();
+    await expect(dialog.locator("#payload-test-status")).toHaveText("Sent to the hub for one-shot playback.");
+    expect(plays).toEqual([{ hex: RAW_HEX }]);
+    // A raw edit marks the row edited; the bytes ride the next Sync.
+    await dialog.locator("#payload-raw").fill(RAW_HEX.replace("02 30 00 00 00 00", "02 58 00 00 00 00"));
+    await dialog.locator("#payload-save").click();
+    await expect(dialog).toHaveCount(0);
+    // A command without a stored payload says so above the list.
+    await commands.filter({ hasText: "Command ID 17" }).locator(".command-payload").click();
+    await expect(editor.locator("#payload-fetch-error")).toHaveText("The hub returned no payload for this command.");
+    // Add command on an X1S IR device: the empty hex tabs; a pasted Pronto code becomes the bytes.
+    await editor.locator("#editor-add-command").click();
+    await expect(dialog.locator(".dialog-title")).toHaveText("Add command");
+    await dialog.locator("#payload-name").fill("Volume up!");
+    await dialog.locator("#payload-pronto").fill("0000 006D 0002 0000 0158 00AB 0016 0016");
+    await dialog.locator("#payload-save").click();
+    await expect(commands).toHaveCount(3);
+    await expect(commands.filter({ hasText: "Volume up!" })).toContainText("new command");
+    await expect(commands.filter({ hasText: "Volume up!" })).toContainText("Command ID 2");
+    await expect(commands.filter({ hasText: "Volume up!" }).locator(".command-payload")).toHaveCount(0);
+    // An Unfolded Circle HEX paste is refused with a hint (no converter on the server).
+    await editor.locator("#editor-add-command").click();
+    await dialog.locator("#payload-name").fill("Mute");
+    await dialog.locator("#payload-pronto").fill("3;0x4B36D32C;32;0");
+    await expect(dialog.locator("#payload-helper")).toHaveText(/Unfolded Circle HEX codes are not supported here/);
+    await dialog.locator("#payload-save").click();
+    await expect(dialog.locator("#payload-error")).toHaveText(/Unfolded Circle HEX codes are not supported here/);
+    await dialog.locator(".dialog-close").click();
+    await expect(dialog).toHaveCount(0);
+
+    // Power control: the dropdown writes the idle behaviour.
+    await editor.locator(".power-control-trigger").click();
+    await editor.locator('.power-control-option[data-mode="4"]').click();
+    await expect(editor.locator(".power-control .selection-label")).toHaveText("Don't control power");
+    await expect(editor.locator(".power-sequences-note")).toBeVisible();
+    await expect(editor.locator(".power-sequences")).toHaveAttribute("data-disabled", "true");
+
+    // Delete the Up command: the impact list names the activity assignment it clears; the row goes on Delete.
+    await commands.filter({ hasText: "Command ID 17" }).locator(".command-delete").click();
+    await expect(editor.locator("#delete-dialog .dialog-title")).toHaveText('Delete command "Up"?');
+    await expect(editor.locator("#delete-impact li")).toHaveText(["1 power sequence step will be cleared", "1 button assignment will be cleared"]);
+    await expect(editor.locator("#delete-dialog .delete-replace-note")).toContainText("written to the hub on the next Sync");
+    await editor.locator("#delete-confirm").click();
+    await expect(commands).toHaveCount(2);
+
+    // Add an assignment with a long press.
+    await editor.locator("#editor-add-binding").click();
+    await expect(editor.locator("#binding-dialog .dialog-title")).toHaveText("Add button assignment");
+    await editor.locator("#sb-binding-long-press").check();
+    await expect(editor.locator("#sb-binding-lp-command")).toBeVisible();
+    await editor.locator("#binding-save").click();
+    await expect(editor.locator('[data-kind="binding"]')).toHaveCount(2);
+    await expect(editor.locator('[data-kind="binding"]').nth(1)).toContainText("Long press · Power");
+
+    // Leaving with unsynced changes asks with the card's dialog; Keep editing stays.
+    await page.click('#subtabs button[data-sub="activities"]');
+    await expect(editor.locator("#exit-dialog .dialog-title")).toHaveText("Unsynced changes");
+    await editor.locator("#exit-keep").click();
+    await expect(editor.locator("#exit-dialog")).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices\/1$/);
+
+    // Sync: one PUT with the edited element and the snapshot id as If-Match; the job is followed; the editor rebases.
+    await editor.locator("#editor-sync").click();
+    await expect.poll(() => puts.length).toBe(1);
+    expect(puts[0].method).toBe("PUT");
+    expect(puts[0].ifMatch).toBe('"snap-1"');
+    expect(puts[0].body.device.name).toBe("Living TV!");
+    expect(puts[0].body.device.idle_behavior).toBe(4);
+    expect(puts[0].body.commands.map((c) => c.command_id)).toEqual([1, 2]);
+    expect(puts[0].body.commands[0].restore_data).toEqual({ transport: "hub_code_record", data_hex: RAW_HEX.replace("02 30 00 00 00 00", "02 58 00 00 00 00"), edited: true });
+    expect(puts[0].body.commands[1].name).toBe("Volume up!");
+    expect(puts[0].body.commands[1].restore_data.new).toBe(true);
+    expect(puts[0].body.commands[1].restore_data.data_hex).toMatch(/^[0-9a-f ]+$/);
+    expect(puts[0].body.button_bindings).toHaveLength(2);
+    // The power-on sequence edited in the step editor rides the same write; deleting Up later cleared its step.
+    const powerOn = puts[0].body.macros.find((m) => m.button_id === 198);
+    expect((powerOn?.steps ?? []).filter((step) => step.command_id === 17)).toHaveLength(0);
+    expect((powerOn?.steps ?? []).filter((step) => step.command_id === 1)).toHaveLength(0);
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await expect(page.locator("#dock-status")).toHaveCount(0);
+    await expect(editor.locator("#editor-title")).toHaveText("Living TV!");
+    expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
+
+    // The hub moved on: a 412 renders the card's stale state; Keep editing returns to the draft.
+    stale = true;
+    await editor.locator('[data-kind="command"]').nth(0).locator(".command-rename").click();
+    await editor.locator("#rename-input").fill("Power toggle");
+    await editor.locator("#rename-save").click();
+    await editor.locator("#editor-sync").click();
+    await expect(editor.locator("#sync-failed .capture-error-title")).toHaveText("This device changed on the hub");
+    await expect(editor.locator("#editor-retry")).toHaveCount(0);
+    await expect(editor.locator("#editor-reload")).toHaveText("Reload from hub");
+    await editor.locator("#editor-keep-editing").click();
+    await expect(editor.locator('[data-kind="command"]').nth(0)).toContainText("Power toggle");
+    await page.screenshot({ path: shot(testInfo, "device-editor"), fullPage: true });
+
+    // A wifi class opens the card's structured form; a field edit rides the Sync with the fetched bytes.
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices/2`);
+    await expect(editor.locator("#editor-title")).toHaveText("Roku");
+    await expect(editor.locator(".detail-section-nav-btn")).toHaveText(["On/Off", "Network", "Commands", "Buttons"]);
+    await editor.locator('[data-kind="command"]').nth(0).locator(".command-payload").click();
+    await expect(dialog.locator(".decoded-form-title")).toHaveText("Roku ECP request");
+    await expect(dialog.locator('[data-field="path"] .decoded-field-label')).toHaveText("ECP URL path");
+    await expect(dialog.locator('[data-field="path"] input')).toHaveValue("/keypress/Home");
+    await expect(dialog.locator("#payload-test")).toHaveCount(0);
+    await dialog.locator('[data-field="path"] input').fill("/keypress/Play");
+    await dialog.locator("#payload-save").click();
+    await expect(dialog).toHaveCount(0);
+    stale = false;
+    await editor.locator("#editor-sync").click();
+    await expect.poll(() => puts.length).toBe(3);
+    expect(puts[2].body.commands[0].restore_data).toEqual({ transport: "hub_code_record", data_hex: ROKU_HEX, decoded: { class: "wifi_roku", trailer_hex: "f1", fields: { path: "/keypress/Play" }, edited: true } });
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices/1`);
+    await expect(editor.locator("#editor-title")).toHaveText("Living TV!");
+
+    // Back with unsynced changes: Leave without syncing drops the draft and lands on the list.
+    await editor.locator('[data-kind="command"]').nth(0).locator(".command-rename").click();
+    await editor.locator("#rename-input").fill("Power again");
+    await editor.locator("#rename-save").click();
+    await editor.locator("#editor-back").click();
+    await editor.locator("#exit-leave").click();
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
+    await expect(rows).toHaveCount(1);
+    expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
   });
 });

@@ -207,7 +207,7 @@ there. The sidebar lists registered hubs and their state.
 | View | What users can do |
 | --- | --- |
 | **Hubs** | Add discovered hubs or enter an address; inspect status; enable, disable, retry a failed start or remove a registration. Removal also forgets its cached state and remote layout. |
-| **Catalog** | Browse devices, activities, commands, buttons, macros and favorites with their IDs. Fetch missing detail or explicitly refresh one entity or the whole hub. It does not edit configuration. |
+| **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. It does not edit configuration. |
 | **Remote** | Control the selected hub and edit its saved remote layout. |
 | **API** | Select an OpenAPI operation or enter a method/path, send a request, inspect the response and follow a returned job. `{hub_id}` uses the selected hub. |
 | **Events** | Inspect the live WebSocket stream, filter by hub/text and identify callback presses. It reconnects after a server restart. |

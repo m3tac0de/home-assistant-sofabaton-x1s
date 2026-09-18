@@ -295,8 +295,9 @@ export class PanelStore {
     let next = route;
     if (next.kind === "hub") {
       const hubId = next.hubId ?? this._snapshot.selectedHubId;
-      next = { kind: "hub", hubId, tab: next.tab, sub: normalizeSub(next.tab, next.sub) };
-      this._lastHubTab = { tab: next.tab, sub: next.sub };
+      // Prefs remember the tab and subtab, never an open editor.
+      this._lastHubTab = { tab: next.tab, sub: normalizeSub(next.tab, next.sub) };
+      next = hubRoute(hubId, next.tab, next.sub, next.entity);
     } else {
       next = { kind: "tool", page: next.page, sub: normalizeToolSub(next.page, next.sub) };
     }

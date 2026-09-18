@@ -299,7 +299,8 @@ class FakeProxy:
     async def sync_activity(self, *, baseline, edited, activity_id, progress=None, snapshot_id=None):
         return await self._sync("activity", baseline, edited, activity_id, progress, snapshot_id)
 
-    async def sync_device(self, *, baseline, edited, device_id, progress=None, snapshot_id=None):
+    async def sync_device(self, *, baseline, edited, device_id, progress=None, snapshot_id=None, allow_command_removal=False):
+        self.last_allow_command_removal = allow_command_removal
         return await self._sync("device", baseline, edited, device_id, progress, snapshot_id)
 
     async def _sync(self, kind, baseline, edited, entity_id, progress, snapshot_id):
