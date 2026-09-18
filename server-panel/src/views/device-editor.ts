@@ -533,19 +533,43 @@ export class SbPanelDeviceEditor extends LitElement {
   private _notice: string | null = null;
   private _loadedKey: string | null = null;
   private _loadSeq = 0;
-  private readonly _onWindowScroll = () => this._trackSection();
+  private _sectionScrollPending = false;
+  private _sectionScrollTimer: number | null = null;
+  private readonly _onWindowScroll = () => {
+    if (this._sectionScrollPending) this._settleSectionScroll();
+    else this._trackSection();
+  };
+  private readonly _onManualScroll = () => {
+    if (!this._sectionScrollPending) return;
+    this._clearSectionScroll();
+    window.scrollTo({ top: window.scrollY, behavior: "instant" });
+    this._trackSection();
+  };
+  private readonly _onScrollKey = (event: KeyboardEvent) => {
+    const target = event.composedPath()[0];
+    if (target instanceof HTMLElement && (target.matches("input, textarea, select") || target.isContentEditable ||
+      (event.key === " " && target.matches("button, a[href]")))) return;
+    if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) this._onManualScroll();
+  };
 
   // -- lifecycle ---------------------------------------------------------------------------------
 
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("scroll", this._onWindowScroll, { passive: true });
+    window.addEventListener("wheel", this._onManualScroll, { passive: true });
+    window.addEventListener("touchstart", this._onManualScroll, { passive: true });
+    window.addEventListener("keydown", this._onScrollKey);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._sorter.cancel();
     window.removeEventListener("scroll", this._onWindowScroll);
+    window.removeEventListener("wheel", this._onManualScroll);
+    window.removeEventListener("touchstart", this._onManualScroll);
+    window.removeEventListener("keydown", this._onScrollKey);
+    this._clearSectionScroll();
   }
 
   protected updated(changed: PropertyValues): void {
@@ -563,6 +587,7 @@ export class SbPanelDeviceEditor extends LitElement {
   }
 
   private _reset(): void {
+    this._clearSectionScroll();
     this._stage = "loading";
     this._snapshot = null;
     this._baseline = null;
@@ -809,6 +834,7 @@ export class SbPanelDeviceEditor extends LitElement {
   // -- the step editor sub-view (the card's macro editor, device scope) -------------------------
 
   private _openStepEditor(buttonId: number, name: string): void {
+    this._clearSectionScroll();
     this._stepEditor = { buttonId, name };
     this._stepDialog = null;
     window.scrollTo({ top: 0 });
@@ -1048,8 +1074,23 @@ export class SbPanelDeviceEditor extends LitElement {
     const section = this.renderRoot.querySelector<HTMLElement>(`[data-edit-section="${id}"]`);
     if (!section) return;
     const top = window.scrollY + section.getBoundingClientRect().top - this._stickyOffset() - 8;
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     this._activeSection = id;
+    this._sectionScrollPending = true;
+    this._settleSectionScroll();
+    window.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+  }
+
+  /** Hold the clicked section through intermediate scroll positions. Release
+   * after scrolling settles, also when the target was already in view. */
+  private _settleSectionScroll(): void {
+    if (this._sectionScrollTimer !== null) window.clearTimeout(this._sectionScrollTimer);
+    this._sectionScrollTimer = window.setTimeout(() => this._clearSectionScroll(), 160);
+  }
+
+  private _clearSectionScroll(): void {
+    if (this._sectionScrollTimer !== null) window.clearTimeout(this._sectionScrollTimer);
+    this._sectionScrollTimer = null;
+    this._sectionScrollPending = false;
   }
 
   private _trackSection(): void {

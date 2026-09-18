@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { HubStatus, HubView } from "../../server-panel/src/panel-api";
+import type { HubStatus, HubView, SeenHub } from "../../server-panel/src/panel-api";
 import {
   actionOutcome,
   formatWhen,
@@ -18,6 +18,7 @@ import {
   prettyJson,
   saveHistory,
   savePrefs,
+  unregisteredHubs,
 } from "../../server-panel/src/panel-state";
 
 function hub(overrides: Partial<Omit<HubView, "status">> & { status?: Partial<HubStatus> | null }): HubView {
@@ -69,6 +70,22 @@ test("names, dates and action outcomes", () => {
   assert.equal(actionOutcome("enable", null), "enabled");
   assert.equal(actionOutcome("disable", null), "disabled");
   assert.equal(actionOutcome("remove", null), "removed");
+});
+
+test("discovery matches registered IDs, addresses and normalized MACs, but ignores stale registrations", () => {
+  const seen = (config: SeenHub["config"], registered_hub_id: string | null = null): SeenHub => ({
+    key: config.host, config, registered_hub_id, present: true, first_seen: "t", last_seen: "t",
+  });
+  const registered = hub({ config: { host: "192.168.1.50", mac: "E2:6A:44:86:1B:45" } });
+  const fresh = seen({ host: "192.168.1.70" });
+  const removed = { ...seen({ host: "192.168.1.80" }, "removed-id"), present: false };
+  assert.deepEqual(unregisteredHubs([
+    seen({ host: "changed-ip" }, registered.hub_id),
+    seen({ host: registered.config.host }),
+    seen({ host: "another-ip", mac: "e2-6a-44-86-1b-45" }),
+    fresh, removed,
+  ], [registered]), [fresh, removed]);
+  assert.deepEqual(unregisteredHubs([seen({ host: "changed-ip", mac: "E2:6A:44:86:1B:45" })], [hub({})]), []);
 });
 
 test("theme cycling", () => {

@@ -3,7 +3,7 @@
 // dock (brand, hub picker, cog menu, tabs and subtabs), the mounted view
 // under a blocked scrim when the hub may not be touched, and the bottom
 // dock fixed at the viewport's bottom. It renders the store's snapshot
-// and nothing else: the store owns the API client, the event stream,
+// and coordinates the hub picker's transient forms and actions. The store owns
 // the hub list, the selection, the route and the resync points; the
 // shell mirrors the route into the URL hash and forwards the views'
 // events (sb-message, sb-hubs-changed, sb-select-hub, sb-navigate).
@@ -11,16 +11,16 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 
 import { renderBottomDock, type DockLink } from "./components/bottom-dock";
-import { renderHubPicker } from "./components/hub-picker";
+import { HUB_PICKER_CSS, renderHubPicker, type HubAction } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
-import { PanelApi, serverBaseFromPanelUrl, type HubView } from "./panel-api";
+import { PanelApi, problemText, serverBaseFromPanelUrl, type HubCreate, type HubView, type Problem } from "./panel-api";
+import { actionOutcome, hubDisplayName } from "./panel-state";
 import { hubContextFor, type HubContext } from "./panel-context";
 import { hashFor, hubRoute, parseRoute, routeScope, toolRoute, type HubTab, type Route, type ToolPage } from "./panel-route";
 import { connectivityFor, dockModel, hasDirtyDraft, selectedHub, selectedRuntime } from "./panel-selectors";
 import { PanelStore, type PanelSnapshot } from "./panel-store";
 import { PanelStream } from "./panel-stream";
 import { PANEL_BASE_CSS } from "./panel-styles";
-import type { SbPanelHubs } from "./views/hubs-view";
 import type { SbPanelDeviceEditor } from "./views/device-editor";
 
 export const PANEL_TAG = "sofabaton-server-panel";
@@ -45,6 +45,12 @@ export class SofabatonServerPanel extends LitElement {
     _snapshot: { state: true },
     _pickerOpen: { state: true },
     _cogOpen: { state: true },
+    _pickerManual: { state: true },
+    _pickerActionsHubId: { state: true },
+    _pickerBusy: { state: true },
+    _pickerAdding: { state: true },
+    _pickerScanning: { state: true },
+    _pickerError: { state: true },
   };
 
   static styles = [
@@ -63,23 +69,19 @@ export class SofabatonServerPanel extends LitElement {
       /* The dock's lower band, where the subtab row sits, shares the page's background with the area under it; only the two tab rows carry the panel colour. */
       .top-dock { position: sticky; top: 0; z-index: 40; margin: 0 calc(-1 * var(--page-gutter)); padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0; background: var(--sbp-bg); }
       .top-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0 calc(-1 * var(--page-gutter)); padding: 6px var(--page-gutter); background: var(--dock-surface); border-bottom: 1px solid var(--sbp-line); }
-      .brand { display: flex; align-items: baseline; gap: 8px; flex: 0 0 auto; }
+      .brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
       .brand b { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
-      .brand span { color: var(--sbp-muted); font-size: 11px; white-space: nowrap; }
+      .brand-caption { color: var(--sbp-muted); font-size: 11px; white-space: nowrap; }
       .picker-slot { flex: 1 1 auto; min-width: 0; display: flex; justify-content: flex-end; }
-      .top-right { display: flex; align-items: center; flex: 0 0 auto; }
       .stream { display: inline-flex; align-items: center; gap: 6px; color: var(--sbp-muted); font-size: 11px; }
-      .stream-label { max-width: 120px; line-height: 1.4; }
 
       .hub-picker { position: relative; max-width: 100%; }
       .hub-picker-btn { display: flex; align-items: center; gap: 6px; max-width: min(100%, 360px); min-height: 36px; border: 1px solid var(--sbp-line); border-radius: 999px; padding: 0 12px 0 10px; background: var(--sbp-panel); color: var(--sbp-text); user-select: none; }
       button.hub-picker-btn { cursor: pointer; }
       button.hub-picker-btn:hover, button.hub-picker-btn.is-open { border-color: var(--sbp-accent); }
-      .hub-picker-btn--static { cursor: default; }
       .chip-prefix { flex: 0 0 auto; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sbp-muted); }
       .chip-name { font-size: 12px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .chip-arrow { flex: 0 0 auto; width: 16px; height: 16px; color: var(--sbp-muted); }
-      .hub-picker-menu { width: 300px; }
 
       .menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; display: flex; flex-direction: column; min-width: 220px; max-width: calc(100vw - 48px); max-height: calc(100dvh - 160px); overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); }
       .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 0; background: transparent; text-align: left; white-space: normal; }
@@ -164,7 +166,7 @@ export class SofabatonServerPanel extends LitElement {
 
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
-        .brand span, .stream-label { display: none; }
+        .brand-caption { display: none; }
         .page { --page-gutter: 12px; }
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
@@ -186,6 +188,7 @@ export class SofabatonServerPanel extends LitElement {
         .view { padding-top: 12px; }
       }
     `,
+    HUB_PICKER_CSS,
   ];
 
   readonly api: PanelApi;
@@ -194,6 +197,12 @@ export class SofabatonServerPanel extends LitElement {
   private _snapshot: PanelSnapshot;
   private _pickerOpen = false;
   private _cogOpen = false;
+  private _pickerManual = false;
+  private _pickerActionsHubId: string | null = null;
+  private _pickerBusy = new Set<string>();
+  private _pickerAdding = false;
+  private _pickerScanning = false;
+  private _pickerError: string | null = null;
   private _unsubscribe: (() => void) | null = null;
   private _dockObserver: ResizeObserver | null = null;
   private readonly _onHashChange = () => {
@@ -213,6 +222,7 @@ export class SofabatonServerPanel extends LitElement {
   };
   private readonly _onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
+      if (this._pickerOpen) this.renderRoot.querySelector<HTMLButtonElement>("#hub-picker-btn")?.focus();
       this._pickerOpen = false;
       this._cogOpen = false;
     }
@@ -341,12 +351,137 @@ export class SofabatonServerPanel extends LitElement {
     this._go(toolRoute(page));
   }
 
-  private _goSetup(): void {
-    this._goPage("setup");
-    void this.updateComplete.then(() => {
-      const view = this.renderRoot.querySelector<SbPanelHubs>("sb-panel-hubs");
-      view?.focusAddress();
-    });
+  // -- hub picker ---------------------------------------------------------------------
+
+  private _togglePicker(): void {
+    this._pickerOpen = !this._pickerOpen;
+    this._cogOpen = false;
+    if (this._pickerOpen) {
+      this._pickerManual = false;
+      this._pickerActionsHubId = null;
+      this._pickerError = null;
+      void this.store.refreshSeen();
+      void this._scanPicker();
+    }
+  }
+
+  private _pickerMessage(text: string, ok = true): void {
+    this._pickerError = ok ? null : text;
+    this.store.say(text, ok);
+  }
+
+  private async _scanPicker(): Promise<void> {
+    if (this._pickerScanning) return;
+    this._pickerScanning = true;
+    this._pickerError = null;
+    try {
+      const response = await this.api.scan(5);
+      if (!response.ok) this._pickerMessage(problemText(response), false);
+      await this.store.refreshSeen();
+    } catch (err) {
+      this._pickerMessage(`Could not scan for hubs: ${String(err)}`, false);
+    } finally {
+      this._pickerScanning = false;
+    }
+  }
+
+  private async _pickerAct(hub: HubView, action: HubAction): Promise<void> {
+    const id = hub.hub_id;
+    if (this._pickerBusy.has(id)) return;
+    if (action === "remove" && !confirm(`Unregister ${hubDisplayName(hub)}?\n\nThe server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
+    this._pickerBusy = new Set(this._pickerBusy).add(id);
+    this._pickerError = null;
+    try {
+      const response = action === "remove" ? await this.api.removeHub(id) : action === "enable" ? await this.api.enableHub(id) : await this.api.disableHub(id);
+      this._pickerMessage(`${hubDisplayName(hub)}: ${response.ok ? actionOutcome(action, hub) : problemText(response)}`, response.ok);
+      await this.store.refreshAll();
+      if (response.ok && action === "remove") {
+        this._pickerActionsHubId = null;
+        await this.updateComplete;
+        this.renderRoot.querySelector<HTMLButtonElement>("#hub-picker-btn")?.focus();
+      }
+    } catch (err) {
+      this._pickerMessage(String(err), false);
+      await this.store.refreshAll();
+    } finally {
+      const busy = new Set(this._pickerBusy);
+      busy.delete(id);
+      this._pickerBusy = busy;
+    }
+  }
+
+  private async _pickerAdd(body: HubCreate): Promise<void> {
+    if (this._pickerAdding) return;
+    const selectionBefore = this._snapshot.selectedHubId;
+    const routeBefore = hashFor(this._snapshot.route);
+    this._pickerAdding = true;
+    this._pickerError = null;
+    try {
+      const response = await this.api.addHub(body);
+      let hubId: string | null = null;
+      if (response.status === 201 && response.body) {
+        hubId = response.body.hub_id;
+        this._pickerMessage(`added ${hubId}${response.body.enabled ? "" : " (disabled)"}`);
+      } else if (response.status === 503 && (response.body as unknown as Problem | null)?.type === "hub_start_failed") {
+        const problem = response.body as unknown as Problem;
+        hubId = problem.hub_id || body.host;
+        this._pickerMessage(`${hubId} is registered but its proxy did not start: ${problem.detail ?? ""}. Fix the cause and press Retry start.`, false);
+        this._pickerActionsHubId = hubId;
+      } else {
+        this._pickerMessage(problemText(response), false);
+      }
+      await this.store.refreshAll();
+      if (hubId) {
+        const registrationId = hubId;
+        // Initial sync may have re-keyed an address registration before the list returned.
+        hubId = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId || r.hub.config.host === body.host)?.hub.hub_id ?? hubId;
+        this._pickerManual = false;
+        if (this._pickerActionsHubId === registrationId) this._pickerActionsHubId = hubId;
+        // Respect both unsaved work and navigation made while registration was pending.
+        if ((!selectionBefore || this._snapshot.selectedHubId === selectionBefore) && hashFor(this._snapshot.route) === routeBefore) {
+          if (this._confirmLeave({ hubId })) this.store.selectHub(hubId);
+          else this._pickerOpen = false;
+        }
+        await this.updateComplete;
+        const target = Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>(".hub-option")).find((el) => el.dataset.hub === hubId);
+        target?.focus();
+      }
+    } catch (err) {
+      this._pickerMessage(String(err), false);
+      await this.store.refreshAll();
+    } finally {
+      this._pickerAdding = false;
+    }
+  }
+
+  private _pickerSubmit(event: Event): void {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const values = new FormData(form);
+    const host = String(values.get("host") ?? "").trim();
+    if (!host) return;
+    const name = String(values.get("name") ?? "").trim();
+    void this._pickerAdd({ host, ...(name ? { name } : {}), enabled: !values.has("disabled") });
+  }
+
+  private async _showManual(show: boolean): Promise<void> {
+    this._pickerManual = show;
+    this._pickerError = null;
+    await this.updateComplete;
+    this.renderRoot.querySelector<HTMLElement>(show ? "#add-host" : "#hub-picker-manual")?.focus();
+  }
+
+  private async _pickerKeyDown(event: KeyboardEvent): Promise<void> {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;
+    event.preventDefault();
+    if (!this._pickerOpen) this._togglePicker();
+    await this.updateComplete;
+    const buttons = Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>("#hub-picker-menu button:not(:disabled)"));
+    if (!buttons.length) return;
+    const current = buttons.indexOf((this.renderRoot as ShadowRoot).activeElement as HTMLButtonElement);
+    const index = event.key === "Home" ? 0 : event.key === "End" || (current < 0 && event.key === "ArrowUp") ? buttons.length - 1 :
+      (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[index].focus();
   }
 
   // -- events from the views -----------------------------------------------------------
@@ -384,7 +519,7 @@ export class SofabatonServerPanel extends LitElement {
             ? html`<sb-panel-events .stream=${this.stream}></sb-panel-events>`
             : html`<sb-panel-api .api=${this.api} .ctx=${ctx} .operations=${s.operations} @sb-request-sent=${() => void this.store.refreshAll()}></sb-panel-api>`;
         default:
-          return html`<sb-panel-hubs .api=${this.api} .ctx=${ctx} .hubs=${s.hubs.map((r) => r.hub)} .seen=${s.seen}></sb-panel-hubs>`;
+          return html`<sb-panel-hubs .api=${this.api} .ctx=${ctx} .hubs=${s.hubs.map((r) => r.hub)} @sb-open-picker=${() => { if (!this._pickerOpen) this._togglePicker(); }}></sb-panel-hubs>`;
       }
     }
     switch (route.tab) {
@@ -414,27 +549,34 @@ export class SofabatonServerPanel extends LitElement {
       <div class="page">
         <header class="top-dock" id="top-dock">
           <div class="top-row">
-            <div class="brand"><b>Sofabaton X</b><span>control panel</span></div>
+            <div class="brand"><span class="stream ${streamLost ? "lost" : ""}" id="stream-state" role="img" aria-label=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"} title=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"}><span class="dot ${streamOn ? "ok" : streamLost ? "warn" : "off"}" id="ws-dot"></span></span><b>Sofabaton X</b><span class="brand-caption">control panel</span></div>
             <div class="picker-slot">
               ${renderHubPicker({
                 hubs: s.hubs,
+                seen: s.seen,
                 selectedHubId: s.selectedHubId,
                 open: this._pickerOpen,
-                onToggle: () => {
-                  this._pickerOpen = !this._pickerOpen;
-                  this._cogOpen = false;
-                },
+                manual: this._pickerManual,
+                actionsHubId: this._pickerActionsHubId,
+                busy: this._pickerBusy,
+                adding: this._pickerAdding,
+                scanning: this._pickerScanning,
+                error: this._pickerError,
+                onToggle: () => this._togglePicker(),
                 onSelect: (hubId) => {
                   // A tool page (setup, the API console) is per hub too: stay on it.
                   this._pickerOpen = false;
                   if (!this._confirmLeave({ hubId })) return;
                   this.store.selectHub(hubId);
                 },
-                onSetup: () => this._goSetup(),
+                onActions: (hubId) => { this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId; },
+                onAction: (hub, action) => void this._pickerAct(hub, action),
+                onAdd: (seen) => void this._pickerAdd({ ...seen.config, enabled: true }),
+                onManual: (show) => void this._showManual(show),
+                onSubmit: (event) => this._pickerSubmit(event),
+                onScan: () => void this._scanPicker(),
+                onKeyDown: (event) => void this._pickerKeyDown(event),
               })}
-            </div>
-            <div class="top-right">
-              <span class="stream ${streamLost ? "lost" : ""}" id="stream-state" title=${streamOn ? "event stream live" : "event stream off, reconnecting"}><span class="dot ${streamOn ? "ok" : streamLost ? "warn" : "off"}" id="ws-dot"></span><span class="stream-label" id="ws-state">${streamOn ? "stream live" : streamLost ? "live updates paused, reconnecting" : "stream off"}</span></span>
             </div>
           </div>
           ${renderTabBar({

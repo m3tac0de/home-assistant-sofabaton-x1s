@@ -94,7 +94,12 @@ export function countsFromSnapshot(kind: CatalogKind, entity: SnapshotEntity | u
     return commands === undefined ? null : { commands };
   }
   const favorites = tableLength(entity, "favorite_slots");
-  const macros = tableLength(entity, "macros");
+  // Snapshot macros include the built-in power sequences; the drawer's
+  // /activities/{id}/macros endpoint lists only user macro shortcuts.
+  const macros = Array.isArray(entity.macros) ? entity.macros.filter((row) => {
+    const id = Number(row?.button_id);
+    return id !== 0xc6 && id !== 0xc7;
+  }).length : undefined;
   const buttons = tableLength(entity, "button_bindings");
   if (favorites === undefined && macros === undefined && buttons === undefined) return null;
   return { favorites: favorites ?? 0, macros: macros ?? 0, buttons: buttons ?? 0 };

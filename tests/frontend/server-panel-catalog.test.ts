@@ -56,6 +56,17 @@ test("countLine is the card's wording, singular and plural", () => {
   assert.equal(countLine("device", null), null);
 });
 
+test("activity summaries exclude internal power sequences while counting user macros", () => {
+  const activity = { ...SNAPSHOT.activities[0], macros: [
+    { button_id: 198, name: "POWER_ON", steps: [{ device_id: 1, command_id: 1 }] },
+    { button_id: 199, name: "POWER_OFF", steps: [] },
+  ] };
+  assert.equal(countsFromSnapshot("activity", activity)?.macros, 0);
+  assert.equal(countsFromSnapshot("activity", { ...activity, macros: [...activity.macros,
+    { button_id: 1, name: "Movie time", steps: [] }, { button_id: 2, name: "Lights", steps: [] },
+  ] })?.macros, 2);
+});
+
 test("boundButtons keeps the buttons the hub maps to a command", () => {
   const rows = [
     { button_code: 151, name: "OK", device_id: 1, command_id: 9 },

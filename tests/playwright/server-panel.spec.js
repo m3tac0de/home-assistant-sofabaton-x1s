@@ -208,6 +208,10 @@ test.describe("control panel, responsive docks", () => {
         return box;
       };
       const brand = await inViewport(".brand");
+      const dot = await inViewport(".brand #ws-dot");
+      const brandName = await inViewport(".brand b");
+      expect(dot.x + dot.width).toBeLessThanOrEqual(brandName.x);
+      await expect(page.locator("#ws-state")).toHaveCount(0);
       const picker = await inViewport("#hub-picker-btn");
       expect(brand.x + brand.width).toBeLessThanOrEqual(picker.x);
       await chip(page).click();
@@ -265,6 +269,12 @@ async function pickHub(page, hubId) {
   await page.locator(`#hub-picker-menu .hub-option[data-hub="${hubId}"]`).click();
 }
 
+async function openManualAdd(page) {
+  if (await chip(page).getAttribute("aria-expanded") !== "true") await chip(page).click();
+  await page.click("#hub-picker-manual");
+  await expect(page.locator("#add-host")).toBeFocused();
+}
+
 async function openPage(page, name, sub = null) {
   await page.click("#cog-btn");
   await page.click(`#cog-menu button[data-page="${name}"]`);
@@ -316,11 +326,13 @@ test.describe("control panel, hubs", () => {
     await expect(detail(page)).toContainText("Watch TV");
     await expect(actions(page).getByRole("button", { name: "Disable" })).toBeVisible();
 
-    // The discovered list marks the registered hub and offers the other.
-    const seen = page.locator("#seen-table tbody tr");
-    await expect(seen).toHaveCount(2);
-    await expect(seen.nth(0)).toContainText("registered as e26a44861b45");
-    await expect(seen.nth(1).getByRole("button", { name: "Add" })).toBeVisible();
+    // Setup keeps details; discovery appears only in the picker, without duplicates.
+    await expect(page.locator("sb-panel-hubs #hub-add, sb-panel-hubs #seen-table")).toHaveCount(0);
+    await chip(page).click();
+    const seen = page.locator(".picker-seen");
+    await expect(seen).toHaveCount(1);
+    await expect(seen.first()).toContainText("Bedroom");
+    await expect(seen.first().getByRole("button", { name: "Add Bedroom" })).toBeVisible();
     // The dock is the column's width, centred with it, never the viewport's.
     const dock = await page.locator("#bottom-dock").boundingBox();
     const column = await page.locator(".page").boundingBox();
@@ -335,7 +347,9 @@ test.describe("control panel, hubs", () => {
     await expect(page).toHaveURL(/#\/setup\/hubs$/);
     await expect(chip(page)).toContainText("no hub");
     await expect(detail(page)).toContainText("No hubs registered yet");
+    await page.getByRole("button", { name: "Find or add a hub" }).click();
     await expect(page.locator("#seen-empty")).toBeVisible();
+    await expect(page.locator("#hub-picker-manual")).toBeVisible();
     await expect(page.locator("#dock-pill")).toHaveCount(0);
   });
 
@@ -344,6 +358,7 @@ test.describe("control panel, hubs", () => {
     const { calls } = await mockServer(page, state);
     await page.goto(`${PAGE}#/setup`);
     await expect(chip(page)).toContainText("Living room");
+    await openManualAdd(page);
     await page.fill("#add-host", " 192.168.1.60 ");
     await page.fill("#add-name", "Office");
     await page.click("#add-send");
@@ -354,8 +369,7 @@ test.describe("control panel, hubs", () => {
     await expect(chip(page)).toContainText("Office");
     await expect(detail(page)).toContainText("Office");
     await expect(detail(page)).toContainText("waiting for the hub to connect");
-    await expect(page.locator("#add-host")).toHaveValue("");
-    await chip(page).click();
+    await expect(page.locator("#hub-add")).toHaveCount(0);
     await expect(options(page)).toHaveCount(2);
     await expect(options(page).nth(1)).toHaveClass(/selected/);
   });
@@ -364,6 +378,7 @@ test.describe("control panel, hubs", () => {
     const { calls } = await mockServer(page, { hubs: [], seen: [] });
     await page.goto(PAGE);
     await expect(page).toHaveURL(/#\/setup\/hubs$/);
+    await openManualAdd(page);
     await page.fill("#add-host", "192.168.1.60");
     await page.check("#add-disabled");
     await page.press("#add-host", "Enter");
@@ -379,6 +394,7 @@ test.describe("control panel, hubs", () => {
     const state = { hubs: [LIVING], seen: [] };
     await mockServer(page, state);
     await page.goto(`${PAGE}#/setup`);
+    await openManualAdd(page);
     await page.fill("#add-host", "192.168.1.50");
     await page.click("#add-send");
     await expect(msg(page)).toHaveText("hub_conflict: hub already registered as e26a44861b45");
@@ -425,10 +441,10 @@ test.describe("control panel, hubs", () => {
     await actions(page).getByRole("button", { name: "Remove" }).click();
     await expect.poll(() => calls.some((c) => c.key === "DELETE /hubs/192.168.1.60")).toBe(true);
     await expect(msg(page)).toHaveText("192.168.1.60: removed");
-    // The selection falls back to the hub that is left; one hub makes the chip static.
+    // The selection falls back to the remaining hub; its picker stays interactive.
     await expect(chip(page)).toContainText("Living room");
     await expect(detail(page)).toContainText("Living room");
-    await expect(page.locator("#hub-picker")).toHaveClass(/hub-picker--static/);
+    await expect(chip(page)).toHaveAttribute("aria-haspopup", "dialog");
   });
 
   test("a refused disable shows the server's reason", async ({ page }) => {
@@ -443,39 +459,41 @@ test.describe("control panel, hubs", () => {
     const state = { hubs: [LIVING], seen: [SEEN_NEW] };
     const { calls } = await mockServer(page, state);
     await page.goto(`${PAGE}#/setup`);
-    const seen = page.locator("#seen-table tbody tr");
-    await expect(seen.nth(0)).toContainText("Bedroom");
-    await expect(seen.nth(0)).toContainText("present");
-    await seen.nth(0).getByRole("button", { name: "Add" }).click();
+    await chip(page).click();
+    const seen = page.locator(".picker-seen");
+    await expect(seen.first()).toContainText("Bedroom");
+    await seen.first().getByRole("button", { name: "Add Bedroom" }).click();
     await expect.poll(() => calls.filter((c) => c.key === "POST /hubs").map((c) => c.body)).toEqual([
       { ...SEEN_NEW.config, enabled: true },
     ]);
     await expect(msg(page)).toHaveText("added cb383539684b");
     await expect(chip(page)).toContainText("Bedroom");
-    await expect(seen.nth(0)).toContainText("registered as cb383539684b");
-    await expect(seen.nth(0).getByRole("button", { name: "Add" })).toHaveCount(0);
+    await expect(seen).toHaveCount(0);
+    await expect(options(page)).toHaveCount(2);
+    await expect(options(page).last()).toContainText("Bedroom");
   });
 
   test("the scan button asks the server to listen", async ({ page }) => {
     const state = { hubs: [], seen: [] };
     const { calls } = await mockServer(page, state);
     await page.goto(PAGE);
+    await chip(page).click();
+    await expect.poll(() => calls.filter((c) => c.key === "POST /discovery/scan").length).toBe(1);
+    await expect(page.locator("#seen-scan")).toBeEnabled();
     state.seen = [SEEN_NEW];
     await page.click("#seen-scan");
-    await expect.poll(() => calls.filter((c) => c.key === "POST /discovery/scan").map((c) => c.body)).toEqual([{ timeout: 5 }]);
-    await expect(page.locator("#seen-table tbody tr")).toHaveCount(1);
-    await expect(page.locator("#seen-note")).toHaveText("(1 present)");
+    await expect.poll(() => calls.filter((c) => c.key === "POST /discovery/scan").map((c) => c.body)).toEqual([{ timeout: 5 }, { timeout: 5 }]);
+    await expect(page.locator(".picker-seen")).toHaveCount(1);
   });
 
   test("a lifecycle event on the stream refreshes the picker and counts in the cog menu", async ({ page }) => {
     const state = { hubs: [LIVING], seen: [] };
     const { sockets } = await mockServer(page, state);
     await page.goto(PAGE);
-    await expect(page.locator("#hub-picker")).toHaveClass(/hub-picker--static/);
+    await expect(chip(page)).toHaveAttribute("aria-haspopup", "dialog");
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs.push(JSON.parse(JSON.stringify(OFFICE)));
     sockets[0].send(JSON.stringify({ type: "server_event", hub_id: OFFICE.hub_id, kind: "hub_added" }));
-    await expect(page.locator("#hub-picker")).not.toHaveClass(/hub-picker--static/);
     await chip(page).click();
     await expect(options(page)).toHaveCount(2);
     await page.keyboard.press("Escape");
@@ -655,7 +673,7 @@ test.describe("control panel, shell", () => {
     const state = { hubs: [LIVING], seen: [] };
     const { sockets } = await mockServer(page, state);
     await page.goto(PAGE);
-    await expect(page.locator("#ws-state")).toHaveText("stream live");
+    await expect(page.locator("#stream-state")).toHaveAttribute("aria-label", "Event stream live");
     await expect.poll(() => sockets.length).toBe(1);
     sockets[0].send(JSON.stringify({ type: "press", seq: 7, hub_id: LIVING.hub_id, device_id: 61, command_id: 3, slot: 2, label: "Lights", press_type: "short", resolution: "deployed", transport: "http", source: "hub", received_at: "t" }));
     await expect(page.locator("#dock-flash")).toHaveAttribute("data-seq", "7");
@@ -665,11 +683,11 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#blocked-scrim")).toHaveCount(0);
 
     sockets[0].close();
-    await expect(page.locator("#ws-state")).toHaveText("live updates paused, reconnecting");
+    await expect(page.locator("#stream-state")).toHaveAttribute("aria-label", "Live updates paused, reconnecting");
     await expect(page.locator("#stream-state")).toHaveClass(/lost/);
     await expect(page.locator("#blocked-scrim")).toHaveCount(0);
     await expect.poll(() => sockets.length).toBeGreaterThan(1);
-    await expect(page.locator("#ws-state")).toHaveText("stream live");
+    await expect(page.locator("#stream-state")).toHaveAttribute("aria-label", "Event stream live");
   });
 
   test("a draft survives a reload, asks when the hub moved on, and warns before leaving its screen", async ({ page }) => {
@@ -1060,7 +1078,10 @@ test.describe("control panel, views", () => {
     const snapshot = {
       snapshot_id: "abc123", captured_at: "2026-09-16T10:00:00Z", engine_generation: 3, complete: false, payload_profile: "x1s",
       devices: [{ kind: "device", device: { device_id: 1, name: "TV" }, complete: true, editable: true, fetched_at: "2026-09-16T09:00:00Z" }],
-      activities: [{ kind: "activity", device: { device_id: 101, name: "Watch TV" }, complete: false, editable: false, fetched_at: null }],
+      activities: [{ kind: "activity", device: { device_id: 101, name: "Watch TV" }, complete: false, editable: false, fetched_at: null,
+        macros: [{ button_id: 198, name: "POWER_ON", steps: [] }, { button_id: 199, name: "POWER_OFF", steps: [] }],
+        button_bindings: [{ button_id: 151, device_id: 1, command_id: 9 }, { button_id: 174, device_id: 1, command_id: 17 }], favorite_slots: [],
+      }],
     };
     await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
     await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/1/commands`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ command_id: 1, label: "Power" }, { command_id: 17, label: "Up" }]) }));
@@ -1087,6 +1108,8 @@ test.describe("control panel, views", () => {
     await expect(rows.nth(1).locator(".entity-name-label")).toHaveText("Listen");
     await expect(page.locator("#catalog-rows .entity-block.open")).toHaveCount(0);
 
+    // Power sequences in the snapshot must not inflate the closed row's macro count.
+    await expect(rows.nth(0).locator(".entity-count")).toHaveText("0 favs / 0 macros / 2 buttons");
     // Opening a row shows its drawer: the bound buttons with their codes; the count line follows the rows.
     await rows.nth(0).locator(".entity-summary").click();
     await expect(rows.nth(0)).toHaveClass(/open/);
@@ -1433,4 +1456,202 @@ test.describe("control panel, views", () => {
     await expect(rows).toHaveCount(1);
     expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
   });
+});
+
+test.describe("control panel, integrated picker", () => {
+  test("manages an unselected hub without navigating, and unregister requires confirmation", async ({ page }) => {
+    const state = { hubs: [LIVING, OFFICE], seen: [{ ...SEEN_NEW, config: { ...SEEN_NEW.config, host: OFFICE.config.host, name: 'Office' }, registered_hub_id: OFFICE.hub_id }] };
+    const { calls } = await mockServer(page, state);
+    await page.goto(PAGE);
+    await chip(page).click();
+    await page.getByRole("button", { name: "Manage 192.168.1.60", exact: true }).click();
+    const controls = page.getByRole("group", { name: "Actions for 192.168.1.60", exact: true });
+    await controls.getByRole("button", { name: "Enable", exact: true }).click();
+    await expect(controls.getByRole("button", { name: "Disable", exact: true })).toBeEnabled();
+    await expect(chip(page)).toContainText("Living room");
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
+    await controls.getByRole("button", { name: "Disable", exact: true }).click();
+    await expect(controls.getByRole("button", { name: "Enable", exact: true })).toBeEnabled();
+    await controls.getByRole("button", { name: "Unregister…", exact: true }).click();
+    expect(calls.some((c) => c.key === `DELETE /hubs/${OFFICE.hub_id}`)).toBe(false);
+    page.once("dialog", (dialog) => {
+      expect(dialog.message()).toContain("cached state and web remote layout");
+      dialog.accept();
+    });
+    await controls.getByRole("button", { name: "Unregister…", exact: true }).click();
+    await expect(options(page)).toHaveCount(1);
+    // The stale registered_hub_id does not hide a newly unregistered advertisement.
+    await expect(page.locator(".picker-seen")).toContainText("Office");
+    await expect(page.getByRole("button", { name: "Add Office", exact: true })).toBeVisible();
+    await expect(chip(page)).toContainText("Living room");
+    expect(calls.filter((c) => c.key.startsWith('POST /hubs/')).map((c) => c.key)).toEqual([
+      `POST /hubs/${OFFICE.hub_id}/enable`, `POST /hubs/${OFFICE.hub_id}/disable`,
+    ]);
+  });
+
+  test("shows lifecycle errors inline and retries a registered hub that failed to start", async ({ page }) => {
+    const state = { hubs: [{ ...LIVING, status: null }], seen: [], jobRuns: true };
+    const { calls } = await mockServer(page, state);
+    await page.goto(PAGE);
+    await chip(page).click();
+    await page.getByRole("button", { name: "Manage Living room", exact: true }).click();
+    const controls = page.getByRole("group", { name: "Actions for Living room", exact: true });
+    await controls.getByRole("button", { name: "Retry start", exact: true }).click();
+    await expect.poll(() => calls.some((c) => c.key === `POST /hubs/${LIVING.hub_id}/enable`)).toBe(true);
+    await expect(options(page).first()).toContainText("connected, in control");
+    await controls.getByRole("button", { name: "Disable", exact: true }).click();
+    await expect(page.locator("#hub-picker-menu [role=alert]")).toContainText("hub_job_running");
+    await expect(controls.getByRole("button", { name: "Disable", exact: true })).toBeEnabled();
+  });
+
+  test("keeps older discoveries visible and allows scan failure recovery", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [{ ...SEEN_NEW, present: false }, SEEN_KNOWN] };
+    await mockServer(page, state);
+    await page.route(`**${API}/discovery/scan`, (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ type: "discovery_unavailable", detail: "Try again shortly" }) }));
+    await page.goto(PAGE);
+    await chip(page).click();
+    await expect(page.locator(".picker-seen")).toHaveCount(1);
+    await expect(page.locator(".picker-seen")).toContainText("Not currently seen");
+    await expect(page.locator("#hub-picker-menu [role=alert]")).toContainText("Try again shortly");
+    await page.unroute(`**${API}/discovery/scan`);
+    state.seen[0].present = true;
+    await page.click("#seen-scan");
+    await expect(page.locator("#seen-scan")).toBeEnabled();
+    await expect(page.locator("#hub-picker-menu [role=alert]")).toHaveCount(0);
+    await expect(page.locator(".picker-seen")).not.toContainText("Not currently seen");
+    await page.screenshot({ path: shot(testInfo, "picker-discovery-light") });
+    await page.evaluate(() => document.documentElement.dataset.theme = "dark");
+    await page.screenshot({ path: shot(testInfo, "picker-discovery-dark") });
+  });
+
+  test("keyboard access, manual back and outside click work with a single hub", async ({ page }, testInfo) => {
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(PAGE);
+    await chip(page).focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(options(page).first()).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(page.locator("#hub-picker-manual")).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#add-host")).toBeFocused();
+    const box = await page.locator("#hub-picker-menu").boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width);
+    await page.screenshot({ path: shot(testInfo, "picker-manual") });
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page.locator("#hub-picker-manual")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#hub-picker-menu")).toHaveCount(0);
+    await expect(chip(page)).toBeFocused();
+    await chip(page).click();
+    await page.locator(".brand").click();
+    await expect(page.locator("#hub-picker-menu")).toHaveCount(0);
+  });
+
+  test("adding a discovered hub respects unsaved work before changing selection", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [SEEN_NEW] };
+    const { calls } = await mockServer(page, state);
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
+    await expect(chip(page)).toContainText("Living room");
+    await page.evaluate(() => document.querySelector("sofabaton-server-panel").store.setDraft("e26a44861b45", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" } }));
+    await chip(page).click();
+    let asked = false;
+    page.once("dialog", (dialog) => {
+      asked = true;
+      expect(dialog.message()).toContain("unsaved changes");
+      dialog.dismiss();
+    });
+    await page.getByRole("button", { name: "Add Bedroom", exact: true }).click();
+    await expect.poll(() => asked).toBe(true);
+    await expect(chip(page)).toContainText("Living room");
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
+    await chip(page).click();
+    await expect(options(page)).toHaveCount(2);
+    expect(calls.filter((c) => c.key === "POST /hubs")).toHaveLength(1);
+  });
+});
+
+test("manual addition selects the re-keyed hub, but preserves navigation during a pending add", async ({ page }) => {
+  const state = { hubs: [LIVING, OFFICE], seen: [] };
+  await mockServer(page, state);
+  let finishAdd;
+  let started = false;
+  await page.route(`**${API}/hubs`, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const body = route.request().postDataJSON();
+    started = true;
+    if (body.host === "192.168.1.71") await new Promise((resolve) => { finishAdd = resolve; });
+    const newHub = { ...OFFICE, hub_id: body.host === "192.168.1.70" ? SEEN_NEW.key : "other-mac", config: { host: body.host, name: body.name }, enabled: false };
+    state.hubs.push(newHub);
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ...newHub, hub_id: body.host }) });
+  });
+  await page.goto(PAGE);
+  await openManualAdd(page);
+  await page.fill("#add-host", "192.168.1.70");
+  await page.fill("#add-name", "Bedroom");
+  await page.click("#add-send");
+  await expect(chip(page)).toContainText("Bedroom");
+  await expect(page).toHaveURL(/#\/cb383539684b\/hub\/activities$/);
+  await openManualAdd(page);
+  await page.fill("#add-host", "192.168.1.71");
+  await page.fill("#add-name", "Garage");
+  started = false;
+  await page.click("#add-send");
+  await expect.poll(() => started).toBe(true);
+  await page.keyboard.press("Escape");
+  await pickHub(page, LIVING.hub_id);
+  finishAdd();
+  await expect.poll(() => state.hubs.length).toBe(4);
+  await chip(page).click();
+  await expect(options(page)).toHaveCount(4);
+  await expect(chip(page)).toContainText("Living room");
+  await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
+});
+
+test("device section navigation holds its target during smooth scrolling and resumes tracking manual scroll", async ({ page }) => {
+  await mockServer(page, { hubs: [LIVING], seen: [] });
+  const snapshot = {
+    snapshot_id: "scroll-test", captured_at: "t", engine_generation: 1, complete: true, payload_profile: "structural",
+    hub: { name: "Living room", version: "X1S" }, activities: [],
+    devices: [{ kind: "device_backup", complete: true, editable: true, fetched_at: "t",
+      device: { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", idle_behavior: 1 },
+      commands: Array.from({ length: 48 }, (_, i) => ({ command_id: i + 1, name: `Command ${i + 1}` })),
+      button_bindings: [{ button_id: 151, button_name: "OK", command_id: 1, command_name: "Command 1" }],
+      macros: [], key_sort: null, input_record: null,
+    }],
+  };
+  await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+  await page.goto(`${PAGE}#/e26a44861b45/hub/devices/1`);
+  const editor = page.locator("sb-panel-device-editor");
+  const nav = (id) => editor.locator(`.detail-section-nav-btn[data-section="${id}"]`);
+  await expect(nav("power")).toHaveAttribute("aria-selected", "true");
+  await nav("bindings").click();
+  const sampleActiveSections = () => page.evaluate(async () => {
+    const editor = document.querySelector("sofabaton-server-panel").shadowRoot.querySelector("sb-panel-device-editor").shadowRoot;
+    const samples = [];
+    const start = performance.now();
+    await new Promise((resolve) => {
+      const frame = () => {
+        samples.push({ section: editor.querySelector('.detail-section-nav-btn.active')?.dataset.section, y: window.scrollY });
+        if (performance.now() - start >= 1200) resolve(); else requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    return samples;
+  });
+  const samples = await sampleActiveSections();
+  expect([...new Set(samples.map((s) => s.section))]).toEqual(["bindings"]);
+  expect(new Set(samples.map((s) => Math.round(s.y))).size).toBeGreaterThan(2);
+  // A new click supersedes a scroll in flight without selecting the sections passed along the way.
+  await nav("power").click();
+  await nav("commands").click();
+  const retargeted = await sampleActiveSections();
+  expect([...new Set(retargeted.map((s) => s.section))]).toEqual(["commands"]);
+  // Manual input interrupts a new animated jump and returns to position-based tracking.
+  await nav("bindings").click();
+  await page.mouse.move(200, 400);
+  await page.mouse.wheel(0, -450);
+  await expect(nav("bindings")).toHaveAttribute("aria-selected", "false");
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await expect(nav("power")).toHaveAttribute("aria-selected", "true");
 });

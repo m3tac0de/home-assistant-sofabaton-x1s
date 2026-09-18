@@ -50,9 +50,10 @@ From a checkout, install both packages from the repository root instead:
 `python -m pip install . ./sofabaton-x-server`.
 
 Open the control panel at `http://<server>:8480/` (it lives at `/ui/`).
-Use `localhost` when browsing on the server host. Its Hubs view lists the
-hubs advertised on the LAN with an Add button, takes an address by hand,
-and enables, disables and removes hubs later (see
+Use `localhost` when browsing on the server host. Open the hub picker to
+see registered hubs and hubs discovered on the LAN. Add a discovered hub
+with its Add button, or choose **Add by address…** for manual registration.
+Each registered hub's **⋯** actions enable, disable or unregister it (see
 [Control panel](#control-panel)). If the hub is missing, make sure the app
 is fully closed and scan again. Keep the data directory (default `./data`)
 across restarts. `--hub <physical IP>` is an alternative for seeding the
@@ -202,11 +203,17 @@ play calls return their acceptance immediately.
 ## Control panel
 
 Open `<server base URL>/ui/`. The root `/` and legacy `/harness` redirect
-there. The sidebar lists registered hubs and their state.
+there. The hub picker in the top dock lists registered hubs and their state,
+with unregistered discoveries in a separate group. Opening it scans the LAN;
+the scan button repeats discovery. Older discoveries are marked when no
+longer present. **Add by address…** accepts an address, an optional name and
+the option to start disabled. The **⋯** actions on registered hubs enable,
+disable, retry a failed start or unregister them. Unregistering requires
+confirmation and forgets cached state and the saved remote layout.
 
 | View | What users can do |
 | --- | --- |
-| **Hubs** | Add discovered hubs or enter an address; inspect status; enable, disable, retry a failed start or remove a registration. Removal also forgets its cached state and remote layout. |
+| **Hub setup** (cog menu) | Inspect the selected hub's details and status; enable, disable, retry a failed start or remove its registration. Discovery and registration are in the hub picker. |
 | **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. It does not edit configuration. |
 | **Remote** | Control the selected hub and edit its saved remote layout. |
 | **API** | Select an OpenAPI operation or enter a method/path, send a request, inspect the response and follow a returned job. `{hub_id}` uses the selected hub. |

@@ -3,7 +3,7 @@
 // preferences (the routes live in panel-route.ts). No DOM, so the node
 // tests cover them directly.
 
-import type { HubView } from "./panel-api";
+import type { HubView, SeenHub } from "./panel-api";
 import { isHubTab, normalizeSub, SUBTABS, type HubTab } from "./panel-route";
 
 export type Tone = "ok" | "warn" | "err" | "off";
@@ -21,6 +21,17 @@ export function hubState(hub: HubView): { text: string; tone: Tone } {
 /** The configured name, else the hub's own banner name, else its id. */
 export function hubDisplayName(hub: Pick<HubView, "hub_id" | "config" | "hub_name">): string {
   return hub.config?.name || hub.hub_name || hub.hub_id;
+}
+
+/** Match advertisements against current registrations, including address-to-MAC rekeys.
+ * A stale discovery reference must not hide a hub after it is unregistered. */
+export function unregisteredHubs(seen: SeenHub[], hubs: HubView[]): SeenHub[] {
+  const macKey = (value: unknown) => String(value ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+  return seen.filter((s) => !hubs.some((h) => {
+    const mac = macKey(s.config.mac);
+    return h.hub_id === s.registered_hub_id || h.config.host === s.config.host ||
+      Boolean(mac && (mac === macKey(h.config.mac) || mac === h.hub_id));
+  }));
 }
 
 /** A local date-time, or "never". */

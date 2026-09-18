@@ -924,10 +924,10 @@ function shortcutsRowEnabled(layout) {
 var SHORTCUT_SLOTS = ["left", "middle", "right"];
 function normalizedShortcutSlot(value) {
   if (!value || typeof value !== "object") return null;
-  const icon4 = String(value.icon ?? "").trim();
+  const icon5 = String(value.icon ?? "").trim();
   const commandId = Number(value.command_id);
-  if (!icon4 || !Number.isFinite(commandId)) return null;
-  return { icon: icon4, command_id: commandId };
+  if (!icon5 || !Number.isFinite(commandId)) return null;
+  return { icon: icon5, command_id: commandId };
 }
 function deviceShortcutsFromConfig(config, deviceId) {
   const result = {};
@@ -3302,7 +3302,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   if (!item || typeof item !== "object") return null;
   const name = String(item.name ?? item.label ?? "").trim();
   if (!name) return null;
-  const icon4 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+  const icon5 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
   const action = item.action && typeof item.action === "object" ? item.action : item.tap_action && typeof item.tap_action === "object" ? item.tap_action : null;
   const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
   const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
@@ -3314,7 +3314,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   return {
     __custom: true,
     name,
-    icon: icon4,
+    icon: icon5,
     action: hasAction ? action : null,
     command_id: Number.isFinite(cmd) ? cmd : null,
     device_id: Number.isFinite(dev) ? dev : null,
@@ -4649,12 +4649,12 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
   const label = capture.label || str().assist.automationAssistName;
-  const icon4 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
+  const icon5 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
     `name: ${label}`,
-    `icon: ${icon4}`,
+    `icon: ${icon5}`,
     "tap_action:",
     "  action: perform-action",
     "  perform_" + serviceYaml.substring(2),
@@ -5860,16 +5860,16 @@ var SbKeyButton = class extends BaseElement {
     control.type = "button";
     control.className = "sb-key-control";
     control.disabled = this._disabled;
-    const icon4 = document.createElement("ha-icon");
-    icon4.className = "sb-key-control__icon";
+    const icon5 = document.createElement("ha-icon");
+    icon5.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
     const trailingIcon = document.createElement("ha-icon");
     trailingIcon.className = "sb-key-control__trailing-icon";
-    control.append(icon4, label, trailingIcon);
+    control.append(icon5, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
-    this._iconEl = icon4;
+    this._iconEl = icon5;
     this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
@@ -8121,8 +8121,8 @@ var MDI_ICON_PATHS = {
 
 // remote-card/src/shims/ha-icon.ts
 var FALLBACK_PATH = "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z";
-function mdiPathFor(icon4) {
-  const name = String(icon4 ?? "").trim().replace(/^mdi:/, "");
+function mdiPathFor(icon5) {
+  const name = String(icon5 ?? "").trim().replace(/^mdi:/, "");
   if (!name) return null;
   return MDI_ICON_PATHS[name] ?? null;
 }
@@ -8149,10 +8149,10 @@ var SbHaIcon = class extends HTMLElement {
     this._render();
   }
   _render() {
-    const icon4 = this.icon;
-    if (this._rendered === icon4) return;
-    this._rendered = icon4;
-    const path = mdiPathFor(icon4) ?? FALLBACK_PATH;
+    const icon5 = this.icon;
+    if (this._rendered === icon5) return;
+    this._rendered = icon5;
+    const path = mdiPathFor(icon5) ?? FALLBACK_PATH;
     this._shadow.innerHTML = `
       <style>
         :host {
@@ -10014,6 +10014,13 @@ function hubState(hub) {
 function hubDisplayName(hub) {
   return hub.config?.name || hub.hub_name || hub.hub_id;
 }
+function unregisteredHubs(seen, hubs) {
+  const macKey = (value) => String(value ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+  return seen.filter((s7) => !hubs.some((h6) => {
+    const mac = macKey(s7.config.mac);
+    return h6.hub_id === s7.registered_hub_id || h6.config.host === s7.config.host || Boolean(mac && (mac === macKey(h6.config.mac) || mac === h6.hub_id));
+  }));
+}
 function formatWhen(iso) {
   if (!iso) return "never";
   const date = new Date(iso);
@@ -10091,35 +10098,101 @@ function parseHeaderLines(text) {
 }
 
 // server-panel/src/components/hub-picker.ts
+var icon = (path) => b2`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+var HUB_PICKER_CSS = i`
+  .hub-picker-menu { width: 350px; }
+  .picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 10px 4px 14px; min-height: 38px; color: var(--sbp-muted); font-size: 11px; font-weight: 600; }
+  .picker-heading-label { text-transform: uppercase; letter-spacing: 0.06em; }
+  .picker-row { display: flex; align-items: center; gap: 2px; padding-right: 6px; }
+  .picker-row .hub-option { flex: 1; min-width: 0; }
+  .picker-row.selected { background: rgba(var(--sbp-accent-rgb), 0.12); }
+  .picker-row .menu-item.selected { background: transparent; }
+  .picker-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 36px; min-height: 36px; padding: 8px; border: 0; background: transparent; color: var(--sbp-muted); }
+  .picker-icon:hover, .picker-icon[aria-expanded="true"] { background: var(--sbp-panel-2); color: var(--sbp-text); }
+  .picker-icon svg, .picker-manual-button svg { width: 18px; height: 18px; flex: 0 0 auto; }
+  .picker-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 12px; }
+  .picker-actions button { min-height: 36px; font-size: 12px; }
+  .picker-seen { padding: 7px 10px 7px 14px; gap: 10px; min-height: 54px; }
+  .picker-seen .menu-title { font-weight: 500; }
+  .picker-seen .small { min-height: 36px; flex: 0 0 auto; color: var(--sbp-accent); }
+  .picker-unseen { color: var(--sbp-muted); }
+  .picker-empty, .picker-error { margin: 0; padding: 6px 14px 12px; font-size: 12px; line-height: 1.5; }
+  .picker-empty { color: var(--sbp-muted); }
+  .picker-error { color: var(--sbp-err); overflow-wrap: anywhere; }
+  .picker-form { padding: 0 14px 12px; }
+  .picker-form label { text-transform: none; letter-spacing: 0; font-size: 12px; }
+  .picker-form input:not([type="checkbox"]) { min-height: 40px; }
+  .picker-form .inline { margin: 12px 0; }
+  .picker-form .hint { margin: 0 0 12px; }
+  .picker-form .actions { justify-content: flex-end; }
+  @container (max-width: 600px) {
+    .hub-picker { position: static; }
+    .hub-picker-menu { right: var(--page-gutter); width: min(350px, calc(100cqw - 2 * var(--page-gutter))); max-width: calc(100cqw - 2 * var(--page-gutter)); }
+  }
+`;
 function renderHubPicker(params) {
   const selected = params.hubs.find((r6) => r6.hub.hub_id === params.selectedHubId) ?? null;
   const label = selected ? hubDisplayName(selected.hub) : params.hubs.length ? "pick a hub" : "no hub";
   const tone = selected ? hubState(selected.hub).tone : "off";
-  const interactive = params.hubs.length > 1 || !selected && params.hubs.length > 0;
-  if (!interactive) {
-    return b2`
-      <div class="hub-picker hub-picker--static" id="hub-picker">
-        <div class="hub-picker-btn hub-picker-btn--static" id="hub-picker-btn" title=${selected ? `${label} \xB7 ${selected.hub.hub_id}` : "register a hub under the cog menu"}>
-          <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span>
-        </div>
-      </div>
-    `;
-  }
+  const discovered = unregisteredHubs(params.seen, params.hubs.map((r6) => r6.hub));
   return b2`
-    <div class="hub-picker" id="hub-picker">
-      <button class="hub-picker-btn ${params.open ? "is-open" : ""}" id="hub-picker-btn" type="button" title=${label} aria-haspopup="menu" aria-expanded=${String(params.open)} @click=${params.onToggle}>
+    <div class="hub-picker" id="hub-picker" @keydown=${params.onKeyDown}>
+      <button class="hub-picker-btn ${params.open ? "is-open" : ""}" id="hub-picker-btn" type="button" title=${label} aria-haspopup="dialog" aria-controls="hub-picker-menu" aria-expanded=${String(params.open)} @click=${params.onToggle}>
         <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.open ? mdiChevronUp : mdiChevronDown}></path></svg>
       </button>
-      ${params.open ? b2`<div class="menu hub-picker-menu" id="hub-picker-menu" role="menu">
-            ${params.hubs.map(({ hub }) => {
+      ${params.open ? b2`
+        <div class="menu hub-picker-menu" id="hub-picker-menu" role="dialog" aria-label=${params.manual ? "Add hub by address" : "Hubs"}>
+          ${params.manual ? b2`
+            <div class="picker-heading"><span>Add hub by address</span></div>
+            <form class="picker-form" id="hub-add" @submit=${params.onSubmit}>
+              <label for="add-host">IP address or hostname</label>
+              <input id="add-host" name="host" placeholder="192.168.1.50" autocomplete="off" required ?disabled=${params.adding}>
+              <label for="add-name">Name (optional)</label>
+              <input id="add-name" name="name" autocomplete="off" ?disabled=${params.adding}>
+              <label class="inline"><input type="checkbox" id="add-disabled" name="disabled" ?disabled=${params.adding}> Start disabled — connect later</label>
+              <p class="hint">If another server or Home Assistant manages this hub, disable it there before connecting here.</p>
+              ${params.error ? b2`<p class="picker-error" role="alert">${params.error}</p>` : A}
+              <div class="actions"><button type="button" ?disabled=${params.adding} @click=${() => params.onManual(false)}>Back</button><button class="primary" id="add-send" type="submit" ?disabled=${params.adding}>${params.adding ? "Adding\u2026" : "Add hub"}</button></div>
+            </form>
+          ` : b2`
+            <div role="group" aria-label="Registered hubs">
+              <div class="picker-heading"><span class="picker-heading-label">Registered hubs</span></div>
+              ${params.hubs.length ? params.hubs.map(({ hub }) => {
     const { text, tone: t5 } = hubState(hub);
-    return b2`<button class="menu-item hub-option ${hub.hub_id === params.selectedHubId ? "selected" : ""}" type="button" role="menuitemradio" data-hub=${hub.hub_id} aria-checked=${String(hub.hub_id === params.selectedHubId)} @click=${() => params.onSelect(hub.hub_id)}>
-                <span class="dot ${t5}"></span><span class="menu-main"><span class="menu-title">${hubDisplayName(hub)}</span><span class="menu-sub">${hub.config.host} · ${text}</span></span>
-              </button>`;
-  })}
+    const name = hubDisplayName(hub);
+    const active = hub.hub_id === params.selectedHubId;
+    const expanded = params.actionsHubId === hub.hub_id;
+    const busy = params.busy.has(hub.hub_id);
+    return b2`
+                  <div class="picker-row ${active ? "selected" : ""}">
+                    <button class="menu-item hub-option ${active ? "selected" : ""}" type="button" data-hub=${hub.hub_id} aria-pressed=${String(active)} @click=${() => params.onSelect(hub.hub_id)}>
+                      <span class="dot ${t5}"></span><span class="menu-main"><span class="menu-title">${name}</span><span class="menu-sub" title=${`${hub.config.host} \xB7 ${text}`}>${hub.config.host} · ${text}</span></span>
+                    </button>
+                    <button class="picker-icon" type="button" aria-label=${`Manage ${name}`} aria-expanded=${String(expanded)} @click=${() => params.onActions(hub.hub_id)}>${icon(mdiDotsHorizontal)}</button>
+                  </div>
+                  ${expanded ? b2`<div class="picker-actions" role="group" aria-label=${`Actions for ${name}`}>
+                    ${!hub.enabled || !hub.status ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : A}
+                    ${hub.enabled ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : A}
+                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Unregister…</button>
+                  </div>` : A}
+                `;
+  }) : b2`<p class="picker-empty">No hubs registered yet.</p>`}
+            </div>
             <div class="menu-sep"></div>
-            <button class="menu-item" type="button" role="menuitem" id="hub-picker-setup" @click=${params.onSetup}><span class="menu-main"><span class="menu-title">Hub setup…</span></span></button>
-          </div>` : A}
+            <div role="group" aria-label="Discovered hubs">
+              <div class="picker-heading"><span class="picker-heading-label">Discovered hubs</span><span aria-live="polite">${params.scanning ? "Scanning\u2026" : ""}</span><button class="picker-icon" id="seen-scan" type="button" aria-label="Scan for hubs" title="Scan for hubs" ?disabled=${params.scanning} @click=${params.onScan}>${icon(mdiRefresh)}</button></div>
+              ${discovered.length ? discovered.map((s7) => b2`
+                <div class="picker-row picker-seen ${s7.present ? "" : "picker-unseen"}" data-seen=${s7.key}>
+                  <span class="menu-main"><span class="menu-title">${s7.config.name || s7.config.host}</span><span class="menu-sub" title=${`Last seen ${formatWhen(s7.last_seen)} \xB7 ${s7.config.mac || "MAC unknown"}`}>${s7.config.host}${s7.config.hub_version ? ` \xB7 ${s7.config.hub_version}` : ""}${s7.present ? "" : " \xB7 Not currently seen"}</span></span>
+                  <button class="small" type="button" aria-label=${`Add ${s7.config.name || s7.config.host}`} ?disabled=${params.adding} @click=${() => params.onAdd(s7)}>Add</button>
+                </div>
+              `) : b2`<p class="picker-empty" id="seen-empty">${params.scanning ? "Looking for hubs on your network\u2026" : "No unregistered hubs found. Close the Sofabaton app if a hub is missing, then scan again."}</p>`}
+            </div>
+            ${params.error ? b2`<p class="picker-error" role="alert">${params.error}</p>` : A}
+            <div class="menu-sep"></div>
+            <button class="menu-item picker-manual-button" type="button" id="hub-picker-manual" ?disabled=${params.adding} @click=${() => params.onManual(true)}>${icon(mdiPlus)}<span class="menu-title">Add by address…</span></button>
+          `}
+        </div>` : A}
     </div>
   `;
 }
@@ -11436,8 +11509,7 @@ var PanelStore = class {
       this._tick = null;
       if (this._isVisible() && this._snapshot.server.reachable) {
         void this.refreshHubs();
-        const route = this._snapshot.route;
-        if (route.kind === "tool" && route.page === "setup") void this.refreshSeen();
+        void this.refreshSeen();
       }
       this._scheduleTick();
     }, this._tickMs);
@@ -11992,6 +12064,12 @@ var SofabatonServerPanel = class extends i4 {
     super();
     this._pickerOpen = false;
     this._cogOpen = false;
+    this._pickerManual = false;
+    this._pickerActionsHubId = null;
+    this._pickerBusy = /* @__PURE__ */ new Set();
+    this._pickerAdding = false;
+    this._pickerScanning = false;
+    this._pickerError = null;
     this._unsubscribe = null;
     this._dockObserver = null;
     this._onHashChange = () => {
@@ -12011,6 +12089,7 @@ var SofabatonServerPanel = class extends i4 {
     };
     this._onKeyDown = (event) => {
       if (event.key === "Escape") {
+        if (this._pickerOpen) this.renderRoot.querySelector("#hub-picker-btn")?.focus();
         this._pickerOpen = false;
         this._cogOpen = false;
       }
@@ -12118,12 +12197,128 @@ var SofabatonServerPanel = class extends i4 {
   _goPage(page) {
     this._go(toolRoute(page));
   }
-  _goSetup() {
-    this._goPage("setup");
-    void this.updateComplete.then(() => {
-      const view = this.renderRoot.querySelector("sb-panel-hubs");
-      view?.focusAddress();
-    });
+  // -- hub picker ---------------------------------------------------------------------
+  _togglePicker() {
+    this._pickerOpen = !this._pickerOpen;
+    this._cogOpen = false;
+    if (this._pickerOpen) {
+      this._pickerManual = false;
+      this._pickerActionsHubId = null;
+      this._pickerError = null;
+      void this.store.refreshSeen();
+      void this._scanPicker();
+    }
+  }
+  _pickerMessage(text, ok = true) {
+    this._pickerError = ok ? null : text;
+    this.store.say(text, ok);
+  }
+  async _scanPicker() {
+    if (this._pickerScanning) return;
+    this._pickerScanning = true;
+    this._pickerError = null;
+    try {
+      const response = await this.api.scan(5);
+      if (!response.ok) this._pickerMessage(problemText(response), false);
+      await this.store.refreshSeen();
+    } catch (err) {
+      this._pickerMessage(`Could not scan for hubs: ${String(err)}`, false);
+    } finally {
+      this._pickerScanning = false;
+    }
+  }
+  async _pickerAct(hub, action) {
+    const id = hub.hub_id;
+    if (this._pickerBusy.has(id)) return;
+    if (action === "remove" && !confirm(`Unregister ${hubDisplayName(hub)}?
+
+The server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
+    this._pickerBusy = new Set(this._pickerBusy).add(id);
+    this._pickerError = null;
+    try {
+      const response = action === "remove" ? await this.api.removeHub(id) : action === "enable" ? await this.api.enableHub(id) : await this.api.disableHub(id);
+      this._pickerMessage(`${hubDisplayName(hub)}: ${response.ok ? actionOutcome(action, hub) : problemText(response)}`, response.ok);
+      await this.store.refreshAll();
+      if (response.ok && action === "remove") {
+        this._pickerActionsHubId = null;
+        await this.updateComplete;
+        this.renderRoot.querySelector("#hub-picker-btn")?.focus();
+      }
+    } catch (err) {
+      this._pickerMessage(String(err), false);
+      await this.store.refreshAll();
+    } finally {
+      const busy = new Set(this._pickerBusy);
+      busy.delete(id);
+      this._pickerBusy = busy;
+    }
+  }
+  async _pickerAdd(body) {
+    if (this._pickerAdding) return;
+    const selectionBefore = this._snapshot.selectedHubId;
+    const routeBefore = hashFor(this._snapshot.route);
+    this._pickerAdding = true;
+    this._pickerError = null;
+    try {
+      const response = await this.api.addHub(body);
+      let hubId = null;
+      if (response.status === 201 && response.body) {
+        hubId = response.body.hub_id;
+        this._pickerMessage(`added ${hubId}${response.body.enabled ? "" : " (disabled)"}`);
+      } else if (response.status === 503 && response.body?.type === "hub_start_failed") {
+        const problem = response.body;
+        hubId = problem.hub_id || body.host;
+        this._pickerMessage(`${hubId} is registered but its proxy did not start: ${problem.detail ?? ""}. Fix the cause and press Retry start.`, false);
+        this._pickerActionsHubId = hubId;
+      } else {
+        this._pickerMessage(problemText(response), false);
+      }
+      await this.store.refreshAll();
+      if (hubId) {
+        const registrationId = hubId;
+        hubId = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId || r6.hub.config.host === body.host)?.hub.hub_id ?? hubId;
+        this._pickerManual = false;
+        if (this._pickerActionsHubId === registrationId) this._pickerActionsHubId = hubId;
+        if ((!selectionBefore || this._snapshot.selectedHubId === selectionBefore) && hashFor(this._snapshot.route) === routeBefore) {
+          if (this._confirmLeave({ hubId })) this.store.selectHub(hubId);
+          else this._pickerOpen = false;
+        }
+        await this.updateComplete;
+        const target = Array.from(this.renderRoot.querySelectorAll(".hub-option")).find((el) => el.dataset.hub === hubId);
+        target?.focus();
+      }
+    } catch (err) {
+      this._pickerMessage(String(err), false);
+      await this.store.refreshAll();
+    } finally {
+      this._pickerAdding = false;
+    }
+  }
+  _pickerSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const host = String(values.get("host") ?? "").trim();
+    if (!host) return;
+    const name = String(values.get("name") ?? "").trim();
+    void this._pickerAdd({ host, ...name ? { name } : {}, enabled: !values.has("disabled") });
+  }
+  async _showManual(show) {
+    this._pickerManual = show;
+    this._pickerError = null;
+    await this.updateComplete;
+    this.renderRoot.querySelector(show ? "#add-host" : "#hub-picker-manual")?.focus();
+  }
+  async _pickerKeyDown(event) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;
+    event.preventDefault();
+    if (!this._pickerOpen) this._togglePicker();
+    await this.updateComplete;
+    const buttons = Array.from(this.renderRoot.querySelectorAll("#hub-picker-menu button:not(:disabled)"));
+    if (!buttons.length) return;
+    const current = buttons.indexOf(this.renderRoot.activeElement);
+    const index = event.key === "Home" ? 0 : event.key === "End" || current < 0 && event.key === "ArrowUp" ? buttons.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[index].focus();
   }
   // -- events from the views -----------------------------------------------------------
   _onMessage(event) {
@@ -12152,7 +12347,9 @@ var SofabatonServerPanel = class extends i4 {
         case "debug":
           return route.sub === "events" ? b2`<sb-panel-events .stream=${this.stream}></sb-panel-events>` : b2`<sb-panel-api .api=${this.api} .ctx=${ctx} .operations=${s7.operations} @sb-request-sent=${() => void this.store.refreshAll()}></sb-panel-api>`;
         default:
-          return b2`<sb-panel-hubs .api=${this.api} .ctx=${ctx} .hubs=${s7.hubs.map((r6) => r6.hub)} .seen=${s7.seen}></sb-panel-hubs>`;
+          return b2`<sb-panel-hubs .api=${this.api} .ctx=${ctx} .hubs=${s7.hubs.map((r6) => r6.hub)} @sb-open-picker=${() => {
+            if (!this._pickerOpen) this._togglePicker();
+          }}></sb-panel-hubs>`;
       }
     }
     switch (route.tab) {
@@ -12180,26 +12377,35 @@ var SofabatonServerPanel = class extends i4 {
       <div class="page">
         <header class="top-dock" id="top-dock">
           <div class="top-row">
-            <div class="brand"><b>Sofabaton X</b><span>control panel</span></div>
+            <div class="brand"><span class="stream ${streamLost ? "lost" : ""}" id="stream-state" role="img" aria-label=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"} title=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"}><span class="dot ${streamOn ? "ok" : streamLost ? "warn" : "off"}" id="ws-dot"></span></span><b>Sofabaton X</b><span class="brand-caption">control panel</span></div>
             <div class="picker-slot">
               ${renderHubPicker({
       hubs: s7.hubs,
+      seen: s7.seen,
       selectedHubId: s7.selectedHubId,
       open: this._pickerOpen,
-      onToggle: () => {
-        this._pickerOpen = !this._pickerOpen;
-        this._cogOpen = false;
-      },
+      manual: this._pickerManual,
+      actionsHubId: this._pickerActionsHubId,
+      busy: this._pickerBusy,
+      adding: this._pickerAdding,
+      scanning: this._pickerScanning,
+      error: this._pickerError,
+      onToggle: () => this._togglePicker(),
       onSelect: (hubId) => {
         this._pickerOpen = false;
         if (!this._confirmLeave({ hubId })) return;
         this.store.selectHub(hubId);
       },
-      onSetup: () => this._goSetup()
+      onActions: (hubId) => {
+        this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId;
+      },
+      onAction: (hub, action) => void this._pickerAct(hub, action),
+      onAdd: (seen) => void this._pickerAdd({ ...seen.config, enabled: true }),
+      onManual: (show) => void this._showManual(show),
+      onSubmit: (event) => this._pickerSubmit(event),
+      onScan: () => void this._scanPicker(),
+      onKeyDown: (event) => void this._pickerKeyDown(event)
     })}
-            </div>
-            <div class="top-right">
-              <span class="stream ${streamLost ? "lost" : ""}" id="stream-state" title=${streamOn ? "event stream live" : "event stream off, reconnecting"}><span class="dot ${streamOn ? "ok" : streamLost ? "warn" : "off"}" id="ws-dot"></span><span class="stream-label" id="ws-state">${streamOn ? "stream live" : streamLost ? "live updates paused, reconnecting" : "stream off"}</span></span>
             </div>
           </div>
           ${renderTabBar({
@@ -12255,7 +12461,13 @@ var SofabatonServerPanel = class extends i4 {
 SofabatonServerPanel.properties = {
   _snapshot: { state: true },
   _pickerOpen: { state: true },
-  _cogOpen: { state: true }
+  _cogOpen: { state: true },
+  _pickerManual: { state: true },
+  _pickerActionsHubId: { state: true },
+  _pickerBusy: { state: true },
+  _pickerAdding: { state: true },
+  _pickerScanning: { state: true },
+  _pickerError: { state: true }
 };
 SofabatonServerPanel.styles = [
   PANEL_BASE_CSS,
@@ -12273,23 +12485,19 @@ SofabatonServerPanel.styles = [
       /* The dock's lower band, where the subtab row sits, shares the page's background with the area under it; only the two tab rows carry the panel colour. */
       .top-dock { position: sticky; top: 0; z-index: 40; margin: 0 calc(-1 * var(--page-gutter)); padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0; background: var(--sbp-bg); }
       .top-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0 calc(-1 * var(--page-gutter)); padding: 6px var(--page-gutter); background: var(--dock-surface); border-bottom: 1px solid var(--sbp-line); }
-      .brand { display: flex; align-items: baseline; gap: 8px; flex: 0 0 auto; }
+      .brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
       .brand b { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
-      .brand span { color: var(--sbp-muted); font-size: 11px; white-space: nowrap; }
+      .brand-caption { color: var(--sbp-muted); font-size: 11px; white-space: nowrap; }
       .picker-slot { flex: 1 1 auto; min-width: 0; display: flex; justify-content: flex-end; }
-      .top-right { display: flex; align-items: center; flex: 0 0 auto; }
       .stream { display: inline-flex; align-items: center; gap: 6px; color: var(--sbp-muted); font-size: 11px; }
-      .stream-label { max-width: 120px; line-height: 1.4; }
 
       .hub-picker { position: relative; max-width: 100%; }
       .hub-picker-btn { display: flex; align-items: center; gap: 6px; max-width: min(100%, 360px); min-height: 36px; border: 1px solid var(--sbp-line); border-radius: 999px; padding: 0 12px 0 10px; background: var(--sbp-panel); color: var(--sbp-text); user-select: none; }
       button.hub-picker-btn { cursor: pointer; }
       button.hub-picker-btn:hover, button.hub-picker-btn.is-open { border-color: var(--sbp-accent); }
-      .hub-picker-btn--static { cursor: default; }
       .chip-prefix { flex: 0 0 auto; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sbp-muted); }
       .chip-name { font-size: 12px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .chip-arrow { flex: 0 0 auto; width: 16px; height: 16px; color: var(--sbp-muted); }
-      .hub-picker-menu { width: 300px; }
 
       .menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; display: flex; flex-direction: column; min-width: 220px; max-width: calc(100vw - 48px); max-height: calc(100dvh - 160px); overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); }
       .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 0; background: transparent; text-align: left; white-space: normal; }
@@ -12374,7 +12582,7 @@ SofabatonServerPanel.styles = [
 
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
-        .brand span, .stream-label { display: none; }
+        .brand-caption { display: none; }
         .page { --page-gutter: 12px; }
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
@@ -12395,7 +12603,8 @@ SofabatonServerPanel.styles = [
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
       }
-    `
+    `,
+  HUB_PICKER_CSS
 ];
 function definePanel() {
   if (!customElements.get(PANEL_TAG)) customElements.define(PANEL_TAG, SofabatonServerPanel);
@@ -12654,7 +12863,10 @@ function countsFromSnapshot(kind, entity) {
     return commands === void 0 ? null : { commands };
   }
   const favorites = tableLength(entity, "favorite_slots");
-  const macros = tableLength(entity, "macros");
+  const macros = Array.isArray(entity.macros) ? entity.macros.filter((row) => {
+    const id = Number(row?.button_id);
+    return id !== 198 && id !== 199;
+  }).length : void 0;
   const buttons = tableLength(entity, "button_bindings");
   if (favorites === void 0 && macros === void 0 && buttons === void 0) return null;
   return { favorites: favorites ?? 0, macros: macros ?? 0, buttons: buttons ?? 0 };
@@ -12709,7 +12921,7 @@ function deviceClassIconPath(deviceClass) {
       return mdiRadioTower;
   }
 }
-function icon(path, cls = "") {
+function icon2(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
 }
 var DEV_ID_BADGE = "DevID";
@@ -12957,7 +13169,7 @@ var SbPanelCatalog = class extends i4 {
       }
     }}
             >${allSpinning ? this._refresh?.text : "Refresh all"}</span>
-            <button class="icon-btn ${allSpinning ? "spinning" : ""}" id="catalog-refresh-all" type="button" ?disabled=${locked} title="POST /snapshot/refresh: read the whole hub" aria-label="Refresh all" @click=${this._refreshAll}>${icon(mdiRefresh)}</button>
+            <button class="icon-btn ${allSpinning ? "spinning" : ""}" id="catalog-refresh-all" type="button" ?disabled=${locked} title="POST /snapshot/refresh: read the whole hub" aria-label="Refresh all" @click=${this._refreshAll}>${icon2(mdiRefresh)}</button>
           </span>
         </div>
         ${this._notice ? b2`<div class="notice" id="catalog-notice">${this._notice}</div>` : A}
@@ -12978,7 +13190,7 @@ var SbPanelCatalog = class extends i4 {
     return b2`<div class="entity-block ${isOpen ? "open" : ""}" data-entity=${key} data-entity-id=${e6.id}>
       <div class="entity-summary" @click=${() => this._toggle(e6)}>
         <span class="entity-name">
-          <span class="entity-name-icon">${icon(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
+          <span class="entity-name-icon">${icon2(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
           <span class="entity-name-copy">
             <span class="entity-name-label">${e6.name}</span>
             <span class="entity-count">${count}</span>
@@ -12989,11 +13201,11 @@ var SbPanelCatalog = class extends i4 {
           ${e6.kind === "device" ? b2`<button class="icon-btn entity-edit" type="button" ?disabled=${locked} title="Edit device" aria-label="Edit device" @click=${(event) => {
       event.stopPropagation();
       this._edit(e6);
-    }}>${icon(mdiWrench)}</button>` : A}
+    }}>${icon2(mdiWrench)}</button>` : A}
           <button class="icon-btn entity-refresh ${spinning ? "spinning" : ""}" type="button" ?disabled=${locked} title=${`${e6.kind === "device" ? "Refresh device" : "Refresh activity"} (${fetched})`} aria-label=${e6.kind === "device" ? "Refresh device" : "Refresh activity"} @click=${(event) => {
       event.stopPropagation();
       this._refreshEntry(e6);
-    }}>${icon(mdiRefresh)}</button>
+    }}>${icon2(mdiRefresh)}</button>
           <span class="entity-chevron">▼</span>
         </span>
       </div>
@@ -15653,7 +15865,7 @@ var S3 = {
   noPayloadReturned: "The hub returned no payload for this command.",
   noFreeCommandSlot: "This device has no free command slot left."
 };
-function icon2(path, cls = "") {
+function icon3(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
 }
 var SbPanelDeviceEditor = class extends i4 {
@@ -15694,7 +15906,23 @@ var SbPanelDeviceEditor = class extends i4 {
     this._notice = null;
     this._loadedKey = null;
     this._loadSeq = 0;
-    this._onWindowScroll = () => this._trackSection();
+    this._sectionScrollPending = false;
+    this._sectionScrollTimer = null;
+    this._onWindowScroll = () => {
+      if (this._sectionScrollPending) this._settleSectionScroll();
+      else this._trackSection();
+    };
+    this._onManualScroll = () => {
+      if (!this._sectionScrollPending) return;
+      this._clearSectionScroll();
+      window.scrollTo({ top: window.scrollY, behavior: "instant" });
+      this._trackSection();
+    };
+    this._onScrollKey = (event) => {
+      const target = event.composedPath()[0];
+      if (target instanceof HTMLElement && (target.matches("input, textarea, select") || target.isContentEditable || event.key === " " && target.matches("button, a[href]"))) return;
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) this._onManualScroll();
+    };
     this._requestClose = () => {
       this.askToLeave(() => this._goToList());
     };
@@ -15837,11 +16065,18 @@ var SbPanelDeviceEditor = class extends i4 {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener("scroll", this._onWindowScroll, { passive: true });
+    window.addEventListener("wheel", this._onManualScroll, { passive: true });
+    window.addEventListener("touchstart", this._onManualScroll, { passive: true });
+    window.addEventListener("keydown", this._onScrollKey);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
     this._sorter.cancel();
     window.removeEventListener("scroll", this._onWindowScroll);
+    window.removeEventListener("wheel", this._onManualScroll);
+    window.removeEventListener("touchstart", this._onManualScroll);
+    window.removeEventListener("keydown", this._onScrollKey);
+    this._clearSectionScroll();
   }
   updated(changed) {
     if (changed.has("ctx") || changed.has("deviceId")) {
@@ -15856,6 +16091,7 @@ var SbPanelDeviceEditor = class extends i4 {
     }
   }
   _reset() {
+    this._clearSectionScroll();
     this._stage = "loading";
     this._snapshot = null;
     this._baseline = null;
@@ -16072,6 +16308,7 @@ var SbPanelDeviceEditor = class extends i4 {
   }
   // -- the step editor sub-view (the card's macro editor, device scope) -------------------------
   _openStepEditor(buttonId, name) {
+    this._clearSectionScroll();
     this._stepEditor = { buttonId, name };
     this._stepDialog = null;
     window.scrollTo({ top: 0 });
@@ -16239,8 +16476,21 @@ var SbPanelDeviceEditor = class extends i4 {
     const section = this.renderRoot.querySelector(`[data-edit-section="${id}"]`);
     if (!section) return;
     const top = window.scrollY + section.getBoundingClientRect().top - this._stickyOffset() - 8;
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     this._activeSection = id;
+    this._sectionScrollPending = true;
+    this._settleSectionScroll();
+    window.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+  }
+  /** Hold the clicked section through intermediate scroll positions. Release
+   * after scrolling settles, also when the target was already in view. */
+  _settleSectionScroll() {
+    if (this._sectionScrollTimer !== null) window.clearTimeout(this._sectionScrollTimer);
+    this._sectionScrollTimer = window.setTimeout(() => this._clearSectionScroll(), 160);
+  }
+  _clearSectionScroll() {
+    if (this._sectionScrollTimer !== null) window.clearTimeout(this._sectionScrollTimer);
+    this._sectionScrollTimer = null;
+    this._sectionScrollPending = false;
   }
   _trackSection() {
     if (this._stage !== "editing") return;
@@ -16373,7 +16623,7 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="step-back" type="button" aria-label=${S3.back} @click=${this._closeStepEditor}>${icon2(mdiArrowLeft)}</button>
+                <button class="back-btn" id="step-back" type="button" aria-label=${S3.back} @click=${this._closeStepEditor}>${icon3(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
                     <button class="detail-crumb" type="button" @click=${this._requestClose}>${S3.crumbDevices}</button>
@@ -16390,7 +16640,7 @@ var SbPanelDeviceEditor = class extends i4 {
             <div class="quick-access-section">
               <div class="quick-access-head">
                 <div class="quick-access-head-main"><div class="quick-access-title">${S3.steps}</div><div class="quick-access-sub">${S3.macroStepsSortableHelp}</div></div>
-                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon2(mdiPlus)}<span>${S3.addStep}</span></button></div>
+                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon3(mdiPlus)}<span>${S3.addStep}</span></button></div>
               </div>
               ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S3.noMacroSteps}</div>`}
             </div>
@@ -16425,14 +16675,14 @@ var SbPanelDeviceEditor = class extends i4 {
         this._moveStep(item.index, 1);
       }
     }}
-          >${icon2(mdiDragVerticalVariant)}</button>
+          >${icon3(mdiDragVerticalVariant)}</button>
           <div class="quick-access-main">
             <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S3.stepChipCommand}</div></div>
             ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
           </div>
           <div class="quick-access-actions">
-            <button class="icon-btn step-edit" type="button" aria-label=${S3.editStepAria} title=${S3.editStepAria} @click=${() => this._openEditStep(item)}>${icon2(mdiPencil)}</button>
-            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S3.deleteStepAria} title=${S3.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon2(mdiTrashCanOutline)}</button>
+            <button class="icon-btn step-edit" type="button" aria-label=${S3.editStepAria} title=${S3.editStepAria} @click=${() => this._openEditStep(item)}>${icon3(mdiPencil)}</button>
+            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S3.deleteStepAria} title=${S3.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon3(mdiTrashCanOutline)}</button>
           </div>
         </div>
         ${isLast ? A : b2`<label class="step-wait" title=${S3.stepWaitAria}>
@@ -16455,7 +16705,7 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeStepDialog}>
         <div class="dialog small" id="step-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${isEdit ? S3.stepDialogEditTitle : S3.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S3.stepCancel} @click=${this._closeStepDialog}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${isEdit ? S3.stepDialogEditTitle : S3.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S3.stepCancel} @click=${this._closeStepDialog}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="decoded-field">
               <label class="decoded-field-label" for="sb-step-command">${S3.stepCommand}</label>
@@ -16493,7 +16743,7 @@ var SbPanelDeviceEditor = class extends i4 {
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view" id=${id}>
           <div class="capture-error">
-            <div class="guard-icon">${icon2(iconPath)}</div>
+            <div class="guard-icon">${icon3(iconPath)}</div>
             <div class="capture-error-title">${title}</div>
             <div class="guard-sub">${body}</div>
             <div class="action-row">${actions}</div>
@@ -16513,7 +16763,7 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="editor-back" type="button" aria-label=${S3.back} @click=${this._requestClose}>${icon2(mdiArrowLeft)}</button>
+                <button class="back-btn" id="editor-back" type="button" aria-label=${S3.back} @click=${this._requestClose}>${icon3(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
                     <button class="detail-crumb" type="button" @click=${this._requestClose}>${S3.crumbDevices}</button>
@@ -16522,19 +16772,19 @@ var SbPanelDeviceEditor = class extends i4 {
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
                 <div class="detail-title-actions">
-                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S3.renameDevice} title=${S3.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon2(mdiPencil)}</button>`}
-                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S3.deleteDeviceAria} title=${S3.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon2(mdiTrashCanOutline)}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S3.renameDevice} title=${S3.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon3(mdiPencil)}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S3.deleteDeviceAria} title=${S3.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon3(mdiTrashCanOutline)}</button>`}
                   <button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing\u2026" : dirty ? S3.syncToHub : S3.syncUpToDate}</button>
                 </div>
               </div>
             </div>
             ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S3.detailSectionsAria}>
-                  ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon2(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
+                  ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon3(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
                 </div>` : A}
           </div>
           <div class="detail-scroll">
-            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon2(mdiWifiCog)}<span>${S3.managedWifiWarning}</span></div>` : A}
-            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon2(mdiInformationOutline)}<span>${S3.callbackDeviceNote}</span></div>` : A}
+            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon3(mdiWifiCog)}<span>${S3.managedWifiWarning}</span></div>` : A}
+            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon3(mdiInformationOutline)}<span>${S3.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
             ${this._renderNetworkSection(deviceId)}
             ${this._renderCommandsSection(deviceId)}
@@ -16562,7 +16812,7 @@ var SbPanelDeviceEditor = class extends i4 {
         if (!disabled) this._openStepEditor(buttonId, label);
       }}>
           <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S3.macroStepsCount(count)}</span></span>
-          <span class="selection-chevron">${icon2(mdiChevronRight)}</span>
+          <span class="selection-chevron">${icon3(mdiChevronRight)}</span>
         </button>
       </div>`;
     };
@@ -16574,7 +16824,7 @@ var SbPanelDeviceEditor = class extends i4 {
       this._powerMenuOpen = !open;
     }}>
                 <span class="selection-main"><span class="selection-label">${selected ? selected.label : S3.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S3.powerControlUnsetSub}</span></span>
-                <span class="selection-chevron">${icon2(mdiChevronDown)}</span>
+                <span class="selection-chevron">${icon3(mdiChevronDown)}</span>
               </button>
               ${open ? b2`<button class="power-control-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
       this._powerMenuOpen = false;
@@ -16582,7 +16832,7 @@ var SbPanelDeviceEditor = class extends i4 {
                     <div class="power-control-menu" role="listbox" aria-label=${S3.powerControlTitle}>
                       ${options.map((opt) => b2`<button class="power-control-option" type="button" role="option" data-mode=${opt.mode} aria-selected=${String(opt.mode === mode)} aria-checked=${String(opt.mode === mode)} @click=${() => this._selectPower(opt.mode)}>
                         <span class="selection-main"><span class="selection-label">${opt.label}</span><span class="selection-sub">${opt.sub}</span></span>
-                        <span class="selection-chevron">${opt.mode === mode ? icon2(mdiCheck) : A}</span>
+                        <span class="selection-chevron">${opt.mode === mode ? icon3(mdiCheck) : A}</span>
                       </button>`)}
                     </div>` : A}
             </div>`}
@@ -16610,7 +16860,7 @@ var SbPanelDeviceEditor = class extends i4 {
               <div class="quick-access-meta">${S3.ipv4Description}</div>
             </div>
             <div class="quick-access-actions">
-              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S3.editIpAria} title=${S3.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon2(mdiPencil)}</button>
+              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S3.editIpAria} title=${S3.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon3(mdiPencil)}</button>
             </div>
           </div>
         </div></div></div>
@@ -16626,7 +16876,7 @@ var SbPanelDeviceEditor = class extends i4 {
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
           <div class="quick-access-head-main"><div class="quick-access-title">${S3.detailCommands}</div><div class="quick-access-sub">${S3.commandsLiveHelp}</div></div>
-          ${callback ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon2(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S3.addCommand}</span></button></div>`}
+          ${callback ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon3(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S3.addCommand}</span></button></div>`}
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
@@ -16636,9 +16886,9 @@ var SbPanelDeviceEditor = class extends i4 {
                     <div class="quick-access-meta">${S3.commandId} ${item.commandId}</div>
                   </div>
                   <div class="quick-access-actions">
-                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S3.renameCommandAria} title=${S3.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon2(mdiPencil)}</button>
-                          ${pendingAdd(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S3.editPayloadAria} title=${S3.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon2(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S3.deleteCommandAria} title=${S3.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon2(mdiTrashCanOutline)}</button>`}`}
+                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S3.renameCommandAria} title=${S3.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon3(mdiPencil)}</button>
+                          ${pendingAdd(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S3.editPayloadAria} title=${S3.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon3(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
+                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S3.deleteCommandAria} title=${S3.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon3(mdiTrashCanOutline)}</button>`}`}
                   </div>
                 </div>
               </div>`)}
@@ -16653,7 +16903,7 @@ var SbPanelDeviceEditor = class extends i4 {
       <div class="quick-access-section" data-edit-section="bindings">
         <div class="quick-access-head">
           <div class="quick-access-head-main"><div class="quick-access-title">${S3.buttonBindingsTitle}</div><div class="quick-access-sub">${S3.buttonBindingsDeviceSub}</div></div>
-          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon2(mdiPlus)}<span>${S3.addBinding}</span></button>
+          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon3(mdiPlus)}<span>${S3.addBinding}</span></button>
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
@@ -16664,8 +16914,8 @@ var SbPanelDeviceEditor = class extends i4 {
                     ${item.longPress ? b2`<div class="quick-access-meta">${S3.bindingLongPressMeta(item.longPress.label)}</div>` : A}
                   </div>
                   <div class="quick-access-actions">
-                    <button class="icon-btn binding-edit" type="button" aria-label=${S3.editBindingAria} title=${S3.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon2(mdiPencil)}</button>
-                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S3.deleteBindingAria} title=${S3.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon2(mdiTrashCanOutline)}</button>
+                    <button class="icon-btn binding-edit" type="button" aria-label=${S3.editBindingAria} title=${S3.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon3(mdiPencil)}</button>
+                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S3.deleteBindingAria} title=${S3.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon3(mdiTrashCanOutline)}</button>
                   </div>
                 </div>
               </div>`)}
@@ -16682,7 +16932,7 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeRename}>
         <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.cancel} @click=${this._closeRename}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.cancel} @click=${this._closeRename}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
             <label class="decoded-field">
               <span class="decoded-field-label">${isIp ? S3.ipAddress : S3.name}</span>
@@ -16714,17 +16964,17 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
         <div class="dialog small" id="delete-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S3.deleteCancel} @click=${this._closeDeleteConfirm}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S3.deleteCancel} @click=${this._closeDeleteConfirm}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="backup-drawer-sub">${hasCascade ? S3.deleteCascadeIntroLive : S3.deleteSimpleBodyLive}</div>
             ${hasCascade ? b2`<ul class="delete-impact-list" id="delete-impact">
-                  ${impact.activities > 0 ? b2`<li>${icon2(mdiLinkVariant)}<span>${S3.deleteImpactActivities(impact.activities)}</span></li>` : A}
-                  ${impact.favorites > 0 ? b2`<li>${icon2(mdiStarOutline)}<span>${S3.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
-                  ${impact.macroSteps > 0 ? b2`<li>${icon2(mdiFormatListNumbered)}<span>${S3.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
-                  ${impact.powerSteps > 0 ? b2`<li>${icon2(mdiPower)}<span>${S3.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
-                  ${impact.bindings > 0 ? b2`<li>${icon2(mdiGestureTapButton)}<span>${S3.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+                  ${impact.activities > 0 ? b2`<li>${icon3(mdiLinkVariant)}<span>${S3.deleteImpactActivities(impact.activities)}</span></li>` : A}
+                  ${impact.favorites > 0 ? b2`<li>${icon3(mdiStarOutline)}<span>${S3.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+                  ${impact.macroSteps > 0 ? b2`<li>${icon3(mdiFormatListNumbered)}<span>${S3.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                  ${impact.powerSteps > 0 ? b2`<li>${icon3(mdiPower)}<span>${S3.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
+                  ${impact.bindings > 0 ? b2`<li>${icon3(mdiGestureTapButton)}<span>${S3.deleteImpactBindings(impact.bindings)}</span></li>` : A}
                 </ul>` : A}
-            <div class="delete-replace-note">${icon2(mdiInformationOutline)}<span>${immediate ? S3.deleteImmediateNote : S3.deleteSyncNote}</span></div>
+            <div class="delete-replace-note">${icon3(mdiInformationOutline)}<span>${immediate ? S3.deleteImmediateNote : S3.deleteSyncNote}</span></div>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note"></div>
@@ -16756,7 +17006,7 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeBinding}>
         <div class="dialog small" id="binding-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.bindingCancel} @click=${this._closeBinding}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.bindingCancel} @click=${this._closeBinding}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
             ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S3.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S3.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S3.bindingNoButtons, (value) => {
       this._binding = { ...dialog, buttonId: value, error: "" };
@@ -16793,7 +17043,7 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="exit-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S3.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S3.syncKeepEditing} @click=${close}>${icon2(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S3.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S3.syncKeepEditing} @click=${close}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body"><div class="dialog-text">${S3.exitUnsyncedBody}</div></div>
           <div class="dialog-footer">
             <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S3.exitWithoutSync}</button>
@@ -17282,7 +17532,7 @@ var S4 = {
   descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
   payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine)."
 };
-function icon3(path, cls = "") {
+function icon4(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
 }
 function fieldValueToDraft(spec, value) {
@@ -17619,7 +17869,7 @@ var SbPayloadDialog = class extends i4 {
               <div class="dialog-title">${isAdd ? S4.addCommandTitle : S4.editPayloadTitle}</div>
               ${deviceClass ? b2`<span class="payload-class-badge" title=${S4.deviceClass}>${deviceClass}</span>` : A}
             </div>
-            <button class="dialog-close" type="button" aria-label=${S4.cancel} @click=${this._close}>${icon3(mdiClose)}</button>
+            <button class="dialog-close" type="button" aria-label=${S4.cancel} @click=${this._close}>${icon4(mdiClose)}</button>
           </div>
           <div class="dialog-body">
             ${isAdd ? b2`<label class="decoded-field">
@@ -17634,9 +17884,9 @@ var SbPayloadDialog = class extends i4 {
                   <span class="decoded-field-helper">${S4.nameHelper}</span>
                 </label>` : A}
             ${body}
-            ${this._isIr ? b2`<div class="payload-test-note">${icon3(mdiFlashOutline)}<span>${S4.verifyPayloadLive}</span></div>` : A}
+            ${this._isIr ? b2`<div class="payload-test-note">${icon4(mdiFlashOutline)}<span>${S4.verifyPayloadLive}</span></div>` : A}
             ${this._testStatus === "idle" ? A : b2`<div class="section-status payload-test-status ${this._testStatus}" id="payload-test-status" role="status" aria-live="polite">
-                  ${icon3(this._testStatus === "testing" ? mdiProgressClock : this._testStatus === "success" ? mdiCheckCircleOutline : mdiAlertCircleOutline)}
+                  ${icon4(this._testStatus === "testing" ? mdiProgressClock : this._testStatus === "success" ? mdiCheckCircleOutline : mdiAlertCircleOutline)}
                   <span>${this._testStatus === "testing" ? S4.sendingToHub : this._testStatus === "success" ? S4.sentToHub : this._testError || S4.testFailed}</span>
                 </div>`}
           </div>
@@ -17646,7 +17896,7 @@ var SbPayloadDialog = class extends i4 {
               ${this._error ? b2`<span class="payload-dialog-error" id="payload-error">${this._error}</span>` : A}
             </div>
             <div class="dialog-footer-actions">
-              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon3(mdiFlashOutline)}<span>${S4.test}</span></button>` : A}
+              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon4(mdiFlashOutline)}<span>${S4.test}</span></button>` : A}
               <button class="dialog-btn" type="button" @click=${this._close}>${S4.cancel}</button>
               <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S4.save}</button>
             </div>
@@ -17903,19 +18153,31 @@ var SbPanelHubs = class extends i4 {
     this.ctx = null;
     this.hubs = [];
     this.hub = null;
-    this.seen = [];
     this._busy = /* @__PURE__ */ new Set();
-    this._scanning = false;
-    this._adding = false;
+    this._firmware = "Not yet known";
+    this._infoKey = "";
+    this._infoSeq = 0;
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+    const h6 = this.hub;
+    const key = h6 ? `${h6.hub_id}:${h6.enabled}:${Boolean(h6.status)}:${Boolean(h6.status?.hub_connected)}` : "";
+    if (key !== this._infoKey || changed.has("api")) {
+      this._infoKey = key;
+      const seq = ++this._infoSeq;
+      this._firmware = h6?.enabled && h6.status ? "Loading\u2026" : "Not available";
+      if (h6?.enabled && h6.status && this.api) void this._loadFirmware(h6.hub_id, seq);
+    }
   }
-  /** Focus the address field (the picker's "Add a hub" lands here). */
-  focusAddress() {
-    const input = this.renderRoot.querySelector("#add-host");
-    input?.focus();
-    input?.scrollIntoView({ block: "center" });
+  async _loadFirmware(hubId, seq) {
+    try {
+      const response = await this.api.hubInfo(hubId);
+      if (seq !== this._infoSeq) return;
+      const info = response.ok ? response.body : null;
+      this._firmware = info?.known && info.firmware_version != null ? `v${info.firmware_version}` : response.ok ? "Not yet known" : "Not available";
+    } catch {
+      if (seq === this._infoSeq) this._firmware = "Not available";
+    }
   }
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
@@ -17946,112 +18208,15 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
     }
     this._emit("sb-hubs-changed");
   }
-  async _add(body) {
-    if (this._adding) return;
-    this._adding = true;
-    try {
-      const response = await this.api.addHub(body);
-      if (response.status === 201 && response.body) {
-        this._message(`added ${response.body.hub_id}${response.body.enabled ? "" : " (disabled)"}`);
-        this._emit("sb-select-hub", { hubId: response.body.hub_id });
-        const host = this.renderRoot.querySelector("#add-host");
-        const name = this.renderRoot.querySelector("#add-name");
-        if (host) host.value = "";
-        if (name) name.value = "";
-      } else if (response.status === 503) {
-        const problem = response.body;
-        const hubId = problem?.hub_id || body.host;
-        this._message(`${hubId} is registered but its proxy did not start: ${problem?.detail ?? ""}. Fix the cause and press Retry start.`, false);
-        this._emit("sb-select-hub", { hubId });
-      } else {
-        this._message(problemText(response), false);
-      }
-    } catch (err) {
-      this._message(String(err), false);
-    } finally {
-      this._adding = false;
-    }
-    this._emit("sb-hubs-changed");
-  }
-  _submitAdd(event) {
-    event.preventDefault();
-    const host = this.renderRoot.querySelector("#add-host")?.value.trim() ?? "";
-    if (!host) return;
-    const name = this.renderRoot.querySelector("#add-name")?.value.trim() ?? "";
-    const disabled = this.renderRoot.querySelector("#add-disabled")?.checked ?? false;
-    void this._add({ host, ...name ? { name } : {}, enabled: !disabled });
-  }
-  async _scan() {
-    if (this._scanning) return;
-    this._scanning = true;
-    try {
-      const response = await this.api.scan(5);
-      if (response.ok && Array.isArray(response.body)) this.seen = response.body;
-      else this._message(problemText(response), false);
-    } catch (err) {
-      this._message(String(err), false);
-    } finally {
-      this._scanning = false;
-    }
-    this._emit("sb-hubs-changed");
-  }
-  // -- render ---------------------------------------------------------------------
   render() {
-    return b2`
-      <div class="panel" id="hub-detail">${this._renderDetail()}</div>
-      <div class="panel">
-        <h2>Register a hub by address <span class="spacer"></span><span class="hint">one owner per hub: disable it in Home Assistant or another proxy first</span></h2>
-        <form id="hub-add" @submit=${this._submitAdd}>
-          <div class="row">
-            <div><input id="add-host" placeholder="192.168.1.50" autocomplete="off" required></div>
-            <div class="name"><input id="add-name" placeholder="name (optional)"></div>
-            <button class="primary fixed" id="add-send" type="submit" ?disabled=${this._adding}>Add hub</button>
-          </div>
-          <div style="margin-top: 8px"><label class="inline"><input type="checkbox" id="add-disabled"> start disabled (register only, connect later)</label></div>
-          <div class="hint" style="margin-top: 8px">A hub added by address is re-keyed to its MAC after its first sync. Disable stops the proxy and hands the hub back to the app; Remove also forgets its cached state and remote layout. The hub itself is never changed.</div>
-        </form>
-      </div>
-      <div class="panel">
-        <h2>Discovered on the LAN <span class="hint" id="seen-note">${this._seenNote()}</span><span class="spacer"></span>
-          <button class="small" id="seen-scan" title="POST /discovery/scan: listen for hub advertisements for 5 seconds" ?disabled=${this._scanning} @click=${this._scan}>${this._scanning ? "scanning\u2026" : "scan 5 s"}</button></h2>
-        ${this.seen.length ? b2`<div class="scroll-x">
-              <table class="list" id="seen-table">
-                <thead><tr><th>host</th><th>model</th><th>name</th><th>mac</th><th>seen</th><th></th></tr></thead>
-                <tbody>${this.seen.map((s7) => this._renderSeen(s7))}</tbody>
-              </table>
-            </div>` : b2`<div class="hint" id="seen-empty">Nothing advertised yet. Hubs announce themselves over mDNS; a scan asks again.</div>`}
-      </div>
-    `;
-  }
-  _seenNote() {
-    if (!this.seen.length) return "";
-    return `(${this.seen.filter((s7) => s7.present).length} present)`;
-  }
-  /** The registered hub an advertisement belongs to: the server's answer, or a host / MAC match. */
-  _registeredFor(s7) {
-    if (s7.registered_hub_id) return s7.registered_hub_id;
-    const c7 = s7.config ?? {};
-    const mac = String(c7.mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
-    const hit = this.hubs.find((h6) => h6.config.host === c7.host || mac && (h6.hub_id === mac || String(h6.config.mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "") === mac));
-    return hit?.hub_id ?? null;
-  }
-  _renderSeen(s7) {
-    const c7 = s7.config ?? {};
-    const registered = this._registeredFor(s7);
-    return b2`<tr>
-      <td class="mono">${c7.host || "?"}</td>
-      <td>${c7.hub_version || "?"}</td>
-      <td>${c7.name || ""}</td>
-      <td class="mono sub">${c7.mac || ""}</td>
-      <td class=${s7.present ? "tone-ok" : "sub"} title="first seen ${formatWhen(s7.first_seen)}, last seen ${formatWhen(s7.last_seen)}">${s7.present ? "present" : "gone"}</td>
-      <td class="act">
-        ${registered ? b2`<span class="sub">registered as ${registered}</span>` : b2`<button class="small primary" ?disabled=${this._adding} @click=${() => this._add({ ...c7, enabled: true })}>Add</button>`}
-      </td>
-    </tr>`;
+    return b2`<div class="panel" id="hub-detail">${this._renderDetail()}</div>`;
   }
   _renderDetail() {
     const h6 = this.hub;
-    if (!h6) return b2`<div class="hint">${this.hubs.length ? "No hub selected." : "No hubs registered yet."} Register one below by address, or add one from the discovered list, then manage it here.</div>`;
+    if (!h6) return b2`<div class="hint">${this.hubs.length ? "No hub selected." : "No hubs registered yet."} Use the hub picker to find or add a hub. <button class="small" @click=${(event) => {
+      event.stopPropagation();
+      this._emit("sb-open-picker");
+    }}>Find or add a hub</button></div>`;
     const { text, tone } = hubState(h6);
     const s7 = h6.status;
     const busy = this._busy.has(h6.hub_id);
@@ -18060,6 +18225,7 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
       ["state", b2`<span class="tone-${tone}">${text}</span>`],
       ["host", b2`<span class="mono">${h6.config.host}</span>`],
       ["model", model],
+      ["firmware version", this._firmware],
       ["hub id", b2`<span class="mono">${h6.hub_id}</span>`],
       ["mac", b2`<span class="mono">${h6.config.mac || "not yet known"}</span>`],
       ["last seen", formatWhen(h6.last_seen)],
@@ -18086,10 +18252,8 @@ SbPanelHubs.properties = {
   ctx: { attribute: false },
   hubs: { attribute: false },
   hub: { attribute: false },
-  seen: { attribute: false },
   _busy: { state: true },
-  _scanning: { state: true },
-  _adding: { state: true }
+  _firmware: { state: true }
 };
 SbPanelHubs.styles = [
   PANEL_BASE_CSS,
@@ -18102,9 +18266,6 @@ SbPanelHubs.styles = [
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      form .row { max-width: 720px; flex-wrap: wrap; }
-      form .row > div:first-child { flex: 1 1 200px; min-width: 160px; }
-      form .row > .name { flex: 1 1 140px; }
     `
 ];
 function defineHubsView() {
@@ -18499,8 +18660,8 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<div class="field"><label><span class="field-label">${label}</span><select aria-label=${label} @change=${(event) => set(event.target.value)}>
       ${options.map((option) => b2`<option value=${option.value} .selected=${option.value === value}>${option.label}</option>`)}</select></label></div>`;
   }
-  _heading(label, icon4) {
-    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon4}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
+  _heading(label, icon5) {
+    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon5}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
   }
   _groups() {
     const c7 = this.config, s7 = this.selection, e6 = str().editor;

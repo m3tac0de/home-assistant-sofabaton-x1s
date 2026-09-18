@@ -264,8 +264,8 @@ export class PanelStore {
       // While unreachable the retry owns the cadence (decision 13).
       if (this._isVisible() && this._snapshot.server.reachable) {
         void this.refreshHubs();
-        const route = this._snapshot.route;
-        if (route.kind === "tool" && route.page === "setup") void this.refreshSeen();
+        // Discovery is available from the picker on every page.
+        void this.refreshSeen();
       }
       this._scheduleTick();
     }, this._tickMs);
@@ -396,7 +396,7 @@ export class PanelStore {
         if (JSON.stringify(response.body) !== JSON.stringify(this._snapshot.seen)) this._set({ seen: response.body });
       }
     } catch {
-      // the table keeps its last answer
+      // the picker keeps its last answer
     }
   }
 
