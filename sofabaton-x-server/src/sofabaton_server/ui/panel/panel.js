@@ -11554,7 +11554,7 @@ var PanelStore = class {
     const route = this._snapshot.route;
     const patch = { selectedHubId: hubId };
     if (route.kind === "hub" && route.hubId !== hubId) {
-      patch.route = withHub(route, hubId);
+      patch.route = hubRoute(hubId, route.tab, route.sub);
       patch.routeReplace = true;
     }
     this._set(patch);
@@ -16975,7 +16975,8 @@ var EDITOR_CSS = i`
     .quick-access-sortable-item.is-shifting { transition: transform 150ms ease; }
     .quick-access-sortable-item.is-dragging { position: relative; z-index: 2; background: var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); border-top-color: transparent; }
     .detail-view.is-sorting, .quick-access-row--step { user-select: none; -webkit-user-select: none; }
-    .step-wait { display: flex; align-items: center; gap: 6px; padding: 3px 14px 6px; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
+    /* The band is a <label>; undo the panel's generic form-label rule. */
+    .step-wait { display: flex; align-items: center; gap: 6px; margin: 0; padding: 3px 14px 6px; text-transform: none; letter-spacing: 0; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
     .step-wait-caption { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--sbp-muted); pointer-events: none; }
     .step-wait-field { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px 2px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); }
     .step-wait-field:focus-within { border-color: var(--sbp-accent); }
@@ -17111,7 +17112,9 @@ var EDITOR_CSS = i`
       .dialog-footer { flex-direction: column; align-items: stretch; }
       .dialog-footer-actions { width: 100%; }
       .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
-      .dialog-footer-note { min-height: 0; }
+      /* The footer is a column here, so the note's 140px basis would be a height. */
+      .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
+      .dialog-footer-note:empty { display: none; }
     }
 `;
 
@@ -20419,6 +20422,8 @@ SbPayloadDialog.styles = [
         .dialog-footer { flex-direction: column; align-items: stretch; }
         .dialog-footer-actions { width: 100%; }
         .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
+        /* The footer is a column here, so the note's 140px basis would be a height. */
+        .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
         .payload-test-btn { margin-right: 0; }
       }
     `

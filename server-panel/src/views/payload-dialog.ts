@@ -184,6 +184,8 @@ export class SbPayloadDialog extends LitElement {
         .dialog-footer { flex-direction: column; align-items: stretch; }
         .dialog-footer-actions { width: 100%; }
         .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
+        /* The footer is a column here, so the note's 140px basis would be a height. */
+        .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
         .payload-test-btn { margin-right: 0; }
       }
     `,

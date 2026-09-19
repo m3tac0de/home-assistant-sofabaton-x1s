@@ -487,6 +487,12 @@ test("routes: the URL wins over the preferences, a hub route follows the selecti
   deep.store.selectHub("a");
   assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "a", tab: "remote", sub: "card" });
   assert.equal(deep.store.snapshot.routeReplace, true);
+  // An open editor does not follow: the id means something else on the other hub.
+  deep.store.navigate(hubRoute(null, "hub", "devices", 12));
+  assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "a", tab: "hub", sub: "devices", entity: 12 });
+  deep.store.selectHub("b");
+  assert.deepEqual(deep.store.snapshot.route, { kind: "hub", hubId: "b", tab: "hub", sub: "devices" });
+  deep.store.selectHub("a");
   // A hub the list does not know falls back to the first; an empty list lands on setup.
   deep.store.navigate(hubRoute("zzz", "hub"));
   await deep.clock.advance(5000);

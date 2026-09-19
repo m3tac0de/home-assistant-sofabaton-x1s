@@ -277,9 +277,11 @@ export class PanelStore {
     if (hubId === this._snapshot.selectedHubId) return;
     const route = this._snapshot.route;
     const patch: Partial<PanelSnapshot> = { selectedHubId: hubId };
-    // A hub route follows the selection (the picker, a re-key, a removal).
+    // A hub route follows the selection (the picker, a re-key, a removal),
+    // but only down to the subtab: an entity id means another activity or
+    // device on another hub, or nothing at all.
     if (route.kind === "hub" && route.hubId !== hubId) {
-      patch.route = withHub(route, hubId);
+      patch.route = hubRoute(hubId, route.tab, route.sub);
       patch.routeReplace = true;
     }
     this._set(patch);
