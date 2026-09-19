@@ -297,6 +297,14 @@ preview with `POST /hubs/{id}/activities/{aid}/plan`, then `PUT` the
 element back with `If-Match` (required here). Only the entity you name
 may differ from the snapshot; anything else is `422 out_of_scope`.
 
+An activity edit can reach into a device: choosing the input a device
+switches to when the activity starts adds an entry to that device's
+`input_record`. Send those device elements in an optional `devices`
+list inside the activity body (`{...activity, "devices": [device, ...]}`).
+The server applies them with the activity in one job. Only a device's
+input record, idle behaviour and command names may differ; any other
+device change is `422 out_of_scope`.
+
 The cache revision check and the hub check serve different purposes.
 Sync-based edits compare device bindings/macros and activity
 bindings/macros/favorites, with normalization exceptions; they do not

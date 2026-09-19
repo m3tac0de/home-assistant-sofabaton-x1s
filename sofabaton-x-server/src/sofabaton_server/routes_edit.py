@@ -79,6 +79,21 @@ class EntityPayload(BaseModel):
     device: dict[str, Any]
 
 
+class ActivityPayload(EntityPayload):
+    """An edited activity element, plus the device elements the edit touched.
+
+    An activity edit can reach into a device: picking an input for a
+    device in the power-on sequence appends to that device's
+    ``input_record``. ``devices`` carries those ``devices[]`` elements;
+    they are spliced into the edited bundle next to the activity and the
+    planner's scope guard decides what is allowed (input records, the
+    idle byte, command names).
+    """
+
+    devices: Optional[list[dict[str, Any]]] = Field(
+        None, description="devices[] elements this activity edit touched (e.g. a new input entry); optional")
+
+
 class SyncPlanStep(BaseModel):
     kind: str
     label: str
@@ -218,6 +233,24 @@ def _splice(bundle: dict[str, Any], kind: str, entity_id: int, payload: dict[str
     raise KeyError(f"{kind} {entity_id} is not in the snapshot")
 
 
+def _splice_activity(bundle: dict[str, Any], activity_id: int, body: "ActivityPayload", hub_id: str) -> dict[str, Any]:
+    """The activity element spliced in, then each touched device element by its own id."""
+
+    edited = _splice(bundle, "activity", activity_id, body.model_dump(exclude={"devices"}))
+    for element in body.devices or []:
+        try:
+            device_id = int((element.get("device") or {}).get("device_id")) & 0xFF
+        except (TypeError, ValueError):
+            raise ApiProblem(422, "invalid_request", "A touched device has no id",
+                             detail="every devices[] entry needs device.device_id", hub_id=hub_id) from None
+        try:
+            edited = _splice(edited, "device", device_id, element)
+        except KeyError as err:
+            raise ApiProblem(422, "invalid_request", "Unknown touched device",
+                             detail=str(err.args[0] if err.args else err), hub_id=hub_id) from err
+    return edited
+
+
 def _button_code(token: str, hub_id: str) -> int:
     text = str(token).strip()
     try:
@@ -340,12 +373,12 @@ async def reorder_activities(request: Request, hub_id: str, body: OrderRequest,
 @router.put("/activities/{activity_id}", operation_id="editActivity", response_model=JobView, status_code=202,
             summary="Write an edited activity (the snapshot element) as a job; If-Match required",
             responses=_WRITE_ERRORS)
-async def edit_activity(request: Request, hub_id: str, activity_id: int, body: EntityPayload,
+async def edit_activity(request: Request, hub_id: str, activity_id: int, body: ActivityPayload,
                         if_match: Optional[str] = IF_MATCH) -> JobView:
     if int(body.device.get("device_id", -1)) != activity_id:
         raise ApiProblem(422, "invalid_request", "Entity id mismatch", detail="device.device_id must equal the path id", hub_id=hub_id)
     return await _row_edit(request, hub_id, "activity", activity_id, if_match,
-                           lambda b: _splice(b, "activity", activity_id, body.model_dump()),
+                           lambda b: _splice_activity(b, activity_id, body, hub_id),
                            required_match=True, job_kind="sync_activity")
 
 
@@ -364,11 +397,11 @@ async def edit_device(request: Request, hub_id: str, device_id: int, body: Entit
 @router.post("/activities/{activity_id}/plan", operation_id="planActivityEdit", response_model=SyncPlan,
              summary="Preview what writing this activity edit would do (nothing is written)",
              responses={404: {"model": Problem}, 409: {"model": Problem}, 422: {"model": Problem}})
-async def plan_activity(request: Request, hub_id: str, activity_id: int, body: EntityPayload) -> SyncPlan:
+async def plan_activity(request: Request, hub_id: str, activity_id: int, body: ActivityPayload) -> SyncPlan:
     proxy = _proxy(request, hub_id)
     snap = await proxy.snapshot()
     _require_editable(snap, hub_id, "activity", activity_id)
-    return _plan("activity", snap.bundle, _splice(snap.bundle, "activity", activity_id, body.model_dump()), activity_id, hub_id)
+    return _plan("activity", snap.bundle, _splice_activity(snap.bundle, activity_id, body, hub_id), activity_id, hub_id)
 
 
 @router.post("/devices/{device_id}/plan", operation_id="planDeviceEdit", response_model=SyncPlan,

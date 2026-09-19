@@ -109,6 +109,38 @@
         "title": "ActivityCreateRequest",
         "type": "object"
       },
+      "ActivityPayload": {
+        "additionalProperties": true,
+        "description": "An edited activity element, plus the device elements the edit touched.\n\nAn activity edit can reach into a device: picking an input for a\ndevice in the power-on sequence appends to that device's\n``input_record``. ``devices`` carries those ``devices[]`` elements;\nthey are spliced into the edited bundle next to the activity and the\nplanner's scope guard decides what is allowed (input records, the\nidle byte, command names).",
+        "properties": {
+          "device": {
+            "additionalProperties": true,
+            "title": "Device",
+            "type": "object"
+          },
+          "devices": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "devices[] elements this activity edit touched (e.g. a new input entry); optional",
+            "title": "Devices"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "title": "ActivityPayload",
+        "type": "object"
+      },
       "ApplyItemView": {
         "properties": {
           "completed_steps": {
@@ -2376,6 +2408,37 @@
         "title": "PayloadView",
         "type": "object"
       },
+      "PortSetting": {
+        "description": "One port: what runs now, what the next start will use, and where from.",
+        "properties": {
+          "configured": {
+            "description": "the value the next start uses (pinned, else server.json, else the default)",
+            "title": "Configured",
+            "type": "integer"
+          },
+          "default": {
+            "title": "Default",
+            "type": "integer"
+          },
+          "pinned": {
+            "description": "set by an environment variable or CLI flag; server.json cannot change it",
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "running": {
+            "title": "Running",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "running",
+          "configured",
+          "default",
+          "pinned"
+        ],
+        "title": "PortSetting",
+        "type": "object"
+      },
       "PressPage": {
         "description": "``GET /hubs/{id}/presses``: the ring, oldest first when ``after`` is given.\n\n``expired`` means presses newer than ``after`` were already evicted\nfrom the ring; the client missed some and must accept the gap.\n``instance_id`` changes on every server restart, and so does the\nsequence; on a new instance start from the current ``hello``.",
         "properties": {
@@ -2854,6 +2917,77 @@
           "uptime_seconds"
         ],
         "title": "ServerInfo",
+        "type": "object"
+      },
+      "ServerSettingsUpdate": {
+        "description": "Body of ``PUT /server/settings``; omitted ports are left as they are.",
+        "properties": {
+          "app_discovery_port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Discovery Port"
+          },
+          "callback_port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Port"
+          },
+          "hub_listen_port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Listen Port"
+          }
+        },
+        "title": "ServerSettingsUpdate",
+        "type": "object"
+      },
+      "ServerSettingsView": {
+        "properties": {
+          "app_discovery_port": {
+            "$ref": "#/components/schemas/PortSetting"
+          },
+          "callback_port": {
+            "$ref": "#/components/schemas/PortSetting"
+          },
+          "hub_listen_port": {
+            "$ref": "#/components/schemas/PortSetting"
+          },
+          "restart_required": {
+            "title": "Restart Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hub_listen_port",
+          "app_discovery_port",
+          "callback_port",
+          "restart_required"
+        ],
+        "title": "ServerSettingsView",
         "type": "object"
       },
       "SnapshotChanged": {
@@ -4213,7 +4347,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EntityPayload"
+                "$ref": "#/components/schemas/ActivityPayload"
               }
             }
           },
@@ -5171,7 +5305,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EntityPayload"
+                "$ref": "#/components/schemas/ActivityPayload"
               }
             }
           },
@@ -9975,6 +10109,76 @@
           }
         },
         "summary": "Try to bind the callback listener now",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/settings": {
+      "get": {
+        "operationId": "getServerSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The hub listener, app discovery and callback ports",
+        "tags": [
+          "server"
+        ]
+      },
+      "put": {
+        "operationId": "updateServerSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Save port changes to server.json (applied on the next start)",
         "tags": [
           "server"
         ]

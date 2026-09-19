@@ -169,6 +169,8 @@ variables, then flags; each layer overrides the one before.
 | `--tls-cert` / `--tls-key` | `SOFABATON_TLS_CERT` / `_KEY` | none | bring your own certificate (a reverse proxy is the usual way) |
 | `--callback-host` | `SOFABATON_CALLBACK_HOST` | routed local IP per hub | IPv4 address the hubs call back on for callback devices (see Button events); set the host's LAN address inside a container on a bridge network |
 | `--callback-port` | `SOFABATON_CALLBACK_PORT` | `8060` | port of the callback listener; the X1 can call no other |
+| `--hub-listen-port` | `SOFABATON_HUB_LISTEN_PORT` | `8200` | TCP port the hubs connect back to, shared by every hub |
+| `--app-discovery-port` | `SOFABATON_APP_DISCOVERY_PORT` | `8102` | UDP port the official app discovers and calls the proxies on; keep it for iOS |
 | no flag (`server.json`: `apply_keep`) | `SOFABATON_APPLY_KEEP` | `20` | retained terminal apply records per hub, including stopped/cancelled ones |
 | `--log-level` | `SOFABATON_LOG_LEVEL` | `info` | |
 
@@ -187,6 +189,15 @@ For example, save this as `server.json` in the selected data directory:
 Choose that directory with `--data-dir` or `SOFABATON_DATA_DIR` before the
 file is loaded. An existing empty `hubs.json` is respected: seed hubs are
 not re-added. `--print-settings` prints effective settings and exits.
+
+The three host-side ports (`hub_listen_port`, `app_discovery_port`,
+`callback_port`) are also editable from the control panel's Server page,
+over `GET /server/settings` and `PUT /server/settings`. A change is
+written to `server.json` and applies on the next start. A port set by an
+environment variable or a flag wins over the file, so it shows as pinned
+and the API refuses to change it (409 `setting_pinned`). The server ports
+replace the per-hub `hub_listen_port` / `app_discovery_port` values: one
+listener serves every hub.
 
 ## Security
 
@@ -420,7 +431,13 @@ Two shapes, both jobs:
   `activities[]` or `devices[]` element of the snapshot, preview with
   `POST .../plan`, then `PUT` it back with `If-Match` (required: `428`
   without it, `412` when the snapshot moved). Only the named entity may
-  differ from the snapshot (`422 out_of_scope`).
+  differ from the snapshot (`422 out_of_scope`). One exception: an
+  activity edit that picks an input for a device appends to that
+  device's `input_record`, so `PUT /activities/{aid}` (and its plan
+  route) accepts an optional `devices` list next to the activity's own
+  fields, holding the `devices[]` elements the edit touched. They are
+  applied with the activity in the same job; only a device's input
+  record, idle behaviour and command names may differ.
 
 `If-Match` compares the cached configuration revision. Sync-based row edits
 and intents also re-read the target before writing, but compare only

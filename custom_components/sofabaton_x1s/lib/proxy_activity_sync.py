@@ -29,6 +29,7 @@ from .device_create import (
     ACK_STATUS_BYTE_OK,
     CreateStep,
     FAMILY_DEVICE_UPDATE,
+    FAMILY_INPUTS,
     build_macro_step,
     build_macro_step_record,
     run_create_sequence,
@@ -1068,11 +1069,137 @@ class ActivitySyncMixin:
         return None
 
     def _sync_step_inputs_write(self, payload: Mapping[str, Any]) -> bool:
-        # Input-record rewrites are a device-side side-effect of the input
-        # picker; wired via the family-0x46 restore path. Not reachable from
-        # the live editor's v1 affordances, but handled defensively.
-        self._log.info("[ACTIVITY_SYNC] inputs_write for device %s (deferred to macro input refs)",
-                       payload.get("device_id"))
+        """Append the editor's new input entries to a device's inputs page.
+
+        "Set input" in an activity's power-on sequence may pick a command
+        the device does not list as an input yet; the editor then appends
+        an entry to the device's ``input_record``. This step makes the hub
+        agree, in the order the restore path uses:
+
+        1. a device that was never configured for inputs (``input_mode``
+           0: the hub rejects every inputs request for it) gets its head
+           record rewritten with ``input_mode`` 1 (direct inputs), the same
+           record write a rename uses;
+        2. the hub's own record is read and the new entries are appended to
+           it, so the control-key and favorite rows and every existing
+           entry are written back as the hub holds them;
+        3. the family-0x46 page is written and read back; the step fails
+           when the hub's record does not carry the new entries.
+
+        Only an append is written. Activities address an input by its
+        position in this list, so a removal or a reorder here would
+        silently re-point the other activities' input steps; those edits
+        (a deleted command's entry stays on the page) remain the documented
+        limitation and are a logged no-op.
+        """
+
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        if not dev_lo:
+            return False
+        desired = [dict(row) for row in payload.get("entries") or [] if isinstance(row, Mapping)]
+        desired.sort(key=lambda row: int(row.get("input_index", row.get("ordinal", 0)) or 0))
+        desired_ids = [int(row.get("command_id") or 0) & 0xFF for row in desired]
+
+        device = self.state.entities("device").get(dev_lo)
+        raw = device.get("raw_body") if isinstance(device, dict) else None
+        if not isinstance(raw, (bytes, bytearray)):
+            self._log.warning("[ACTIVITY_SYNC] inputs_write: no record body for dev=0x%02X", dev_lo)
+            return False
+        try:
+            config = parse_device_record(bytes(raw), hub_version=self.hub_version, entity_kind="device")
+        except (ValueError, TypeError):
+            self._log.exception("[ACTIVITY_SYNC] inputs_write: could not parse record dev=0x%02X", dev_lo)
+            return False
+
+        live: dict[str, Any] | None = None
+        if config.is_input_configured:
+            fetched = self.fetch_device_input_record(dev_lo)
+            if not isinstance(fetched, dict):
+                # A configured device answers its inputs request; without the
+                # hub's record an append could drop the entries it holds.
+                self._log.warning("[ACTIVITY_SYNC] inputs_write: could not read the inputs page dev=0x%02X", dev_lo)
+                return False
+            live = dict(fetched)
+        live_entries = [dict(row) for row in (live or {}).get("entries") or [] if isinstance(row, Mapping)]
+        live_ids = [int(row.get("command_id") or 0) & 0xFF for row in live_entries]
+
+        if desired_ids[: len(live_ids)] != live_ids:
+            self._log.info(
+                "[ACTIVITY_SYNC] inputs_write dev=0x%02X: not an append (hub %s, edit %s); "
+                "leaving the hub's inputs page as it is",
+                dev_lo, live_ids, desired_ids,
+            )
+            return True
+        added = desired[len(live_ids):]
+        if not added:
+            return True
+
+        if not config.is_input_configured:
+            try:
+                configured = replace(config, input_mode=1, device_id=dev_lo)
+                body = build_device_create_payload(configured, hub_version=self.hub_version)
+            except (ValueError, TypeError):
+                self._log.exception("[ACTIVITY_SYNC] inputs_write: could not rebuild record dev=0x%02X", dev_lo)
+                return False
+            self.reset_ack_queues()
+            result = run_create_sequence(self, [CreateStep(
+                label=f"inputs-mode[dev=0x{dev_lo:02X}]",
+                family=FAMILY_DEVICE_UPDATE,
+                payload=body,
+                ack_opcode=ACK_OPCODE_STATUS,
+                ack_first_byte=ACK_STATUS_BYTE_OK,
+            )])
+            if not result.success:
+                self._log.warning("[ACTIVITY_SYNC] inputs_write: hub rejected the input mode dev=0x%02X", dev_lo)
+                return False
+            if isinstance(device, dict):
+                device["raw_body"] = body[3:]
+                device["input_mode"] = 1
+                device["inputs_configured"] = True
+
+        record = dict(live or {})
+        next_ordinal = max((int(row.get("input_index", 0) or 0) for row in live_entries), default=0)
+        entries = list(live_entries)
+        for row in added:
+            next_ordinal += 1
+            entries.append({**row, "input_index": next_ordinal})
+        record["entries"] = entries
+        page, count = self._restore_input_payload(
+            device_id=dev_lo,
+            input_record=record,
+            inputs=[],
+            map_command_id=lambda value: (int(value) & 0xFF) or None if value is not None else None,
+        )
+        if page is None or count != len(entries):
+            self._log.warning("[ACTIVITY_SYNC] inputs_write: could not build the inputs page dev=0x%02X", dev_lo)
+            return False
+        self.reset_ack_queues()
+        result = run_create_sequence(self, [CreateStep(
+            label=f"inputs dev=0x{dev_lo:02X} count={count}",
+            family=FAMILY_INPUTS,
+            payload=page,
+            ack_opcode=ACK_OPCODE_STATUS,
+            ack_first_byte=ACK_STATUS_BYTE_OK,
+        )])
+        if not result.success:
+            self._log.warning("[ACTIVITY_SYNC] inputs_write: hub rejected the inputs page dev=0x%02X", dev_lo)
+            return False
+
+        written = self.fetch_device_input_record(dev_lo)
+        written_ids = [
+            int(row.get("command_id") or 0) & 0xFF
+            for row in (written or {}).get("entries") or []
+            if isinstance(row, Mapping)
+        ] if isinstance(written, dict) else []
+        if written_ids != [int(row.get("command_id") or 0) & 0xFF for row in entries]:
+            self._log.warning(
+                "[ACTIVITY_SYNC] inputs_write: the hub's inputs page reads back %s, expected %s (dev=0x%02X)",
+                written_ids, [int(row.get("command_id") or 0) & 0xFF for row in entries], dev_lo,
+            )
+            return False
+        self.state.device_input_records[dev_lo] = dict(written)
+        self._log.info("[ACTIVITY_SYNC] inputs_write dev=0x%02X: %d input(s) added, %d on the page",
+                       dev_lo, len(added), len(entries))
         return True
 
     def _sync_step_command_rename(self, payload: Mapping[str, Any]) -> bool:

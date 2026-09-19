@@ -8,6 +8,8 @@ export class PointerReorder {
     private readonly changed: () => void,
     private readonly moved: (from: number, to: number) => void,
     private readonly top: () => number = () => 0,
+    /** The space between rows (a grid gap): a shifting row travels the dragged row's height plus it. */
+    private readonly gap: () => number = () => 0,
   ) {}
 
   start(event: PointerEvent, index: number): void {
@@ -36,8 +38,9 @@ export class PointerReorder {
     const drag = this.state;
     if (!drag) return 0;
     if (index === drag.from) return drag.dy;
-    if (drag.from < drag.over && index > drag.from && index <= drag.over) return -drag.height;
-    if (drag.over < drag.from && index >= drag.over && index < drag.from) return drag.height;
+    const travel = drag.height + this.gap();
+    if (drag.from < drag.over && index > drag.from && index <= drag.over) return -travel;
+    if (drag.over < drag.from && index >= drag.over && index < drag.from) return travel;
     return 0;
   }
 

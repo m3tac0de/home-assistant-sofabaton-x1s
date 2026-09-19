@@ -92,10 +92,20 @@ class AckWaitersMixin:
                 # event so the wait can exit early instead of timing out
                 # after the full window.
                 consumed_by_burst = self.note_catalog_status_ack(status)
-                with self._activity_inputs_lock:
-                    if self._activity_inputs_pending and self._activity_inputs_seen == 0:
-                        self._inputs_burst_reject_pending = True
-                        self._activity_inputs_event.set()
+                # A byte that finished a read burst is that burst's answer,
+                # never the inputs request's. Finishing the burst wakes the
+                # caller, which can arm and send its inputs request before
+                # this thread reaches the check below; the burst's 0x07 was
+                # then taken for the hub rejecting the inputs request, and
+                # the real inputs page arrived with nobody waiting for it
+                # (observed live on the X1S 2026-09-19: a device with no
+                # button bindings captured as "no inputs configured" while
+                # the hub held its page).
+                if not consumed_by_burst:
+                    with self._activity_inputs_lock:
+                        if self._activity_inputs_pending and self._activity_inputs_seen == 0:
+                            self._inputs_burst_reject_pending = True
+                            self._activity_inputs_event.set()
                 if consumed_by_burst:
                     # The byte answered a read burst ("table empty") and the
                     # burst is finished with it. It must not stay consumable:

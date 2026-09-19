@@ -188,6 +188,35 @@ def test_wait_for_activity_inputs_burst_returns_rejected_on_status_ack(monkeypat
     assert proxy._inputs_burst_reject_pending is False
 
 
+def test_a_status_ack_that_finished_a_read_burst_is_never_an_inputs_rejection(monkeypatch) -> None:
+    """The race found live on the X1S (2026-09-19).
+
+    A device with no button bindings answers the buttons read with a bare
+    STATUS_ACK 0x07. Finishing that burst wakes the capture thread, which
+    arms and sends its inputs request before the engine thread is done
+    attributing the byte. The byte belongs to the buttons burst: it must
+    not latch a rejection for the inputs request that started after it.
+    """
+
+    proxy = _make_proxy()
+
+    def finish_burst_and_let_the_caller_arm(status):
+        # What the woken caller does between the two halves of notify_ack.
+        with proxy._activity_inputs_lock:
+            proxy._activity_inputs_pending = True
+        return True                     # the byte answered the read burst
+
+    monkeypatch.setattr(proxy, "note_catalog_status_ack", finish_burst_and_let_the_caller_arm)
+    proxy.notify_ack(0x0103, bytes([0x07]))
+
+    assert proxy._inputs_burst_reject_pending is False
+    # The hub's real answer then arrives and is returned.
+    proxy.notify_activity_inputs_frame(b"page-1")
+    result = proxy.wait_for_activity_inputs_burst(timeout=1.0, idle_window=0.01)
+    assert result.outcome is AckOutcome.acked
+    assert result.payloads == (b"page-1",)
+
+
 def test_wait_for_activity_inputs_burst_returns_payloads_on_idle(monkeypatch) -> None:
     """When frames arrive and the burst goes idle, payloads are returned."""
 

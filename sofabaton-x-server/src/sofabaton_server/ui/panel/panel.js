@@ -7576,6 +7576,7 @@ var mdiFridge = "M7,2H17A2,2 0 0,1 19,4V9H5V4A2,2 0 0,1 7,2M19,19A2,2 0 0,1 17,2
 var mdiFullscreen = "M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z";
 var mdiFullscreenExit = "M14,14H19V16H16V19H14V14M5,14H10V19H8V16H5V14M8,5H10V10H5V8H8V5M19,8V10H14V5H16V8H19Z";
 var mdiGamepad = "M16.5,9L13.5,12L16.5,15H22V9M9,16.5V22H15V16.5L12,13.5M7.5,9H2V15H7.5L10.5,12M15,7.5V2H9V7.5L12,10.5L15,7.5Z";
+var mdiGamepadRoundOutline = "M4,8H8V4A2,2 0 0,1 10,2H14A2,2 0 0,1 16,4V8H20A2,2 0 0,1 22,10V14A2,2 0 0,1 20,16H16V20A2,2 0 0,1 14,22H10A2,2 0 0,1 8,20V16H4A2,2 0 0,1 2,14V10A2,2 0 0,1 4,8M4,10V14H10V20H14V14H20V10H14V4H10V10H4Z";
 var mdiGamepadVariant = "M7,6H17A6,6 0 0,1 23,12A6,6 0 0,1 17,18C15.22,18 13.63,17.23 12.53,16H11.47C10.37,17.23 8.78,18 7,18A6,6 0 0,1 1,12A6,6 0 0,1 7,6M6,9V11H4V13H6V15H8V13H10V11H8V9H6M15.5,12A1.5,1.5 0 0,0 14,13.5A1.5,1.5 0 0,0 15.5,15A1.5,1.5 0 0,0 17,13.5A1.5,1.5 0 0,0 15.5,12M18.5,9A1.5,1.5 0 0,0 17,10.5A1.5,1.5 0 0,0 18.5,12A1.5,1.5 0 0,0 20,10.5A1.5,1.5 0 0,0 18.5,9Z";
 var mdiGarage = "M19,20H17V11H7V20H5V9L12,5L19,9V20M8,12H16V14H8V12M8,15H16V17H8V15M16,18V20H8V18H16Z";
 var mdiGarageOpen = "M19,20H17V11H7V20H5V9L12,5L19,9V20M8,12H16V14H8V12Z";
@@ -7662,11 +7663,13 @@ var mdiPlay = "M8,5.14V19.14L19,12.14L8,5.14Z";
 var mdiPlayCircle = "M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiPlayCircleOutline = "M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z";
 var mdiPlayPause = "M3,5V19L11,12M13,19H16V5H13M18,5V19H21V5";
+var mdiPlaylistEdit = "M3 6V8H14V6H3M3 10V12H14V10H3M20 10.1C19.9 10.1 19.7 10.2 19.6 10.3L18.6 11.3L20.7 13.4L21.7 12.4C21.9 12.2 21.9 11.8 21.7 11.6L20.4 10.3C20.3 10.2 20.2 10.1 20 10.1M18.1 11.9L12 17.9V20H14.1L20.2 13.9L18.1 11.9M3 14V16H10V14H3Z";
 var mdiPlex = "M4,2C2.89,2 2,2.89 2,4V20C2,21.11 2.89,22 4,22H20C21.11,22 22,21.11 22,20V4C22,2.89 21.11,2 20,2H4M8.56,6H12.06L15.5,12L12.06,18H8.56L12,12L8.56,6Z";
 var mdiPlus = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z";
 var mdiPlusBox = "M17,13H13V17H11V13H7V11H11V7H13V11H17M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3Z";
 var mdiPlusCircle = "M17,13H13V17H11V13H7V11H11V7H13V11H17M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiPopcorn = "M7,22H4.75C4.75,22 4,22 3.81,20.65L2.04,3.81L2,3.5C2,2.67 2.9,2 4,2C5.1,2 6,2.67 6,3.5C6,2.67 6.9,2 8,2C9.1,2 10,2.67 10,3.5C10,2.67 10.9,2 12,2C13.09,2 14,2.66 14,3.5V3.5C14,2.67 14.9,2 16,2C17.1,2 18,2.67 18,3.5C18,2.67 18.9,2 20,2C21.1,2 22,2.67 22,3.5L21.96,3.81L20.19,20.65C20,22 19.25,22 19.25,22H17L16.5,22H13.75L10.25,22H7.5L7,22M17.85,4.93C17.55,4.39 16.84,4 16,4C15.19,4 14.36,4.36 14,4.87L13.78,20H16.66L17.85,4.93M10,4.87C9.64,4.36 8.81,4 8,4C7.16,4 6.45,4.39 6.15,4.93L7.34,20H10.22L10,4.87Z";
+var mdiPound = "M5.41,21L6.12,17H2.12L2.47,15H6.47L7.53,9H3.53L3.88,7H7.88L8.59,3H10.59L9.88,7H15.88L16.59,3H18.59L17.88,7H21.88L21.53,9H17.53L16.47,15H20.47L20.12,17H16.12L15.41,21H13.41L14.12,17H8.12L7.41,21H5.41M9.53,9L8.47,15H14.47L15.53,9H9.53Z";
 var mdiPower = "M16.56,5.44L15.11,6.89C16.84,7.94 18,9.83 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12C6,9.83 7.16,7.94 8.88,6.88L7.44,5.44C5.36,6.88 4,9.28 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12C20,9.28 18.64,6.88 16.56,5.44M13,3H11V13H13";
 var mdiPowerCycle = "M12,3A9,9 0 0,0 3,12A9,9 0 0,0 12,21A9,9 0 0,0 21,12A9,9 0 0,0 12,3M12,19A7,7 0 0,1 5,12A7,7 0 0,1 12,5A7,7 0 0,1 19,12A7,7 0 0,1 12,19M13,17H11V7H13V17Z";
 var mdiPowerOff = "M12,3A9,9 0 0,0 3,12A9,9 0 0,0 12,21A9,9 0 0,0 21,12A9,9 0 0,0 12,3M12,19A7,7 0 0,1 5,12A7,7 0 0,1 12,5A7,7 0 0,1 19,12A7,7 0 0,1 12,19Z";
@@ -7733,6 +7736,7 @@ var mdiStove = "M6,14H8L11,17H9L6,14M4,4H5V3A1,1 0 0,1 6,2H10A1,1 0 0,1 11,3V4H1
 var mdiSubtitles = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M4,12H8V14H4V12M14,18H4V16H14V18M20,18H16V16H20V18M20,14H10V12H20V14Z";
 var mdiSubtitlesOutline = "M20,4A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4H20M20,18V6H4V18H20M6,10H8V12H6V10M6,14H14V16H6V14M16,14H18V16H16V14M10,10H18V12H10V10Z";
 var mdiSurroundSound = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M7.76,16.24L6.35,17.65C4.78,16.1 4,14.05 4,12C4,9.95 4.78,7.9 6.34,6.34L7.75,7.75C6.59,8.93 6,10.46 6,12C6,13.54 6.59,15.07 7.76,16.24M12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16M17.66,17.66L16.25,16.25C17.41,15.07 18,13.54 18,12C18,10.46 17.41,8.93 16.24,7.76L17.65,6.35C19.22,7.9 20,9.95 20,12C20,14.05 19.22,16.1 17.66,17.66M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
+var mdiSwapVertical = "M9,3L5,7H8V14H10V7H13M16,17V10H14V17H11L15,21L19,17H16Z";
 var mdiSync = "M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z";
 var mdiSyncAlert = "M11,13H13V7H11M21,4H15V10L17.24,7.76C18.32,8.85 19,10.34 19,12C19,14.61 17.33,16.83 15,17.65V19.74C18.45,18.85 21,15.73 21,12C21,9.79 20.09,7.8 18.64,6.36M11,17H13V15H11M3,12C3,14.21 3.91,16.2 5.36,17.64L3,20H9V14L6.76,16.24C5.68,15.15 5,13.66 5,12C5,9.39 6.67,7.17 9,6.35V4.26C5.55,5.15 3,8.27 3,12Z";
 var mdiTablet = "M19,18H5V6H19M21,4H3C1.89,4 1,4.89 1,6V18A2,2 0 0,0 3,20H21A2,2 0 0,0 23,18V6C23,4.89 22.1,4 21,4Z";
@@ -7753,10 +7757,12 @@ var mdiTrashCanOutline = "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20
 var mdiTriangle = "M1,21H23L12,2";
 var mdiTriangleOutline = "M12,2L1,21H23M12,6L19.53,19H4.47";
 var mdiTune = "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z";
+var mdiTuneVariant = "M8 13C6.14 13 4.59 14.28 4.14 16H2V18H4.14C4.59 19.72 6.14 21 8 21S11.41 19.72 11.86 18H22V16H11.86C11.41 14.28 9.86 13 8 13M8 19C6.9 19 6 18.1 6 17C6 15.9 6.9 15 8 15S10 15.9 10 17C10 18.1 9.1 19 8 19M19.86 6C19.41 4.28 17.86 3 16 3S12.59 4.28 12.14 6H2V8H12.14C12.59 9.72 14.14 11 16 11S19.41 9.72 19.86 8H22V6H19.86M16 9C14.9 9 14 8.1 14 7C14 5.9 14.9 5 16 5S18 5.9 18 7C18 8.1 17.1 9 16 9Z";
 var mdiTuneVertical = "M7 3H5V9H7V3M19 3H17V13H19V3M3 13H5V21H7V13H9V11H3V13M15 7H13V3H11V7H9V9H15V7M11 21H13V11H11V21M15 15V17H17V21H19V17H21V15H15Z";
 var mdiTwitch = "M11.64 5.93H13.07V10.21H11.64M15.57 5.93H17V10.21H15.57M7 2L3.43 5.57V18.43H7.71V22L11.29 18.43H14.14L20.57 12V2M19.14 11.29L16.29 14.14H13.43L10.93 16.64V14.14H7.71V3.43H19.14Z";
 var mdiUmbrella = "M12,2A9,9 0 0,1 21,11H13V19A3,3 0 0,1 10,22A3,3 0 0,1 7,19V18H9V19A1,1 0 0,0 10,20A1,1 0 0,0 11,19V11H3A9,9 0 0,1 12,2Z";
 var mdiUndo = "M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z";
+var mdiUploadOutline = "M9,10V16H15V10H19L12,3L5,10H9M12,5.8L14.2,8H13V14H11V8H9.8L12,5.8M19,18H5V20H19V18Z";
 var mdiUsb = "M15,7V11H16V13H13V5H15L12,1L9,5H11V13H8V10.93C8.7,10.56 9.2,9.85 9.2,9C9.2,7.78 8.21,6.8 7,6.8C5.78,6.8 4.8,7.78 4.8,9C4.8,9.85 5.3,10.56 6,10.93V13A2,2 0 0,0 8,15H11V18.05C10.29,18.41 9.8,19.15 9.8,20A2.2,2.2 0 0,0 12,22.2A2.2,2.2 0 0,0 14.2,20C14.2,19.15 13.71,18.41 13,18.05V15H16A2,2 0 0,0 18,13V11H19V7H15Z";
 var mdiVideo = "M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z";
 var mdiVideoInputAntenna = "M12,5A7,7 0 0,0 5,12H7A5,5 0 0,1 12,7A5,5 0 0,1 17,12H19A7,7 0 0,0 12,5M13,14.29C13.88,13.9 14.5,13.03 14.5,12A2.5,2.5 0 0,0 12,9.5A2.5,2.5 0 0,0 9.5,12C9.5,13 10.12,13.9 11,14.29V17.59L7.59,21L9,22.41L12,19.41L15,22.41L16.41,21L13,17.59V14.29M12,1A11,11 0 0,0 1,12H3A9,9 0 0,1 12,3A9,9 0 0,1 21,12H23A11,11 0 0,0 12,1Z";
@@ -10988,6 +10994,13 @@ var PanelApi = class {
   retryCallbackListener() {
     return this.request("POST", "server/callback-listener/retry");
   }
+  serverSettings() {
+    return this.request("GET", "server/settings");
+  }
+  /** Saves to server.json; the ports apply on the next server start. */
+  updateServerSettings(changes) {
+    return this.request("PUT", "server/settings", { body: changes });
+  }
   /** The operations from `openapi.json`, sorted by path then method. */
   async operations() {
     const response = await this.request(
@@ -11063,6 +11076,27 @@ var PanelApi = class {
   /** Delete a device (a job); the hub cascades the removal into its activities. */
   removeDevice(hubId, deviceId) {
     return this.request("DELETE", `${this._hub(hubId)}/devices/${deviceId}`);
+  }
+  /** Write an edited activity element as a job; `devices` are the device elements the edit touched (a new input entry), sent only when there are any. */
+  editActivity(hubId, activityId, element, devices, snapshotId) {
+    const body = devices.length ? { ...element, devices } : element;
+    return this.request("PUT", `${this._hub(hubId)}/activities/${activityId}`, { body, headers: { "If-Match": `"${snapshotId}"` } });
+  }
+  /** Delete an activity (a job). */
+  removeActivity(hubId, activityId) {
+    return this.request("DELETE", `${this._hub(hubId)}/activities/${activityId}`);
+  }
+  /** Create an empty activity (a job); the result carries the hub-assigned `activity_id`. */
+  addActivity(hubId, name) {
+    return this.request("POST", `${this._hub(hubId)}/activities`, { body: { name } });
+  }
+  /** Create an empty device of a class the hub can create (a job); the result carries the hub-assigned `device_id`. */
+  addDevice(hubId, name, deviceClass) {
+    return this.request("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass } });
+  }
+  /** Store the display order of every activity or device, once each (a job). */
+  reorderEntities(hubId, kind, order) {
+    return this.request("PUT", `${this._hub(hubId)}/${kind === "device" ? "devices" : "activities"}/order`, { body: { order } });
   }
   devices(hubId) {
     return this.request("GET", `${this._hub(hubId)}/devices`);
@@ -12169,7 +12203,7 @@ var SofabatonServerPanel = class extends i4 {
     const targetScope = target.route ? routeScope(target.route) : null;
     const leavingScope = targetScope !== null && targetScope !== scope;
     if (!leavingHub && !leavingScope) return true;
-    const editor = this.renderRoot.querySelector("sb-panel-device-editor");
+    const editor = this.renderRoot.querySelector("sb-panel-device-editor, sb-panel-activity-editor");
     if (editor && editor.hasUnsyncedChanges()) {
       editor.askToLeave(() => {
         if (target.route) this.store.navigate(target.route);
@@ -12360,6 +12394,9 @@ The server stops its proxy and forgets its registration, cached state and web re
       default:
         if (route.entity !== void 0 && route.sub === "devices") {
           return b2`<sb-panel-device-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .deviceId=${route.entity}></sb-panel-device-editor>`;
+        }
+        if (route.entity !== void 0 && route.sub === "activities") {
+          return b2`<sb-panel-activity-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .activityId=${route.entity}></sb-panel-activity-editor>`;
         }
         return b2`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }
@@ -12844,480 +12881,6 @@ SbPanelBackup.properties = {
 SbPanelBackup.styles = [PANEL_BASE_CSS, i`:host { display: block; }`];
 function defineBackupView() {
   if (!customElements.get(BACKUP_VIEW_TAG)) customElements.define(BACKUP_VIEW_TAG, SbPanelBackup);
-}
-
-// server-panel/src/views/catalog-view.ts
-var CATALOG_VIEW_TAG = "sb-panel-catalog";
-var REFRESH_ALL_KEY = "all";
-function entryKey(kind, id) {
-  return `${kind}:${id}`;
-}
-function tableLength(entity, key) {
-  const rows = entity?.[key];
-  return Array.isArray(rows) ? rows.length : void 0;
-}
-function countsFromSnapshot(kind, entity) {
-  if (!entity) return null;
-  if (kind === "device") {
-    const commands = tableLength(entity, "commands");
-    return commands === void 0 ? null : { commands };
-  }
-  const favorites = tableLength(entity, "favorite_slots");
-  const macros = Array.isArray(entity.macros) ? entity.macros.filter((row) => {
-    const id = Number(row?.button_id);
-    return id !== 198 && id !== 199;
-  }).length : void 0;
-  const buttons = tableLength(entity, "button_bindings");
-  if (favorites === void 0 && macros === void 0 && buttons === void 0) return null;
-  return { favorites: favorites ?? 0, macros: macros ?? 0, buttons: buttons ?? 0 };
-}
-function buildCatalog(devices, activities, snapshot) {
-  const provenance = /* @__PURE__ */ new Map();
-  for (const e6 of snapshot?.devices ?? []) provenance.set(entryKey("device", e6.device.device_id), e6);
-  for (const e6 of snapshot?.activities ?? []) provenance.set(entryKey("activity", e6.device.device_id), e6);
-  const entries = [];
-  for (const d3 of devices) {
-    const p4 = provenance.get(entryKey("device", d3.device_id));
-    entries.push({ kind: "device", id: d3.device_id, name: d3.name, device: d3, activity: null, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("device", p4) });
-  }
-  for (const a4 of activities) {
-    const p4 = provenance.get(entryKey("activity", a4.activity_id));
-    entries.push({ kind: "activity", id: a4.activity_id, name: a4.name, device: null, activity: a4, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("activity", p4) });
-  }
-  return entries;
-}
-function countLine(kind, counts) {
-  if (!counts) return null;
-  if (kind === "device") {
-    const n7 = counts.commands ?? 0;
-    return `${n7} ${n7 === 1 ? "cmd" : "cmds"}`;
-  }
-  const f4 = counts.favorites ?? 0;
-  const m3 = counts.macros ?? 0;
-  const b3 = counts.buttons ?? 0;
-  return `${f4} ${f4 === 1 ? "fav" : "favs"} / ${m3} ${m3 === 1 ? "macro" : "macros"} / ${b3} ${b3 === 1 ? "button" : "buttons"}`;
-}
-function boundButtons(buttons) {
-  return buttons.filter((b3) => b3.device_id != null || b3.command_id != null);
-}
-function jobPhrase(job) {
-  const p4 = job.progress;
-  const steps = p4 && p4.total_steps != null ? ` ${p4.completed_steps ?? 0}/${p4.total_steps}` : "";
-  return `${job.status}${steps}`;
-}
-function deviceClassIconPath(deviceClass) {
-  switch (String(deviceClass ?? "").trim().toLowerCase()) {
-    case "ir":
-      return mdiRemote;
-    case "bluetooth":
-      return mdiBluetooth;
-    case "wifi_roku":
-    case "wifi_hue":
-    case "wifi_mqtt":
-    case "wifi_ip":
-    case "wifi_sonos":
-      return mdiWifi;
-    default:
-      return mdiRadioTower;
-  }
-}
-function icon2(path, cls = "") {
-  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
-}
-var DEV_ID_BADGE = "DevID";
-var FAV_ID_BADGE = "FavID";
-var COM_ID_BADGE = "ComID";
-function badge(type, value) {
-  return b2`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
-}
-var SbPanelCatalog = class extends i4 {
-  constructor() {
-    super(...arguments);
-    /** The hub context the shell hands over (state plan, decision 3); `hub` follows it. */
-    this.ctx = null;
-    this.hub = null;
-    /** Which list to show: the Hub tab's Activities or Devices subtab; null lists both. */
-    this.kind = null;
-    this._entries = [];
-    this._snapshot = null;
-    /** The open drawer's key ("activity:101"); one at a time, as on the card. */
-    this._open = null;
-    this._details = {};
-    this._detailLoading = null;
-    this._detailNotice = null;
-    this._notice = null;
-    this._refresh = null;
-    this._loading = false;
-    this._loadedFor = null;
-    this._lastJobId = null;
-    this._pendingScroll = null;
-    this._devices = [];
-    this._activities = [];
-  }
-  willUpdate(changed) {
-    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
-  }
-  updated(changed) {
-    if (changed.has("kind") && this.kind && this.openEntry && this.openEntry.kind !== this.kind) {
-      this._open = null;
-      this._detailNotice = null;
-    }
-    if (changed.has("hub")) {
-      const id = this.hub?.hub_id ?? null;
-      if (id !== this._loadedFor) {
-        this._loadedFor = id;
-        this._lastJobId = this.hub?.last_job?.job_id ?? null;
-        this._entries = [];
-        this._snapshot = null;
-        this._open = null;
-        this._details = {};
-        this._detailNotice = null;
-        this._notice = null;
-        if (id) void this._load();
-      } else {
-        const jobId = this.hub?.last_job?.job_id ?? null;
-        if (jobId && jobId !== this._lastJobId) {
-          this._lastJobId = jobId;
-          if (!this._refresh) void this._reloadAll();
-        }
-      }
-    }
-    if (this._pendingScroll) {
-      const key = this._pendingScroll;
-      this._pendingScroll = null;
-      requestAnimationFrame(() => this._scrollEntityToTop(key));
-    }
-  }
-  /** As the card does on opening a drawer: the row lands at the top of the view, under the top dock. */
-  _scrollEntityToTop(key) {
-    const block = this.renderRoot.querySelector(`[data-entity="${CSS.escape(key)}"]`);
-    if (!block) return;
-    const dock = parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0;
-    const top = window.scrollY + block.getBoundingClientRect().top - dock - 8;
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-  }
-  get openEntry() {
-    if (!this._open) return null;
-    return this._entries.find((e6) => entryKey(e6.kind, e6.id) === this._open) ?? null;
-  }
-  /** The card's lock: a running refresh, or a hub the view may not act on. */
-  get _locked() {
-    return Boolean(this._refresh) || (this.ctx ? !this.ctx.free : false);
-  }
-  // -- loading ---------------------------------------------------------------------------
-  /** The lists and the snapshot header; keeps the open drawer when its entity still exists. */
-  async _load() {
-    const hubId = this.hub?.hub_id;
-    if (!hubId) return;
-    this._loading = true;
-    try {
-      const [devices, activities, snapshot] = await Promise.all([this.api.devices(hubId), this.api.activities(hubId), this.api.snapshot(hubId)]);
-      if (this._loadedFor !== hubId) return;
-      const failed = [devices, activities].find((r6) => !r6.ok);
-      if (failed) {
-        this._notice = problemText(failed);
-        this._entries = [];
-        return;
-      }
-      this._notice = null;
-      this._devices = devices.body ?? [];
-      this._activities = activities.body ?? [];
-      this._snapshot = snapshot.ok ? snapshot.body : null;
-      this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
-      if (this._open && !this.openEntry) this._open = null;
-    } catch (err) {
-      this._notice = String(err);
-    } finally {
-      this._loading = false;
-    }
-  }
-  /** The lists and every loaded drawer again (after a refresh, or a job that ended elsewhere). */
-  async _reloadAll() {
-    await this._load();
-    const open = this.openEntry;
-    this._details = {};
-    if (open) await this._loadDetail(open);
-  }
-  _toggle(entry) {
-    const key = entryKey(entry.kind, entry.id);
-    const opening = this._open !== key;
-    this._open = opening ? key : null;
-    this._detailNotice = null;
-    if (!opening) return;
-    this._pendingScroll = key;
-    if (!this._details[key]) void this._loadDetail(entry);
-  }
-  async _loadDetail(entry) {
-    const hubId = this.hub?.hub_id;
-    if (!hubId) return;
-    const key = entryKey(entry.kind, entry.id);
-    this._detailLoading = key;
-    this._detailNotice = null;
-    let detail = null;
-    try {
-      if (entry.kind === "device") {
-        const commands = await this.api.deviceCommands(hubId, entry.id);
-        if (this._loadedFor !== hubId) return;
-        if (!commands.ok) this._detailNotice = problemText(commands);
-        else detail = { kind: "device", commands: commands.body ?? [] };
-      } else {
-        const [buttons, macros, favorites] = await Promise.all([
-          this.api.entityButtons(hubId, entry.id),
-          this.api.activityMacros(hubId, entry.id),
-          this.api.activityFavorites(hubId, entry.id)
-        ]);
-        if (this._loadedFor !== hubId) return;
-        const failed = [buttons, macros, favorites].find((r6) => !r6.ok);
-        if (failed) this._detailNotice = problemText(failed);
-        detail = { kind: "activity", buttons: buttons.body ?? [], macros: macros.body ?? [], favorites: favorites.body ?? [] };
-      }
-    } catch (err) {
-      this._detailNotice = String(err);
-    } finally {
-      if (this._detailLoading === key) this._detailLoading = null;
-    }
-    if (detail) {
-      this._details = { ...this._details, [key]: detail };
-      if (this._open === key) this._pendingScroll = key;
-      this._entries = this._entries.map((e6) => entryKey(e6.kind, e6.id) === key ? { ...e6, counts: countsOf(detail) } : e6);
-    }
-    await this._reloadProvenance(hubId);
-  }
-  async _reloadProvenance(hubId) {
-    try {
-      const snapshot = await this.api.snapshot(hubId);
-      if (this._loadedFor !== hubId || !snapshot.ok) return;
-      this._snapshot = snapshot.body;
-      const previous = new Map(this._entries.map((e6) => [entryKey(e6.kind, e6.id), e6]));
-      this._entries = buildCatalog(this._devices, this._activities, this._snapshot).map((e6) => {
-        const key = entryKey(e6.kind, e6.id);
-        const detail = this._details[key];
-        return detail ? { ...e6, counts: countsOf(detail) } : { ...e6, counts: e6.counts ?? previous.get(key)?.counts ?? null };
-      });
-    } catch {
-    }
-  }
-  // -- refresh (the explicit hub read) ------------------------------------------------------
-  async _refreshScope(scope, key, label) {
-    const hubId = this.hub?.hub_id;
-    if (!hubId || this._refresh) return;
-    this._refresh = { key, text: "starting\u2026" };
-    try {
-      const started = await this.api.refreshSnapshot(hubId, scope);
-      if (started.status !== 202 || !started.body) {
-        this._notice = `refresh ${label}: ${problemText(started)}`;
-        return;
-      }
-      const job = await this.api.followJob(hubId, started.body.job_id, {
-        onUpdate: (j2) => {
-          this._refresh = { key, text: jobPhrase(j2) };
-        }
-      });
-      if (!job) this._notice = `refresh ${label}: the job could not be followed`;
-      else if (job.status !== "done") this._notice = `refresh ${label}: ${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
-      else this._notice = null;
-      if (job) this._lastJobId = job.job_id;
-    } catch (err) {
-      this._notice = `refresh ${label}: ${String(err)}`;
-    } finally {
-      this._refresh = null;
-    }
-    await this._reloadAll();
-  }
-  _refreshAll() {
-    if (this._locked) return;
-    void this._refreshScope({}, REFRESH_ALL_KEY, "whole hub");
-  }
-  /** The card's wrench: open the entity's editor (device editor plan, decision 2). */
-  _edit(entry) {
-    if (this._locked) return;
-    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: entry.kind === "device" ? "devices" : "activities", entity: entry.id } }));
-  }
-  _refreshEntry(entry) {
-    if (this._locked) return;
-    const scope = entry.kind === "device" ? { device_id: entry.id } : { activity_id: entry.id };
-    void this._refreshScope(scope, entryKey(entry.kind, entry.id), `${entry.kind} ${entry.id}`);
-  }
-  // -- render -------------------------------------------------------------------------------
-  render() {
-    const hub = this.hub;
-    if (!hub) return b2`<div class="panel"><div class="cache-state">Pick a hub above.</div></div>`;
-    const kind = this.kind ?? "activity";
-    const rows = this._entries.filter((e6) => e6.kind === kind);
-    const snap = this._snapshot;
-    const locked = this._locked;
-    const allSpinning = this._refresh?.key === REFRESH_ALL_KEY;
-    return b2`
-      <div class="panel" id="catalog-list">
-        <div class="cache-panel-header">
-          <span class="status" id="catalog-status" title=${snap ? `snapshot ${snap.snapshot_id}` : ""}>
-            ${snap ? b2`captured ${formatWhen(snap.captured_at)} · ${snap.complete ? "complete" : "partial"}` : this._loading ? "loading\u2026" : "no snapshot"}
-          </span>
-          <span class="spacer"></span>
-          <span class="refresh-action">
-            <span
-              class="refresh-list-label"
-              id="catalog-refresh-all-label"
-              role="button"
-              tabindex=${locked ? -1 : 0}
-              aria-disabled=${String(locked)}
-              @click=${locked ? null : this._refreshAll}
-              @keydown=${locked ? null : (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        this._refreshAll();
-      }
-    }}
-            >${allSpinning ? this._refresh?.text : "Refresh all"}</span>
-            <button class="icon-btn ${allSpinning ? "spinning" : ""}" id="catalog-refresh-all" type="button" ?disabled=${locked} title="POST /snapshot/refresh: read the whole hub" aria-label="Refresh all" @click=${this._refreshAll}>${icon2(mdiRefresh)}</button>
-          </span>
-        </div>
-        ${this._notice ? b2`<div class="notice" id="catalog-notice">${this._notice}</div>` : A}
-        <div class="cache-panel-body" id="catalog-rows">
-          ${rows.length ? rows.map((e6) => this._renderEntry(e6)) : b2`<div class="cache-state">${this._loading ? "Loading\u2026" : kind === "device" ? "No devices." : "No activities."}</div>`}
-        </div>
-        <div class="hint ids-hint">DevID is what <code>POST /send</code> takes as <code>entity_id</code>, ComID as <code>command_id</code>. Rows come from the server's cache, read from the hub on first sight; the refresh button on a row re-reads that entity from the hub.</div>
-      </div>
-    `;
-  }
-  _renderEntry(e6) {
-    const key = entryKey(e6.kind, e6.id);
-    const isOpen = this._open === key;
-    const locked = this._locked;
-    const spinning = this._refresh?.key === key;
-    const count = countLine(e6.kind, e6.counts) ?? (e6.kind === "device" ? e6.device?.device_class ?? "device" : "activity");
-    const fetched = e6.fetched_at ? `read from the hub ${formatWhen(e6.fetched_at)}${e6.complete ? "" : ", incomplete"}` : "not read from the hub in full yet";
-    return b2`<div class="entity-block ${isOpen ? "open" : ""}" data-entity=${key} data-entity-id=${e6.id}>
-      <div class="entity-summary" @click=${() => this._toggle(e6)}>
-        <span class="entity-name">
-          <span class="entity-name-icon">${icon2(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
-          <span class="entity-name-copy">
-            <span class="entity-name-label">${e6.name}</span>
-            <span class="entity-count">${count}</span>
-          </span>
-        </span>
-        <span class="entity-meta">
-          ${badge(DEV_ID_BADGE, e6.id)}
-          ${e6.kind === "device" ? b2`<button class="icon-btn entity-edit" type="button" ?disabled=${locked} title="Edit device" aria-label="Edit device" @click=${(event) => {
-      event.stopPropagation();
-      this._edit(e6);
-    }}>${icon2(mdiWrench)}</button>` : A}
-          <button class="icon-btn entity-refresh ${spinning ? "spinning" : ""}" type="button" ?disabled=${locked} title=${`${e6.kind === "device" ? "Refresh device" : "Refresh activity"} (${fetched})`} aria-label=${e6.kind === "device" ? "Refresh device" : "Refresh activity"} @click=${(event) => {
-      event.stopPropagation();
-      this._refreshEntry(e6);
-    }}>${icon2(mdiRefresh)}</button>
-          <span class="entity-chevron">▼</span>
-        </span>
-      </div>
-      ${isOpen ? b2`<div class="entity-body">${this._renderBody(e6, key)}</div>` : A}
-    </div>`;
-  }
-  _renderBody(e6, key) {
-    const detail = this._details[key];
-    if (!detail) {
-      if (this._detailNotice) return b2`<div class="inner-notice" id="catalog-detail-notice">${this._detailNotice}</div>`;
-      return b2`<div class="inner-empty">Loading…</div>`;
-    }
-    const notice = this._detailNotice ? b2`<div class="inner-notice" id="catalog-detail-notice">${this._detailNotice}</div>` : A;
-    if (detail.kind === "device") {
-      return b2`${notice}${detail.commands.length ? detail.commands.map((c7) => b2`<div class="inner-row"><span class="inner-label">${c7.label}</span><span class="inner-badges">${badge(COM_ID_BADGE, c7.command_id)}</span></div>`) : b2`<div class="inner-empty">No cached commands.</div>`}`;
-    }
-    const bound = boundButtons(detail.buttons);
-    const half = Math.ceil(bound.length / 2);
-    const columns = [bound.slice(0, half), bound.slice(half)];
-    return b2`${notice}
-      ${detail.favorites.length ? b2`<div class="inner-section-label">Favorites</div>${detail.favorites.map((f4) => b2`<div class="inner-row"><span class="inner-label">${f4.label || `Favorite ${f4.command_id}`}</span><span class="inner-badges">${badge(DEV_ID_BADGE, f4.device_id)}${badge(COM_ID_BADGE, f4.command_id)}</span></div>`)}` : A}
-      ${detail.macros.length ? b2`<div class="inner-section-label">Macros</div>${detail.macros.map((m3) => b2`<div class="inner-row"><span class="inner-label">${m3.label || `Macro ${m3.command_id}`}</span><span class="inner-badges">${badge(FAV_ID_BADGE, m3.command_id)}${badge(COM_ID_BADGE, m3.command_id)}</span></div>`)}` : A}
-      ${bound.length ? b2`<div class="inner-section-label">Buttons</div><div class="buttons-grid">${columns.map((column) => b2`<div class="buttons-col">${column.map((b3) => b2`<div class="inner-row"><span class="inner-label">${b3.name || `Button ${b3.button_code}`}</span><span class="inner-badges">${badge(COM_ID_BADGE, b3.button_code)}</span></div>`)}</div>`)}</div>` : A}
-      ${!detail.favorites.length && !detail.macros.length && !bound.length ? b2`<div class="inner-empty">No cached data yet.</div>` : A}
-    `;
-  }
-};
-SbPanelCatalog.properties = {
-  api: { attribute: false },
-  ctx: { attribute: false },
-  hub: { attribute: false },
-  kind: { attribute: false },
-  _entries: { state: true },
-  _snapshot: { state: true },
-  _open: { state: true },
-  _details: { state: true },
-  _detailLoading: { state: true },
-  _detailNotice: { state: true },
-  _notice: { state: true },
-  _refresh: { state: true },
-  _loading: { state: true }
-};
-SbPanelCatalog.styles = [
-  PANEL_BASE_CSS,
-  i`
-      :host { display: block; container-type: inline-size; }
-      /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
-      #catalog-list.panel { border: 0; border-radius: 0; padding: 0; background: transparent; }
-      .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
-      .cache-panel-header { display: flex; align-items: center; gap: 18px; min-height: 34px; margin: 0 0 8px; }
-      .cache-panel-header .status { font-size: 12px; color: var(--sbp-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .refresh-action { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .refresh-list-label { color: var(--sbp-muted); font-size: 13px; cursor: pointer; user-select: none; }
-      .refresh-list-label:hover { color: var(--sbp-text); }
-      .refresh-list-label[aria-disabled="true"] { cursor: default; }
-      .refresh-list-label[aria-disabled="true"]:hover { color: var(--sbp-muted); }
-      .icon-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; background: transparent; color: var(--sbp-muted); cursor: pointer; padding: 0; line-height: 1; transition: color 120ms, border-color 120ms, background 120ms; }
-      .icon-btn:hover { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.05); }
-      .icon-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
-      .icon-btn.spinning { color: var(--sbp-accent); border-color: var(--sbp-accent); opacity: 1 !important; pointer-events: none; }
-      .icon-btn.spinning .mdi { animation: spin 0.7s linear infinite; }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .notice { padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; margin-bottom: 10px; }
-      .cache-panel-body { display: grid; gap: 6px; align-content: start; min-width: 0; }
-      .cache-state { padding: 24px 16px; text-align: center; font-size: 13px; color: var(--sbp-muted); }
-      .entity-block { width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--sbp-line); border-radius: 12px; background: var(--sbp-panel-2); overflow-x: clip; transition: border-color 120ms ease; }
-      .entity-block:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: 12px; transition: background-color 120ms ease; }
-      .entity-summary:hover { background: color-mix(in srgb, var(--sbp-accent) 5%, var(--sbp-panel-2)); }
-      /* The card pins the open drawer's header at the top of its scroll body;
-         here the page scrolls under the shell's sticky top dock, so the
-         header pins just under it (the shell measures the dock's height). */
-      .entity-block.open > .entity-summary { position: sticky; top: var(--top-dock-height, 0px); z-index: 2; background: var(--sbp-panel-2); border-bottom: 1px solid var(--sbp-line); border-radius: 12px 12px 0 0; }
-      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; color: var(--sbp-text); }
-      .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--sbp-muted); flex-shrink: 0; }
-      .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
-      .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .entity-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--sbp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .entity-chevron { font-size: 8px; color: var(--sbp-muted); transition: transform 150ms; flex-shrink: 0; }
-      .entity-block.open .entity-chevron { transform: rotate(180deg); }
-      .entity-body { display: none; }
-      .entity-block.open .entity-body { display: block; }
-      .id-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; font-family: var(--sbp-mono); background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: 5px; padding: 2px 5px; flex-shrink: 0; white-space: nowrap; min-width: 68px; justify-content: space-between; }
-      .id-badge span:first-child { color: var(--sbp-muted); }
-      .id-badge span:last-child { color: var(--sbp-text); text-align: right; }
-      .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sbp-muted); background: var(--sbp-bg); border-top: 1px solid var(--sbp-line); margin-top: 2px; }
-      .inner-section-label:first-child { border-top: none; margin-top: 0; }
-      .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
-      .inner-row:hover { background: rgba(var(--sbp-accent-rgb), 0.05); }
-      .inner-label { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .inner-badges { display: flex; gap: 4px; flex-shrink: 0; }
-      .buttons-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }
-      .buttons-col { display: flex; flex-direction: column; min-width: 0; }
-      .inner-empty { padding: 8px 12px; font-size: 11px; color: var(--sbp-muted); font-style: italic; }
-      .inner-notice { padding: 8px 12px; font-size: 12px; color: var(--sbp-err); }
-      .ids-hint { margin-top: 12px; }
-      @container (max-width: 480px) {
-        /* The rows are tight enough on a phone that the "DevID:" prefix costs more than it explains; keep the number. */
-        .entity-meta .id-badge { min-width: 0; justify-content: center; }
-        .entity-meta .id-badge span:first-child { display: none; }
-        .entity-chevron { display: none; }
-        .cache-panel-header { gap: 12px; }
-      }
-    `
-];
-function countsOf(detail) {
-  if (detail.kind === "device") return { commands: detail.commands.length };
-  return { favorites: detail.favorites.length, macros: detail.macros.length, buttons: boundButtons(detail.buttons).length };
-}
-function defineCatalogView() {
-  if (!customElements.get(CATALOG_VIEW_TAG)) customElements.define(CATALOG_VIEW_TAG, SbPanelCatalog);
 }
 
 // custom_components/sofabaton_x1s/www/src/strings.ts
@@ -13986,7 +13549,7 @@ var TOOLS_CARD_STRINGS_EN = {
     roleCustomized: (name) => `${name} (customized)`,
     roleMappedNote: (bound, total) => `${bound} of ${total} ${total === 1 ? "button" : "buttons"} mapped`,
     roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
-    roleMenuAria: (roleLabel) => `Choose a device for: ${roleLabel}`,
+    roleMenuAria: (roleLabel2) => `Choose a device for: ${roleLabel2}`,
     roleConfirmTitle: "Replace custom button setup?",
     roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
     roleConfirmReplace: "Replace",
@@ -14462,79 +14025,1136 @@ function liveStringsProxy(path) {
 }
 var TOOLS_CARD_STRINGS = liveStringsProxy([]);
 
+// custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors.ts
+function creatableDeviceClasses(hubVersion) {
+  switch (String(hubVersion ?? "")) {
+    case "X1":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos"];
+    case "X1S":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip"];
+    case "X2":
+      return ["ir", "wifi_roku", "wifi_hue", "wifi_sonos", "wifi_ip", "wifi_mqtt"];
+    default:
+      return [];
+  }
+}
+
+// server-panel/src/pointer-reorder.ts
+var PointerReorder = class {
+  constructor(rows, changed, moved, top = () => 0, gap = () => 0) {
+    this.rows = rows;
+    this.changed = changed;
+    this.moved = moved;
+    this.top = top;
+    this.gap = gap;
+    this.state = null;
+    this.handle = null;
+  }
+  start(event, index) {
+    if (event.button !== 0 || this.state) return;
+    const rect = this.rows()[index]?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    this.handle = event.currentTarget;
+    this.handle.setPointerCapture(event.pointerId);
+    window.getSelection()?.removeAllRanges();
+    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
+    this.changed();
+  }
+  move(event) {
+    const drag = this.state;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    event.preventDefault();
+    if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
+    else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
+    this.state = { ...drag, over: this.slot(event.clientY), dy: event.clientY - drag.startY };
+    this.changed();
+  }
+  offset(index) {
+    const drag = this.state;
+    if (!drag) return 0;
+    if (index === drag.from) return drag.dy;
+    const travel = drag.height + this.gap();
+    if (drag.from < drag.over && index > drag.from && index <= drag.over) return -travel;
+    if (drag.over < drag.from && index >= drag.over && index < drag.from) return travel;
+    return 0;
+  }
+  slot(clientY) {
+    const drag = this.state;
+    const rows = this.rows();
+    const rects = rows.map((row) => row.getBoundingClientRect());
+    const offset = (index) => {
+      const transform = getComputedStyle(rows[index]).transform;
+      return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
+    };
+    const own = rects[drag.from];
+    if (!own) return drag.from;
+    const centre = own.top - offset(drag.from) + own.height / 2 + clientY - drag.startY;
+    let over = drag.from;
+    rects.forEach((rect, index) => {
+      const mid = rect.top - offset(index) + rect.height / 2;
+      if (index < drag.from && centre < mid) over = Math.min(over, index);
+      if (index > drag.from && centre > mid) over = index;
+    });
+    return over;
+  }
+  end(event) {
+    const drag = this.state;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const over = this.slot(event.clientY);
+    this.cancel();
+    if (over !== drag.from) this.moved(drag.from, over);
+  }
+  cancel(event) {
+    if (event && event.pointerId !== this.state?.pointerId) return;
+    const id = this.state?.pointerId;
+    this.state = null;
+    if (id != null && this.handle?.hasPointerCapture(id)) this.handle.releasePointerCapture(id);
+    this.handle = null;
+    this.changed();
+  }
+  transform(index) {
+    return this.state ? `translateY(${this.offset(index)}px)` : "";
+  }
+};
+
+// server-panel/src/views/entity-editor-state.ts
+function rowsOf(bundle, kind) {
+  return (kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
+}
+function idOf(entry) {
+  return Number(entry?.device?.device_id ?? -1);
+}
+function entityElement(bundle, kind, entityId) {
+  return rowsOf(bundle, kind).find((entry) => idOf(entry) === Number(entityId)) ?? null;
+}
+function withEntityElement(bundle, kind, entityId, element) {
+  const id = Number(entityId);
+  const swap = (rows) => (rows ?? []).map((entry) => idOf(entry) === id ? element : entry);
+  return kind === "device" ? { ...bundle, devices: swap(bundle.devices) } : { ...bundle, activities: swap(bundle.activities) };
+}
+function entityListSub(kind) {
+  return kind === "device" ? "devices" : "activities";
+}
+function entityDraftScope(kind, entityId) {
+  return `hub/${entityListSub(kind)}/${Number(entityId)}`;
+}
+function entityDraftData(draft, kind, entityId) {
+  if (!draft || draft.scope !== entityDraftScope(kind, entityId)) return null;
+  const data = draft.data;
+  const element = data?.element;
+  if (!element || typeof element !== "object" || idOf(element) !== Number(entityId)) return null;
+  const devices = Array.isArray(data?.devices) ? data.devices.filter((entry) => entry && typeof entry === "object" && idOf(entry) > 0) : [];
+  return devices.length ? { element, devices } : { element };
+}
+function touchedDevices(working, baseline) {
+  const before = new Map((baseline?.devices ?? []).map((entry) => [idOf(entry), JSON.stringify(entry)]));
+  return (working?.devices ?? []).filter((entry) => before.has(idOf(entry)) && before.get(idOf(entry)) !== JSON.stringify(entry));
+}
+function withDraftData(bundle, kind, entityId, data) {
+  let next = withEntityElement(bundle, kind, entityId, data.element);
+  for (const device of data.devices ?? []) next = withEntityElement(next, "device", idOf(device), device);
+  return next;
+}
+function byteToSeconds(byteValue) {
+  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
+}
+function secondsToByte(value) {
+  const seconds = parseFloat(String(value));
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+
+// server-panel/src/views/device-editor-state.ts
+var MIN_SUPPORTED_FIRMWARE = { X1: 17, X1S: 5, X2: 5 };
+function firmwareUnsupported(hubVersion, firmware) {
+  const required = MIN_SUPPORTED_FIRMWARE[String(hubVersion ?? "").toUpperCase()];
+  if (required === void 0 || firmware == null) return null;
+  return firmware < required ? { installed: firmware, required } : null;
+}
+function snapshotAsBundle(snapshot) {
+  const doc = snapshot;
+  return {
+    ...doc,
+    kind: typeof doc.kind === "string" ? doc.kind : "hub_bundle",
+    schema_version: typeof doc.schema_version === "number" ? doc.schema_version : 1,
+    devices: Array.isArray(doc.devices) ? doc.devices : [],
+    activities: Array.isArray(doc.activities) ? doc.activities : []
+  };
+}
+function elementsEqual(a4, b3) {
+  return JSON.stringify(a4) === JSON.stringify(b3);
+}
+function supportsUnicodeNames(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return version.includes("X2") || version.includes("X1S");
+}
+function sanitizeName(hubVersion, value) {
+  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "").slice(0, 30);
+}
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function wifiEventsSlotCount(element) {
+  return Math.floor((element?.commands?.length ?? 0) / 2);
+}
+function isLongRecord(element, commandId) {
+  const slots = wifiEventsSlotCount(element);
+  return slots > 0 && Number(commandId) > slots;
+}
+
+// server-panel/src/views/catalog-view.ts
+var S3 = TOOLS_CARD_STRINGS.cache;
+var CATALOG_VIEW_TAG = "sb-panel-catalog";
+var REFRESH_ALL_KEY = "all";
+function workingOrder(rows, ids) {
+  return [
+    ...ids.map((id) => rows.find((row) => row.id === id)).filter((row) => Boolean(row)),
+    ...rows.filter((row) => !ids.includes(row.id))
+  ];
+}
+function movedIds(ids, from, to) {
+  if (from === to || from < 0 || to < 0 || from >= ids.length || to >= ids.length) return ids;
+  const next = [...ids];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+function entryKey(kind, id) {
+  return `${kind}:${id}`;
+}
+function tableLength(entity, key) {
+  const rows = entity?.[key];
+  return Array.isArray(rows) ? rows.length : void 0;
+}
+function countsFromSnapshot(kind, entity) {
+  if (!entity) return null;
+  if (kind === "device") {
+    const commands = tableLength(entity, "commands");
+    return commands === void 0 ? null : { commands };
+  }
+  const favorites = tableLength(entity, "favorite_slots");
+  const macros = Array.isArray(entity.macros) ? entity.macros.filter((row) => {
+    const id = Number(row?.button_id);
+    return id !== 198 && id !== 199;
+  }).length : void 0;
+  const buttons = tableLength(entity, "button_bindings");
+  if (favorites === void 0 && macros === void 0 && buttons === void 0) return null;
+  return { favorites: favorites ?? 0, macros: macros ?? 0, buttons: buttons ?? 0 };
+}
+function buildCatalog(devices, activities, snapshot) {
+  const provenance = /* @__PURE__ */ new Map();
+  for (const e6 of snapshot?.devices ?? []) provenance.set(entryKey("device", e6.device.device_id), e6);
+  for (const e6 of snapshot?.activities ?? []) provenance.set(entryKey("activity", e6.device.device_id), e6);
+  const rank = (kind, id) => {
+    const index = ((kind === "device" ? snapshot?.devices : snapshot?.activities) ?? []).findIndex((e6) => e6.device.device_id === id);
+    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  devices = [...devices].sort((x2, y3) => rank("device", x2.device_id) - rank("device", y3.device_id));
+  activities = [...activities].sort((x2, y3) => rank("activity", x2.activity_id) - rank("activity", y3.activity_id));
+  const entries = [];
+  for (const d3 of devices) {
+    const p4 = provenance.get(entryKey("device", d3.device_id));
+    entries.push({ kind: "device", id: d3.device_id, name: d3.name, device: d3, activity: null, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("device", p4) });
+  }
+  for (const a4 of activities) {
+    const p4 = provenance.get(entryKey("activity", a4.activity_id));
+    entries.push({ kind: "activity", id: a4.activity_id, name: a4.name, device: null, activity: a4, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("activity", p4) });
+  }
+  return entries;
+}
+function countLine(kind, counts) {
+  if (!counts) return null;
+  if (kind === "device") {
+    const n7 = counts.commands ?? 0;
+    return `${n7} ${n7 === 1 ? "cmd" : "cmds"}`;
+  }
+  const f4 = counts.favorites ?? 0;
+  const m3 = counts.macros ?? 0;
+  const b3 = counts.buttons ?? 0;
+  return `${f4} ${f4 === 1 ? "fav" : "favs"} / ${m3} ${m3 === 1 ? "macro" : "macros"} / ${b3} ${b3 === 1 ? "button" : "buttons"}`;
+}
+function boundButtons(buttons) {
+  return buttons.filter((b3) => b3.device_id != null || b3.command_id != null);
+}
+function jobPhrase(job) {
+  const p4 = job.progress;
+  const steps = p4 && p4.total_steps != null ? ` ${p4.completed_steps ?? 0}/${p4.total_steps}` : "";
+  return `${job.status}${steps}`;
+}
+function deviceClassIconPath(deviceClass) {
+  switch (String(deviceClass ?? "").trim().toLowerCase()) {
+    case "ir":
+      return mdiRemote;
+    case "bluetooth":
+      return mdiBluetooth;
+    case "wifi_roku":
+    case "wifi_hue":
+    case "wifi_mqtt":
+    case "wifi_ip":
+    case "wifi_sonos":
+      return mdiWifi;
+    default:
+      return mdiRadioTower;
+  }
+}
+function icon2(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+var DEV_ID_BADGE = "DevID";
+var FAV_ID_BADGE = "FavID";
+var COM_ID_BADGE = "ComID";
+function badge(type, value) {
+  return b2`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
+}
+var SbPanelCatalog = class extends i4 {
+  constructor() {
+    super(...arguments);
+    /** The hub context the shell hands over (state plan, decision 3); `hub` follows it. */
+    this.ctx = null;
+    this.hub = null;
+    /** Which list to show: the Hub tab's Activities or Devices subtab; null lists both. */
+    this.kind = null;
+    this._entries = [];
+    this._snapshot = null;
+    /** The open drawer's key ("activity:101"); one at a time, as on the card. */
+    this._open = null;
+    this._details = {};
+    this._detailLoading = null;
+    this._detailNotice = null;
+    this._notice = null;
+    this._refresh = null;
+    this._loading = false;
+    this._loadedFor = null;
+    this._lastJobId = null;
+    this._pendingScroll = null;
+    this._devices = [];
+    this._activities = [];
+    this._reorder = null;
+    this._add = null;
+    /** The reorder drag (the card uses ha-sortable on the whole row); rows sit in a 6px grid. */
+    this._sorter = new PointerReorder(
+      () => Array.from(this.renderRoot.querySelectorAll(".entity-block--reorder")),
+      () => this.requestUpdate(),
+      (from, to) => this._moveReorder(from, to),
+      () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0,
+      () => 6
+    );
+    this._cancelReorder = () => {
+      this._sorter.cancel();
+      this._reorder = null;
+    };
+    this._syncReorder = async () => {
+      const reorder = this._reorder;
+      const hubId = this.hub?.hub_id;
+      if (!reorder || !hubId || reorder.syncing) return;
+      this._reorder = { ...reorder, syncing: true, error: null };
+      let error = null;
+      try {
+        const started = await this.api.reorderEntities(hubId, reorder.kind, reorder.ids);
+        if (started.status !== 202 || !started.body) {
+          error = problemText(started);
+        } else {
+          const job = await this.api.followJob(hubId, started.body.job_id);
+          if (job) this._lastJobId = job.job_id;
+          if (!job) error = "the job could not be followed";
+          else if (job.status !== "done") error = `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+        }
+      } catch (err) {
+        error = String(err);
+      }
+      if (error) {
+        this._reorder = { ...reorder, syncing: false, error };
+        return;
+      }
+      this._reorder = null;
+      await this._reloadAll();
+    };
+    this._closeAdd = () => {
+      if (!this._add?.busy) this._add = null;
+    };
+    /** Create on the hub, make sure the new entity is read in full, then open it in its editor (the card's flow). */
+    this._confirmAdd = async () => {
+      const dialog = this._add;
+      const hubId = this.hub?.hub_id;
+      if (!dialog || !hubId || dialog.busy) return;
+      const name = sanitizeName(this._hubVersion, dialog.name).trim();
+      if (!name || dialog.kind === "device" && !dialog.deviceClass) return;
+      this._add = { ...dialog, busy: true, error: null };
+      const fail = (error) => {
+        this._add = { ...dialog, busy: false, error };
+      };
+      try {
+        const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
+        if (started.status !== 202 || !started.body) return fail(problemText(started));
+        const job = await this.api.followJob(hubId, started.body.job_id);
+        if (job) this._lastJobId = job.job_id;
+        if (!job || job.status !== "done") return fail(job ? `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}` : "the job could not be followed");
+        const id = Number(job.result?.[dialog.kind === "device" ? "device_id" : "activity_id"]);
+        if (!Number.isInteger(id) || id <= 0) return fail(dialog.kind === "device" ? "The hub did not return the new device id." : "The hub did not return the new activity id.");
+        const snapshot = await this.api.snapshot(hubId);
+        const rows = (dialog.kind === "device" ? snapshot.body?.devices : snapshot.body?.activities) ?? [];
+        if (!rows.find((row) => row.device.device_id === id)?.complete) {
+          const refresh = await this.api.refreshSnapshot(hubId, dialog.kind === "device" ? { device_id: id } : { activity_id: id });
+          if (refresh.status === 202 && refresh.body) {
+            const read = await this.api.followJob(hubId, refresh.body.job_id);
+            if (read) this._lastJobId = read.job_id;
+          }
+        }
+        this._add = null;
+        this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: dialog.kind === "device" ? "devices" : "activities", entity: id } }));
+      } catch (err) {
+        fail(String(err));
+      }
+    };
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._sorter.cancel();
+  }
+  willUpdate(changed) {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
+  updated(changed) {
+    if (changed.has("kind") && this.kind && this.openEntry && this.openEntry.kind !== this.kind) {
+      this._open = null;
+      this._detailNotice = null;
+    }
+    if (changed.has("kind") && this._reorder && this._reorder.kind !== this.kind && !this._reorder.syncing) {
+      this._cancelReorder();
+    }
+    if (changed.has("hub")) {
+      const id = this.hub?.hub_id ?? null;
+      if (id !== this._loadedFor) {
+        this._loadedFor = id;
+        this._lastJobId = this.hub?.last_job?.job_id ?? null;
+        this._entries = [];
+        this._snapshot = null;
+        this._open = null;
+        this._details = {};
+        this._detailNotice = null;
+        this._notice = null;
+        this._reorder = null;
+        this._add = null;
+        this._sorter.cancel();
+        if (id) void this._load();
+      } else {
+        const jobId = this.hub?.last_job?.job_id ?? null;
+        if (jobId && jobId !== this._lastJobId) {
+          this._lastJobId = jobId;
+          if (!this._refresh) void this._reloadAll();
+        }
+      }
+    }
+    if (this._pendingScroll) {
+      const key = this._pendingScroll;
+      this._pendingScroll = null;
+      requestAnimationFrame(() => this._scrollEntityToTop(key));
+    }
+  }
+  /** As the card does on opening a drawer: the row lands at the top of the view, under the top dock. */
+  _scrollEntityToTop(key) {
+    const block = this.renderRoot.querySelector(`[data-entity="${CSS.escape(key)}"]`);
+    if (!block) return;
+    const dock = parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0;
+    const top = window.scrollY + block.getBoundingClientRect().top - dock - 8;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  }
+  get openEntry() {
+    if (!this._open) return null;
+    return this._entries.find((e6) => entryKey(e6.kind, e6.id) === this._open) ?? null;
+  }
+  /** The card's lock: a running refresh, reorder mode, or a hub the view may not act on. */
+  get _locked() {
+    return Boolean(this._refresh) || Boolean(this._reorder) || (this.ctx ? !this.ctx.free : false);
+  }
+  get _hubVersion() {
+    return this.hub?.status?.hub_version ?? this.hub?.config?.hub_version ?? null;
+  }
+  // -- loading ---------------------------------------------------------------------------
+  /** The lists and the snapshot header; keeps the open drawer when its entity still exists. */
+  async _load() {
+    const hubId = this.hub?.hub_id;
+    if (!hubId) return;
+    this._loading = true;
+    try {
+      const [devices, activities, snapshot] = await Promise.all([this.api.devices(hubId), this.api.activities(hubId), this.api.snapshot(hubId)]);
+      if (this._loadedFor !== hubId) return;
+      const failed = [devices, activities].find((r6) => !r6.ok);
+      if (failed) {
+        this._notice = problemText(failed);
+        this._entries = [];
+        return;
+      }
+      this._notice = null;
+      this._devices = devices.body ?? [];
+      this._activities = activities.body ?? [];
+      this._snapshot = snapshot.ok ? snapshot.body : null;
+      this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
+      if (this._open && !this.openEntry) this._open = null;
+    } catch (err) {
+      this._notice = String(err);
+    } finally {
+      this._loading = false;
+    }
+  }
+  /** The lists and every loaded drawer again (after a refresh, or a job that ended elsewhere). */
+  async _reloadAll() {
+    await this._load();
+    const open = this.openEntry;
+    this._details = {};
+    if (open) await this._loadDetail(open);
+  }
+  _toggle(entry) {
+    const key = entryKey(entry.kind, entry.id);
+    const opening = this._open !== key;
+    this._open = opening ? key : null;
+    this._detailNotice = null;
+    if (!opening) return;
+    this._pendingScroll = key;
+    if (!this._details[key]) void this._loadDetail(entry);
+  }
+  async _loadDetail(entry) {
+    const hubId = this.hub?.hub_id;
+    if (!hubId) return;
+    const key = entryKey(entry.kind, entry.id);
+    this._detailLoading = key;
+    this._detailNotice = null;
+    let detail = null;
+    try {
+      if (entry.kind === "device") {
+        const commands = await this.api.deviceCommands(hubId, entry.id);
+        if (this._loadedFor !== hubId) return;
+        if (!commands.ok) this._detailNotice = problemText(commands);
+        else detail = { kind: "device", commands: commands.body ?? [] };
+      } else {
+        const [buttons, macros, favorites] = await Promise.all([
+          this.api.entityButtons(hubId, entry.id),
+          this.api.activityMacros(hubId, entry.id),
+          this.api.activityFavorites(hubId, entry.id)
+        ]);
+        if (this._loadedFor !== hubId) return;
+        const failed = [buttons, macros, favorites].find((r6) => !r6.ok);
+        if (failed) this._detailNotice = problemText(failed);
+        detail = { kind: "activity", buttons: buttons.body ?? [], macros: macros.body ?? [], favorites: favorites.body ?? [] };
+      }
+    } catch (err) {
+      this._detailNotice = String(err);
+    } finally {
+      if (this._detailLoading === key) this._detailLoading = null;
+    }
+    if (detail) {
+      this._details = { ...this._details, [key]: detail };
+      if (this._open === key) this._pendingScroll = key;
+      this._entries = this._entries.map((e6) => entryKey(e6.kind, e6.id) === key ? { ...e6, counts: countsOf(detail) } : e6);
+    }
+    await this._reloadProvenance(hubId);
+  }
+  async _reloadProvenance(hubId) {
+    try {
+      const snapshot = await this.api.snapshot(hubId);
+      if (this._loadedFor !== hubId || !snapshot.ok) return;
+      this._snapshot = snapshot.body;
+      const previous = new Map(this._entries.map((e6) => [entryKey(e6.kind, e6.id), e6]));
+      this._entries = buildCatalog(this._devices, this._activities, this._snapshot).map((e6) => {
+        const key = entryKey(e6.kind, e6.id);
+        const detail = this._details[key];
+        return detail ? { ...e6, counts: countsOf(detail) } : { ...e6, counts: e6.counts ?? previous.get(key)?.counts ?? null };
+      });
+    } catch {
+    }
+  }
+  // -- refresh (the explicit hub read) ------------------------------------------------------
+  async _refreshScope(scope, key, label) {
+    const hubId = this.hub?.hub_id;
+    if (!hubId || this._refresh) return;
+    this._refresh = { key, text: "starting\u2026" };
+    try {
+      const started = await this.api.refreshSnapshot(hubId, scope);
+      if (started.status !== 202 || !started.body) {
+        this._notice = `refresh ${label}: ${problemText(started)}`;
+        return;
+      }
+      const job = await this.api.followJob(hubId, started.body.job_id, {
+        onUpdate: (j2) => {
+          this._refresh = { key, text: jobPhrase(j2) };
+        }
+      });
+      if (!job) this._notice = `refresh ${label}: the job could not be followed`;
+      else if (job.status !== "done") this._notice = `refresh ${label}: ${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+      else this._notice = null;
+      if (job) this._lastJobId = job.job_id;
+    } catch (err) {
+      this._notice = `refresh ${label}: ${String(err)}`;
+    } finally {
+      this._refresh = null;
+    }
+    await this._reloadAll();
+  }
+  _refreshAll() {
+    if (this._locked) return;
+    void this._refreshScope({}, REFRESH_ALL_KEY, "whole hub");
+  }
+  /** The card's wrench: open the entity's editor (device editor plan, decision 2). */
+  _edit(entry) {
+    if (this._locked) return;
+    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: entry.kind === "device" ? "devices" : "activities", entity: entry.id } }));
+  }
+  _refreshEntry(entry) {
+    if (this._locked) return;
+    const scope = entry.kind === "device" ? { device_id: entry.id } : { activity_id: entry.id };
+    void this._refreshScope(scope, entryKey(entry.kind, entry.id), `${entry.kind} ${entry.id}`);
+  }
+  // -- change order (the card's reorder mode) -------------------------------------------------
+  _startReorder(kind) {
+    if (this._locked) return;
+    this._open = null;
+    this._detailNotice = null;
+    this._reorder = { kind, ids: this._entries.filter((e6) => e6.kind === kind).map((e6) => e6.id), syncing: false, error: null };
+  }
+  _moveReorder(from, to) {
+    const reorder = this._reorder;
+    if (!reorder || reorder.syncing) return;
+    this._reorder = { ...reorder, ids: movedIds(reorder.ids, from, to), error: null };
+  }
+  // -- add activity / add device ------------------------------------------------------------------
+  _openAdd(kind) {
+    if (this._locked) return;
+    this._add = { kind, name: "", deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "", busy: false, error: null };
+  }
+  // -- render -------------------------------------------------------------------------------
+  render() {
+    const hub = this.hub;
+    if (!hub) return b2`<div class="panel"><div class="cache-state">Pick a hub above.</div></div>`;
+    const kind = this.kind ?? "activity";
+    const listed = this._entries.filter((e6) => e6.kind === kind);
+    const reordering = this._reorder?.kind === kind;
+    const rows = reordering ? workingOrder(listed, this._reorder.ids) : listed;
+    const snap = this._snapshot;
+    const locked = this._locked;
+    const allSpinning = this._refresh?.key === REFRESH_ALL_KEY;
+    return b2`
+      <div class="panel" id="catalog-list">
+        <div class="cache-panel-header">
+          <span class="status" id="catalog-status" title=${snap ? `snapshot ${snap.snapshot_id}` : ""}>
+            ${snap ? b2`captured ${formatWhen(snap.captured_at)} · ${snap.complete ? "complete" : "partial"}` : this._loading ? "loading\u2026" : "no snapshot"}
+          </span>
+          <span class="spacer"></span>
+          <span class="refresh-action">
+            <span
+              class="refresh-list-label"
+              id="catalog-refresh-all-label"
+              role="button"
+              tabindex=${locked ? -1 : 0}
+              aria-disabled=${String(locked)}
+              @click=${locked ? null : this._refreshAll}
+              @keydown=${locked ? null : (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this._refreshAll();
+      }
+    }}
+            >${allSpinning ? this._refresh?.text : "Refresh all"}</span>
+            <button class="icon-btn ${allSpinning ? "spinning" : ""}" id="catalog-refresh-all" type="button" ?disabled=${locked} title="POST /snapshot/refresh: read the whole hub" aria-label="Refresh all" @click=${this._refreshAll}>${icon2(mdiRefresh)}</button>
+          </span>
+        </div>
+        ${this._notice ? b2`<div class="notice" id="catalog-notice">${this._notice}</div>` : A}
+        <div class="cache-panel-body" id="catalog-rows">
+          ${rows.length ? rows.map((e6, position) => reordering ? this._renderReorderEntry(e6, position) : this._renderEntry(e6)) : b2`<div class="cache-state">${this._loading ? "Loading\u2026" : kind === "device" ? "No devices." : "No activities."}</div>`}
+        </div>
+        ${this._renderFooter(kind, listed.length)}
+        ${this._renderAddDialog()}
+        <div class="hint ids-hint">DevID is what <code>POST /send</code> takes as <code>entity_id</code>, ComID as <code>command_id</code>. Rows come from the server's cache, read from the hub on first sight; the refresh button on a row re-reads that entity from the hub.</div>
+      </div>
+    `;
+  }
+  _renderEntry(e6) {
+    const key = entryKey(e6.kind, e6.id);
+    const isOpen = this._open === key;
+    const locked = this._locked;
+    const spinning = this._refresh?.key === key;
+    const count = countLine(e6.kind, e6.counts) ?? (e6.kind === "device" ? e6.device?.device_class ?? "device" : "activity");
+    const fetched = e6.fetched_at ? `read from the hub ${formatWhen(e6.fetched_at)}${e6.complete ? "" : ", incomplete"}` : "not read from the hub in full yet";
+    return b2`<div class="entity-block ${isOpen ? "open" : ""}" data-entity=${key} data-entity-id=${e6.id}>
+      <div class="entity-summary" @click=${() => this._toggle(e6)}>
+        <span class="entity-name">
+          <span class="entity-name-icon">${icon2(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
+          <span class="entity-name-copy">
+            <span class="entity-name-label">${e6.name}</span>
+            <span class="entity-count">${count}</span>
+          </span>
+        </span>
+        <span class="entity-meta">
+          ${badge(DEV_ID_BADGE, e6.id)}
+          <button class="icon-btn entity-edit" type="button" ?disabled=${locked} title=${e6.kind === "device" ? "Edit device" : "Edit activity"} aria-label=${e6.kind === "device" ? "Edit device" : "Edit activity"} @click=${(event) => {
+      event.stopPropagation();
+      this._edit(e6);
+    }}>${icon2(mdiWrench)}</button>
+          <button class="icon-btn entity-refresh ${spinning ? "spinning" : ""}" type="button" ?disabled=${locked} title=${`${e6.kind === "device" ? "Refresh device" : "Refresh activity"} (${fetched})`} aria-label=${e6.kind === "device" ? "Refresh device" : "Refresh activity"} @click=${(event) => {
+      event.stopPropagation();
+      this._refreshEntry(e6);
+    }}>${icon2(mdiRefresh)}</button>
+          <span class="entity-chevron">▼</span>
+        </span>
+      </div>
+      ${isOpen ? b2`<div class="entity-body">${this._renderBody(e6, key)}</div>` : A}
+    </div>`;
+  }
+  /** A row in reorder mode: the whole row drags (as on the card), the arrow keys move it for keyboards. */
+  _renderReorderEntry(e6, position) {
+    const drag = this._sorter.state;
+    const transform = this._sorter.transform(position);
+    const syncing = Boolean(this._reorder?.syncing);
+    const count = countLine(e6.kind, e6.counts) ?? (e6.kind === "device" ? e6.device?.device_class ?? "device" : "activity");
+    return b2`<div class="entity-block entity-block--reorder ${drag?.from === position ? "is-dragging" : drag ? "is-shifting" : ""}" data-entity=${entryKey(e6.kind, e6.id)} data-entity-id=${e6.id} tabindex="0" style=${transform ? `transform: ${transform}` : ""}
+      @mousedown=${(event) => event.preventDefault()}
+      @pointerdown=${(event) => {
+      if (!syncing) this._sorter.start(event, position);
+    }}
+      @pointermove=${(event) => this._sorter.move(event)}
+      @pointerup=${(event) => {
+      this._sorter.end(event);
+      event.currentTarget.focus();
+    }}
+      @pointercancel=${(event) => this._sorter.cancel(event)}
+      @keydown=${(event) => {
+      if (syncing || event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      const to = position + (event.key === "ArrowUp" ? -1 : 1);
+      this._moveReorder(position, to);
+      void this.updateComplete.then(() => this.renderRoot.querySelectorAll(".entity-block--reorder")[Math.max(0, Math.min(to, (this._reorder?.ids.length ?? 1) - 1))]?.focus());
+    }}>
+      <div class="entity-summary">
+        <span class="entity-name">
+          <span class="entity-name-icon">${icon2(mdiDragVerticalVariant)}</span>
+          <span class="entity-name-copy"><span class="entity-name-label">${e6.name}</span><span class="entity-count">${count}</span></span>
+        </span>
+        <span class="entity-meta">${badge(DEV_ID_BADGE, e6.id)}</span>
+      </div>
+    </div>`;
+  }
+  /** The card's footer: Change order and Add, replaced by Sync to Hub and Cancel in reorder mode. */
+  _renderFooter(kind, rowCount) {
+    if (!this.kind) return A;
+    const reorder = this._reorder?.kind === kind ? this._reorder : null;
+    if (reorder) {
+      return b2`<div class="cache-list-footer" id="catalog-footer">
+        <div class="cache-reorder-hint">${kind === "device" ? S3.reorderDevicesHint : S3.reorderHint}</div>
+        ${reorder.error ? b2`<div class="cache-footer-error" id="reorder-error">${reorder.error}</div>` : A}
+        <div class="cache-footer-actions">
+          <button class="cache-footer-btn cache-footer-btn--primary" id="reorder-sync" type="button" ?disabled=${reorder.syncing} @click=${() => void this._syncReorder()}>${icon2(mdiUploadOutline)}<span>${reorder.syncing ? S3.reorderSyncing : S3.reorderSync}</span></button>
+          <button class="cache-footer-btn" id="reorder-cancel" type="button" ?disabled=${reorder.syncing} @click=${this._cancelReorder}>${S3.reorderCancel}</button>
+        </div>
+      </div>`;
+    }
+    const locked = this._locked;
+    const canAdd = kind === "activity" || creatableDeviceClasses(this._hubVersion).length > 0;
+    return b2`<div class="cache-list-footer" id="catalog-footer">
+      <div class="cache-footer-actions">
+        <button class="cache-footer-btn" id="change-order" type="button" ?disabled=${locked || rowCount < 2} @click=${() => this._startReorder(kind)}>${icon2(mdiSwapVertical)}<span>${S3.changeOrder}</span></button>
+        ${canAdd ? b2`<button class="cache-footer-btn" id="add-entity" type="button" ?disabled=${locked} @click=${() => this._openAdd(kind)}>${icon2(mdiPlus)}<span>${kind === "device" ? S3.addDevice : S3.addActivity}</span></button>` : A}
+      </div>
+    </div>`;
+  }
+  _renderAddDialog() {
+    const dialog = this._add;
+    if (!dialog) return A;
+    const isDevice = dialog.kind === "device";
+    const classes = creatableDeviceClasses(this._hubVersion);
+    const set = (patch) => {
+      this._add = { ...dialog, ...patch };
+    };
+    return b2`
+      <div class="cache-modal-backdrop" @click=${this._closeAdd}>
+        <div class="cache-dialog" id="add-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="cache-dialog-title">${isDevice ? S3.addDeviceTitle : S3.addActivityTitle}</div>
+          <div class="cache-dialog-text">${isDevice ? S3.addDeviceBody : S3.addActivityBody}</div>
+          ${dialog.error ? b2`<div class="cache-footer-error" id="add-error">${dialog.error}</div>` : A}
+          <input class="cache-dialog-input" id="add-name" type="text" maxlength="30" placeholder=${isDevice ? S3.addDevicePlaceholder : S3.addActivityPlaceholder} ?disabled=${dialog.busy} .value=${dialog.name}
+            @input=${(event) => {
+      const input = event.currentTarget;
+      const value = sanitizeName(this._hubVersion, input.value);
+      input.value = value;
+      set({ name: value });
+    }}
+            @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void this._confirmAdd();
+      }
+    }} />
+          ${isDevice ? b2`<label class="cache-dialog-field">
+                <span class="cache-dialog-label">${S3.addDeviceClass}</span>
+                <select class="cache-dialog-input cache-dialog-select" id="add-class" ?disabled=${dialog.busy} @change=${(event) => set({ deviceClass: event.currentTarget.value })}>
+                  ${classes.map((deviceClass) => b2`<option value=${deviceClass} ?selected=${deviceClass === dialog.deviceClass}>${S3.deviceClassLabels[deviceClass] ?? deviceClass}</option>`)}
+                </select>
+              </label>` : A}
+          <div class="cache-dialog-actions">
+            <button class="cache-footer-btn" type="button" ?disabled=${dialog.busy} @click=${this._closeAdd}>${isDevice ? S3.addDeviceCancel : S3.addActivityCancel}</button>
+            <button class="cache-footer-btn cache-footer-btn--primary" id="add-confirm" type="button" ?disabled=${dialog.busy} @click=${() => void this._confirmAdd()}>${dialog.busy ? S3.addActivityCreating : isDevice ? S3.addDeviceConfirm : S3.addActivityConfirm}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderBody(e6, key) {
+    const detail = this._details[key];
+    if (!detail) {
+      if (this._detailNotice) return b2`<div class="inner-notice" id="catalog-detail-notice">${this._detailNotice}</div>`;
+      return b2`<div class="inner-empty">Loading…</div>`;
+    }
+    const notice = this._detailNotice ? b2`<div class="inner-notice" id="catalog-detail-notice">${this._detailNotice}</div>` : A;
+    if (detail.kind === "device") {
+      return b2`${notice}${detail.commands.length ? detail.commands.map((c7) => b2`<div class="inner-row"><span class="inner-label">${c7.label}</span><span class="inner-badges">${badge(COM_ID_BADGE, c7.command_id)}</span></div>`) : b2`<div class="inner-empty">No cached commands.</div>`}`;
+    }
+    const bound = boundButtons(detail.buttons);
+    const half = Math.ceil(bound.length / 2);
+    const columns = [bound.slice(0, half), bound.slice(half)];
+    return b2`${notice}
+      ${detail.favorites.length ? b2`<div class="inner-section-label">Favorites</div>${detail.favorites.map((f4) => b2`<div class="inner-row"><span class="inner-label">${f4.label || `Favorite ${f4.command_id}`}</span><span class="inner-badges">${badge(DEV_ID_BADGE, f4.device_id)}${badge(COM_ID_BADGE, f4.command_id)}</span></div>`)}` : A}
+      ${detail.macros.length ? b2`<div class="inner-section-label">Macros</div>${detail.macros.map((m3) => b2`<div class="inner-row"><span class="inner-label">${m3.label || `Macro ${m3.command_id}`}</span><span class="inner-badges">${badge(FAV_ID_BADGE, m3.command_id)}${badge(COM_ID_BADGE, m3.command_id)}</span></div>`)}` : A}
+      ${bound.length ? b2`<div class="inner-section-label">Buttons</div><div class="buttons-grid">${columns.map((column) => b2`<div class="buttons-col">${column.map((b3) => b2`<div class="inner-row"><span class="inner-label">${b3.name || `Button ${b3.button_code}`}</span><span class="inner-badges">${badge(COM_ID_BADGE, b3.button_code)}</span></div>`)}</div>`)}</div>` : A}
+      ${!detail.favorites.length && !detail.macros.length && !bound.length ? b2`<div class="inner-empty">No cached data yet.</div>` : A}
+    `;
+  }
+};
+SbPanelCatalog.properties = {
+  api: { attribute: false },
+  ctx: { attribute: false },
+  hub: { attribute: false },
+  kind: { attribute: false },
+  _entries: { state: true },
+  _snapshot: { state: true },
+  _open: { state: true },
+  _details: { state: true },
+  _detailLoading: { state: true },
+  _detailNotice: { state: true },
+  _notice: { state: true },
+  _refresh: { state: true },
+  _loading: { state: true },
+  _reorder: { state: true },
+  _add: { state: true }
+};
+SbPanelCatalog.styles = [
+  PANEL_BASE_CSS,
+  i`
+      :host { display: block; container-type: inline-size; }
+      /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
+      #catalog-list.panel { border: 0; border-radius: 0; padding: 0; background: transparent; }
+      .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
+      .cache-panel-header { display: flex; align-items: center; gap: 18px; min-height: 34px; margin: 0 0 8px; }
+      .cache-panel-header .status { font-size: 12px; color: var(--sbp-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .refresh-action { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .refresh-list-label { color: var(--sbp-muted); font-size: 13px; cursor: pointer; user-select: none; }
+      .refresh-list-label:hover { color: var(--sbp-text); }
+      .refresh-list-label[aria-disabled="true"] { cursor: default; }
+      .refresh-list-label[aria-disabled="true"]:hover { color: var(--sbp-muted); }
+      .icon-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; background: transparent; color: var(--sbp-muted); cursor: pointer; padding: 0; line-height: 1; transition: color 120ms, border-color 120ms, background 120ms; }
+      .icon-btn:hover { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.05); }
+      .icon-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+      .icon-btn.spinning { color: var(--sbp-accent); border-color: var(--sbp-accent); opacity: 1 !important; pointer-events: none; }
+      .icon-btn.spinning .mdi { animation: spin 0.7s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .notice { padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; margin-bottom: 10px; }
+      .cache-panel-body { display: grid; gap: 6px; align-content: start; min-width: 0; }
+      .cache-state { padding: 24px 16px; text-align: center; font-size: 13px; color: var(--sbp-muted); }
+      .entity-block { width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--sbp-line); border-radius: 12px; background: var(--sbp-panel-2); overflow-x: clip; transition: border-color 120ms ease; }
+      .entity-block:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: 12px; transition: background-color 120ms ease; }
+      .entity-summary:hover { background: color-mix(in srgb, var(--sbp-accent) 5%, var(--sbp-panel-2)); }
+      /* The card pins the open drawer's header at the top of its scroll body;
+         here the page scrolls under the shell's sticky top dock, so the
+         header pins just under it (the shell measures the dock's height). */
+      .entity-block.open > .entity-summary { position: sticky; top: var(--top-dock-height, 0px); z-index: 2; background: var(--sbp-panel-2); border-bottom: 1px solid var(--sbp-line); border-radius: 12px 12px 0 0; }
+      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; color: var(--sbp-text); }
+      .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--sbp-muted); flex-shrink: 0; }
+      .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+      .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .entity-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--sbp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .entity-chevron { font-size: 8px; color: var(--sbp-muted); transition: transform 150ms; flex-shrink: 0; }
+      .entity-block.open .entity-chevron { transform: rotate(180deg); }
+      .entity-body { display: none; }
+      .entity-block.open .entity-body { display: block; }
+      .id-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; font-family: var(--sbp-mono); background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: 5px; padding: 2px 5px; flex-shrink: 0; white-space: nowrap; min-width: 68px; justify-content: space-between; }
+      .id-badge span:first-child { color: var(--sbp-muted); }
+      .id-badge span:last-child { color: var(--sbp-text); text-align: right; }
+      .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sbp-muted); background: var(--sbp-bg); border-top: 1px solid var(--sbp-line); margin-top: 2px; }
+      .inner-section-label:first-child { border-top: none; margin-top: 0; }
+      .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
+      .inner-row:hover { background: rgba(var(--sbp-accent-rgb), 0.05); }
+      .inner-label { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .inner-badges { display: flex; gap: 4px; flex-shrink: 0; }
+      .buttons-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }
+      .buttons-col { display: flex; flex-direction: column; min-width: 0; }
+      .inner-empty { padding: 8px 12px; font-size: 11px; color: var(--sbp-muted); font-style: italic; }
+      .inner-notice { padding: 8px 12px; font-size: 12px; color: var(--sbp-err); }
+      .ids-hint { margin-top: 12px; }
+      /* -- the list footer, reorder mode and the add dialogs (the card's cache-* rules) -- */
+      .entity-block--reorder { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+      .entity-block--reorder:active { cursor: grabbing; }
+      .entity-block--reorder .entity-summary { cursor: inherit; }
+      .entity-block--reorder .entity-summary:hover { background: transparent; }
+      .entity-block--reorder .entity-name-icon { color: var(--sbp-accent); }
+      .entity-block--reorder:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
+      .entity-block.is-shifting { transition: transform 150ms ease; }
+      .entity-block.is-dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+      .cache-list-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px 0 4px; }
+      .cache-reorder-hint { font-size: 11.5px; color: var(--sbp-muted); }
+      .cache-footer-error { font-size: 12px; color: var(--sbp-err); }
+      .cache-footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .cache-footer-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--sbp-line); border-radius: 10px; background: transparent; color: var(--sbp-text); font: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px; cursor: pointer; }
+      .cache-footer-btn:hover:not([disabled]) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .cache-footer-btn[disabled] { opacity: 0.5; cursor: default; }
+      .cache-footer-btn--primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+      .cache-modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+      .cache-dialog { width: min(420px, calc(100vw - 36px)); display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); }
+      .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--sbp-text); }
+      .cache-dialog-text { font-size: 13px; line-height: 1.55; color: var(--sbp-muted); }
+      .cache-dialog-input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--sbp-line); border-radius: 8px; background: var(--sbp-input); color: var(--sbp-text); font: inherit; font-size: 13.5px; }
+      .cache-dialog-input:focus { outline: none; border-color: var(--sbp-accent); }
+      label.cache-dialog-field, .cache-dialog-field { display: flex; flex-direction: column; gap: 4px; margin: 0; text-transform: none; letter-spacing: 0; }
+      .cache-dialog-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--sbp-muted); }
+      .cache-dialog-select { cursor: pointer; }
+      .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
+      .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+      @container (max-width: 480px) {
+        /* The rows are tight enough on a phone that the "DevID:" prefix costs more than it explains; keep the number. */
+        .entity-meta .id-badge { min-width: 0; justify-content: center; }
+        .entity-meta .id-badge span:first-child { display: none; }
+        .entity-chevron { display: none; }
+        .cache-panel-header { gap: 12px; }
+      }
+    `
+];
+function countsOf(detail) {
+  if (detail.kind === "device") return { commands: detail.commands.length };
+  return { favorites: detail.favorites.length, macros: detail.macros.length, buttons: boundButtons(detail.buttons).length };
+}
+function defineCatalogView() {
+  if (!customElements.get(CATALOG_VIEW_TAG)) customElements.define(CATALOG_VIEW_TAG, SbPanelCatalog);
+}
+
+// custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
+var S4 = TOOLS_CARD_STRINGS.backup;
+var OVERLAY_MENU_MAX_HEIGHT = 240;
+function overlayMenuPosition(anchor, align) {
+  if (!anchor) return "";
+  const gap = 4;
+  const spaceBelow = window.innerHeight - anchor.bottom;
+  const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && anchor.top > spaceBelow;
+  const vertical = openUp ? `bottom: ${Math.round(window.innerHeight - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom + gap)}px; bottom: auto;`;
+  const horizontal = align === "right" ? `right: ${Math.round(window.innerWidth - anchor.right)}px; left: auto;` : `left: ${Math.round(anchor.left)}px; right: auto;`;
+  return `position: fixed; ${vertical} ${horizontal}`;
+}
+function menuAnchorRect(event) {
+  const target = event.currentTarget;
+  return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+}
+var activityEditorStyles = i`
+  .member-add {
+    position: relative;
+    display: inline-flex;
+  }
+  .member-add-backdrop {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: default;
+    z-index: 4;
+  }
+  .member-add-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 5;
+    min-width: 180px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color);
+    border-radius: var(--backup-radius-md);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+  }
+  .member-add-option {
+    border: none;
+    background: none;
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    color: var(--primary-text-color);
+    border-radius: var(--backup-radius-sm);
+    cursor: pointer;
+  }
+  .member-add-option:hover {
+    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
+  }
+  .member-add-empty {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color);
+    line-height: 1.4;
+  }
+  .role-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+  }
+  /* Advanced-mode footer: the last row of a quick-access list that drills
+     into the deeper editor for the rows above it. Tinted and separated by
+     a solid divider so it reads as attached to — but different from — the
+     list items. The extra class in the selector outranks the plain
+     sortable-item border rule that follows in the host tab's styles. */
+  .quick-access-sortable-item.quick-access-footer-item {
+    border-top: 1px solid var(--divider-color);
+    background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 55%, transparent);
+    border-radius: 0 0 calc(var(--backup-radius-lg) - 1px) calc(var(--backup-radius-lg) - 1px);
+    overflow: hidden;
+  }
+  .edit-selection-row--footer .selection-label {
+    color: var(--secondary-text-color);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .footer-row-icon {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    --mdc-icon-size: 16px;
+  }
+  .role-icon {
+    color: var(--secondary-text-color);
+    --mdc-icon-size: 18px;
+    flex: none;
+  }
+  .role-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .role-label {
+    font-size: 0.92rem;
+  }
+  .role-note {
+    font-size: 0.75rem;
+    color: var(--secondary-text-color);
+  }
+  .role-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--divider-color);
+    border-radius: var(--backup-radius-sm);
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color);
+    padding: 5px 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    max-width: 190px;
+    --mdc-icon-size: 15px;
+  }
+  .role-trigger > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .role-trigger[data-state="unused"] > span {
+    color: var(--secondary-text-color);
+  }
+  .role-trigger[data-state="custom"] > span,
+  .role-trigger[data-state="customized"] > span {
+    font-style: italic;
+  }
+  .role-menu {
+    right: 0;
+    left: auto;
+    min-width: 200px;
+  }
+  .member-add-option:disabled {
+    color: var(--disabled-text-color, var(--secondary-text-color));
+    cursor: default;
+    opacity: 0.7;
+  }
+`;
+
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
 function decodedClassFormSpecs() {
-  const S5 = TOOLS_CARD_STRINGS.decodedPayload;
+  const S7 = TOOLS_CARD_STRINGS.decodedPayload;
   return {
     wifi_ip: {
-      title: S5.httpTitle,
-      subtitle: S5.httpSubtitle,
+      title: S7.httpTitle,
+      subtitle: S7.httpSubtitle,
       fields: [
-        { key: "host", label: S5.hostIpv4, helper: S5.hostExample },
-        { key: "port", label: S5.port, numeric: true },
-        { key: "method", label: S5.httpMethod, helper: S5.httpMethodExample },
-        { key: "path", label: S5.path },
+        { key: "host", label: S7.hostIpv4, helper: S7.hostExample },
+        { key: "port", label: S7.port, numeric: true },
+        { key: "method", label: S7.httpMethod, helper: S7.httpMethodExample },
+        { key: "path", label: S7.path },
         {
           key: "header",
-          label: S5.extraHeaders,
+          label: S7.extraHeaders,
           multiline: true,
           crlfOnWire: true,
-          helper: S5.extraHeadersHelper
+          helper: S7.extraHeadersHelper
         },
-        { key: "content_type", label: S5.contentType },
-        { key: "body", label: S5.body, multiline: true }
+        { key: "content_type", label: S7.contentType },
+        { key: "body", label: S7.body, multiline: true }
       ]
     },
     wifi_roku: {
-      title: S5.rokuTitle,
+      title: S7.rokuTitle,
       fields: [
-        { key: "path", label: S5.ecpPath, helper: S5.ecpPathExample }
+        { key: "path", label: S7.ecpPath, helper: S7.ecpPathExample }
       ]
     },
     wifi_hue: {
-      title: S5.hueTitle,
-      subtitle: S5.bodyBlockSubtitle,
+      title: S7.hueTitle,
+      subtitle: S7.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S5.urlPath },
+        { key: "path", label: S7.urlPath },
         {
           key: "body_block",
-          label: S5.bodyBlock,
+          label: S7.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S5.bodyBlockHelper
+          helper: S7.bodyBlockHelper
         }
       ]
     },
     wifi_sonos: {
-      title: S5.sonosTitle,
-      subtitle: S5.bodyBlockSubtitle,
+      title: S7.sonosTitle,
+      subtitle: S7.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S5.urlPath },
+        { key: "path", label: S7.urlPath },
         {
           key: "body_block",
-          label: S5.bodyBlock,
+          label: S7.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S5.bodyBlockHelper
+          helper: S7.bodyBlockHelper
         }
       ]
     },
     wifi_mqtt: {
-      title: S5.mqttTitle,
-      subtitle: S5.mqttSubtitle,
+      title: S7.mqttTitle,
+      subtitle: S7.mqttSubtitle,
       fields: [
-        { key: "device_id", label: S5.mqttDeviceId, numeric: true, readonly: true },
-        { key: "command_id", label: S5.mqttCommandId, numeric: true, readonly: true }
+        { key: "device_id", label: S7.mqttDeviceId, numeric: true, readonly: true },
+        { key: "command_id", label: S7.mqttCommandId, numeric: true, readonly: true }
       ]
     },
     ir: {
-      title: S5.irTitle,
-      subtitle: S5.irSubtitle,
+      title: S7.irTitle,
+      subtitle: S7.irSubtitle,
       fields: [
         {
           key: "descriptor",
-          label: S5.descriptor,
-          helper: S5.descriptorExample
+          label: S7.descriptor,
+          helper: S7.descriptorExample
         }
       ]
     }
@@ -14590,6 +15210,25 @@ function setCommandRestoreData(bundle, deviceId, commandId, restoreData) {
   };
 }
 var INTERNAL_POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
+function compareByHubOrder(left, right) {
+  return left.sortKey - right.sortKey || left.id - right.id;
+}
+function readSortKey(block) {
+  const value = Number(block?.sort);
+  return Number.isFinite(value) ? value : 0;
+}
+function bundleDeviceOptions(bundle) {
+  return [...bundle?.devices ?? []].map((device) => {
+    const block = device?.device;
+    const id = Number(block?.device_id || 0);
+    return {
+      id,
+      sortKey: readSortKey(block),
+      label: String(block?.name || TOOLS_CARD_STRINGS.common.deviceFallback(id)),
+      meta: String(block?.device_class || "").trim() || void 0
+    };
+  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
+}
 var ACTIVITY_ENTITY_ID_MIN = 101;
 function normalizeHubVersion(value) {
   const normalized = String(value ?? "").trim().toUpperCase();
@@ -14609,6 +15248,9 @@ function renameInList(list, id, name) {
       device: { ...block, name: trimmed || block.name || TOOLS_CARD_STRINGS.common.deviceFallback(id) }
     };
   });
+}
+function renameBundleActivity(bundle, activityId, name) {
+  return { ...bundle, activities: renameInList(bundle.activities, Number(activityId), name) };
 }
 function renameBundleDevice(bundle, deviceId, name) {
   return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
@@ -14646,6 +15288,75 @@ function commandLabelFor(bundle, deviceId, commandId) {
   const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
   const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
   return String(command?.name || "").trim();
+}
+function favoriteLabel(bundle, row) {
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  const derived = commandLabelFor(bundle, deviceId, commandId);
+  if (derived) return derived;
+  const explicit = String(row?.name || "").trim();
+  if (explicit) return explicit;
+  return TOOLS_CARD_STRINGS.common.favoriteFallback(Number(row?.button_id || 0) || "?");
+}
+function sortByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function isEditableActivityMacro(row) {
+  const buttonId = Number(row?.button_id || 0);
+  const normalizedName = String(row?.name || "").trim().toUpperCase();
+  if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(buttonId)) return false;
+  if (normalizedName === "POWER_ON" || normalizedName === "POWER_OFF") return false;
+  return true;
+}
+function activityQuickAccessItems(bundle, activityId) {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortByButtonId(activity.macros).filter(isEditableActivityMacro)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "macro",
+      activityId: Number(activityId),
+      buttonId,
+      label: String(row?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId))
+    });
+  }
+  for (const row of sortByButtonId(activity.favorite_slots)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "favorite",
+      activityId: Number(activityId),
+      buttonId,
+      label: favoriteLabel(bundle, row),
+      deviceId: Number(row?.device_id || 0) || void 0,
+      commandId: Number(row?.command_id || 0) || void 0
+    });
+  }
+  const order = activity.favorites_order ?? [];
+  const rankById = /* @__PURE__ */ new Map();
+  order.forEach((favId, index) => {
+    const bid = Number(favId) & 255;
+    if (!rankById.has(bid)) rankById.set(bid, index);
+  });
+  const rankOf = (buttonId) => {
+    const bid = Number(buttonId) & 255;
+    return rankById.has(bid) ? rankById.get(bid) : rankById.size + bid;
+  };
+  return items.sort((left, right) => {
+    const delta = rankOf(left.buttonId) - rankOf(right.buttonId);
+    return delta !== 0 ? delta : left.buttonId - right.buttonId;
+  });
+}
+function renameBundleActivityMacro(bundle, activityId, buttonId, name) {
+  const normalizedButtonId = Number(buttonId);
+  const trimmed = String(name ?? "").trim();
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: (activity.macros ?? []).map((row) => Number(row?.button_id || 0) === normalizedButtonId ? { ...row, name: trimmed } : row)
+  }));
 }
 function deviceCommandItems(bundle, deviceId) {
   if (!bundle) return [];
@@ -14817,6 +15528,85 @@ function addBundleDeviceCommand(bundle, deviceId, commandId, name, restoreData) 
       };
     })
   };
+}
+function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
+  const normalizedActivityId = Number(activityId);
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
+  if (!activity) return bundle;
+  const macrosByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.macros ?? []) {
+    macrosByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const favoritesByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.favorite_slots ?? []) {
+    favoritesByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const orderedMacroButtonIds = new Set(
+    orderedItems.filter((item) => item.kind === "macro").map((item) => Number(item.buttonId))
+  );
+  const macroRows = [];
+  const favoriteRows = [];
+  const macroIdRemap = /* @__PURE__ */ new Map();
+  orderedItems.forEach((item, index) => {
+    const nextButtonId = index + 1;
+    if (item.kind === "macro") {
+      const row2 = macrosByButtonId.get(Number(item.buttonId));
+      if (row2) {
+        macroRows.push({ ...row2, button_id: nextButtonId });
+        if (Number(item.buttonId) !== nextButtonId) {
+          macroIdRemap.set(Number(item.buttonId), nextButtonId);
+        }
+      }
+      return;
+    }
+    const row = favoritesByButtonId.get(Number(item.buttonId));
+    if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
+  });
+  for (const row of activity.macros ?? []) {
+    if (!orderedMacroButtonIds.has(Number(row?.button_id || 0))) {
+      macroRows.push(row);
+    }
+  }
+  return updateActivity(bundle, normalizedActivityId, (current) => ({
+    ...current,
+    macros: macroRows,
+    favorite_slots: favoriteRows,
+    // Keep favorites_order in step with the new positional button_ids. The
+    // reordered items are renumbered 1..N in display order, so the slot table
+    // is exactly [1..N]; leaving the stale baseline order here would make
+    // activityQuickAccessItems (and the sync planner) re-derive the OLD order.
+    favorites_order: orderedItems.map((_item, index) => index + 1),
+    // Macro-target bindings reference a macro by its button_id (with
+    // device_id = the activity's own id). Renumbering the macros without
+    // following those references would leave the bundle internally
+    // inconsistent — a later reorder, or the sync planner, would resolve
+    // them against the wrong macro.
+    button_bindings: remapMacroTargetBindings(
+      current.button_bindings,
+      normalizedActivityId,
+      macroIdRemap
+    )
+  }));
+}
+function remapMacroTargetBindings(bindings, activityId, macroIdRemap) {
+  if (!bindings || macroIdRemap.size === 0) return bindings;
+  let changed = false;
+  const next = bindings.map((row) => {
+    let updated = row;
+    if (Number(row?.device_id || 0) === activityId && macroIdRemap.has(Number(row?.command_id || 0))) {
+      updated = { ...updated, command_id: macroIdRemap.get(Number(row?.command_id || 0)) };
+      changed = true;
+    }
+    if (Number(updated?.long_press_device_id || 0) === activityId && macroIdRemap.has(Number(updated?.long_press_command_id || 0))) {
+      updated = {
+        ...updated === row ? { ...row } : updated,
+        long_press_command_id: macroIdRemap.get(Number(updated?.long_press_command_id || 0))
+      };
+      changed = true;
+    }
+    return updated;
+  });
+  return changed ? next : bindings;
 }
 function stepMatchesDevice(step, deviceId) {
   return Number(step?.device_id || 0) === deviceId;
@@ -15065,6 +15855,31 @@ function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
   });
   return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
+function nextQuickAccessButtonId(activity) {
+  let max = 0;
+  const consider = (value) => {
+    if (value > 0 && !INTERNAL_POWER_MACRO_BUTTON_IDS.has(value) && value > max) max = value;
+  };
+  for (const slot of activity.favorite_slots ?? []) consider(Number(slot?.button_id || 0));
+  for (const macro of activity.macros ?? []) consider(Number(macro?.button_id || 0));
+  return max + 1;
+}
+function addBundleActivityFavorite(bundle, activityId, deviceId, commandId, name) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  if (dId <= 0 || cId <= 0) return bundle;
+  const trimmed = String(name ?? "").trim();
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const slot = {
+      button_id: nextQuickAccessButtonId(activity),
+      device_id: dId,
+      command_id: cId,
+      name: trimmed
+    };
+    return { ...activity, favorite_slots: [...activity.favorite_slots ?? [], slot] };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
 function applyBundleDelete(bundle, target, options = {}) {
   switch (target.kind) {
     case "activity":
@@ -15277,6 +16092,69 @@ function findBundleActivity(bundle, activityId) {
     (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
   );
 }
+function activityMemberViews(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = activityMemberDeviceIds(activity);
+  const memberSet = new Set(members);
+  const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
+  const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
+  const powerOff = macroFor(POWER_OFF_MACRO_BUTTON_ID);
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && memberSet.has(id) && !order.includes(id)) order.push(id);
+  };
+  for (const step of powerOn?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const step of powerOff?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const id of members) push(id);
+  return order.map((deviceId) => {
+    const onSteps = (powerOn?.steps ?? []).filter(
+      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId
+    );
+    const powersOn = onSteps.some(
+      (step) => Number(step?.command_id || 0) === DEVICE_POWER_ON_REF_COMMAND
+    );
+    const inputStep = onSteps.find(
+      (step) => Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    const powersOff = (powerOff?.steps ?? []).some(
+      (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, DEVICE_POWER_OFF_REF_COMMAND)
+    );
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle, deviceId),
+      powersOn,
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(inputOrdinal) : null),
+      powersOff
+    };
+  });
+}
+function activityAddableDevices(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = new Set(activityMemberDeviceIds(activity));
+  return bundleDeviceOptions(bundle).filter(
+    (option) => !members.has(option.id)
+  );
+}
+function addActivityMemberDevice(bundle, activityId, deviceId) {
+  const dId = Number(deviceId);
+  const aId = Number(activityId);
+  if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
+  const activity = findBundleActivity(bundle, aId);
+  if (!activity) return bundle;
+  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  return reconcileActivityPowerMacros(bundle, aId, [dId]);
+}
 function removeActivityMemberDevice(bundle, activityId, deviceId) {
   const aId = Number(activityId);
   const next = updateActivity(
@@ -15319,6 +16197,79 @@ function synthesizeCommandCode(commandId) {
 }
 function findDevice(bundle, deviceId) {
   return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+}
+function inputEntryOrdinal(entry) {
+  return Number(entry?.input_index ?? entry?.ordinal ?? 0);
+}
+function deviceInputEntries(bundle, deviceId) {
+  const device = findDevice(bundle, deviceId);
+  const entries = device?.input_record?.entries ?? [];
+  return entries.map((entry) => ({
+    commandId: Number(entry?.command_id || 0),
+    ordinal: inputEntryOrdinal(entry),
+    name: String(entry?.name || entry?.label || "").trim()
+  })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
+}
+function ensureDeviceInput(bundle, deviceId, commandId) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const device = findDevice(bundle, dId);
+  const existingEntries = device?.input_record?.entries ?? [];
+  const reused = existingEntries.find((entry) => Number(entry?.command_id || 0) === cId);
+  if (reused) {
+    return { bundle, ordinal: inputEntryOrdinal(reused) };
+  }
+  const nextOrdinal = existingEntries.reduce((max, entry) => Math.max(max, inputEntryOrdinal(entry)), 0) + 1;
+  const newEntry = {
+    command_id: cId,
+    fid: synthesizeCommandCode(cId),
+    input_index: nextOrdinal,
+    name: commandLabelFor(bundle, dId, cId) || TOOLS_CARD_STRINGS.common.inputFallback(cId)
+  };
+  const nextBundle = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      if (Number(entry?.device?.device_id || 0) !== dId) return entry;
+      const record = { ...entry.input_record ?? {} };
+      record.entries = [...existingEntries, newEntry];
+      return { ...entry, input_record: record };
+    })
+  };
+  return { bundle: nextBundle, ordinal: nextOrdinal };
+}
+function setActivityPowerInputOrdinal(activity, deviceId, ordinal) {
+  const dId = Number(deviceId);
+  return {
+    ...activity,
+    macros: (activity.macros ?? []).map((macro) => {
+      if (Number(macro?.button_id || 0) !== POWER_ON_MACRO_BUTTON_ID) return macro;
+      let found = false;
+      const steps = (macro.steps ?? []).map((step) => {
+        if (!isMacroDelayStep(step) && Number(step?.device_id || 0) === dId && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND) {
+          found = true;
+          return { ...step, duration: ordinal & 255 };
+        }
+        return step;
+      });
+      if (!found) steps.push(powerStep(dId, DEVICE_INPUT_REF_COMMAND, ordinal));
+      return { ...macro, steps };
+    })
+  };
+}
+function setActivityDeviceInput(bundle, activityId, deviceId, commandId) {
+  const cId = Number(commandId);
+  if (cId <= 0) return bundle;
+  const ensured = ensureDeviceInput(bundle, deviceId, cId);
+  const reconciled = reconcileActivityPowerMacros(ensured.bundle, Number(activityId));
+  return updateActivity(
+    reconciled,
+    activityId,
+    (activity) => setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal)
+  );
+}
+function clearActivityDeviceInput(bundle, activityId, deviceId) {
+  const reconciled = reconcileActivityPowerMacros(bundle, Number(activityId));
+  return updateActivity(reconciled, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
 }
 function isPowerRefStep(step) {
   const command = Number(step?.command_id || 0);
@@ -15462,41 +16413,177 @@ function reorderDeviceMacroSteps(bundle, deviceId, buttonId, orderedIndices) {
     return flattenMacroGroups(prefix, reordered);
   });
 }
+function activityUserMacroSummaries(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  return (activity?.macros ?? []).map((macro) => ({ buttonId: Number(macro?.button_id || 0), macro })).filter(({ buttonId }) => buttonId > 0 && buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID).map(({ buttonId, macro }) => ({
+    buttonId,
+    name: String(macro?.name || TOOLS_CARD_STRINGS.common.macroFallback(buttonId)),
+    commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length
+  })).sort((left, right) => left.buttonId - right.buttonId);
+}
+function activityMacroStepItems(bundle, activityId, buttonId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const head = group.head;
+    const wait = groupWait(group);
+    const deviceId = Number(head?.device_id || 0);
+    const commandId = Number(head?.command_id || 0);
+    const deviceName = deviceNameFor(bundle, deviceId);
+    if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
+      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? TOOLS_CARD_STRINGS.backup.powerOn : TOOLS_CARD_STRINGS.backup.powerOff;
+      return {
+        index,
+        kind: "power",
+        commandId,
+        deviceId,
+        label: TOOLS_CARD_STRINGS.backup.powerStepLabel(verb, deviceName),
+        hold: 0,
+        wait,
+        protected: true
+      };
+    }
+    if (commandId === DEVICE_INPUT_REF_COMMAND) {
+      const ordinal = Number(head?.duration || 0);
+      const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
+      const inputLabel = input?.name || (ordinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(ordinal) : TOOLS_CARD_STRINGS.common.noInput);
+      return {
+        index,
+        kind: "input",
+        commandId: input?.commandId ?? null,
+        deviceId,
+        label: TOOLS_CARD_STRINGS.backup.inputStepLabel(deviceName, inputLabel),
+        hold: 0,
+        wait,
+        protected: true
+      };
+    }
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId,
+      label: `${deviceName} \xB7 ${commandNameOrFallback(bundle, deviceId, commandId)}`,
+      hold: Number(head?.duration || 0),
+      wait
+    };
+  });
+}
+function updateActivityMacro(bundle, activityId, buttonId, transform) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const macros = [...activity.macros ?? []];
+    const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+    const existing = index >= 0 ? macros[index] : null;
+    const nextMacro = {
+      ...existing ?? {},
+      button_id: bId,
+      // `||` (not `??`): an empty name must also fall back, and for the
+      // power slots defaultMacroName returns the canonical POWER_* label
+      // rather than the localized display fallback — that label is
+      // protocol (the hub hides power macros by it) and must never
+      // carry UI text (#263).
+      name: existing?.name || defaultMacroName(bId),
+      steps: zeroTrailingGroupWait(transform(existing?.steps ?? []), true)
+    };
+    if (index >= 0) macros[index] = nextMacro;
+    else macros.push(nextMacro);
+    return { ...activity, macros };
+  });
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
+}
+function addActivityUserMacro(bundle, activityId, name) {
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: [...activity.macros ?? [], {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(name ?? "").trim() || TOOLS_CARD_STRINGS.backup.newMacroName,
+      steps: []
+    }]
+  }));
+}
+function addActivityMacroCommandStep(bundle, activityId, buttonId, deviceId, commandId, hold = 0) {
+  if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle;
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, {
+    device_id: Number(deviceId),
+    command_id: Number(commandId),
+    button_code: synthesizeCommandCode(Number(commandId)),
+    duration: Number(hold) & 255,
+    delay: 255
+  }]);
+}
+function updateActivityMacroStep(bundle, activityId, buttonId, index, patch) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setActivityMacroStepWait(bundle, activityId, buttonId, index, wait) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeActivityMacroStep(bundle, activityId, buttonId, index) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    if (isPowerRefStep(group.head)) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i8) => groups[Number(i8)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
 function sharedButtonCatalog() {
-  const S5 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S7 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 174, name: S5.up, group: S5.navigation },
-    { code: 178, name: S5.down, group: S5.navigation },
-    { code: 175, name: S5.left, group: S5.navigation },
-    { code: 177, name: S5.right, group: S5.navigation },
-    { code: 176, name: S5.ok, group: S5.navigation },
-    { code: 180, name: S5.home, group: S5.navigation },
-    { code: 179, name: S5.back, group: S5.navigation },
-    { code: 181, name: S5.menu, group: S5.navigation },
-    { code: 182, name: S5.volumeUp, group: S5.volumeChannel },
-    { code: 185, name: S5.volumeDown, group: S5.volumeChannel },
-    { code: 184, name: S5.mute, group: S5.volumeChannel },
-    { code: 183, name: S5.channelUp, group: S5.volumeChannel },
-    { code: 186, name: S5.channelDown, group: S5.volumeChannel },
-    { code: 187, name: S5.rewind, group: S5.transport },
-    { code: 188, name: S5.pause, group: S5.transport },
-    { code: 189, name: S5.forward, group: S5.transport },
-    { code: 190, name: S5.red, group: S5.colour },
-    { code: 191, name: S5.green, group: S5.colour },
-    { code: 192, name: S5.yellow, group: S5.colour },
-    { code: 193, name: S5.blue, group: S5.colour }
+    { code: 174, name: S7.up, group: S7.navigation },
+    { code: 178, name: S7.down, group: S7.navigation },
+    { code: 175, name: S7.left, group: S7.navigation },
+    { code: 177, name: S7.right, group: S7.navigation },
+    { code: 176, name: S7.ok, group: S7.navigation },
+    { code: 180, name: S7.home, group: S7.navigation },
+    { code: 179, name: S7.back, group: S7.navigation },
+    { code: 181, name: S7.menu, group: S7.navigation },
+    { code: 182, name: S7.volumeUp, group: S7.volumeChannel },
+    { code: 185, name: S7.volumeDown, group: S7.volumeChannel },
+    { code: 184, name: S7.mute, group: S7.volumeChannel },
+    { code: 183, name: S7.channelUp, group: S7.volumeChannel },
+    { code: 186, name: S7.channelDown, group: S7.volumeChannel },
+    { code: 187, name: S7.rewind, group: S7.transport },
+    { code: 188, name: S7.pause, group: S7.transport },
+    { code: 189, name: S7.forward, group: S7.transport },
+    { code: 190, name: S7.red, group: S7.colour },
+    { code: 191, name: S7.green, group: S7.colour },
+    { code: 192, name: S7.yellow, group: S7.colour },
+    { code: 193, name: S7.blue, group: S7.colour }
   ];
 }
 function x2ExtraButtonCatalog() {
-  const S5 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S7 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 153, name: "A", group: S5.extra },
-    { code: 152, name: "B", group: S5.extra },
-    { code: 151, name: "C", group: S5.extra },
-    { code: 154, name: S5.exit, group: S5.extra },
-    { code: 155, name: S5.dvr, group: S5.extra },
-    { code: 156, name: S5.play, group: S5.extra },
-    { code: 157, name: S5.guide, group: S5.extra }
+    { code: 153, name: "A", group: S7.extra },
+    { code: 152, name: "B", group: S7.extra },
+    { code: 151, name: "C", group: S7.extra },
+    { code: 154, name: S7.exit, group: S7.extra },
+    { code: 155, name: S7.dvr, group: S7.extra },
+    { code: 156, name: S7.play, group: S7.extra },
+    { code: 157, name: S7.guide, group: S7.extra }
   ];
 }
 function bundleButtonCatalog(bundle) {
@@ -15509,11 +16596,60 @@ function buttonName(code) {
   const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()].find((entry) => entry.code === Number(code));
   return known?.name ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
 }
+function deviceNameFor(bundle, deviceId) {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  return String(device?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(Number(deviceId));
+}
 function commandNameOrFallback(bundle, deviceId, commandId) {
   return commandLabelFor(bundle, deviceId, commandId) || TOOLS_CARD_STRINGS.common.commandFallback(Number(commandId));
 }
+function activityMacroName(bundle, activityId, buttonId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return String(macro?.name || "").trim() || TOOLS_CARD_STRINGS.common.macroFallback(Number(buttonId));
+}
+function activityBindingTargetLabel(bundle, activityId, targetDeviceId, targetCommandId) {
+  if (targetDeviceId === Number(activityId)) {
+    return TOOLS_CARD_STRINGS.backup.macroTargetLabelText(
+      activityMacroName(bundle, activityId, targetCommandId)
+    );
+  }
+  return `${deviceNameFor(bundle, targetDeviceId)} \xB7 ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
+}
 function sortBindingsByButtonId(rows) {
   return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function activityButtonBindingItems(bundle, activityId) {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(activity.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const deviceId = Number(row?.device_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || deviceId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      deviceId,
+      commandId,
+      isMacroTarget: deviceId === Number(activityId),
+      shortPressLabel: activityBindingTargetLabel(bundle, Number(activityId), deviceId, commandId)
+    };
+    const lpDeviceId = Number(row?.long_press_device_id || 0);
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpDeviceId > 0 && lpCommandId > 0) {
+      item.longPress = {
+        deviceId: lpDeviceId,
+        commandId: lpCommandId,
+        isMacroTarget: lpDeviceId === Number(activityId),
+        label: activityBindingTargetLabel(bundle, Number(activityId), lpDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
 }
 function deviceButtonBindingItems(bundle, deviceId) {
   if (!bundle) return [];
@@ -15545,6 +16681,11 @@ function deviceButtonBindingItems(bundle, deviceId) {
 function boundButtonIds(rows) {
   return new Set((rows ?? []).map((row) => Number(row?.button_id || 0)).filter((id) => id > 0));
 }
+function unboundButtonsForActivity(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const used = boundButtonIds(activity?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
 function unboundButtonsForDevice(bundle, deviceId) {
   const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
   const used = boundButtonIds(device?.button_bindings);
@@ -15555,6 +16696,29 @@ function upsertBindingRow(rows, row) {
   const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
   next.push(row);
   return sortBindingsByButtonId(next);
+}
+function upsertActivityButtonBinding(bundle, activityId, input) {
+  const buttonId = Number(input.buttonId);
+  const deviceId = Number(input.deviceId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || deviceId <= 0 || commandId <= 0) return bundle;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    device_id: deviceId,
+    command_id: commandId
+  };
+  const lpDeviceId = Number(input.longPress?.deviceId || 0);
+  const lpCommandId = Number(input.longPress?.commandId || 0);
+  if (lpDeviceId > 0 && lpCommandId > 0) {
+    row.long_press_device_id = lpDeviceId;
+    row.long_press_command_id = lpCommandId;
+  }
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: upsertBindingRow(activity.button_bindings, row)
+  }));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 function upsertDeviceButtonBinding(bundle, deviceId, input) {
   const normalizedDeviceId = Number(deviceId);
@@ -15599,143 +16763,1858 @@ function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
     })
   };
 }
-
-// server-panel/src/pointer-reorder.ts
-var PointerReorder = class {
-  constructor(rows, changed, moved, top = () => 0) {
-    this.rows = rows;
-    this.changed = changed;
-    this.moved = moved;
-    this.top = top;
-    this.state = null;
-    this.handle = null;
+var ACTIVITY_ROLE_GROUPS = [
+  "volume",
+  "navigation",
+  "playback",
+  "channels"
+];
+var ROLE_GROUP_BUTTON_IDS = {
+  volume: [182, 185, 184],
+  navigation: [174, 178, 175, 177, 176, 179, 180, 181],
+  playback: [156, 188, 187, 189],
+  channels: [183, 186]
+};
+function roleGroupButtons(bundle, group) {
+  const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
+  return ROLE_GROUP_BUTTON_IDS[group].filter((code) => catalog.has(code));
+}
+function deviceRoleBindings(bundle, deviceId, group) {
+  const device = findDevice(bundle, Number(deviceId));
+  const groupIds = new Set(roleGroupButtons(bundle, group));
+  const byButton = /* @__PURE__ */ new Map();
+  for (const row of device?.button_bindings ?? []) {
+    const buttonId = Number(row?.button_id || 0);
+    if (groupIds.has(buttonId) && Number(row?.command_id || 0) > 0) byButton.set(buttonId, row);
   }
-  start(event, index) {
-    if (event.button !== 0 || this.state) return;
-    const rect = this.rows()[index]?.getBoundingClientRect();
-    if (!rect) return;
-    event.preventDefault();
-    this.handle = event.currentTarget;
-    this.handle.setPointerCapture(event.pointerId);
-    window.getSelection()?.removeAllRanges();
-    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
-    this.changed();
-  }
-  move(event) {
-    const drag = this.state;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    event.preventDefault();
-    if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
-    else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
-    this.state = { ...drag, over: this.slot(event.clientY), dy: event.clientY - drag.startY };
-    this.changed();
-  }
-  offset(index) {
-    const drag = this.state;
-    if (!drag) return 0;
-    if (index === drag.from) return drag.dy;
-    if (drag.from < drag.over && index > drag.from && index <= drag.over) return -drag.height;
-    if (drag.over < drag.from && index >= drag.over && index < drag.from) return drag.height;
-    return 0;
-  }
-  slot(clientY) {
-    const drag = this.state;
-    const rows = this.rows();
-    const rects = rows.map((row) => row.getBoundingClientRect());
-    const offset = (index) => {
-      const transform = getComputedStyle(rows[index]).transform;
-      return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
+  return byButton;
+}
+function roleMappableButtonCount(bundle, deviceId, group) {
+  return deviceRoleBindings(bundle, deviceId, group).size;
+}
+function activityRoleAssignments(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  return ACTIVITY_ROLE_GROUPS.map((group) => {
+    const buttons = roleGroupButtons(bundle, group);
+    const totalCount = buttons.length;
+    const groupSet = new Set(buttons);
+    const bound = (activity?.button_bindings ?? []).filter(
+      (row) => groupSet.has(Number(row?.button_id || 0)) && Number(row?.device_id || 0) > 0
+    );
+    const unused = {
+      group,
+      state: "unused",
+      deviceId: null,
+      deviceName: null,
+      boundCount: 0,
+      totalCount
     };
-    const own = rects[drag.from];
-    if (!own) return drag.from;
-    const centre = own.top - offset(drag.from) + own.height / 2 + clientY - drag.startY;
-    let over = drag.from;
-    rects.forEach((rect, index) => {
-      const mid = rect.top - offset(index) + rect.height / 2;
-      if (index < drag.from && centre < mid) over = Math.min(over, index);
-      if (index > drag.from && centre > mid) over = index;
+    if (!bundle || !activity || bound.length === 0) return unused;
+    const selfId = Number(activity.device?.device_id || 0);
+    const targetIds = /* @__PURE__ */ new Set();
+    for (const row of bound) {
+      targetIds.add(Number(row?.device_id || 0));
+      const lpDeviceId = Number(row?.long_press_device_id || 0);
+      if (lpDeviceId > 0) targetIds.add(lpDeviceId);
+    }
+    const [only] = [...targetIds];
+    if (targetIds.size !== 1 || only === selfId) {
+      return { group, state: "custom", deviceId: null, deviceName: null, boundCount: bound.length, totalCount };
+    }
+    const mapped = deviceRoleBindings(bundle, only, group);
+    const exact = bound.length === mapped.size && bound.every((row) => {
+      const ref = mapped.get(Number(row?.button_id || 0));
+      if (!ref) return false;
+      if (Number(row?.command_id || 0) !== Number(ref?.command_id || 0)) return false;
+      const rowLp = Number(row?.long_press_command_id || 0);
+      const refLp = Number(ref?.long_press_command_id || 0);
+      if (rowLp !== refLp) return false;
+      return rowLp === 0 || Number(row?.long_press_device_id || 0) === only;
     });
-    return over;
+    return {
+      group,
+      state: exact ? "device" : "customized",
+      deviceId: only,
+      deviceName: deviceNameFor(bundle, only),
+      boundCount: bound.length,
+      totalCount
+    };
+  });
+}
+function setActivityRoleDevice(bundle, activityId, group, deviceId) {
+  const aId = Number(activityId);
+  const buttons = roleGroupButtons(bundle, group);
+  const groupSet = new Set(buttons);
+  const mapped = deviceId != null && Number(deviceId) > 0 ? deviceRoleBindings(bundle, Number(deviceId), group) : null;
+  const next = updateActivity(bundle, aId, (activity) => {
+    let rows = (activity.button_bindings ?? []).filter(
+      (row) => !groupSet.has(Number(row?.button_id || 0))
+    );
+    if (mapped) {
+      const dId = Number(deviceId);
+      for (const buttonId of buttons) {
+        const ref = mapped.get(buttonId);
+        if (!ref) continue;
+        const row = {
+          button_id: buttonId,
+          button_name: buttonName(buttonId),
+          device_id: dId,
+          command_id: Number(ref.command_id)
+        };
+        const lpCommandId = Number(ref?.long_press_command_id || 0);
+        if (lpCommandId > 0) {
+          row.long_press_device_id = dId;
+          row.long_press_command_id = lpCommandId;
+        }
+        rows = upsertBindingRow(rows, row);
+      }
+    }
+    return { ...activity, button_bindings: rows };
+  });
+  return reconcileActivityMembershipChange(bundle, next, aId);
+}
+function bundleEditableDeviceOptions(bundle) {
+  return bundleDeviceOptions(bundle);
+}
+
+// server-panel/src/views/activity-editor-state.ts
+var WIFI_EVENTS_ENABLED = false;
+function wifiEventSlots(bundle, callbackDeviceId) {
+  if (callbackDeviceId == null) return [];
+  const element = entityElement(bundle, "device", callbackDeviceId);
+  const count = wifiEventsSlotCount(element);
+  if (!element || count <= 0) return [];
+  return (element.commands ?? []).map((row) => ({ id: Number(row?.command_id ?? 0), name: String(row?.name ?? "").trim() })).filter((row) => row.id >= 1 && row.id <= count).sort((a4, b3) => a4.id - b3.id).map((row) => ({ slot: row.id - 1, label: row.name || `Button ${row.id}`, shortCommandId: row.id, longCommandId: row.id + count }));
+}
+function targetKindFor(activityId, callbackDeviceId, wifiEventsAvailable, deviceId) {
+  const id = Number(deviceId || 0);
+  if (id === Number(activityId)) return "action";
+  if (wifiEventsAvailable && callbackDeviceId != null && id === Number(callbackDeviceId)) return "wifi_event";
+  return "command";
+}
+
+// server-panel/src/views/editor-styles.ts
+var EDITOR_CSS = i`
+    :host {
+      display: block;
+      container-type: inline-size;
+      --de-radius-sm: 10px;
+      --de-radius-md: 12px;
+      --de-radius-lg: 16px;
+      --de-radius-xl: 22px;
+    }
+    .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
+    button { border: 0; background: transparent; padding: 0; }
+    /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
+    .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
+    .quick-access-section, .detail-scroll, .power-control { min-width: 0; }
+
+    /* -- frame (the card's .tab-panel--detail / .detail-view) ------------------------------- */
+    .tab-panel--detail { min-width: 0; padding: 0; }
+    .detail-view { min-width: 0; display: flex; flex-direction: column; margin: -12px -16px -16px; }
+    /* The card pins its header inside its own scroll box; the panel's page scrolls under the shell's top dock, so pin under it. */
+    .sticky-header { position: sticky; top: var(--top-dock-height, 0px); z-index: 3; min-width: 0; background: var(--sbp-panel); }
+    .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--sbp-line); }
+    .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
+    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; overflow: hidden; }
+    .detail-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 11px; line-height: 1.1; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--sbp-muted); }
+    .detail-crumb { flex: 0 1 auto; min-width: 0; font: inherit; color: var(--sbp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
+    .detail-crumb:hover { color: var(--sbp-text); text-decoration: underline; text-decoration-color: var(--sbp-accent); }
+    .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
+    .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .back-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .back-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+    .back-btn .mdi { width: 18px; height: 18px; }
+    .detail-sync-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease; }
+    .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+    .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+    .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
+    .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: #2e7d32; opacity: 1; }
+    .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
+    .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
+    .icon-btn:active, .dialog-close:active { transform: translateY(1px); }
+    .icon-btn:disabled { opacity: 0.45; cursor: default; }
+    .icon-btn--danger:hover:not(:disabled) { border-color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 10%, var(--sbp-panel)); color: var(--sbp-err); }
+
+    /* -- section nav ---------------------------------------------------------------------------- */
+    .detail-section-nav { display: flex; align-items: stretch; min-height: 34px; margin: 10px 16px; border: 1px solid color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); overflow: hidden; background: color-mix(in srgb, var(--sbp-panel-2) 76%, transparent); }
+    .detail-section-nav-btn { flex: 1 1 0; min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 82%, transparent); color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font: inherit; cursor: pointer; white-space: nowrap; border-radius: 0; }
+    .detail-section-nav-btn:last-child { border-right: none; }
+    .detail-section-nav-btn:hover { background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-text); }
+    .detail-section-nav-btn.active { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.1); box-shadow: inset 0 -2px 0 var(--sbp-accent); }
+    .detail-section-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+    /* -- body ------------------------------------------------------------------------------------- */
+    .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .notice-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--de-radius-sm); border: 1px solid color-mix(in srgb, var(--sbp-warn) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, transparent); font-size: 12.5px; line-height: 1.45; color: var(--sbp-text); }
+    .notice-banner .mdi { color: var(--sbp-warn); width: 18px; height: 18px; }
+    .notice-banner--info { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.08); }
+    .notice-banner--info .mdi { color: var(--sbp-accent); }
+    @keyframes sb-spin { to { transform: rotate(360deg); } }
+    .mdi.sb-spin { animation: sb-spin 720ms linear infinite; }
+    .section-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
+    .section-status .mdi { width: 18px; height: 18px; }
+    .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
+    .quick-access-section { display: grid; gap: 12px; scroll-margin-top: 16px; }
+    .quick-access-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .quick-access-head-main { min-width: 0; flex: 1 1 200px; display: grid; gap: 4px; }
+    .quick-access-head-actions { flex: 0 0 auto; }
+    .quick-access-title { color: var(--sbp-text); font-size: 14px; font-weight: 700; }
+    .quick-access-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
+    .quick-access-list { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); overflow: hidden; display: flex; flex-direction: column; }
+    .quick-access-sortable-container { display: block; }
+    .quick-access-sortable-item { display: block; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
+    .quick-access-sortable-item:first-child { border-top: none; }
+    .quick-access-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; }
+    .quick-access-row--step { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .quick-access-drag { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: -6px; border-radius: 8px; color: var(--sbp-muted); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .quick-access-drag:hover { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.08); }
+    .quick-access-drag:active { cursor: grabbing; }
+    .quick-access-drag .mdi { width: 18px; height: 18px; }
+    .quick-access-sortable-item.is-shifting { transition: transform 150ms ease; }
+    .quick-access-sortable-item.is-dragging { position: relative; z-index: 2; background: var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); border-top-color: transparent; }
+    .detail-view.is-sorting, .quick-access-row--step { user-select: none; -webkit-user-select: none; }
+    .step-wait { display: flex; align-items: center; gap: 6px; padding: 3px 14px 6px; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
+    .step-wait-caption { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--sbp-muted); pointer-events: none; }
+    .step-wait-field { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px 2px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); }
+    .step-wait-field:focus-within { border-color: var(--sbp-accent); }
+    .step-wait-input { width: 42px; min-width: 0; padding: 0; border: none; background: transparent; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 600; text-align: right; outline: none; -moz-appearance: textfield; }
+    .step-wait-input::-webkit-outer-spin-button, .step-wait-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .step-wait-unit { color: var(--sbp-muted); font-size: 12px; font-weight: 600; }
+    .quick-access-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .quick-access-label-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .quick-access-label { min-width: 0; color: var(--sbp-text); font-size: 13px; font-weight: 700; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .quick-access-chip { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 74%, transparent); }
+    .quick-access-meta { color: var(--sbp-muted); font-size: 12px; line-height: 1.4; }
+    .quick-access-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .quick-access-empty { border: 1px dashed color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); padding: 12px 14px; color: var(--sbp-muted); font-size: 13px; line-height: 1.5; background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
+    .quick-access-add-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--de-radius-md); border: 1px solid color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.1); color: var(--sbp-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: border-color 120ms ease, background 120ms ease; }
+    .quick-access-add-btn:hover:not(:disabled) { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-text); }
+    .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
+    .quick-access-add-btn .mdi { color: var(--sbp-accent); }
+
+    /* -- power control ---------------------------------------------------------------------------- */
+    .power-control { position: relative; display: block; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); }
+    .power-control-trigger { width: 100%; border-radius: inherit; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; }
+    .power-control-trigger:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
+    .power-control-trigger .selection-chevron .mdi { transition: transform 120ms ease; }
+    .power-control[data-open="true"] .power-control-trigger .selection-chevron .mdi { transform: rotate(180deg); }
+    .power-control-backdrop { position: fixed; inset: 0; z-index: 30; cursor: default; }
+    .power-control-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 31; display: flex; flex-direction: column; background: var(--sbp-panel); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); overflow: hidden; }
+    .power-control-option { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 50%, transparent); cursor: pointer; border-radius: 0; }
+    .power-control-option:first-child { border-top: none; }
+    .power-control-option:hover { background: rgba(var(--sbp-accent-rgb), 0.08); }
+    .power-control-option[aria-checked="true"] .selection-label { color: var(--sbp-text); font-weight: 700; }
+    .power-control-option .selection-chevron .mdi { color: var(--sbp-accent); }
+    .selection-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; }
+    .selection-label { color: var(--sbp-text); font-size: 13px; font-weight: 600; }
+    .selection-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
+    .selection-chevron { color: var(--sbp-muted); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
+    .selection-chevron .mdi { width: 18px; height: 18px; }
+    .edit-selection-row { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border-radius: 0; }
+    .edit-selection-row:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
+    .edit-selection-row[aria-disabled="true"] { cursor: default; }
+    .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
+    .power-sequences-note { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; padding: 8px 14px 0; }
+
+    /* -- guard screens (the live host's) --------------------------------------------------------- */
+    .capture-error { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.55; }
+    .guard-icon { color: var(--sbp-muted); }
+    .guard-icon .mdi { width: 40px; height: 40px; }
+    .capture-error-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
+    .guard-sub { max-width: 360px; font-size: 13px; }
+    .action-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 14px; cursor: pointer; }
+    .btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+    .btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
+
+    /* -- dialogs ---------------------------------------------------------------------------------- */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--de-radius-lg); border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); overflow: hidden; color: var(--sbp-text); }
+    .dialog.small { width: min(500px, calc(100vw - 36px)); }
+    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .dialog-header { border-bottom: 1px solid var(--sbp-line); }
+    .dialog-title { font-size: 16px; flex: 1; color: var(--sbp-text); }
+    .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .dialog-text { font-size: 14px; line-height: 1.55; color: var(--sbp-text); }
+    .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
+    .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
+    .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
+    .dialog-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 12px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+    .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+    .dialog-btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
+    .dialog-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--sbp-err) 18%, transparent); }
+    .dialog-btn:disabled { opacity: 0.45; cursor: default; }
+    .backup-drawer-sub { color: var(--sbp-muted); font-size: 13px; line-height: 1.5; }
+    .delete-impact-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .delete-impact-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--sbp-text); }
+    .delete-impact-list .mdi { width: 18px; height: 18px; color: var(--sbp-muted); }
+    .delete-replace-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sbp-muted); line-height: 1.45; }
+    /* The panel's base styles every <label> as a small uppercase caption; the card's field wrapper is a plain block. */
+    label.decoded-field, .decoded-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: inherit; letter-spacing: 0; text-transform: none; color: inherit; }
+    .decoded-field-label { font-size: 12px; font-weight: 600; color: var(--sbp-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .decoded-field-input { width: 100%; font: inherit; font-size: 13px; color: var(--sbp-text); background: var(--sbp-input); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 10px; }
+    .decoded-field-input:focus { outline: none; border-color: var(--sbp-accent); }
+    select.decoded-field-input { cursor: pointer; }
+    .binding-static-field { font-size: 13px; font-weight: 600; color: var(--sbp-text); padding: 8px 10px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
+    .binding-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    /* A switch in place of ha-switch. */
+    .sb-switch { position: relative; width: 40px; height: 22px; flex: 0 0 auto; appearance: none; margin: 0; border-radius: 999px; background: var(--sbp-line); cursor: pointer; transition: background 120ms ease; }
+    .sb-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--sbp-panel); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 120ms ease; }
+    .sb-switch:checked { background: var(--sbp-accent); }
+    .sb-switch:checked::after { transform: translateX(18px); }
+
+    /* -- the activity editor (the card's activityEditorStyles): role rows, fixed menus, the drill-in footer -- */
+    .decoded-field-helper { font-size: 11px; color: var(--sbp-muted); line-height: 1.35; }
+    .quick-access-list--overlays { overflow: visible; }
+    .power-members-summary { padding: 8px 4px 0; }
+    .member-add { position: relative; display: inline-flex; }
+    .member-add-backdrop { position: fixed; inset: 0; background: transparent; border: none; padding: 0; margin: 0; cursor: default; z-index: 4; }
+    .member-add-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; min-width: 180px; max-height: 240px; overflow-y: auto; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-md); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column; padding: 4px; }
+    .member-add-option { border: none; background: none; text-align: left; padding: 8px 10px; font: inherit; font-size: 0.9rem; color: var(--sbp-text); border-radius: var(--de-radius-sm); cursor: pointer; white-space: normal; }
+    .member-add-option:hover:not(:disabled) { background: color-mix(in srgb, var(--sbp-text) 10%, transparent); }
+    .member-add-option:disabled { color: var(--sbp-muted); cursor: default; opacity: 0.7; }
+    .role-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+    .role-icon { color: var(--sbp-muted); flex: none; }
+    .role-icon.mdi { width: 18px; height: 18px; }
+    .role-main { flex: 1; min-width: 0; }
+    .role-label { font-size: 0.92rem; color: var(--sbp-text); }
+    .role-note { font-size: 0.75rem; color: var(--sbp-muted); }
+    .role-trigger { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-text); padding: 5px 8px; font: inherit; font-size: 0.85rem; cursor: pointer; max-width: 190px; }
+    .role-trigger .mdi { width: 15px; height: 15px; }
+    .role-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .role-trigger[data-state="unused"] > span { color: var(--sbp-muted); }
+    .role-trigger[data-state="custom"] > span, .role-trigger[data-state="customized"] > span { font-style: italic; }
+    .role-menu { right: 0; left: auto; min-width: 200px; }
+    .quick-access-sortable-item.quick-access-footer-item { border-top: 1px solid var(--sbp-line); background: color-mix(in srgb, var(--sbp-panel-2) 55%, transparent); border-radius: 0 0 calc(var(--de-radius-lg) - 1px) calc(var(--de-radius-lg) - 1px); overflow: hidden; }
+    .edit-selection-row--footer .selection-label { color: var(--sbp-muted); font-size: 12.5px; font-weight: 600; }
+    .footer-row-icon { flex: 0 0 auto; color: var(--sbp-muted); }
+
+    @container (max-width: 480px) {
+      .detail-section-nav-btn { gap: 0; }
+      .detail-section-nav-btn .mdi { display: none; }
+    }
+    @container (max-width: 480px) {
+      .detail-view { margin: -12px -12px -12px; }
+    }
+    @container (max-width: 360px) {
+      .detail-title-actions { gap: 6px; min-width: max-content; }
+      .detail-section-nav { overflow-x: auto; scrollbar-width: none; }
+      .detail-section-nav::-webkit-scrollbar { display: none; }
+      .detail-section-nav-btn { flex-basis: auto; min-width: max-content; padding-inline: 12px; }
+      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+      .dialog, .dialog.small { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: var(--de-radius-xl) var(--de-radius-xl) 0 0; }
+      .dialog-footer { flex-direction: column; align-items: stretch; }
+      .dialog-footer-actions { width: 100%; }
+      .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
+      .dialog-footer-note { min-height: 0; }
+    }
+`;
+
+// server-panel/src/views/entity-editor-base.ts
+function icon3(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+var SbPanelEntityEditor = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.ctx = null;
+    this._stage = "loading";
+    this._snapshot = null;
+    this._baseline = null;
+    this._working = null;
+    this._info = null;
+    this._callbackDeviceId = null;
+    this._exitConfirm = null;
+    this._syncing = false;
+    this._syncFailed = null;
+    this._refreshing = false;
+    this._deleting = false;
+    this._notice = null;
+    this._loadedKey = null;
+    this._loadSeq = 0;
+    this._requestClose = () => {
+      this.askToLeave(() => this._goToList());
+    };
+    this._goToList = () => {
+      this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: entityListSub(this.entityKind) } }));
+    };
+    this._leaveWithoutSync = () => {
+      const then = this._exitConfirm?.then;
+      this._exitConfirm = null;
+      const hubId = this._hub?.hub_id;
+      if (hubId) this.store.discardDraft(hubId);
+      if (this._baseline) this._working = structuredClone(this._baseline);
+      then?.();
+    };
+    this._syncAndLeave = () => {
+      const then = this._exitConfirm?.then;
+      this._exitConfirm = null;
+      void this._sync().then((ok) => {
+        if (ok) then?.();
+      });
+    };
+    this._retrySync = () => {
+      this._stage = "editing";
+      this._syncFailed = null;
+      void this._sync();
+    };
+    this._keepEditing = () => {
+      this._stage = "editing";
+      this._syncFailed = null;
+    };
   }
-  end(event) {
-    const drag = this.state;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    const over = this.slot(event.clientY);
-    this.cancel();
-    if (over !== drag.from) this.moved(drag.from, over);
+  /** A write that must land before the entity's own (the activity editor's Wifi Events phase); false stops the sync. */
+  async _beforeSync(_hubId) {
+    return true;
   }
-  cancel(event) {
-    if (event && event.pointerId !== this.state?.pointerId) return;
-    const id = this.state?.pointerId;
-    this.state = null;
-    if (id != null && this.handle?.hasPointerCapture(id)) this.handle.releasePointerCapture(id);
-    this.handle = null;
-    this.changed();
+  // -- lifecycle ---------------------------------------------------------------------------------------
+  updated(changed) {
+    const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.entityId ?? ""}`;
+    if (key !== this._loadedKey) {
+      this._loadedKey = key;
+      this._reset();
+      if (this.ctx?.hub && this.entityId != null) void this._load();
+    } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
+      this._working = this._baseline ? structuredClone(this._baseline) : null;
+    }
   }
-  transform(index) {
-    return this.state ? `translateY(${this.offset(index)}px)` : "";
+  _reset() {
+    this._stage = "loading";
+    this._snapshot = null;
+    this._baseline = null;
+    this._working = null;
+    this._exitConfirm = null;
+    this._syncing = false;
+    this._syncFailed = null;
+    this._notice = null;
+    this._resetView();
+  }
+  get _hub() {
+    return this.ctx?.hub ?? null;
+  }
+  get _hubVersion() {
+    return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
+  }
+  // -- loading: the snapshot, the banner (firmware floor), the callback device -------------------------
+  async _load(options = {}) {
+    const hubId = this._hub?.hub_id;
+    const entityId = this.entityId;
+    const kind = this.entityKind;
+    if (!hubId || entityId == null) return;
+    const seq = ++this._loadSeq;
+    const [snapshot, info, callback] = await Promise.all([
+      this.api.snapshot(hubId),
+      this.api.hubInfo(hubId).catch(() => null),
+      this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
+    ]);
+    if (seq !== this._loadSeq) return;
+    this._info = info?.ok ? info.body : null;
+    this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
+    if (!snapshot.ok || !snapshot.body) {
+      this._notice = problemText(snapshot);
+      this._stage = "missing";
+      return;
+    }
+    this._snapshot = snapshot.body;
+    if (firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version)) {
+      this._stage = "guard_firmware";
+      return;
+    }
+    const bundle = snapshotAsBundle(snapshot.body);
+    const element = entityElement(bundle, kind, entityId);
+    if (!element) {
+      this._stage = "missing";
+      return;
+    }
+    if (element.complete === false) {
+      this._baseline = bundle;
+      this._working = null;
+      this._stage = "needs_refresh";
+      return;
+    }
+    this._baseline = bundle;
+    const runtime = this.ctx?.runtime ?? null;
+    const draft = runtime?.draft ?? null;
+    const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
+    const data = restorable ? entityDraftData(draft, kind, entityId) : null;
+    this._working = data ? withDraftData(bundle, kind, entityId, data) : structuredClone(bundle);
+    if (!data && draft?.scope === entityDraftScope(kind, entityId)) this.store.discardDraft(hubId);
+    this._stage = "editing";
+    this._syncFailed = null;
+  }
+  // -- the working copy ------------------------------------------------------------------------------------
+  get _workingEntity() {
+    return this.entityId != null ? entityElement(this._working, this.entityKind, this.entityId) : null;
+  }
+  get _baselineEntity() {
+    return this.entityId != null ? entityElement(this._baseline, this.entityKind, this.entityId) : null;
+  }
+  /** Device elements the edit touched: only an activity edit reaches into devices (Set input). */
+  _touchedDevices(working = this._working) {
+    return this.entityKind === "activity" ? touchedDevices(working, this._baseline) : [];
+  }
+  /** Dirty is JSON inequality of the entity's element, as on the card (whole-bundle compare there). */
+  get _dirty() {
+    if (this._stage !== "editing") return false;
+    return !elementsEqual(this._workingEntity, this._baselineEntity) || this._touchedDevices().length > 0;
+  }
+  /** The card's `_commitEditBundleEdit`: replace the working bundle, mirror the edit into the draft slot. */
+  _commit(next) {
+    const hubId = this._hub?.hub_id;
+    const entityId = this.entityId;
+    if (!hubId || entityId == null || !this._snapshot) return;
+    this._working = next;
+    const element = entityElement(next, this.entityKind, entityId);
+    const devices = this._touchedDevices(next);
+    if (element && (!elementsEqual(element, this._baselineEntity) || devices.length)) {
+      this.store.setDraft(hubId, {
+        scope: entityDraftScope(this.entityKind, entityId),
+        snapshotId: this._snapshot.snapshot_id,
+        data: devices.length ? { element, devices } : { element }
+      });
+    } else {
+      this.store.discardDraft(hubId);
+    }
+  }
+  /** For the shell: leaving with unsynced edits goes through the card's dialog (device editor plan, decision 3). */
+  hasUnsyncedChanges() {
+    return this._dirty;
+  }
+  askToLeave(then) {
+    if (!this._dirty) {
+      then();
+      return;
+    }
+    this._exitConfirm = { then };
+  }
+  /** A failure shown in the bottom dock (the shell's sb-message) where it is always in view. */
+  _dockError(text) {
+    this.dispatchEvent(new CustomEvent("sb-message", { bubbles: true, composed: true, detail: { text, ok: false } }));
+  }
+  /** The offset the sticky top dock and the sticky header take from the viewport's top. */
+  _stickyOffset() {
+    const dock = parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0;
+    const header = this.renderRoot.querySelector(".sticky-header")?.getBoundingClientRect().height ?? 0;
+    return dock + header;
+  }
+  // -- sync: the single-entity PUT with If-Match, followed as a job ------------------------------------------
+  _failSync(stale, message) {
+    this._syncFailed = { stale, message };
+    this._stage = "sync_failed";
+    return false;
+  }
+  /** A started job followed to its end; the failure text when it did not finish, null when it did. */
+  async _followToEnd(hubId, started) {
+    if (started.status === 412) return { stale: true, message: problemText(started) };
+    if (started.status !== 202 || !started.body) {
+      this.store.noteResponse(hubId, started);
+      return { stale: false, message: problemText(started) };
+    }
+    const job = await this.api.followJob(hubId, started.body.job_id);
+    if (job && job.status === "done") return null;
+    const message = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
+    const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
+    return { stale, message };
+  }
+  async _sync() {
+    const hubId = this._hub?.hub_id;
+    const entityId = this.entityId;
+    if (!hubId || entityId == null || !this._workingEntity || !this._snapshot || this._syncing) return false;
+    this._syncing = true;
+    this._syncFailed = null;
+    try {
+      if (!await this._beforeSync(hubId)) return false;
+      const element = this._workingEntity;
+      const snapshot = this._snapshot;
+      if (!element || !snapshot) return false;
+      const failed = await this._followToEnd(hubId, await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id));
+      if (failed) return this._failSync(failed.stale, failed.message);
+      this.store.discardDraft(hubId);
+      await this._load({ keepDraft: false });
+      return true;
+    } catch (err) {
+      return this._failSync(false, String(err));
+    } finally {
+      this._syncing = false;
+    }
+  }
+  _failBeforeSync(stale, message) {
+    return this._failSync(stale, message);
+  }
+  /** "Reload from hub": read this entity from the hub as a job, then re-open it; the local edit is discarded. */
+  async _reloadFromHub() {
+    const hubId = this._hub?.hub_id;
+    const entityId = this.entityId;
+    if (!hubId || entityId == null || this._refreshing) return;
+    this._refreshing = true;
+    try {
+      this.store.discardDraft(hubId);
+      const scope = this.entityKind === "device" ? { device_id: entityId } : { activity_id: entityId };
+      const started = await this.api.refreshSnapshot(hubId, scope);
+      if (started.status === 202 && started.body) await this.api.followJob(hubId, started.body.job_id);
+      else this.store.noteResponse(hubId, started);
+    } finally {
+      this._refreshing = false;
+    }
+    await this._load({ keepDraft: false });
+  }
+  // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
+  async _deleteEntity() {
+    const hubId = this._hub?.hub_id;
+    const entityId = this.entityId;
+    if (!hubId || entityId == null || this._deleting) return;
+    this._deleting = true;
+    try {
+      const started = await this._startDelete(hubId, entityId);
+      if (started.status !== 202 || !started.body) {
+        this.store.noteResponse(hubId, started);
+        this.store.say(`Delete refused: ${problemText(started)}`, false);
+        return;
+      }
+      const job = await this.api.followJob(hubId, started.body.job_id);
+      if (!job || job.status !== "done") {
+        this.store.say(`Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.type}` : ""}`, false);
+        return;
+      }
+      this.store.discardDraft(hubId);
+      this._goToList();
+    } finally {
+      this._deleting = false;
+    }
+  }
+  // -- render ---------------------------------------------------------------------------------------------------
+  render() {
+    const S7 = this.frameStrings;
+    if (!this._hub || this.entityId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
+    switch (this._stage) {
+      case "loading":
+        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S7.loading}</div></div></div>`;
+      case "guard_firmware": {
+        const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
+        return this._renderGuard(mdiChip, S7.firmwareUnsupportedTitle, S7.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S7.back}</button>`, "guard-firmware");
+      }
+      case "needs_refresh":
+        return this._renderGuard(mdiDatabaseRefreshOutline, S7.needsRefreshTitle, S7.needsRefreshBody, b2`
+          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S7.refreshEntity}</button>
+          <button class="btn" @click=${this._goToList}>${S7.back}</button>`, "guard-refresh");
+      case "missing":
+        return this._renderGuard(mdiAlertCircleOutline, S7.missingTitle, this._notice ?? S7.missingBody, b2`<button class="btn" @click=${this._goToList}>${S7.back}</button>`, "guard-missing");
+      case "sync_failed": {
+        const failed = this._syncFailed;
+        const stale = Boolean(failed?.stale);
+        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S7.syncStaleTitle : S7.syncFailedTitle, stale ? S7.syncStaleBody : failed?.message ?? "", b2`
+          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S7.syncRetry}</button>`}
+          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S7.syncReload}</button>
+          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S7.syncKeepEditing}</button>`, "sync-failed");
+      }
+      default:
+        return this._renderEditing();
+    }
+  }
+  _renderGuard(iconPath, title, body, actions, id) {
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view" id=${id}>
+          <div class="capture-error">
+            <div class="guard-icon">${icon3(iconPath)}</div>
+            <div class="capture-error-title">${title}</div>
+            <div class="guard-sub">${body}</div>
+            <div class="action-row">${actions}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderExitConfirmDialog() {
+    if (!this._exitConfirm) return A;
+    const S7 = this.frameStrings;
+    const close = () => {
+      this._exitConfirm = null;
+    };
+    return b2`
+      <div class="modal-backdrop" @click=${close}>
+        <div class="dialog small" id="exit-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${S7.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S7.syncKeepEditing} @click=${close}>${icon3(mdiClose)}</button></div>
+          <div class="dialog-body"><div class="dialog-text">${S7.exitUnsyncedBody}</div></div>
+          <div class="dialog-footer">
+            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S7.exitWithoutSync}</button>
+            <div class="dialog-footer-actions">
+              <button class="btn" id="exit-keep" type="button" @click=${close}>${S7.syncKeepEditing}</button>
+              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S7.exitSyncNow}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 };
+SbPanelEntityEditor.properties = {
+  api: { attribute: false },
+  ctx: { attribute: false },
+  store: { attribute: false },
+  _stage: { state: true },
+  _snapshot: { state: true },
+  _baseline: { state: true },
+  _working: { state: true },
+  _info: { state: true },
+  _callbackDeviceId: { state: true },
+  _exitConfirm: { state: true },
+  _syncing: { state: true },
+  _syncFailed: { state: true },
+  _refreshing: { state: true },
+  _deleting: { state: true },
+  _notice: { state: true }
+};
 
-// server-panel/src/views/device-editor-state.ts
-var MIN_SUPPORTED_FIRMWARE = { X1: 17, X1S: 5, X2: 5 };
-function firmwareUnsupported(hubVersion, firmware) {
-  const required = MIN_SUPPORTED_FIRMWARE[String(hubVersion ?? "").toUpperCase()];
-  if (required === void 0 || firmware == null) return null;
-  return firmware < required ? { installed: firmware, required } : null;
+// server-panel/src/views/activity-editor.ts
+var ACTIVITY_EDITOR_TAG = "sb-panel-activity-editor";
+var B2 = TOOLS_CARD_STRINGS.backup;
+var A2 = TOOLS_CARD_STRINGS.activities;
+var C2 = TOOLS_CARD_STRINGS.common;
+var FRAME = {
+  loading: A2.capturingFromCache("activity"),
+  back: A2.back,
+  firmwareUnsupportedTitle: A2.firmwareUnsupportedTitle,
+  firmwareUnsupportedBody: A2.firmwareUnsupportedBody,
+  needsRefreshTitle: A2.needsRefreshTitle,
+  needsRefreshBody: A2.needsRefreshBody("activity"),
+  refreshEntity: "Refresh activity",
+  missingTitle: "Activity not found",
+  missingBody: "This activity is not in the hub's snapshot.",
+  syncFailedTitle: A2.syncFailedTitle,
+  syncStaleTitle: A2.syncStaleTitle("activity"),
+  syncStaleBody: A2.syncStaleBody("activity"),
+  syncRetry: A2.syncRetry,
+  syncReload: A2.syncReload,
+  syncKeepEditing: A2.syncKeepEditing,
+  exitUnsyncedTitle: A2.exitUnsyncedTitle,
+  exitUnsyncedBody: A2.exitUnsyncedBody("activity"),
+  exitSyncNow: A2.exitSyncNow,
+  exitWithoutSync: A2.exitWithoutSync
+};
+var P2 = {
+  dragShortcutAria: "Drag to reorder (arrow keys move the shortcut)",
+  dragStepAria: "Drag to reorder (arrow keys move the step)",
+  stepChipRequired: "required",
+  stepChipCommand: "command",
+  wifiEventLongPressNote: "Long press fires this event's long-press record. The server reports it on the event stream as a long press.",
+  wifiEventNoSlots: "The callback device has no slots."
+};
+var POWER_ON = 198;
+var POWER_OFF = 199;
+var ROLE_ICONS = {
+  volume: mdiVolumeHigh,
+  navigation: mdiGamepadRoundOutline,
+  playback: mdiPlayPause,
+  channels: mdiPound
+};
+function roleLabel(group) {
+  switch (group) {
+    case "volume":
+      return B2.roleVolume;
+    case "navigation":
+      return B2.roleNavigation;
+    case "playback":
+      return B2.rolePlayback;
+    case "channels":
+      return B2.roleChannels;
+  }
 }
-function snapshotAsBundle(snapshot) {
-  const doc = snapshot;
-  return {
-    ...doc,
-    kind: typeof doc.kind === "string" ? doc.kind : "hub_bundle",
-    schema_version: typeof doc.schema_version === "number" ? doc.schema_version : 1,
-    devices: Array.isArray(doc.devices) ? doc.devices : [],
-    activities: Array.isArray(doc.activities) ? doc.activities : []
-  };
+function roleTriggerLabel(role) {
+  switch (role.state) {
+    case "device":
+      return role.deviceName ?? "";
+    case "customized":
+      return B2.roleCustomized(role.deviceName ?? "");
+    case "custom":
+      return B2.roleCustom;
+    case "unused":
+      return B2.roleNotUsed;
+  }
 }
-function deviceElement(bundle, deviceId) {
-  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id ?? -1) === Number(deviceId)) ?? null;
-}
-function withDeviceElement(bundle, deviceId, element) {
-  const id = Number(deviceId);
-  return { ...bundle, devices: bundle.devices.map((entry) => Number(entry?.device?.device_id ?? -1) === id ? element : entry) };
-}
-function elementsEqual(a4, b3) {
-  return JSON.stringify(a4) === JSON.stringify(b3);
-}
-function deviceDraftScope(deviceId) {
-  return `hub/devices/${Number(deviceId)}`;
-}
-function draftElementFor(draft, deviceId) {
-  if (!draft || draft.scope !== deviceDraftScope(deviceId)) return null;
-  const data = draft.data;
-  const element = data?.element;
-  if (!element || typeof element !== "object") return null;
-  if (Number(element.device?.device_id ?? -1) !== Number(deviceId)) return null;
-  return element;
-}
-function supportsUnicodeNames(hubVersion) {
-  const version = String(hubVersion ?? "").toUpperCase();
-  return version.includes("X2") || version.includes("X1S");
-}
-function sanitizeName(hubVersion, value) {
-  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 30);
-}
-var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-function wifiEventsSlotCount(element) {
-  return Math.floor((element?.commands?.length ?? 0) / 2);
-}
-function isLongRecord(element, commandId) {
-  const slots = wifiEventsSlotCount(element);
-  return slots > 0 && Number(commandId) > slots;
+var SbPanelActivityEditor = class extends SbPanelEntityEditor {
+  constructor() {
+    super(...arguments);
+    this.activityId = null;
+    this.entityKind = "activity";
+    this._rename = null;
+    this._deleteConfirm = null;
+    /** The open sequence or macro (the card's macro step editor sub-view). */
+    this._macroEditor = null;
+    /** The "Individual buttons" sub-view. */
+    this._bindingsView = false;
+    this._roleMenu = null;
+    this._roleConfirm = null;
+    this._addShortcut = null;
+    this._addMember = null;
+    this._binding = null;
+    this._stepDialog = null;
+    this._mainScrollY = 0;
+    this._bindingsScrollY = 0;
+    /** One sorter for both lists: the macro editor shows steps, the main view shortcuts. */
+    this._sorter = new PointerReorder(
+      () => Array.from(this.renderRoot.querySelectorAll("[data-sort-index]")),
+      () => this.requestUpdate(),
+      (from, to) => this._macroEditor ? this._moveStep(from, to - from) : this._moveShortcut(from, to - from),
+      () => this._stickyOffset()
+    );
+    /** The role menus are fixed to the viewport, so a scroll closes them (the card's rule). */
+    this._onWindowScroll = () => {
+      if (this._roleMenu) this._roleMenu = null;
+    };
+    this._closeMacroEditor = () => {
+      this._macroEditor = null;
+      this._stepDialog = null;
+      this._sorter.cancel();
+      this._restoreScroll(this._bindingsView ? this._bindingsScrollY : this._mainScrollY);
+    };
+    this._openBindingsView = () => {
+      this._mainScrollY = window.scrollY;
+      this._roleMenu = null;
+      this._bindingsView = true;
+      window.scrollTo({ top: 0 });
+    };
+    this._closeBindingsView = () => {
+      this._bindingsView = false;
+      this._binding = null;
+      this._deleteConfirm = null;
+      this._restoreScroll(this._mainScrollY);
+    };
+    this._closeRename = () => {
+      this._rename = null;
+    };
+    this._renameInput = (event) => {
+      if (!this._rename) return;
+      const input = event.currentTarget;
+      const value = sanitizeName(this._hubVersion, input.value);
+      input.value = value;
+      this._rename = { ...this._rename, draft: value, error: "" };
+    };
+    this._applyRename = () => {
+      const dialog = this._rename;
+      const activityId = this.activityId;
+      if (!dialog || activityId == null || !this._working) return;
+      const next = sanitizeName(this._hubVersion, dialog.draft);
+      if (!next) {
+        this._rename = { ...dialog, error: B2.enterName };
+        return;
+      }
+      if (dialog.target.kind === "activity") {
+        this._commit(renameBundleActivity(this._working, activityId, next));
+      } else {
+        this._commit(renameBundleActivityMacro(this._working, activityId, dialog.target.buttonId, next));
+        if (this._macroEditor?.buttonId === dialog.target.buttonId) this._macroEditor = { ...this._macroEditor, name: next };
+      }
+      this._rename = null;
+    };
+    this._closeDeleteConfirm = () => {
+      this._deleteConfirm = null;
+    };
+    this._confirmDelete = () => {
+      const dialog = this._deleteConfirm;
+      if (!dialog || !this._working) return;
+      this._deleteConfirm = null;
+      if (dialog.target.kind === "activity") {
+        void this._deleteEntity();
+        return;
+      }
+      this._commit(applyBundleDelete(this._working, dialog.target, { reconcileMembership: false }));
+    };
+    this._confirmRole = () => {
+      const pending = this._roleConfirm;
+      this._roleConfirm = null;
+      if (!pending || !this._working || this.activityId == null) return;
+      this._commit(setActivityRoleDevice(this._working, this.activityId, pending.group, pending.deviceId));
+    };
+    this._openAddShortcut = () => {
+      if (!this._working || this.activityId == null) return;
+      const deviceId = this._deviceOptions()[0]?.id ?? null;
+      this._addShortcut = { kind: "command", deviceId, commandId: this._firstCommandId(deviceId), slot: this._wifiSlots[0]?.slot ?? null, error: "", ...this._defaultMacroTarget() };
+    };
+    this._closeAddShortcut = () => {
+      this._addShortcut = null;
+    };
+    this._applyAddShortcut = () => {
+      const dialog = this._addShortcut;
+      const activityId = this.activityId;
+      if (!dialog || !this._working || activityId == null) return;
+      if (dialog.kind === "command") {
+        if (dialog.deviceId == null || dialog.commandId == null) {
+          this._addShortcut = { ...dialog, error: B2.addFavoriteNoCommands };
+          return;
+        }
+        const command = deviceCommandItems(this._working, dialog.deviceId).find((item) => item.commandId === dialog.commandId);
+        this._commit(addBundleActivityFavorite(this._working, activityId, dialog.deviceId, dialog.commandId, sanitizeName(this._hubVersion, command?.label ?? "")));
+        this._addShortcut = null;
+        return;
+      }
+      if (dialog.kind === "wifi_event") {
+        const slot = this._wifiSlots.find((entry) => entry.slot === dialog.slot);
+        if (!slot || this._callbackDeviceId == null) {
+          this._addShortcut = { ...dialog, error: B2.bindingIncomplete };
+          return;
+        }
+        this._commit(addBundleActivityFavorite(this._working, activityId, this._callbackDeviceId, slot.shortCommandId, sanitizeName(this._hubVersion, slot.label)));
+        this._addShortcut = null;
+        return;
+      }
+      const resolved = this._resolveMacro(this._working, dialog);
+      if (!resolved) {
+        this._addShortcut = { ...dialog, error: B2.bindingIncomplete };
+        return;
+      }
+      if (resolved.created) this._commit(resolved.bundle);
+      this._addShortcut = null;
+      this._openMacroEditor(resolved.macroId, resolved.name);
+    };
+    // -- members ----------------------------------------------------------------------------------------------------
+    this._openAddMember = () => {
+      this._addMember = { deviceId: this._addableMembers()[0]?.id ?? null };
+    };
+    this._closeAddMember = () => {
+      this._addMember = null;
+    };
+    this._applyAddMember = () => {
+      const dialog = this._addMember;
+      if (!dialog || dialog.deviceId == null || !this._working || this.activityId == null) return;
+      this._commit(addActivityMemberDevice(this._working, this.activityId, dialog.deviceId));
+      this._addMember = null;
+    };
+    this._openAddBinding = () => {
+      const activityId = this.activityId;
+      if (!this._working || activityId == null) return;
+      const unbound = unboundButtonsForActivity(this._working, activityId);
+      if (!unbound.length) return;
+      const deviceId = this._deviceOptions()[0]?.id ?? null;
+      const commandId = this._firstCommandId(deviceId);
+      this._binding = {
+        editButtonId: null,
+        buttonId: unbound[0].code,
+        kind: "command",
+        deviceId,
+        commandId,
+        macro: this._defaultMacroTarget(),
+        slot: this._wifiSlots[0]?.slot ?? null,
+        longPress: false,
+        lpKind: "command",
+        lpDeviceId: deviceId,
+        lpCommandId: commandId,
+        lpMacro: this._defaultMacroTarget(),
+        error: ""
+      };
+    };
+    this._closeBinding = () => {
+      this._binding = null;
+    };
+    this._applyBinding = () => {
+      const dialog = this._binding;
+      const activityId = this.activityId;
+      if (!dialog || !this._working || activityId == null) return;
+      const fail = () => {
+        this._binding = { ...dialog, error: B2.bindingIncomplete };
+      };
+      const buttonId = Number(dialog.buttonId);
+      if (!buttonId) return fail();
+      if (dialog.kind === "wifi_event") {
+        const slot = this._wifiSlots.find((entry) => entry.slot === dialog.slot);
+        if (!slot || this._callbackDeviceId == null) return fail();
+        const deviceId = this._callbackDeviceId;
+        this._commit(upsertActivityButtonBinding(this._working, activityId, {
+          buttonId,
+          deviceId,
+          commandId: slot.shortCommandId,
+          longPress: dialog.longPress ? { deviceId, commandId: slot.longCommandId } : null
+        }));
+        this._binding = null;
+        return;
+      }
+      let next = this._working;
+      let macroToOpen = null;
+      let longPress = null;
+      if (dialog.longPress) {
+        if (dialog.lpKind === "command") {
+          if (!dialog.lpDeviceId || !dialog.lpCommandId) return fail();
+          longPress = { deviceId: Number(dialog.lpDeviceId), commandId: Number(dialog.lpCommandId) };
+        } else {
+          const resolved = this._resolveMacro(next, dialog.lpMacro);
+          if (!resolved) return fail();
+          next = resolved.bundle;
+          longPress = { deviceId: activityId, commandId: resolved.macroId };
+          if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
+        }
+      }
+      if (dialog.kind === "command") {
+        if (!dialog.deviceId || !dialog.commandId) return fail();
+        next = upsertActivityButtonBinding(next, activityId, { buttonId, deviceId: Number(dialog.deviceId), commandId: Number(dialog.commandId), longPress });
+      } else {
+        const resolved = this._resolveMacro(next, dialog.macro);
+        if (!resolved) return fail();
+        next = upsertActivityButtonBinding(resolved.bundle, activityId, { buttonId, deviceId: activityId, commandId: resolved.macroId, longPress });
+        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
+      }
+      this._commit(next);
+      this._binding = null;
+      if (macroToOpen) this._openMacroEditor(macroToOpen.buttonId, macroToOpen.name);
+    };
+    this._openAddStep = () => {
+      const deviceId = this._deviceOptions()[0]?.id ?? null;
+      this._stepDialog = { editIndex: null, kind: "command", deviceId, commandId: this._firstCommandId(deviceId), slot: this._wifiSlots[0]?.slot ?? null, hold: "0", error: "" };
+    };
+    this._closeStepDialog = () => {
+      this._stepDialog = null;
+    };
+    this._applyStep = () => {
+      const dialog = this._stepDialog;
+      const editor = this._macroEditor;
+      const activityId = this.activityId;
+      if (!dialog || !editor || !this._working || activityId == null) return;
+      const hold = secondsToByte(dialog.hold);
+      if (dialog.kind === "input") {
+        const deviceId2 = Number(dialog.deviceId);
+        if (deviceId2 > 0) {
+          this._commit(dialog.commandId == null ? clearActivityDeviceInput(this._working, activityId, deviceId2) : setActivityDeviceInput(this._working, activityId, deviceId2, Number(dialog.commandId)));
+        }
+        this._stepDialog = null;
+        return;
+      }
+      let deviceId = Number(dialog.deviceId);
+      let commandId = Number(dialog.commandId);
+      if (dialog.kind === "wifi_event") {
+        const slot = this._wifiSlots.find((entry) => entry.slot === dialog.slot);
+        if (!slot || this._callbackDeviceId == null) {
+          this._stepDialog = { ...dialog, error: B2.bindingIncomplete };
+          return;
+        }
+        deviceId = this._callbackDeviceId;
+        commandId = slot.shortCommandId;
+      }
+      if (!commandId || !deviceId) {
+        this._stepDialog = { ...dialog, error: B2.stepNoCommands };
+        return;
+      }
+      this._commit(dialog.editIndex === null ? addActivityMacroCommandStep(this._working, activityId, editor.buttonId, deviceId, commandId, hold) : updateActivityMacroStep(this._working, activityId, editor.buttonId, dialog.editIndex, { deviceId, commandId, hold }));
+      this._stepDialog = null;
+    };
+  }
+  get entityId() {
+    return this.activityId;
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("scroll", this._onWindowScroll, { passive: true });
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._sorter.cancel();
+    window.removeEventListener("scroll", this._onWindowScroll);
+  }
+  _resetView() {
+    this._rename = null;
+    this._deleteConfirm = null;
+    this._macroEditor = null;
+    this._bindingsView = false;
+    this._roleMenu = null;
+    this._roleConfirm = null;
+    this._addShortcut = null;
+    this._addMember = null;
+    this._binding = null;
+    this._stepDialog = null;
+    this._sorter.cancel();
+  }
+  get frameStrings() {
+    return FRAME;
+  }
+  _startSync(hubId, activityId, element, devices, snapshotId) {
+    return this.api.editActivity(hubId, activityId, element, devices, snapshotId);
+  }
+  _startDelete(hubId, activityId) {
+    return this.api.removeActivity(hubId, activityId);
+  }
+  _renderEditing() {
+    if (this._macroEditor) return this._renderMacroEditor(this._macroEditor);
+    if (this._bindingsView) return this._renderBindingsView();
+    return this._renderEditor();
+  }
+  // -- reads ------------------------------------------------------------------------------------------
+  get _title() {
+    return String(this._workingEntity?.device?.name ?? "").trim();
+  }
+  get _wifiSlots() {
+    return WIFI_EVENTS_ENABLED ? wifiEventSlots(this._working, this._callbackDeviceId) : [];
+  }
+  get _wifiEventsAvailable() {
+    return this._wifiSlots.length > 0;
+  }
+  /** With Wifi Events on, the callback device leaves the pickers: its slots are the "Wifi Event" type (plan decision 8). */
+  _pickable(option) {
+    return !WIFI_EVENTS_ENABLED || option.id !== this._callbackDeviceId;
+  }
+  _deviceOptions() {
+    return bundleEditableDeviceOptions(this._working).filter((option) => this._pickable(option));
+  }
+  _addableMembers() {
+    if (!this._working || this.activityId == null) return [];
+    return activityAddableDevices(this._working, this.activityId).filter((option) => this._pickable(option));
+  }
+  _macroOptions() {
+    if (!this._working || this.activityId == null) return [];
+    return activityUserMacroSummaries(this._working, this.activityId).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+  }
+  _macroName(buttonId) {
+    return this._macroOptions().find((macro) => macro.value === Number(buttonId || 0))?.label ?? "";
+  }
+  _firstCommandId(deviceId) {
+    return deviceId != null && this._working ? deviceCommandItems(this._working, deviceId)[0]?.commandId ?? null : null;
+  }
+  _defaultMacroTarget() {
+    const first = this._macroOptions()[0] ?? null;
+    return { mode: first ? "existing" : "new", macroId: first?.value ?? null, name: "" };
+  }
+  _kindFor(deviceId) {
+    return targetKindFor(Number(this.activityId), this._callbackDeviceId, this._wifiEventsAvailable, deviceId);
+  }
+  // -- sub-view navigation (the page scrolls, so its position is kept per level) -------------------------
+  _openMacroEditor(buttonId, name) {
+    if (this._bindingsView) this._bindingsScrollY = window.scrollY;
+    else this._mainScrollY = window.scrollY;
+    this._macroEditor = { buttonId: Number(buttonId), name };
+    this._stepDialog = null;
+    window.scrollTo({ top: 0 });
+  }
+  _restoreScroll(top) {
+    void this.updateComplete.then(() => window.scrollTo({ top }));
+  }
+  // -- rename (activity, macro) ----------------------------------------------------------------------------
+  _openRename(target) {
+    const draft = target.kind === "activity" ? this._title : this._macroName(target.buttonId) || this._macroEditor?.name || "";
+    this._rename = { target, draft, error: "" };
+  }
+  // -- delete confirm ----------------------------------------------------------------------------------------
+  _openDeleteConfirm(target, label) {
+    this._deleteConfirm = { target, label };
+  }
+  _deleteTitle(target, label) {
+    const name = label || B2.thisItem;
+    switch (target.kind) {
+      case "activity":
+        return B2.deleteActivityTitle(name);
+      case "favorite":
+        return B2.deleteFavoriteTitle(name);
+      case "macro":
+        return B2.deleteMacroTitle(name);
+      case "activity_binding":
+        return B2.deleteBindingTitle(name);
+      case "activity_member":
+        return B2.activityRemoveDeviceTitle(name);
+      default:
+        return name;
+    }
+  }
+  // -- roles ---------------------------------------------------------------------------------------------------
+  _assignRole(group, deviceId) {
+    this._roleMenu = null;
+    const activityId = this.activityId;
+    if (!this._working || activityId == null) return;
+    const current = activityRoleAssignments(this._working, activityId).find((role) => role.group === group);
+    if (current && current.deviceId === deviceId && current.state !== "customized" && deviceId != null) return;
+    if (current && (current.state === "customized" || current.state === "custom")) {
+      this._roleConfirm = { group, deviceId };
+      return;
+    }
+    this._commit(setActivityRoleDevice(this._working, activityId, group, deviceId));
+  }
+  // -- shortcuts ------------------------------------------------------------------------------------------------
+  _shortcutItems() {
+    return this._working && this.activityId != null ? activityQuickAccessItems(this._working, this.activityId) : [];
+  }
+  _moveShortcut(position, delta) {
+    const activityId = this.activityId;
+    if (!this._working || activityId == null) return;
+    const items = this._shortcutItems();
+    const target = position + delta;
+    if (target < 0 || target >= items.length || target === position) return;
+    const next = [...items];
+    const [moved] = next.splice(position, 1);
+    next.splice(target, 0, moved);
+    this._commit(reorderBundleActivityQuickAccess(this._working, activityId, next.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))));
+  }
+  /** A macro target resolved to an id, creating the macro when the dialog asked for a new one (the card's `_resolveMacroTarget`). */
+  _resolveMacro(bundle, target) {
+    const activityId = Number(this.activityId);
+    if (target.mode === "existing") {
+      const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(target.macroId));
+      return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
+    }
+    const name = sanitizeName(this._hubVersion, target.name).trim() || B2.newMacroName;
+    const next = addActivityUserMacro(bundle, activityId, name);
+    const summaries = activityUserMacroSummaries(next, activityId);
+    const created = summaries[summaries.length - 1];
+    return created ? { bundle: next, macroId: created.buttonId, name: created.name, created: true } : null;
+  }
+  _memberName(deviceId) {
+    const member = activityMemberViews(this._working, Number(this.activityId)).find((candidate) => candidate.deviceId === deviceId);
+    return member?.deviceName || C2.deviceFallback(deviceId);
+  }
+  // -- the binding dialog ---------------------------------------------------------------------------------------------
+  _commandOptions(deviceId) {
+    if (deviceId == null || !this._working) return [];
+    return deviceCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
+  _openEditBinding(buttonId) {
+    const activityId = this.activityId;
+    if (!this._working || activityId == null) return;
+    const item = activityButtonBindingItems(this._working, activityId).find((entry) => entry.buttonId === Number(buttonId));
+    if (!item) return;
+    const kind = this._kindFor(item.deviceId);
+    const lpDeviceId = item.longPress?.deviceId ?? item.deviceId ?? null;
+    const lpKind = this._kindFor(lpDeviceId) === "action" ? "action" : "command";
+    this._binding = {
+      editButtonId: item.buttonId,
+      buttonId: item.buttonId,
+      kind,
+      deviceId: item.deviceId ?? null,
+      commandId: item.commandId,
+      macro: kind === "action" ? { mode: "existing", macroId: item.commandId, name: this._macroName(item.commandId) } : { mode: "new", macroId: null, name: "" },
+      // A Wifi Event binding is atomic: the short record maps to its slot (command id = slot + 1).
+      slot: kind === "wifi_event" ? Number(item.commandId) - 1 : this._wifiSlots[0]?.slot ?? null,
+      longPress: Boolean(item.longPress),
+      lpKind,
+      lpDeviceId,
+      lpCommandId: item.longPress?.commandId ?? null,
+      lpMacro: lpKind === "action" ? { mode: "existing", macroId: item.longPress?.commandId ?? null, name: this._macroName(item.longPress?.commandId) } : { mode: "new", macroId: null, name: "" },
+      error: ""
+    };
+  }
+  _setBindingKind(kind) {
+    const dialog = this._binding;
+    if (!dialog) return;
+    if (kind === "command") {
+      const devices = this._deviceOptions();
+      const deviceId = devices.some((device) => device.id === dialog.deviceId) ? dialog.deviceId : devices[0]?.id ?? null;
+      this._binding = { ...dialog, kind, deviceId, commandId: this._firstCommandId(deviceId), error: "" };
+    } else if (kind === "wifi_event") {
+      this._binding = { ...dialog, kind, slot: this._wifiSlots[0]?.slot ?? null, error: "" };
+    } else {
+      this._binding = { ...dialog, kind, macro: { ...this._defaultMacroTarget(), name: dialog.macro.name || this._macroName(dialog.commandId) }, error: "" };
+    }
+  }
+  _setBindingLpKind(kind) {
+    const dialog = this._binding;
+    if (!dialog) return;
+    if (kind === "command") {
+      const devices = this._deviceOptions();
+      const lpDeviceId = devices.some((device) => device.id === dialog.lpDeviceId) ? dialog.lpDeviceId : devices[0]?.id ?? null;
+      this._binding = { ...dialog, lpKind: kind, lpDeviceId, lpCommandId: this._firstCommandId(lpDeviceId), error: "" };
+    } else {
+      this._binding = { ...dialog, lpKind: kind, lpMacro: { ...this._defaultMacroTarget(), name: dialog.lpMacro.name || this._macroName(dialog.lpCommandId) }, error: "" };
+    }
+  }
+  _toggleBindingLongPress(enabled) {
+    const dialog = this._binding;
+    if (!dialog) return;
+    if (!enabled) {
+      this._binding = { ...dialog, longPress: false };
+      return;
+    }
+    const devices = this._deviceOptions();
+    const lpDeviceId = devices.some((device) => device.id === dialog.lpDeviceId) ? dialog.lpDeviceId : devices[0]?.id ?? null;
+    const commands = this._commandOptions(lpDeviceId);
+    const lpCommandId = commands.some((command) => command.value === dialog.lpCommandId) ? dialog.lpCommandId : commands[0]?.value ?? null;
+    this._binding = { ...dialog, longPress: true, lpKind: "command", lpDeviceId, lpCommandId };
+  }
+  // -- the macro step editor ---------------------------------------------------------------------------------------------
+  _stepItems() {
+    const editor = this._macroEditor;
+    if (!editor || !this._working || this.activityId == null) return [];
+    return activityMacroStepItems(this._working, this.activityId, editor.buttonId);
+  }
+  _openEditStep(item) {
+    const base = { editIndex: item.index, deviceId: item.deviceId ?? null, commandId: item.commandId ?? null, slot: this._wifiSlots[0]?.slot ?? null, hold: byteToSeconds(item.hold), error: "" };
+    if (item.kind === "input") {
+      this._stepDialog = { ...base, kind: "input" };
+      return;
+    }
+    if (this._kindFor(item.deviceId) === "wifi_event") {
+      this._stepDialog = { ...base, kind: "wifi_event", slot: item.commandId != null ? Number(item.commandId) - 1 : null };
+      return;
+    }
+    this._stepDialog = { ...base, kind: "command" };
+  }
+  _removeStep(index) {
+    const editor = this._macroEditor;
+    if (!editor || !this._working || this.activityId == null) return;
+    this._commit(removeActivityMacroStep(this._working, this.activityId, editor.buttonId, index));
+  }
+  _moveStep(position, delta) {
+    const editor = this._macroEditor;
+    if (!editor || !this._working || this.activityId == null) return;
+    const items = this._stepItems();
+    const target = position + delta;
+    if (target < 0 || target >= items.length || target === position) return;
+    const order = items.map((item) => item.index);
+    const [moved] = order.splice(position, 1);
+    order.splice(target, 0, moved);
+    this._commit(reorderActivityMacroSteps(this._working, this.activityId, editor.buttonId, order));
+  }
+  _setStepWait(item, event) {
+    const editor = this._macroEditor;
+    if (!editor || !this._working || this.activityId == null) return;
+    const input = event.target;
+    const wait = secondsToByte(input.value);
+    input.value = byteToSeconds(wait);
+    this._commit(setActivityMacroStepWait(this._working, this.activityId, editor.buttonId, item.index, wait));
+  }
+  // -- render: shared pieces ------------------------------------------------------------------------------------------------
+  _renderHeader(options) {
+    return b2`
+      <div class="sticky-header">
+        <div class="detail-title-row">
+          <div class="detail-title-main">
+            <button class="back-btn" id=${options.id} type="button" aria-label=${FRAME.back} @click=${options.onBack}>${icon3(mdiArrowLeft)}</button>
+            <div class="detail-title-stack">
+              <div class="detail-crumbs">
+                ${options.crumbs.map((crumb) => b2`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
+              </div>
+              <div class="detail-title" id=${options.titleId}>${options.title}</div>
+            </div>
+            ${options.actions ?? A}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _select(id, label, value, options, empty, onChange) {
+    return b2`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for=${id}>${label}</label>
+        ${options.length === 0 ? b2`<div class="quick-access-empty">${empty}</div>` : b2`<select id=${id} class="decoded-field-input" @change=${(event) => onChange(Number(event.currentTarget.value))}>
+              ${options.map((option) => b2`<option value=${option.value} ?selected=${option.value === value}>${option.label}</option>`)}
+            </select>`}
+      </div>`;
+  }
+  _kindSelect(id, value, kinds, onChange) {
+    const label = (kind) => kind === "command" ? B2.shortcutKindCommand : kind === "action" ? B2.shortcutKindAction : B2.shortcutKindWifiEvent;
+    return b2`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for=${id}>${B2.addShortcutKindLabel}</label>
+        <select id=${id} class="decoded-field-input" @change=${(event) => onChange(event.currentTarget.value)}>
+          ${kinds.map((kind) => b2`<option value=${kind} ?selected=${kind === value}>${label(kind)}</option>`)}
+        </select>
+      </div>`;
+  }
+  _targetKinds() {
+    return this._wifiEventsAvailable ? ["command", "action", "wifi_event"] : ["command", "action"];
+  }
+  _macroTargetFields(idPrefix, target, onChange) {
+    const macros = this._macroOptions();
+    return b2`
+      ${macros.length ? b2`<div class="decoded-field">
+            <label class="decoded-field-label" for=${`${idPrefix}-macro-target`}>${B2.macroTargetLabel}</label>
+            <select id=${`${idPrefix}-macro-target`} class="decoded-field-input" @change=${(event) => {
+      const value = event.currentTarget.value;
+      onChange(value === "__new__" ? { ...target, mode: "new", macroId: null } : { ...target, mode: "existing", macroId: Number(value) });
+    }}>
+              ${macros.map((macro) => b2`<option value=${macro.value} ?selected=${target.mode === "existing" && macro.value === target.macroId}>${macro.label}</option>`)}
+              <option value="__new__" ?selected=${target.mode === "new"}>${B2.macroTargetCreateNew}</option>
+            </select>
+          </div>` : b2`<div class="quick-access-empty">${B2.macroTargetNoExisting}</div>`}
+      ${target.mode === "new" ? b2`<div class="decoded-field">
+            <label class="decoded-field-label" for=${`${idPrefix}-macro-name`}>${B2.addShortcutActionName}</label>
+            <input id=${`${idPrefix}-macro-name`} class="decoded-field-input" maxlength="20" .value=${target.name} @input=${(event) => onChange({ ...target, name: event.currentTarget.value })} />
+            <div class="decoded-field-helper">${B2.addShortcutActionHelper}</div>
+          </div>` : A}
+    `;
+  }
+  _wifiEventFields(idPrefix, slot, onChange) {
+    return this._select(`${idPrefix}-wifi-event`, B2.wifiEventTargetLabel, slot, this._wifiSlots.map((entry) => ({ value: entry.slot, label: entry.label })), P2.wifiEventNoSlots, onChange);
+  }
+  _dialog(id, title, close, body, footer, error = "") {
+    return b2`
+      <div class="modal-backdrop" @click=${close}>
+        <div class="dialog small" id=${id} @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${B2.deleteCancel} @click=${close}>${icon3(mdiClose)}</button></div>
+          <div class="dialog-body">${body}</div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note" id=${`${id}-error`}>${error}</div>
+            <div class="dialog-footer-actions">${footer}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // -- render: the main screen --------------------------------------------------------------------------------------------------
+  _renderEditor() {
+    const activityId = this.activityId;
+    const dirty = this._dirty;
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view ${this._sorter.state ? "is-sorting" : ""}" id="activity-editor">
+          ${this._renderHeader({
+      id: "editor-back",
+      title: this._title,
+      titleId: "editor-title",
+      onBack: this._requestClose,
+      crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }],
+      actions: b2`<div class="detail-title-actions">
+              <button class="icon-btn" id="editor-rename" type="button" aria-label=${B2.renameKind("activity")} title=${B2.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon3(mdiPencil)}</button>
+              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon3(mdiTrashCanOutline)}</button>
+              <button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing\u2026" : dirty ? A2.syncToHub : A2.syncUpToDate}</button>
+            </div>`
+    })}
+          <div class="detail-scroll">
+            ${this._renderPowerSection(activityId)}
+            ${this._renderRolesSection(activityId)}
+            ${this._renderShortcutsSection()}
+          </div>
+        </div>
+        ${this._renderRenameDialog()}
+        ${this._renderDeleteConfirmDialog()}
+        ${this._renderAddShortcutDialog()}
+        ${this._renderRoleConfirmDialog()}
+        ${this._renderExitConfirmDialog()}
+      </div>
+    `;
+  }
+  _renderPowerSection(activityId) {
+    const row = (buttonId, label) => {
+      const count = activityMacroStepItems(this._working, activityId, buttonId).length;
+      return b2`<div class="quick-access-sortable-item">
+        <button class="edit-selection-row" type="button" data-sequence=${buttonId} @click=${() => this._openMacroEditor(buttonId, label)}>
+          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${B2.macroStepsCount(count)}</span></span>
+          <span class="selection-chevron">${icon3(mdiChevronRight)}</span>
+        </button>
+      </div>`;
+    };
+    const members = activityMemberViews(this._working, activityId);
+    const names = members.map((member) => member.inputOrdinal > 0 && member.inputCommandName ? `${member.deviceName} (${member.inputCommandName})` : member.deviceName).join(", ");
+    return b2`
+      <div class="quick-access-section" data-edit-section="power">
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${B2.powerSetupTitle}</div><div class="quick-access-sub">${B2.powerSetupActivitySub}</div></div></div>
+        <div class="quick-access-list">
+          <div class="quick-access-sortable-container power-sequences" data-disabled="false">
+            ${row(POWER_ON, B2.powerOnLabel)}
+            ${row(POWER_OFF, B2.powerOffLabel)}
+          </div>
+        </div>
+        <div class="quick-access-sub power-members-summary" data-kind="member-summary" id="member-summary">${members.length ? B2.memberSummary(names) : B2.memberSummaryEmpty}</div>
+      </div>
+    `;
+  }
+  _renderRolesSection(activityId) {
+    const bundle = this._working;
+    const roles = activityRoleAssignments(bundle, activityId);
+    const devices = this._deviceOptions();
+    const bindingCount = activityButtonBindingItems(bundle, activityId).length;
+    return b2`
+      <div class="quick-access-section" data-edit-section="bindings">
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${B2.activityRunningTitle}</div><div class="quick-access-sub">${B2.activityRunningSub}</div></div></div>
+        <div class="quick-access-list quick-access-list--overlays">
+          <div class="quick-access-sortable-container">
+            ${roles.map((role) => this._renderRoleRow(role, devices))}
+            <div class="quick-access-sortable-item quick-access-footer-item">
+              <button class="edit-selection-row edit-selection-row--footer" id="open-bindings" type="button" @click=${this._openBindingsView}>
+                ${icon3(mdiTuneVariant, "footer-row-icon")}
+                <span class="selection-main"><span class="selection-label">${B2.customizeButtonsToggle}</span><span class="selection-sub">${bindingCount > 0 ? B2.bindingsConfiguredCount(bindingCount) : B2.bindingsNoneConfigured}</span></span>
+                <span class="selection-chevron">${icon3(mdiChevronRight)}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderRoleRow(role, devices) {
+    const open = this._roleMenu?.group === role.group;
+    const label = roleLabel(role.group);
+    const note = (role.state === "device" || role.state === "customized") && role.boundCount < role.totalCount ? B2.roleMappedNote(role.boundCount, role.totalCount) : null;
+    return b2`
+      <div class="quick-access-sortable-item" data-role=${role.group}>
+        <div class="role-row">
+          ${icon3(ROLE_ICONS[role.group], "role-icon")}
+          <div class="role-main">
+            <div class="role-label">${label}</div>
+            ${note ? b2`<div class="role-note">${note}</div>` : A}
+          </div>
+          <span class="member-add role-menu-anchor" data-open=${open ? "true" : "false"}>
+            <button class="role-trigger" type="button" data-state=${role.state} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"} aria-label=${B2.roleMenuAria(label)}
+              @click=${(event) => {
+      this._roleMenu = open ? null : { group: role.group, anchor: menuAnchorRect(event) };
+    }}>
+              <span>${roleTriggerLabel(role)}</span>${icon3(mdiChevronDown)}
+            </button>
+            ${open ? b2`<button class="member-add-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
+      this._roleMenu = null;
+    }}></button>
+                  <div class="member-add-menu role-menu" role="listbox" aria-label=${label} style=${overlayMenuPosition(this._roleMenu?.anchor ?? null, "right")}>
+                    <button class="member-add-option" type="button" role="option" data-device="" aria-selected=${role.state === "unused" ? "true" : "false"} @click=${() => this._assignRole(role.group, null)}>${B2.roleNotUsed}</button>
+                    ${devices.map((device) => {
+      const mappable = roleMappableButtonCount(this._working, device.id, role.group);
+      return b2`<button class="member-add-option" type="button" role="option" data-device=${device.id} ?disabled=${mappable === 0} aria-selected=${role.deviceId === device.id ? "true" : "false"} @click=${() => this._assignRole(role.group, device.id)}>${mappable === 0 ? B2.roleOptionNoMapping(device.label) : device.label}</button>`;
+    })}
+                  </div>` : A}
+          </span>
+        </div>
+      </div>
+    `;
+  }
+  _renderShortcutsSection() {
+    const items = this._shortcutItems();
+    return b2`
+      <div class="quick-access-section" data-edit-section="quick_access">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main"><div class="quick-access-title">${B2.activityShortcutsTitle}</div><div class="quick-access-sub">${B2.activityShortcutsSubSortable}</div></div>
+          <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="add-shortcut" type="button" @click=${this._openAddShortcut}>${icon3(mdiPlus)}<span>${B2.addShortcutButton}</span></button></div>
+        </div>
+        ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderShortcutRow(item, position))}</div></div>` : b2`<div class="quick-access-empty">${B2.activityShortcutsEmpty}</div>`}
+      </div>
+    `;
+  }
+  _shortcutMeta(item) {
+    if (item.kind === "macro") {
+      const summary = activityUserMacroSummaries(this._working, Number(this.activityId)).find((macro) => macro.buttonId === item.buttonId);
+      return B2.macroStepsCount(summary?.commandStepCount ?? 0);
+    }
+    const device = (this._working?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
+    return String(device?.device?.name || "").trim() || C2.deviceFallback(item.deviceId ?? "?");
+  }
+  _dragHandle(position, aria, move) {
+    return b2`<button class="quick-access-drag" type="button" aria-label=${aria} title=${aria}
+      @mousedown=${(event) => event.preventDefault()}
+      @pointerdown=${(event) => this._sorter.start(event, position)}
+      @pointermove=${(event) => this._sorter.move(event)}
+      @pointerup=${(event) => this._sorter.end(event)}
+      @pointercancel=${(event) => this._sorter.cancel(event)}
+      @keydown=${(event) => {
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        move(-1);
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        move(1);
+      }
+    }}
+    >${icon3(mdiDragVerticalVariant)}</button>`;
+  }
+  _sortClass(position) {
+    const drag = this._sorter.state;
+    return drag?.from === position ? "is-dragging" : drag ? "is-shifting" : "";
+  }
+  _renderShortcutRow(item, position) {
+    const transform = this._sorter.transform(position);
+    const activityId = Number(this.activityId);
+    return b2`
+      <div class="quick-access-sortable-item ${this._sortClass(position)}" data-sort-index=${position} data-kind=${item.kind} data-button-id=${item.buttonId} style=${transform ? `transform: ${transform}` : ""}>
+        <div class="quick-access-row quick-access-row--step">
+          ${this._dragHandle(position, P2.dragShortcutAria, (delta) => this._moveShortcut(position, delta))}
+          <div class="quick-access-main">
+            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${item.kind === "macro" ? B2.shortcutChipAction : B2.shortcutChipCommand}</div></div>
+            <div class="quick-access-meta">${this._shortcutMeta(item)}</div>
+          </div>
+          <div class="quick-access-actions">
+            ${item.kind === "macro" ? b2`<button class="icon-btn shortcut-steps" type="button" aria-label=${B2.editStepsAria} title=${B2.editStepsAria} @click=${() => this._openMacroEditor(item.buttonId, item.label)}>${icon3(mdiPlaylistEdit)}</button>
+                  <button class="icon-btn shortcut-rename" type="button" aria-label=${B2.shortcutRenameAria("macro")} title=${B2.shortcutRenameAria("macro")} @click=${() => this._openRename({ kind: "macro", buttonId: item.buttonId })}>${icon3(mdiPencil)}</button>` : A}
+            <button class="icon-btn icon-btn--danger shortcut-delete" type="button" aria-label=${B2.shortcutDeleteAria(item.kind)} title=${B2.shortcutDeleteAria(item.kind)}
+              @click=${() => this._openDeleteConfirm(item.kind === "macro" ? { kind: "macro", activityId, buttonId: item.buttonId } : { kind: "favorite", activityId, buttonId: item.buttonId }, item.label)}>${icon3(mdiTrashCanOutline)}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // -- render: Individual buttons -----------------------------------------------------------------------------------------------------
+  _renderBindingsView() {
+    const activityId = this.activityId;
+    const items = activityButtonBindingItems(this._working, activityId);
+    const unbound = unboundButtonsForActivity(this._working, activityId);
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view" id="bindings-view">
+          ${this._renderHeader({
+      id: "bindings-back",
+      title: B2.bindingsViewTitle,
+      titleId: "bindings-title",
+      onBack: this._closeBindingsView,
+      crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }, { label: this._title, onClick: this._closeBindingsView }]
+    })}
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main"><div class="quick-access-title">${B2.buttonBindingsTitle}</div><div class="quick-access-sub">${B2.buttonBindingsActivitySub}</div></div>
+                <button class="quick-access-add-btn" id="add-binding" type="button" ?disabled=${unbound.length === 0} @click=${this._openAddBinding}>${icon3(mdiPlus)}<span>${B2.addBinding}</span></button>
+              </div>
+              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item) => this._renderBindingRow(item))}</div></div>` : b2`<div class="quick-access-empty">${B2.buttonBindingsEmpty}</div>`}
+            </div>
+          </div>
+        </div>
+        ${this._renderBindingDialog()}
+        ${this._renderDeleteConfirmDialog()}
+        ${this._renderExitConfirmDialog()}
+      </div>
+    `;
+  }
+  _renderBindingRow(item) {
+    const activityId = Number(this.activityId);
+    return b2`
+      <div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
+        <div class="quick-access-row">
+          <div class="quick-access-main">
+            <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${B2.buttonChip}</div></div>
+            <div class="quick-access-meta">${item.shortPressLabel}</div>
+            ${item.longPress ? b2`<div class="quick-access-meta">${B2.bindingLongPressMeta(item.longPress.label)}</div>` : A}
+          </div>
+          <div class="quick-access-actions">
+            <button class="icon-btn binding-edit" type="button" aria-label=${B2.editBindingAria} title=${B2.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon3(mdiPencil)}</button>
+            <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${B2.deleteBindingAria} title=${B2.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "activity_binding", activityId, buttonId: item.buttonId }, item.buttonName)}>${icon3(mdiTrashCanOutline)}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // -- render: the macro step editor ---------------------------------------------------------------------------------------------------
+  _renderMacroEditor(editor) {
+    const items = this._stepItems();
+    const isPower = editor.buttonId === POWER_ON || editor.buttonId === POWER_OFF;
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view ${this._sorter.state ? "is-sorting" : ""}" id="step-editor">
+          ${this._renderHeader({
+      id: "step-back",
+      title: editor.name,
+      titleId: "step-title",
+      onBack: this._closeMacroEditor,
+      crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }, { label: this._title, onClick: this._closeMacroEditor }],
+      actions: isPower ? A : b2`<div class="detail-title-actions"><button class="icon-btn" id="macro-rename" type="button" aria-label=${B2.renameMacroAria} title=${B2.renameMacroAria} @click=${() => this._openRename({ kind: "macro", buttonId: editor.buttonId })}>${icon3(mdiPencil)}</button></div>`
+    })}
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main"><div class="quick-access-title">${B2.steps}</div><div class="quick-access-sub">${B2.macroStepsSortableHelp}</div></div>
+                <div class="quick-access-head-actions" style="display: inline-flex; gap: 8px;">
+                  ${isPower ? b2`<button class="quick-access-add-btn add-member-btn" id="add-member" type="button" @click=${this._openAddMember}>${icon3(mdiPlus)}<span>${B2.addMemberButton}</span></button>` : A}
+                  <button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon3(mdiPlus)}<span>${B2.addStep}</span></button>
+                </div>
+              </div>
+              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${B2.noMacroSteps}</div>`}
+            </div>
+          </div>
+        </div>
+        ${this._renderStepDialog()}
+        ${this._renderRenameDialog()}
+        ${this._renderAddMemberDialog()}
+        ${this._renderDeleteConfirmDialog()}
+        ${this._renderExitConfirmDialog()}
+      </div>
+    `;
+  }
+  _renderStepRow(item, position, count) {
+    const isPower = item.kind === "power";
+    const isInput = item.kind === "input";
+    const meta = item.kind === "command" && item.hold > 0 ? B2.holdLabel(byteToSeconds(item.hold)) : "";
+    const memberDeviceId = isPower ? Number(item.deviceId ?? 0) : 0;
+    const activityId = Number(this.activityId);
+    const transform = this._sorter.transform(position);
+    return b2`
+      <div class="quick-access-sortable-item ${this._sortClass(position)}" data-sort-index=${position} data-step-index=${item.index} data-step-kind=${item.kind} style=${transform ? `transform: ${transform}` : ""}>
+        <div class="quick-access-row quick-access-row--step">
+          ${count > 1 ? this._dragHandle(position, P2.dragStepAria, (delta) => this._moveStep(position, delta)) : b2`<span></span>`}
+          <div class="quick-access-main">
+            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${isPower || isInput ? P2.stepChipRequired : P2.stepChipCommand}</div></div>
+            ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
+          </div>
+          <div class="quick-access-actions">
+            ${isPower ? memberDeviceId > 0 ? b2`<button class="icon-btn icon-btn--danger member-remove" type="button" aria-label=${B2.removeMemberAria} title=${B2.removeMemberAria} @click=${() => this._openDeleteConfirm({ kind: "activity_member", activityId, deviceId: memberDeviceId }, this._memberName(memberDeviceId))}>${icon3(mdiTrashCanOutline)}</button>` : A : b2`<button class="icon-btn step-edit" type="button" aria-label=${B2.editStepAria} title=${B2.editStepAria} @click=${() => this._openEditStep(item)}>${icon3(mdiPencil)}</button>
+                  ${isInput ? A : b2`<button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${B2.deleteStepAria} title=${B2.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon3(mdiTrashCanOutline)}</button>`}`}
+          </div>
+        </div>
+        ${position === count - 1 ? A : b2`<label class="step-wait" title=${B2.stepWaitAria}>
+              <span class="step-wait-caption">${B2.stepWaitLabel}</span>
+              <span class="step-wait-field">
+                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${B2.stepWaitAria} .value=${byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
+                <span class="step-wait-unit">${B2.stepWaitUnit}</span>
+              </span>
+            </label>`}
+      </div>
+    `;
+  }
+  // -- render: dialogs ------------------------------------------------------------------------------------------------------------------
+  _renderRenameDialog() {
+    const dialog = this._rename;
+    if (!dialog) return A;
+    const title = dialog.target.kind === "activity" ? B2.renameActivity : B2.renameMacro;
+    return this._dialog("rename-dialog", title, this._closeRename, b2`
+      <label class="decoded-field">
+        <span class="decoded-field-label">${B2.name}</span>
+        <input class="decoded-field-input" id="rename-input" type="text" maxlength="30" .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyRename();
+      }
+    }} />
+      </label>`, b2`
+      <button class="dialog-btn" type="button" @click=${this._closeRename}>${B2.deleteCancel}</button>
+      <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B2.bindingSave}</button>`, dialog.error);
+  }
+  _renderDeleteConfirmDialog() {
+    const dialog = this._deleteConfirm;
+    if (!dialog || !this._working) return A;
+    const impact = bundleDeleteImpact(this._working, dialog.target);
+    const hasCascade = backupDeleteHasCascade(impact);
+    const immediate = dialog.target.kind === "activity";
+    return this._dialog("delete-dialog", this._deleteTitle(dialog.target, dialog.label), this._closeDeleteConfirm, b2`
+      <div class="backup-drawer-sub">${hasCascade ? B2.deleteCascadeIntroLive : B2.deleteSimpleBodyLive}</div>
+      ${hasCascade ? b2`<ul class="delete-impact-list" id="delete-impact">
+            ${impact.activities > 0 ? b2`<li>${icon3(mdiLinkVariant)}<span>${B2.deleteImpactActivities(impact.activities)}</span></li>` : A}
+            ${impact.favorites > 0 ? b2`<li>${icon3(mdiStarOutline)}<span>${B2.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+            ${impact.macroSteps > 0 ? b2`<li>${icon3(mdiFormatListNumbered)}<span>${B2.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+            ${impact.powerSteps > 0 ? b2`<li>${icon3(mdiPower)}<span>${B2.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
+            ${impact.bindings > 0 ? b2`<li>${icon3(mdiGestureTapButton)}<span>${B2.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+          </ul>` : A}
+      <div class="delete-replace-note">${icon3(mdiInformationOutline)}<span>${immediate ? B2.deleteImmediateNote : B2.deleteSyncNote}</span></div>`, b2`
+      <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${B2.deleteCancel}</button>
+      <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${B2.deleteConfirm}</button>`);
+  }
+  _renderRoleConfirmDialog() {
+    if (!this._roleConfirm) return A;
+    const close = () => {
+      this._roleConfirm = null;
+    };
+    return this._dialog("role-confirm-dialog", B2.roleConfirmTitle, close, b2`<div class="backup-drawer-sub">${B2.roleConfirmBody}</div>`, b2`
+      <button class="dialog-btn" type="button" @click=${close}>${B2.roleConfirmCancel}</button>
+      <button class="dialog-btn dialog-btn-danger" id="role-confirm" type="button" @click=${this._confirmRole}>${B2.roleConfirmReplace}</button>`);
+  }
+  _renderAddShortcutDialog() {
+    const dialog = this._addShortcut;
+    if (!dialog || !this._working) return A;
+    const set = (patch) => {
+      this._addShortcut = { ...dialog, ...patch, error: "" };
+    };
+    const devices = this._deviceOptions();
+    const commands = this._commandOptions(dialog.deviceId);
+    const canAdd = dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : dialog.kind === "wifi_event" ? dialog.slot != null : true;
+    const commandFields = devices.length === 0 ? b2`<div class="backup-drawer-sub">${B2.addFavoriteNoDevices}</div>` : b2`
+          ${this._select("sb-add-fav-device", B2.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B2.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-command">${B2.addFavoriteCommand}</label>
+            ${commands.length === 0 ? b2`<div class="quick-access-empty">${B2.addFavoriteNoCommands}</div>` : b2`<select id="sb-add-fav-command" class="decoded-field-input" @change=${(event) => set({ commandId: Number(event.currentTarget.value) })}>
+                  ${commands.map((command) => b2`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`)}
+                </select>`}
+            <div class="decoded-field-helper">${B2.addShortcutCommandHelper}</div>
+          </div>`;
+    return this._dialog("add-shortcut-dialog", B2.addShortcutTitle, this._closeAddShortcut, b2`
+      ${this._kindSelect("sb-add-shortcut-kind", dialog.kind, this._targetKinds(), (kind) => set(kind === "action" ? { kind, ...this._defaultMacroTarget() } : kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind }))}
+      ${dialog.kind === "command" ? commandFields : dialog.kind === "wifi_event" ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-add", dialog, (target) => set(target))}`, b2`
+      <button class="dialog-btn" type="button" @click=${this._closeAddShortcut}>${B2.addFavoriteCancel}</button>
+      <button class="dialog-btn dialog-btn-primary" id="add-shortcut-save" type="button" ?disabled=${!canAdd} @click=${this._applyAddShortcut}>${B2.addFavoriteAdd}</button>`, dialog.error);
+  }
+  _renderAddMemberDialog() {
+    const dialog = this._addMember;
+    if (!dialog) return A;
+    const options = this._addableMembers();
+    return this._dialog("add-member-dialog", B2.addMemberTitle, this._closeAddMember, options.length === 0 ? b2`<div class="backup-drawer-sub">${B2.addMemberNoneLeft}</div>` : b2`<div class="decoded-field">
+          <label class="decoded-field-label" for="sb-add-member-device">${B2.addFavoriteDevice}</label>
+          <select id="sb-add-member-device" class="decoded-field-input" @change=${(event) => {
+      this._addMember = { deviceId: Number(event.currentTarget.value) };
+    }}>
+            ${options.map((device) => b2`<option value=${device.id} ?selected=${device.id === dialog.deviceId}>${device.label}</option>`)}
+          </select>
+          <div class="decoded-field-helper">${B2.addMemberHelper}</div>
+        </div>`, b2`
+      <button class="dialog-btn" type="button" @click=${this._closeAddMember}>${B2.deleteCancel}</button>
+      <button class="dialog-btn dialog-btn-primary" id="add-member-save" type="button" ?disabled=${options.length === 0 || dialog.deviceId == null} @click=${this._applyAddMember}>${B2.addMemberConfirm}</button>`);
+  }
+  _renderBindingDialog() {
+    const dialog = this._binding;
+    const activityId = this.activityId;
+    if (!dialog || !this._working || activityId == null) return A;
+    const set = (patch) => {
+      this._binding = { ...dialog, ...patch, error: "" };
+    };
+    const isEdit = dialog.editButtonId != null;
+    const unbound = unboundButtonsForActivity(this._working, activityId);
+    const devices = this._deviceOptions().map((device) => ({ value: device.id, label: device.label }));
+    const primaryIsWifiEvent = dialog.kind === "wifi_event";
+    const canSave = dialog.buttonId != null && (dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : primaryIsWifiEvent ? dialog.slot != null : true);
+    const title = isEdit ? B2.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : B2.bindingDialogAddTitle;
+    return this._dialog("binding-dialog", title, this._closeBinding, b2`
+      ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${B2.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : this._select("sb-binding-button", B2.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), B2.bindingNoButtons, (value) => set({ buttonId: value }))}
+      ${this._kindSelect("sb-binding-kind", dialog.kind, this._targetKinds(), (kind) => this._setBindingKind(kind))}
+      ${dialog.kind === "command" ? b2`${this._select("sb-binding-device", B2.bindingTargetDevice, dialog.deviceId, devices, B2.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
+            ${this._select("sb-binding-command", B2.bindingCommand, dialog.commandId, this._commandOptions(dialog.deviceId), B2.bindingNoCommands, (value) => set({ commandId: value }))}` : primaryIsWifiEvent ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }))}
+      <div class="binding-toggle-row">
+        <span class="decoded-field-label">${B2.bindingEnableLongPress}</span>
+        <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => this._toggleBindingLongPress(event.currentTarget.checked)} />
+      </div>
+      ${dialog.longPress ? primaryIsWifiEvent ? b2`<div class="decoded-field-helper">${P2.wifiEventLongPressNote}</div>` : b2`${this._kindSelect("sb-binding-lp-kind", dialog.lpKind, ["command", "action"], (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
+              ${dialog.lpKind === "command" ? b2`${this._select("sb-binding-lp-device", B2.bindingLongPressDevice, dialog.lpDeviceId, devices, B2.bindingNoDevices, (value) => set({ lpDeviceId: value, lpCommandId: this._firstCommandId(value) }))}
+                    ${this._select("sb-binding-lp-command", B2.bindingLongPressCommand, dialog.lpCommandId, this._commandOptions(dialog.lpDeviceId), B2.bindingNoCommands, (value) => set({ lpCommandId: value }))}` : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }))}` : A}`, b2`
+      <button class="dialog-btn" type="button" @click=${this._closeBinding}>${B2.bindingCancel}</button>
+      <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? B2.bindingSave : B2.bindingAdd}</button>`, dialog.error);
+  }
+  _renderStepDialog() {
+    const dialog = this._stepDialog;
+    if (!dialog || !this._working) return A;
+    const set = (patch) => {
+      this._stepDialog = { ...dialog, ...patch, error: "" };
+    };
+    const isEdit = dialog.editIndex !== null;
+    const isInput = dialog.kind === "input";
+    const isWifiEvent = dialog.kind === "wifi_event";
+    const commands = this._commandOptions(dialog.deviceId);
+    const canSave = isInput || (isWifiEvent ? dialog.slot != null : dialog.commandId != null && dialog.deviceId != null);
+    const title = isInput ? B2.inputStepTitle : isEdit ? B2.stepDialogEditTitle : B2.stepDialogAddTitle;
+    const body = isInput ? b2`<div class="decoded-field">
+          <label class="decoded-field-label" for="sb-step-input">${B2.inputStepCommand}</label>
+          <select id="sb-step-input" class="decoded-field-input" @change=${(event) => {
+      const raw = event.currentTarget.value;
+      set({ commandId: raw === "" ? null : Number(raw) });
+    }}>
+            <option value="" ?selected=${dialog.commandId == null}>${B2.inputStepNone}</option>
+            ${commands.map((command) => b2`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`)}
+          </select>
+        </div>` : b2`
+          ${this._wifiEventsAvailable ? this._kindSelect("sb-step-kind", dialog.kind, ["command", "wifi_event"], (kind) => set(kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind: "command" })) : A}
+          ${isWifiEvent ? this._wifiEventFields("sb-step", dialog.slot, (slot) => set({ slot })) : b2`${this._select("sb-step-device", B2.stepDevice, dialog.deviceId, this._deviceOptions().map((device) => ({ value: device.id, label: device.label })), B2.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
+                ${this._select("sb-step-command", B2.stepCommand, dialog.commandId, commands, B2.stepNoCommands, (value) => set({ commandId: value }))}`}
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-step-hold">${B2.stepHoldSeconds}</label>
+            <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
+              @input=${(event) => {
+      this._stepDialog = { ...dialog, hold: event.currentTarget.value };
+    }}
+              @change=${(event) => {
+      this._stepDialog = { ...dialog, hold: byteToSeconds(secondsToByte(event.currentTarget.value)) };
+    }} />
+          </div>`;
+    return this._dialog("step-dialog", title, this._closeStepDialog, body, b2`
+      <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${B2.stepCancel}</button>
+      <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? B2.stepSave : B2.stepAdd}</button>`, dialog.error);
+  }
+};
+SbPanelActivityEditor.properties = {
+  activityId: { attribute: false },
+  _rename: { state: true },
+  _deleteConfirm: { state: true },
+  _macroEditor: { state: true },
+  _bindingsView: { state: true },
+  _roleMenu: { state: true },
+  _roleConfirm: { state: true },
+  _addShortcut: { state: true },
+  _addMember: { state: true },
+  _binding: { state: true },
+  _stepDialog: { state: true }
+};
+SbPanelActivityEditor.styles = [PANEL_BASE_CSS, EDITOR_CSS];
+function defineActivityEditor() {
+  if (!customElements.get(ACTIVITY_EDITOR_TAG)) customElements.define(ACTIVITY_EDITOR_TAG, SbPanelActivityEditor);
 }
 
 // server-panel/src/views/device-editor.ts
 var DEVICE_EDITOR_TAG = "sb-panel-device-editor";
-var S3 = {
+var S5 = {
   crumbDevices: "Devices",
   renameDevice: "Rename device",
   deleteDeviceAria: "Delete device",
@@ -15821,6 +18700,10 @@ var S3 = {
   cancel: "Cancel",
   save: "Save",
   // The live host's screens.
+  loading: "Loading device from the hub cache\u2026",
+  refreshEntity: "Refresh device",
+  missingTitle: "Device not found",
+  missingBody: "This device is not in the hub's snapshot.",
   firmwareUnsupportedTitle: "Hub firmware update required",
   firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
   needsRefreshTitle: "Refresh the hub cache to edit",
@@ -15865,26 +18748,16 @@ var S3 = {
   noPayloadReturned: "The hub returned no payload for this command.",
   noFreeCommandSlot: "This device has no free command slot left."
 };
-function icon3(path, cls = "") {
-  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
-}
-var SbPanelDeviceEditor = class extends i4 {
+var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   constructor() {
     super(...arguments);
-    this.ctx = null;
     this.deviceId = null;
-    this._stage = "loading";
-    this._snapshot = null;
-    this._baseline = null;
-    this._working = null;
-    this._info = null;
-    this._callbackDeviceId = null;
+    this.entityKind = "device";
     this._activeSection = "power";
     this._powerMenuOpen = false;
     this._rename = null;
     this._deleteConfirm = null;
     this._binding = null;
-    this._exitConfirm = null;
     /** The open power sequence (the card's macro editor sub-view, device scope). */
     this._stepEditor = null;
     this._stepDialog = null;
@@ -15899,13 +18772,6 @@ var SbPanelDeviceEditor = class extends i4 {
     this._payloadDialog = null;
     this._payloadFetching = null;
     this._addCommandPreparing = false;
-    this._syncing = false;
-    this._syncFailed = null;
-    this._refreshing = false;
-    this._deleting = false;
-    this._notice = null;
-    this._loadedKey = null;
-    this._loadSeq = 0;
     this._sectionScrollPending = false;
     this._sectionScrollTimer = null;
     this._onWindowScroll = () => {
@@ -15922,9 +18788,6 @@ var SbPanelDeviceEditor = class extends i4 {
       const target = event.composedPath()[0];
       if (target instanceof HTMLElement && (target.matches("input, textarea, select") || target.isContentEditable || event.key === " " && target.matches("button, a[href]"))) return;
       if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) this._onManualScroll();
-    };
-    this._requestClose = () => {
-      this.askToLeave(() => this._goToList());
     };
     this._closePayloadDialog = () => {
       this._payloadDialog = null;
@@ -15948,37 +18811,13 @@ var SbPanelDeviceEditor = class extends i4 {
       if (!dialog || !editor || deviceId == null || !this._working) return;
       const commandId = Number(dialog.commandId);
       if (!commandId) {
-        this._stepDialog = { ...dialog, error: S3.stepNoCommands };
+        this._stepDialog = { ...dialog, error: S5.stepNoCommands };
         return;
       }
       const hold = this._secondsToByte(dialog.hold);
       const next = dialog.editIndex === null ? addDeviceMacroCommandStep(this._working, deviceId, editor.buttonId, commandId, hold) : updateDeviceMacroStep(this._working, deviceId, editor.buttonId, dialog.editIndex, { commandId, hold });
       this._commit(next);
       this._stepDialog = null;
-    };
-    this._leaveWithoutSync = () => {
-      const then = this._exitConfirm?.then;
-      this._exitConfirm = null;
-      const hubId = this._hub?.hub_id;
-      if (hubId) this.store.discardDraft(hubId);
-      if (this._baseline) this._working = structuredClone(this._baseline);
-      then?.();
-    };
-    this._syncAndLeave = () => {
-      const then = this._exitConfirm?.then;
-      this._exitConfirm = null;
-      void this._sync().then((ok) => {
-        if (ok) then?.();
-      });
-    };
-    this._retrySync = () => {
-      this._stage = "editing";
-      this._syncFailed = null;
-      void this._sync();
-    };
-    this._keepEditing = () => {
-      this._stage = "editing";
-      this._syncFailed = null;
     };
     this._closeRename = () => {
       this._rename = null;
@@ -16001,7 +18840,7 @@ var SbPanelDeviceEditor = class extends i4 {
       if (dialog.target.kind === "device_ip") {
         const draft = dialog.draft.trim();
         if (draft && !IPV4_PATTERN.test(draft)) {
-          this._rename = { ...dialog, error: S3.ipv4Required };
+          this._rename = { ...dialog, error: S5.ipv4Required };
           return;
         }
         this._commit(updateBundleDeviceIp(this._working, deviceId, draft));
@@ -16010,7 +18849,7 @@ var SbPanelDeviceEditor = class extends i4 {
       }
       const next = sanitizeName(this._hubVersion, dialog.draft);
       if (!next) {
-        this._rename = { ...dialog, error: S3.enterName };
+        this._rename = { ...dialog, error: S5.enterName };
         return;
       }
       if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
@@ -16027,7 +18866,7 @@ var SbPanelDeviceEditor = class extends i4 {
       const target = dialog.target;
       if (target.kind === "device") {
         this._deleteConfirm = null;
-        void this._deleteDevice();
+        void this._deleteEntity();
         return;
       }
       let next = applyBundleDelete(this._working, target, { reconcileMembership: false });
@@ -16050,13 +18889,16 @@ var SbPanelDeviceEditor = class extends i4 {
       const buttonId = Number(dialog.buttonId);
       const commandId = Number(dialog.commandId);
       if (!buttonId || !commandId) {
-        this._binding = { ...dialog, error: S3.bindingIncomplete };
+        this._binding = { ...dialog, error: S5.bindingIncomplete };
         return;
       }
       const longPressCommandId = dialog.longPress && dialog.longPressCommandId ? Number(dialog.longPressCommandId) : null;
       this._commit(upsertDeviceButtonBinding(this._working, deviceId, { buttonId, commandId, longPressCommandId }));
       this._binding = null;
     };
+  }
+  get entityId() {
+    return this.deviceId;
   }
   get _drag() {
     return this._sorter.state;
@@ -16078,129 +18920,35 @@ var SbPanelDeviceEditor = class extends i4 {
     window.removeEventListener("keydown", this._onScrollKey);
     this._clearSectionScroll();
   }
-  updated(changed) {
-    if (changed.has("ctx") || changed.has("deviceId")) {
-      const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.deviceId ?? ""}`;
-      if (key !== this._loadedKey) {
-        this._loadedKey = key;
-        this._reset();
-        if (this.ctx?.hub && this.deviceId != null) void this._load();
-      } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
-        this._working = this._baseline ? structuredClone(this._baseline) : null;
-      }
-    }
-  }
-  _reset() {
+  _resetView() {
     this._clearSectionScroll();
-    this._stage = "loading";
-    this._snapshot = null;
-    this._baseline = null;
-    this._working = null;
     this._powerMenuOpen = false;
     this._rename = null;
     this._deleteConfirm = null;
     this._binding = null;
-    this._exitConfirm = null;
     this._stepEditor = null;
     this._stepDialog = null;
     this._sorter.cancel();
     this._payloadDialog = null;
     this._payloadFetching = null;
     this._addCommandPreparing = false;
-    this._syncing = false;
-    this._syncFailed = null;
-    this._notice = null;
     this._activeSection = "power";
-  }
-  get _hub() {
-    return this.ctx?.hub ?? null;
-  }
-  get _hubVersion() {
-    return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
-  }
-  // -- loading: the snapshot, the banner (firmware floor), the callback device -------------------
-  async _load(options = {}) {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null) return;
-    const seq = ++this._loadSeq;
-    const [snapshot, info, callback] = await Promise.all([
-      this.api.snapshot(hubId),
-      this.api.hubInfo(hubId).catch(() => null),
-      this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
-    ]);
-    if (seq !== this._loadSeq) return;
-    this._info = info?.ok ? info.body : null;
-    this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
-    if (!snapshot.ok || !snapshot.body) {
-      this._notice = problemText(snapshot);
-      this._stage = "missing";
-      return;
-    }
-    const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
-    if (floor) {
-      this._snapshot = snapshot.body;
-      this._stage = "guard_firmware";
-      return;
-    }
-    const bundle = snapshotAsBundle(snapshot.body);
-    const element = deviceElement(bundle, deviceId);
-    if (!element) {
-      this._snapshot = snapshot.body;
-      this._stage = "missing";
-      return;
-    }
-    if (element.complete === false) {
-      this._snapshot = snapshot.body;
-      this._baseline = bundle;
-      this._working = null;
-      this._stage = "needs_refresh";
-      return;
-    }
-    this._snapshot = snapshot.body;
-    this._baseline = bundle;
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
-    const draftElement = restorable ? draftElementFor(draft, deviceId) : null;
-    this._working = draftElement ? withDeviceElement(bundle, deviceId, draftElement) : structuredClone(bundle);
-    if (!draftElement && draft?.scope === deviceDraftScope(deviceId)) this.store.discardDraft(hubId);
-    this._stage = "editing";
-    this._syncFailed = null;
   }
   // -- the working copy --------------------------------------------------------------------------
   get _workingElement() {
-    return this.deviceId != null ? deviceElement(this._working, this.deviceId) : null;
+    return this._workingEntity;
   }
-  get _baselineElement() {
-    return this.deviceId != null ? deviceElement(this._baseline, this.deviceId) : null;
+  get frameStrings() {
+    return S5;
   }
-  get _dirty() {
-    return this._stage === "editing" && !elementsEqual(this._workingElement, this._baselineElement);
+  _startSync(hubId, deviceId, element) {
+    return this.api.editDevice(hubId, deviceId, element, this._snapshot.snapshot_id);
   }
-  /** The card's `_commitEditBundleEdit`: replace the working bundle, mirror the element into the draft slot. */
-  _commit(next) {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null || !this._snapshot) return;
-    this._working = next;
-    const element = deviceElement(next, deviceId);
-    if (element && !elementsEqual(element, this._baselineElement)) {
-      this.store.setDraft(hubId, { scope: deviceDraftScope(deviceId), snapshotId: this._snapshot.snapshot_id, data: { element } });
-    } else {
-      this.store.discardDraft(hubId);
-    }
+  _startDelete(hubId, deviceId) {
+    return this.api.removeDevice(hubId, deviceId);
   }
-  /** For the shell: leaving with unsynced edits goes through the card's dialog (plan decision 3). */
-  hasUnsyncedChanges() {
-    return this._dirty;
-  }
-  askToLeave(then) {
-    if (!this._dirty) {
-      then();
-      return;
-    }
-    this._exitConfirm = { then };
+  _renderEditing() {
+    return this._stepEditor ? this._renderStepEditor(this._stepEditor) : this._renderEditor();
   }
   // -- the payload dialog (the card's add / edit payload, live mode) ------------------------------
   get _deviceClass() {
@@ -16214,10 +18962,6 @@ var SbPanelDeviceEditor = class extends i4 {
     if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
     return { className, fields: { ...decoded.fields }, trailerHex: String(decoded.trailer_hex ?? ""), edited: false };
   }
-  /** A payload fetch / add failure, shown in the bottom dock (the shell's sb-message) where it is always in view. */
-  _dockError(text) {
-    this.dispatchEvent(new CustomEvent("sb-message", { bubbles: true, composed: true, detail: { text, ok: false } }));
-  }
   /** The braces: fetch the command's payload from the hub, then open the dialog on it. */
   async _fetchAndEditPayload(commandId) {
     const hubId = this._hub?.hub_id;
@@ -16227,13 +18971,13 @@ var SbPanelDeviceEditor = class extends i4 {
     try {
       const response = await this.api.commandPayload(hubId, deviceId, commandId);
       if (!response.ok || !response.body) {
-        this._dockError(response.status === 404 && response.body?.type === "payload_not_found" ? S3.noPayloadReturned : problemText(response));
+        this._dockError(response.status === 404 && response.body?.type === "payload_not_found" ? S5.noPayloadReturned : problemText(response));
         return;
       }
       const payload = response.body;
       const hex = String(payload.hex ?? "").trim();
       if (!hex) {
-        this._dockError(S3.noPayloadReturned);
+        this._dockError(S5.noPayloadReturned);
         return;
       }
       const snapshot = this._snapshotFromPayload(payload);
@@ -16295,7 +19039,7 @@ var SbPanelDeviceEditor = class extends i4 {
     let data = restoreData;
     const newId = nextFreeDeviceCommandId(this._working, deviceId);
     if (newId == null) {
-      this._dockError(S3.noFreeCommandSlot);
+      this._dockError(S5.noFreeCommandSlot);
       this._payloadDialog = null;
       return;
     }
@@ -16371,106 +19115,16 @@ var SbPanelDeviceEditor = class extends i4 {
     input.value = this._byteToSeconds(wait);
     this._commit(setDeviceMacroStepWait(this._working, this.deviceId, editor.buttonId, item.index, wait));
   }
-  _goToList() {
-    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: "devices" } }));
-  }
-  // -- sync: PUT /devices/{id} with If-Match, followed as a job (plan decision 4) -------------------
-  async _sync() {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    const element = this._workingElement;
-    const snapshot = this._snapshot;
-    if (!hubId || deviceId == null || !element || !snapshot || this._syncing) return false;
-    this._syncing = true;
-    this._syncFailed = null;
-    try {
-      const started = await this.api.editDevice(hubId, deviceId, element, snapshot.snapshot_id);
-      if (started.status === 412) {
-        this._syncFailed = { stale: true, message: problemText(started) };
-        this._stage = "sync_failed";
-        return false;
-      }
-      if (started.status !== 202 || !started.body) {
-        this.store.noteResponse(hubId, started);
-        this._syncFailed = { stale: false, message: problemText(started) };
-        this._stage = "sync_failed";
-        return false;
-      }
-      const job = await this.api.followJob(hubId, started.body.job_id);
-      if (!job || job.status !== "done") {
-        const error = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
-        const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
-        this._syncFailed = { stale, message: error };
-        this._stage = "sync_failed";
-        return false;
-      }
-      this.store.discardDraft(hubId);
-      await this._load({ keepDraft: false });
-      return true;
-    } catch (err) {
-      this._syncFailed = { stale: false, message: String(err) };
-      this._stage = "sync_failed";
-      return false;
-    } finally {
-      this._syncing = false;
-    }
-  }
-  /** "Reload from hub": read this device from the hub as a job, then re-open it; the local edit is discarded. */
-  async _reloadFromHub() {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null || this._refreshing) return;
-    this._refreshing = true;
-    try {
-      this.store.discardDraft(hubId);
-      const started = await this.api.refreshSnapshot(hubId, { device_id: deviceId });
-      if (started.status === 202 && started.body) await this.api.followJob(hubId, started.body.job_id);
-      else this.store.noteResponse(hubId, started);
-    } finally {
-      this._refreshing = false;
-    }
-    await this._load({ keepDraft: false });
-  }
-  // -- delete device (immediate, a job) ---------------------------------------------------------------
-  async _deleteDevice() {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null || this._deleting) return;
-    this._deleting = true;
-    try {
-      const started = await this.api.removeDevice(hubId, deviceId);
-      if (started.status !== 202 || !started.body) {
-        this.store.noteResponse(hubId, started);
-        this.store.say(`Delete refused: ${problemText(started)}`, false);
-        return;
-      }
-      const job = await this.api.followJob(hubId, started.body.job_id);
-      if (!job || job.status !== "done") {
-        this.store.say(`Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.type}` : ""}`, false);
-        return;
-      }
-      this.store.discardDraft(hubId);
-      this._goToList();
-    } finally {
-      this._deleting = false;
-    }
-  }
   // -- section nav -------------------------------------------------------------------------------------
   _sectionItems() {
     const deviceClass = this.deviceId != null ? bundleDeviceClass(this._working, this.deviceId) ?? "" : "";
     const hasNetwork = IP_HEAD_DEVICE_CLASSES.has(deviceClass);
     return [
-      { id: "power", icon: mdiPowerPlugOutline, label: S3.detailPower },
-      ...hasNetwork ? [{ id: "network", icon: mdiLanConnect, label: S3.detailNetwork }] : [],
-      { id: "commands", icon: mdiFormatListBulleted, label: S3.detailCommands },
-      { id: "bindings", icon: mdiGestureTapButton, label: S3.detailButtons }
+      { id: "power", icon: mdiPowerPlugOutline, label: S5.detailPower },
+      ...hasNetwork ? [{ id: "network", icon: mdiLanConnect, label: S5.detailNetwork }] : [],
+      { id: "commands", icon: mdiFormatListBulleted, label: S5.detailCommands },
+      { id: "bindings", icon: mdiGestureTapButton, label: S5.detailButtons }
     ];
-  }
-  /** The offset the sticky top dock and the sticky header take from the viewport's top. */
-  _stickyOffset() {
-    const dock = parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0;
-    const header = this.renderRoot.querySelector(".sticky-header")?.getBoundingClientRect().height ?? 0;
-    return dock + header;
   }
   _scrollToSection(id) {
     const section = this.renderRoot.querySelector(`[data-edit-section="${id}"]`);
@@ -16543,14 +19197,14 @@ var SbPanelDeviceEditor = class extends i4 {
     this._deleteConfirm = { target, label };
   }
   _deleteTitle(target, label) {
-    const name = label || S3.thisItem;
+    const name = label || S5.thisItem;
     switch (target.kind) {
       case "device":
-        return S3.deleteDeviceTitle(name);
+        return S5.deleteDeviceTitle(name);
       case "command":
-        return S3.deleteCommandTitle(name);
+        return S5.deleteCommandTitle(name);
       case "device_binding":
-        return S3.deleteBindingTitle(name);
+        return S5.deleteBindingTitle(name);
       default:
         return name;
     }
@@ -16558,10 +19212,10 @@ var SbPanelDeviceEditor = class extends i4 {
   // -- power control ------------------------------------------------------------------------------------------
   _powerOptions() {
     return [
-      { mode: IDLE_BEHAVIOR_DISABLED, label: S3.powerControlDisabled, sub: S3.powerControlDisabledSub },
-      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S3.powerControlAutoOff, sub: S3.powerControlAutoOffSub },
-      { mode: IDLE_BEHAVIOR_STAY_ON, label: S3.powerControlStayOn, sub: S3.powerControlStayOnSub },
-      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S3.powerControlAlwaysOn, sub: S3.powerControlAlwaysOnSub }
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S5.powerControlDisabled, sub: S5.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S5.powerControlAutoOff, sub: S5.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S5.powerControlStayOn, sub: S5.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S5.powerControlAlwaysOn, sub: S5.powerControlAlwaysOnSub }
     ];
   }
   _selectPower(mode) {
@@ -16588,33 +19242,6 @@ var SbPanelDeviceEditor = class extends i4 {
     this._binding = { editButtonId: item.buttonId, buttonId: item.buttonId, commandId: item.commandId, longPress: Boolean(item.longPress), longPressCommandId: item.longPress?.commandId ?? null, error: "" };
   }
   // -- render --------------------------------------------------------------------------------------------------
-  render() {
-    if (!this._hub || this.deviceId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
-    switch (this._stage) {
-      case "loading":
-        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">Loading device from the hub cache…</div></div></div>`;
-      case "guard_firmware": {
-        const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
-        return this._renderGuard(mdiChip, S3.firmwareUnsupportedTitle, S3.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S3.back}</button>`, "guard-firmware");
-      }
-      case "needs_refresh":
-        return this._renderGuard(mdiDatabaseRefreshOutline, S3.needsRefreshTitle, S3.needsRefreshBody, b2`
-          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S3.refreshDevice}</button>
-          <button class="btn" @click=${this._goToList}>${S3.back}</button>`, "guard-refresh");
-      case "missing":
-        return this._renderGuard(mdiAlertCircleOutline, "Device not found", this._notice ?? S3.deviceMissing, b2`<button class="btn" @click=${this._goToList}>${S3.back}</button>`, "guard-missing");
-      case "sync_failed": {
-        const failed = this._syncFailed;
-        const stale = Boolean(failed?.stale);
-        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S3.syncStaleTitle : S3.syncFailedTitle, stale ? S3.syncStaleBody : failed?.message ?? "", b2`
-          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S3.syncRetry}</button>`}
-          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S3.syncReload}</button>
-          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S3.syncKeepEditing}</button>`, "sync-failed");
-      }
-      default:
-        return this._stepEditor ? this._renderStepEditor(this._stepEditor) : this._renderEditor();
-    }
-  }
   _renderStepEditor(editor) {
     const items = this._stepItems();
     return b2`
@@ -16623,10 +19250,10 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="step-back" type="button" aria-label=${S3.back} @click=${this._closeStepEditor}>${icon3(mdiArrowLeft)}</button>
+                <button class="back-btn" id="step-back" type="button" aria-label=${S5.back} @click=${this._closeStepEditor}>${icon3(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S3.crumbDevices}</button>
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
                     <button class="detail-crumb" type="button" @click=${this._closeStepEditor}>${this._title}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
@@ -16639,10 +19266,10 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="detail-scroll">
             <div class="quick-access-section">
               <div class="quick-access-head">
-                <div class="quick-access-head-main"><div class="quick-access-title">${S3.steps}</div><div class="quick-access-sub">${S3.macroStepsSortableHelp}</div></div>
-                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon3(mdiPlus)}<span>${S3.addStep}</span></button></div>
+                <div class="quick-access-head-main"><div class="quick-access-title">${S5.steps}</div><div class="quick-access-sub">${S5.macroStepsSortableHelp}</div></div>
+                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon3(mdiPlus)}<span>${S5.addStep}</span></button></div>
               </div>
-              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S3.noMacroSteps}</div>`}
+              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S5.noMacroSteps}</div>`}
             </div>
           </div>
         </div>
@@ -16652,7 +19279,7 @@ var SbPanelDeviceEditor = class extends i4 {
     `;
   }
   _renderStepRow(item, position, count) {
-    const meta = item.kind === "command" && item.hold > 0 ? S3.holdLabel(this._byteToSeconds(item.hold)) : "";
+    const meta = item.kind === "command" && item.hold > 0 ? S5.holdLabel(this._byteToSeconds(item.hold)) : "";
     const isLast = position === count - 1;
     const drag = this._drag;
     const dragging = drag?.from === position;
@@ -16660,7 +19287,7 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="quick-access-sortable-item ${dragging ? "is-dragging" : drag ? "is-shifting" : ""}" data-step-index=${item.index} style=${transform ? `transform: ${transform}` : ""}>
         <div class="quick-access-row quick-access-row--step">
-          <button class="quick-access-drag step-handle" type="button" aria-label=${S3.dragStepAria} title=${S3.dragStepAria}
+          <button class="quick-access-drag step-handle" type="button" aria-label=${S5.dragStepAria} title=${S5.dragStepAria}
             @mousedown=${(event) => event.preventDefault()}
             @pointerdown=${(event) => this._dragStart(event, position)}
             @pointermove=${(event) => this._dragMove(event)}
@@ -16677,19 +19304,19 @@ var SbPanelDeviceEditor = class extends i4 {
     }}
           >${icon3(mdiDragVerticalVariant)}</button>
           <div class="quick-access-main">
-            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S3.stepChipCommand}</div></div>
+            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S5.stepChipCommand}</div></div>
             ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
           </div>
           <div class="quick-access-actions">
-            <button class="icon-btn step-edit" type="button" aria-label=${S3.editStepAria} title=${S3.editStepAria} @click=${() => this._openEditStep(item)}>${icon3(mdiPencil)}</button>
-            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S3.deleteStepAria} title=${S3.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon3(mdiTrashCanOutline)}</button>
+            <button class="icon-btn step-edit" type="button" aria-label=${S5.editStepAria} title=${S5.editStepAria} @click=${() => this._openEditStep(item)}>${icon3(mdiPencil)}</button>
+            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S5.deleteStepAria} title=${S5.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon3(mdiTrashCanOutline)}</button>
           </div>
         </div>
-        ${isLast ? A : b2`<label class="step-wait" title=${S3.stepWaitAria}>
-              <span class="step-wait-caption">${S3.stepWaitLabel}</span>
+        ${isLast ? A : b2`<label class="step-wait" title=${S5.stepWaitAria}>
+              <span class="step-wait-caption">${S5.stepWaitLabel}</span>
               <span class="step-wait-field">
-                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S3.stepWaitAria} .value=${this._byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
-                <span class="step-wait-unit">${S3.stepWaitUnit}</span>
+                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S5.stepWaitAria} .value=${this._byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
+                <span class="step-wait-unit">${S5.stepWaitUnit}</span>
               </span>
             </label>`}
       </div>
@@ -16705,11 +19332,11 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeStepDialog}>
         <div class="dialog small" id="step-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${isEdit ? S3.stepDialogEditTitle : S3.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S3.stepCancel} @click=${this._closeStepDialog}>${icon3(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${isEdit ? S5.stepDialogEditTitle : S5.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S5.stepCancel} @click=${this._closeStepDialog}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-step-command">${S3.stepCommand}</label>
-              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S3.stepNoCommands}</div>` : b2`<select id="sb-step-command" class="decoded-field-input" @change=${(event) => {
+              <label class="decoded-field-label" for="sb-step-command">${S5.stepCommand}</label>
+              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S5.stepNoCommands}</div>` : b2`<select id="sb-step-command" class="decoded-field-input" @change=${(event) => {
       const raw = event.currentTarget.value;
       this._stepDialog = { ...dialog, commandId: raw === "" ? null : Number(raw), error: "" };
     }}>
@@ -16717,7 +19344,7 @@ var SbPanelDeviceEditor = class extends i4 {
                   </select>`}
             </div>
             <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-step-hold">${S3.stepHoldSeconds}</label>
+              <label class="decoded-field-label" for="sb-step-hold">${S5.stepHoldSeconds}</label>
               <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
                 @input=${(event) => {
       this._stepDialog = { ...dialog, hold: event.currentTarget.value };
@@ -16730,23 +19357,9 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S3.stepCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S3.stepSave : S3.stepAdd}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S5.stepCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S5.stepSave : S5.stepAdd}</button>
             </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderGuard(iconPath, title, body, actions, id) {
-    return b2`
-      <div class="tab-panel tab-panel--detail">
-        <div class="detail-view" id=${id}>
-          <div class="capture-error">
-            <div class="guard-icon">${icon3(iconPath)}</div>
-            <div class="capture-error-title">${title}</div>
-            <div class="guard-sub">${body}</div>
-            <div class="action-row">${actions}</div>
           </div>
         </div>
       </div>
@@ -16763,28 +19376,28 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="editor-back" type="button" aria-label=${S3.back} @click=${this._requestClose}>${icon3(mdiArrowLeft)}</button>
+                <button class="back-btn" id="editor-back" type="button" aria-label=${S5.back} @click=${this._requestClose}>${icon3(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S3.crumbDevices}</button>
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
                   </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
                 <div class="detail-title-actions">
-                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S3.renameDevice} title=${S3.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon3(mdiPencil)}</button>`}
-                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S3.deleteDeviceAria} title=${S3.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon3(mdiTrashCanOutline)}</button>`}
-                  <button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing\u2026" : dirty ? S3.syncToHub : S3.syncUpToDate}</button>
+                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S5.renameDevice} title=${S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon3(mdiPencil)}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon3(mdiTrashCanOutline)}</button>`}
+                  <button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing\u2026" : dirty ? S5.syncToHub : S5.syncUpToDate}</button>
                 </div>
               </div>
             </div>
-            ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S3.detailSectionsAria}>
+            ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S5.detailSectionsAria}>
                   ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon3(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
                 </div>` : A}
           </div>
           <div class="detail-scroll">
-            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon3(mdiWifiCog)}<span>${S3.managedWifiWarning}</span></div>` : A}
-            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon3(mdiInformationOutline)}<span>${S3.callbackDeviceNote}</span></div>` : A}
+            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon3(mdiWifiCog)}<span>${S5.managedWifiWarning}</span></div>` : A}
+            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon3(mdiInformationOutline)}<span>${S5.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
             ${this._renderNetworkSection(deviceId)}
             ${this._renderCommandsSection(deviceId)}
@@ -16811,25 +19424,25 @@ var SbPanelDeviceEditor = class extends i4 {
         <button class="edit-selection-row" type="button" data-sequence=${buttonId} aria-disabled=${disabled ? "true" : "false"} tabindex=${disabled ? "-1" : "0"} @click=${() => {
         if (!disabled) this._openStepEditor(buttonId, label);
       }}>
-          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S3.macroStepsCount(count)}</span></span>
+          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S5.macroStepsCount(count)}</span></span>
           <span class="selection-chevron">${icon3(mdiChevronRight)}</span>
         </button>
       </div>`;
     };
     return b2`
       <div class="quick-access-section" data-edit-section="power">
-        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S3.powerSetupTitle}</div><div class="quick-access-sub">${S3.powerSetupDeviceSub}</div></div></div>
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S5.powerSetupTitle}</div><div class="quick-access-sub">${S5.powerSetupDeviceSub}</div></div></div>
         ${this._isCallbackDevice ? A : b2`<div class="power-control" id="power-control" data-open=${open ? "true" : "false"}>
               <button class="power-control-trigger" type="button" aria-haspopup="listbox" aria-expanded=${String(open)} @click=${() => {
       this._powerMenuOpen = !open;
     }}>
-                <span class="selection-main"><span class="selection-label">${selected ? selected.label : S3.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S3.powerControlUnsetSub}</span></span>
+                <span class="selection-main"><span class="selection-label">${selected ? selected.label : S5.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S5.powerControlUnsetSub}</span></span>
                 <span class="selection-chevron">${icon3(mdiChevronDown)}</span>
               </button>
               ${open ? b2`<button class="power-control-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
       this._powerMenuOpen = false;
     }}></button>
-                    <div class="power-control-menu" role="listbox" aria-label=${S3.powerControlTitle}>
+                    <div class="power-control-menu" role="listbox" aria-label=${S5.powerControlTitle}>
                       ${options.map((opt) => b2`<button class="power-control-option" type="button" role="option" data-mode=${opt.mode} aria-selected=${String(opt.mode === mode)} aria-checked=${String(opt.mode === mode)} @click=${() => this._selectPower(opt.mode)}>
                         <span class="selection-main"><span class="selection-label">${opt.label}</span><span class="selection-sub">${opt.sub}</span></span>
                         <span class="selection-chevron">${opt.mode === mode ? icon3(mdiCheck) : A}</span>
@@ -16837,10 +19450,10 @@ var SbPanelDeviceEditor = class extends i4 {
                     </div>` : A}
             </div>`}
         <div class="quick-access-list">
-          ${disabled ? b2`<div class="power-sequences-note">${S3.powerSequencesDisabledNote}</div>` : A}
+          ${disabled ? b2`<div class="power-sequences-note">${S5.powerSequencesDisabledNote}</div>` : A}
           <div class="quick-access-sortable-container power-sequences" data-disabled=${disabled ? "true" : "false"}>
-            ${row(198, S3.powerOnLabel)}
-            ${row(199, S3.powerOffLabel)}
+            ${row(198, S5.powerOnLabel)}
+            ${row(199, S5.powerOffLabel)}
           </div>
         </div>
       </div>
@@ -16852,15 +19465,15 @@ var SbPanelDeviceEditor = class extends i4 {
     const ip = deviceIpAddress(this._working, deviceId);
     return b2`
       <div class="quick-access-section" data-edit-section="network">
-        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S3.detailNetwork}</div><div class="quick-access-sub">${S3.networkDescription}</div></div></div>
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S5.detailNetwork}</div><div class="quick-access-sub">${S5.networkDescription}</div></div></div>
         <div class="quick-access-list"><div class="quick-access-sortable-container"><div class="quick-access-sortable-item">
           <div class="quick-access-row">
             <div class="quick-access-main">
-              <div class="quick-access-label-row"><div class="quick-access-label" id="editor-ip">${ip || S3.hubNameNotSet}</div><div class="quick-access-chip">${S3.ipChip}</div></div>
-              <div class="quick-access-meta">${S3.ipv4Description}</div>
+              <div class="quick-access-label-row"><div class="quick-access-label" id="editor-ip">${ip || S5.hubNameNotSet}</div><div class="quick-access-chip">${S5.ipChip}</div></div>
+              <div class="quick-access-meta">${S5.ipv4Description}</div>
             </div>
             <div class="quick-access-actions">
-              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S3.editIpAria} title=${S3.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon3(mdiPencil)}</button>
+              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S5.editIpAria} title=${S5.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon3(mdiPencil)}</button>
             </div>
           </div>
         </div></div></div>
@@ -16875,24 +19488,24 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S3.detailCommands}</div><div class="quick-access-sub">${S3.commandsLiveHelp}</div></div>
-          ${callback ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon3(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S3.addCommand}</span></button></div>`}
+          <div class="quick-access-head-main"><div class="quick-access-title">${S5.detailCommands}</div><div class="quick-access-sub">${S5.commandsLiveHelp}</div></div>
+          ${callback ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon3(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S5.addCommand}</span></button></div>`}
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
                 <div class="quick-access-row">
                   <div class="quick-access-main">
-                    <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${pendingAdd(item.commandId) ? S3.newCommandChip : S3.commandChip}</div></div>
-                    <div class="quick-access-meta">${S3.commandId} ${item.commandId}</div>
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${pendingAdd(item.commandId) ? S5.newCommandChip : S5.commandChip}</div></div>
+                    <div class="quick-access-meta">${S5.commandId} ${item.commandId}</div>
                   </div>
                   <div class="quick-access-actions">
-                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S3.renameCommandAria} title=${S3.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon3(mdiPencil)}</button>
-                          ${pendingAdd(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S3.editPayloadAria} title=${S3.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon3(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S3.deleteCommandAria} title=${S3.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon3(mdiTrashCanOutline)}</button>`}`}
+                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S5.renameCommandAria} title=${S5.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon3(mdiPencil)}</button>
+                          ${pendingAdd(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S5.editPayloadAria} title=${S5.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon3(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
+                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S5.deleteCommandAria} title=${S5.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon3(mdiTrashCanOutline)}</button>`}`}
                   </div>
                 </div>
               </div>`)}
-            </div></div>` : b2`<div class="quick-access-empty">${S3.noDeviceCommands}</div>`}
+            </div></div>` : b2`<div class="quick-access-empty">${S5.noDeviceCommands}</div>`}
       </div>
     `;
   }
@@ -16902,24 +19515,24 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="quick-access-section" data-edit-section="bindings">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S3.buttonBindingsTitle}</div><div class="quick-access-sub">${S3.buttonBindingsDeviceSub}</div></div>
-          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon3(mdiPlus)}<span>${S3.addBinding}</span></button>
+          <div class="quick-access-head-main"><div class="quick-access-title">${S5.buttonBindingsTitle}</div><div class="quick-access-sub">${S5.buttonBindingsDeviceSub}</div></div>
+          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon3(mdiPlus)}<span>${S5.addBinding}</span></button>
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
                 <div class="quick-access-row">
                   <div class="quick-access-main">
-                    <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${S3.buttonChip}</div></div>
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${S5.buttonChip}</div></div>
                     <div class="quick-access-meta">${item.shortPressLabel}</div>
-                    ${item.longPress ? b2`<div class="quick-access-meta">${S3.bindingLongPressMeta(item.longPress.label)}</div>` : A}
+                    ${item.longPress ? b2`<div class="quick-access-meta">${S5.bindingLongPressMeta(item.longPress.label)}</div>` : A}
                   </div>
                   <div class="quick-access-actions">
-                    <button class="icon-btn binding-edit" type="button" aria-label=${S3.editBindingAria} title=${S3.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon3(mdiPencil)}</button>
-                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S3.deleteBindingAria} title=${S3.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon3(mdiTrashCanOutline)}</button>
+                    <button class="icon-btn binding-edit" type="button" aria-label=${S5.editBindingAria} title=${S5.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon3(mdiPencil)}</button>
+                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S5.deleteBindingAria} title=${S5.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon3(mdiTrashCanOutline)}</button>
                   </div>
                 </div>
               </div>`)}
-            </div></div>` : b2`<div class="quick-access-empty">${S3.buttonBindingsEmpty}</div>`}
+            </div></div>` : b2`<div class="quick-access-empty">${S5.buttonBindingsEmpty}</div>`}
       </div>
     `;
   }
@@ -16928,14 +19541,14 @@ var SbPanelDeviceEditor = class extends i4 {
     const dialog = this._rename;
     if (!dialog) return A;
     const isIp = dialog.target.kind === "device_ip";
-    const title = dialog.target.kind === "device" ? S3.renameDevice : isIp ? S3.editIpAria : S3.renameCommand;
+    const title = dialog.target.kind === "device" ? S5.renameDevice : isIp ? S5.editIpAria : S5.renameCommand;
     return b2`
       <div class="modal-backdrop" @click=${this._closeRename}>
         <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.cancel} @click=${this._closeRename}>${icon3(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.cancel} @click=${this._closeRename}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
             <label class="decoded-field">
-              <span class="decoded-field-label">${isIp ? S3.ipAddress : S3.name}</span>
+              <span class="decoded-field-label">${isIp ? S5.ipAddress : S5.name}</span>
               <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -16947,8 +19560,8 @@ var SbPanelDeviceEditor = class extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeRename}>${S3.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${S3.save}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeRename}>${S5.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${S5.save}</button>
             </div>
           </div>
         </div>
@@ -16964,23 +19577,23 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
         <div class="dialog small" id="delete-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S3.deleteCancel} @click=${this._closeDeleteConfirm}>${icon3(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S5.deleteCancel} @click=${this._closeDeleteConfirm}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
-            <div class="backup-drawer-sub">${hasCascade ? S3.deleteCascadeIntroLive : S3.deleteSimpleBodyLive}</div>
+            <div class="backup-drawer-sub">${hasCascade ? S5.deleteCascadeIntroLive : S5.deleteSimpleBodyLive}</div>
             ${hasCascade ? b2`<ul class="delete-impact-list" id="delete-impact">
-                  ${impact.activities > 0 ? b2`<li>${icon3(mdiLinkVariant)}<span>${S3.deleteImpactActivities(impact.activities)}</span></li>` : A}
-                  ${impact.favorites > 0 ? b2`<li>${icon3(mdiStarOutline)}<span>${S3.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
-                  ${impact.macroSteps > 0 ? b2`<li>${icon3(mdiFormatListNumbered)}<span>${S3.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
-                  ${impact.powerSteps > 0 ? b2`<li>${icon3(mdiPower)}<span>${S3.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
-                  ${impact.bindings > 0 ? b2`<li>${icon3(mdiGestureTapButton)}<span>${S3.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+                  ${impact.activities > 0 ? b2`<li>${icon3(mdiLinkVariant)}<span>${S5.deleteImpactActivities(impact.activities)}</span></li>` : A}
+                  ${impact.favorites > 0 ? b2`<li>${icon3(mdiStarOutline)}<span>${S5.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+                  ${impact.macroSteps > 0 ? b2`<li>${icon3(mdiFormatListNumbered)}<span>${S5.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                  ${impact.powerSteps > 0 ? b2`<li>${icon3(mdiPower)}<span>${S5.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
+                  ${impact.bindings > 0 ? b2`<li>${icon3(mdiGestureTapButton)}<span>${S5.deleteImpactBindings(impact.bindings)}</span></li>` : A}
                 </ul>` : A}
-            <div class="delete-replace-note">${icon3(mdiInformationOutline)}<span>${immediate ? S3.deleteImmediateNote : S3.deleteSyncNote}</span></div>
+            <div class="delete-replace-note">${icon3(mdiInformationOutline)}<span>${immediate ? S5.deleteImmediateNote : S5.deleteSyncNote}</span></div>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note"></div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${S3.deleteCancel}</button>
-              <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${S3.deleteConfirm}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${S5.deleteCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${S5.deleteConfirm}</button>
             </div>
           </div>
         </div>
@@ -16995,7 +19608,7 @@ var SbPanelDeviceEditor = class extends i4 {
     const unbound = unboundButtonsForDevice(this._working, deviceId);
     const commands = deviceCommandItems(this._working, deviceId);
     const canSave = dialog.buttonId != null && dialog.commandId != null;
-    const title = isEdit ? S3.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : S3.bindingDialogAddTitle;
+    const title = isEdit ? S5.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : S5.bindingDialogAddTitle;
     const select = (id, label, value, options, empty, onChange) => b2`
       <div class="decoded-field">
         <label class="decoded-field-label" for=${id}>${label}</label>
@@ -17006,50 +19619,29 @@ var SbPanelDeviceEditor = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeBinding}>
         <div class="dialog small" id="binding-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S3.bindingCancel} @click=${this._closeBinding}>${icon3(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.bindingCancel} @click=${this._closeBinding}>${icon3(mdiClose)}</button></div>
           <div class="dialog-body">
-            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S3.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S3.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S3.bindingNoButtons, (value) => {
+            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S5.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S5.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S5.bindingNoButtons, (value) => {
       this._binding = { ...dialog, buttonId: value, error: "" };
     })}
-            ${select("sb-binding-command", S3.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S3.bindingNoCommands, (value) => {
+            ${select("sb-binding-command", S5.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, commandId: value, error: "" };
     })}
             <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S3.bindingEnableLongPress}</span>
+              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
               <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => {
       this._binding = { ...dialog, longPress: event.currentTarget.checked };
     }} />
             </div>
-            ${dialog.longPress ? select("sb-binding-lp-command", S3.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S3.bindingNoCommands, (value) => {
+            ${dialog.longPress ? select("sb-binding-lp-command", S5.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, longPressCommandId: value };
     }) : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S3.bindingCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S3.bindingSave : S3.bindingAdd}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderExitConfirmDialog() {
-    if (!this._exitConfirm) return A;
-    const close = () => {
-      this._exitConfirm = null;
-    };
-    return b2`
-      <div class="modal-backdrop" @click=${close}>
-        <div class="dialog small" id="exit-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S3.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S3.syncKeepEditing} @click=${close}>${icon3(mdiClose)}</button></div>
-          <div class="dialog-body"><div class="dialog-text">${S3.exitUnsyncedBody}</div></div>
-          <div class="dialog-footer">
-            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S3.exitWithoutSync}</button>
-            <div class="dialog-footer-actions">
-              <button class="btn" id="exit-keep" type="button" @click=${close}>${S3.syncKeepEditing}</button>
-              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S3.exitSyncNow}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S5.bindingCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S5.bindingSave : S5.bindingAdd}</button>
             </div>
           </div>
         </div>
@@ -17058,229 +19650,21 @@ var SbPanelDeviceEditor = class extends i4 {
   }
 };
 SbPanelDeviceEditor.properties = {
-  api: { attribute: false },
-  ctx: { attribute: false },
-  store: { attribute: false },
   deviceId: { attribute: false },
-  _stage: { state: true },
-  _snapshot: { state: true },
-  _baseline: { state: true },
-  _working: { state: true },
-  _info: { state: true },
-  _callbackDeviceId: { state: true },
   _activeSection: { state: true },
   _powerMenuOpen: { state: true },
   _rename: { state: true },
   _deleteConfirm: { state: true },
   _binding: { state: true },
-  _exitConfirm: { state: true },
   _stepEditor: { state: true },
   _stepDialog: { state: true },
   _payloadDialog: { state: true },
   _payloadFetching: { state: true },
-  _addCommandPreparing: { state: true },
-  _syncing: { state: true },
-  _syncFailed: { state: true },
-  _refreshing: { state: true },
-  _deleting: { state: true },
-  _notice: { state: true }
+  _addCommandPreparing: { state: true }
 };
 SbPanelDeviceEditor.styles = [
   PANEL_BASE_CSS,
-  i`
-      :host {
-        display: block;
-        container-type: inline-size;
-        --de-radius-sm: 10px;
-        --de-radius-md: 12px;
-        --de-radius-lg: 16px;
-        --de-radius-xl: 22px;
-      }
-      .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
-      button { border: 0; background: transparent; padding: 0; }
-      /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
-      .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
-      .quick-access-section, .detail-scroll, .power-control { min-width: 0; }
-
-      /* -- frame (the card's .tab-panel--detail / .detail-view) ------------------------------- */
-      .tab-panel--detail { min-width: 0; padding: 0; }
-      .detail-view { min-width: 0; display: flex; flex-direction: column; margin: -12px -16px -16px; }
-      /* The card pins its header inside its own scroll box; the panel's page scrolls under the shell's top dock, so pin under it. */
-      .sticky-header { position: sticky; top: var(--top-dock-height, 0px); z-index: 3; min-width: 0; background: var(--sbp-panel); }
-      .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--sbp-line); }
-      .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
-      .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; overflow: hidden; }
-      .detail-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 11px; line-height: 1.1; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--sbp-muted); }
-      .detail-crumb { flex: 0 1 auto; min-width: 0; font: inherit; color: var(--sbp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
-      .detail-crumb:hover { color: var(--sbp-text); text-decoration: underline; text-decoration-color: var(--sbp-accent); }
-      .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
-      .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .back-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .back-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .back-btn .mdi { width: 18px; height: 18px; }
-      .detail-sync-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease; }
-      .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
-      .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
-      .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: #2e7d32; opacity: 1; }
-      .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
-      .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
-      .icon-btn:active, .dialog-close:active { transform: translateY(1px); }
-      .icon-btn:disabled { opacity: 0.45; cursor: default; }
-      .icon-btn--danger:hover:not(:disabled) { border-color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 10%, var(--sbp-panel)); color: var(--sbp-err); }
-
-      /* -- section nav ---------------------------------------------------------------------------- */
-      .detail-section-nav { display: flex; align-items: stretch; min-height: 34px; margin: 10px 16px; border: 1px solid color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); overflow: hidden; background: color-mix(in srgb, var(--sbp-panel-2) 76%, transparent); }
-      .detail-section-nav-btn { flex: 1 1 0; min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 82%, transparent); color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font: inherit; cursor: pointer; white-space: nowrap; border-radius: 0; }
-      .detail-section-nav-btn:last-child { border-right: none; }
-      .detail-section-nav-btn:hover { background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-text); }
-      .detail-section-nav-btn.active { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.1); box-shadow: inset 0 -2px 0 var(--sbp-accent); }
-      .detail-section-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-
-      /* -- body ------------------------------------------------------------------------------------- */
-      .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-      .notice-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--de-radius-sm); border: 1px solid color-mix(in srgb, var(--sbp-warn) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, transparent); font-size: 12.5px; line-height: 1.45; color: var(--sbp-text); }
-      .notice-banner .mdi { color: var(--sbp-warn); width: 18px; height: 18px; }
-      .notice-banner--info { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.08); }
-      .notice-banner--info .mdi { color: var(--sbp-accent); }
-      @keyframes sb-spin { to { transform: rotate(360deg); } }
-      .mdi.sb-spin { animation: sb-spin 720ms linear infinite; }
-      .section-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
-      .section-status .mdi { width: 18px; height: 18px; }
-      .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
-      .quick-access-section { display: grid; gap: 12px; scroll-margin-top: 16px; }
-      .quick-access-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-      .quick-access-head-main { min-width: 0; flex: 1 1 200px; display: grid; gap: 4px; }
-      .quick-access-head-actions { flex: 0 0 auto; }
-      .quick-access-title { color: var(--sbp-text); font-size: 14px; font-weight: 700; }
-      .quick-access-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
-      .quick-access-list { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); overflow: hidden; display: flex; flex-direction: column; }
-      .quick-access-sortable-container { display: block; }
-      .quick-access-sortable-item { display: block; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
-      .quick-access-sortable-item:first-child { border-top: none; }
-      .quick-access-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; }
-      .quick-access-row--step { grid-template-columns: auto minmax(0, 1fr) auto; }
-      .quick-access-drag { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: -6px; border-radius: 8px; color: var(--sbp-muted); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
-      .quick-access-drag:hover { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.08); }
-      .quick-access-drag:active { cursor: grabbing; }
-      .quick-access-drag .mdi { width: 18px; height: 18px; }
-      .quick-access-sortable-item.is-shifting { transition: transform 150ms ease; }
-      .quick-access-sortable-item.is-dragging { position: relative; z-index: 2; background: var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); border-top-color: transparent; }
-      .detail-view.is-sorting, .quick-access-row--step { user-select: none; -webkit-user-select: none; }
-      .step-wait { display: flex; align-items: center; gap: 6px; padding: 3px 14px 6px; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
-      .step-wait-caption { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--sbp-muted); pointer-events: none; }
-      .step-wait-field { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px 2px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); }
-      .step-wait-field:focus-within { border-color: var(--sbp-accent); }
-      .step-wait-input { width: 42px; min-width: 0; padding: 0; border: none; background: transparent; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 600; text-align: right; outline: none; -moz-appearance: textfield; }
-      .step-wait-input::-webkit-outer-spin-button, .step-wait-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-      .step-wait-unit { color: var(--sbp-muted); font-size: 12px; font-weight: 600; }
-      .quick-access-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-      .quick-access-label-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-      .quick-access-label { min-width: 0; color: var(--sbp-text); font-size: 13px; font-weight: 700; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .quick-access-chip { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 74%, transparent); }
-      .quick-access-meta { color: var(--sbp-muted); font-size: 12px; line-height: 1.4; }
-      .quick-access-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .quick-access-empty { border: 1px dashed color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); padding: 12px 14px; color: var(--sbp-muted); font-size: 13px; line-height: 1.5; background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
-      .quick-access-add-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--de-radius-md); border: 1px solid color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.1); color: var(--sbp-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: border-color 120ms ease, background 120ms ease; }
-      .quick-access-add-btn:hover:not(:disabled) { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-text); }
-      .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
-      .quick-access-add-btn .mdi { color: var(--sbp-accent); }
-
-      /* -- power control ---------------------------------------------------------------------------- */
-      .power-control { position: relative; display: block; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); }
-      .power-control-trigger { width: 100%; border-radius: inherit; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; }
-      .power-control-trigger:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
-      .power-control-trigger .selection-chevron .mdi { transition: transform 120ms ease; }
-      .power-control[data-open="true"] .power-control-trigger .selection-chevron .mdi { transform: rotate(180deg); }
-      .power-control-backdrop { position: fixed; inset: 0; z-index: 30; cursor: default; }
-      .power-control-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 31; display: flex; flex-direction: column; background: var(--sbp-panel); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); overflow: hidden; }
-      .power-control-option { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 50%, transparent); cursor: pointer; border-radius: 0; }
-      .power-control-option:first-child { border-top: none; }
-      .power-control-option:hover { background: rgba(var(--sbp-accent-rgb), 0.08); }
-      .power-control-option[aria-checked="true"] .selection-label { color: var(--sbp-text); font-weight: 700; }
-      .power-control-option .selection-chevron .mdi { color: var(--sbp-accent); }
-      .selection-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; }
-      .selection-label { color: var(--sbp-text); font-size: 13px; font-weight: 600; }
-      .selection-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
-      .selection-chevron { color: var(--sbp-muted); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
-      .selection-chevron .mdi { width: 18px; height: 18px; }
-      .edit-selection-row { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border-radius: 0; }
-      .edit-selection-row:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
-      .edit-selection-row[aria-disabled="true"] { cursor: default; }
-      .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
-      .power-sequences-note { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; padding: 8px 14px 0; }
-
-      /* -- guard screens (the live host's) --------------------------------------------------------- */
-      .capture-error { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.55; }
-      .guard-icon { color: var(--sbp-muted); }
-      .guard-icon .mdi { width: 40px; height: 40px; }
-      .capture-error-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
-      .guard-sub { max-width: 360px; font-size: 13px; }
-      .action-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-      .btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 14px; cursor: pointer; }
-      .btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .btn:disabled { opacity: 0.5; cursor: default; }
-      .btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
-      .btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
-
-      /* -- dialogs ---------------------------------------------------------------------------------- */
-      .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-      .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--de-radius-lg); border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); overflow: hidden; color: var(--sbp-text); }
-      .dialog.small { width: min(500px, calc(100vw - 36px)); }
-      .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
-      .dialog-header { border-bottom: 1px solid var(--sbp-line); }
-      .dialog-title { font-size: 16px; flex: 1; color: var(--sbp-text); }
-      .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-      .dialog-text { font-size: 14px; line-height: 1.55; color: var(--sbp-text); }
-      .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
-      .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
-      .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
-      .dialog-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 12px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-      .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
-      .dialog-btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
-      .dialog-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--sbp-err) 18%, transparent); }
-      .dialog-btn:disabled { opacity: 0.45; cursor: default; }
-      .backup-drawer-sub { color: var(--sbp-muted); font-size: 13px; line-height: 1.5; }
-      .delete-impact-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-      .delete-impact-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--sbp-text); }
-      .delete-impact-list .mdi { width: 18px; height: 18px; color: var(--sbp-muted); }
-      .delete-replace-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sbp-muted); line-height: 1.45; }
-      /* The panel's base styles every <label> as a small uppercase caption; the card's field wrapper is a plain block. */
-      label.decoded-field, .decoded-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: inherit; letter-spacing: 0; text-transform: none; color: inherit; }
-      .decoded-field-label { font-size: 12px; font-weight: 600; color: var(--sbp-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-      .decoded-field-input { width: 100%; font: inherit; font-size: 13px; color: var(--sbp-text); background: var(--sbp-input); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 10px; }
-      .decoded-field-input:focus { outline: none; border-color: var(--sbp-accent); }
-      select.decoded-field-input { cursor: pointer; }
-      .binding-static-field { font-size: 13px; font-weight: 600; color: var(--sbp-text); padding: 8px 10px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
-      .binding-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      /* A switch in place of ha-switch. */
-      .sb-switch { position: relative; width: 40px; height: 22px; flex: 0 0 auto; appearance: none; margin: 0; border-radius: 999px; background: var(--sbp-line); cursor: pointer; transition: background 120ms ease; }
-      .sb-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--sbp-panel); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 120ms ease; }
-      .sb-switch:checked { background: var(--sbp-accent); }
-      .sb-switch:checked::after { transform: translateX(18px); }
-
-      @container (max-width: 480px) {
-        .detail-section-nav-btn { gap: 0; }
-        .detail-section-nav-btn .mdi { display: none; }
-      }
-      @container (max-width: 480px) {
-        .detail-view { margin: -12px -12px -12px; }
-      }
-      @container (max-width: 360px) {
-        .detail-title-actions { gap: 6px; min-width: max-content; }
-        .detail-section-nav { overflow-x: auto; scrollbar-width: none; }
-        .detail-section-nav::-webkit-scrollbar { display: none; }
-        .detail-section-nav-btn { flex-basis: auto; min-width: max-content; padding-inline: 12px; }
-        .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-        .dialog, .dialog.small { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: var(--de-radius-xl) var(--de-radius-xl) 0 0; }
-        .dialog-footer { flex-direction: column; align-items: stretch; }
-        .dialog-footer-actions { width: 100%; }
-        .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
-        .dialog-footer-note { min-height: 0; }
-      }
-    `
+  EDITOR_CSS
 ];
 function defineDeviceEditor() {
   if (!customElements.get(DEVICE_EDITOR_TAG)) customElements.define(DEVICE_EDITOR_TAG, SbPanelDeviceEditor);
@@ -17501,7 +19885,7 @@ function formatHexForDisplay(hexText) {
 // server-panel/src/views/payload-dialog.ts
 var PAYLOAD_DIALOG_TAG = "sb-payload-dialog";
 var DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md";
-var S4 = {
+var S6 = {
   addCommandTitle: "Add command",
   editPayloadTitle: "Edit payload",
   deviceClass: "Device class",
@@ -17551,7 +19935,7 @@ function draftToFieldValue(spec, draft) {
   return draft;
 }
 function irFormatMessage(err) {
-  return err instanceof IrFormatError ? `${S4.invalidProntoHex} (${err.code})` : S4.invalidProntoHex;
+  return err instanceof IrFormatError ? `${S6.invalidProntoHex} (${err.code})` : S6.invalidProntoHex;
 }
 var SbPayloadDialog = class extends i4 {
   constructor() {
@@ -17587,7 +19971,7 @@ var SbPayloadDialog = class extends i4 {
       const format = detectIrPayloadFormat(text);
       if (format === "descriptor") {
         if (this._isX2) this._morphToDescriptor(text);
-        else this._formatError = S4.descriptorX2Only;
+        else this._formatError = S6.descriptorX2Only;
         return;
       }
       if (format === "sofabaton") {
@@ -17620,7 +20004,7 @@ var SbPayloadDialog = class extends i4 {
         if (this._isX2) this._morphToDescriptor(text);
         else {
           this._raw = text;
-          this._formatError = S4.descriptorX2Only;
+          this._formatError = S6.descriptorX2Only;
         }
         return;
       }
@@ -17732,7 +20116,7 @@ var SbPayloadDialog = class extends i4 {
     const row = unwrapUcCodesetRow(text);
     const code = row && /^HEX$/i.test(row.format) ? row.code : text;
     if (!isUcHexCode(code)) return false;
-    this._formatError = S4.ucHexUnsupported;
+    this._formatError = S6.ucHexUnsupported;
     return true;
   }
   _onFieldInput(field, event) {
@@ -17777,7 +20161,7 @@ var SbPayloadDialog = class extends i4 {
     const value = descriptor || raw;
     if (!value) {
       this._testStatus = "error";
-      this._testError = S4.nothingToTest;
+      this._testError = S6.nothingToTest;
       return;
     }
     this._testStatus = "testing";
@@ -17825,7 +20209,7 @@ var SbPayloadDialog = class extends i4 {
     }
     const normalized = normalizeCommandPayloadHex(this._raw);
     if (!normalized) {
-      this._error = S4.payloadHexRequired;
+      this._error = S6.payloadHexRequired;
       return void 0;
     }
     if (normalized === (normalizeCommandPayloadHex(this._rawSnapshot) ?? "")) return null;
@@ -17835,7 +20219,7 @@ var SbPayloadDialog = class extends i4 {
   _addDetail() {
     const name = sanitizeName(this.hubVersion, this._name).trim();
     if (!name) {
-      this._error = S4.newCommandNameRequired;
+      this._error = S6.newCommandNameRequired;
       return void 0;
     }
     const block = this._decoded;
@@ -17844,14 +20228,14 @@ var SbPayloadDialog = class extends i4 {
       const fields = { ...block.fields };
       for (const field of spec?.fields ?? []) fields[field.key] = draftToFieldValue(field, this._drafts[field.key] ?? "");
       if (block.className === "ir" && !/^P:/i.test(String(fields.descriptor ?? "").trim())) {
-        this._error = S4.descriptiveIrRequired;
+        this._error = S6.descriptiveIrRequired;
         return void 0;
       }
       return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: block.trailerHex, fields, edited: true } } };
     }
     const normalized = normalizeCommandPayloadHex(this._raw);
     if (!normalized) {
-      this._error = S4.payloadHexRequired;
+      this._error = S6.payloadHexRequired;
       return void 0;
     }
     return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
@@ -17866,14 +20250,14 @@ var SbPayloadDialog = class extends i4 {
         <div class="dialog" id="payload-dialog" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">${isAdd ? S4.addCommandTitle : S4.editPayloadTitle}</div>
-              ${deviceClass ? b2`<span class="payload-class-badge" title=${S4.deviceClass}>${deviceClass}</span>` : A}
+              <div class="dialog-title">${isAdd ? S6.addCommandTitle : S6.editPayloadTitle}</div>
+              ${deviceClass ? b2`<span class="payload-class-badge" title=${S6.deviceClass}>${deviceClass}</span>` : A}
             </div>
-            <button class="dialog-close" type="button" aria-label=${S4.cancel} @click=${this._close}>${icon4(mdiClose)}</button>
+            <button class="dialog-close" type="button" aria-label=${S6.cancel} @click=${this._close}>${icon4(mdiClose)}</button>
           </div>
           <div class="dialog-body">
             ${isAdd ? b2`<label class="decoded-field">
-                  <span class="decoded-field-label">${S4.name}</span>
+                  <span class="decoded-field-label">${S6.name}</span>
                   <input class="decoded-field-input" id="payload-name" type="text" maxlength="20" .value=${this._name} @input=${(event) => {
       const input = event.currentTarget;
       const value = sanitizeName(this.hubVersion, input.value);
@@ -17881,24 +20265,24 @@ var SbPayloadDialog = class extends i4 {
       this._name = value;
       this._error = "";
     }} />
-                  <span class="decoded-field-helper">${S4.nameHelper}</span>
+                  <span class="decoded-field-helper">${S6.nameHelper}</span>
                 </label>` : A}
             ${body}
-            ${this._isIr ? b2`<div class="payload-test-note">${icon4(mdiFlashOutline)}<span>${S4.verifyPayloadLive}</span></div>` : A}
+            ${this._isIr ? b2`<div class="payload-test-note">${icon4(mdiFlashOutline)}<span>${S6.verifyPayloadLive}</span></div>` : A}
             ${this._testStatus === "idle" ? A : b2`<div class="section-status payload-test-status ${this._testStatus}" id="payload-test-status" role="status" aria-live="polite">
                   ${icon4(this._testStatus === "testing" ? mdiProgressClock : this._testStatus === "success" ? mdiCheckCircleOutline : mdiAlertCircleOutline)}
-                  <span>${this._testStatus === "testing" ? S4.sendingToHub : this._testStatus === "success" ? S4.sentToHub : this._testError || S4.testFailed}</span>
+                  <span>${this._testStatus === "testing" ? S6.sendingToHub : this._testStatus === "success" ? S6.sentToHub : this._testError || S6.testFailed}</span>
                 </div>`}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note payload-dialog-note">
-              <a class="payload-doc-link" href=${DOCS_URL} target="_blank" rel="noreferrer noopener">${S4.payloadDocs}</a>
+              <a class="payload-doc-link" href=${DOCS_URL} target="_blank" rel="noreferrer noopener">${S6.payloadDocs}</a>
               ${this._error ? b2`<span class="payload-dialog-error" id="payload-error">${this._error}</span>` : A}
             </div>
             <div class="dialog-footer-actions">
-              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon4(mdiFlashOutline)}<span>${S4.test}</span></button>` : A}
-              <button class="dialog-btn" type="button" @click=${this._close}>${S4.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S4.save}</button>
+              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon4(mdiFlashOutline)}<span>${S6.test}</span></button>` : A}
+              <button class="dialog-btn" type="button" @click=${this._close}>${S6.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S6.save}</button>
             </div>
           </div>
         </div>
@@ -17907,12 +20291,12 @@ var SbPayloadDialog = class extends i4 {
   }
   _renderIrHexForm() {
     const active = this._prontoAvailable ? this._hexTab : "sofabaton";
-    const helper = this._formatError || (active === "pronto" ? S4.prontoHelper : S4.payloadHexHelper);
+    const helper = this._formatError || (active === "pronto" ? S6.prontoHelper : S6.payloadHexHelper);
     return b2`
       <div class="decoded-form">
         <div class="payload-format-tabs" role="tablist">
-          <button class="payload-format-tab ${active === "pronto" ? "active" : ""}" type="button" role="tab" data-tab="pronto" aria-selected=${String(active === "pronto")} ?disabled=${!this._prontoAvailable} title=${this._prontoAvailable ? "" : S4.prontoUnavailable} @click=${() => this._selectHexTab("pronto")}>${S4.prontoHexTab}</button>
-          <button class="payload-format-tab ${active === "sofabaton" ? "active" : ""}" type="button" role="tab" data-tab="sofabaton" aria-selected=${String(active === "sofabaton")} @click=${() => this._selectHexTab("sofabaton")}>${S4.sofabatonHexTab}</button>
+          <button class="payload-format-tab ${active === "pronto" ? "active" : ""}" type="button" role="tab" data-tab="pronto" aria-selected=${String(active === "pronto")} ?disabled=${!this._prontoAvailable} title=${this._prontoAvailable ? "" : S6.prontoUnavailable} @click=${() => this._selectHexTab("pronto")}>${S6.prontoHexTab}</button>
+          <button class="payload-format-tab ${active === "sofabaton" ? "active" : ""}" type="button" role="tab" data-tab="sofabaton" aria-selected=${String(active === "sofabaton")} @click=${() => this._selectHexTab("sofabaton")}>${S6.sofabatonHexTab}</button>
         </div>
         <label class="decoded-field">
           ${active === "pronto" ? b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-pronto" rows="6" spellcheck="false" .value=${this._pronto} @input=${this._onProntoInput}></textarea>` : b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>`}
@@ -17924,18 +20308,18 @@ var SbPayloadDialog = class extends i4 {
   _renderRawForm() {
     return b2`
       <div class="decoded-form">
-        <div class="decoded-form-head"><div class="decoded-form-title">${S4.rawPayload}</div><div class="decoded-form-sub">${S4.rawPayloadDescription}</div></div>
+        <div class="decoded-form-head"><div class="decoded-form-title">${S6.rawPayload}</div><div class="decoded-form-sub">${S6.rawPayloadDescription}</div></div>
         <label class="decoded-field">
-          <span class="decoded-field-label">${S4.payloadHex}</span>
+          <span class="decoded-field-label">${S6.payloadHex}</span>
           <textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>
-          <span class="decoded-field-helper" id="payload-helper">${S4.payloadHexHelper}</span>
+          <span class="decoded-field-helper" id="payload-helper">${S6.payloadHexHelper}</span>
         </label>
       </div>
     `;
   }
   _renderDecodedForm(block) {
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
-    const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S4.descriptorTab}</button></div>
+    const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S6.descriptorTab}</button></div>
           ${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}` : b2`<div class="decoded-form-head"><div class="decoded-form-title">${spec?.title ?? block.className}</div>${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}</div>`;
     return b2`
       <div class="decoded-form" data-class=${block.className}>
@@ -19254,6 +21638,24 @@ function defineRemoteView() {
 
 // server-panel/src/views/server-view.ts
 var SERVER_VIEW_TAG = "sb-panel-server";
+var PORT_FIELDS = [
+  {
+    name: "app_discovery_port",
+    label: "App UDP listener port",
+    description: "UDP port used for official app discovery and connections. Keep port 8102 for iOS compatibility unless another service already uses it."
+  },
+  {
+    name: "hub_listen_port",
+    label: "Hub TCP listener port",
+    description: "TCP port used by physical hubs to connect to the integration."
+  },
+  {
+    name: "callback_port",
+    label: "Wi-Fi command HTTP listener port",
+    description: "HTTP port used to receive Wi-Fi device button presses. Changing it breaks X1 compatibility and requires existing Wi-Fi devices and commands to be synchronized again."
+  }
+];
+var PORT_PATTERN = /^\d+$/;
 var SbPanelServer = class extends i4 {
   constructor() {
     super(...arguments);
@@ -19265,6 +21667,118 @@ var SbPanelServer = class extends i4 {
     this._listener = null;
     this._status = "";
     this._retrying = false;
+    this._ports = null;
+    this._portDraft = {};
+    this._portStatus = "";
+    this._portError = false;
+    this._saving = false;
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    void this._loadPorts();
+  }
+  async _loadPorts() {
+    if (!this.api) return;
+    try {
+      const response = await this.api.serverSettings();
+      if (response.ok && response.body) {
+        this._ports = response.body;
+        this._portDraft = {};
+      } else {
+        this._setPortStatus(problemText(response), true);
+      }
+    } catch (err) {
+      this._setPortStatus(String(err), true);
+    }
+  }
+  _setPortStatus(text, error) {
+    this._portStatus = text;
+    this._portError = error;
+  }
+  _portValue(name) {
+    return this._portDraft[name] ?? String(this._ports?.[name].configured ?? "");
+  }
+  /** The edited ports that differ from what is saved; null when one is not a port number. */
+  _portChanges() {
+    const ports = this._ports;
+    if (!ports) return {};
+    const changes = {};
+    for (const { name } of PORT_FIELDS) {
+      const raw = this._portDraft[name]?.trim();
+      if (raw === void 0) continue;
+      const value = Number(raw);
+      if (!PORT_PATTERN.test(raw) || value < 1 || value > 65535) return null;
+      if (value !== ports[name].configured) changes[name] = value;
+    }
+    return changes;
+  }
+  _onPortInput(name, event) {
+    this._portDraft = { ...this._portDraft, [name]: event.target.value };
+    this._setPortStatus("", false);
+  }
+  _revertPorts() {
+    this._portDraft = {};
+    this._setPortStatus("", false);
+  }
+  async _savePorts() {
+    const changes = this._portChanges();
+    if (this._saving || !changes || !Object.keys(changes).length) return;
+    this._saving = true;
+    try {
+      const response = await this.api.updateServerSettings(changes);
+      if (response.ok && response.body) {
+        this._ports = response.body;
+        this._portDraft = {};
+        this._setPortStatus(response.body.restart_required ? "Saved. Restart the server to apply." : "Saved.", false);
+      } else {
+        this._setPortStatus(problemText(response), true);
+      }
+    } catch (err) {
+      this._setPortStatus(String(err), true);
+    } finally {
+      this._saving = false;
+    }
+  }
+  _renderPorts() {
+    const ports = this._ports;
+    const changes = this._portChanges();
+    const invalid = changes === null;
+    const dirty = invalid || Object.keys(changes).length > 0;
+    const pending = ports ? PORT_FIELDS.some(({ name }) => ports[name].running !== ports[name].configured) : false;
+    return b2`
+      <div class="panel" id="server-ports">
+        <h2>Ports</h2>
+        <div class="hint" style="margin-bottom: 4px">These ports are shared by all Sofabaton hubs configured in this server. Most users can keep the defaults.</div>
+        ${PORT_FIELDS.map(({ name, label, description }) => {
+      const setting = ports?.[name];
+      const inputId = `port-${name.replace(/_/g, "-")}`;
+      return b2`
+            <div class="port">
+              <label for=${inputId}>${label}</label>
+              <input
+                id=${inputId}
+                type="number"
+                min="1"
+                max="65535"
+                inputmode="numeric"
+                .value=${this._portValue(name)}
+                ?disabled=${!setting || setting.pinned || this._saving || !this.reachable}
+                @input=${(event) => this._onPortInput(name, event)}
+              />
+              ${setting?.pinned ? b2`<span class="note">set by an environment variable or command-line flag</span>` : ""}
+              ${setting && setting.running !== setting.configured ? b2`<span class="note">running on ${setting.running}</span>` : ""}
+              <div class="hint">${description}</div>
+            </div>
+          `;
+    })}
+        <div class="actions">
+          <button class="small primary" id="ports-save" ?disabled=${!dirty || invalid || this._saving || !this.reachable} @click=${this._savePorts}>${this._saving ? "saving\u2026" : "Save"}</button>
+          ${dirty ? b2`<button class="small" id="ports-revert" ?disabled=${this._saving} @click=${this._revertPorts}>Revert</button>` : ""}
+          <span class="msg ${this._portError || invalid ? "msg-err" : "msg-ok"}" id="ports-status">${invalid ? "Enter a port between 1 and 65535." : this._portStatus}</span>
+        </div>
+        ${pending && !this._portStatus ? b2`<div class="hint" style="margin-top: 8px">Saved changes apply after the server restarts.</div>` : ""}
+      </div>
+    `;
   }
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
@@ -19310,6 +21824,7 @@ var SbPanelServer = class extends i4 {
         </div>
         <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The event stream is this page's live feed from the server.</div>
       </div>
+      ${this._renderPorts()}
     `;
   }
 };
@@ -19322,7 +21837,12 @@ SbPanelServer.properties = {
   hubCount: { attribute: false },
   _listener: { state: true },
   _status: { state: true },
-  _retrying: { state: true }
+  _retrying: { state: true },
+  _ports: { state: true },
+  _portDraft: { state: true },
+  _portStatus: { state: true },
+  _portError: { state: true },
+  _saving: { state: true }
 };
 SbPanelServer.styles = [
   PANEL_BASE_CSS,
@@ -19332,6 +21852,10 @@ SbPanelServer.styles = [
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .port { margin-bottom: 12px; }
+      .port input { max-width: 160px; }
+      .port .hint { margin-top: 4px; }
+      .port .note { color: var(--sbp-muted); font-size: 12px; margin-left: 8px; }
     `
 ];
 function defineServerView() {
@@ -19346,6 +21870,7 @@ function bootstrapServerPanel() {
   defineHubsView();
   defineCatalogView();
   defineDeviceEditor();
+  defineActivityEditor();
   definePayloadDialog();
   defineRemoteEditor();
   defineRemoteView();

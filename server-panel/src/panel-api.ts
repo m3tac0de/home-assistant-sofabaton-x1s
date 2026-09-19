@@ -96,6 +96,19 @@ export interface ServerInfo {
   [key: string]: unknown;
 }
 
+/** One port in `GET /server/settings` (openapi `PortSetting`). */
+export interface PortSetting {
+  running: number;
+  configured: number;
+  default: number;
+  pinned: boolean;
+}
+
+export type ServerPortName = "hub_listen_port" | "app_discovery_port" | "callback_port";
+
+/** `GET|PUT /server/settings` (openapi `ServerSettingsView`). */
+export type ServerSettings = Record<ServerPortName, PortSetting> & { restart_required: boolean };
+
 export interface RemoteCardDocument {
   hub_id: string;
   document: Record<string, unknown> | null;
@@ -340,6 +353,15 @@ export class PanelApi {
     return this.request<CallbackListener>("POST", "server/callback-listener/retry");
   }
 
+  serverSettings(): Promise<ApiResponse<ServerSettings>> {
+    return this.request<ServerSettings>("GET", "server/settings");
+  }
+
+  /** Saves to server.json; the ports apply on the next server start. */
+  updateServerSettings(changes: Partial<Record<ServerPortName, number>>): Promise<ApiResponse<ServerSettings>> {
+    return this.request<ServerSettings>("PUT", "server/settings", { body: changes });
+  }
+
   /** The operations from `openapi.json`, sorted by path then method. */
   async operations(): Promise<Operation[]> {
     const response = await this.request<{ paths?: Record<string, Record<string, { operationId?: string; summary?: string; requestBody?: unknown }>> }>(
@@ -438,6 +460,32 @@ export class PanelApi {
   /** Delete a device (a job); the hub cascades the removal into its activities. */
   removeDevice(hubId: string, deviceId: number): Promise<ApiResponse<JobView>> {
     return this.request<JobView>("DELETE", `${this._hub(hubId)}/devices/${deviceId}`);
+  }
+
+  /** Write an edited activity element as a job; `devices` are the device elements the edit touched (a new input entry), sent only when there are any. */
+  editActivity(hubId: string, activityId: number, element: SnapshotEntity, devices: SnapshotEntity[], snapshotId: string): Promise<ApiResponse<JobView>> {
+    const body = devices.length ? { ...element, devices } : element;
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/activities/${activityId}`, { body, headers: { "If-Match": `"${snapshotId}"` } });
+  }
+
+  /** Delete an activity (a job). */
+  removeActivity(hubId: string, activityId: number): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/activities/${activityId}`);
+  }
+
+  /** Create an empty activity (a job); the result carries the hub-assigned `activity_id`. */
+  addActivity(hubId: string, name: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/activities`, { body: { name } });
+  }
+
+  /** Create an empty device of a class the hub can create (a job); the result carries the hub-assigned `device_id`. */
+  addDevice(hubId: string, name: string, deviceClass: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass } });
+  }
+
+  /** Store the display order of every activity or device, once each (a job). */
+  reorderEntities(hubId: string, kind: "activity" | "device", order: number[]): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/${kind === "device" ? "devices" : "activities"}/order`, { body: { order } });
   }
 
   devices(hubId: string): Promise<ApiResponse<Device[]>> {

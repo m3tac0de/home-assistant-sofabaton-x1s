@@ -52,6 +52,10 @@ def build_parser() -> argparse.ArgumentParser:
              "set the host's LAN address inside a container on a bridge network)",
     )
     ap.add_argument("--callback-port", type=int, help="port the callback listener binds (default 8060; the X1 can call no other)")
+    ap.add_argument("--hub-listen-port", type=int,
+                    help="TCP port the hubs connect back to, shared by every hub (default 8200)")
+    ap.add_argument("--app-discovery-port", type=int,
+                    help="UDP port the official app discovers and calls the proxies on (default 8102; keep it for iOS)")
     ap.add_argument("--log-level", choices=("debug", "info", "warning", "error"), help="log level (default info)")
     ap.add_argument("--print-settings", action="store_true", help="print the effective settings as JSON and exit")
     return ap
@@ -71,6 +75,8 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         "log_level": args.log_level,
         "callback_host": args.callback_host,
         "callback_port": args.callback_port,
+        "hub_listen_port": args.hub_listen_port,
+        "app_discovery_port": args.app_discovery_port,
     }
     return load_settings(cli=cli)
 

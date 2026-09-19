@@ -21,7 +21,7 @@ import { connectivityFor, dockModel, hasDirtyDraft, selectedHub, selectedRuntime
 import { PanelStore, type PanelSnapshot } from "./panel-store";
 import { PanelStream } from "./panel-stream";
 import { PANEL_BASE_CSS } from "./panel-styles";
-import type { SbPanelDeviceEditor } from "./views/device-editor";
+import type { SbPanelEntityEditor } from "./views/entity-editor-base";
 
 export const PANEL_TAG = "sofabaton-server-panel";
 
@@ -318,7 +318,7 @@ export class SofabatonServerPanel extends LitElement {
     const targetScope = target.route ? routeScope(target.route) : null;
     const leavingScope = targetScope !== null && targetScope !== scope;
     if (!leavingHub && !leavingScope) return true;
-    const editor = this.renderRoot.querySelector<SbPanelDeviceEditor>("sb-panel-device-editor");
+    const editor = this.renderRoot.querySelector<SbPanelEntityEditor>("sb-panel-device-editor, sb-panel-activity-editor");
     if (editor && editor.hasUnsyncedChanges()) {
       editor.askToLeave(() => {
         if (target.route) this.store.navigate(target.route);
@@ -530,6 +530,9 @@ export class SofabatonServerPanel extends LitElement {
       default:
         if (route.entity !== undefined && route.sub === "devices") {
           return html`<sb-panel-device-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .deviceId=${route.entity}></sb-panel-device-editor>`;
+        }
+        if (route.entity !== undefined && route.sub === "activities") {
+          return html`<sb-panel-activity-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .activityId=${route.entity}></sb-panel-activity-editor>`;
         }
         return html`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }

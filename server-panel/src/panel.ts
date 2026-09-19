@@ -12,6 +12,7 @@ import { definePanel } from "./panel-element";
 import { defineApiView } from "./views/api-view";
 import { defineBackupView } from "./views/backup-view";
 import { defineCatalogView } from "./views/catalog-view";
+import { defineActivityEditor } from "./views/activity-editor";
 import { defineDeviceEditor } from "./views/device-editor";
 import { definePayloadDialog } from "./views/payload-dialog";
 import { defineEventsView } from "./views/events-view";
@@ -27,6 +28,7 @@ export function bootstrapServerPanel(): void {
   defineHubsView();
   defineCatalogView();
   defineDeviceEditor();
+  defineActivityEditor();
   definePayloadDialog();
   defineRemoteEditor();
   defineRemoteView();

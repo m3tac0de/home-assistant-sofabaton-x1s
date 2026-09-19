@@ -14,6 +14,7 @@ can reach it directly; enable starts a fresh proxy from the record.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
@@ -291,7 +292,13 @@ class HubManager:
     async def _start_hub(self, record: HubRecord) -> None:
         if record.hub_id in self._proxies:
             return
-        proxy = self._factory(record.config)
+        # The host-side ports are server settings: the library's hub
+        # listener and app demuxer are process-wide, so one pair serves all.
+        proxy = self._factory(dataclasses.replace(
+            record.config,
+            hub_listen_port=self._settings.hub_listen_port,
+            app_discovery_port=self._settings.app_discovery_port,
+        ))
         if self.zeroconf is not None:
             proxy.set_zeroconf(self.zeroconf)
         await self._import_state(record.hub_id, proxy)

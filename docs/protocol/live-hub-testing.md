@@ -2340,3 +2340,75 @@ separate headless browser.
 Not covered: macros (this hub has none on Watch TV), X1 and X2 (not in
 the run), a phone or tablet (desktop browser only), and a wheel install
 (the server ran from the editable install).
+
+## ◇ Validated: live inputs write, "Set input" on a new input (X1 + X1S, 2026-09-19)
+
+Found while live-checking the server panel's activity editor on the X1S
+and reproduced in the Home Assistant card: "Set input" in an activity's
+power-on sequence offers every command of the device. When the picked
+command was not yet on the device's inputs page, the editor appended an
+entry to the device's `input_record`, the plan carried `inputs_write`,
+and that step was a logged no-op. The sync reported success, the
+power-on macro got the input ordinal, the hub never got the entry. On a
+device that was never configured for inputs (`input_mode` 0) the hub
+also rejected the member step's inputs query ("input_cmd_id not found;
+proceeding without input").
+
+`_sync_step_inputs_write` now writes, in the restore path's order:
+
+1. `input_mode` 0 becomes 1 (direct inputs) through the head record
+   rewrite a rename uses (family `0x08` update for the device's own id);
+   the hub rejects every inputs request until then;
+2. the hub's own page is read and the new entries are appended to it, so
+   existing entries, control-key rows and favorite rows go back as the
+   hub holds them;
+3. the family-`0x46` page is written and read back; the step fails when
+   the read-back does not list the new entries (an ack is not proof).
+
+Only an append is written. Activities address an input by its position
+in this list, so a removal or a reorder would re-point other
+activities' input steps; those edits stay a logged no-op, which keeps
+the known limitation that a deleted command's entry stays on the page.
+
+`bench_241_inputs_write.py` (a trimmed clone of an IR device, forced to
+"inputs not configured" and without button bindings, deleted at the
+end), through `sync_device` so the planner runs too:
+
+| check | X1 (clone of "Fosmon") | X1S (clone of "TV") |
+| --- | --- | --- |
+| first input: one `inputs_write` step, success | ok | ok |
+| the hub's page lists the entry (isolated read) | `[(1, 1, 'Power')]` | `[(1, 1, '0')]` |
+| a full device capture reads the same page | ok | ok |
+| the head reads back `input_mode` 1, name and commands untouched | ok | ok |
+| append a second entry: both listed, in order | ok | ok |
+| an edit that removes an entry: success, page unchanged | ok | ok |
+| clone deleted and gone from the catalog | ok | ok |
+
+Problems: none on both hubs. End to end on the X1S through
+sofabaton-x-server's panel: a new IR device with one command, a new
+activity, Add device, Set input, one Sync (`inputs_write`,
+`member_replay`, two `macro_write`, `remote_sync`); the member step's
+inputs query then resolved and the power-on macro carries ordinal 1.
+
+A second defect surfaced in the same run, in the engine
+(`proxy_ack_waiters.notify_ack`): a device with no button bindings
+answers the buttons read with a bare `STATUS_ACK 0x07`. The handler
+finished the buttons burst first, which woke the capture thread; that
+thread armed and sent its inputs request before the handler reached its
+"is an inputs request waiting?" check, so the same byte latched a
+rejection for the inputs request (logged 1 ms after the request went
+out) and the real `0x47` page arrived 90 ms later with nobody waiting.
+A device capture therefore read "no inputs configured" while the hub
+held the page, and the next read (key sort) timed out behind the
+unattended burst. A byte that finished a read burst is now never
+attributed to the inputs request. `bench_240_inputs_probe.py` shows it:
+before the fix three isolated reads return the page and the capture
+returns none; after it the capture returns the page and no read times
+out. Regression test in `tests/test_ack_handling.py`; the step's unit
+tests are `tests/test_inputs_write_step.py`.
+
+Not covered: the X2 (not in the run), a device whose inputs page spans
+more than one 247-byte chunk (six or more entries on the X1S), and the
+non-direct input styles (`input_mode` 2 and 3), whose pages are appended
+to as read but were not exercised.
+

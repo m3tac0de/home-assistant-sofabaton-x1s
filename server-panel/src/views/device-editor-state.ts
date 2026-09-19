@@ -8,6 +8,7 @@
 import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import type { Draft } from "../panel-store";
 import type { SnapshotDocument } from "../panel-api";
+import { entityDraftData, entityDraftScope, entityElement, withEntityElement } from "./entity-editor-state";
 
 /** The library's `MIN_SUPPORTED_FIRMWARE` (lib/hub_versions.py), mirrored: below it the hub drops writes. */
 export const MIN_SUPPORTED_FIRMWARE: Record<string, number> = { X1: 17, X1S: 5, X2: 5 };
@@ -32,13 +33,12 @@ export function snapshotAsBundle(snapshot: SnapshotDocument): BackupBundlePayloa
 }
 
 export function deviceElement(bundle: BackupBundlePayload | null, deviceId: number): BackupBundleDevicePayload | null {
-  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id ?? -1) === Number(deviceId)) ?? null;
+  return entityElement(bundle, "device", deviceId) as BackupBundleDevicePayload | null;
 }
 
 /** The bundle with one device element replaced (the draft's element spliced into a fresh snapshot). */
 export function withDeviceElement(bundle: BackupBundlePayload, deviceId: number, element: BackupBundleDevicePayload): BackupBundlePayload {
-  const id = Number(deviceId);
-  return { ...bundle, devices: bundle.devices.map((entry) => (Number(entry?.device?.device_id ?? -1) === id ? element : entry)) };
+  return withEntityElement(bundle, "device", deviceId, element);
 }
 
 /** Dirty is JSON inequality of the device element, as on the card (whole-bundle compare there). */
@@ -48,7 +48,7 @@ export function elementsEqual(a: unknown, b: unknown): boolean {
 
 /** The draft scope (state plan decision 8): the editor's route scope. */
 export function deviceDraftScope(deviceId: number): string {
-  return `hub/devices/${Number(deviceId)}`;
+  return entityDraftScope("device", deviceId);
 }
 
 export interface DeviceDraftData {
@@ -57,12 +57,7 @@ export interface DeviceDraftData {
 
 /** The stored draft's element when it belongs to this device and looks like one; null otherwise. */
 export function draftElementFor(draft: Draft | null | undefined, deviceId: number): BackupBundleDevicePayload | null {
-  if (!draft || draft.scope !== deviceDraftScope(deviceId)) return null;
-  const data = draft.data as Partial<DeviceDraftData> | null | undefined;
-  const element = data?.element;
-  if (!element || typeof element !== "object") return null;
-  if (Number((element as BackupBundleDevicePayload).device?.device_id ?? -1) !== Number(deviceId)) return null;
-  return element as BackupBundleDevicePayload;
+  return (entityDraftData(draft, "device", deviceId)?.element ?? null) as BackupBundleDevicePayload | null;
 }
 
 // -- names ---------------------------------------------------------------------------------

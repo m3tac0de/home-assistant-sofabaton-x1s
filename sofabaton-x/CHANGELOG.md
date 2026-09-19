@@ -11,6 +11,19 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+- Fixed: a sync whose edit added an input to a device (the editors' "Set
+  input" on a command the device did not list as an input yet) reported
+  success without writing the device's inputs page, so the activity's
+  power-on sequence pointed at an input the hub did not have. The
+  `inputs_write` step now sets `input_mode` on a device that was never
+  configured for inputs, appends the new entries to the hub's own page and
+  reads the page back. Removals and reorders of inputs are still not
+  written (activities address inputs by position).
+- Fixed: a device with no button bindings could be captured as "no inputs
+  configured" although the hub held its inputs page: the hub's empty reply
+  to the buttons read was also taken as a rejection of the inputs request
+  that followed it, and the next read timed out behind the unattended
+  reply.
 - `AsyncXProxy.sync_device` takes `allow_command_removal`: with it, command
   rows present in the baseline but absent from the edit are deleted on the
   hub (the hub cascades their references) and the device's display-sort

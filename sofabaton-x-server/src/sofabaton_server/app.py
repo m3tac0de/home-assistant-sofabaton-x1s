@@ -29,6 +29,7 @@ from .routes_edit import router as edit_router
 from .routes_hub_data import router as hub_data_router
 from .routes_hubs import router as hubs_router
 from .routes_payload import router as payload_router
+from .routes_settings import router as settings_router
 from .routes_snapshot import router as snapshot_router
 from .store import ApplyStore
 from .routes_ui import router as ui_router, ui_pages_router
@@ -122,6 +123,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     app.include_router(hubs_router)
     app.include_router(callbacks_router)
     app.include_router(callback_listener_router)
+    app.include_router(settings_router)
     app.include_router(hub_data_router)
     app.include_router(snapshot_router)
     app.include_router(edit_router)

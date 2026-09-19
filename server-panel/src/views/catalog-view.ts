@@ -6,10 +6,17 @@
 // drawer open at a time, a refresh button per row and Refresh all in the
 // header. The id badges name what `POST /send` takes: DevID is the
 // `entity_id`, ComID the `command_id`. Reads come from the server's cache
-// (the first look at an entity fetches it); nothing here writes to the hub.
+// (the first look at an entity fetches it). The footer under each list is
+// the card's (activity editor plan, decision 10): "Change order" turns the
+// rows into a draggable list written by one `PUT .../order`, and "Add
+// activity" / "Add device" create an empty entity on the hub and open it in
+// its editor. The card's strings are imported, so the wording stays verbatim.
 
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from "lit";
-import { mdiBluetooth, mdiPlayCircleOutline, mdiRadioTower, mdiRefresh, mdiRemote, mdiWifi, mdiWrench } from "@mdi/js";
+import { mdiBluetooth, mdiDragVerticalVariant, mdiPlayCircleOutline, mdiPlus, mdiRadioTower, mdiRefresh, mdiRemote, mdiSwapVertical, mdiUploadOutline, mdiWifi, mdiWrench } from "@mdi/js";
+
+import { creatableDeviceClasses } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
+import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
 import {
   problemText,
@@ -29,6 +36,10 @@ import {
 import type { HubContext } from "../panel-context";
 import { formatWhen } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
+import { PointerReorder } from "../pointer-reorder";
+import { sanitizeName } from "./device-editor-state";
+
+const S = TOOLS_CARD_STRINGS.cache;
 
 export const CATALOG_VIEW_TAG = "sb-panel-catalog";
 
@@ -77,6 +88,40 @@ interface RefreshState {
 
 const REFRESH_ALL_KEY = "all";
 
+/** "Change order": the list's ids in their working order until Sync or Cancel. */
+interface ReorderState {
+  kind: CatalogKind;
+  ids: number[];
+  syncing: boolean;
+  error: string | null;
+}
+
+/** The "Add activity" / "Add device" dialog. */
+interface AddDialogState {
+  kind: CatalogKind;
+  name: string;
+  deviceClass: string;
+  busy: boolean;
+  error: string | null;
+}
+
+/** The rows in their working order; ids that vanished are dropped, new ones appended (the card's rule). */
+export function workingOrder<T extends { id: number }>(rows: T[], ids: number[]): T[] {
+  return [
+    ...ids.map((id) => rows.find((row) => row.id === id)).filter((row): row is T => Boolean(row)),
+    ...rows.filter((row) => !ids.includes(row.id)),
+  ];
+}
+
+/** An id list with one entry moved. */
+export function movedIds(ids: number[], from: number, to: number): number[] {
+  if (from === to || from < 0 || to < 0 || from >= ids.length || to >= ids.length) return ids;
+  const next = [...ids];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 export function entryKey(kind: CatalogKind, id: number): string {
   return `${kind}:${id}`;
 }
@@ -110,6 +155,15 @@ export function buildCatalog(devices: Device[], activities: Activity[], snapshot
   const provenance = new Map<string, SnapshotEntity>();
   for (const e of snapshot?.devices ?? []) provenance.set(entryKey("device", e.device.device_id), e);
   for (const e of snapshot?.activities ?? []) provenance.set(entryKey("activity", e.device.device_id), e);
+  // The typed lists come in id order; the snapshot's arrays are in the hub's
+  // display order (the sort byte "Change order" writes), so the rows follow it.
+  // An entity the snapshot does not know yet goes last, in list order.
+  const rank = (kind: CatalogKind, id: number): number => {
+    const index = ((kind === "device" ? snapshot?.devices : snapshot?.activities) ?? []).findIndex((e) => e.device.device_id === id);
+    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  devices = [...devices].sort((x, y) => rank("device", x.device_id) - rank("device", y.device_id));
+  activities = [...activities].sort((x, y) => rank("activity", x.activity_id) - rank("activity", y.activity_id));
   const entries: CatalogEntry[] = [];
   for (const d of devices) {
     const p = provenance.get(entryKey("device", d.device_id));
@@ -194,6 +248,8 @@ export class SbPanelCatalog extends LitElement {
     _notice: { state: true },
     _refresh: { state: true },
     _loading: { state: true },
+    _reorder: { state: true },
+    _add: { state: true },
   };
 
   static styles = [
@@ -251,6 +307,34 @@ export class SbPanelCatalog extends LitElement {
       .inner-empty { padding: 8px 12px; font-size: 11px; color: var(--sbp-muted); font-style: italic; }
       .inner-notice { padding: 8px 12px; font-size: 12px; color: var(--sbp-err); }
       .ids-hint { margin-top: 12px; }
+      /* -- the list footer, reorder mode and the add dialogs (the card's cache-* rules) -- */
+      .entity-block--reorder { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+      .entity-block--reorder:active { cursor: grabbing; }
+      .entity-block--reorder .entity-summary { cursor: inherit; }
+      .entity-block--reorder .entity-summary:hover { background: transparent; }
+      .entity-block--reorder .entity-name-icon { color: var(--sbp-accent); }
+      .entity-block--reorder:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
+      .entity-block.is-shifting { transition: transform 150ms ease; }
+      .entity-block.is-dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+      .cache-list-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px 0 4px; }
+      .cache-reorder-hint { font-size: 11.5px; color: var(--sbp-muted); }
+      .cache-footer-error { font-size: 12px; color: var(--sbp-err); }
+      .cache-footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .cache-footer-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--sbp-line); border-radius: 10px; background: transparent; color: var(--sbp-text); font: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px; cursor: pointer; }
+      .cache-footer-btn:hover:not([disabled]) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .cache-footer-btn[disabled] { opacity: 0.5; cursor: default; }
+      .cache-footer-btn--primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+      .cache-modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+      .cache-dialog { width: min(420px, calc(100vw - 36px)); display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); }
+      .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--sbp-text); }
+      .cache-dialog-text { font-size: 13px; line-height: 1.55; color: var(--sbp-muted); }
+      .cache-dialog-input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--sbp-line); border-radius: 8px; background: var(--sbp-input); color: var(--sbp-text); font: inherit; font-size: 13.5px; }
+      .cache-dialog-input:focus { outline: none; border-color: var(--sbp-accent); }
+      label.cache-dialog-field, .cache-dialog-field { display: flex; flex-direction: column; gap: 4px; margin: 0; text-transform: none; letter-spacing: 0; }
+      .cache-dialog-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--sbp-muted); }
+      .cache-dialog-select { cursor: pointer; }
+      .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
+      .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
       @container (max-width: 480px) {
         /* The rows are tight enough on a phone that the "DevID:" prefix costs more than it explains; keep the number. */
         .entity-meta .id-badge { min-width: 0; justify-content: center; }
@@ -282,6 +366,21 @@ export class SbPanelCatalog extends LitElement {
   private _pendingScroll: string | null = null;
   private _devices: Device[] = [];
   private _activities: Activity[] = [];
+  private _reorder: ReorderState | null = null;
+  private _add: AddDialogState | null = null;
+  /** The reorder drag (the card uses ha-sortable on the whole row); rows sit in a 6px grid. */
+  private _sorter = new PointerReorder(
+    () => Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".entity-block--reorder")),
+    () => this.requestUpdate(),
+    (from, to) => this._moveReorder(from, to),
+    () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0,
+    () => 6,
+  );
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._sorter.cancel();
+  }
 
   protected willUpdate(changed: PropertyValues): void {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
@@ -292,6 +391,10 @@ export class SbPanelCatalog extends LitElement {
       // Switching lists closes the drawer, as the card's section switch does.
       this._open = null;
       this._detailNotice = null;
+    }
+    if (changed.has("kind") && this._reorder && this._reorder.kind !== this.kind && !this._reorder.syncing) {
+      // ... and leaves reorder mode.
+      this._cancelReorder();
     }
     if (changed.has("hub")) {
       const id = this.hub?.hub_id ?? null;
@@ -304,6 +407,9 @@ export class SbPanelCatalog extends LitElement {
         this._details = {};
         this._detailNotice = null;
         this._notice = null;
+        this._reorder = null;
+        this._add = null;
+        this._sorter.cancel();
         if (id) void this._load();
       } else {
         // A job that ended elsewhere (another tab, the API console) may have
@@ -336,9 +442,13 @@ export class SbPanelCatalog extends LitElement {
     return this._entries.find((e) => entryKey(e.kind, e.id) === this._open) ?? null;
   }
 
-  /** The card's lock: a running refresh, or a hub the view may not act on. */
+  /** The card's lock: a running refresh, reorder mode, or a hub the view may not act on. */
   private get _locked(): boolean {
-    return Boolean(this._refresh) || (this.ctx ? !this.ctx.free : false);
+    return Boolean(this._refresh) || Boolean(this._reorder) || (this.ctx ? !this.ctx.free : false);
+  }
+
+  private get _hubVersion(): string | null {
+    return this.hub?.status?.hub_version ?? this.hub?.config?.hub_version ?? null;
   }
 
   // -- loading ---------------------------------------------------------------------------
@@ -491,13 +601,107 @@ export class SbPanelCatalog extends LitElement {
     void this._refreshScope(scope, entryKey(entry.kind, entry.id), `${entry.kind} ${entry.id}`);
   }
 
+  // -- change order (the card's reorder mode) -------------------------------------------------
+
+  private _startReorder(kind: CatalogKind): void {
+    if (this._locked) return;
+    this._open = null;
+    this._detailNotice = null;
+    this._reorder = { kind, ids: this._entries.filter((e) => e.kind === kind).map((e) => e.id), syncing: false, error: null };
+  }
+
+  private _cancelReorder = (): void => {
+    this._sorter.cancel();
+    this._reorder = null;
+  };
+
+  private _moveReorder(from: number, to: number): void {
+    const reorder = this._reorder;
+    if (!reorder || reorder.syncing) return;
+    this._reorder = { ...reorder, ids: movedIds(reorder.ids, from, to), error: null };
+  }
+
+  private _syncReorder = async (): Promise<void> => {
+    const reorder = this._reorder;
+    const hubId = this.hub?.hub_id;
+    if (!reorder || !hubId || reorder.syncing) return;
+    this._reorder = { ...reorder, syncing: true, error: null };
+    let error: string | null = null;
+    try {
+      const started = await this.api.reorderEntities(hubId, reorder.kind, reorder.ids);
+      if (started.status !== 202 || !started.body) {
+        error = problemText(started);
+      } else {
+        const job = await this.api.followJob(hubId, started.body.job_id);
+        if (job) this._lastJobId = job.job_id;
+        if (!job) error = "the job could not be followed";
+        else if (job.status !== "done") error = `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+      }
+    } catch (err) {
+      error = String(err);
+    }
+    if (error) {
+      this._reorder = { ...reorder, syncing: false, error };
+      return;
+    }
+    this._reorder = null;
+    await this._reloadAll();
+  };
+
+  // -- add activity / add device ------------------------------------------------------------------
+
+  private _openAdd(kind: CatalogKind): void {
+    if (this._locked) return;
+    this._add = { kind, name: "", deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "", busy: false, error: null };
+  }
+
+  private _closeAdd = (): void => {
+    if (!this._add?.busy) this._add = null;
+  };
+
+  /** Create on the hub, make sure the new entity is read in full, then open it in its editor (the card's flow). */
+  private _confirmAdd = async (): Promise<void> => {
+    const dialog = this._add;
+    const hubId = this.hub?.hub_id;
+    if (!dialog || !hubId || dialog.busy) return;
+    const name = sanitizeName(this._hubVersion, dialog.name).trim();
+    if (!name || (dialog.kind === "device" && !dialog.deviceClass)) return;
+    this._add = { ...dialog, busy: true, error: null };
+    const fail = (error: string) => { this._add = { ...dialog, busy: false, error }; };
+    try {
+      const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
+      if (started.status !== 202 || !started.body) return fail(problemText(started));
+      const job = await this.api.followJob(hubId, started.body.job_id);
+      if (job) this._lastJobId = job.job_id;
+      if (!job || job.status !== "done") return fail(job ? `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}` : "the job could not be followed");
+      const id = Number(job.result?.[dialog.kind === "device" ? "device_id" : "activity_id"]);
+      if (!Number.isInteger(id) || id <= 0) return fail(dialog.kind === "device" ? "The hub did not return the new device id." : "The hub did not return the new activity id.");
+      // The editor needs the entity read in full; a failed read is covered by its own needs-refresh guard.
+      const snapshot = await this.api.snapshot(hubId);
+      const rows = (dialog.kind === "device" ? snapshot.body?.devices : snapshot.body?.activities) ?? [];
+      if (!rows.find((row) => row.device.device_id === id)?.complete) {
+        const refresh = await this.api.refreshSnapshot(hubId, dialog.kind === "device" ? { device_id: id } : { activity_id: id });
+        if (refresh.status === 202 && refresh.body) {
+          const read = await this.api.followJob(hubId, refresh.body.job_id);
+          if (read) this._lastJobId = read.job_id;
+        }
+      }
+      this._add = null;
+      this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: dialog.kind === "device" ? "devices" : "activities", entity: id } }));
+    } catch (err) {
+      fail(String(err));
+    }
+  };
+
   // -- render -------------------------------------------------------------------------------
 
   render(): TemplateResult {
     const hub = this.hub;
     if (!hub) return html`<div class="panel"><div class="cache-state">Pick a hub above.</div></div>`;
     const kind: CatalogKind = this.kind ?? "activity";
-    const rows = this._entries.filter((e) => e.kind === kind);
+    const listed = this._entries.filter((e) => e.kind === kind);
+    const reordering = this._reorder?.kind === kind;
+    const rows = reordering ? workingOrder(listed, this._reorder!.ids) : listed;
     const snap = this._snapshot;
     const locked = this._locked;
     const allSpinning = this._refresh?.key === REFRESH_ALL_KEY;
@@ -524,9 +728,11 @@ export class SbPanelCatalog extends LitElement {
         ${this._notice ? html`<div class="notice" id="catalog-notice">${this._notice}</div>` : nothing}
         <div class="cache-panel-body" id="catalog-rows">
           ${rows.length
-            ? rows.map((e) => this._renderEntry(e))
+            ? rows.map((e, position) => (reordering ? this._renderReorderEntry(e, position) : this._renderEntry(e)))
             : html`<div class="cache-state">${this._loading ? "Loading…" : kind === "device" ? "No devices." : "No activities."}</div>`}
         </div>
+        ${this._renderFooter(kind, listed.length)}
+        ${this._renderAddDialog()}
         <div class="hint ids-hint">DevID is what <code>POST /send</code> takes as <code>entity_id</code>, ComID as <code>command_id</code>. Rows come from the server's cache, read from the hub on first sight; the refresh button on a row re-reads that entity from the hub.</div>
       </div>
     `;
@@ -550,15 +756,99 @@ export class SbPanelCatalog extends LitElement {
         </span>
         <span class="entity-meta">
           ${badge(DEV_ID_BADGE, e.id)}
-          ${e.kind === "device"
-            ? html`<button class="icon-btn entity-edit" type="button" ?disabled=${locked} title="Edit device" aria-label="Edit device" @click=${(event: Event) => { event.stopPropagation(); this._edit(e); }}>${icon(mdiWrench)}</button>`
-            : nothing}
+          <button class="icon-btn entity-edit" type="button" ?disabled=${locked} title=${e.kind === "device" ? "Edit device" : "Edit activity"} aria-label=${e.kind === "device" ? "Edit device" : "Edit activity"} @click=${(event: Event) => { event.stopPropagation(); this._edit(e); }}>${icon(mdiWrench)}</button>
           <button class="icon-btn entity-refresh ${spinning ? "spinning" : ""}" type="button" ?disabled=${locked} title=${`${e.kind === "device" ? "Refresh device" : "Refresh activity"} (${fetched})`} aria-label=${e.kind === "device" ? "Refresh device" : "Refresh activity"} @click=${(event: Event) => { event.stopPropagation(); this._refreshEntry(e); }}>${icon(mdiRefresh)}</button>
           <span class="entity-chevron">▼</span>
         </span>
       </div>
       ${isOpen ? html`<div class="entity-body">${this._renderBody(e, key)}</div>` : nothing}
     </div>`;
+  }
+
+  /** A row in reorder mode: the whole row drags (as on the card), the arrow keys move it for keyboards. */
+  private _renderReorderEntry(e: CatalogEntry, position: number): TemplateResult {
+    const drag = this._sorter.state;
+    const transform = this._sorter.transform(position);
+    const syncing = Boolean(this._reorder?.syncing);
+    const count = countLine(e.kind, e.counts) ?? (e.kind === "device" ? e.device?.device_class ?? "device" : "activity");
+    return html`<div class="entity-block entity-block--reorder ${drag?.from === position ? "is-dragging" : drag ? "is-shifting" : ""}" data-entity=${entryKey(e.kind, e.id)} data-entity-id=${e.id} tabindex="0" style=${transform ? `transform: ${transform}` : ""}
+      @mousedown=${(event: MouseEvent) => event.preventDefault()}
+      @pointerdown=${(event: PointerEvent) => { if (!syncing) this._sorter.start(event, position); }}
+      @pointermove=${(event: PointerEvent) => this._sorter.move(event)}
+      @pointerup=${(event: PointerEvent) => { this._sorter.end(event); (event.currentTarget as HTMLElement).focus(); }}
+      @pointercancel=${(event: PointerEvent) => this._sorter.cancel(event)}
+      @keydown=${(event: KeyboardEvent) => {
+        if (syncing || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+        event.preventDefault();
+        const to = position + (event.key === "ArrowUp" ? -1 : 1);
+        this._moveReorder(position, to);
+        void this.updateComplete.then(() => this.renderRoot.querySelectorAll<HTMLElement>(".entity-block--reorder")[Math.max(0, Math.min(to, (this._reorder?.ids.length ?? 1) - 1))]?.focus());
+      }}>
+      <div class="entity-summary">
+        <span class="entity-name">
+          <span class="entity-name-icon">${icon(mdiDragVerticalVariant)}</span>
+          <span class="entity-name-copy"><span class="entity-name-label">${e.name}</span><span class="entity-count">${count}</span></span>
+        </span>
+        <span class="entity-meta">${badge(DEV_ID_BADGE, e.id)}</span>
+      </div>
+    </div>`;
+  }
+
+  /** The card's footer: Change order and Add, replaced by Sync to Hub and Cancel in reorder mode. */
+  private _renderFooter(kind: CatalogKind, rowCount: number): TemplateResult | typeof nothing {
+    if (!this.kind) return nothing;
+    const reorder = this._reorder?.kind === kind ? this._reorder : null;
+    if (reorder) {
+      return html`<div class="cache-list-footer" id="catalog-footer">
+        <div class="cache-reorder-hint">${kind === "device" ? S.reorderDevicesHint : S.reorderHint}</div>
+        ${reorder.error ? html`<div class="cache-footer-error" id="reorder-error">${reorder.error}</div>` : nothing}
+        <div class="cache-footer-actions">
+          <button class="cache-footer-btn cache-footer-btn--primary" id="reorder-sync" type="button" ?disabled=${reorder.syncing} @click=${() => void this._syncReorder()}>${icon(mdiUploadOutline)}<span>${reorder.syncing ? S.reorderSyncing : S.reorderSync}</span></button>
+          <button class="cache-footer-btn" id="reorder-cancel" type="button" ?disabled=${reorder.syncing} @click=${this._cancelReorder}>${S.reorderCancel}</button>
+        </div>
+      </div>`;
+    }
+    const locked = this._locked;
+    // Add device is hidden (not just disabled) when the hub line offers no creatable class.
+    const canAdd = kind === "activity" || creatableDeviceClasses(this._hubVersion).length > 0;
+    return html`<div class="cache-list-footer" id="catalog-footer">
+      <div class="cache-footer-actions">
+        <button class="cache-footer-btn" id="change-order" type="button" ?disabled=${locked || rowCount < 2} @click=${() => this._startReorder(kind)}>${icon(mdiSwapVertical)}<span>${S.changeOrder}</span></button>
+        ${canAdd ? html`<button class="cache-footer-btn" id="add-entity" type="button" ?disabled=${locked} @click=${() => this._openAdd(kind)}>${icon(mdiPlus)}<span>${kind === "device" ? S.addDevice : S.addActivity}</span></button>` : nothing}
+      </div>
+    </div>`;
+  }
+
+  private _renderAddDialog(): TemplateResult | typeof nothing {
+    const dialog = this._add;
+    if (!dialog) return nothing;
+    const isDevice = dialog.kind === "device";
+    const classes = creatableDeviceClasses(this._hubVersion);
+    const set = (patch: Partial<AddDialogState>) => { this._add = { ...dialog, ...patch }; };
+    return html`
+      <div class="cache-modal-backdrop" @click=${this._closeAdd}>
+        <div class="cache-dialog" id="add-dialog" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="cache-dialog-title">${isDevice ? S.addDeviceTitle : S.addActivityTitle}</div>
+          <div class="cache-dialog-text">${isDevice ? S.addDeviceBody : S.addActivityBody}</div>
+          ${dialog.error ? html`<div class="cache-footer-error" id="add-error">${dialog.error}</div>` : nothing}
+          <input class="cache-dialog-input" id="add-name" type="text" maxlength="30" placeholder=${isDevice ? S.addDevicePlaceholder : S.addActivityPlaceholder} ?disabled=${dialog.busy} .value=${dialog.name}
+            @input=${(event: Event) => { const input = event.currentTarget as HTMLInputElement; const value = sanitizeName(this._hubVersion, input.value); input.value = value; set({ name: value }); }}
+            @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); void this._confirmAdd(); } }} />
+          ${isDevice
+            ? html`<label class="cache-dialog-field">
+                <span class="cache-dialog-label">${S.addDeviceClass}</span>
+                <select class="cache-dialog-input cache-dialog-select" id="add-class" ?disabled=${dialog.busy} @change=${(event: Event) => set({ deviceClass: (event.currentTarget as HTMLSelectElement).value })}>
+                  ${classes.map((deviceClass) => html`<option value=${deviceClass} ?selected=${deviceClass === dialog.deviceClass}>${S.deviceClassLabels[deviceClass] ?? deviceClass}</option>`)}
+                </select>
+              </label>`
+            : nothing}
+          <div class="cache-dialog-actions">
+            <button class="cache-footer-btn" type="button" ?disabled=${dialog.busy} @click=${this._closeAdd}>${isDevice ? S.addDeviceCancel : S.addActivityCancel}</button>
+            <button class="cache-footer-btn cache-footer-btn--primary" id="add-confirm" type="button" ?disabled=${dialog.busy} @click=${() => void this._confirmAdd()}>${dialog.busy ? S.addActivityCreating : isDevice ? S.addDeviceConfirm : S.addActivityConfirm}</button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   private _renderBody(e: CatalogEntry, key: string): TemplateResult {

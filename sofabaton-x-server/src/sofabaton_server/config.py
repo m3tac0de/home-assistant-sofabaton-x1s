@@ -14,6 +14,14 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 DEFAULT_PORT = 8480
+# The hub-side network ports, shared by every hub this server proxies
+# (the library's hub listener and app demuxer are process-wide). Same
+# defaults as the Home Assistant integration's port step.
+DEFAULT_HUB_LISTEN_PORT = 8200
+DEFAULT_APP_DISCOVERY_PORT = 8102
+DEFAULT_CALLBACK_PORT = 8060
+# The settings the control panel may write to server.json.
+EDITABLE_PORTS = ("hub_listen_port", "app_discovery_port", "callback_port")
 DEFAULT_BIND = "0.0.0.0"
 SETTINGS_FILE = "server.json"
 ENV_PREFIX = "SOFABATON_"
@@ -45,10 +53,18 @@ class Settings:
     # on bridge networking); the port is the listener's, 8060 by default
     # (the X1 can call no other).
     callback_host: Optional[str] = None
-    callback_port: int = 8060
+    callback_port: int = DEFAULT_CALLBACK_PORT
+    # TCP port on this host the hubs connect back to, and the UDP port the
+    # official app discovers and calls the proxies on (keep 8102 for iOS).
+    # They override the per-hub HubConfig values: one listener serves all.
+    hub_listen_port: int = DEFAULT_HUB_LISTEN_PORT
+    app_discovery_port: int = DEFAULT_APP_DISCOVERY_PORT
     # Terminal apply records kept per hub: success, stopped and cancelled
     # all count, including resumable records. Queued/running are not pruned.
     apply_keep: int = 20
+    # Settings that came from the environment or a CLI flag; server.json
+    # cannot change them. Filled by load_settings, never read from a layer.
+    pinned: frozenset[str] = field(default=frozenset(), compare=False)
 
     def __post_init__(self) -> None:
         if isinstance(self.port, bool) or not isinstance(self.port, int) or not (0 < self.port < 65536):
@@ -56,6 +72,11 @@ class Settings:
         if (isinstance(self.callback_port, bool) or not isinstance(self.callback_port, int)
                 or not (0 <= self.callback_port < 65536)):
             raise ValueError(f"callback_port must be a port number, got {self.callback_port!r}")
+        for name in ("hub_listen_port", "app_discovery_port"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or not (0 < value < 65536):
+                raise ValueError(f"{name} must be a port number, got {value!r}")
+        object.__setattr__(self, "pinned", frozenset(self.pinned))
         if self.callback_host is not None:
             host = str(self.callback_host).strip()
             if host:
@@ -96,20 +117,21 @@ class Settings:
                 data[key] = str(data[key])
         data["trusted_proxies"] = list(self.trusted_proxies)
         data["initial_hubs"] = list(self.initial_hubs)
+        data.pop("pinned")
         return data
 
     def with_(self, **changes: Any) -> "Settings":
         return replace(self, **changes)
 
 
-_FIELD_NAMES = {f.name for f in fields(Settings)}
+_FIELD_NAMES = {f.name for f in fields(Settings)} - {"pinned"}
 _LIST_FIELDS = {"trusted_proxies", "initial_hubs"}
 
 
 def _coerce(name: str, value: Any) -> Any:
     if value is None:
         return None
-    if name in ("port", "callback_port", "apply_keep"):
+    if name in ("port", "callback_port", "hub_listen_port", "app_discovery_port", "apply_keep"):
         return int(value)
     if name in _LIST_FIELDS:
         if isinstance(value, str):
@@ -180,4 +202,32 @@ def load_settings(
     for layer in (file_layer, env_layer, cli_layer):
         merged.update(layer)
     merged["data_dir"] = resolved_dir
-    return Settings(**merged)
+    return Settings(**merged, pinned=frozenset(env_layer) | frozenset(cli_layer))
+
+
+def settings_file_values(data_dir: Path) -> dict[str, Any]:
+    """The ``server.json`` layer alone (what a restart would read from it)."""
+
+    return settings_from_file(Path(data_dir) / SETTINGS_FILE)
+
+
+def write_settings_file(data_dir: Path, changes: Mapping[str, Any]) -> None:
+    """Merge ``changes`` into ``server.json``, keeping every other key.
+
+    A value equal to the default is still written: the file then says
+    what the operator chose. Written atomically (temp file + replace).
+    """
+
+    path = Path(data_dir) / SETTINGS_FILE
+    data: dict[str, Any] = {}
+    if path.exists():
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{path}: expected a JSON object")
+        data = loaded
+    data.update(changes)
+    _filtered(data)  # refuse to write a file the next start would reject
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)

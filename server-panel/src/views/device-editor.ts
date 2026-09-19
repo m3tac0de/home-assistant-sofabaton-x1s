@@ -19,17 +19,14 @@
 // from the hub and edit it, Add command with the card's per-class seeding,
 // Test through POST /play). No learn mode (Marcel, 2026-09-18).
 
-import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { html, nothing, type PropertyDeclarations, type TemplateResult } from "lit";
 import {
-  mdiAlertCircleOutline,
   mdiArrowLeft,
   mdiCheck,
   mdiChevronDown,
   mdiChevronRight,
-  mdiChip,
   mdiClose,
   mdiCodeBraces,
-  mdiDatabaseRefreshOutline,
   mdiDragVerticalVariant,
   mdiFormatListBulleted,
   mdiFormatListNumbered,
@@ -43,7 +40,6 @@ import {
   mdiPower,
   mdiPowerPlugOutline,
   mdiStarOutline,
-  mdiSyncAlert,
   mdiTrashCanOutline,
   mdiWifiCog,
 } from "@mdi/js";
@@ -88,25 +84,19 @@ import {
   upsertDeviceButtonBinding,
   type BackupDeleteTarget,
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
-import { problemText, type HubInfo, type HubView, type PanelApi, type PayloadView, type SnapshotDocument, type SnapshotEntity } from "../panel-api";
-import type { HubContext } from "../panel-context";
-import type { PanelStore } from "../panel-store";
+import { problemText, type ApiResponse, type JobView, type PayloadView, type SnapshotEntity } from "../panel-api";
 import { PANEL_BASE_CSS } from "../panel-styles";
+import { EDITOR_CSS } from "./editor-styles";
+import { SbPanelEntityEditor, icon, type EntityFrameStrings } from "./entity-editor-base";
+import type { EntityElement } from "./entity-editor-state";
 import { PointerReorder } from "../pointer-reorder";
 import type { PayloadSaveDetail } from "./payload-dialog";
 import {
   IP_HEAD_DEVICE_CLASSES,
   IPV4_PATTERN,
-  deviceDraftScope,
-  deviceElement,
-  draftElementFor,
-  elementsEqual,
-  firmwareUnsupported,
   isLongRecord,
   sanitizeName,
-  snapshotAsBundle,
   wifiEventsSlotCount,
-  withDeviceElement,
 } from "./device-editor-state";
 
 export const DEVICE_EDITOR_TAG = "sb-panel-device-editor";
@@ -199,6 +189,10 @@ const S = {
   cancel: "Cancel",
   save: "Save",
   // The live host's screens.
+  loading: "Loading device from the hub cache…",
+  refreshEntity: "Refresh device",
+  missingTitle: "Device not found",
+  missingBody: "This device is not in the hub's snapshot.",
   firmwareUnsupportedTitle: "Hub firmware update required",
   firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
     `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
@@ -245,7 +239,6 @@ const S = {
   noFreeCommandSlot: "This device has no free command slot left.",
 };
 
-type Stage = "loading" | "guard_firmware" | "needs_refresh" | "missing" | "editing" | "sync_failed";
 type SectionId = "power" | "network" | "commands" | "bindings";
 
 type RenameTarget =
@@ -262,255 +255,38 @@ interface BindingDialogState {
   error: string;
 }
 
-function icon(path: string, cls = ""): TemplateResult {
-  return html`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
-}
-
-export class SbPanelDeviceEditor extends LitElement {
-  static properties = {
-    api: { attribute: false },
-    ctx: { attribute: false },
-    store: { attribute: false },
+export class SbPanelDeviceEditor extends SbPanelEntityEditor {
+  static properties: PropertyDeclarations = {
     deviceId: { attribute: false },
-    _stage: { state: true },
-    _snapshot: { state: true },
-    _baseline: { state: true },
-    _working: { state: true },
-    _info: { state: true },
-    _callbackDeviceId: { state: true },
     _activeSection: { state: true },
     _powerMenuOpen: { state: true },
     _rename: { state: true },
     _deleteConfirm: { state: true },
     _binding: { state: true },
-    _exitConfirm: { state: true },
     _stepEditor: { state: true },
     _stepDialog: { state: true },
     _payloadDialog: { state: true },
     _payloadFetching: { state: true },
     _addCommandPreparing: { state: true },
-    _syncing: { state: true },
-    _syncFailed: { state: true },
-    _refreshing: { state: true },
-    _deleting: { state: true },
-    _notice: { state: true },
   };
 
   static styles = [
     PANEL_BASE_CSS,
-    css`
-      :host {
-        display: block;
-        container-type: inline-size;
-        --de-radius-sm: 10px;
-        --de-radius-md: 12px;
-        --de-radius-lg: 16px;
-        --de-radius-xl: 22px;
-      }
-      .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
-      button { border: 0; background: transparent; padding: 0; }
-      /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
-      .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
-      .quick-access-section, .detail-scroll, .power-control { min-width: 0; }
-
-      /* -- frame (the card's .tab-panel--detail / .detail-view) ------------------------------- */
-      .tab-panel--detail { min-width: 0; padding: 0; }
-      .detail-view { min-width: 0; display: flex; flex-direction: column; margin: -12px -16px -16px; }
-      /* The card pins its header inside its own scroll box; the panel's page scrolls under the shell's top dock, so pin under it. */
-      .sticky-header { position: sticky; top: var(--top-dock-height, 0px); z-index: 3; min-width: 0; background: var(--sbp-panel); }
-      .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--sbp-line); }
-      .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
-      .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; overflow: hidden; }
-      .detail-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 11px; line-height: 1.1; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--sbp-muted); }
-      .detail-crumb { flex: 0 1 auto; min-width: 0; font: inherit; color: var(--sbp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
-      .detail-crumb:hover { color: var(--sbp-text); text-decoration: underline; text-decoration-color: var(--sbp-accent); }
-      .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
-      .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .back-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .back-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .back-btn .mdi { width: 18px; height: 18px; }
-      .detail-sync-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease; }
-      .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
-      .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
-      .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: #2e7d32; opacity: 1; }
-      .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
-      .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
-      .icon-btn:active, .dialog-close:active { transform: translateY(1px); }
-      .icon-btn:disabled { opacity: 0.45; cursor: default; }
-      .icon-btn--danger:hover:not(:disabled) { border-color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 10%, var(--sbp-panel)); color: var(--sbp-err); }
-
-      /* -- section nav ---------------------------------------------------------------------------- */
-      .detail-section-nav { display: flex; align-items: stretch; min-height: 34px; margin: 10px 16px; border: 1px solid color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); overflow: hidden; background: color-mix(in srgb, var(--sbp-panel-2) 76%, transparent); }
-      .detail-section-nav-btn { flex: 1 1 0; min-width: 0; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 82%, transparent); color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font: inherit; cursor: pointer; white-space: nowrap; border-radius: 0; }
-      .detail-section-nav-btn:last-child { border-right: none; }
-      .detail-section-nav-btn:hover { background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-text); }
-      .detail-section-nav-btn.active { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.1); box-shadow: inset 0 -2px 0 var(--sbp-accent); }
-      .detail-section-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-
-      /* -- body ------------------------------------------------------------------------------------- */
-      .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-      .notice-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--de-radius-sm); border: 1px solid color-mix(in srgb, var(--sbp-warn) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, transparent); font-size: 12.5px; line-height: 1.45; color: var(--sbp-text); }
-      .notice-banner .mdi { color: var(--sbp-warn); width: 18px; height: 18px; }
-      .notice-banner--info { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.08); }
-      .notice-banner--info .mdi { color: var(--sbp-accent); }
-      @keyframes sb-spin { to { transform: rotate(360deg); } }
-      .mdi.sb-spin { animation: sb-spin 720ms linear infinite; }
-      .section-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
-      .section-status .mdi { width: 18px; height: 18px; }
-      .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
-      .quick-access-section { display: grid; gap: 12px; scroll-margin-top: 16px; }
-      .quick-access-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-      .quick-access-head-main { min-width: 0; flex: 1 1 200px; display: grid; gap: 4px; }
-      .quick-access-head-actions { flex: 0 0 auto; }
-      .quick-access-title { color: var(--sbp-text); font-size: 14px; font-weight: 700; }
-      .quick-access-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
-      .quick-access-list { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); overflow: hidden; display: flex; flex-direction: column; }
-      .quick-access-sortable-container { display: block; }
-      .quick-access-sortable-item { display: block; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
-      .quick-access-sortable-item:first-child { border-top: none; }
-      .quick-access-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; }
-      .quick-access-row--step { grid-template-columns: auto minmax(0, 1fr) auto; }
-      .quick-access-drag { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: -6px; border-radius: 8px; color: var(--sbp-muted); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
-      .quick-access-drag:hover { color: var(--sbp-text); background: rgba(var(--sbp-accent-rgb), 0.08); }
-      .quick-access-drag:active { cursor: grabbing; }
-      .quick-access-drag .mdi { width: 18px; height: 18px; }
-      .quick-access-sortable-item.is-shifting { transition: transform 150ms ease; }
-      .quick-access-sortable-item.is-dragging { position: relative; z-index: 2; background: var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); border-top-color: transparent; }
-      .detail-view.is-sorting, .quick-access-row--step { user-select: none; -webkit-user-select: none; }
-      .step-wait { display: flex; align-items: center; gap: 6px; padding: 3px 14px 6px; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
-      .step-wait-caption { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--sbp-muted); pointer-events: none; }
-      .step-wait-field { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px 2px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); }
-      .step-wait-field:focus-within { border-color: var(--sbp-accent); }
-      .step-wait-input { width: 42px; min-width: 0; padding: 0; border: none; background: transparent; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 600; text-align: right; outline: none; -moz-appearance: textfield; }
-      .step-wait-input::-webkit-outer-spin-button, .step-wait-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-      .step-wait-unit { color: var(--sbp-muted); font-size: 12px; font-weight: 600; }
-      .quick-access-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-      .quick-access-label-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-      .quick-access-label { min-width: 0; color: var(--sbp-text); font-size: 13px; font-weight: 700; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .quick-access-chip { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 74%, transparent); }
-      .quick-access-meta { color: var(--sbp-muted); font-size: 12px; line-height: 1.4; }
-      .quick-access-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-      .quick-access-empty { border: 1px dashed color-mix(in srgb, var(--sbp-line) 88%, transparent); border-radius: var(--de-radius-md); padding: 12px 14px; color: var(--sbp-muted); font-size: 13px; line-height: 1.5; background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
-      .quick-access-add-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--de-radius-md); border: 1px solid color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.1); color: var(--sbp-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: border-color 120ms ease, background 120ms ease; }
-      .quick-access-add-btn:hover:not(:disabled) { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-text); }
-      .quick-access-add-btn:disabled { opacity: 0.48; cursor: default; }
-      .quick-access-add-btn .mdi { color: var(--sbp-accent); }
-
-      /* -- power control ---------------------------------------------------------------------------- */
-      .power-control { position: relative; display: block; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-lg); background: var(--sbp-panel); }
-      .power-control-trigger { width: 100%; border-radius: inherit; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; }
-      .power-control-trigger:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
-      .power-control-trigger .selection-chevron .mdi { transition: transform 120ms ease; }
-      .power-control[data-open="true"] .power-control-trigger .selection-chevron .mdi { transform: rotate(180deg); }
-      .power-control-backdrop { position: fixed; inset: 0; z-index: 30; cursor: default; }
-      .power-control-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 31; display: flex; flex-direction: column; background: var(--sbp-panel); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); overflow: hidden; }
-      .power-control-option { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 50%, transparent); cursor: pointer; border-radius: 0; }
-      .power-control-option:first-child { border-top: none; }
-      .power-control-option:hover { background: rgba(var(--sbp-accent-rgb), 0.08); }
-      .power-control-option[aria-checked="true"] .selection-label { color: var(--sbp-text); font-weight: 700; }
-      .power-control-option .selection-chevron .mdi { color: var(--sbp-accent); }
-      .selection-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; }
-      .selection-label { color: var(--sbp-text); font-size: 13px; font-weight: 600; }
-      .selection-sub { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; }
-      .selection-chevron { color: var(--sbp-muted); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
-      .selection-chevron .mdi { width: 18px; height: 18px; }
-      .edit-selection-row { width: 100%; color: inherit; font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border-radius: 0; }
-      .edit-selection-row:hover { background: rgba(var(--sbp-accent-rgb), 0.06); }
-      .edit-selection-row[aria-disabled="true"] { cursor: default; }
-      .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
-      .power-sequences-note { color: var(--sbp-muted); font-size: 12px; line-height: 1.45; padding: 8px 14px 0; }
-
-      /* -- guard screens (the live host's) --------------------------------------------------------- */
-      .capture-error { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.55; }
-      .guard-icon { color: var(--sbp-muted); }
-      .guard-icon .mdi { width: 40px; height: 40px; }
-      .capture-error-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
-      .guard-sub { max-width: 360px; font-size: 13px; }
-      .action-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-      .btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 14px; cursor: pointer; }
-      .btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .btn:disabled { opacity: 0.5; cursor: default; }
-      .btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
-      .btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
-
-      /* -- dialogs ---------------------------------------------------------------------------------- */
-      .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-      .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--de-radius-lg); border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); overflow: hidden; color: var(--sbp-text); }
-      .dialog.small { width: min(500px, calc(100vw - 36px)); }
-      .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
-      .dialog-header { border-bottom: 1px solid var(--sbp-line); }
-      .dialog-title { font-size: 16px; flex: 1; color: var(--sbp-text); }
-      .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-      .dialog-text { font-size: 14px; line-height: 1.55; color: var(--sbp-text); }
-      .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
-      .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
-      .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
-      .dialog-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 12px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-      .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-      .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
-      .dialog-btn-danger { border-color: var(--sbp-err); color: var(--sbp-err); background: color-mix(in srgb, var(--sbp-err) 12%, transparent); }
-      .dialog-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--sbp-err) 18%, transparent); }
-      .dialog-btn:disabled { opacity: 0.45; cursor: default; }
-      .backup-drawer-sub { color: var(--sbp-muted); font-size: 13px; line-height: 1.5; }
-      .delete-impact-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-      .delete-impact-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--sbp-text); }
-      .delete-impact-list .mdi { width: 18px; height: 18px; color: var(--sbp-muted); }
-      .delete-replace-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sbp-muted); line-height: 1.45; }
-      /* The panel's base styles every <label> as a small uppercase caption; the card's field wrapper is a plain block. */
-      label.decoded-field, .decoded-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: inherit; letter-spacing: 0; text-transform: none; color: inherit; }
-      .decoded-field-label { font-size: 12px; font-weight: 600; color: var(--sbp-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-      .decoded-field-input { width: 100%; font: inherit; font-size: 13px; color: var(--sbp-text); background: var(--sbp-input); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 10px; }
-      .decoded-field-input:focus { outline: none; border-color: var(--sbp-accent); }
-      select.decoded-field-input { cursor: pointer; }
-      .binding-static-field { font-size: 13px; font-weight: 600; color: var(--sbp-text); padding: 8px 10px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
-      .binding-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      /* A switch in place of ha-switch. */
-      .sb-switch { position: relative; width: 40px; height: 22px; flex: 0 0 auto; appearance: none; margin: 0; border-radius: 999px; background: var(--sbp-line); cursor: pointer; transition: background 120ms ease; }
-      .sb-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--sbp-panel); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 120ms ease; }
-      .sb-switch:checked { background: var(--sbp-accent); }
-      .sb-switch:checked::after { transform: translateX(18px); }
-
-      @container (max-width: 480px) {
-        .detail-section-nav-btn { gap: 0; }
-        .detail-section-nav-btn .mdi { display: none; }
-      }
-      @container (max-width: 480px) {
-        .detail-view { margin: -12px -12px -12px; }
-      }
-      @container (max-width: 360px) {
-        .detail-title-actions { gap: 6px; min-width: max-content; }
-        .detail-section-nav { overflow-x: auto; scrollbar-width: none; }
-        .detail-section-nav::-webkit-scrollbar { display: none; }
-        .detail-section-nav-btn { flex-basis: auto; min-width: max-content; padding-inline: 12px; }
-        .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-        .dialog, .dialog.small { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: var(--de-radius-xl) var(--de-radius-xl) 0 0; }
-        .dialog-footer { flex-direction: column; align-items: stretch; }
-        .dialog-footer-actions { width: 100%; }
-        .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
-        .dialog-footer-note { min-height: 0; }
-      }
-    `,
+    EDITOR_CSS,
   ];
 
-  api!: PanelApi;
-  ctx: HubContext | null = null;
-  store!: PanelStore;
   deviceId: number | null = null;
 
-  private _stage: Stage = "loading";
-  private _snapshot: SnapshotDocument | null = null;
-  private _baseline: BackupBundlePayload | null = null;
-  private _working: BackupBundlePayload | null = null;
-  private _info: HubInfo | null = null;
-  private _callbackDeviceId: number | null = null;
+  protected readonly entityKind = "device" as const;
+  protected get entityId(): number | null {
+    return this.deviceId;
+  }
+
   private _activeSection: SectionId = "power";
   private _powerMenuOpen = false;
   private _rename: { target: RenameTarget; draft: string; error: string } | null = null;
   private _deleteConfirm: { target: BackupDeleteTarget; label: string } | null = null;
   private _binding: BindingDialogState | null = null;
-  private _exitConfirm: { then: () => void } | null = null;
   /** The open power sequence (the card's macro editor sub-view, device scope). */
   private _stepEditor: { buttonId: number; name: string } | null = null;
   private _stepDialog: { editIndex: number | null; commandId: number | null; hold: string; error: string } | null = null;
@@ -526,13 +302,6 @@ export class SbPanelDeviceEditor extends LitElement {
   private _payloadDialog: { mode: "add" | "edit"; commandId: number; snapshot: BackupCommandDecodedBlock | null; rawHex: string; fetchedHex: string } | null = null;
   private _payloadFetching: number | null = null;
   private _addCommandPreparing = false;
-  private _syncing = false;
-  private _syncFailed: { stale: boolean; message: string } | null = null;
-  private _refreshing = false;
-  private _deleting = false;
-  private _notice: string | null = null;
-  private _loadedKey: string | null = null;
-  private _loadSeq = 0;
   private _sectionScrollPending = false;
   private _sectionScrollTimer: number | null = null;
   private readonly _onWindowScroll = () => {
@@ -572,149 +341,42 @@ export class SbPanelDeviceEditor extends LitElement {
     this._clearSectionScroll();
   }
 
-  protected updated(changed: PropertyValues): void {
-    if (changed.has("ctx") || changed.has("deviceId")) {
-      const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.deviceId ?? ""}`;
-      if (key !== this._loadedKey) {
-        this._loadedKey = key;
-        this._reset();
-        if (this.ctx?.hub && this.deviceId != null) void this._load();
-      } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
-        // The dock's Discard dropped the draft: the working copy follows.
-        this._working = this._baseline ? structuredClone(this._baseline) : null;
-      }
-    }
-  }
-
-  private _reset(): void {
+  protected _resetView(): void {
     this._clearSectionScroll();
-    this._stage = "loading";
-    this._snapshot = null;
-    this._baseline = null;
-    this._working = null;
     this._powerMenuOpen = false;
     this._rename = null;
     this._deleteConfirm = null;
     this._binding = null;
-    this._exitConfirm = null;
     this._stepEditor = null;
     this._stepDialog = null;
     this._sorter.cancel();
     this._payloadDialog = null;
     this._payloadFetching = null;
     this._addCommandPreparing = false;
-    this._syncing = false;
-    this._syncFailed = null;
-    this._notice = null;
     this._activeSection = "power";
-  }
-
-  private get _hub(): HubView | null {
-    return this.ctx?.hub ?? null;
-  }
-
-  private get _hubVersion(): string | null {
-    return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
-  }
-
-  // -- loading: the snapshot, the banner (firmware floor), the callback device -------------------
-
-  private async _load(options: { keepDraft?: boolean } = {}): Promise<void> {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null) return;
-    const seq = ++this._loadSeq;
-    const [snapshot, info, callback] = await Promise.all([
-      this.api.snapshot(hubId),
-      this.api.hubInfo(hubId).catch(() => null),
-      this.api.request<{ device_id: number | null }>("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null),
-    ]);
-    if (seq !== this._loadSeq) return;
-    this._info = info?.ok ? info.body : null;
-    this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
-    if (!snapshot.ok || !snapshot.body) {
-      this._notice = problemText(snapshot);
-      this._stage = "missing";
-      return;
-    }
-    const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
-    if (floor) {
-      this._snapshot = snapshot.body;
-      this._stage = "guard_firmware";
-      return;
-    }
-    const bundle = snapshotAsBundle(snapshot.body);
-    const element = deviceElement(bundle, deviceId);
-    if (!element) {
-      this._snapshot = snapshot.body;
-      this._stage = "missing";
-      return;
-    }
-    if (element.complete === false) {
-      this._snapshot = snapshot.body;
-      this._baseline = bundle;
-      this._working = null;
-      this._stage = "needs_refresh";
-      return;
-    }
-    this._snapshot = snapshot.body;
-    this._baseline = bundle;
-    // A stored draft for this device, taken from this very snapshot (or kept
-    // by the user past the stale prompt), is spliced back into the working copy.
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
-    const draftElement = restorable ? draftElementFor(draft, deviceId) : null;
-    this._working = draftElement ? withDeviceElement(bundle, deviceId, draftElement) : structuredClone(bundle);
-    if (!draftElement && draft?.scope === deviceDraftScope(deviceId)) this.store.discardDraft(hubId);
-    this._stage = "editing";
-    this._syncFailed = null;
   }
 
   // -- the working copy --------------------------------------------------------------------------
 
   private get _workingElement(): BackupBundleDevicePayload | null {
-    return this.deviceId != null ? deviceElement(this._working, this.deviceId) : null;
+    return this._workingEntity as BackupBundleDevicePayload | null;
   }
 
-  private get _baselineElement(): BackupBundleDevicePayload | null {
-    return this.deviceId != null ? deviceElement(this._baseline, this.deviceId) : null;
+  protected get frameStrings(): EntityFrameStrings {
+    return S;
   }
 
-  private get _dirty(): boolean {
-    return this._stage === "editing" && !elementsEqual(this._workingElement, this._baselineElement);
+  protected _startSync(hubId: string, deviceId: number, element: EntityElement): Promise<ApiResponse<JobView>> {
+    return this.api.editDevice(hubId, deviceId, element as unknown as SnapshotEntity, this._snapshot!.snapshot_id);
   }
 
-  /** The card's `_commitEditBundleEdit`: replace the working bundle, mirror the element into the draft slot. */
-  private _commit(next: BackupBundlePayload): void {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null || !this._snapshot) return;
-    this._working = next;
-    const element = deviceElement(next, deviceId);
-    if (element && !elementsEqual(element, this._baselineElement)) {
-      this.store.setDraft(hubId, { scope: deviceDraftScope(deviceId), snapshotId: this._snapshot.snapshot_id, data: { element } });
-    } else {
-      this.store.discardDraft(hubId);
-    }
+  protected _startDelete(hubId: string, deviceId: number): Promise<ApiResponse<JobView>> {
+    return this.api.removeDevice(hubId, deviceId);
   }
 
-  /** For the shell: leaving with unsynced edits goes through the card's dialog (plan decision 3). */
-  hasUnsyncedChanges(): boolean {
-    return this._dirty;
+  protected _renderEditing(): TemplateResult {
+    return this._stepEditor ? this._renderStepEditor(this._stepEditor) : this._renderEditor();
   }
-
-  askToLeave(then: () => void): void {
-    if (!this._dirty) {
-      then();
-      return;
-    }
-    this._exitConfirm = { then };
-  }
-
-  private _requestClose = (): void => {
-    this.askToLeave(() => this._goToList());
-  };
 
   // -- the payload dialog (the card's add / edit payload, live mode) ------------------------------
 
@@ -729,11 +391,6 @@ export class SbPanelDeviceEditor extends LitElement {
     const className = String(decoded.class ?? "").trim().toLowerCase();
     if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
     return { className: className as BackupCommandDecodedBlock["className"], fields: { ...decoded.fields }, trailerHex: String(decoded.trailer_hex ?? ""), edited: false };
-  }
-
-  /** A payload fetch / add failure, shown in the bottom dock (the shell's sb-message) where it is always in view. */
-  private _dockError(text: string): void {
-    this.dispatchEvent(new CustomEvent("sb-message", { bubbles: true, composed: true, detail: { text, ok: false } }));
   }
 
   /** The braces: fetch the command's payload from the hub, then open the dialog on it. */
@@ -931,125 +588,6 @@ export class SbPanelDeviceEditor extends LitElement {
     this._commit(setDeviceMacroStepWait(this._working, this.deviceId, editor.buttonId, item.index, wait));
   }
 
-  private _goToList(): void {
-    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: "devices" } }));
-  }
-
-  private _leaveWithoutSync = (): void => {
-    const then = this._exitConfirm?.then;
-    this._exitConfirm = null;
-    const hubId = this._hub?.hub_id;
-    if (hubId) this.store.discardDraft(hubId);
-    if (this._baseline) this._working = structuredClone(this._baseline);
-    then?.();
-  };
-
-  private _syncAndLeave = (): void => {
-    const then = this._exitConfirm?.then;
-    this._exitConfirm = null;
-    void this._sync().then((ok) => {
-      if (ok) then?.();
-    });
-  };
-
-  // -- sync: PUT /devices/{id} with If-Match, followed as a job (plan decision 4) -------------------
-
-  private async _sync(): Promise<boolean> {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    const element = this._workingElement;
-    const snapshot = this._snapshot;
-    if (!hubId || deviceId == null || !element || !snapshot || this._syncing) return false;
-    this._syncing = true;
-    this._syncFailed = null;
-    try {
-      const started = await this.api.editDevice(hubId, deviceId, element as unknown as SnapshotEntity, snapshot.snapshot_id);
-      if (started.status === 412) {
-        this._syncFailed = { stale: true, message: problemText(started) };
-        this._stage = "sync_failed";
-        return false;
-      }
-      if (started.status !== 202 || !started.body) {
-        this.store.noteResponse(hubId, started);
-        this._syncFailed = { stale: false, message: problemText(started) };
-        this._stage = "sync_failed";
-        return false;
-      }
-      const job = await this.api.followJob(hubId, started.body.job_id);
-      if (!job || job.status !== "done") {
-        const error = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
-        const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
-        this._syncFailed = { stale, message: error };
-        this._stage = "sync_failed";
-        return false;
-      }
-      // Success: rebase from the hub's new snapshot; the draft is spent.
-      this.store.discardDraft(hubId);
-      await this._load({ keepDraft: false });
-      return true;
-    } catch (err) {
-      this._syncFailed = { stale: false, message: String(err) };
-      this._stage = "sync_failed";
-      return false;
-    } finally {
-      this._syncing = false;
-    }
-  }
-
-  private _retrySync = (): void => {
-    this._stage = "editing";
-    this._syncFailed = null;
-    void this._sync();
-  };
-
-  private _keepEditing = (): void => {
-    this._stage = "editing";
-    this._syncFailed = null;
-  };
-
-  /** "Reload from hub": read this device from the hub as a job, then re-open it; the local edit is discarded. */
-  private async _reloadFromHub(): Promise<void> {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null || this._refreshing) return;
-    this._refreshing = true;
-    try {
-      this.store.discardDraft(hubId);
-      const started = await this.api.refreshSnapshot(hubId, { device_id: deviceId });
-      if (started.status === 202 && started.body) await this.api.followJob(hubId, started.body.job_id);
-      else this.store.noteResponse(hubId, started);
-    } finally {
-      this._refreshing = false;
-    }
-    await this._load({ keepDraft: false });
-  }
-
-  // -- delete device (immediate, a job) ---------------------------------------------------------------
-
-  private async _deleteDevice(): Promise<void> {
-    const hubId = this._hub?.hub_id;
-    const deviceId = this.deviceId;
-    if (!hubId || deviceId == null || this._deleting) return;
-    this._deleting = true;
-    try {
-      const started = await this.api.removeDevice(hubId, deviceId);
-      if (started.status !== 202 || !started.body) {
-        this.store.noteResponse(hubId, started);
-        this.store.say(`Delete refused: ${problemText(started)}`, false);
-        return;
-      }
-      const job = await this.api.followJob(hubId, started.body.job_id);
-      if (!job || job.status !== "done") {
-        this.store.say(`Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.type}` : ""}`, false);
-        return;
-      }
-      this.store.discardDraft(hubId);
-      this._goToList();
-    } finally {
-      this._deleting = false;
-    }
-  }
-
   // -- section nav -------------------------------------------------------------------------------------
 
   private _sectionItems(): Array<{ id: SectionId; icon: string; label: string }> {
@@ -1061,13 +599,6 @@ export class SbPanelDeviceEditor extends LitElement {
       { id: "commands", icon: mdiFormatListBulleted, label: S.detailCommands },
       { id: "bindings", icon: mdiGestureTapButton, label: S.detailButtons },
     ];
-  }
-
-  /** The offset the sticky top dock and the sticky header take from the viewport's top. */
-  private _stickyOffset(): number {
-    const dock = parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0;
-    const header = this.renderRoot.querySelector<HTMLElement>(".sticky-header")?.getBoundingClientRect().height ?? 0;
-    return dock + header;
   }
 
   private _scrollToSection(id: SectionId): void {
@@ -1205,7 +736,7 @@ export class SbPanelDeviceEditor extends LitElement {
     const target = dialog.target;
     if (target.kind === "device") {
       this._deleteConfirm = null;
-      void this._deleteDevice();
+      void this._deleteEntity();
       return;
     }
     // Live row deletes mirror the hub's cascade but never rewrite activity membership (the card's rule).
@@ -1292,34 +823,6 @@ export class SbPanelDeviceEditor extends LitElement {
   };
 
   // -- render --------------------------------------------------------------------------------------------------
-
-  render(): TemplateResult {
-    if (!this._hub || this.deviceId == null) return html`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
-    switch (this._stage) {
-      case "loading":
-        return html`<div class="panel"><div class="capture-error"><div class="guard-sub">Loading device from the hub cache…</div></div></div>`;
-      case "guard_firmware": {
-        const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
-        return this._renderGuard(mdiChip, S.firmwareUnsupportedTitle, S.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), html`<button class="btn" @click=${this._goToList}>${S.back}</button>`, "guard-firmware");
-      }
-      case "needs_refresh":
-        return this._renderGuard(mdiDatabaseRefreshOutline, S.needsRefreshTitle, S.needsRefreshBody, html`
-          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing…" : S.refreshDevice}</button>
-          <button class="btn" @click=${this._goToList}>${S.back}</button>`, "guard-refresh");
-      case "missing":
-        return this._renderGuard(mdiAlertCircleOutline, "Device not found", this._notice ?? S.deviceMissing, html`<button class="btn" @click=${this._goToList}>${S.back}</button>`, "guard-missing");
-      case "sync_failed": {
-        const failed = this._syncFailed;
-        const stale = Boolean(failed?.stale);
-        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S.syncStaleTitle : S.syncFailedTitle, stale ? S.syncStaleBody : failed?.message ?? "", html`
-          ${stale ? nothing : html`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S.syncRetry}</button>`}
-          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading…" : S.syncReload}</button>
-          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S.syncKeepEditing}</button>`, "sync-failed");
-      }
-      default:
-        return this._stepEditor ? this._renderStepEditor(this._stepEditor) : this._renderEditor();
-    }
-  }
 
   private _renderStepEditor(editor: { buttonId: number; name: string }): TemplateResult {
     const items = this._stepItems();
@@ -1432,21 +935,6 @@ export class SbPanelDeviceEditor extends LitElement {
               <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S.stepCancel}</button>
               <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S.stepSave : S.stepAdd}</button>
             </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderGuard(iconPath: string, title: string, body: string, actions: TemplateResult, id: string): TemplateResult {
-    return html`
-      <div class="tab-panel tab-panel--detail">
-        <div class="detail-view" id=${id}>
-          <div class="capture-error">
-            <div class="guard-icon">${icon(iconPath)}</div>
-            <div class="capture-error-title">${title}</div>
-            <div class="guard-sub">${body}</div>
-            <div class="action-row">${actions}</div>
           </div>
         </div>
       </div>
@@ -1751,26 +1239,6 @@ export class SbPanelDeviceEditor extends LitElement {
             <div class="dialog-footer-actions">
               <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S.bindingCancel}</button>
               <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S.bindingSave : S.bindingAdd}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderExitConfirmDialog(): TemplateResult | typeof nothing {
-    if (!this._exitConfirm) return nothing;
-    const close = () => { this._exitConfirm = null; };
-    return html`
-      <div class="modal-backdrop" @click=${close}>
-        <div class="dialog small" id="exit-dialog" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S.syncKeepEditing} @click=${close}>${icon(mdiClose)}</button></div>
-          <div class="dialog-body"><div class="dialog-text">${S.exitUnsyncedBody}</div></div>
-          <div class="dialog-footer">
-            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S.exitWithoutSync}</button>
-            <div class="dialog-footer-actions">
-              <button class="btn" id="exit-keep" type="button" @click=${close}>${S.syncKeepEditing}</button>
-              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S.exitSyncNow}</button>
             </div>
           </div>
         </div>

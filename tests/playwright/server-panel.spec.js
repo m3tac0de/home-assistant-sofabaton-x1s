@@ -1456,6 +1456,364 @@ test.describe("control panel, views", () => {
     await expect(rows).toHaveCount(1);
     expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
   });
+
+  test("the activity editor recreates the card's Edit activity screen: shortcuts, macros, the power sequence with members and inputs, roles, individual buttons, one Sync carrying the touched device", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    const device = (id, name, deviceClass, commands, bindings = []) => ({
+      kind: "device_backup", complete: true, editable: true, fetched_at: "t",
+      device: { device_id: id, name, brand: name, device_class: deviceClass, idle_behavior: 1 },
+      commands, button_bindings: bindings, macros: [], key_sort: null, input_record: null,
+    });
+    const snapshot = {
+      snapshot_id: "snap-1", captured_at: "2026-09-19T00:00:00Z", engine_generation: 1, complete: true, payload_profile: "structural",
+      hub: { name: "Living room", version: "X1S" },
+      devices: [
+        device(1, "TV", "ir", [{ command_id: 1, name: "Power" }, { command_id: 2, name: "Vol up" }, { command_id: 3, name: "Vol down" }, { command_id: 17, name: "Up" }, { command_id: 20, name: "HDMI 1" }],
+          [{ button_id: 182, button_name: "VOL_UP", command_id: 2 }, { button_id: 185, button_name: "VOL_DOWN", command_id: 3 }]),
+        device(2, "Roku", "wifi_roku", [{ command_id: 1, name: "Home" }]),
+        device(4, "Amp", "ir", [{ command_id: 1, name: "On" }]),
+        device(3, "Server", "wifi_ip", [{ command_id: 1, name: "Doorbell" }, { command_id: 2, name: "Button 2" }, { command_id: 3, name: "Doorbell Long" }, { command_id: 4, name: "Button 2 Long" }]),
+      ],
+      activities: [{
+        kind: "activity_backup", complete: true, editable: true, fetched_at: "t",
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1],
+        favorite_slots: [{ button_id: 1, device_id: 1, command_id: 1, name: "Power" }],
+        button_bindings: [],
+        macros: [
+          { button_id: 198, name: "POWER_ON", steps: [{ device_id: 1, command_id: 198, button_code: 0, duration: 0, delay: 255 }, { device_id: 1, command_id: 197, button_code: 0, duration: 0, delay: 255 }] },
+          { button_id: 199, name: "POWER_OFF", steps: [{ device_id: 1, command_id: 199, button_code: 0, duration: 0, delay: 255 }] },
+        ],
+        favorites_order: [1],
+      }],
+    };
+    let stale = false;
+    let polls = 0;
+    const puts = [];
+    const deletes = [];
+    const H = `**${API}/hubs/${LIVING.hub_id}`;
+    await page.route(`${H}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+    await page.route(`${H}/info`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ known: true, model: "X1S", name: "Living room", mac: "E2:6A:44:86:1B:45", firmware_version: 5, production_batch: null }) }));
+    await page.route(`${H}/callback-device`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ device_id: 3, spec: { name: "Server", slots: [] }, target: { host: "h", port: 8060, action_id: "a" }, labels: {}, hub_version: "X1S", deployed_at: "t", adopted: false, stale: false, deployed: true }) }));
+    await page.route(`${H}/activities/101`, (route) => {
+      const request = route.request();
+      if (request.method() === "DELETE") {
+        deletes.push(101);
+        polls = 0;
+        route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "remove_activity", status: "queued" })) });
+        return;
+      }
+      puts.push({ ifMatch: request.headers()["if-match"], body: request.postDataJSON() });
+      if (stale) {
+        route.fulfill({ status: 412, contentType: "application/json", body: JSON.stringify({ type: "snapshot_outdated", title: "The snapshot moved", status: 412, detail: "the edit was made on another snapshot" }) });
+        return;
+      }
+      // The write lands: the hub's next snapshot carries the edited activity and the touched devices.
+      const { devices = [], ...element } = request.postDataJSON();
+      snapshot.activities[0] = { ...snapshot.activities[0], ...element };
+      for (const touched of devices) snapshot.devices = snapshot.devices.map((d) => (d.device.device_id === touched.device.device_id ? { ...d, ...touched } : d));
+      snapshot.snapshot_id = "snap-2";
+      polls = 0;
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_activity", status: "queued" })) });
+    });
+    await page.route(`${H}/jobs/j1`, (route) => {
+      polls++;
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_activity", status: polls < 2 ? "running" : "done", progress: { completed_steps: polls, total_steps: 2 } })) });
+    });
+
+    // The wrench on an activity row opens the editor at its own route.
+    await page.goto(`${PAGE}#/e26a44861b45/hub/activities`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator(".entity-edit")).toHaveAttribute("title", "Edit activity");
+    await rows.nth(0).locator(".entity-edit").click();
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities\/101$/);
+    const editor = page.locator("sb-panel-activity-editor");
+    await expect(editor.locator("#editor-title")).toHaveText("Watch TV");
+    await expect(editor.locator(".detail-crumb")).toHaveText("Activities");
+    await expect(editor.locator(".detail-section-nav")).toHaveCount(0);
+    await expect(editor.locator(".quick-access-title")).toHaveText(["Power control", "Buttons on the remote", "Shortcuts on the remote screen"]);
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await expect(editor.locator("#member-summary")).toHaveText("Devices: TV");
+    await expect(editor.locator('[data-sequence="198"] .selection-sub')).toHaveText("2 steps");
+    await expect(page.locator('#subtabs button[data-sub="activities"]')).toHaveClass(/active/);
+    await page.screenshot({ path: shot(testInfo, "activity-editor"), fullPage: true });
+
+    // Rename: a draft edit with the card's dock banner.
+    await editor.locator("#editor-rename").click();
+    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename activity");
+    await editor.locator("#rename-input").fill("Movie night");
+    await editor.locator("#rename-save").click();
+    await expect(editor.locator("#editor-title")).toHaveText("Movie night");
+    await expect(editor.locator("#editor-sync")).toHaveText("Sync to Hub");
+    await expect(page.locator("#dock-status")).toHaveText("Unsynced changes — sync to the hub to apply them");
+
+    // Shortcuts: add a device command (Wifi Events are off, so the callback device is an ordinary device); reorder with the handle's arrow keys.
+    const shortcuts = editor.locator('[data-edit-section="quick_access"] [data-sort-index]');
+    await expect(shortcuts).toHaveCount(1);
+    await expect(shortcuts.nth(0)).toContainText("Power");
+    await expect(shortcuts.nth(0).locator(".quick-access-meta")).toHaveText("TV");
+    await expect(shortcuts.nth(0).locator(".shortcut-rename")).toHaveCount(0);
+    await editor.locator("#add-shortcut").click();
+    await expect(editor.locator("#add-shortcut-dialog .dialog-title")).toHaveText("Add to shortcuts");
+    await expect(editor.locator("#sb-add-shortcut-kind option")).toHaveText(["Device command", "Macro"]);
+    await expect(editor.locator("#sb-add-fav-device option")).toHaveText(["TV", "Roku", "Server", "Amp"]);
+    await editor.locator("#sb-add-fav-device").selectOption("2");
+    await editor.locator("#add-shortcut-save").click();
+    await expect(shortcuts).toHaveCount(2);
+    await expect(shortcuts.nth(1).locator(".quick-access-label")).toHaveText("Home");
+    await shortcuts.nth(1).locator(".quick-access-drag").focus();
+    await page.keyboard.press("ArrowUp");
+    await expect(shortcuts.nth(0).locator(".quick-access-label")).toHaveText("Home");
+    // A pointer drag by the handle puts it back.
+    const fromHandle = await shortcuts.nth(0).locator(".quick-access-drag").boundingBox();
+    const toRow = await shortcuts.nth(1).boundingBox();
+    await page.mouse.move(fromHandle.x + fromHandle.width / 2, fromHandle.y + fromHandle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(fromHandle.x + fromHandle.width / 2, toRow.y + toRow.height - 4, { steps: 8 });
+    await expect(shortcuts.nth(0)).toHaveClass(/is-dragging/);
+    await page.mouse.up();
+    await expect(shortcuts.nth(0).locator(".quick-access-label")).toHaveText("Power");
+
+    // A new macro is named, created and opened in the step editor; a step on any device; renamed from the header.
+    await editor.locator("#add-shortcut").click();
+    await editor.locator("#sb-add-shortcut-kind").selectOption("action");
+    await expect(editor.locator("#add-shortcut-dialog .quick-access-empty")).toHaveText("No macros yet. Create one below.");
+    await editor.locator("#sb-add-macro-name").fill("Lights");
+    await editor.locator("#add-shortcut-save").click();
+    await expect(editor.locator("#step-title")).toHaveText("Lights");
+    await expect(editor.locator(".detail-crumb")).toHaveText(["Activities", "Movie night"]);
+    await expect(editor.locator("#add-member")).toHaveCount(0);
+    await expect(editor.locator(".quick-access-empty")).toHaveText("No steps yet.");
+    await editor.locator("#step-add").click();
+    await expect(editor.locator("#sb-step-kind")).toHaveCount(0);
+    await editor.locator("#sb-step-command").selectOption("17");
+    await editor.locator("#sb-step-hold").fill("1");
+    await editor.locator("#step-save").click();
+    const steps = editor.locator("[data-step-index]");
+    await expect(steps).toHaveCount(1);
+    await expect(steps.nth(0).locator(".quick-access-label")).toHaveText("TV · Up");
+    await expect(steps.nth(0).locator(".quick-access-meta")).toHaveText("Hold 1s");
+    await editor.locator("#macro-rename").click();
+    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename macro");
+    await editor.locator("#rename-input").fill("Scene");
+    await editor.locator("#rename-save").click();
+    await expect(editor.locator("#step-title")).toHaveText("Scene");
+    await editor.locator("#step-back").click();
+    await expect(shortcuts).toHaveCount(3);
+    await expect(shortcuts.nth(2)).toContainText("Scene");
+    await expect(shortcuts.nth(2).locator(".quick-access-chip")).toHaveText("macro");
+    await expect(shortcuts.nth(2).locator(".quick-access-meta")).toHaveText("1 step");
+
+    // The power-on sequence: required rows, Add device, Set input (a device-side edit), member removal with its impact.
+    await editor.locator('[data-sequence="198"]').click();
+    await expect(editor.locator("#step-title")).toHaveText("Power-on sequence");
+    await expect(editor.locator("#macro-rename")).toHaveCount(0);
+    await expect(editor.locator('[data-step-kind="power"] .quick-access-chip').first()).toHaveText("required");
+    await editor.locator("#add-member").click();
+    await expect(editor.locator("#add-member-dialog .dialog-title")).toHaveText("Add device to this activity");
+    await page.screenshot({ path: shot(testInfo, "activity-add-member") });
+    // The Roku joined with its shortcut: the others are left to add.
+    await expect(editor.locator("#sb-add-member-device option")).toHaveText(["Server", "Amp"]);
+    await editor.locator("#sb-add-member-device").selectOption("4");
+    await editor.locator("#add-member-save").click();
+    await expect(editor.locator('[data-step-kind="power"]').filter({ hasText: "Amp" })).toHaveCount(1);
+    await editor.locator('[data-step-kind="input"]').nth(0).locator(".step-edit").click();
+    await expect(editor.locator("#step-dialog .dialog-title")).toHaveText("Set input");
+    await editor.locator("#sb-step-input").selectOption("20");
+    await editor.locator("#step-save").click();
+    await expect(editor.locator('[data-step-kind="input"]').nth(0).locator(".quick-access-label")).toContainText("HDMI 1");
+    await page.screenshot({ path: shot(testInfo, "activity-power-sequence"), fullPage: true });
+    // Removing the Roku from the activity takes its shortcut along.
+    const rokuPower = editor.locator('[data-step-kind="power"]').filter({ hasText: "Roku" });
+    await rokuPower.locator(".member-remove").click();
+    await expect(editor.locator("#delete-dialog .dialog-title")).toHaveText("Remove Roku from this activity?");
+    await expect(editor.locator("#delete-impact")).toContainText("1 shortcut will be removed");
+    await editor.locator("#delete-confirm").click();
+    await expect(rokuPower).toHaveCount(0);
+    await editor.locator("#step-back").click();
+    await expect(editor.locator("#member-summary")).toContainText("TV (HDMI 1)");
+    await expect(shortcuts).toHaveCount(2);
+
+    // Roles: the menu lists the devices, one without a mapping is disabled; a pick copies the device's own buttons.
+    const volume = editor.locator('[data-role="volume"]');
+    await expect(volume.locator(".role-trigger")).toHaveText("Not used");
+    await volume.locator(".role-trigger").click();
+    await expect(volume.locator(".member-add-option")).toHaveText(["Not used", "TV", "Roku — no button mapping", "Server — no button mapping", "Amp — no button mapping"]);
+    await expect(volume.locator('.member-add-option[data-device="2"]')).toBeDisabled();
+    await page.screenshot({ path: shot(testInfo, "activity-role-menu") });
+    await volume.locator('.member-add-option[data-device="1"]').click();
+    await expect(volume.locator(".role-trigger")).toHaveText("TV");
+    await expect(volume.locator(".role-note")).toContainText("2 of 3");
+    await expect(editor.locator("#open-bindings .selection-sub")).toHaveText("2 configured");
+
+    // Individual buttons: a macro target with a long press.
+    await editor.locator("#open-bindings").click();
+    await expect(editor.locator("#bindings-title")).toHaveText("Individual buttons");
+    const bindings = editor.locator('[data-kind="binding"]');
+    await expect(bindings).toHaveCount(2);
+    await editor.locator("#add-binding").click();
+    await expect(editor.locator("#binding-dialog .dialog-title")).toHaveText("Add button assignment");
+    await editor.locator("#sb-binding-kind").selectOption("action");
+    await expect(editor.locator("#sb-binding-macro-target")).toHaveValue(/\d+/);
+    await editor.locator("#sb-binding-long-press").check();
+    await editor.locator("#sb-binding-lp-command").selectOption("17");
+    await editor.locator("#binding-save").click();
+    await expect(bindings).toHaveCount(3);
+    await expect(editor.locator("#bindings-view")).toContainText("Macro · Scene");
+    await expect(editor.locator("#bindings-view")).toContainText("Long press · TV · Up");
+    await expect(editor.locator("#sb-binding-kind option")).toHaveCount(0);
+    await page.screenshot({ path: shot(testInfo, "activity-bindings-view") });
+    // Re-pointing a role button makes the group customized; assigning the role again asks first.
+    await bindings.filter({ hasText: "Vol up" }).locator(".binding-edit").click();
+    await editor.locator("#sb-binding-command").selectOption("17");
+    await editor.locator("#binding-save").click();
+    await editor.locator("#bindings-back").click();
+    await expect(volume.locator(".role-trigger")).toHaveText("TV (customized)");
+    await volume.locator(".role-trigger").click();
+    await volume.locator('.member-add-option[data-device=""]').click();
+    await expect(editor.locator("#role-confirm-dialog .dialog-title")).toHaveText("Replace custom button setup?");
+    await editor.locator("#role-confirm").click();
+    await expect(volume.locator(".role-trigger")).toHaveText("Not used");
+
+    // The draft survives a reload, touched device included.
+    await page.reload();
+    await expect(editor.locator("#editor-title")).toHaveText("Movie night");
+    await expect(editor.locator("#member-summary")).toContainText("TV (HDMI 1)");
+
+    // One Sync: the activity element with If-Match, plus the device element the input pick touched.
+    await editor.locator("#editor-sync").click();
+    await expect.poll(() => puts.length).toBe(1);
+    expect(puts[0].ifMatch).toBe('"snap-1"');
+    expect(puts[0].body.device.name).toBe("Movie night");
+    expect(puts[0].body.devices.map((d) => d.device.device_id)).toEqual([1]);
+    expect(puts[0].body.devices[0].input_record.entries.map((e) => e.command_id)).toEqual([20]);
+    expect(puts[0].body.macros.find((m) => m.name === "Scene").steps.filter((s) => s.device_id === 1)).toHaveLength(1);
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
+
+    // A moved snapshot renders the card's stale state.
+    stale = true;
+    await editor.locator("#editor-rename").click();
+    await editor.locator("#rename-input").fill("Movies");
+    await editor.locator("#rename-save").click();
+    await editor.locator("#editor-sync").click();
+    await expect(editor.locator("#sync-failed .capture-error-title")).toHaveText("This activity changed on the hub");
+    await editor.locator("#editor-keep-editing").click();
+
+    // Back with unsynced changes asks the card's way.
+    await editor.locator("#editor-back").click();
+    await expect(editor.locator("#exit-dialog .dialog-text")).toContainText("This activity has changes");
+    await editor.locator("#exit-keep").click();
+
+    // Delete activity is immediate: a job, then back to the list.
+    await editor.locator("#editor-delete").click();
+    await expect(editor.locator("#delete-dialog .dialog-title")).toHaveText('Delete activity "Movies"?');
+    await expect(editor.locator("#delete-dialog .delete-replace-note")).toContainText("applied to the hub immediately");
+    await editor.locator("#delete-confirm").click();
+    await expect.poll(() => deletes.length).toBe(1);
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
+  });
+
+  test("the hub tab's list footer: Change order drags the rows and writes one order, Add activity and Add device create on the hub and open the editor", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    const H = `**${API}/hubs/${LIVING.hub_id}`;
+    const entity = (kind, id, name, complete = true) => ({ kind, complete, editable: complete, fetched_at: "t", device: { device_id: id, name, device_class: "ir", idle_behavior: 1 }, commands: [], button_bindings: [], macros: [], favorite_slots: [] });
+    const snapshot = { snapshot_id: "snap-1", captured_at: "2026-09-19T00:00:00Z", engine_generation: 1, complete: true, payload_profile: "structural", hub: { name: "Living room", version: "X1S" },
+      devices: [entity("device_backup", 1, "TV")], activities: [entity("activity_backup", 101, "Watch TV"), entity("activity_backup", 102, "Listen")] };
+    const calls = [];
+    let created = null;
+    await page.route(`${H}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+    await page.route(`${H}/info`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ known: true, model: "X1S", name: "Living room", mac: null, firmware_version: 5, production_batch: null }) }));
+    await page.route(`${H}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "none", status: 404 }) }));
+    const accept = (route, kind) => route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: kind, kind, status: "queued" })) });
+    await page.route(`${H}/activities/order`, (route) => { calls.push({ key: "order", body: route.request().postDataJSON() }); accept(route, "reorder_activities"); });
+    await page.route(`${H}/activities`, (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      calls.push({ key: "add_activity", body: route.request().postDataJSON() });
+      created = { activity_id: 103 };
+      snapshot.activities.push(entity("activity_backup", 103, route.request().postDataJSON().name, false));
+      accept(route, "add_activity");
+    });
+    await page.route(`${H}/devices`, (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      calls.push({ key: "add_device", body: route.request().postDataJSON() });
+      created = { device_id: 2 };
+      snapshot.devices.push(entity("device_backup", 2, route.request().postDataJSON().name, true));
+      accept(route, "add_device");
+    });
+    await page.route(`${H}/snapshot/refresh`, (route) => {
+      const scope = route.request().postDataJSON();
+      calls.push({ key: "refresh", body: scope });
+      for (const row of snapshot.activities) if (row.device.device_id === scope.activity_id) { row.complete = true; row.editable = true; }
+      accept(route, "refresh");
+    });
+    await page.route(`${H}/jobs/*`, (route) => {
+      const kind = route.request().url().split("/").pop();
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: kind, kind, status: "done", result: created })) });
+    });
+
+    await page.goto(`${PAGE}#/e26a44861b45/hub/activities`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(2);
+    await expect(page.locator("#catalog-footer .cache-footer-btn")).toHaveText(["Change order", "Add activity"]);
+
+    // Change order: the rows become a draggable list; the wrench and refresh step aside; Cancel restores.
+    await page.locator("#change-order").click();
+    await expect(page.locator(".cache-reorder-hint")).toHaveText("Drag activities into the desired order, then sync to the hub.");
+    await expect(page.locator("#catalog-footer .cache-footer-btn")).toHaveText(["Sync to Hub", "Cancel"]);
+    await expect(rows.nth(0).locator(".entity-edit")).toHaveCount(0);
+    await expect(page.locator("#catalog-refresh-all")).toBeDisabled();
+    await rows.nth(0).focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(rows.locator(".entity-name-label")).toHaveText(["Listen", "Watch TV"]);
+    await page.locator("#reorder-cancel").click();
+    await expect(rows.locator(".entity-name-label")).toHaveText(["Watch TV", "Listen"]);
+    // A pointer drag of the whole row, then one PUT with every id once.
+    await page.locator("#change-order").click();
+    const from = await rows.nth(1).boundingBox();
+    const to = await rows.nth(0).boundingBox();
+    await page.mouse.move(from.x + 60, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 60, to.y + 2, { steps: 8 });
+    await expect(rows.nth(1)).toHaveClass(/is-dragging/);
+    await page.screenshot({ path: shot(testInfo, "catalog-reorder") });
+    await page.mouse.up();
+    await expect(rows.locator(".entity-name-label")).toHaveText(["Listen", "Watch TV"]);
+    await page.locator("#reorder-sync").click();
+    await expect.poll(() => calls.filter((c) => c.key === "order").length).toBe(1);
+    expect(calls.find((c) => c.key === "order").body).toEqual({ order: [102, 101] });
+    await expect(page.locator("#catalog-footer .cache-footer-btn")).toHaveText(["Change order", "Add activity"]);
+
+    // Add activity: named, created on the hub, read in full, opened in the editor.
+    await page.locator("#add-entity").click();
+    await expect(page.locator("#add-dialog .cache-dialog-title")).toHaveText("Add activity");
+    await expect(page.locator("#add-dialog .cache-dialog-text")).toHaveText("Name the new activity. It is created on the hub and opened in the editor.");
+    await expect(page.locator("#add-class")).toHaveCount(0);
+    await page.screenshot({ path: shot(testInfo, "catalog-add-activity") });
+    await page.locator("#add-name").fill("Gaming");
+    await page.locator("#add-confirm").click();
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities\/103$/);
+    expect(calls.find((c) => c.key === "add_activity").body).toEqual({ name: "Gaming" });
+    expect(calls.find((c) => c.key === "refresh").body).toEqual({ activity_id: 103 });
+    await expect(page.locator("sb-panel-activity-editor #editor-title")).toHaveText("Gaming");
+
+    // Add device: a name and one of the classes this hub line can create.
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
+    await expect(page.locator("#catalog-footer .cache-footer-btn")).toHaveText(["Change order", "Add device"]);
+    await expect(page.locator("#change-order")).toBeDisabled();
+    await page.locator("#add-entity").click();
+    await expect(page.locator("#add-dialog .cache-dialog-title")).toHaveText("Add device");
+    await expect(page.locator("#add-class option")).toHaveText(["Infrared", "Roku", "Hue", "Sonos", "Generic HTTP"]);
+    await page.locator("#add-name").fill("Soundbar");
+    await page.locator("#add-class").selectOption("wifi_roku");
+    await page.locator("#add-confirm").click();
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices\/2$/);
+    expect(calls.find((c) => c.key === "add_device").body).toEqual({ name: "Soundbar", device_class: "wifi_roku" });
+    await expect(page.locator("sb-panel-device-editor #editor-title")).toHaveText("Soundbar");
+  });
 });
 
 test.describe("control panel, integrated picker", () => {

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { PanelApi, type JobView, type SnapshotDocument } from "../../server-panel/src/panel-api";
-import { boundButtons, buildCatalog, countLine, countsFromSnapshot, entryKey, jobPhrase } from "../../server-panel/src/views/catalog-view";
+import { boundButtons, buildCatalog, countLine, countsFromSnapshot, entryKey, jobPhrase, movedIds, workingOrder } from "../../server-panel/src/views/catalog-view";
 
 const DEVICES = [
   { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2 },
@@ -39,6 +39,18 @@ test("buildCatalog lists devices then activities, with the snapshot's provenance
   assert.equal(entryKey(entries[2].kind, entries[2].id), "activity:101");
   // Without a snapshot nothing is marked fetched and nothing is counted.
   assert.ok(buildCatalog(DEVICES, ACTIVITIES, null).every((e) => !e.complete && e.fetched_at === null && e.counts === null));
+});
+
+test("the rows follow the snapshot's display order (what Change order writes), not the typed lists' id order", () => {
+  const activities = [101, 102, 103].map((id) => ({ activity_id: id, name: `A${id}`, active: false, needs_confirm: false }));
+  const row = (id: number) => ({ kind: "activity", device: { device_id: id }, complete: true, editable: true, fetched_at: null });
+  const snapshot = { ...SNAPSHOT, activities: [row(102), row(101)] } as SnapshotDocument;
+  // 103 is not in the snapshot yet (just created): it goes last.
+  assert.deepEqual(buildCatalog([], activities, snapshot).map((e) => e.id), [102, 101, 103]);
+  assert.deepEqual(buildCatalog([], activities, null).map((e) => e.id), [101, 102, 103]);
+  assert.deepEqual(workingOrder([{ id: 1 }, { id: 2 }, { id: 3 }], [3, 9, 1]).map((e) => e.id), [3, 1, 2]);
+  assert.deepEqual(movedIds([1, 2, 3], 0, 2), [2, 3, 1]);
+  assert.deepEqual(movedIds([1, 2, 3], 0, 5), [1, 2, 3]);
 });
 
 test("countsFromSnapshot reads the bundle's tables and stays null for a structural profile", () => {
