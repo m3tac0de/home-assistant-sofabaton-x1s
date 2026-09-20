@@ -7,6 +7,14 @@ const PORT = 4173;
 // one, so a phone regression fails CI rather than a single narrow case.
 const SERVER_PANEL = /server-panel\.spec\.js$/;
 
+// A Windows CI runner has OS animations off. Chromium then reports
+// prefers-reduced-motion and drops its scroll animator, so a smooth scroll
+// lands in one frame and the section navigation test has nothing to sample.
+const ANIMATED_SCROLL = {
+  launchOptions: { args: ["--enable-smooth-scrolling"] },
+  contextOptions: { reducedMotion: "no-preference" },
+};
+
 module.exports = defineConfig({
   testDir: "./tests/playwright",
   // The card baselines predate the named projects; keep their file names.
@@ -30,8 +38,8 @@ module.exports = defineConfig({
   },
   projects: [
     { name: "cards", testIgnore: SERVER_PANEL },
-    { name: "server-panel-phone", testMatch: SERVER_PANEL, use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
-    { name: "server-panel-desktop", testMatch: SERVER_PANEL, use: { viewport: { width: 1280, height: 900 } } },
+    { name: "server-panel-phone", testMatch: SERVER_PANEL, use: { ...ANIMATED_SCROLL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: "server-panel-desktop", testMatch: SERVER_PANEL, use: { ...ANIMATED_SCROLL, viewport: { width: 1280, height: 900 } } },
   ],
   webServer: {
     command: "node ./scripts/serve-playwright-fixtures.mjs",
