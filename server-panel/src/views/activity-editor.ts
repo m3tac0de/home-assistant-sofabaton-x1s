@@ -67,6 +67,7 @@ import {
   deviceCommandItems,
   removeActivityMacroStep,
   renameBundleActivity,
+  renameBundleActivityFavorite,
   renameBundleActivityMacro,
   reorderActivityMacroSteps,
   reorderBundleActivityQuickAccess,
@@ -170,7 +171,7 @@ function roleTriggerLabel(role: ActivityRoleAssignment): string {
 
 type MacroTargetMode = "existing" | "new";
 
-type RenameTarget = { kind: "activity" } | { kind: "macro"; buttonId: number };
+type RenameTarget = { kind: "activity" } | { kind: "macro"; buttonId: number } | { kind: "favorite"; buttonId: number; label: string };
 
 interface MacroTargetState {
   mode: MacroTargetMode;
@@ -393,7 +394,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   // -- rename (activity, macro) ----------------------------------------------------------------------------
 
   private _openRename(target: RenameTarget): void {
-    const draft = target.kind === "activity" ? this._title : this._macroName(target.buttonId) || this._macroEditor?.name || "";
+    const draft = target.kind === "activity" ? this._title : target.kind === "favorite" ? target.label : this._macroName(target.buttonId) || this._macroEditor?.name || "";
     this._rename = { target, draft, error: "" };
   }
 
@@ -420,6 +421,9 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     }
     if (dialog.target.kind === "activity") {
       this._commit(renameBundleActivity(this._working, activityId, next));
+    } else if (dialog.target.kind === "favorite") {
+      // Offline only (the card's rule): a live favorite carries its command's name.
+      this._commit(renameBundleActivityFavorite(this._working, activityId, dialog.target.buttonId, next));
     } else {
       this._commit(renameBundleActivityMacro(this._working, activityId, dialog.target.buttonId, next));
       if (this._macroEditor?.buttonId === dialog.target.buttonId) this._macroEditor = { ...this._macroEditor, name: next };
@@ -445,7 +449,8 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       void this._deleteEntity();
       return;
     }
-    this._commit(applyBundleDelete(this._working, dialog.target, { reconcileMembership: false }));
+    // Live row deletes never rewrite membership (the sync's scope guard); an offline edit keeps the full reconcile.
+    this._commit(applyBundleDelete(this._working, dialog.target, { reconcileMembership: this._offline }));
   };
 
   private _deleteTitle(target: BackupDeleteTarget, label: string): string {
@@ -832,6 +837,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
               </div>
               <div class="detail-title" id=${options.titleId}>${options.title}</div>
             </div>
+            ${this._offline && this._dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B.unsavedTooltip}>${B.unsaved}</span>` : nothing}
             ${options.actions ?? nothing}
           </div>
         </div>
@@ -924,7 +930,9 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             actions: html`<div class="detail-title-actions">
               <button class="icon-btn" id="editor-rename" type="button" aria-label=${B.renameKind("activity")} title=${B.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon(mdiPencil)}</button>
               <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B.deleteActivityAria} title=${B.deleteActivityAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon(mdiTrashCanOutline)}</button>
-              <button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing…" : dirty ? A.syncToHub : A.syncUpToDate}</button>
+              ${this._offline
+                ? nothing
+                : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing…" : dirty ? A.syncToHub : A.syncUpToDate}</button>`}
             </div>`,
           })}
           <div class="detail-scroll">
@@ -1080,7 +1088,9 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             ${item.kind === "macro"
               ? html`<button class="icon-btn shortcut-steps" type="button" aria-label=${B.editStepsAria} title=${B.editStepsAria} @click=${() => this._openMacroEditor(item.buttonId, item.label)}>${icon(mdiPlaylistEdit)}</button>
                   <button class="icon-btn shortcut-rename" type="button" aria-label=${B.shortcutRenameAria("macro")} title=${B.shortcutRenameAria("macro")} @click=${() => this._openRename({ kind: "macro", buttonId: item.buttonId })}>${icon(mdiPencil)}</button>`
-              : nothing}
+              : this._offline
+                ? html`<button class="icon-btn shortcut-rename" type="button" aria-label=${B.shortcutRenameAria("favorite")} title=${B.shortcutRenameAria("favorite")} @click=${() => this._openRename({ kind: "favorite", buttonId: item.buttonId, label: item.label })}>${icon(mdiPencil)}</button>`
+                : nothing}
             <button class="icon-btn icon-btn--danger shortcut-delete" type="button" aria-label=${B.shortcutDeleteAria(item.kind)} title=${B.shortcutDeleteAria(item.kind)}
               @click=${() => this._openDeleteConfirm(item.kind === "macro" ? { kind: "macro", activityId, buttonId: item.buttonId } : { kind: "favorite", activityId, buttonId: item.buttonId }, item.label)}>${icon(mdiTrashCanOutline)}</button>
           </div>
@@ -1220,7 +1230,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   private _renderRenameDialog(): TemplateResult | typeof nothing {
     const dialog = this._rename;
     if (!dialog) return nothing;
-    const title = dialog.target.kind === "activity" ? B.renameActivity : B.renameMacro;
+    const title = dialog.target.kind === "activity" ? B.renameActivity : dialog.target.kind === "favorite" ? B.renameFavorite : B.renameMacro;
     return this._dialog("rename-dialog", title, this._closeRename, html`
       <label class="decoded-field">
         <span class="decoded-field-label">${B.name}</span>
@@ -1237,7 +1247,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     const hasCascade = backupDeleteHasCascade(impact);
     const immediate = dialog.target.kind === "activity";
     return this._dialog("delete-dialog", this._deleteTitle(dialog.target, dialog.label), this._closeDeleteConfirm, html`
-      <div class="backup-drawer-sub">${hasCascade ? B.deleteCascadeIntroLive : B.deleteSimpleBodyLive}</div>
+      <div class="backup-drawer-sub">${this._offline ? (hasCascade ? B.deleteCascadeIntro : B.deleteSimpleBody) : hasCascade ? B.deleteCascadeIntroLive : B.deleteSimpleBodyLive}</div>
       ${hasCascade
         ? html`<ul class="delete-impact-list" id="delete-impact">
             ${impact.activities > 0 ? html`<li>${icon(mdiLinkVariant)}<span>${B.deleteImpactActivities(impact.activities)}</span></li>` : nothing}
@@ -1247,7 +1257,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             ${impact.bindings > 0 ? html`<li>${icon(mdiGestureTapButton)}<span>${B.deleteImpactBindings(impact.bindings)}</span></li>` : nothing}
           </ul>`
         : nothing}
-      <div class="delete-replace-note">${icon(mdiInformationOutline)}<span>${immediate ? B.deleteImmediateNote : B.deleteSyncNote}</span></div>`, html`
+      <div class="delete-replace-note">${icon(mdiInformationOutline)}<span>${this._offline ? B.deleteReplaceNote : immediate ? B.deleteImmediateNote : B.deleteSyncNote}</span></div>`, html`
       <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${B.deleteCancel}</button>
       <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${B.deleteConfirm}</button>`);
   }

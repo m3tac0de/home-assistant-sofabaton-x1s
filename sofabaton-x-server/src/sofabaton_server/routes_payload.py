@@ -20,17 +20,19 @@ creates new entities and is not safe to retry blindly after a timeout.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sofabaton import AsyncXProxy, CommandPayload, IrPayload, NetworkCommand
 from sofabaton.blob_decoders import try_decode_blob
 
 from . import API_PREFIX
-from .jobs import JobView
+from .backup_stage import BACKUP_KIND, BackupStage, backup_result
+from .jobs import JobNotFound, JobRunner, JobView
 from .models import Problem
 from .problems import ApiProblem, RestoreFailed, hub_errors
 from .routes_edit import IF_MATCH, _proxy, _require_control, _row_edit, _check_if_match
@@ -250,11 +252,54 @@ async def backup_hub(request: Request, hub_id: str, body: Optional[BackupRequest
     await _require_control(proxy, hub_id)
     body = body or BackupRequest()
 
+    record = request.app.state.hub_manager.record(hub_id)
+    fallback_name = record.config.name or record.hub_name
+
     async def run(progress) -> dict[str, Any]:
         bundle = await proxy.backup(include_blobs=body.include_blobs, device_ids=body.device_ids, progress=progress)
-        return {"bundle": bundle}
+        return backup_result(bundle, fallback_name=fallback_name)
 
-    return start_job(request, hub_id, "backup", run, cancellable=False)
+    return start_job(request, hub_id, BACKUP_KIND, run, cancellable=False)
+
+
+def _backup_job(request: Request, hub_id: str, job_id: str) -> JobView:
+    jobs: JobRunner = request.app.state.job_runner
+    try:
+        view = jobs.get(hub_id, job_id)
+    except JobNotFound:
+        raise ApiProblem(404, "job_not_found", "Unknown job", hub_id=hub_id) from None
+    if view.kind != BACKUP_KIND or view.status != "done":
+        raise ApiProblem(404, "bundle_not_found", "The job holds no backup bundle",
+                         detail=f"job {job_id} is a {view.kind} job with status {view.status}", hub_id=hub_id)
+    return view
+
+
+@router.get("/jobs/{job_id}/bundle", operation_id="downloadBackupBundle",
+            summary="Download a finished backup's bundle as a file (while the server still holds it)",
+            response_class=Response,
+            responses={200: {"content": {"application/json": {}}, "description": "The hub_bundle, as an attachment"},
+                       404: {"model": Problem}, 410: {"model": Problem}})
+async def download_backup_bundle(request: Request, hub_id: str, job_id: str) -> Response:
+    view = _backup_job(request, hub_id, job_id)
+    stage: BackupStage = request.app.state.backup_stage
+    bundle = stage.bundle(view)
+    if bundle is None:
+        raise ApiProblem(410, "bundle_expired", "The backup bundle is no longer held",
+                         detail="the server keeps a bundle for a few minutes; make a new backup", hub_id=hub_id)
+    filename = str((view.result or {}).get("filename") or "sofabaton_backup.json")
+    body = json.dumps(bundle, indent=2)
+    stage.mark_downloaded(view)
+    return Response(content=body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
+
+
+@router.delete("/jobs/{job_id}/bundle", operation_id="dropBackupBundle", status_code=204,
+               summary="Drop a finished backup's bundle now (the client is done with it)",
+               responses={404: {"model": Problem}})
+async def drop_backup_bundle(request: Request, hub_id: str, job_id: str) -> Response:
+    view = _backup_job(request, hub_id, job_id)
+    request.app.state.backup_stage.drop(view)
+    return Response(status_code=204)
 
 
 @router.post("/restore", operation_id="restoreHub", response_model=JobView, status_code=202,

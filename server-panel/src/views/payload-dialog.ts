@@ -58,6 +58,7 @@ const S = {
   rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
   payloadHex: "Payload (hex bytes)",
   verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
+  verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
   sendingToHub: "Sending to the hub…",
   sentToHub: "Sent to the hub for one-shot playback.",
   testFailed: "Test failed.",
@@ -75,6 +76,10 @@ const S = {
 export interface PayloadSaveDetail {
   name: string;
   restoreData: Record<string, unknown>;
+  /** An edit of an existing structured block: only the fields that changed (the offline editor merges them the card's way). */
+  changedFields?: Record<string, unknown>;
+  /** An edit of the raw bytes: the normalised hex. */
+  rawHex?: string;
 }
 
 type TestStatus = "idle" | "testing" | "success" | "error";
@@ -111,6 +116,7 @@ export class SbPayloadDialog extends LitElement {
     hubVersion: { attribute: false },
     deviceClass: { attribute: false },
     mode: { attribute: false },
+    offline: { attribute: false },
     snapshot: { attribute: false },
     rawHex: { attribute: false },
     fetchedHex: { attribute: false },
@@ -196,6 +202,8 @@ export class SbPayloadDialog extends LitElement {
   hubVersion: string | null = null;
   deviceClass = "";
   mode: "add" | "edit" = "edit";
+  /** Editing a backup file (the card's backup mode): Save goes into the file, never to a Sync. */
+  offline = false;
   /** The pristine structured block (null for the hex or raw body). */
   snapshot: BackupCommandDecodedBlock | null = null;
   /** The pristine Sofabaton / raw hex when there is no structured block. */
@@ -477,6 +485,7 @@ export class SbPayloadDialog extends LitElement {
       if (!changed) return null;
       return {
         name: "",
+        ...(this.snapshot ? { changedFields: changed } : {}),
         restoreData: {
           transport: "hub_code_record",
           data_hex: this.fetchedHex,
@@ -490,7 +499,7 @@ export class SbPayloadDialog extends LitElement {
       return undefined;
     }
     if (normalized === (normalizeCommandPayloadHex(this._rawSnapshot) ?? "")) return null;
-    return { name: "", restoreData: { transport: "hub_code_record", data_hex: normalized, edited: true } };
+    return { name: "", rawHex: normalized, restoreData: { transport: "hub_code_record", data_hex: normalized, edited: true } };
   }
 
   /** The card's add: every field serialised (no baseline), or the normalised bytes. */
@@ -544,7 +553,7 @@ export class SbPayloadDialog extends LitElement {
                 </label>`
               : nothing}
             ${body}
-            ${this._isIr ? html`<div class="payload-test-note">${icon(mdiFlashOutline)}<span>${S.verifyPayloadLive}</span></div>` : nothing}
+            ${this._isIr ? html`<div class="payload-test-note">${icon(mdiFlashOutline)}<span>${this.offline ? S.verifyPayloadBackup : S.verifyPayloadLive}</span></div>` : nothing}
             ${this._testStatus === "idle"
               ? nothing
               : html`<div class="section-status payload-test-status ${this._testStatus}" id="payload-test-status" role="status" aria-live="polite">

@@ -7,7 +7,7 @@ unchanged); request bodies are pydantic models so a bad payload is a
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
@@ -104,6 +104,24 @@ class JobView:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# Result entries too large to repeat: a backup's bundle runs to megabytes
+# with its IR payloads. ``GET /hubs/{id}/jobs/{job_id}`` and the download
+# route carry it; the event stream, the job list and the hub views do not.
+HEAVY_RESULT_KEYS: tuple[str, ...] = ("bundle",)
+
+
+def light_job(view: Optional[JobView]) -> Optional[JobView]:
+    """A copy of ``view`` without the heavy result entries (the view itself
+    when it has none). Always a copy where the runner still mutates it."""
+
+    if view is None:
+        return None
+    result = view.result
+    if isinstance(result, dict) and any(key in result for key in HEAVY_RESULT_KEYS):
+        result = {key: value for key, value in result.items() if key not in HEAVY_RESULT_KEYS}
+    return replace(view, result=result)
 
 
 @dataclass(frozen=True)

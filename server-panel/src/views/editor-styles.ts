@@ -34,6 +34,9 @@ export const EDITOR_CSS = css`
     .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
     .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    /* Offline mode (a backup file): the card's "Unsaved" chip stands where the live editor has its Sync button. */
+    .edit-unsaved-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 2px 8px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; color: var(--sbp-warn); background: color-mix(in srgb, var(--sbp-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-warn) 35%, transparent); }
+    .edit-unsaved-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--sbp-warn); }
     .back-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-weight: 700; padding: 8px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .back-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
     .back-btn .mdi { width: 18px; height: 18px; }

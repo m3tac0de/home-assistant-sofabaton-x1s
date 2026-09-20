@@ -199,3 +199,15 @@ test("connectivity and the list summary", () => {
   assert.equal(hubsSummary(snapshot([])), "");
   assert.equal(hubsSummary(snapshot(two, { server: { info: null, reachable: false, error: null, instanceId: null } })), "list unavailable");
 });
+
+test("the Backup tab's unsaved file takes the dock after a draft and before a gate, with the card's wording", () => {
+  const idle = runtime();
+  const s = snapshot([idle]);
+  assert.deepEqual(dockModel(s, idle), { kind: "idle" });
+  assert.deepEqual(dockModel(s, idle, { unsavedBackup: true }), { kind: "unsaved_backup", text: "Unsaved changes — download the edited backup" });
+  const drafted = runtime(hub(), { draft: { scope: "hub/devices/4", snapshotId: "s1", data: {}, updatedAt: 1 }, draftCheck: "fresh" });
+  assert.equal(dockModel(snapshot([drafted]), drafted, { unsavedBackup: true }).kind, "dirty");
+  const offline = runtime(hub({ status: { hub_connected: false, controllable: false, mode: "disconnected" } }));
+  assert.equal(dockModel(snapshot([offline]), offline).kind, "gate");
+  assert.equal(dockModel(snapshot([offline]), offline, { unsavedBackup: true }).kind, "unsaved_backup");
+});

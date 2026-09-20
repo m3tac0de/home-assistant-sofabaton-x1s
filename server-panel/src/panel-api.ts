@@ -530,6 +530,28 @@ export class PanelApi {
     return this.request<JobView>("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
   }
 
+  // -- backup and restore ------------------------------------------------------------
+
+  /** Read a full, restorable bundle from the hub (a job); `deviceIds` limits it to those devices, without activities. */
+  startBackup(hubId: string, deviceIds: number[] | null = null): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/backup`, { body: deviceIds ? { device_ids: deviceIds } : {} });
+  }
+
+  /** Write a bundle onto the hub (a job, not cancellable); `replace` erases the hub first. */
+  startRestore(hubId: string, bundle: unknown, replace: boolean): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/restore`, { body: { bundle, replace } });
+  }
+
+  /** Where a finished backup's bundle downloads from, while the server still holds it. */
+  backupBundleUrl(hubId: string, jobId: string): string {
+    return this.url(`${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}/bundle`);
+  }
+
+  /** Done with a finished backup: the server drops its bundle now. */
+  dropBackupBundle(hubId: string, jobId: string): Promise<ApiResponse<never>> {
+    return this.request<never>("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}/bundle`);
+  }
+
   /** The hub's apply records, newest first, documents omitted. */
   listApplies(hubId: string): Promise<ApiResponse<ApplySummary[]>> {
     return this.request<ApplySummary[]>("GET", `${this._hub(hubId)}/applies`);

@@ -67,6 +67,10 @@ import {
   setDeviceMacroStepWait,
   updateDeviceMacroStep,
   addBundleDeviceCommand,
+  commandDecodedBlock,
+  commandRawPayloadHex,
+  updateCommandDecodedFields,
+  updateCommandRawPayload,
   defaultDecodedSnapshotForClass,
   nextFreeDeviceCommandId,
   normalizeCommandPayloadHex,
@@ -137,6 +141,12 @@ const S = {
   ipv4Description: "IPv4 dotted-decimal address",
   editIpAria: "Edit IP address",
   ipAddress: "IP address",
+  commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
+  unsaved: "Unsaved",
+  unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
+  deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
+  deleteSimpleBody: "This removes it from the loaded backup.",
+  deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
   commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup → Edit.",
   addCommand: "Add command",
   noDeviceCommands: "This device does not currently have any commands.",
@@ -393,8 +403,28 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     return { className: className as BackupCommandDecodedBlock["className"], fields: { ...decoded.fields }, trailerHex: String(decoded.trailer_hex ?? ""), edited: false };
   }
 
+  /** Offline: the braces open the payload the file carries (a structured block, else its raw bytes). */
+  private _commandHasEditablePayload(commandId: number): boolean {
+    const deviceId = this.deviceId;
+    if (deviceId == null) return false;
+    return Boolean(commandDecodedBlock(this._working, deviceId, commandId) || commandRawPayloadHex(this._working, deviceId, commandId));
+  }
+
+  private _openOfflinePayload(commandId: number): void {
+    const deviceId = this.deviceId;
+    if (deviceId == null) return;
+    const snapshot = commandDecodedBlock(this._working, deviceId, commandId);
+    const rawHex = snapshot ? "" : commandRawPayloadHex(this._working, deviceId, commandId) ?? "";
+    if (!snapshot && !rawHex) return;
+    this._payloadDialog = { mode: "edit", commandId, snapshot, rawHex, fetchedHex: "" };
+  }
+
   /** The braces: fetch the command's payload from the hub, then open the dialog on it. */
   private async _fetchAndEditPayload(commandId: number): Promise<void> {
+    if (this._offline) {
+      this._openOfflinePayload(commandId);
+      return;
+    }
     const hubId = this._hub?.hub_id;
     const deviceId = this.deviceId;
     if (!hubId || deviceId == null || this._payloadFetching != null) return;
@@ -468,6 +498,22 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const deviceId = this.deviceId;
     if (!dialog || deviceId == null || !this._working) return;
     const { name, restoreData } = event.detail;
+    if (this._offline && dialog.mode === "edit") {
+      // The card's backup-mode save: merge the changed fields into the file's block, or replace its raw bytes.
+      const { changedFields, rawHex } = event.detail;
+      if (changedFields && commandDecodedBlock(this._working, deviceId, dialog.commandId)) {
+        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields));
+      } else if (rawHex) {
+        this._commit(updateCommandRawPayload(this._working, deviceId, dialog.commandId, rawHex));
+      } else {
+        // Hex bytes morphed into a descriptor: the row gains the structured block next to what it had.
+        const row = (this._workingElement?.commands ?? []).find((entry) => Number(entry?.command_id) === dialog.commandId);
+        const existing = ((row as { restore_data?: unknown } | undefined)?.restore_data ?? {}) as Record<string, unknown>;
+        this._commit(setCommandRestoreData(this._working, deviceId, dialog.commandId, { ...existing, decoded: restoreData.decoded }));
+      }
+      this._payloadDialog = null;
+      return;
+    }
     if (dialog.mode === "edit") {
       this._commit(setCommandRestoreData(this._working, deviceId, dialog.commandId, restoreData));
       this._payloadDialog = null;
@@ -650,6 +696,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   /** A Wifi Commands device deployed by Home Assistant: editable with a warning (plan decision 11). */
   private get _managedByHa(): boolean {
+    if (this._offline) return false;
     return isManagedWifiBrand(this._brand) && !isWifiEventsBrand(this._brand);
   }
 
@@ -739,12 +786,14 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
       void this._deleteEntity();
       return;
     }
-    // Live row deletes mirror the hub's cascade but never rewrite activity membership (the card's rule).
-    let next = applyBundleDelete(this._working, target, { reconcileMembership: false });
-    if (target.kind === "command" && this._pairedRecords) {
+    // Live row deletes mirror the hub's cascade but never rewrite activity membership (the card's rule);
+    // an offline edit keeps the full reconcile.
+    const deleteOptions = { reconcileMembership: this._offline };
+    let next = applyBundleDelete(this._working, target, deleteOptions);
+    if (target.kind === "command" && this._pairedRecords && !this._offline) {
       const slots = wifiEventsSlotCount(this._workingElement);
       if (slots > 0 && Number(target.commandId) <= slots) {
-        next = applyBundleDelete(next, { kind: "command", deviceId, commandId: Number(target.commandId) + slots }, { reconcileMembership: false });
+        next = applyBundleDelete(next, { kind: "command", deviceId, commandId: Number(target.commandId) + slots }, deleteOptions);
       }
     }
     this._commit(next);
@@ -960,6 +1009,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                   </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
+                ${this._offline && dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S.unsavedTooltip}>${S.unsaved}</span>` : nothing}
                 <div class="detail-title-actions">
                   ${callback
                     ? nothing
@@ -967,7 +1017,9 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                   ${callback
                     ? nothing
                     : html`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon(mdiTrashCanOutline)}</button>`}
-                  <button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing…" : dirty ? S.syncToHub : S.syncUpToDate}</button>
+                  ${this._offline
+                    ? nothing
+                    : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing…" : dirty ? S.syncToHub : S.syncUpToDate}</button>`}
                 </div>
               </div>
             </div>
@@ -991,7 +1043,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
         ${this._renderBindingDialog()}
         ${this._renderExitConfirmDialog()}
         ${this._payloadDialog
-          ? html`<sb-payload-dialog .api=${this.api} .hubId=${this._hub?.hub_id ?? ""} .hubVersion=${this._hubVersion} .deviceClass=${this._deviceClass} .mode=${this._payloadDialog.mode} .snapshot=${this._payloadDialog.snapshot} .rawHex=${this._payloadDialog.rawHex} .fetchedHex=${this._payloadDialog.fetchedHex} @sb-payload-close=${this._closePayloadDialog} @sb-payload-save=${(event: CustomEvent<PayloadSaveDetail>) => this._applyPayloadSave(event)}></sb-payload-dialog>`
+          ? html`<sb-payload-dialog .api=${this.api} .hubId=${this._hub?.hub_id ?? ""} .offline=${this._offline} .hubVersion=${this._hubVersion} .deviceClass=${this._deviceClass} .mode=${this._payloadDialog.mode} .snapshot=${this._payloadDialog.snapshot} .rawHex=${this._payloadDialog.rawHex} .fetchedHex=${this._payloadDialog.fetchedHex} @sb-payload-close=${this._closePayloadDialog} @sb-payload-save=${(event: CustomEvent<PayloadSaveDetail>) => this._applyPayloadSave(event)}></sb-payload-dialog>`
           : nothing}
       </div>
     `;
@@ -1073,8 +1125,8 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     return html`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S.detailCommands}</div><div class="quick-access-sub">${S.commandsLiveHelp}</div></div>
-          ${callback
+          <div class="quick-access-head-main"><div class="quick-access-title">${S.detailCommands}</div><div class="quick-access-sub">${this._offline ? S.commandsBackupHelp : S.commandsLiveHelp}</div></div>
+          ${callback || this._offline
             ? nothing
             : html`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S.addCommand}</span></button></div>`}
         </div>
@@ -1090,7 +1142,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                     ${callback
                       ? nothing
                       : html`<button class="icon-btn command-rename" type="button" aria-label=${S.renameCommandAria} title=${S.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon(mdiPencil)}</button>
-                          ${pendingAdd(item.commandId)
+                          ${pendingAdd(item.commandId) || (this._offline && !this._commandHasEditablePayload(item.commandId))
                             ? nothing
                             : html`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S.editPayloadAria} title=${S.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
                           ${isLongRecord(this._pairedRecords ? element : null, item.commandId)
@@ -1170,12 +1222,14 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const impact = bundleDeleteImpact(this._working, dialog.target);
     const hasCascade = backupDeleteHasCascade(impact);
     const immediate = dialog.target.kind === "device";
+    const intro = this._offline ? (hasCascade ? S.deleteCascadeIntro : S.deleteSimpleBody) : hasCascade ? S.deleteCascadeIntroLive : S.deleteSimpleBodyLive;
+    const note = this._offline ? S.deleteReplaceNote : immediate ? S.deleteImmediateNote : S.deleteSyncNote;
     return html`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
         <div class="dialog small" id="delete-dialog" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S.deleteCancel} @click=${this._closeDeleteConfirm}>${icon(mdiClose)}</button></div>
           <div class="dialog-body">
-            <div class="backup-drawer-sub">${hasCascade ? S.deleteCascadeIntroLive : S.deleteSimpleBodyLive}</div>
+            <div class="backup-drawer-sub">${intro}</div>
             ${hasCascade
               ? html`<ul class="delete-impact-list" id="delete-impact">
                   ${impact.activities > 0 ? html`<li>${icon(mdiLinkVariant)}<span>${S.deleteImpactActivities(impact.activities)}</span></li>` : nothing}
@@ -1185,7 +1239,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                   ${impact.bindings > 0 ? html`<li>${icon(mdiGestureTapButton)}<span>${S.deleteImpactBindings(impact.bindings)}</span></li>` : nothing}
                 </ul>`
               : nothing}
-            <div class="delete-replace-note">${icon(mdiInformationOutline)}<span>${immediate ? S.deleteImmediateNote : S.deleteSyncNote}</span></div>
+            <div class="delete-replace-note">${icon(mdiInformationOutline)}<span>${note}</span></div>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note"></div>

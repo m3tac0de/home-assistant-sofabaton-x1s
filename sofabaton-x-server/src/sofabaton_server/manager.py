@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 from sofabaton import AsyncXProxy, HubConfig, HubEvent, HubStatus, StateDocumentError
 
 from .config import Settings
-from .models import HubRecord, HubView, mac_key, now_iso
+from .models import HubRecord, HubView, light_job, mac_key, now_iso
 from .store import HubStore, StateStore, UiDocumentStore
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -197,8 +197,8 @@ class HubManager:
             added_at=record.added_at,
             last_seen=record.last_seen,
             status=status,
-            active_job=jobs.active(hub_id) if jobs is not None else None,
-            last_job=jobs.last_finished(hub_id) if jobs is not None else None,
+            active_job=light_job(jobs.active(hub_id)) if jobs is not None else None,
+            last_job=light_job(jobs.last_finished(hub_id)) if jobs is not None else None,
             hub_name=hub_name,
         )
 

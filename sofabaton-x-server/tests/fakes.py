@@ -552,7 +552,8 @@ class FakeProxy:
         if self.restore_gate is not None:
             await self.restore_gate.wait()
         if self.restore_failure is not None:
-            return RestoreResult.from_engine(self.restore_failure, snapshot_id=(await self.snapshot()).snapshot_id)
+            return RestoreResult.from_engine(self.restore_failure, snapshot_id=(await self.snapshot()).snapshot_id,
+                                             erased=bool(replace))
         # The engine's real shape: lists of per-entity records.
         return RestoreResult.from_engine(
             {"status": "success", "device_id_map": {"1": 9},

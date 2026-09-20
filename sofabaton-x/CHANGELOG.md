@@ -11,6 +11,24 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+- Fixed: a read could reach the hub in the middle of a write. Reads are
+  cache reads, except one whose cache is not complete, which fetches on
+  demand; after the erase of `restore(replace=True)` every cache is empty,
+  so a client that only listed the devices sent a catalog request between
+  the rebuild's page writes, and the hub (an X1) refused the next page: the
+  restore failed on its first device with the hub already erased. Every
+  exclusive operation (`restore`, `erase`, `backup`, `refresh`, the syncs,
+  `sync_hub`, the intent writes) now holds the hub for its whole span, a
+  replacing restore as one span over the erase and the rebuild, and an
+  on-demand fetch from anyone else waits for it: it is answered from what
+  the operation left in the cache, or raises `FetchTimeoutError` naming the
+  holder when its timeout runs out first. The holder's own reads are not
+  affected.
+- `RestoreResult.erased`: true when `restore(replace=True)` wiped the hub.
+  `wrote_nothing` is now false for a replacing restore that failed before
+  its first entity, because the hub was changed. The server reports that
+  case as `502 restore_failed` (it said 409, "nothing written") and says in
+  the detail that the hub had been erased.
 - Fixed: a sync whose edit added an input to a device (the editors' "Set
   input" on a command the device did not list as an input yet) reported
   success without writing the device's inputs page, so the activity's

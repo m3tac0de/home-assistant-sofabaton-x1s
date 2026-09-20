@@ -519,8 +519,14 @@ export class PanelStore {
     if (TERMINAL_JOB_STATES.has(job.status)) {
       const active = hub.active_job && hub.active_job.job_id === job.job_id ? null : hub.active_job ?? null;
       const cancelRequestedJobId = runtime.cancelRequestedJobId === job.job_id ? null : runtime.cancelRequestedJobId;
-      this._patchRuntime(hubId, { hub: { ...hub, active_job: active, last_job: job }, cancelRequestedJobId });
-      this._noteFinished(hubId, job, { onLoad: false });
+      // A finished job can be announced again (a staged backup bundle was
+      // downloaded, dropped or expired): that is no new ending, and an older
+      // job's frame never replaces a newer last_job.
+      const previous = hub.last_job && TERMINAL_JOB_STATES.has(hub.last_job.status) ? hub.last_job : null;
+      const older = previous !== null && previous.job_id !== job.job_id && previous.created_at > job.created_at;
+      const again = previous !== null && previous.job_id === job.job_id;
+      this._patchRuntime(hubId, { hub: { ...hub, active_job: active, last_job: older ? previous : job }, cancelRequestedJobId });
+      if (!older && !again) this._noteFinished(hubId, job, { onLoad: false });
       this.refreshSoon();
     } else {
       this._patchRuntime(hubId, { hub: { ...hub, active_job: job } });

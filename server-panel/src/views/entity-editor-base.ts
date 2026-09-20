@@ -6,11 +6,19 @@
 // changes" dialog, Sync as one followed job with the rebase, the stale and
 // failed states, Reload from hub and the immediate whole-entity delete. The
 // subclasses render the screen and name the routes.
+//
+// Offline mode (server panel backup plan, decision 6): the Backup tab's Edit
+// section mounts the same editors on a loaded backup file, the card's
+// `mode="backup"`. The host owns the bundle, the dirty flag and the edit
+// session; the editor reports each edit with `sb-bundle-change` and closing
+// with `sb-editor-close`, and nothing reaches the hub: no load, no draft
+// slot, no Sync, and deleting the entity is a bundle edit like any other.
 
 import { LitElement, html, nothing, type PropertyDeclarations, type PropertyValues, type TemplateResult } from "lit";
 import { mdiAlertCircleOutline, mdiChip, mdiClose, mdiDatabaseRefreshOutline, mdiSyncAlert } from "@mdi/js";
 
 import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { applyBundleDelete } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { problemText, type ApiResponse, type HubInfo, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
 import type { PanelStore } from "../panel-store";
@@ -60,6 +68,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
     api: { attribute: false },
     ctx: { attribute: false },
     store: { attribute: false },
+    offlineBundle: { attribute: false },
+    offlineDirty: { attribute: false },
     _stage: { state: true },
     _snapshot: { state: true },
     _baseline: { state: true },
@@ -77,6 +87,10 @@ export abstract class SbPanelEntityEditor extends LitElement {
   api!: PanelApi;
   ctx: HubContext | null = null;
   store!: PanelStore;
+  /** The loaded backup file this editor works on instead of the hub's snapshot (offline mode). */
+  offlineBundle: BackupBundlePayload | null = null;
+  /** The host's "edited since the file was loaded" flag; drives the Unsaved chip. */
+  offlineDirty = false;
 
   protected _stage: EditorStage = "loading";
   protected _snapshot: SnapshotDocument | null = null;
@@ -112,7 +126,30 @@ export abstract class SbPanelEntityEditor extends LitElement {
 
   // -- lifecycle ---------------------------------------------------------------------------------------
 
+  protected get _offline(): boolean {
+    return this.offlineBundle !== null;
+  }
+
+  protected willUpdate(_changed: PropertyValues): void {
+    if (!this._offline) return;
+    // The host's bundle is the working copy; there is no baseline to diff against.
+    const key = `offline:${this.entityId ?? ""}`;
+    if (key !== this._loadedKey) {
+      this._loadedKey = key;
+      this._exitConfirm = null;
+      this._syncFailed = null;
+      this._notice = null;
+      this._resetView();
+    }
+    this._snapshot = null;
+    this._callbackDeviceId = null;
+    this._baseline = this.offlineBundle;
+    this._working = this.offlineBundle;
+    this._stage = this.entityId != null && entityElement(this.offlineBundle, this.entityKind, this.entityId) ? "editing" : "missing";
+  }
+
   protected updated(changed: PropertyValues): void {
+    if (this._offline) return;
     const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.entityId ?? ""}`;
     if (key !== this._loadedKey) {
       this._loadedKey = key;
@@ -141,6 +178,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
   }
 
   protected get _hubVersion(): string | null {
+    // A backup file is edited by its own hub model's rules (names, buttons), whatever hub is selected.
+    if (this._offline) return this._working?.hub?.version ?? null;
     return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
   }
 
@@ -212,12 +251,18 @@ export abstract class SbPanelEntityEditor extends LitElement {
 
   /** Dirty is JSON inequality of the entity's element, as on the card (whole-bundle compare there). */
   protected get _dirty(): boolean {
+    if (this._offline) return this.offlineDirty;
     if (this._stage !== "editing") return false;
     return !elementsEqual(this._workingEntity, this._baselineEntity) || this._touchedDevices().length > 0;
   }
 
   /** The card's `_commitEditBundleEdit`: replace the working bundle, mirror the edit into the draft slot. */
   protected _commit(next: BackupBundlePayload): void {
+    if (this._offline) {
+      this._working = next;
+      this.dispatchEvent(new CustomEvent("sb-bundle-change", { bubbles: true, composed: true, detail: { bundle: next } }));
+      return;
+    }
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || !this._snapshot) return;
@@ -237,11 +282,12 @@ export abstract class SbPanelEntityEditor extends LitElement {
 
   /** For the shell: leaving with unsynced edits goes through the card's dialog (device editor plan, decision 3). */
   hasUnsyncedChanges(): boolean {
-    return this._dirty;
+    // Offline edits live in the host's edit session: leaving loses nothing.
+    return !this._offline && this._dirty;
   }
 
   askToLeave(then: () => void): void {
-    if (!this._dirty) {
+    if (!this.hasUnsyncedChanges()) {
       then();
       return;
     }
@@ -253,6 +299,10 @@ export abstract class SbPanelEntityEditor extends LitElement {
   };
 
   protected _goToList = (): void => {
+    if (this._offline) {
+      this.dispatchEvent(new CustomEvent("sb-editor-close", { bubbles: true, composed: true }));
+      return;
+    }
     this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: entityListSub(this.entityKind) } }));
   };
 
@@ -368,6 +418,14 @@ export abstract class SbPanelEntityEditor extends LitElement {
   // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
 
   protected async _deleteEntity(): Promise<void> {
+    if (this._offline) {
+      // The card's backup mode: the entity leaves the file with its cascade; the hub only sees it on an erasing restore.
+      const id = this.entityId;
+      if (id == null || !this._working) return;
+      this._commit(applyBundleDelete(this._working, this.entityKind === "device" ? { kind: "device", deviceId: id } : { kind: "activity", activityId: id }));
+      this._goToList();
+      return;
+    }
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._deleting) return;
@@ -395,7 +453,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
 
   render(): TemplateResult {
     const S = this.frameStrings;
-    if (!this._hub || this.entityId == null) return html`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
+    if ((!this._hub && !this._offline) || this.entityId == null) return html`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
     switch (this._stage) {
       case "loading":
         return html`<div class="panel"><div class="capture-error"><div class="guard-sub">${S.loading}</div></div></div>`;

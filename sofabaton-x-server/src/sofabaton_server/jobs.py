@@ -80,6 +80,12 @@ class JobRunner:
             except Exception:  # noqa: BLE001
                 log.exception("job listener failed")
 
+    def announce(self, view: JobView) -> None:
+        """Tell the listeners a finished job's record changed (a staged
+        backup bundle was downloaded, dropped or expired)."""
+
+        self._emit(view)
+
     # -- queries -------------------------------------------------------------
 
     def get(self, hub_id: str, job_id: str) -> JobView:

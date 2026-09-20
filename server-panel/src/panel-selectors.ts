@@ -157,6 +157,7 @@ export type DockModel =
   | { kind: "apply_stopped"; applyId: string; resumable: boolean; text: string }
   | { kind: "draft_stale"; scope: string; text: string }
   | { kind: "dirty"; scope: string; text: string }
+  | { kind: "unsaved_backup"; text: string }
   | { kind: "gate"; gate: Exclude<Gate, "pass">; text: string }
   | { kind: "idle" };
 
@@ -180,7 +181,7 @@ export function draftBannerText(scope: string): string {
 /** What the bottom dock narrates for a hub, by the card's precedence: a
  *  running job, then a notice, then a stopped apply, then a gate, then idle.
  *  An unreachable server is said even with no hub selected. */
-export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null): DockModel {
+export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, view: { unsavedBackup?: boolean } = {}): DockModel {
   const job = activeJob(runtime?.hub);
   if (job) {
     const cancelling = runtime?.cancelRequestedJobId === job.job_id;
@@ -192,6 +193,8 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null): 
   const draft = draftFor(runtime);
   if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
+  // The Backup tab's edited file (the card's banner): kept in the browser's edit session, so nothing to discard here.
+  if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes — download the edited backup" };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || (gate !== "pass" && runtime)) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };

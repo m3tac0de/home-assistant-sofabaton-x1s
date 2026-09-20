@@ -226,6 +226,7 @@ confirmation and forgets cached state and the saved remote layout.
 | --- | --- |
 | **Hub setup** (cog menu) | Inspect the selected hub's details and status; enable, disable, retry a failed start or remove its registration. Discovery and registration are in the hub picker. |
 | **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. It does not edit configuration. |
+| **Backup** | Make, Edit and Restore, as the HA control panel card's Backup tab. Make reads the entire hub or selected devices into a bundle and offers it as a download for five minutes. Edit opens a backup file in the browser (devices, activities, commands, payloads, buttons, order, hub name) and downloads the result; nothing is sent to the hub, and the loaded file is kept in the browser for an hour. Restore loads a file, picks the activities and devices to write (an activity brings the devices it uses) and optionally erases the hub first. The server keeps no backup archive: the downloaded file is the backup. |
 | **Remote** | Control the selected hub and edit its saved remote layout. |
 | **API** | Select an OpenAPI operation or enter a method/path, send a request, inspect the response and follow a returned job. `{hub_id}` uses the selected hub. |
 | **Events** | Inspect the live WebSocket stream, filter by hub/text and identify callback presses. It reconnects after a server restart. |
@@ -385,7 +386,12 @@ or poll `GET /hubs/{id}/jobs/{job_id}`; `GET /hubs/{id}/jobs` lists
 recent ones, and every hub view (`GET /hubs`, `GET /hubs/{id}`) carries
 `active_job` (queued or running now) and `last_job` (the newest finished
 one, whatever its outcome), so one list call tells a client what each
-hub is doing. One job runs per hub at a time (`409 hub_job_running`). Reads
+hub is doing. One exception to "the full record": a backup's `bundle`
+runs to megabytes, so only `GET /hubs/{id}/jobs/{job_id}` and the
+download route carry it; the stream, the job list and the hub views show
+the rest of that result (see [IR payloads, backup, restore](#ir-payloads-backup-restore)).
+A finished backup job is announced again on the stream when its bundle is
+downloaded, dropped or expires. One job runs per hub at a time (`409 hub_job_running`). Reads
 are not rejected merely because a job runs, but a read that needs hub
 traffic can wait or fail; keep the hub idle during IR learning.
 Check the job's `cancellable` field before requesting cancellation with
@@ -542,8 +548,19 @@ the hub holds for a command of any device class, with `kind` `raw` or
 Bluetooth key, a `wifi_mqtt` record). Only IR payloads play. `POST /hubs/{id}/learn` arms the hub's receiver and
 returns the captured code as the job result.
 
-`POST /hubs/{id}/backup` returns a full, restorable bundle in the completed
-job's `result.bundle` (minutes; keep that whole bundle as a file).
+`POST /hubs/{id}/backup` reads a full, restorable bundle as a job
+(minutes). The server keeps no backup archive: it holds the finished
+bundle in memory for **five minutes** so the client can take it, and the
+file the client saves is the backup. While it is held, read it from the
+job record (`GET /hubs/{id}/jobs/{job_id}`, `result.bundle`) or download
+it as a file with `GET /hubs/{id}/jobs/{job_id}/bundle` (an attachment
+named `<date>_<time>_<hub name>.json`; as often as needed). Drop it early
+with `DELETE /hubs/{id}/jobs/{job_id}/bundle` once saved. Another backup
+on the same hub replaces it at once, so a hub never holds more than one
+bundle. Next to `bundle`, the result carries `filename`, `activities` and
+`devices` (counts), `captured_at`, `payload_profile`, `bundle_available`,
+`bundle_expires_at`, `bundle_downloaded` and `bundle_expired`; after the
+bundle is gone the download route answers `410 bundle_expired`.
 `POST /hubs/{id}/restore` with
 `{"bundle": ..., "replace": true}` erases first and then writes the
 bundle back. The bundle and its entity references are validated before erase.
@@ -554,8 +571,13 @@ restorable. Keep the complete full-backup bundle, not just its job header.
 `POST /hubs/{id}/erase` and a replacing restore are whole-hub destructive
 operations. Device/activity deletion and payload replacement can also remove
 existing configuration. A failed restore is not rolled back: inspect its
-result (`failed_at`, restored counts, `device_id_map`, `snapshot_id`) and the
-current snapshot before recovery. Automatically retrying an additive restore
+result (`failed_at`, restored counts, `device_id_map`, `snapshot_id`, and
+`erased`: a replacing restore that fails after its erase leaves an empty or
+partial hub, reported as `502`) and the current snapshot before recovery.
+Restoring the same bundle again is the recovery. While a restore, a sync or
+any other job holds a hub, a read that would need hub traffic (nothing
+complete is cached, as right after an erase) waits for the job instead of
+interrupting it, and answers `504 hub_timeout` if the job outlasts it. Automatically retrying an additive restore
 can create duplicates. If a write request times out, check the hub's jobs
 before submitting it again.
 

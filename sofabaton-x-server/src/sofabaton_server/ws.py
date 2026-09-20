@@ -33,6 +33,7 @@ from sofabaton import HubEvent
 
 from . import API_PREFIX, API_VERSION, __version__
 from .jobs import JobRunner, JobView
+from .models import light_job
 from .manager import HubManager
 
 log = logging.getLogger(__name__)
@@ -181,8 +182,8 @@ class EventRelay:
 
     def _on_job_event(self, hub_id: str, job: JobView) -> None:
         # A copy: the runner keeps mutating its view as the job proceeds.
-        from dataclasses import replace
-        self._broadcast(hub_id, WsJobEvent(hub_id=hub_id, job=replace(job)))
+        # Without a backup's bundle: megabytes do not belong on the stream.
+        self._broadcast(hub_id, WsJobEvent(hub_id=hub_id, job=light_job(job)))
 
     def _on_rekey(self, old_id: str, new_id: str) -> None:
         # A filter on the temporary host id follows the hub to its MAC,

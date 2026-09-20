@@ -7,13 +7,19 @@
 // HA control panel card's tab bar.
 
 import { html, nothing, type TemplateResult } from "lit";
-import { mdiAudioVideo, mdiCogOutline, mdiChevronDown, mdiChevronUp, mdiPlayCircleOutline } from "@mdi/js";
+import { mdiAudioVideo, mdiCogOutline, mdiChevronDown, mdiChevronUp, mdiContentSaveMoveOutline, mdiDatabaseImportOutline, mdiPencilBoxOutline, mdiPlayCircleOutline } from "@mdi/js";
 
 import { HUB_TABS, SUBTAB_LABELS, SUBTABS, TAB_LABELS, TOOL_LABELS, TOOL_PAGES, TOOL_SUBTABS, type HubTab, type Route, type ToolPage } from "../panel-route";
 import type { ThemeChoice } from "../panel-state";
 
-/** The subtabs that carry an icon, as the HA card's Activities / Devices row does. */
-const SUBTAB_ICONS: Record<string, string> = { activities: mdiPlayCircleOutline, devices: mdiAudioVideo };
+/** The subtabs that carry an icon, as the HA card's Activities / Devices and Make / Edit / Restore rows do. */
+const SUBTAB_ICONS: Record<string, string> = {
+  activities: mdiPlayCircleOutline,
+  devices: mdiAudioVideo,
+  make: mdiContentSaveMoveOutline,
+  edit: mdiPencilBoxOutline,
+  restore: mdiDatabaseImportOutline,
+};
 
 export function renderTabBar(params: {
   route: Route;

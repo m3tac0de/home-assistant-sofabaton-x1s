@@ -158,6 +158,7 @@ Errors are `Problem` bodies (`type`, `title`, `status`, `detail`,
 | 502 | `hub_rejected` | a write was refused or not acknowledged; inspect state before retrying |
 | 409 / 502 | `sync_failed`, `restore_failed` | inspect the failed job's `error` and partial `result`; reconcile before another write |
 | 404 | `job_not_found` | the job is unknown, expired, or lost across restart; inspect the snapshot |
+| 404 / 410 | `bundle_not_found`, `bundle_expired` | the job is not a finished backup, or its bundle is no longer held (five minutes, a newer backup, or dropped); make a new backup |
 
 Once a request returns `202`, operation failures are reported in the job,
 not as a later HTTP error from the original request. Polling a failed job
@@ -464,8 +465,15 @@ as the job result; cancel the job to stop waiting.
 a configuration job. Keep the hub idle while learning, since other hub
 traffic can interrupt capture.
 
-`POST /hubs/{id}/backup` returns a full bundle in the completed job's
-`result.bundle`; keep that whole document as a file. A structural snapshot
+`POST /hubs/{id}/backup` reads a full bundle as a job. The server holds
+the finished bundle for five minutes and keeps no archive, so take it
+right after the job ends and keep that whole document as a file: read
+`result.bundle` from `GET /hubs/{id}/jobs/{job_id}`, or fetch it as an
+attachment from `GET /hubs/{id}/jobs/{job_id}/bundle`. The final
+`job_event` on the stream and the hub views carry the result without the
+bundle (check `bundle_available`); `DELETE .../jobs/{job_id}/bundle`
+drops it once you have it, and `410 bundle_expired` means it is gone and
+a new backup is needed. A structural snapshot
 or a backup with `include_blobs: false` cannot be restored. `POST
 /hubs/{id}/restore` with `{"bundle": ..., "replace": true}` validates
 the bundle and its references, erases, then rebuilds the configuration.

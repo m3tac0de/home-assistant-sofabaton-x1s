@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from . import API_PREFIX, API_VERSION, __version__
 from .callbacks import CallbackService, ListenerState
+from .backup_stage import BackupStage
 from .config import Settings
 from .discovery import DiscoveryService
 from .jobs import JobRunner
@@ -63,7 +64,8 @@ class ServerInfo:
 def create_app(settings: Settings | None = None, *, manager: Optional[HubManager] = None,
                discovery: Optional[DiscoveryService] = None,
                ws_queue_size: Optional[int] = None,
-               callbacks: Optional[CallbackService] = None) -> FastAPI:
+               callbacks: Optional[CallbackService] = None,
+               backup_keep_seconds: Optional[float] = None) -> FastAPI:
     """Build the application. ``manager`` is injectable for tests; by
     default one is created from the settings and started with the app."""
 
@@ -73,6 +75,8 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     discovery_service = discovery or DiscoveryService(settings, hub_manager)
     job_runner = JobRunner(problem_for=problem_body)
     hub_manager.jobs = job_runner
+    # Before the event relay: a finished backup is announced with its expiry set.
+    backup_stage = BackupStage(job_runner, **({"keep_seconds": backup_keep_seconds} if backup_keep_seconds is not None else {}))
     callback_service = callbacks or CallbackService(hub_manager, settings)
 
     @asynccontextmanager
@@ -87,6 +91,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
             yield
         finally:
             await job_runner.shutdown()
+            backup_stage.close()
             await callback_service.stop()
             await hub_manager.stop()
             await discovery_service.stop()
@@ -113,6 +118,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     app.state.hub_manager = hub_manager
     app.state.discovery = discovery_service
     app.state.job_runner = job_runner
+    app.state.backup_stage = backup_stage
     app.state.apply_store = ApplyStore(settings.data_dir, keep=settings.apply_keep)
     relay = EventRelay(hub_manager, jobs=job_runner, **({"maxsize": ws_queue_size} if ws_queue_size else {}))
     relay.instance_id = callback_service.ring.instance_id

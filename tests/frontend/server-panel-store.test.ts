@@ -273,6 +273,36 @@ test("job frames mutate the hub record; a finished job leaves a notice that expi
   store.disconnect();
 });
 
+test("a finished job announced again (a staged backup bundle downloaded or expired) is no new ending", async () => {
+  const { api, clock, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  const backup = job({ job_id: "b1", kind: "backup", status: "done", cancellable: false, finished_at: "2026-09-17T10:00:09Z", result: { bundle_available: true, bundle_downloaded: false } });
+  api.hubs = [hub({ last_job: backup })];
+  socket().push({ type: "job_event", hub_id: "a", job: backup });
+  assert.equal(rt(store).notice?.label, "Making a backup: done");
+  store.dismissNotice("a");
+
+  // The same job, downloaded: the record follows, the notice does not come back.
+  const downloaded = { ...backup, result: { bundle_available: true, bundle_downloaded: true } };
+  socket().push({ type: "job_event", hub_id: "a", job: downloaded });
+  assert.deepEqual(rt(store).hub.last_job?.result, { bundle_available: true, bundle_downloaded: true });
+  assert.equal(rt(store).notice, null);
+
+  // A newer job ends and its notice expires; the old backup's expiry must not take last_job back or speak again.
+  const refresh = job({ job_id: "j2", status: "done", created_at: "2026-09-17T10:02:00Z", finished_at: "2026-09-17T10:02:05Z" });
+  api.hubs = [hub({ last_job: refresh })];
+  socket().push({ type: "job_event", hub_id: "a", job: refresh });
+  await clock.advance(6500);
+  assert.equal(rt(store).notice, null);
+  socket().push({ type: "job_event", hub_id: "a", job: { ...backup, result: { bundle_available: false, bundle_expired: true } } });
+  assert.equal(rt(store).hub.last_job?.job_id, "j2");
+  assert.equal(rt(store).notice, null);
+  store.disconnect();
+});
+
 test("a failed job is sticky until dismissed; the acknowledgement stops a reload from repeating it", async () => {
   const storage = new MemoryStorage();
   const failed = job({ status: "failed", finished_at: "2026-09-17T10:00:09Z", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "went away" } });

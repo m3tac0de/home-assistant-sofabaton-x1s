@@ -45,6 +45,7 @@ export class SofabatonServerPanel extends LitElement {
     _snapshot: { state: true },
     _pickerOpen: { state: true },
     _cogOpen: { state: true },
+    _backupDirty: { state: true },
     _pickerManual: { state: true },
     _pickerActionsHubId: { state: true },
     _pickerBusy: { state: true },
@@ -197,6 +198,8 @@ export class SofabatonServerPanel extends LitElement {
   private _snapshot: PanelSnapshot;
   private _pickerOpen = false;
   private _cogOpen = false;
+  /** The Backup tab's Edit section holds edits only a download keeps (its sb-backup-dirty). */
+  private _backupDirty = false;
   private _pickerManual = false;
   private _pickerActionsHubId: string | null = null;
   private _pickerBusy = new Set<string>();
@@ -524,7 +527,7 @@ export class SofabatonServerPanel extends LitElement {
     }
     switch (route.tab) {
       case "backup":
-        return html`<sb-panel-backup .ctx=${ctx} .section=${route.sub}></sb-panel-backup>`;
+        return html`<sb-panel-backup .ctx=${ctx} .store=${this.store} .section=${route.sub} @sb-backup-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._backupDirty = Boolean(event.detail?.dirty); }}></sb-panel-backup>`;
       case "remote":
         return html`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
       default:
@@ -607,7 +610,7 @@ export class SofabatonServerPanel extends LitElement {
             : nothing}
         </main>
         ${renderBottomDock({
-          model: dockModel(s, runtime),
+          model: dockModel(s, runtime, { unsavedBackup: this._backupDirty }),
           message: s.message,
           connectivity: connectivityFor(runtime),
           hasHub: ctx.hub !== null,

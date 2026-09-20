@@ -22,11 +22,11 @@ HOST = "192.168.1.50"
 H = f"{HUBS}/{HOST}"
 
 
-def _rig(tmp_path: Path):
+def _rig(tmp_path: Path, **app_options):
     factory = Factory()
     settings = Settings(data_dir=tmp_path)
     manager = HubManager(settings, proxy_factory=factory)
-    client = TestClient(create_app(settings, manager=manager, discovery=no_network_discovery(settings, manager)))
+    client = TestClient(create_app(settings, manager=manager, discovery=no_network_discovery(settings, manager), **app_options))
     return client, factory
 
 
@@ -193,6 +193,76 @@ def test_backup_restore_and_erase_jobs(tmp_path: Path) -> None:
             assert r.status_code == 409 and r.json()["type"] == "hub_busy", path
 
 
+def test_backup_bundle_is_staged_downloaded_and_dropped(tmp_path: Path) -> None:
+    # Server panel backup plan, decision 1: the bundle is held for a while,
+    # only the job record and the download route carry it.
+    client, factory = _rig(tmp_path)
+    with client:
+        client.post(HUBS, json={"host": HOST, "name": "Living Room"})
+        with client.websocket_connect(f"{API_PREFIX}/events") as ws:
+            ws.receive_json()  # hello
+            job_id = client.post(f"{H}/backup").json()["job_id"]
+            job = _wait(client, job_id)
+            result = job["result"]
+            assert result["bundle"]["kind"] == "hub_bundle"
+            assert result["devices"] == 1 and result["activities"] == 0
+            assert result["filename"].endswith("_Living_Room.json")
+            assert result["bundle_available"] is True and result["bundle_expires_at"]
+            assert result["bundle_downloaded"] is False and result["bundle_expired"] is False
+            finished = None
+            while finished is None:
+                message = ws.receive_json()
+                if message["type"] == "job_event" and message["job"]["status"] == "done":
+                    finished = message["job"]
+            assert "bundle" not in finished["result"] and finished["result"]["bundle_available"] is True
+
+        hub = client.get(H).json()
+        assert hub["last_job"]["job_id"] == job_id and "bundle" not in hub["last_job"]["result"]
+        listed = client.get(f"{H}/jobs").json()[0]
+        assert listed["job_id"] == job_id and "bundle" not in listed["result"]
+
+        r = client.get(f"{H}/jobs/{job_id}/bundle")
+        assert r.status_code == 200 and r.json() == result["bundle"]
+        assert r.headers["content-disposition"] == f'attachment; filename="{result["filename"]}"'
+        assert client.get(f"{H}/jobs/{job_id}").json()["result"]["bundle_downloaded"] is True
+        assert client.get(f"{H}/jobs/{job_id}/bundle").status_code == 200  # again, until it expires
+
+        assert client.delete(f"{H}/jobs/{job_id}/bundle").status_code == 204
+        result = client.get(f"{H}/jobs/{job_id}").json()["result"]
+        assert "bundle" not in result and result["bundle_available"] is False and result["bundle_expired"] is False
+        assert result["filename"] and result["devices"] == 1
+        r = client.get(f"{H}/jobs/{job_id}/bundle")
+        assert r.status_code == 410 and r.json()["type"] == "bundle_expired"
+        assert client.delete(f"{H}/jobs/{job_id}/bundle").status_code == 204  # nothing left: still fine
+
+        assert client.get(f"{H}/jobs/nope/bundle").status_code == 404
+        erase = _wait(client, client.post(f"{H}/erase").json()["job_id"])
+        r = client.get(f"{H}/jobs/{erase['job_id']}/bundle")
+        assert r.status_code == 404 and r.json()["type"] == "bundle_not_found"
+
+
+def test_backup_bundle_expires_and_a_new_backup_replaces_it(tmp_path: Path) -> None:
+    client, _factory = _rig(tmp_path, backup_keep_seconds=0.3)
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        first = _wait(client, client.post(f"{H}/backup").json()["job_id"])
+        second = _wait(client, client.post(f"{H}/backup").json()["job_id"])
+        # One bundle per hub: the newer backup dropped the older one at once.
+        result = client.get(f"{H}/jobs/{first['job_id']}").json()["result"]
+        assert "bundle" not in result and result["bundle_expired"] is True
+        assert client.get(f"{H}/jobs/{second['job_id']}/bundle").status_code == 200
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            result = client.get(f"{H}/jobs/{second['job_id']}").json()["result"]
+            if not result["bundle_available"]:
+                break
+            time.sleep(0.05)
+        assert "bundle" not in result and result["bundle_expired"] is True and result["bundle_expires_at"] is None
+        assert result["bundle_downloaded"] is True
+        assert client.get(f"{H}/jobs/{second['job_id']}/bundle").status_code == 410
+
+
 def test_failed_restore_is_a_failed_job_with_the_result(tmp_path: Path) -> None:
     # Review of 635ecfe, finding 5: a valid-but-failed RestoreResult used to
     # complete the job with error=null.
@@ -219,6 +289,15 @@ def test_failed_restore_is_a_failed_job_with_the_result(tmp_path: Path) -> None:
         r = client.post(f"{H}/restore", json={"bundle": {"kind": "hub_bundle"}})
         job = _wait(client, r.json()["job_id"])
         assert job["error"]["status"] == 409 and job["result"]["failed_at"] == ["proxy", None]
+
+        # A replacing restore that fails on its first entity has still erased the hub
+        # (found live 2026-09-20): that is a changed hub, 502, and the detail says so.
+        proxy.restore_failure = {"status": "failed", "failed_at": ["device", 1], "device_id_map": {},
+                                 "restored_devices": [], "restored_activities": []}
+        r = client.post(f"{H}/restore", json={"bundle": {"kind": "hub_bundle"}, "replace": True})
+        job = _wait(client, r.json()["job_id"])
+        assert job["error"]["status"] == 502 and "had been erased" in job["error"]["detail"]
+        assert job["result"]["erased"] is True and job["result"]["restored_devices"] == 0
 
 
 def test_disable_and_remove_are_refused_while_a_job_holds_the_hub(tmp_path: Path) -> None:

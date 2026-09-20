@@ -519,9 +519,11 @@ test.describe("control panel, shell", () => {
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
     await page.click('#tabs button[data-tab="backup"]');
     await expect(page).toHaveURL(/#\/e26a44861b45\/backup\/make$/);
-    await expect(page.locator("#backup-placeholder")).toContainText("Make a backup");
+    await expect(page.locator("#backup-view")).toContainText("Choose what to include in this backup.");
+    // The Backup subtabs carry the card's icons (the shell hides subtab icons on a narrow screen).
+    await expect(page.locator('#subtabs button[data-sub="make"] .subtab-icon')).toHaveCount(1);
     await page.click('#subtabs button[data-sub="restore"]');
-    await expect(page.locator("#backup-placeholder")).toContainText("Restore");
+    await expect(page.locator("#backup-view")).toContainText("Choose backup file");
     await expect(page.locator("#dock-link")).toHaveText("Backup and restore docs");
 
     await openPage(page, "debug");
@@ -2012,4 +2014,354 @@ test("device section navigation holds its target during smooth scrolling and res
   await expect(nav("bindings")).toHaveAttribute("aria-selected", "false");
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await expect(nav("power")).toHaveAttribute("aria-selected", "true");
+});
+
+
+// The Backup tab (docs/internal/server-panel-backup-plan.md): the card's Make /
+// Edit / Restore sections on the server's backup, restore and job routes.
+test.describe("control panel, backup", () => {
+  const HUB = `**${API}/hubs/${LIVING.hub_id}`;
+  const json = (route, status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+  const RAW_HEX = "00 10 00 00 00 00 94 70 00 00 23 28 00 00 11 94 00 00 02 30 00 00 02 30 00 00 00 00";
+
+  function bundle(version = "X1S") {
+    return {
+      kind: "hub_bundle", schema_version: 5, captured_at: "2026-09-20T10:11:12+00:00", complete: true, payload_profile: "full_backup",
+      hub: { entry_id: "x", name: "Living room", version },
+      devices: [{
+        kind: "device_backup", schema_version: 4, complete: true,
+        device: { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", idle_behavior: 1 },
+        commands: [
+          { command_id: 1, name: "Power", restore_data: { transport: "hub_code_record", data_hex: RAW_HEX } },
+          { command_id: 17, name: "Up" },
+        ],
+        button_bindings: [], macros: [], key_sort: null, input_record: null,
+      }, {
+        kind: "device_backup", schema_version: 4, complete: true,
+        device: { device_id: 2, name: "Roku", brand: "Roku", device_class: "wifi_roku", idle_behavior: 4 },
+        commands: [{ command_id: 1, name: "Home" }], button_bindings: [], macros: [], key_sort: null, input_record: null,
+      }],
+      activities: [{
+        kind: "activity_backup", schema_version: 4, complete: true,
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1],
+        favorite_slots: [{ button_id: 1, device_id: 1, command_id: 1, name: "Power" }],
+        button_bindings: [], macros: [],
+      }],
+    };
+  }
+
+  const asFile = (name, body) => ({ name, mimeType: "application/json", buffer: Buffer.from(typeof body === "string" ? body : JSON.stringify(body)) });
+
+  async function snapshotRoute(page) {
+    const doc = bundle();
+    await page.route(`${HUB}/snapshot`, (route) => json(route, 200, { snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, payload_profile: "structural", ...doc, complete: true }));
+  }
+
+  // Downloads are anchors clicked from script: record them instead of letting the browser navigate.
+  async function captureDownloads(page) {
+    await page.addInitScript(() => {
+      window.__downloads = [];
+      document.addEventListener("click", (event) => {
+        const anchor = event.target;
+        if (!(anchor instanceof HTMLAnchorElement) || !anchor.download) return;
+        event.preventDefault();
+        window.__downloads.push({ href: anchor.href, download: anchor.download });
+      }, true);
+    });
+  }
+
+  test("Make: scope and devices, one backup job, the staged bundle downloads, expires and is dropped on Complete", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    const { calls, sockets } = await mockServer(page, state);
+    await snapshotRoute(page);
+    await captureDownloads(page);
+    const jobs = [];
+    const posts = [];
+    const drops = [];
+    await page.route(`${HUB}/jobs`, (route) => json(route, 200, jobs));
+    await page.route(`${HUB}/backup`, (route) => {
+      posts.push(route.request().postDataJSON());
+      const started = job({ job_id: "jb1", kind: "backup", status: "queued", created_at: new Date().toISOString() });
+      jobs.unshift(started);
+      json(route, 202, started);
+    });
+    await page.route(`${HUB}/jobs/jb1/bundle`, (route) => {
+      drops.push(route.request().method());
+      route.fulfill({ status: 204 });
+    });
+    const push = (patch) => {
+      Object.assign(jobs[0], patch);
+      sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: jobs[0] }));
+    };
+    const result = (extra = {}) => ({ filename: "2026-09-20_10-11-12_Living_room.json", activities: 0, devices: 1, captured_at: "t", payload_profile: "full_backup", bundle_available: true, bundle_expires_at: new Date(Date.now() + 300000).toISOString(), bundle_downloaded: false, bundle_expired: false, ...extra });
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/make`);
+    const view = page.locator("sb-panel-backup");
+    await expect(view.locator(".backup-drawer-sub")).toHaveText("Choose what to include in this backup.");
+    await expect(view.locator(".compat-radio-option.selected")).toContainText("Entire hub");
+    await expect(view.locator("#backup-device-list")).toHaveCount(0);
+
+    await view.locator(".compat-radio-option", { hasText: "Selected devices" }).click();
+    await expect(view.locator("#backup-device-list .selection-row")).toHaveCount(2);
+    await expect(view.locator("#backup-selected-count")).toHaveText("2 selected");
+    await expect(view.locator("#backup-select-all")).toHaveText("Deselect all");
+    await view.locator('#backup-device-list .selection-row[data-device-id="2"]').click();
+    await expect(view.locator("#backup-selected-count")).toHaveText("1 selected");
+    await page.screenshot({ path: shot(testInfo, "backup-make") });
+
+    await view.locator("#backup-start").click();
+    await expect.poll(() => posts).toEqual([{ device_ids: [1] }]);
+    push({ status: "running", progress: { phase: "device", message: "Backing up device 1", completed_steps: 0, total_steps: 1 } });
+    await expect(view.locator("#backup-progress")).toContainText("Creating backup");
+    await expect(view.locator("#backup-progress")).toContainText("Backing up device 1");
+    await expect(view.locator(".backup-drawer-sub")).toHaveText("The hub is creating your backup.");
+    await expect(page.locator("#dock-status")).toContainText("Making a backup");
+    await expect(page.locator("#blocked-scrim")).toBeVisible();
+
+    push({ status: "done", finished_at: new Date().toISOString(), result: result() });
+    await expect(view.locator("#backup-complete")).toContainText("Backup completed");
+    await expect(view.locator("#backup-complete")).toContainText("0 activities and 1 device");
+    await expect(view.locator("#backup-download")).toHaveText("Download backup");
+    await view.locator("#backup-download").click();
+    const downloads = await page.evaluate(() => window.__downloads);
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].download).toBe("2026-09-20_10-11-12_Living_room.json");
+    expect(downloads[0].href).toContain(`/hubs/${LIVING.hub_id}/jobs/jb1/bundle`);
+
+    // The server announces the job again: downloaded, and later expired. No new "done" notice either time.
+    push({ result: result({ bundle_downloaded: true }) });
+    await expect(view.locator("#backup-downloaded")).toHaveText("Downloaded");
+    await expect(view.locator("#backup-download")).toHaveText("Download again");
+    push({ result: result({ bundle_downloaded: true, bundle_available: false, bundle_expires_at: null, bundle_expired: true }) });
+    await expect(view.locator("#backup-expired")).toContainText("Backup expired");
+    await expect(view.locator("#backup-download")).toBeDisabled();
+    await page.screenshot({ path: shot(testInfo, "backup-make-expired") });
+
+    // Complete: the bundle is dropped on the server and the result never comes back, even after a reload.
+    await view.locator("#backup-complete-btn").click();
+    await expect(view.locator("#backup-start")).toBeVisible();
+    await expect.poll(() => drops).toEqual(["DELETE"]);
+    await page.reload();
+    await expect(page.locator("sb-panel-backup #backup-start")).toBeVisible();
+    await expect(page.locator("sb-panel-backup #backup-complete")).toHaveCount(0);
+    expect(calls.some((c) => c.key === "GET /hubs")).toBe(true);
+  });
+
+  test("Make: a finished backup is picked up after a reload while its bundle is staged, and a failure is said in place", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    await snapshotRoute(page);
+    const staged = job({ job_id: "jb2", kind: "backup", status: "done", created_at: new Date().toISOString(), finished_at: new Date().toISOString(),
+      result: { filename: "b.json", activities: 1, devices: 2, bundle_available: true, bundle_expires_at: new Date(Date.now() + 200000).toISOString(), bundle_downloaded: false, bundle_expired: false } });
+    let jobs = [staged];
+    await page.route(`${HUB}/jobs`, (route) => json(route, 200, jobs));
+    await page.goto(`${PAGE}#/e26a44861b45/backup/make`);
+    await expect(page.locator("sb-panel-backup #backup-complete")).toContainText("1 activity and 2 devices");
+
+    // A bundle that is already gone is not worth a card after a reload; a fresh failure is.
+    jobs = [{ ...staged, result: { ...staged.result, bundle_available: false, bundle_expired: true } }];
+    await page.reload();
+    await expect(page.locator("sb-panel-backup #backup-start")).toBeVisible();
+    jobs = [job({ job_id: "jb3", kind: "backup", status: "failed", created_at: new Date().toISOString(), finished_at: new Date().toISOString(), error: { type: "hub_timeout", title: "The hub did not answer", status: 504, detail: "device 3 never answered" } })];
+    await page.reload();
+    await expect(page.locator("sb-panel-backup #backup-error")).toContainText("device 3 never answered");
+    await expect(page.locator("sb-panel-backup #backup-start")).toBeVisible();
+  });
+
+  test("Restore: the file is checked against the hub, linked devices lock, one restore job, Complete, and a hub switch drops the file", async ({ page }, testInfo) => {
+    const SECOND = { ...LIVING, hub_id: "aabbccddeeff", config: { ...LIVING.config, host: "192.168.1.51", name: "Den", mac: "AA:BB:CC:DD:EE:FF" } };
+    const state = { hubs: [LIVING, SECOND], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    await snapshotRoute(page);
+    const jobs = [];
+    const posts = [];
+    await page.route(`${HUB}/jobs`, (route) => json(route, 200, jobs));
+    await page.route(`${HUB}/restore`, (route) => {
+      posts.push(route.request().postDataJSON());
+      const started = job({ job_id: "jr1", kind: "restore", status: "queued", created_at: new Date().toISOString() });
+      jobs.unshift(started);
+      json(route, 202, started);
+    });
+    const push = (patch) => {
+      Object.assign(jobs[0], patch);
+      sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: jobs[0] }));
+    };
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/restore`);
+    const view = page.locator("sb-panel-backup");
+    await expect(view.locator("#restore-file-btn")).toHaveText("Choose backup file");
+
+    // Not a bundle, then a bundle from a newer hub model: both refused with the card's wording, nothing loaded.
+    await view.locator("#restore-file-input").setInputFiles(asFile("nope.json", { kind: "something" }));
+    await expect(view.locator("#restore-error")).toBeVisible();
+    await view.locator("#restore-file-input").setInputFiles(asFile("x2.json", bundle("X2")));
+    await expect(view.locator("#restore-error")).toContainText("X2");
+    await expect(view.locator("#restore-list")).toHaveCount(0);
+
+    await view.locator("#restore-file-input").setInputFiles(asFile("living.json", bundle()));
+    await expect(view.locator("#restore-error")).toHaveCount(0);
+    await expect(view.locator("#restore-file-btn")).toHaveText("living.json");
+    await expect(view.locator("#restore-selected-count")).toHaveText("3 selected");
+    const tv = view.locator('#restore-list .selection-row[data-kind="device"][data-id="1"]');
+    await expect(tv).toHaveClass(/locked/);
+    await expect(tv.locator(".selection-meta")).toContainText("linked");
+    await expect(tv.locator("input")).toBeDisabled();
+    // Without its activity the device is free again, and can be left out.
+    await view.locator('#restore-list .selection-row[data-kind="activity"]').click();
+    await expect(tv).not.toHaveClass(/locked/);
+    await tv.click();
+    await expect(view.locator("#restore-selected-count")).toHaveText("1 selected");
+    await view.locator("#restore-erase-row").click();
+    await page.screenshot({ path: shot(testInfo, "backup-restore") });
+
+    await view.locator("#restore-start").click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].replace).toBe(true);
+    expect(posts[0].bundle.devices.map((d) => d.device.device_id)).toEqual([2]);
+    expect(posts[0].bundle.activities).toEqual([]);
+    push({ status: "running", progress: { phase: "device", message: "Restoring device 2", completed_steps: 1, total_steps: 3 } });
+    await expect(view.locator("#backup-progress")).toContainText("Restoring backup");
+    await expect(view.locator(".backup-drawer-sub")).toHaveText("The hub is restoring your backup.");
+    push({ status: "done", finished_at: new Date().toISOString(), result: { status: "success", restored_devices: 1, restored_activities: 0 } });
+    await expect(view.locator("#restore-complete")).toContainText("Restore completed");
+    await view.locator("#restore-complete-btn").click();
+    await expect(view.locator("#restore-complete")).toHaveCount(0);
+    await expect(view.locator("#restore-file-btn")).toHaveText("living.json");
+
+    // The file was checked against this hub's model: another hub starts empty.
+    await chip(page).click();
+    await options(page).nth(1).click();
+    await expect(page).toHaveURL(/#\/aabbccddeeff\/backup\/restore$/);
+    await expect(view.locator("#restore-file-btn")).toHaveText("Choose backup file");
+    await expect(view.locator("#restore-list")).toHaveCount(0);
+  });
+
+  test("Edit: a file becomes an hour-long edit session, the editors open on it offline, the download ends the session", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    const { calls } = await mockServer(page, state);
+    await snapshotRoute(page);
+    await captureDownloads(page);
+    await page.goto(`${PAGE}#/e26a44861b45/backup/edit`);
+    const view = page.locator("sb-panel-backup");
+    await expect(view.locator(".backup-drawer-sub")).toContainText("Load a backup file");
+    await view.locator("#edit-file-input").setInputFiles(asFile("broken.json", "{ not json"));
+    await expect(view.locator("#edit-error")).toBeVisible();
+
+    await view.locator("#edit-file-input").setInputFiles(asFile("living.json", bundle()));
+    await expect(view.locator("#edit-error")).toHaveCount(0);
+    await expect(view.locator('#edit-list .edit-selection-row[data-kind="activity"]')).toHaveCount(1);
+    await expect(view.locator('#edit-list .edit-selection-row[data-kind="device"] .selection-label')).toHaveText(["TV", "Roku"]);
+    await expect(view.locator("#edit-hub-name")).toHaveText("Living room");
+    // A freshly loaded file is clean: no dot, no banner.
+    await expect(view.locator("#edit-download")).not.toHaveClass(/primary-btn--unsaved/);
+    await expect(page.locator("#dock-status")).toHaveCount(0);
+
+    // The hub name, then the device order by keyboard: both are edits.
+    await view.locator("#edit-hub-rename").click();
+    await view.locator("#hub-rename-input").fill("");
+    await view.locator("#hub-rename-save").click();
+    await expect(view.locator("#hub-rename-error")).toHaveText("Enter a name to continue.");
+    await view.locator("#hub-rename-input").fill("Cinema");
+    await view.locator("#hub-rename-input").press("Enter");
+    await expect(view.locator("#edit-hub-name")).toHaveText("Cinema");
+    await expect(view.locator("#edit-download")).toHaveClass(/primary-btn--unsaved/);
+    await expect(page.locator("#dock-status")).toHaveText("Unsaved changes — download the edited backup");
+    await view.locator('#edit-list .edit-selection-row[data-kind="device"][data-id="2"] .edit-row-drag').press("ArrowUp");
+    await expect(view.locator('#edit-list .edit-selection-row[data-kind="device"] .selection-label')).toHaveText(["Roku", "TV"]);
+    await page.screenshot({ path: shot(testInfo, "backup-edit-overview") });
+
+    // The device opens in the panel's own editor, offline: no Sync, the Unsaved chip, nothing sent to the hub.
+    await view.locator('#edit-list .edit-selection-row[data-kind="device"][data-id="1"] .edit-row-open').click();
+    const editor = view.locator("sb-panel-device-editor");
+    await expect(editor.locator("#editor-title")).toHaveText("TV");
+    await expect(editor.locator("#editor-sync")).toHaveCount(0);
+    await expect(editor.locator("#editor-unsaved")).toHaveText("Unsaved");
+    await expect(editor.locator("#editor-add-command")).toHaveCount(0);
+    await expect(editor.locator('[data-edit-section="commands"] .quick-access-sub')).toContainText("names update everywhere");
+    // Only a command that carries a payload in the file has the braces.
+    await expect(editor.locator('[data-command-id="1"] .command-payload')).toBeVisible();
+    await expect(editor.locator('[data-command-id="17"] .command-payload')).toHaveCount(0);
+    await editor.locator("#editor-rename").click();
+    await editor.locator("#rename-input").fill("Television");
+    await editor.locator("#rename-save").click();
+    await expect(editor.locator("#editor-title")).toHaveText("Television");
+
+    // The payload comes from the file, and a change goes back into it.
+    await editor.locator('[data-command-id="1"] .command-payload').click();
+    const dialog = editor.locator("sb-payload-dialog");
+    await expect(dialog.locator(".payload-test-note")).toContainText("before trusting it");
+    await dialog.locator('.payload-format-tab[data-tab="sofabaton"]').click();
+    await dialog.locator("#payload-raw").fill(RAW_HEX.replace("23 28", "23 29"));
+    await dialog.locator("#payload-save").click();
+    await expect(dialog).toHaveCount(0);
+
+    // A command the activity uses: the cascade is named, and the note says when the hub will see it.
+    await editor.locator('[data-command-id="1"] .command-delete').click();
+    await expect(editor.locator("#delete-dialog")).toContainText("clears its references elsewhere in the backup");
+    await expect(editor.locator("#delete-dialog")).toContainText("Erase existing devices and activities");
+    await page.screenshot({ path: shot(testInfo, "backup-edit-delete") });
+    await editor.locator("#delete-dialog .dialog-btn", { hasText: "Cancel" }).click();
+
+    // A reload keeps the session: the same entity, the same edits, still unsaved.
+    await page.reload();
+    await expect(page.locator("sb-panel-backup sb-panel-device-editor #editor-title")).toHaveText("Television");
+    await expect(page.locator("#dock-status")).toHaveText("Unsaved changes — download the edited backup");
+    await page.locator("sb-panel-backup sb-panel-device-editor #editor-back").click();
+    await expect(view.locator("#edit-hub-name")).toHaveText("Cinema");
+    await expect(view.locator('#edit-list .edit-selection-row[data-kind="device"] .selection-label')).toHaveText(["Roku", "Television"]);
+
+    // The activity editor offline: a shortcut can be renamed here (live, it carries its command's name).
+    await view.locator('#edit-list .edit-selection-row[data-kind="activity"] .edit-row-open').click();
+    const activity = view.locator("sb-panel-activity-editor");
+    await expect(activity.locator("#editor-sync")).toHaveCount(0);
+    await expect(activity.locator('[data-kind="favorite"] .shortcut-rename')).toBeVisible();
+    await activity.locator("#editor-back").click();
+
+    // Download: the edited file, under the card's name; the session ends and the screen is clean.
+    await view.locator("#edit-download").click();
+    const downloads = await page.evaluate(() => window.__downloads);
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0].download).toBe("living_edited.json");
+    expect(downloads[0].href).toMatch(/^blob:/);
+    await expect(view.locator("#edit-download")).not.toHaveClass(/primary-btn--unsaved/);
+    await expect(page.locator("#dock-status")).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator("sb-panel-backup .backup-drawer-sub")).toContainText("Load a backup file");
+    await expect(page.locator("sb-panel-backup #edit-list")).toHaveCount(0);
+
+    // Nothing the editors did went to the hub.
+    expect(calls.filter((c) => /^(PUT|POST|DELETE) /.test(c.key))).toEqual([]);
+  });
+
+  test("Edit: a session older than an hour is dropped, and starting a backup discards the loaded file", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    await snapshotRoute(page);
+    const jobs = [];
+    await page.route(`${HUB}/jobs`, (route) => json(route, 200, jobs));
+    await page.route(`${HUB}/backup`, (route) => {
+      const started = job({ job_id: "jb9", kind: "backup", status: "queued", created_at: new Date().toISOString() });
+      jobs.unshift(started);
+      json(route, 202, started);
+    });
+    await page.goto(`${PAGE}#/e26a44861b45/backup/edit`);
+    const view = page.locator("sb-panel-backup");
+    await view.locator("#edit-file-input").setInputFiles(asFile("living.json", bundle()));
+    await expect(view.locator("#edit-list")).toBeVisible();
+    const key = "sofabaton-panel-backup-edit:e26a44861b45";
+    expect(await page.evaluate((k) => Boolean(localStorage.getItem(k)), key)).toBe(true);
+
+    await page.click('#subtabs button[data-sub="make"]');
+    await view.locator("#backup-start").click();
+    await expect.poll(() => page.evaluate((k) => localStorage.getItem(k), key)).toBeNull();
+
+    // A stored session past its hour is removed rather than restored.
+    await page.evaluate(([k, doc]) => localStorage.setItem(k, JSON.stringify({ savedAt: Date.now() - 61 * 60 * 1000, filename: "old.json", bundle: doc, dirty: true, detail: null })), [key, bundle()]);
+    await page.goto(`${PAGE}#/e26a44861b45/backup/edit`);
+    await page.reload();
+    await expect(page.locator("sb-panel-backup .backup-drawer-sub")).toContainText("Load a backup file");
+    await expect(page.locator("sb-panel-backup #edit-list")).toHaveCount(0);
+    expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBeNull();
+  });
 });

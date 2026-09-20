@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import functools
 from dataclasses import dataclass, field
 import inspect
@@ -236,6 +237,12 @@ class _ProgressReporter:
             self._loop.create_task(self._callback(progress))
         else:
             self._callback(progress)
+
+
+# True inside the task that holds a hub for an exclusive operation (see
+# ``AsyncXProxy._holding_hub``): its own nested reads pass, everyone else's
+# on-demand fetches wait.
+_HUB_HOLDER: contextvars.ContextVar[bool] = contextvars.ContextVar("sofabaton_hub_holder", default=False)
 
 
 class AsyncXProxy:
@@ -541,6 +548,13 @@ class AsyncXProxy:
         # Structural refreshes and writes hold the hub session one at a
         # time; a second whole-hub refresh joins the one in flight.
         self._refresh_lock = asyncio.Lock()
+        # Exclusive engine operations in flight (writes, restore, erase,
+        # backup, refresh) and what the outermost one is, for the message
+        # an on-demand read gets when it cannot wait any longer.
+        self._hub_holds = 0
+        self._hub_held_by: Optional[str] = None
+        self._hub_free = asyncio.Event()
+        self._hub_free.set()
         self._whole_refresh_task: Optional[asyncio.Task] = None
         # Id of the last projection handed out or announced; a rebase
         # emits ``snapshot_changed`` only when the id moved past it.
@@ -1356,14 +1370,15 @@ class AsyncXProxy:
 
         self._raise_if_cannot_fetch(f"sync_activity({int(activity_id) & 0xFF})")
         await self._check_sync_baseline(baseline, "activity", activity_id, snapshot_id)
-        result = await self.run(
-            self._proxy.sync_activity,
-            baseline=baseline,
-            edited=edited,
-            activity_id=activity_id,
-            progress_callback=self._engine_progress(progress),
-            **({"strict_preflight": True} if strict else {}),
-        )
+        async with self._holding_hub("a sync"):
+            result = await self.run(
+                self._proxy.sync_activity,
+                baseline=baseline,
+                edited=edited,
+                activity_id=activity_id,
+                progress_callback=self._engine_progress(progress),
+                **({"strict_preflight": True} if strict else {}),
+            )
         new_id = await self._rebase_after_write(result, activity_ids=(int(activity_id) & 0xFF,))
         return SyncResult.from_engine(result, snapshot_id=new_id)
 
@@ -1393,15 +1408,16 @@ class AsyncXProxy:
 
         self._raise_if_cannot_fetch(f"sync_device({int(device_id) & 0xFF})")
         await self._check_sync_baseline(baseline, "device", device_id, snapshot_id)
-        result = await self.run(
-            self._proxy.sync_device,
-            baseline=baseline,
-            edited=edited,
-            device_id=device_id,
-            progress_callback=self._engine_progress(progress),
-            **({"allow_command_removal": True} if allow_command_removal else {}),
-            **({"strict_preflight": True} if strict else {}),
-        )
+        async with self._holding_hub("a sync"):
+            result = await self.run(
+                self._proxy.sync_device,
+                baseline=baseline,
+                edited=edited,
+                device_id=device_id,
+                progress_callback=self._engine_progress(progress),
+                **({"allow_command_removal": True} if allow_command_removal else {}),
+                **({"strict_preflight": True} if strict else {}),
+            )
         new_id = await self._rebase_after_write(result, device_ids=(int(device_id) & 0xFF,))
         return SyncResult.from_engine(result, snapshot_id=new_id)
 
@@ -1512,10 +1528,12 @@ class AsyncXProxy:
         """
 
         self._raise_if_cannot_fetch("sync_hub")
-        return await run_sync_hub(
-            self, baseline=baseline, desired=desired, state=state, snapshot_id=snapshot_id,
-            progress=progress, on_state=on_state, hub_version=hub_version,
-        )
+        # One hold for the whole apply: its items' own syncs and re-reads nest inside it.
+        async with self._holding_hub("an apply"):
+            return await run_sync_hub(
+                self, baseline=baseline, desired=desired, state=state, snapshot_id=snapshot_id,
+                progress=progress, on_state=on_state, hub_version=hub_version,
+            )
 
     # -- write batch (phase 4 plan, H2 / decision 8) --------------------------
 
@@ -1577,11 +1595,66 @@ class AsyncXProxy:
 
     # -- intents (phase 3 plan, W3) -----------------------------------------
 
+    @contextlib.asynccontextmanager
+    async def _holding_hub(self, what: str) -> AsyncIterator[None]:
+        """Hold the hub for one exclusive engine operation.
+
+        The engine runs a write as a sequence of exchanges, and the hubs
+        (the X1 first) refuse a record page when another request lands in
+        the middle of it. Reads are cache reads and never get in the way,
+        EXCEPT a read whose cache is not complete: that one fetches from
+        the hub on demand. After an erase every cache is empty, so a
+        client that merely lists the devices would talk to the hub right
+        between the rebuild's page writes (found live 2026-09-20: a
+        replacing restore failed on its first device with status 0x04
+        while a panel polled ``devices()``). While a hold is active such
+        a fetch waits for it to end instead (``_wait_for_free_hub``).
+
+        Re-entrant per task: the holder's own nested operations and reads
+        (``restore`` calling ``erase``, a refresh reading the catalogs)
+        pass straight through.
+        """
+
+        if _HUB_HOLDER.get():
+            yield
+            return
+        self._hub_holds += 1
+        if self._hub_holds == 1:
+            self._hub_held_by = what
+            self._hub_free.clear()
+        token = _HUB_HOLDER.set(True)
+        try:
+            yield
+        finally:
+            _HUB_HOLDER.reset(token)
+            self._hub_holds -= 1
+            if self._hub_holds == 0:
+                self._hub_held_by = None
+                self._hub_free.set()
+
+    def _hub_held_by_another(self) -> bool:
+        return self._hub_holds > 0 and not _HUB_HOLDER.get()
+
+    async def _wait_for_free_hub(self, key: str, timeout: float) -> None:
+        """Wait out an exclusive operation before an on-demand fetch."""
+
+        if not self._hub_held_by_another():
+            return
+        what = self._hub_held_by or "a write"
+        try:
+            await asyncio.wait_for(self._hub_free.wait(), timeout)
+        except TimeoutError:
+            raise FetchTimeoutError(
+                f"cannot fetch {key!r} now: {what} holds the hub and nothing complete "
+                "is cached; read again when it has finished"
+            ) from None
+
     async def _write(self, what: str, func: Callable, *args: Any, **kwargs: Any) -> Any:
         """Run an engine write: typed refusal before, typed rejection after."""
 
         self._raise_if_cannot_fetch(what)
-        result = await self.run(func, *args, **kwargs)
+        async with self._holding_hub(what):
+            result = await self.run(func, *args, **kwargs)
         if result is None or result is False:
             raise HubRejectedError(f"the hub did not accept {what}")
         return result
@@ -1834,9 +1907,10 @@ class AsyncXProxy:
         if not plan.steps:
             return updated
 
-        result = await self.run(
-            self._proxy.run_wifi_inplace_plan, plan, progress_callback=self._engine_progress(progress)
-        )
+        async with self._holding_hub("a callback device write"):
+            result = await self.run(
+                self._proxy.run_wifi_inplace_plan, plan, progress_callback=self._engine_progress(progress)
+            )
         touched = tuple(sorted({
             int(step.payload.get("activity_id")) & 0xFF
             for step in plan.steps
@@ -1921,7 +1995,7 @@ class AsyncXProxy:
         """
 
         self._raise_if_cannot_fetch("backup")
-        async with self._refresh_lock:
+        async with self._holding_hub("a backup"), self._refresh_lock:
             bundle = await self.run(
                 self._proxy.backup_hub_bundle,
                 include_blobs=include_blobs,
@@ -1955,16 +2029,20 @@ class AsyncXProxy:
         # bad bundle can never cost the hub its configuration (review of
         # 635ecfe, finding 1). Raises ValueError; nothing is written.
         await self.run(self._proxy.preflight_restore_bundle, bundle)
-        if replace:
-            await self.erase()
-        async with self._refresh_lock:
-            result = await self.run(
-                self._proxy.restore_hub_bundle,
-                bundle,
-                progress_callback=self._engine_progress(progress),
-            )
+        # One hold over the erase, the gap after it and the rebuild: the
+        # erase empties every cache, which is exactly when a stray read
+        # would reach the hub (see _holding_hub).
+        async with self._holding_hub("a restore"):
+            if replace:
+                await self.erase()
+            async with self._refresh_lock:
+                result = await self.run(
+                    self._proxy.restore_hub_bundle,
+                    bundle,
+                    progress_callback=self._engine_progress(progress),
+                )
         new_id = await self._rebase_after_write(None, force=True)
-        return RestoreResult.from_engine(result, snapshot_id=new_id)
+        return RestoreResult.from_engine(result, snapshot_id=new_id, erased=bool(replace))
 
     # -- payloads (phase 3 plan, W3) ----------------------------------------
 
@@ -2147,7 +2225,7 @@ class AsyncXProxy:
         self, kind: str, ent_lo: int, progress: Optional[Callable], timeout: float
     ) -> HubSnapshot:
         report = _ProgressReporter(self._loop, progress)
-        async with self._refresh_lock:
+        async with self._holding_hub("a refresh"), self._refresh_lock:
             self._raise_if_cannot_fetch(f"{kind}:{ent_lo}")
             report(phase=kind, message=f"Refreshing {kind} {ent_lo}…",
                    completed_steps=0, total_steps=1, **{f"current_{kind}_id": ent_lo})
@@ -2173,7 +2251,7 @@ class AsyncXProxy:
 
     async def _refresh_whole(self, progress: Optional[Callable], timeout: float) -> HubSnapshot:
         report = _ProgressReporter(self._loop, progress)
-        async with self._refresh_lock:
+        async with self._holding_hub("a refresh"), self._refresh_lock:
             self._raise_if_cannot_fetch("refresh")
             report(phase="preparing", message="Refreshing devices and activities from the hub…",
                    completed_steps=0, total_steps=0)
@@ -2353,6 +2431,13 @@ class AsyncXProxy:
         data, ready = await self.run(getter, *args, **{fetch_kw: False})
         if ready:
             return data
+        if self._hub_held_by_another():
+            # Not while a write holds the hub; what it leaves behind may
+            # well be the complete data this read was after.
+            await self._wait_for_free_hub(key, timeout)
+            data, ready = await self.run(getter, *args, **{fetch_kw: False})
+            if ready:
+                return data
         return await self._await_fetch(getter, key, *args, timeout=timeout, fetch_kw=fetch_kw)
 
     async def _await_fetch(
@@ -2371,6 +2456,7 @@ class AsyncXProxy:
         """
 
         self._raise_if_cannot_fetch(key)
+        await self._wait_for_free_hub(key, timeout)
 
         future = self._loop.create_future()
         self._burst_waiters.setdefault(key, []).append(future)

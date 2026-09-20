@@ -8796,6 +8796,125 @@
         ]
       }
     },
+    "/api/v1/hubs/{hub_id}/jobs/{job_id}/bundle": {
+      "delete": {
+        "operationId": "dropBackupBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Drop a finished backup's bundle now (the client is done with it)",
+        "tags": [
+          "payload"
+        ]
+      },
+      "get": {
+        "operationId": "downloadBackupBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "The hub_bundle, as an attachment"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Download a finished backup's bundle as a file (while the server still holds it)",
+        "tags": [
+          "payload"
+        ]
+      }
+    },
     "/api/v1/hubs/{hub_id}/learn": {
       "post": {
         "operationId": "learnPayload",

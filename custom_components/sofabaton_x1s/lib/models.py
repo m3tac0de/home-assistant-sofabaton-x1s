@@ -456,7 +456,9 @@ class RestoreResult:
     ``device_id_map`` maps the bundle's device ids to the ids the hub
     assigned. ``restored_devices`` / ``restored_activities`` are counts;
     the engine's per-entity records are ``restored`` (kept as the engine
-    returned them).
+    returned them). ``erased`` says the hub was wiped first
+    (``restore(replace=True)``): a failure after that has changed the hub
+    even when no entity was restored.
     """
 
     status: Literal["success", "failed"]
@@ -466,6 +468,7 @@ class RestoreResult:
     restored_activities: int
     snapshot_id: Optional[str]
     restored: dict[str, list[dict[str, Any]]] = field(default_factory=dict, compare=False)
+    erased: bool = False
 
     @property
     def ok(self) -> bool:
@@ -473,12 +476,12 @@ class RestoreResult:
 
     @property
     def wrote_nothing(self) -> bool:
-        """True when no entity was restored (the failure came first)."""
+        """True when the hub is as it was: no entity restored, and not erased first."""
 
-        return not self.ok and self.restored_devices == 0 and self.restored_activities == 0
+        return not self.ok and not self.erased and self.restored_devices == 0 and self.restored_activities == 0
 
     @classmethod
-    def from_engine(cls, result: Any, *, snapshot_id: Optional[str]) -> "RestoreResult":
+    def from_engine(cls, result: Any, *, snapshot_id: Optional[str], erased: bool = False) -> "RestoreResult":
         # The engine reports ``restored_devices`` / ``restored_activities``
         # as LISTS of per-entity result records; older callers counted them.
         data = result if isinstance(result, dict) else {}
@@ -513,6 +516,7 @@ class RestoreResult:
                 "devices": _records(data.get("restored_devices")),
                 "activities": _records(data.get("restored_activities")),
             },
+            erased=bool(erased),
         )
 
     def to_dict(self) -> dict[str, Any]:

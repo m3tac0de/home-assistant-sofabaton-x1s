@@ -65,6 +65,9 @@ export function renderBottomDock(params: {
     tone = "dock--dirty";
     center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
     actions = html`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "unsaved_backup") {
+    tone = "dock--dirty";
+    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
   } else if (model.kind === "gate") {
     tone = "dock--gate";
     center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
