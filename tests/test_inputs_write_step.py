@@ -50,14 +50,18 @@ class InputsProxy(ActivitySyncMixin, RestoreMixin):
         self.live = live
         self.reads = 0
         self.written: list = []
+        #: The hub answers the inputs request with a bare 0x07 (no page) instead of not at all.
+        self.absent = False
         #: What the hub answers after the page write; None = echo the written page.
         self.read_back: dict | None = None
 
     def reset_ack_queues(self) -> None:
         pass
 
-    def fetch_device_input_record(self, device_id, *, timeout: float = 5.0):
+    def fetch_device_input_record(self, device_id, *, timeout: float = 5.0, absent_as_empty: bool = False):
         self.reads += 1
+        if self.live is None and self.absent and absent_as_empty:
+            return {"device_id": device_id & 0xFF, "entries": []}
         return self.live
 
 
@@ -118,6 +122,24 @@ def test_append_keeps_the_hubs_entries_and_trailing_rows(monkeypatch):
     assert page.control_keys.input_list == bytes.fromhex("010203").ljust(9, bytes(1))
 
 
+def test_configured_device_without_a_page_gets_its_first_entry(monkeypatch):
+    """A source-list device (``input_mode`` 2) nobody gave a source holds no page: the hub answers 0x07."""
+
+    proxy = InputsProxy(hub_version="X1S", input_mode=2, live=None)
+    proxy.absent = True
+    _install(monkeypatch, proxy)
+
+    ok = proxy._sync_step_inputs_write({"device_id": DEVICE_ID, "entries": [_entry(7, 1, "yellow")]})
+
+    assert ok is True
+    assert [step.family for step in proxy.written] == [FAMILY_INPUTS]      # the input style is the device's own
+    page = parse_inputs_burst([proxy.written[0].payload], hub_version="X1S")
+    assert [(e.key_id, e.ordinal, e.label) for e in page.entries] == [(7, 1, "yellow")]
+    cached = parse_device_record(bytes(proxy.cached["raw_body"]), hub_version="X1S", entity_kind="device")
+    assert cached.input_mode == 2
+    assert [row["command_id"] for row in proxy.state.device_input_records[DEVICE_ID]["entries"]] == [7]
+
+
 def test_a_removal_or_reorder_is_left_alone(monkeypatch):
     """Activities address an input by position: only an append is safe to write live."""
 
@@ -132,7 +154,7 @@ def test_a_removal_or_reorder_is_left_alone(monkeypatch):
 def test_failures_stop_the_sync(monkeypatch):
     added = {"device_id": DEVICE_ID, "entries": [_entry(3, 1, "HDMI 1"), _entry(9, 2, "Input tv")]}
 
-    # A configured device whose page cannot be read: an append could drop what the hub holds.
+    # A configured device whose inputs request goes unanswered: an append could drop what the hub holds.
     proxy = InputsProxy(hub_version="X1S", input_mode=1, live=None)
     _install(monkeypatch, proxy)
     assert proxy._sync_step_inputs_write(added) is False and proxy.written == []

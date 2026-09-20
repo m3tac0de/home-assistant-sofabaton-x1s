@@ -585,6 +585,7 @@ class AckWaitersMixin:
         device_id: int,
         *,
         timeout: float = 5.0,
+        absent_as_empty: bool = False,
     ) -> dict[str, object] | None:
         """Return the full parsed family-0x46 record for ``device_id``.
 
@@ -592,6 +593,11 @@ class AckWaitersMixin:
         preserve the trailing control-key/favorite rows, which are not
         represented in the simplified ``fetch_device_input_entries``
         surface.
+
+        A non-success STATUS_ACK means the hub holds no inputs page for
+        the device; that reads as ``None``, like a timeout. A caller that
+        has to tell the two apart passes ``absent_as_empty`` and gets a
+        record without entries for the known-absent page.
         """
 
         with self.exchange("inputs_record"):
@@ -617,7 +623,7 @@ class AckWaitersMixin:
                 "treating as no inputs configured",
                 device_id & 0xFF,
             )
-            return None
+            return {"device_id": device_id & 0xFF, "entries": []} if absent_as_empty else None
         if burst.outcome is AckOutcome.timeout:
             self._log.warning(
                 "[INPUT_QUERY] timeout waiting for full input record dev=0x%02X",

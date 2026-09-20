@@ -1113,10 +1113,13 @@ class ActivitySyncMixin:
 
         live: dict[str, Any] | None = None
         if config.is_input_configured:
-            fetched = self.fetch_device_input_record(dev_lo)
+            # A configured device may still hold no page at all (a source-list
+            # device nobody gave a source answers a bare 0x07): that is an
+            # empty page to append to. Only an unanswered request stops the
+            # step; without the hub's record an append could drop the entries
+            # it holds.
+            fetched = self.fetch_device_input_record(dev_lo, absent_as_empty=True)
             if not isinstance(fetched, dict):
-                # A configured device answers its inputs request; without the
-                # hub's record an append could drop the entries it holds.
                 self._log.warning("[ACTIVITY_SYNC] inputs_write: could not read the inputs page dev=0x%02X", dev_lo)
                 return False
             live = dict(fetched)
