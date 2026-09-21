@@ -2054,3 +2054,29 @@ def test_send_command_waits_out_settle_gate() -> None:
     started = _time.monotonic()
     proxy.send_command(0x68, 0x10)
     assert _time.monotonic() - started < 0.04
+
+
+def _favorites_order_frame(proxy, act_lo: int, pairs: list[tuple[int, int]]) -> FrameContext:
+    payload = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo]) + bytes(b for pair in pairs for b in pair)
+    return FrameContext(proxy=proxy, opcode=0x0063, direction="H→A", payload=payload, raw=b"", name="FAV_ORDER_RESP")
+
+
+def test_favorites_order_keeps_one_slot_per_id() -> None:
+    """The X1 keeps the order slot of an entry a cascade removed and hands the
+    id out again, so one id can come back holding several slots (found live
+    2026-09-21: one favorite, order fav1 fav2 fav2). The last slot is the one
+    the add that reused the id wrote."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False)
+    handler = opcode_handlers.FavoritesOrderHandler()
+
+    handler.handle(_favorites_order_frame(proxy, 0x6B, [(1, 1), (2, 2), (2, 3)]))
+    assert proxy.state.activity_favorites_order[0x6B] == [(1, 1), (2, 3)]
+
+    # A stale slot ahead of the live entries: the reused id sits where it was added, at the tail.
+    handler.handle(_favorites_order_frame(proxy, 0x6B, [(3, 1), (1, 2), (2, 3), (3, 4)]))
+    assert proxy.state.activity_favorites_order[0x6B] == [(1, 2), (2, 3), (3, 4)]
+
+    # A clean table is stored as read.
+    handler.handle(_favorites_order_frame(proxy, 0x6B, [(2, 1), (1, 2)]))
+    assert proxy.state.activity_favorites_order[0x6B] == [(2, 1), (1, 2)]

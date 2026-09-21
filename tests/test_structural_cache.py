@@ -206,6 +206,45 @@ def test_favorites_order_projected_into_activity_bundle() -> None:
     assert activity["favorites_order"] == [2, 1]
 
 
+def test_favorites_order_drops_ids_that_name_nothing() -> None:
+    """The X1 keeps the order slot of a favorite a cascade removed (a device
+    delete, a membership removal). With the keymap and the macros read, an
+    order id that is neither a favorite nor a macro is such a leftover."""
+
+    proxy = _proxy()
+    _populate(proxy)
+    proxy.state.activity_favorite_slots[101] = [
+        {"button_id": 1, "device_id": 7, "command_id": 2, "source": "cache"},
+    ]
+    proxy.state.replace_activity_macros(101, [{"command_id": 3, "label": "Movie night"}])
+    proxy.state.activity_favorites_order[101] = [(2, 1), (3, 2), (1, 3)]
+
+    activity = proxy.assemble_activity_backup_from_state(101)
+    assert activity is not None
+    assert activity["favorites_order"] == [3, 1]      # the macro shortcut and the favorite stay
+
+    # Every slot a leftover: the key goes, as for an activity with no quick-access entries.
+    proxy.state.activity_favorites_order[101] = [(2, 1), (4, 2)]
+    assert "favorites_order" not in proxy.assemble_activity_backup_from_state(101)
+
+    # With a table unread, nothing says what is live: the order stays as the hub gave it.
+    proxy.state.activity_favorites_order[101] = [(2, 1), (3, 2), (1, 3)]
+    proxy._macros_complete.discard(101)
+    assert proxy.assemble_activity_backup_from_state(101)["favorites_order"] == [2, 3, 1]
+
+
+def test_imported_favorites_order_keeps_one_slot_per_id() -> None:
+    """A cache persisted before the read side kept one slot per id can hold
+    an X1 table with a reused id in two slots; importing it cleans it."""
+
+    source = _proxy()
+    _populate(source)
+    source.state.activity_favorites_order[101] = [(1, 1), (2, 2), (2, 3)]
+    target = _proxy()
+    target.import_cache_state(json.loads(json.dumps(source.export_cache_state())))
+    assert target.state.activity_favorites_order[101] == [(1, 1), (2, 3)]
+
+
 def test_favorites_order_absent_when_never_fetched() -> None:
     """No 0x61 read → no ``favorites_order`` key, so consumers fall back to
     button_id order (the legacy behaviour for older cache snapshots)."""

@@ -20,7 +20,7 @@ from typing import Any
 from .backup_export import now_iso
 from .macros import MacroKeyEntry, MacroRecord
 from .protocol_const import OP_ERASE_CONFIGURATION
-from .state_helpers import normalize_device_entry
+from .state_helpers import normalize_device_entry, one_slot_per_fav_id
 
 
 def _entry_with_raw_body_hex(entry: dict[str, Any]) -> dict[str, Any]:
@@ -378,7 +378,8 @@ class CacheBackupMixin:
                     if isinstance(pair, (list, tuple)) and len(pair) == 2
                 ]
                 if parsed:
-                    self.state.activity_favorites_order[int(key) & 0xFF] = parsed
+                    # A cache persisted before the read side kept one slot per id.
+                    self.state.activity_favorites_order[int(key) & 0xFF] = one_slot_per_fav_id(parsed)
 
 
         generation = data.get("generation")

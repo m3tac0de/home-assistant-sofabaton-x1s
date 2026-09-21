@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from .hub_versions import HUB_VERSION_X1
 from .commands import decode_burst_frame, parse_ir_command_dump_frame
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
+from .state_helpers import one_slot_per_fav_id
 from .macros import (
     MacroAssembler,
     parse_macro_burst_frame,
@@ -1684,10 +1685,18 @@ class FavoritesOrderHandler(BaseFrameHandler):
             )
             pairs_data = pairs_data[: len(pairs_data) - 1]
 
-        pairs: list[tuple[int, int]] = [
+        raw_pairs: list[tuple[int, int]] = [
             (pairs_data[i], pairs_data[i + 1])
             for i in range(0, len(pairs_data), 2)
         ]
+        pairs = one_slot_per_fav_id(raw_pairs)
+        if len(pairs) != len(raw_pairs):
+            proxy._log.info(
+                "[FAV_ORDER] act=0x%02X dropped %d repeated slot(s) from %s",
+                act_lo,
+                len(raw_pairs) - len(pairs),
+                " ".join(f"fav{fav}→slot{slot}" for fav, slot in raw_pairs),
+            )
 
         proxy.state.activity_favorites_order[act_lo] = pairs
         proxy._log.info(
