@@ -7,6 +7,11 @@
 // failed states, Reload from hub and the immediate whole-entity delete. The
 // subclasses render the screen and name the routes.
 //
+// Busy states are the card's: while this editor's own sync or delete runs,
+// the screen is replaced by the full-panel progress view (never an overlay);
+// a failed delete comes back as a banner over the re-opened editor; a job
+// someone else started only locks Sync and Delete, and the dock narrates it.
+//
 // Offline mode (server panel backup plan, decision 6): the Backup tab's Edit
 // section mounts the same editors on a loaded backup file, the card's
 // `mode="backup"`. The host owns the bundle, the dirty flag and the edit
@@ -18,9 +23,12 @@ import { LitElement, html, nothing, type PropertyDeclarations, type PropertyValu
 import { mdiAlertCircleOutline, mdiChip, mdiClose, mdiDatabaseRefreshOutline, mdiSyncAlert } from "@mdi/js";
 
 import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 import { applyBundleDelete } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
+import { jobStepMessage, renderOperationProgress } from "../components/operation-progress";
 import { problemText, type ApiResponse, type HubInfo, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
+import { activeJob } from "../panel-selectors";
 import type { PanelStore } from "../panel-store";
 import { firmwareUnsupported, elementsEqual, snapshotAsBundle } from "./device-editor-state";
 import {
@@ -81,6 +89,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     _syncFailed: { state: true },
     _refreshing: { state: true },
     _deleting: { state: true },
+    _deleteError: { state: true },
     _notice: { state: true },
   };
 
@@ -103,6 +112,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
   protected _syncFailed: { stale: boolean; message: string } | null = null;
   protected _refreshing = false;
   protected _deleting = false;
+  protected _deleteError: string | null = null;
   protected _notice: string | null = null;
   private _loadedKey: string | null = null;
   private _loadSeq = 0;
@@ -169,8 +179,14 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._exitConfirm = null;
     this._syncing = false;
     this._syncFailed = null;
+    this._deleteError = null;
     this._notice = null;
     this._resetView();
+  }
+
+  /** A job this editor did not start holds the hub (the card's `hubCommandBusy`): Sync and Delete wait for it. */
+  protected get _hubBusy(): boolean {
+    return !this._offline && this.ctx !== null && !this.ctx.free;
   }
 
   protected get _hub(): HubView | null {
@@ -363,6 +379,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     if (!hubId || entityId == null || !this._workingEntity || !this._snapshot || this._syncing) return false;
     this._syncing = true;
     this._syncFailed = null;
+    this._deleteError = null;
     try {
       if (!(await this._beforeSync(hubId))) return false;
       // _beforeSync may have moved the snapshot and the working copy: read them after it.
@@ -430,20 +447,23 @@ export abstract class SbPanelEntityEditor extends LitElement {
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._deleting) return;
     this._deleting = true;
+    this._deleteError = null;
     try {
       const started = await this._startDelete(hubId, entityId);
       if (started.status !== 202 || !started.body) {
         this.store.noteResponse(hubId, started);
-        this.store.say(`Delete refused: ${problemText(started)}`, false);
+        this._deleteError = `Delete refused: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (!job || job.status !== "done") {
-        this.store.say(`Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.type}` : ""}`, false);
+        this._deleteError = `Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.detail || job.error.type}` : ""}`;
         return;
       }
       this.store.discardDraft(hubId);
       this._goToList();
+    } catch (err) {
+      this._deleteError = `Delete failed: ${String(err)}`;
     } finally {
       this._deleting = false;
     }
@@ -454,6 +474,10 @@ export abstract class SbPanelEntityEditor extends LitElement {
   render(): TemplateResult {
     const S = this.frameStrings;
     if ((!this._hub && !this._offline) || this.entityId == null) return html`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
+    // The card's syncing and deleting stages: the progress view stands in for the editor while its own job runs.
+    const C = TOOLS_CARD_STRINGS.activities;
+    if (this._deleting) return this._renderProgress("editor-deleting", C.deletingTitle(this.entityKind), C.deletingMessage(this.entityKind));
+    if (this._syncing) return this._renderProgress("editor-syncing", C.syncingTitle, jobStepMessage(activeJob(this._hub)) || C.syncingMessage);
     switch (this._stage) {
       case "loading":
         return html`<div class="panel"><div class="capture-error"><div class="guard-sub">${S.loading}</div></div></div>`;
@@ -478,6 +502,16 @@ export abstract class SbPanelEntityEditor extends LitElement {
       default:
         return this._renderEditing();
     }
+  }
+
+  private _renderProgress(id: string, title: string, message: string): TemplateResult {
+    return html`<div class="tab-panel">${renderOperationProgress({ id, mode: "restore", title, message })}</div>`;
+  }
+
+  /** The card's delete-error banner: a failed delete re-opens the editor with the reason on top. */
+  protected _renderDeleteErrorBanner(): TemplateResult | typeof nothing {
+    if (!this._deleteError) return nothing;
+    return html`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => { this._deleteError = null; }}>Dismiss</button></div>`;
   }
 
   protected _renderGuard(iconPath: string, title: string, body: string, actions: TemplateResult, id: string): TemplateResult {

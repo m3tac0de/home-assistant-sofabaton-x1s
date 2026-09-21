@@ -7,7 +7,7 @@
 // device's element edited; dirty is JSON inequality of that element; the
 // element lives in the store's draft slot so a reload keeps it; Sync is
 // one `PUT /devices/{id}` with `If-Match`, followed as a job while the
-// shell's scrim and dock narrate it (plan decision 4).
+// card's progress view stands in for the editor and the dock narrates it.
 //
 // Phase status: DE1 + DE2 built (frame, guards, rename, power control, IP,
 // command rename and delete, button assignments, delete device, Sync with
@@ -89,6 +89,7 @@ import {
   type BackupDeleteTarget,
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { problemText, type ApiResponse, type JobView, type PayloadView, type SnapshotEntity } from "../panel-api";
+import { OPERATION_PROGRESS_CSS } from "../components/operation-progress";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import { SbPanelEntityEditor, icon, type EntityFrameStrings } from "./entity-editor-base";
@@ -283,6 +284,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   static styles = [
     PANEL_BASE_CSS,
     EDITOR_CSS,
+    OPERATION_PROGRESS_CSS,
   ];
 
   deviceId: number | null = null;
@@ -1016,10 +1018,10 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                     : html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S.renameDevice} title=${S.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon(mdiPencil)}</button>`}
                   ${callback
                     ? nothing
-                    : html`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon(mdiTrashCanOutline)}</button>`}
+                    : html`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon(mdiTrashCanOutline)}</button>`}
                   ${this._offline
                     ? nothing
-                    : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing…" : dirty ? S.syncToHub : S.syncUpToDate}</button>`}
+                    : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S.syncToHub : S.syncUpToDate}</button>`}
                 </div>
               </div>
             </div>
@@ -1030,6 +1032,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
               : nothing}
           </div>
           <div class="detail-scroll">
+            ${this._renderDeleteErrorBanner()}
             ${this._managedByHa ? html`<div class="notice-banner" id="editor-managed-warning">${icon(mdiWifiCog)}<span>${S.managedWifiWarning}</span></div>` : nothing}
             ${callback ? html`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon(mdiInformationOutline)}<span>${S.callbackDeviceNote}</span></div>` : nothing}
             ${this._renderPowerSection(deviceId)}

@@ -2447,3 +2447,19 @@ day: 129 to 270 ms); command 12 is the long press of slot 2; an in-place
 sync with a device rename keeps the head `0x20` and presses keep arriving;
 a server restart restores the subscription from the record; delete ends the
 subscription and the connection. Hub left at its baseline.
+
+## ◇ Validated: one terminal remote-sync trigger for managed Wifi Devices (X1S, 2026-09-21)
+
+Through sofabaton-x-server at :8482 with only the X1S enabled, debug wire
+log. A deploy with a slot reference (slot 1 a favorite in activity 102):
+the create sends no `0x64` of its own, the references are written, the
+device and the activity are read back (6 favorites, 5 before), and then one
+`a5 5a 00 64` goes out as the last frame of the job; the hub answers
+`STATUS_ACK 0x00`. An in-place update (slot rename) ends the same way, one
+trigger after the read-back, acked `0x00`. An update with an unchanged spec
+sends none. `POST /resync-remote` while the update job ran: `409
+hub_job_running`, nothing on the wire; after it, from the panel's Sync
+remote button: accepted, trigger sent. Deleting the device sends no
+trigger (as before). Hub left at its baseline. Not covered: what the
+physical remote shows (nobody watched it), the X1, the X2 and the MQTT
+deploy path.

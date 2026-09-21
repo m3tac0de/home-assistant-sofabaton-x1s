@@ -86,6 +86,7 @@ import {
   type BackupMacroStepItem,
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import type { ApiResponse, JobView, SnapshotEntity } from "../panel-api";
+import { OPERATION_PROGRESS_CSS } from "../components/operation-progress";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { PointerReorder } from "../pointer-reorder";
 import { WIFI_EVENTS_ENABLED, targetKindFor, wifiEventSlots, type ActivityTargetKind, type WifiEventSlot } from "./activity-editor-state";
@@ -228,7 +229,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     _stepDialog: { state: true },
   };
 
-  static styles = [PANEL_BASE_CSS, EDITOR_CSS];
+  static styles = [PANEL_BASE_CSS, EDITOR_CSS, OPERATION_PROGRESS_CSS];
 
   activityId: number | null = null;
 
@@ -929,13 +930,14 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             crumbs: [{ label: B.crumbActivities, onClick: this._requestClose }],
             actions: html`<div class="detail-title-actions">
               <button class="icon-btn" id="editor-rename" type="button" aria-label=${B.renameKind("activity")} title=${B.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon(mdiPencil)}</button>
-              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B.deleteActivityAria} title=${B.deleteActivityAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon(mdiTrashCanOutline)}</button>
+              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B.deleteActivityAria} title=${B.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon(mdiTrashCanOutline)}</button>
               ${this._offline
                 ? nothing
-                : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing…" : dirty ? A.syncToHub : A.syncUpToDate}</button>`}
+                : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? A.syncToHub : A.syncUpToDate}</button>`}
             </div>`,
           })}
           <div class="detail-scroll">
+            ${this._renderDeleteErrorBanner()}
             ${this._renderPowerSection(activityId)}
             ${this._renderRolesSection(activityId)}
             ${this._renderShortcutsSection()}

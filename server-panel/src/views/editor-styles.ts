@@ -65,6 +65,11 @@ export const EDITOR_CSS = css`
     .notice-banner .mdi { color: var(--sbp-warn); width: 18px; height: 18px; }
     .notice-banner--info { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.08); }
     .notice-banner--info .mdi { color: var(--sbp-accent); }
+    .notice-banner--error { border-color: color-mix(in srgb, var(--sbp-err) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 10%, transparent); color: var(--sbp-err); }
+    .notice-banner--error .mdi { color: var(--sbp-err); }
+    .notice-banner--error span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .notice-banner-btn { flex: 0 0 auto; border: 1px solid var(--sbp-line); border-radius: 999px; color: var(--sbp-text); font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px; cursor: pointer; }
+    .notice-banner-btn:hover { border-color: var(--sbp-err); }
     @keyframes sb-spin { to { transform: rotate(360deg); } }
     .mdi.sb-spin { animation: sb-spin 720ms linear infinite; }
     .section-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }

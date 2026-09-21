@@ -1,8 +1,8 @@
 // What a view of a hub receives (docs/internal/server-panel-state-plan.md,
 // decision 3): the hub with its gate, its busy state and the interaction
-// verdict the shell already enforced with the scrim, plus the API client.
-// Views read `ctx.hub` instead of a bare hub, and can disable their own
-// controls for the free-but-limited cases the scrim does not cover.
+// verdict, plus the API client. Views read `ctx.hub` instead of a bare hub.
+// The shell scrims an unavailable hub; a busy one it leaves to the views,
+// which lock their write controls on `ctx.free` (the HA card's way).
 
 import type { HubView, PanelApi } from "./panel-api";
 import { busyFor, gateFor, interactionFor, selectedRuntime, type Busy, type Gate, type Interaction } from "./panel-selectors";

@@ -41,6 +41,9 @@ export class SbPanelRemote extends LitElement {
       .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sbp-line); font-size: 12px; color: var(--sbp-muted); white-space: nowrap; }
       .bar .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
       .stage { padding: 10px; }
+      /* A job holds the hub: the server does not refuse a send, so the card waits here (disabled, as a control would be). */
+      .stage.is-busy { opacity: 0.5; pointer-events: none; }
+      .busy-note { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-muted); font-size: 13px; }
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
       .foot { padding: 6px 10px 8px; color: var(--sbp-muted); font-size: 11px; text-align: center; }
       textarea { min-height: 380px; margin-top: 10px; }
@@ -312,6 +315,8 @@ export class SbPanelRemote extends LitElement {
   }
 
   private _renderCard(hub: HubView | null): TemplateResult {
+    const interaction = this.ctx?.interaction ?? null;
+    const busy = interaction?.kind === "blocked" && (interaction.reason === "job" || interaction.reason === "local");
     return html`
         <div class="frame">
           <div class="bar">
@@ -320,7 +325,8 @@ export class SbPanelRemote extends LitElement {
             <a class="hint" id="remote-link" href=${this.api.remoteUrl(hub?.hub_id ?? null)} target="_blank" rel="noopener" title="open the remote in its own tab">open ↗</a>
           </div>
           ${this._banner ? html`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
-          <div class="stage" id="stage">${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div>
+          ${busy ? html`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
+          <div class="stage ${busy ? "is-busy" : ""}" id="stage" ?inert=${busy}>${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div>
           ${hub ? html`<div class="foot">${hubDisplayName(hub)} · remote card ${CARD_VERSION}</div>` : ""}
         </div>
     `;

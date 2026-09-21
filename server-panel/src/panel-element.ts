@@ -1,8 +1,8 @@
 // The control panel's shell (docs/internal/server-panel-state-plan.md,
 // decisions 3, 9, 10, 11, 14): one narrow-first column with a sticky top
 // dock (brand, hub picker, cog menu, tabs and subtabs), the mounted view
-// under a blocked scrim when the hub may not be touched, and the bottom
-// dock fixed at the viewport's bottom. It renders the store's snapshot
+// (under a scrim while the hub is unavailable; a busy hub is the views' to
+// show, as on the HA card), and the bottom dock fixed at the viewport's bottom. It renders the store's snapshot
 // and coordinates the hub picker's transient forms and actions. The store owns
 // the hub list, the selection, the route and the resync points; the
 // shell mirrors the route into the URL hash and forwards the views'
@@ -121,8 +121,8 @@ export class SofabatonServerPanel extends LitElement {
       /* -- the view and its scrim ------------------------------------------- */
       .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
-      .stage[inert] { opacity: 0.5; filter: saturate(0.5); pointer-events: none; }
-      .scrim { border-radius: 0 0 var(--connected-radius) var(--connected-radius); }
+      /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
+      .stage[inert] { opacity: 0.5; pointer-events: none; }
       .scrim { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
       .scrim-card { max-width: 420px; padding: 14px 18px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); text-align: center; }
       .scrim-card b { display: block; font-size: 14px; margin-bottom: 4px; }
@@ -568,7 +568,10 @@ export class SofabatonServerPanel extends LitElement {
     const runtime = selectedRuntime(s);
     const route = s.route;
     const viewId = route.kind === "tool" ? `${route.page}-${route.sub}` : route.tab;
-    const blocked = route.kind === "hub" && ctx.hub !== null && ctx.interaction.kind === "blocked" ? ctx.interaction : null;
+    // An unavailable hub puts the view under the scrim. A busy hub does not (the HA card's way): the
+    // views lock their own controls, the view that started the job shows it, and the dock narrates it.
+    const unavailable = ctx.interaction.kind === "blocked" && ctx.interaction.reason !== "job" && ctx.interaction.reason !== "local";
+    const blocked = route.kind === "hub" && ctx.hub !== null && unavailable && ctx.interaction.kind === "blocked" ? ctx.interaction : null;
     const streamOn = s.stream.connected;
     // The stream down while REST answers: a hint, nothing blocked (decision 13).
     const streamLost = !streamOn && s.server.reachable && s.listLoaded;
@@ -627,7 +630,7 @@ export class SofabatonServerPanel extends LitElement {
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
           <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
           ${blocked
-            ? html`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>${blocked.reason === "job" || blocked.reason === "local" ? "Hub busy" : "Hub unavailable"}</b><div class="hint">${blocked.label}</div></div></div>`
+            ? html`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>`
             : nothing}
         </main>
         ${renderBottomDock({

@@ -12550,7 +12550,8 @@ The server stops its proxy and forgets its registration, cached state and web re
     const runtime = selectedRuntime(s7);
     const route = s7.route;
     const viewId = route.kind === "tool" ? `${route.page}-${route.sub}` : route.tab;
-    const blocked = route.kind === "hub" && ctx.hub !== null && ctx.interaction.kind === "blocked" ? ctx.interaction : null;
+    const unavailable = ctx.interaction.kind === "blocked" && ctx.interaction.reason !== "job" && ctx.interaction.reason !== "local";
+    const blocked = route.kind === "hub" && ctx.hub !== null && unavailable && ctx.interaction.kind === "blocked" ? ctx.interaction : null;
     const streamOn = s7.stream.connected;
     const streamLost = !streamOn && s7.server.reachable && s7.listLoaded;
     return b2`
@@ -12606,7 +12607,7 @@ The server stops its proxy and forgets its registration, cached state and web re
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
           <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
-          ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>${blocked.reason === "job" || blocked.reason === "local" ? "Hub busy" : "Hub unavailable"}</b><div class="hint">${blocked.label}</div></div></div>` : A}
+          ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>` : A}
         </main>
         ${renderBottomDock({
       model: dockModel(s7, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi" }),
@@ -12715,8 +12716,8 @@ SofabatonServerPanel.styles = [
       /* -- the view and its scrim ------------------------------------------- */
       .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
-      .stage[inert] { opacity: 0.5; filter: saturate(0.5); pointer-events: none; }
-      .scrim { border-radius: 0 0 var(--connected-radius) var(--connected-radius); }
+      /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
+      .stage[inert] { opacity: 0.5; pointer-events: none; }
       .scrim { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
       .scrim-card { max-width: 420px; padding: 14px 18px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); text-align: center; }
       .scrim-card b { display: block; font-size: 14px; margin-bottom: 4px; }
@@ -14133,6 +14134,9 @@ function liveStringsProxy(path) {
 }
 var TOOLS_CARD_STRINGS = liveStringsProxy([]);
 
+// custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
+var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
+
 // custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors.ts
 function creatableDeviceClasses(hubVersion) {
   switch (String(hubVersion ?? "")) {
@@ -14163,9 +14167,6 @@ function hubIcon(kind, classes = "") {
   }[kind];
   return b2`<ha-icon class=${className.trim()} icon=${icon7}></ha-icon>`;
 }
-
-// custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
-var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
 function decodedClassFormSpecs() {
@@ -16254,6 +16255,53 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   }
 }
 
+// server-panel/src/components/operation-progress.ts
+var OPERATION_PROGRESS_CSS = i`
+  .progress-shell { border: 1px solid var(--sbp-line); border-radius: 16px; padding: 18px; background: transparent; color: var(--sbp-text); }
+  .progress-shell[data-mode="restore"] .packet { animation-name: opProgressForward; }
+  .progress-stage { position: relative; display: flex; flex-wrap: nowrap; justify-content: center; gap: 4px; align-items: center; min-height: 110px; min-width: 0; }
+  .progress-node { display: grid; justify-items: center; gap: 10px; z-index: 2; }
+  .progress-disc { width: 76px; height: 76px; display: grid; place-items: center; border-radius: 12px; color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-panel) 88%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); }
+  .progress-disc .mdi { width: 50px; height: 50px; }
+  .progress-disc .progress-hub-svg { width: 60px; height: 60px; }
+  .progress-node-label { color: var(--sbp-muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+  .progress-route { position: relative; flex: 0 1 68px; min-width: 52px; height: 42px; }
+  .progress-route::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: color-mix(in srgb, var(--sbp-accent) 28%, transparent); transform: translateY(-50%); }
+  .packet { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sbp-accent) 14%, transparent); animation: opProgressReverse 1.75s cubic-bezier(0.55, 0, 0.25, 1) infinite; }
+  .packet:nth-child(2) { animation-delay: 0.38s; opacity: 0.78; }
+  .packet:nth-child(3) { animation-delay: 0.76s; opacity: 0.55; }
+  .progress-copy { margin-top: 8px; text-align: center; display: flex; flex-direction: column; gap: 6px; }
+  .progress-title { font-size: clamp(20px, 3vw, 28px); letter-spacing: -0.03em; font-weight: 700; }
+  .progress-message { color: var(--sbp-muted); font-size: 14px; line-height: 1.5; min-height: 21px; }
+  @keyframes opProgressForward { 0% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.55); } 18% { opacity: 1; } 82% { opacity: 1; } 100% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+  @keyframes opProgressReverse { 0% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.55); } 18% { opacity: 1; } 82% { opacity: 1; } 100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .packet { animation: none; left: 50%; top: 50%; transform: translate(-50%, -50%); } }
+  @container (max-width: 520px) { .progress-disc { width: 64px; height: 64px; } .progress-disc .mdi { width: 42px; height: 42px; } .progress-disc .progress-hub-svg { width: 50px; height: 50px; } }
+`;
+function renderOperationProgress(view) {
+  return b2`
+    <div class="progress-shell" id=${view.id ?? "operation-progress"} data-mode=${view.mode} role="status" aria-live="polite">
+      <div class="progress-stage">
+        <div class="progress-node home"><div class="progress-disc"><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiServerNetwork}></path></svg></div><div class="progress-node-label">Server</div></div>
+        <div class="progress-route" aria-hidden="true"><i class="packet"></i><i class="packet"></i><i class="packet"></i></div>
+        <div class="progress-node hub"><div class="progress-disc">${hubIcon("hero", "progress-hub-svg")}</div><div class="progress-node-label">${TOOLS_CARD_STRINGS.progress.sofabatonHub}</div></div>
+      </div>
+      <div class="progress-copy">
+        <div class="progress-title">${view.title}</div>
+        <div class="progress-message">${view.message}</div>
+      </div>
+    </div>
+  `;
+}
+function jobStepMessage(job) {
+  const raw = job?.progress?.message;
+  const message = typeof raw === "string" ? raw.trim() : "";
+  if (!message) return "";
+  const progress = jobProgress(job);
+  if (progress.indeterminate || /\d+\s*\/\s*\d+/u.test(message)) return message;
+  return `${message.replace(/(…|\.+)$/u, "")} (${progress.current ?? 0}/${progress.total})`;
+}
+
 // server-panel/src/pointer-reorder.ts
 var PointerReorder = class {
   constructor(rows, changed, moved, top = () => 0, gap = () => 0) {
@@ -16527,7 +16575,6 @@ var BACKUP_VIEW_TAG = "sb-panel-backup";
 var S3 = TOOLS_CARD_STRINGS.backup;
 var C2 = TOOLS_CARD_STRINGS.common;
 var P2 = {
-  server: "Server",
   pickHub: "Pick a hub above.",
   devicesUnavailable: "The hub's device list is not available yet, so only the entire hub can be backed up. Refresh the hub on the Hub tab to choose devices.",
   dragRowAria: "Drag to reorder (arrow keys move the row)"
@@ -16999,19 +17046,12 @@ var SbPanelBackup = class extends i4 {
       @change=${(event) => onChange(event.currentTarget.checked)} />`;
   }
   _renderProgress(job, mode) {
-    return b2`
-      <div class="progress-shell" id="backup-progress" data-mode=${mode} role="status" aria-live="polite">
-        <div class="progress-stage">
-          <div class="progress-node home"><div class="progress-disc">${icon2(mdiServerNetwork)}</div><div class="progress-node-label">${P2.server}</div></div>
-          <div class="progress-route" aria-hidden="true"><i class="packet"></i><i class="packet"></i><i class="packet"></i></div>
-          <div class="progress-node hub"><div class="progress-disc">${hubIcon("hero", "progress-hub-svg")}</div><div class="progress-node-label">${TOOLS_CARD_STRINGS.progress.sofabatonHub}</div></div>
-        </div>
-        <div class="progress-copy">
-          <div class="progress-title">${mode === "backup" ? TOOLS_CARD_STRINGS.progress.backupTitle : TOOLS_CARD_STRINGS.progress.restoreTitle}</div>
-          <div class="progress-message">${jobProgressMessage(job) || TOOLS_CARD_STRINGS.progress.working}</div>
-        </div>
-      </div>
-    `;
+    return renderOperationProgress({
+      id: "backup-progress",
+      mode,
+      title: mode === "backup" ? TOOLS_CARD_STRINGS.progress.backupTitle : TOOLS_CARD_STRINGS.progress.restoreTitle,
+      message: jobProgressMessage(job) || TOOLS_CARD_STRINGS.progress.working
+    });
   }
   _renderMake() {
     const job = this._sectionJob("backup");
@@ -17285,6 +17325,7 @@ SbPanelBackup.properties = {
 };
 SbPanelBackup.styles = [
   PANEL_BASE_CSS,
+  OPERATION_PROGRESS_CSS,
   i`
       :host { display: block; container-type: inline-size; --bk-radius-sm: 10px; --bk-radius-md: 12px; --bk-radius-xl: 22px; }
       .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
@@ -17356,26 +17397,6 @@ SbPanelBackup.styles = [
       .status-box.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 35%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 5%, var(--sbp-panel)); }
       .status-box.warning { border-color: color-mix(in srgb, var(--sbp-warn) 35%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 5%, var(--sbp-panel)); }
       .status-icon { display: inline-flex; color: inherit; flex: 0 0 auto; }
-      .progress-shell { border: 1px solid var(--sbp-line); border-radius: 16px; padding: 18px; background: transparent; color: var(--sbp-text); }
-      .progress-shell[data-mode="restore"] .packet { animation-name: opProgressForward; }
-      .progress-stage { position: relative; display: flex; flex-wrap: nowrap; justify-content: center; gap: 4px; align-items: center; min-height: 110px; min-width: 0; }
-      .progress-node { display: grid; justify-items: center; gap: 10px; z-index: 2; }
-      .progress-disc { width: 76px; height: 76px; display: grid; place-items: center; border-radius: 12px; color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-panel) 88%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); }
-      .progress-disc .mdi { width: 50px; height: 50px; }
-      .progress-disc .progress-hub-svg { width: 60px; height: 60px; }
-      .progress-node-label { color: var(--sbp-muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
-      .progress-route { position: relative; flex: 0 1 68px; min-width: 52px; height: 42px; }
-      .progress-route::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: color-mix(in srgb, var(--sbp-accent) 28%, transparent); transform: translateY(-50%); }
-      .packet { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sbp-accent) 14%, transparent); animation: opProgressReverse 1.75s cubic-bezier(0.55, 0, 0.25, 1) infinite; }
-      .packet:nth-child(2) { animation-delay: 0.38s; opacity: 0.78; }
-      .packet:nth-child(3) { animation-delay: 0.76s; opacity: 0.55; }
-      .progress-copy { margin-top: 8px; text-align: center; display: flex; flex-direction: column; gap: 6px; }
-      .progress-title { font-size: clamp(20px, 3vw, 28px); letter-spacing: -0.03em; font-weight: 700; }
-      .progress-message { color: var(--sbp-muted); font-size: 14px; line-height: 1.5; min-height: 21px; }
-      @keyframes opProgressForward { 0% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.55); } 18% { opacity: 1; } 82% { opacity: 1; } 100% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); } }
-      @keyframes opProgressReverse { 0% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.55); } 18% { opacity: 1; } 82% { opacity: 1; } 100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); } }
-      @media (prefers-reduced-motion: reduce) { .packet { animation: none; left: 50%; top: 50%; transform: translate(-50%, -50%); } }
-      @container (max-width: 520px) { .progress-disc { width: 64px; height: 64px; } .progress-disc .mdi { width: 42px; height: 42px; } .progress-disc .progress-hub-svg { width: 50px; height: 50px; } }
       .backup-complete-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--sbp-accent) 20%, var(--sbp-line)); border-radius: var(--bk-radius-xl); padding: 28px 18px; background: radial-gradient(circle at top, color-mix(in srgb, var(--sbp-accent) 14%, transparent), transparent 44%), color-mix(in srgb, var(--sbp-panel) 92%, transparent); }
       .backup-complete-icon { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 999px; color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 14%, transparent); }
       .backup-complete-icon .mdi { width: 30px; height: 30px; }
@@ -18373,6 +18394,11 @@ var EDITOR_CSS = i`
     .notice-banner .mdi { color: var(--sbp-warn); width: 18px; height: 18px; }
     .notice-banner--info { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.08); }
     .notice-banner--info .mdi { color: var(--sbp-accent); }
+    .notice-banner--error { border-color: color-mix(in srgb, var(--sbp-err) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 10%, transparent); color: var(--sbp-err); }
+    .notice-banner--error .mdi { color: var(--sbp-err); }
+    .notice-banner--error span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .notice-banner-btn { flex: 0 0 auto; border: 1px solid var(--sbp-line); border-radius: 999px; color: var(--sbp-text); font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px; cursor: pointer; }
+    .notice-banner-btn:hover { border-color: var(--sbp-err); }
     @keyframes sb-spin { to { transform: rotate(360deg); } }
     .mdi.sb-spin { animation: sb-spin 720ms linear infinite; }
     .section-status { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
@@ -18563,6 +18589,7 @@ var SbPanelEntityEditor = class extends i4 {
     this._syncFailed = null;
     this._refreshing = false;
     this._deleting = false;
+    this._deleteError = null;
     this._notice = null;
     this._loadedKey = null;
     this._loadSeq = 0;
@@ -18644,8 +18671,13 @@ var SbPanelEntityEditor = class extends i4 {
     this._exitConfirm = null;
     this._syncing = false;
     this._syncFailed = null;
+    this._deleteError = null;
     this._notice = null;
     this._resetView();
+  }
+  /** A job this editor did not start holds the hub (the card's `hubCommandBusy`): Sync and Delete wait for it. */
+  get _hubBusy() {
+    return !this._offline && this.ctx !== null && !this.ctx.free;
   }
   get _hub() {
     return this.ctx?.hub ?? null;
@@ -18787,6 +18819,7 @@ var SbPanelEntityEditor = class extends i4 {
     if (!hubId || entityId == null || !this._workingEntity || !this._snapshot || this._syncing) return false;
     this._syncing = true;
     this._syncFailed = null;
+    this._deleteError = null;
     try {
       if (!await this._beforeSync(hubId)) return false;
       const element = this._workingEntity;
@@ -18836,20 +18869,23 @@ var SbPanelEntityEditor = class extends i4 {
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._deleting) return;
     this._deleting = true;
+    this._deleteError = null;
     try {
       const started = await this._startDelete(hubId, entityId);
       if (started.status !== 202 || !started.body) {
         this.store.noteResponse(hubId, started);
-        this.store.say(`Delete refused: ${problemText(started)}`, false);
+        this._deleteError = `Delete refused: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (!job || job.status !== "done") {
-        this.store.say(`Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.type}` : ""}`, false);
+        this._deleteError = `Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.detail || job.error.type}` : ""}`;
         return;
       }
       this.store.discardDraft(hubId);
       this._goToList();
+    } catch (err) {
+      this._deleteError = `Delete failed: ${String(err)}`;
     } finally {
       this._deleting = false;
     }
@@ -18858,6 +18894,9 @@ var SbPanelEntityEditor = class extends i4 {
   render() {
     const S9 = this.frameStrings;
     if (!this._hub && !this._offline || this.entityId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
+    const C4 = TOOLS_CARD_STRINGS.activities;
+    if (this._deleting) return this._renderProgress("editor-deleting", C4.deletingTitle(this.entityKind), C4.deletingMessage(this.entityKind));
+    if (this._syncing) return this._renderProgress("editor-syncing", C4.syncingTitle, jobStepMessage(activeJob(this._hub)) || C4.syncingMessage);
     switch (this._stage) {
       case "loading":
         return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S9.loading}</div></div></div>`;
@@ -18882,6 +18921,16 @@ var SbPanelEntityEditor = class extends i4 {
       default:
         return this._renderEditing();
     }
+  }
+  _renderProgress(id, title, message) {
+    return b2`<div class="tab-panel">${renderOperationProgress({ id, mode: "restore", title, message })}</div>`;
+  }
+  /** The card's delete-error banner: a failed delete re-opens the editor with the reason on top. */
+  _renderDeleteErrorBanner() {
+    if (!this._deleteError) return A;
+    return b2`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon4(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => {
+      this._deleteError = null;
+    }}>Dismiss</button></div>`;
   }
   _renderGuard(iconPath, title, body, actions, id) {
     return b2`
@@ -18937,6 +18986,7 @@ SbPanelEntityEditor.properties = {
   _syncFailed: { state: true },
   _refreshing: { state: true },
   _deleting: { state: true },
+  _deleteError: { state: true },
   _notice: { state: true }
 };
 
@@ -19634,11 +19684,12 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }],
       actions: b2`<div class="detail-title-actions">
               <button class="icon-btn" id="editor-rename" type="button" aria-label=${B2.renameKind("activity")} title=${B2.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon4(mdiPencil)}</button>
-              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>
-              ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing\u2026" : dirty ? A2.syncToHub : A2.syncUpToDate}</button>`}
+              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>
+              ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? A2.syncToHub : A2.syncUpToDate}</button>`}
             </div>`
     })}
           <div class="detail-scroll">
+            ${this._renderDeleteErrorBanner()}
             ${this._renderPowerSection(activityId)}
             ${this._renderRolesSection(activityId)}
             ${this._renderShortcutsSection()}
@@ -20079,7 +20130,7 @@ SbPanelActivityEditor.properties = {
   _binding: { state: true },
   _stepDialog: { state: true }
 };
-SbPanelActivityEditor.styles = [PANEL_BASE_CSS, EDITOR_CSS];
+SbPanelActivityEditor.styles = [PANEL_BASE_CSS, EDITOR_CSS, OPERATION_PROGRESS_CSS];
 function defineActivityEditor() {
   if (!customElements.get(ACTIVITY_EDITOR_TAG)) customElements.define(ACTIVITY_EDITOR_TAG, SbPanelActivityEditor);
 }
@@ -20899,8 +20950,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                 ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S6.unsavedTooltip}>${S6.unsaved}</span>` : A}
                 <div class="detail-title-actions">
                   ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S6.renameDevice} title=${S6.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
-                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S6.deleteDeviceAria} title=${S6.deleteDeviceAria} ?disabled=${this._deleting} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
-                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._syncing} @click=${() => void this._sync()}>${this._syncing ? "Syncing\u2026" : dirty ? S6.syncToHub : S6.syncUpToDate}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S6.deleteDeviceAria} title=${S6.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
+                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S6.syncToHub : S6.syncUpToDate}</button>`}
                 </div>
               </div>
             </div>
@@ -20909,6 +20960,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                 </div>` : A}
           </div>
           <div class="detail-scroll">
+            ${this._renderDeleteErrorBanner()}
             ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S6.managedWifiWarning}</span></div>` : A}
             ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${S6.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
@@ -21179,7 +21231,8 @@ SbPanelDeviceEditor.properties = {
 };
 SbPanelDeviceEditor.styles = [
   PANEL_BASE_CSS,
-  EDITOR_CSS
+  EDITOR_CSS,
+  OPERATION_PROGRESS_CSS
 ];
 function defineDeviceEditor() {
   if (!customElements.get(DEVICE_EDITOR_TAG)) customElements.define(DEVICE_EDITOR_TAG, SbPanelDeviceEditor);
@@ -23065,6 +23118,8 @@ var SbPanelRemote = class extends i4 {
     return this.section === "layout" ? this._renderLayout(hub) : this._renderCard(hub);
   }
   _renderCard(hub) {
+    const interaction = this.ctx?.interaction ?? null;
+    const busy = interaction?.kind === "blocked" && (interaction.reason === "job" || interaction.reason === "local");
     return b2`
         <div class="frame">
           <div class="bar">
@@ -23073,7 +23128,8 @@ var SbPanelRemote = class extends i4 {
             <a class="hint" id="remote-link" href=${this.api.remoteUrl(hub?.hub_id ?? null)} target="_blank" rel="noopener" title="open the remote in its own tab">open ↗</a>
           </div>
           ${this._banner ? b2`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
-          <div class="stage" id="stage">${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div>
+          ${busy ? b2`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
+          <div class="stage ${busy ? "is-busy" : ""}" id="stage" ?inert=${busy}>${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div>
           ${hub ? b2`<div class="foot">${hubDisplayName(hub)} · remote card ${CARD_VERSION}</div>` : ""}
         </div>
     `;
@@ -23152,6 +23208,9 @@ SbPanelRemote.styles = [
       .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sbp-line); font-size: 12px; color: var(--sbp-muted); white-space: nowrap; }
       .bar .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
       .stage { padding: 10px; }
+      /* A job holds the hub: the server does not refuse a send, so the card waits here (disabled, as a control would be). */
+      .stage.is-busy { opacity: 0.5; pointer-events: none; }
+      .busy-note { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-muted); font-size: 13px; }
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
       .foot { padding: 6px 10px 8px; color: var(--sbp-muted); font-size: 11px; text-align: center; }
       textarea { min-height: 380px; margin-top: 10px; }

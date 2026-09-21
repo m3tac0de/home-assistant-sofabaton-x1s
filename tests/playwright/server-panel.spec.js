@@ -590,15 +590,18 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("html")).not.toHaveAttribute("data-theme", /./);
   });
 
-  test("a running job blocks the hub's views under the scrim and narrates in the dock; the finish leaves a notice", async ({ page }, testInfo) => {
+  test("a running job locks the view's controls and narrates in the dock, with no scrim; the finish leaves a notice", async ({ page }, testInfo) => {
     const busy = { ...LIVING, active_job: job({ progress: { phase: "device", message: "Writing device 8", completed_steps: 3, total_steps: 12 } }) };
     const state = { hubs: [busy, OFFICE], seen: [] };
     const { sockets } = await mockServer(page, state);
     await page.goto(PAGE);
-    await expect(page.locator("#blocked-scrim")).toContainText("Hub busy");
-    await expect(page.locator("#blocked-scrim")).toContainText("Restoring the backup · Writing device 8 · 3/12");
-    await expect(page.locator("#stage-wrap")).toHaveAttribute("inert", "");
+    // The HA card's way: nothing dims or covers the view; its write controls are disabled and the dock tells why.
     await expect(page.locator("#dock-status")).toHaveText("Restoring the backup · Writing device 8 · 3/12");
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
+    expect(await page.locator("#stage-wrap").evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    await expect(page.locator("#catalog-refresh-all")).toBeDisabled();
+    await expect(page.locator("#add-entity")).toBeDisabled();
     await expect(page.locator("#dock-cancel")).toHaveCount(0);
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--running/);
     await page.screenshot({ path: shot(testInfo, "blocked"), fullPage: true });
@@ -614,7 +617,7 @@ test.describe("control panel, shell", () => {
     state.hubs[0].last_job = job({ status: "done", finished_at: new Date().toISOString() });
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: state.hubs[0].last_job }));
     await expect(page.locator("#blocked-scrim")).toHaveCount(0);
-    await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
+    await expect(page.locator("#add-entity")).toBeEnabled();
     await expect(page.locator("#dock-status")).toHaveText("Restoring the backup: done");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
     await page.click("#dock-dismiss");
@@ -685,7 +688,8 @@ test.describe("control panel, shell", () => {
     await page.click("#dock-resume");
     await expect.poll(() => calls.some((c) => c.key === `POST /hubs/${LIVING.hub_id}/applies/ap1/resume`)).toBe(true);
     await expect(page.locator("#dock-status")).toHaveText("Resuming the apply");
-    await expect(page.locator("#blocked-scrim")).toContainText("Hub busy");
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#add-entity")).toBeDisabled();
   });
 
   test("a press on the physical remote sweeps the dock; a lost stream is a hint, not a block", async ({ page }) => {
@@ -1833,6 +1837,106 @@ test.describe("control panel, views", () => {
     expect(calls.find((c) => c.key === "add_device").body).toEqual({ name: "Soundbar", device_class: "wifi_roku" });
     await expect(page.locator("sb-panel-device-editor #editor-title")).toHaveText("Soundbar");
   });
+  test("busy states are the card's: Add keeps its dialog whole with no scrim, Delete and Sync swap the editor for the progress view, a failed delete comes back as a banner", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    const H = `**${API}/hubs/${LIVING.hub_id}`;
+    const entity = (kind, id, name) => ({ kind, complete: true, editable: true, fetched_at: "t", device: { device_id: id, name, device_class: "ir", idle_behavior: 1 }, commands: [], button_bindings: [], macros: [], favorite_slots: [] });
+    const snapshot = { snapshot_id: "snap-1", captured_at: "2026-09-19T00:00:00Z", engine_generation: 1, complete: true, payload_profile: "structural", hub: { name: "Living room", version: "X1S" },
+      devices: [entity("device_backup", 1, "TV")], activities: [entity("activity_backup", 101, "Watch TV")] };
+    await page.route(`${H}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+    await page.route(`${H}/info`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ known: true, model: "X1S", name: "Living room", mac: null, firmware_version: 5, production_batch: null }) }));
+    await page.route(`${H}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "none", status: 404 }) }));
+
+    // Jobs that really run: held open until the test ends them, and told to the store over the stream as the server does.
+    const jobs = {};
+    const tell = (view) => sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: view }));
+    const begin = (route, id, progress = null) => {
+      jobs[id] = job({ job_id: id, kind: "sync_activity", progress });
+      state.hubs[0].active_job = jobs[id];
+      tell(jobs[id]);
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(jobs[id]) });
+    };
+    const end = (id, patch) => {
+      jobs[id] = { ...jobs[id], status: "done", finished_at: new Date().toISOString(), ...patch };
+      state.hubs[0].active_job = null;
+      state.hubs[0].last_job = jobs[id];
+      tell(jobs[id]);
+    };
+    await page.route(`${H}/jobs/*`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(jobs[route.request().url().split("/").pop()]) }));
+    await page.route(`${H}/activities`, (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      snapshot.activities.push(entity("activity_backup", 103, route.request().postDataJSON().name));
+      begin(route, "add1", { message: "Creating the activity…" });
+    });
+    let deletes = 0;
+    await page.route(`${H}/activities/103`, (route) => {
+      if (route.request().method() === "DELETE") { deletes += 1; return begin(route, `del${deletes}`); }
+      if (route.request().method() === "PUT") return begin(route, "sync1", { message: "Writing the name…", completed_steps: 1, total_steps: 4 });
+      return route.fallback();
+    });
+
+    await page.goto(`${PAGE}#/e26a44861b45/hub/activities`);
+    await expect.poll(() => sockets.length).toBe(1);
+    await page.locator("#add-entity").click();
+    await page.locator("#add-name").fill("Gaming");
+    await page.locator("#add-confirm").click();
+
+    // Add, while its job runs: the dialog stays, whole and opaque, over the full window; nothing else is layered on it.
+    await expect(page.locator("#dock-status")).toContainText("Syncing the activity to the hub");
+    await expect(page.locator("#add-confirm")).toHaveText("Creating…");
+    await expect(page.locator("#add-confirm")).toBeDisabled();
+    await expect(page.locator("#add-name")).toBeDisabled();
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
+    const cover = await page.locator(".cache-modal-backdrop").evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), vw: document.documentElement.clientWidth, vh: window.innerHeight, opacity: getComputedStyle(document.querySelector("sofabaton-server-panel").shadowRoot.querySelector("#stage-wrap")).opacity };
+    });
+    // The window but for the page's reserved scrollbar gutter; never the view's box.
+    expect(cover).toMatchObject({ left: 0, top: 0, height: cover.vh, opacity: "1" });
+    expect(cover.width).toBeGreaterThanOrEqual(cover.vw - 20);
+    await page.screenshot({ path: shot(testInfo, "busy-add-dialog") });
+    end("add1", { result: { activity_id: 103 } });
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities\/103$/);
+    const editor = page.locator("sb-panel-activity-editor");
+    await expect(editor.locator("#editor-title")).toHaveText("Gaming");
+
+    // Delete: the confirm closes at once and the progress view stands in for the editor. A failure re-opens it under a banner.
+    await editor.locator("#editor-delete").click();
+    await editor.locator("#delete-confirm").click();
+    await expect(editor.locator("#editor-deleting .progress-title")).toHaveText("Deleting activity");
+    await expect(editor.locator("#editor-deleting .progress-message")).toHaveText("Removing this activity from the hub…");
+    await expect(editor.locator("#delete-dialog")).toHaveCount(0);
+    await expect(editor.locator("#activity-editor")).toHaveCount(0);
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await page.screenshot({ path: shot(testInfo, "busy-deleting") });
+    end("del1", { status: "failed", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
+    await expect(editor.locator("#editor-delete-error")).toContainText("Delete failed: the hub went away");
+    await expect(editor.locator("#editor-title")).toHaveText("Gaming");
+    await page.click("#dock-dismiss");
+
+    // Sync: the same swap, titled as on the card, with the running step and its counter.
+    await editor.locator("#editor-rename").click();
+    await editor.locator("#rename-input").fill("Games");
+    await editor.locator("#rename-save").click();
+    await editor.locator("#editor-sync").click();
+    await expect(editor.locator("#editor-syncing .progress-title")).toHaveText("Syncing to your hub");
+    await expect(editor.locator("#editor-syncing .progress-message")).toHaveText("Writing the name (1/4)");
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await page.screenshot({ path: shot(testInfo, "busy-syncing") });
+    snapshot.activities[1].device.name = "Games";
+    end("sync1");
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await expect(editor.locator("#editor-delete-error")).toHaveCount(0);
+
+    // A delete that lands goes back to the list.
+    await editor.locator("#editor-delete").click();
+    await editor.locator("#delete-confirm").click();
+    await expect(editor.locator("#editor-deleting")).toBeVisible();
+    end("del2");
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
+  });
 });
 
 test.describe("control panel, integrated picker", () => {
@@ -2134,7 +2238,8 @@ test.describe("control panel, backup", () => {
     await expect(view.locator("#backup-progress")).toContainText("Backing up device 1");
     await expect(view.locator(".backup-drawer-sub")).toHaveText("The hub is creating your backup.");
     await expect(page.locator("#dock-status")).toHaveText("Backing up device 1 · 0/1");
-    await expect(page.locator("#blocked-scrim")).toBeVisible();
+    // The progress card is the busy state; nothing is layered over it.
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
 
     push({ status: "done", finished_at: new Date().toISOString(), result: result() });
     await expect(view.locator("#backup-complete")).toContainText("Backup completed");
