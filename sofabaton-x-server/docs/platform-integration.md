@@ -1,7 +1,9 @@
 # Integrating an automation platform with sofabaton-x-server
 
-> Written for sofabaton-x-server 0.2.0 (`api 1`). Before 1.0 a minor
-> release may still change the surface; the release notes say when.
+> Written for sofabaton-x-server 0.2.1 (`api 1`, release preparation).
+> Read the [upgrade notes](../CHANGELOG.md#021-unreleased), particularly
+> the payload-response and backup-retention changes, and regenerate
+> clients from this release's OpenAPI document.
 
 For authors of a Homey app, a Hubitat driver, an openHAB binding, or any
 other client. The server fronts one or more Sofabaton X1 / X1S / X2 hubs
@@ -31,7 +33,7 @@ mDNS. TXT fields:
 | key | meaning |
 | --- | --- |
 | `version` | server version |
-| `api` | API version (`1`); bump means generated clients must be re-checked |
+| `api` | API generation (`1`); check the server version and release notes for schema changes within this generation |
 | `path` | API prefix (`/api/v1`) |
 | `hubs` | number of configured hubs |
 | `base_url` | present when `--advertise-url` is set; the server base URL clients should use |
@@ -64,7 +66,7 @@ operator is told not to expose it beyond the LAN.
 
 **Use `GET /api/v1/hubs` to list registered hubs.** Offer those to the user,
 including their enabled/available state. If none are registered, link to
-the control panel's Hubs view and offer to reload the list after setup.
+the control panel's hub picker and offer to reload the list after setup.
 Listing physical discoveries is not the same as listing registered hubs.
 
 **Before physical hub discovery or registration, tell the user to fully close
@@ -192,9 +194,10 @@ Messages are JSON with a `type`:
   `hub_lost`, `callback_device_stale`, `callback_device_restored`,
   `callback_listener_started`, `callback_listener_failed`.
 - `job_event`: `hub_id` and the full `job` record on queueing, starting,
-  progress updates and completion (`done`, `failed` or `cancelled`).
-- `press`: a button press the hub delivered to the server's callback
-  listener (section 10): `seq`, `hub_id`, `device_id`, `command_id`,
+  progress updates and completion (`done`, `failed` or `cancelled`), except
+  for a backup's `result.bundle`, which must be fetched separately.
+- `press`: a button press delivered over HTTP or MQTT (section 10):
+  `seq`, `hub_id`, `device_key`, `device_id`, `command_id`,
   `slot`, `label`, `press_type` (`short` / `long`), `resolution`,
   `transport`, `source`, `received_at`.
 - `dropped`: `count` older messages were discarded because your client
@@ -261,8 +264,8 @@ are read automatically. Persistence preserves previously fetched detail;
 it does not make incomplete detail complete after a restart.
 
 A refresh answers `202` with a job. Follow it on `/events` (`job_event`
-messages carry the full job record: `status`, the last `progress`, the
-`result` or a `Problem` in `error`) or poll `GET /hubs/{id}/jobs/{job_id}`.
+messages carry `status`, the last `progress`, the `result` without a backup
+bundle, or a `Problem` in `error`) or poll `GET /hubs/{id}/jobs/{job_id}`.
 One job runs per hub at a time. Inspect `cancellable` before requesting
 `DELETE /hubs/{id}/jobs/{job_id}`: whole-hub refresh and IR learn are
 cancellable, as are document writes (`sync_hub` / `resume_apply`) between
@@ -304,7 +307,14 @@ switches to when the activity starts adds an entry to that device's
 list inside the activity body (`{...activity, "devices": [device, ...]}`).
 The server applies them with the activity in one job. Only a device's
 input record, idle behaviour and command names may differ; any other
-device change is `422 out_of_scope`.
+device change is `422 out_of_scope`. Input writes append new entries and
+enable inputs when needed; removal/reordering of existing entries is not
+applied, even when a job succeeds. Activities address inputs by position.
+
+A device PUT and its plan route allow command removal: omit a command
+from the edited `commands` array to delete it. The hub cascades references
+and the server rewrites the device's command display order. Preserve every
+command you want to keep; PUT is a complete element, not a partial patch.
 
 The cache revision check and the hub check serve different purposes.
 Sync-based edits compare device bindings/macros and activity
@@ -457,7 +467,11 @@ or written over an existing command with `PUT .../commands/{cid}/payload`.
 of any device class; `kind` is `raw` or `descriptive` for IR, `network` for
 a decoded wifi request and `record` for any other body (a Bluetooth key, a
 `wifi_mqtt` record), and `decoded` carries the structured fields where the
-class has them. `POST
+class has them. Do not send the GET response back as a `PayloadSpec`: the
+`/play`, command-create and command-payload PUT bodies still accept **IR
+formats only**. Edit non-IR payloads through a device or whole-document
+PUT using command-row `restore_data`; preserve its metadata and use the
+class-appropriate `decoded` fields or stored bytes. `POST
 /hubs/{id}/learn` arms the hub's receiver and returns the captured code
 as the job result; cancel the job to stop waiting.
 
@@ -483,8 +497,10 @@ new ids. `POST /hubs/{id}/erase` wipes the hub.
 Replacing restore and erase affect the whole hub; delete endpoints and
 payload replacement can also remove data. Explain the affected scope in
 your client before the user commits the operation. Restore has no rollback:
-inspect `failed_at`, restored counts, `device_id_map` and the
-snapshot before recovery. Never automatically retry an additive restore.
+inspect `failed_at`, restored counts, `device_id_map`, `snapshot_id` and
+`erased` before recovery. `erased: true` means the replacing restore already
+wiped the hub, even if no entity was rebuilt. Such a failure has
+`error.status: 502` (`restore_failed`). Never automatically retry an additive restore.
 
 ## 10. Button events
 
@@ -495,10 +511,11 @@ or stale callback configuration should lead users to setup or repair, not
 trigger automatic deployment on every connection. Activity-state events
 work without a callback device.
 
-The panel's API view can run the routes below, but 0.2.0 has no dedicated
-callback or binding editor. The [starter setup command](getting-started.md#3-receive-your-first-remote-press)
-handles a first slot; deployed commands can also be assigned in the official
-app. If you choose to manage callbacks in your client:
+The panel's **Wifi Commands** tab manages keyed Wifi Devices and their
+slot assignments; **Hub** edits activities and their bindings. The
+[starter setup command](getting-started.md#3-receive-your-first-remote-press)
+creates or reuses the HTTP callback device under the reserved `default` key.
+Deployed commands can also be assigned in the official app. If you choose to manage callbacks in your client:
 
 1. `POST /api/v1/hubs/{id}/callback-device` with the slot labels your
    users will see (up to ten; every slot is written, unnamed ones as
@@ -526,8 +543,12 @@ app. If you choose to manage callbacks in your client:
    a durable event log.
 5. Update with `PUT /hubs/{id}/callback-device` and a **complete desired
    spec**, copied from the current GET response. Omitted slots become
-   defaults and omitted power/input hooks are cleared. Generic bindings
-   survive because device and command IDs stay. A failed job with
+   defaults and omitted power/input hooks are cleared. Copy nested slot
+   fields too: omitting their references can remove
+   spec-owned bindings or membership. Independently created bindings survive
+   unless a new slot assignment replaces the same button or removing a
+   spec-owned membership makes the hub drop that device's activity rows.
+   A failed job with
    `callback_update_declined` means the device was edited outside the
    server (or the planner refused the diff); show the detail and reconcile
    the device before another write. Removing and redeploying can change IDs
@@ -573,7 +594,22 @@ also carry `favorite`, `button`, `long_press`, `activities` and
 spec instead of you calling the generic routes.
 The control panel's Wifi Commands tab manages all of them, so you can also
 leave that screen to the panel and only consume `press`.
-See the README's [Wifi Commands](../README.md#wifi-commands).
+Clients that support multiple devices should enumerate `/wifi-devices` and
+let users select a `key`; `/callback-device` only returns `default`. Bind
+actions to `(hub_id, device_key, slot, press_type)` and reconcile the hub
+device ID after a redeploy. Labels are mutable display text.
+
+For X2 MQTT, configure the broker in both the Sofabaton app and the server,
+then POST `/wifi-devices` with `"transport": "mqtt"`. Check the list
+response's `transports` first. Omitting transport still chooses HTTP; PUT
+ignores transport and keeps the deployed choice. MQTT records have
+`target: null`, `effective_destination: null` and `mqtt_topic`; check
+`GET /server/mqtt` instead of callback-listener state. MQTT presses use
+`transport: "mqtt"` and `source: ""`, with the same sequence, history and
+resolution rules as HTTP. The server subscribes for presses only; it does
+not publish commands or consume MQTT activity-state messages.
+See the README's [Wifi Commands](../README.md#wifi-commands) and
+[MQTT settings](../README.md#mqtt).
 
 ## 11. Give users a remote
 

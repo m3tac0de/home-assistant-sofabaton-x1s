@@ -4025,7 +4025,7 @@
   "info": {
     "description": "REST + WebSocket over the sofabaton-x library for Sofabaton X1 / X1S / X2 hubs. LAN service; no authentication in v1.\n\nWebSocket: `/api/v1/events` (optional `?hub_id=` filter, repeatable) streams WsHello once, then WsHubEvent / WsServerEvent / WsJobEvent / WsPress / WsDropped messages (see components).",
     "title": "sofabaton-x-server",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "openapi": "3.1.0",
   "paths": {

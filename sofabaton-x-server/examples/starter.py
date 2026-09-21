@@ -74,7 +74,11 @@ class Client:
 
 
 def setup_presses(client, hub, activity_id, button):
-    """Deploy once, then bind slot 1 short/long to the chosen activity button."""
+    """Create/reuse the default HTTP device and bind its slot 1 short/long.
+
+    Keyed devices created through the Wifi Commands panel are separate.
+    This example intentionally uses /callback-device (key "default").
+    """
     # Read the activity before creating anything, so a wrong activity ID stops early.
     activities = client.request("GET", hub + "/activities")
     if not any(a["activity_id"] == activity_id for a in activities):
@@ -140,7 +144,9 @@ def listen(client, hub_id):
                 elif event["type"] == "press":
                     print(json.dumps(event, indent=2), flush=True)
                     if event["resolution"] == "deployed":
-                        # Dispatch your application action here, using hub/device/command IDs.
+                        # All managed Wifi Devices on this hub reach this stream.
+                        # Match device_key ("default" for setup-presses) plus
+                        # device_id/command_id/press_type before dispatching an action.
                         print(f"PRESS: {event['label']} ({event['press_type']})", flush=True)
                 elif event["type"] == "dropped":
                     print("Events were lost; re-read hub state. For missed presses, use your replay policy and GET /hubs/{hub_id}/presses?after=<last press seq>.", flush=True)

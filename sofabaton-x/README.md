@@ -1,9 +1,10 @@
 # sofabaton-x — Python Library
 
-> **0.2.0 has breaking changes from 0.1.x.** This README describes the
-> 0.2 API. Existing 0.1.x consumers should read the
-> [changelog and migration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#020-2026-09-16)
-> before upgrading.
+> **This README describes 0.2.1 (release preparation).** Despite the patch
+> version, `read_payload()` changes its return types for non-IR commands.
+> Read the [0.2.1 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-unreleased)
+> before upgrading from 0.2.0. Consumers on 0.1.x also need the
+> [0.2.0 migration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#020-2026-09-16).
 
 [![PyPI](https://img.shields.io/pypi/v/sofabaton-x)](https://pypi.org/project/sofabaton-x/)
 [![Python versions](https://img.shields.io/pypi/pyversions/sofabaton-x)](https://pypi.org/project/sofabaton-x/)
@@ -71,8 +72,11 @@ Home Assistant integration provide their own listeners on top.
 
 ## Install
 
+The PyPI command below requires 0.2.1 to have been published. Until then,
+install this checkout with `python -m pip install .` from the repository root.
+
 ```
-python -m pip install "sofabaton-x>=0.2,<0.3"
+python -m pip install "sofabaton-x>=0.2.1,<0.3"
 ```
 
 For existing applications still on the 0.1.x API, stay on that series
@@ -237,7 +241,10 @@ re-reads it on `refresh=True`, which needs control mode.
 A read that has to fetch and cannot raises a typed error: `HubBusyError`
 (an app holds the hub), `HubNotConnectedError` (no hub session), or
 `FetchTimeoutError` (the reply never landed). They subclass `RuntimeError`
-and `TimeoutError`, so existing `except` clauses keep working.
+and `TimeoutError`, so existing `except` clauses keep working. While a
+backup, restore, erase, refresh or configuration write holds the hub,
+on-demand reads wait before fetching; they raise `FetchTimeoutError` if
+the wait times out. Complete cached reads remain available.
 
 Control: `send(entity_id, command_id)` (alias `press`),
 `start_activity(act)`, `stop_activity(act)`, `find_remote()`.
@@ -399,8 +406,16 @@ if not result.ok:
 
 `sync_device` / `build_device_sync_plan` are the device-scoped
 counterparts (command adds and renames, payload edits, idle behaviour,
-input records) with the same bundle-pair contract. Two guards run before
-anything is written: a `snapshot_id` that is no longer current raises
+input records) with the same bundle-pair contract. To delete command rows,
+pass `allow_command_removal=True` to **both** `build_device_sync_plan` and
+`sync_device`; the default refuses removals. The hub cascades references to
+the removed commands and the library rewrites the device display order.
+Input writes append new entries and enable inputs when necessary. Removing
+or reordering existing input entries is not applied, even if the sync reports
+success, because activities address inputs by position.
+
+For both sync methods, two guards run before anything is written: a
+`snapshot_id` that is no longer current raises
 `SnapshotOutdatedError`, and a baseline entity that is not `editable`
 (never fetched, or fetched incomplete) raises `SnapshotIncompleteError`;
 refresh the entity and edit again. A failed sync reports where it stopped
@@ -408,9 +423,11 @@ refresh the entity and edit again. A failed sync reports where it stopped
 `failed_at: "stale_check"` means the live preflight refused the edit:
 selected tables changed, or, with `strict=True`, the read was unreadable or
 incomplete. Inspect `message` and `preflight`; `wrote_nothing` tells you
-no step reached the hub. The planner refuses (with `ValueError`, surfaced as `failed_at:
-"plan"`) any bundle difference outside the entity being edited, so an
-editor bug cannot silently rewrite unrelated configuration.
+no step reached the hub. The planner refuses unsupported differences with
+`ValueError` (surfaced
+as `failed_at: "plan"` by sync). An activity edit may also change referenced
+devices' input records, idle behavior and command names; other unrelated
+changes are refused.
 
 The live comparison covers device **bindings and macros**, and activity
 **bindings, macros and favorites**, with normalization of power durations
@@ -558,7 +575,9 @@ additive: it creates entities with new hub-assigned ids. Use
 `restore(bundle, replace=True)` to validate the bundle before erasing and
 rebuilding the hub; do not call `erase()` separately to implement replace.
 Inspect `RestoreResult.ok`, `failed_at`, `restored_devices`,
-`restored_activities`, `device_id_map` and `snapshot_id`. A partial restore
+`restored_activities`, `device_id_map`, `snapshot_id` and `erased`.
+`erased=True` means the replacing restore already wiped the hub; even with
+zero restored entities, `wrote_nothing` is then false. A partial restore
 is not rolled back; inspect the resulting snapshot before deciding how to
 recover. Retrying an additive restore can create duplicates.
 
@@ -599,15 +618,19 @@ types it by the device's class. It returns `None` when nothing is stored.
 
 | Device class | Returned type |
 | --- | --- |
-| IR, RF | `IrPayload` |
-| `wifi_ip`, `wifi_roku`, `wifi_hue`, `wifi_sonos` | `NetworkCommand` (see below) |
-| Bluetooth, `wifi_mqtt`, anything undecodable | `CommandRecord` |
+| IR, RF (bodies at least 10 bytes long) | `IrPayload` |
+| Decodable `wifi_ip`, `wifi_roku`, `wifi_hue`, `wifi_sonos` | `NetworkCommand` (see below) |
+| Bluetooth, `wifi_mqtt`, undecodable network bodies, other bodies shorter than 10 bytes | `CommandRecord` |
 
 All three have `blob`, `hex`, `to_command_row()` and `to_dict()`, and the edit
-helpers save any of them on a device of the same class. A `CommandRecord`'s
+helpers accept `IrPayload` for IR/RF devices and require the matching
+device class for `NetworkCommand` and `CommandRecord`. An unknown device
+class with a body at least 10 bytes long falls back to `IrPayload`.
+A `CommandRecord`'s
 `fields` holds the structured form where the class has one (`wifi_mqtt`:
 `device_id` and `command_id`, which the hub ignores) and is `None` otherwise.
-Only an `IrPayload` can be passed to `play()`:
+Of these payload types, only `IrPayload` can be passed to `play()` (which
+also accepts raw IR bytes):
 
 ```python
 from sofabaton import IrPayload
@@ -658,8 +681,9 @@ the hub stores.
 A *managed* wifi device is one you create so the remote can call you:
 `WIFI_SLOT_COUNT` slots, each a short and a long press record whose callback
 path is `launch/<hub action id>/<device id>/<slot index>/<short|long>`, all
-pointing at one host and port. Deploy one from a `WifiDeviceSpec`, keep the
-returned `WifiDeployment`, and edit it in place later:
+pointing at one host and port with the default HTTP transport. X2 also
+supports MQTT delivery, described below. Deploy one from a `WifiDeviceSpec`,
+keep the returned `WifiDeployment`, and edit it in place later:
 
 ```python
 from dataclasses import replace
@@ -714,23 +738,26 @@ WifiSlotSpec("Movie scene", input_activity_id=101)   # performed while activity 
 `favorite` and `button` apply in every activity of `activities`;
 `long_press` also binds the slot's long record to that button's long press.
 One slot per button and one slot per input activity, a power slot is never
-an input, and `activities` is only kept while `favorite` or `button` is
-set (`normalized()` raises `ValueError` otherwise). `deploy_wifi_device`
+an input. `normalized()` raises `ValueError` for duplicate button/input
+claims, invalid IDs or conflicting power/input roles. It clears `activities`
+when neither `favorite` nor `button` is set, and clears `long_press` when
+there is no button. `deploy_wifi_device`
 creates the device and applies the references as its first update;
 `update_wifi_device` writes them in place, joining the activities they
 name and giving the device's own page the buttons. The planner's ownership
-rule decides what is ever removed: only a favorite, a button or an activity
-membership that an earlier spec of this device put there, never one made
-with the generic helpers or in the Sofabaton app. A spec that stops naming
+rule decides which references are removed: favorites, buttons and activity
+memberships owned by an earlier spec. A new slot assignment can replace
+an existing button assignment. A spec that stops naming
 an activity leaves it, and the hub then drops every row of the device in
 that activity. An activity the hub does not have is a `WifiUpdateDeclined`
 with `reason="activity"`.
 
 On an X2, `deploy_wifi_device(spec, transport="mqtt")` takes no host or
 port: the device's records are inert and the hub publishes
-`{"device_id", "key_id"}` to `<MAC>/up` on the broker set in the Sofabaton
-app (`key_id` is the command id of the record it executed: 1..10 short,
-11..20 long). Subscribing is the consumer's job; the library never talks
+`{"device_id": 7, "key_id": 1}` to `<MAC>/up` on the broker set in the Sofabaton
+app. Replace those example IDs with the deployed IDs. `key_id` is the
+executed command ID: 1..10 short, 11..20 long. The MAC is uppercase hex
+without separators. Subscribing is the consumer's job; the library never talks
 to a broker. The deployment carries `transport="mqtt"` and `target=None`,
 and `update_wifi_device` keeps both. Any other hub is a `ValueError`.
 
@@ -738,9 +765,10 @@ Every slot is written, defaults included. The
 callback target never changes in place: a new address is a remove and a new
 deploy. The X1 always calls port 8060 and ignores the power and input hooks.
 `update_wifi_device` refuses (`WifiUpdateDeclined`) when a record's label
-matches neither what the deployment wrote nor what the new spec asks, so an
-edit made in the Sofabaton app is never silently overwritten; a record that
-already carries the new label is an interrupted update being resumed. A write
+matches neither what the deployment wrote nor what the new spec asks, so
+conflicting label changes made in the Sofabaton app are refused. This check
+does not detect every external edit. A record that already carries the new
+label is accepted when resuming an interrupted update. A write
 the hub rejects raises `WifiUpdateFailed` (a `HubRejectedError`) and the next
 update with the same spec resumes.
 
@@ -759,7 +787,7 @@ x> activities
 x> commands 1                        # list (command_id, label) for device 1
 x> send 1 5                          # numeric ids, exactly like the Python API
 x> send 101 POWER_ON                 # the CLI also resolves button names to codes
-x> testir 01 20 00 10 01 00 94 ac .. # fire a raw IR payload once (nothing saved)
+x> testir 0013000011009470503a4e45433120443a3420533a3520463a323100000000
 x> snapshot                          # every device/activity + completeness / editability
 x> refresh act=101                   # re-read one entity (refresh alone = whole hub, slow)
 x> rename act 101 Movie night        # snapshot, edit, sync
@@ -779,7 +807,9 @@ you want named button codes.
 
 `testir` works with raw IR payload hex (the bytes a command replays, as
 shown in a backup's `data_hex` fields) and plays it once without saving;
-in the Python API this is `play(IrPayload.from_hex(...))`.
+the example above encodes `P:NEC1 D:4 S:5 F:21`. Choose a code appropriate
+to your equipment before playing it. In the Python API this is
+`play(IrPayload.from_hex(...))`.
 
 Install the library, then download the example files or use a repository
 checkout. Run the paths below from the repository root. These examples
@@ -792,6 +822,7 @@ already manages your hub. Examples that discover hubs choose the first result.
 | `minimal_proxy.py` | Connect and list activities/devices; sending is commented out. |
 | `watch_events.py` / `watch.py` | Observe typed events / individual callbacks. |
 | `catalog_details.py` | Fetch commands, macros and favorites. |
+| `read_payload.py` | Read IR, network or opaque command records with the 0.2.1 return types; no playback or writes. |
 | `from_platform_discovery.py` | Turn a platform's mDNS record into a proxy configuration; replace the sample record. |
 | `edit_activity.py` | Preview a rename; write only with `--apply`. |
 | `backup.py` | Save a full backup; restore code is commented out. |
@@ -806,6 +837,12 @@ and, with `--apply`, syncs and checks the result:
 ```sh
 python sofabaton-x/examples/edit_activity.py --hub 192.168.1.50 --activity 101 --name "Movie night"
 python sofabaton-x/examples/edit_activity.py --hub 192.168.1.50 --activity 101 --name "Movie night" --apply
+```
+
+To inspect one stored command (replace the address and IDs):
+
+```sh
+python sofabaton-x/examples/read_payload.py --hub 192.168.1.50 --device 5 --command 2
 ```
 
 ## Protocol & networking docs
@@ -829,7 +866,10 @@ Model support describes implemented protocol paths, not proof that every
 operation has been exercised on every firmware. The
 [live-hub testing notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/live-hub-testing.md) record the
 bench coverage and outstanding checks. In particular, the document-write
-bench covers X1/X1S; equivalent X2 and server-route coverage is still pending.
+bench covers X1/X1S; its equivalent X2 run remains pending. Separate
+server checks cover the X1S web remote and activity input editing, and X2
+MQTT deployment, presses, rename, restart and deletion. These checks do
+not establish coverage of every route or firmware.
 
 ## Stability
 
@@ -842,7 +882,10 @@ between minor releases. The public surface is async-first by design:
 synchronous engine (reachable via `AsyncXProxy.sync` when you need the
 raw surface) is internal and not semver-covered. Prefer the named facade
 methods in this README; compatibility delegates and direct engine access
-are for advanced consumers. Until 1.0, pin a minor version.
+are for advanced consumers. Until 1.0, pin a minor version and review
+release notes before each upgrade. **0.2.1 is an exception to the patch
+compatibility rule:** the corrected non-IR `read_payload()` return types
+require the migration described above.
 
 The facade exports these typed exceptions, all subclasses of stdlib
 exceptions. Plain `ValueError` also reports malformed input or unsupported
@@ -860,6 +903,8 @@ values as well as catching exceptions.
 | `StateDocumentError` | `ValueError` | discard the unreadable state document and start cold |
 | `HubRejectedError` | `RuntimeError` | inspect hub state before retrying a write; its outcome may be uncertain |
 | `IrLearnError` | `RuntimeError` | inspect `state`; retry capture with the hub idle if appropriate |
+| `WifiUpdateDeclined` | `RuntimeError` | inspect `reason`, `command_ids` and `detail`; reconcile the deployment before another update |
+| `WifiUpdateFailed` | `HubRejectedError` | inspect `failed_at` and `completed_steps`; retain the desired spec to resume the partial update |
 
 ## Issues & release notes
 

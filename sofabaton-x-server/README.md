@@ -1,8 +1,9 @@
 # sofabaton-x-server
 
-> **0.2.0 is the first release.** The API is versioned (`api 1`) and the
-> OpenAPI document is committed; before 1.0 a minor release may still
-> change the surface, and the release notes say when it does.
+> **This README describes 0.2.1 (release preparation), API 1.** Read the
+> [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md#021-unreleased)
+> for payload-response and backup-retention changes from 0.2.0. The OpenAPI
+> document is committed; regenerate clients when adopting this release.
 
 REST + WebSocket server over the [sofabaton-x](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/README.md)
 library for **Sofabaton X1 / X1S / X2** hubs, with a built-in management UI
@@ -11,7 +12,7 @@ events in a browser. Automation platforms (Homey, Hubitat, openHAB, …)
 connect to the same HTTP/WebSocket API; the server manages the hub
 connections and persistence.
 
-The current version is **0.2.0**, built against sofabaton-x 0.2.x. It
+Version **0.2.1** requires **sofabaton-x >=0.2.1,<0.3**. It
 covers hub discovery and management, reads and control, the event
 stream, button events, configuration editing, IR payloads, backup /
 restore / erase, a web remote and a control panel.
@@ -39,10 +40,11 @@ setup.** A hub connected directly to the app stops advertising, so the
 server cannot discover it. Keep the app closed until the hub is registered
 and you have tested control. Disable any existing proxy for that hub first.
 
-Install from PyPI (Python 3.11+; the library comes with it):
+Install from PyPI after 0.2.1 is published (Python 3.11+; the library comes
+with it). Before publication, use the checkout command below:
 
 ```
-python -m pip install "sofabaton-x-server>=0.2,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
 sofabaton-x-server
 ```
 
@@ -241,7 +243,7 @@ confirmation and forgets cached state and the saved remote layout.
 | View | What users can do |
 | --- | --- |
 | **Hub setup** (cog menu) | Inspect the selected hub's details and status; enable, disable, retry a failed start or remove its registration. Discovery and registration are in the hub picker. |
-| **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. It does not edit configuration. |
+| **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. Edit devices and activities in place: names, commands and payloads, buttons, favorites, macros, membership, power sequences and inputs. Review the draft, then Sync to Hub; deleting a command also removes its hub references. |
 | **Wifi Commands** | Wifi Devices, as the HA control panel card's Wifi Commands tab without its Actions: add a Wifi Device, give each of its ten command slots a name, a favorite, a physical button with its long press, the activities those apply to and the activity it is the input of, choose the commands the hub performs when it powers the device on or off, Sync to Hub, delete. A press on the physical remote lights the device's row and the command's tile. See [Wifi Commands](#wifi-commands). |
 | **Backup** | Make, Edit and Restore, as the HA control panel card's Backup tab. Make reads the entire hub or selected devices into a bundle and offers it as a download for five minutes. Edit opens a backup file in the browser (devices, activities, commands, payloads, buttons, order, hub name) and downloads the result; nothing is sent to the hub, and the loaded file is kept in the browser for an hour. Restore loads a file, picks the activities and devices to write (an activity brings the devices it uses) and optionally erases the hub first. The server keeps no backup archive: the downloaded file is the backup. |
 | **Remote** | Control the selected hub and edit its saved remote layout. |
@@ -462,7 +464,11 @@ Two shapes, both jobs:
   route) accepts an optional `devices` list next to the activity's own
   fields, holding the `devices[]` elements the edit touched. They are
   applied with the activity in the same job; only a device's input
-  record, idle behaviour and command names may differ.
+  record, idle behaviour and command names may differ. A device PUT and
+  its plan preview allow command removal: omitted commands are deleted,
+  their references are cascaded by the hub and display order is rewritten.
+  Input writes append entries; removal and reordering of existing input
+  entries are not applied, even if the job succeeds.
 
 `If-Match` compares the cached configuration revision. Sync-based row edits
 and intents also re-read the target before writing, but compare only
@@ -565,7 +571,11 @@ once with `POST /hubs/{id}/play`, saved as a new command with `POST
 the hub holds for a command of any device class, with `kind` `raw` or
 `descriptive` (IR), `network` (a decoded wifi request) or `record` (a
 Bluetooth key, a `wifi_mqtt` record). Only IR payloads play. `POST /hubs/{id}/learn` arms the hub's receiver and
-returns the captured code as the job result.
+returns the captured code as the job result. The play, command-create and
+command-payload PUT routes accept **IR formats only**; the GET payload
+response is not a valid write body. For non-IR edits, use command-row
+`restore_data` in a device or whole-document PUT, preserving the stored
+metadata and class-appropriate fields.
 
 `POST /hubs/{id}/backup` reads a full, restorable bundle as a job
 (minutes). The server keeps no backup archive: it holds the finished
@@ -593,11 +603,11 @@ existing configuration. A failed restore is not rolled back: inspect its
 result (`failed_at`, restored counts, `device_id_map`, `snapshot_id`, and
 `erased`: a replacing restore that fails after its erase leaves an empty or
 partial hub, reported as `502`) and the current snapshot before recovery.
-Restoring the same bundle again is the recovery. While a restore, a sync or
-any other job holds a hub, a read that would need hub traffic (nothing
-complete is cached, as right after an erase) waits for the job instead of
-interrupting it, and answers `504 hub_timeout` if the job outlasts it. Automatically retrying an additive restore
-can create duplicates. If a write request times out, check the hub's jobs
+Choose recovery after inspecting that state. Repeating a replacing restore
+erases again; an additive retry can duplicate entities. While a restore,
+sync or another exclusive configuration operation holds a hub, a read that
+needs hub traffic waits instead of interrupting it. The read answers
+`504 hub_timeout` if that wait times out. If a write request times out, check the hub's jobs
 before submitting it again.
 
 ## Button events
@@ -633,14 +643,16 @@ Every deploy writes all ten slots (unnamed ones are `Button n`), each as
 a short and a long press record: command ids `1..10` and `11..20`. Bind
 them like any command with the generic routes (`PUT
 /hubs/{id}/activities/{aid}/buttons/{button}`, favorites, activity membership); an
-in-place update never touches those bindings. On the X1S and X2,
+in-place update preserves independently created bindings except when a
+new slot assignment replaces the same button, or removing a spec-owned
+activity membership makes the hub drop that device's rows. On the X1S and X2,
 `power_on_slot` / `power_off_slot` fire when an activity powers on or
 off and `input_slots` are offered as activity-start inputs; the X1
 ignores both (its firmware fires one power and one input callback per
 transition regardless) and always calls port 8060.
 
 Presses arrive as `press` messages on `/events` and in `GET
-/hubs/{id}/presses`. Both carry the same `seq`, a counter of this server
+/hubs/{id}/presses`. Both carry `device_key` and the same `seq`, a counter of this server
 instance; de-duplicate across the two channels by it, and after a
 reconnect or a `dropped` message fetch `?after=<last seq you saw>`.
 `expired: true` means presses newer than that were already evicted from
@@ -720,14 +732,15 @@ the callback device's, per key; `/wifi-devices/default` and
   record (command `slot + 10`) to that button's long press;
   `input_activity_id` makes the command that activity's input, performed
   while it starts (X1S/X2). One slot per button and one slot per input
-  activity, a power slot is never an input, `activities` is kept only
-  while `favorite` or `button` is set; anything else is a `422`. The
-  update writes these in place with the rest of the spec: the device
+  activity; a power slot cannot also be an input. Invalid IDs and
+  conflicting claims are `422`. Normalization clears `activities` when
+  neither `favorite` nor `button` is set, and clears `long_press` without
+  a button. The update writes these in place with the rest of the spec: the device
   joins the activities it names, and its own page gets the buttons, which
   is what lets an activity pick it as its volume or navigation device.
   Ownership is by history: the server removes a favorite, a button or a
-  membership only when an earlier spec of this device put it there, so
-  what the activity editor or the app added survives. One consequence to
+  membership only when an earlier spec of this device put it there. A new
+  slot assignment can replace an existing button assignment. One consequence to
   know: a spec that stops naming an activity leaves it, and the hub then
   drops every row of the device in that activity. An activity id the hub
   does not have fails the job with `callback_update_declined`
@@ -736,12 +749,15 @@ the callback device's, per key; `/wifi-devices/default` and
 - Every record and the create body carry `transport`: `"http"` or
   `"mqtt"`. The list's `transports` says what a new device on this hub
   may use, the preferred one first; see [MQTT](#mqtt). It is fixed at
-  deploy: changing it is a delete and a new device.
+  deploy: changing it is a delete and a new device. The POST default is
+  `"http"`, even when `transports` lists MQTT first; send `"transport":
+  "mqtt"` explicitly. PUT ignores `transport` and retains the deployed one.
+  `POST /callback-device` always deploys HTTP.
 
 ### MQTT
 
 An X2 can deliver presses through an MQTT broker instead of calling the
-server: faster (about 130 ms at the median in our measurements), and with
+server. It needs
 no callback listener, no callback address and no port 8060 involved. The
 device's command records are inert; at press time the hub publishes
 `{"device_id": <hub device id>, "key_id": <command id>}` to `<MAC>/up`
@@ -827,8 +843,8 @@ JSON objects discriminated by `type`:
 | `hello` | once on connect: `server_version`, `api_version`, `instance_id`, `hubs` (`hub_id`, `enabled`) |
 | `hub_event` | `hub_id` and the library `event` (`seq`, `kind`, `payload`): `activity_changed`, `activity_list_updated`, `hub_state`, `app_state`, `status_changed`, `catalog_ready`, `snapshot_changed`, `ota` |
 | `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`) |
-| `job_event` | `hub_id` and the full `job` record on every transition: queued, running, each progress report, done / failed / cancelled |
-| `press` | a button press the hub delivered to the callback listener: `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
+| `job_event` | `hub_id` and the `job` record, excluding a backup's `result.bundle`, on every transition: queued, running, each progress report, done / failed / cancelled |
+| `press` | a button press delivered over HTTP or MQTT: `device_key`, `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
 | `dropped` | `count` of older messages discarded because this client fell behind; sent before the next message that gets through |
 
 `hub_event.event.seq` is the library's per-proxy counter, passed through
@@ -898,11 +914,14 @@ npx tsc --noEmit -p sofabaton-x-server/codegen-smoke/tsconfig.json
 
 Unit tests and schema checks do not establish live hub compatibility.
 The [live-hub testing notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/live-hub-testing.md) record
-hardware coverage; the document-write bench covers library operations on
-X1/X1S, with X2 and the corresponding server-route bench still pending.
+hardware coverage. The document-write bench covers X1/X1S library
+operations; its equivalent X2 run remains pending. Separate server checks
+cover the X1S web remote and activity input editing, and X2 MQTT deployment,
+presses, rename, restart and deletion. They do not cover every route or firmware.
 
 To release: set `__version__` in `src/sofabaton_server/__init__.py`, update
-the documentation, and push the tag `sofabaton-x-server-vX.Y.Z`.
+the documentation and changelog (replace the pending release heading with
+the release date), regenerate `openapi.json` with the pinned toolchain, and push the tag `sofabaton-x-server-vX.Y.Z`.
 The release workflow re-runs the tests, checks the tag against the
 version and publishes to PyPI; a compatible `sofabaton-x` version must be
 on PyPI first (see the repository's CONTRIBUTING).

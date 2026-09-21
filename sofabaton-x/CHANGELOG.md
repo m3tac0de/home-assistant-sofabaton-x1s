@@ -2,102 +2,103 @@
 
 Changes to the standalone `sofabaton-x` library, with migration guidance
 for applications using its public API. Server changes are documented
-separately in the [server documentation](../sofabaton-x-server/README.md).
+separately in the [server changelog](../sofabaton-x-server/CHANGELOG.md).
 
 <!-- Keep release notes here. Before pushing a release tag, add the version
 and date, update the README notice and install instructions, and start a new
 Unreleased section. Link breaking releases to their migration guidance.
 Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -->
 
-## Unreleased
+## 0.2.1 (Unreleased)
 
-- `deploy_wifi_device(spec, transport="mqtt")` creates an X2 `wifi_mqtt`
-  device (no host, no port; the hub publishes presses to `<MAC>/up` on its
-  own broker). `WifiDeployment` gained `transport` (`"http"` by default)
-  and its `target` is `None` for an mqtt deployment; stored http
-  deployments read back unchanged. The names live in
-  `sofabaton.wifi_device` (`WIFI_TRANSPORT_HTTP`, `WIFI_TRANSPORT_MQTT`,
-  `WIFI_TRANSPORTS`); the root package's surface is unchanged.
-- Fixed: the in-place head commit rewrote every managed Wifi Device's head
-  as a callback head (code type `0x1C`, or the Roku head on an X1), a
-  `wifi_mqtt` device's (`0x20`) included. Measured on a live X2
-  (`bench_250`): the hub keeps publishing the presses, it goes by the
-  command records, so nothing visibly broke; but the device then read back
-  as `wifi_ip` with the generic icon, which misleads everything that goes
-  by the class (backup and restore, a consumer's identity check). The
-  commit now keeps the hub's own head for a `wifi_mqtt` device and changes
-  the name and the brand only; without a cached head it fails the step
-  instead of guessing. Confirmed on the X2: after a rename the head still
-  reads `0x20`, icon 8, and presses arrive.
-- `WifiSlotSpec` can say where a slot's command goes: `favorite`, `button`
-  (a hub button code), `long_press`, `activities` and `input_activity_id`.
-  `snapshot_from_spec` derives the per-activity favorites, button bindings,
-  input selection, memberships and the device-page bindings from them, the
-  same expansion the Home Assistant integration's Wifi Commands uses, so
-  `update_wifi_device` writes them in place and removes only what an earlier
-  spec put there. `deploy_wifi_device` creates the device and applies the
-  references as its first update. New: `WifiDeviceSpec.has_references`,
-  `WifiDeviceSpec.without_references()`, `input_slots_from_spec()`,
-  `BINDABLE_BUTTON_CODES`, and the `WifiUpdateDeclined` reason
-  `"activity"` for an activity the hub does not have. Additive: a spec or
-  a stored deployment without the new fields reads and plans exactly as
-  before.
-- Fixed: a read could reach the hub in the middle of a write. Reads are
-  cache reads, except one whose cache is not complete, which fetches on
-  demand; after the erase of `restore(replace=True)` every cache is empty,
-  so a client that only listed the devices sent a catalog request between
-  the rebuild's page writes, and the hub (an X1) refused the next page: the
-  restore failed on its first device with the hub already erased. Every
-  exclusive operation (`restore`, `erase`, `backup`, `refresh`, the syncs,
-  `sync_hub`, the intent writes) now holds the hub for its whole span, a
-  replacing restore as one span over the erase and the rebuild, and an
-  on-demand fetch from anyone else waits for it: it is answered from what
-  the operation left in the cache, or raises `FetchTimeoutError` naming the
-  holder when its timeout runs out first. The holder's own reads are not
-  affected.
-- `RestoreResult.erased`: true when `restore(replace=True)` wiped the hub.
-  `wrote_nothing` is now false for a replacing restore that failed before
-  its first entity, because the hub was changed. The server reports that
-  case as `502 restore_failed` (it said 409, "nothing written") and says in
-  the detail that the hub had been erased.
-- Fixed: a sync whose edit added an input to a device (the editors' "Set
-  input" on a command the device did not list as an input yet) reported
-  success without writing the device's inputs page, so the activity's
-  power-on sequence pointed at an input the hub did not have. The
-  `inputs_write` step now sets `input_mode` on a device that was never
-  configured for inputs, appends the new entries to the hub's own page and
-  reads the page back. Removals and reorders of inputs are still not
-  written (activities address inputs by position).
-- Fixed: a device with no button bindings could be captured as "no inputs
-  configured" although the hub held its inputs page: the hub's empty reply
-  to the buttons read was also taken as a rejection of the inputs request
-  that followed it, and the next read timed out behind the unattended
-  reply.
-- `AsyncXProxy.sync_device` takes `allow_command_removal`: with it, command
-  rows present in the baseline but absent from the edit are deleted on the
-  hub (the hub cascades their references) and the device's display-sort
-  table is rewritten once. The default stays refusing removals as out of
-  scope. The server's `PUT /hubs/{id}/devices/{did}` and its plan preview
-  pass it, so the control panel's device editor can delete commands as the
-  Home Assistant card does.
-- **Breaking:** `AsyncXProxy.read_payload()` returns a payload typed by the
-  device's class instead of always an `IrPayload`: an `IrPayload` on IR and
-  RF devices, a `NetworkCommand` on `wifi_ip` / `wifi_roku` / `wifi_hue` /
-  `wifi_sonos` devices, and the new `CommandRecord` for everything else (a
-  Bluetooth key, a `wifi_mqtt` record, a network body that does not decode).
-  It used to return `None` for Bluetooth and `wifi_mqtt` commands, whose
-  bodies are shorter than an IR payload, and an `IrPayload` with a
-  meaningless `kind` and `carrier_hz` for network commands. Check the type
-  (`isinstance(p, IrPayload)`) before reading IR-only attributes or calling
-  `play()`. The `CommandPayload` alias names the union.
-- `NetworkCommand` carries `trailer_hex`, the opaque bytes a stored record
-  may have after its fields, so one read from the hub re-encodes to the
-  stored body. It is empty for a built command and is included in
-  `to_dict()` / accepted by `from_dict()`. `NetworkCommand.hex` is new.
-- `edits.add_command()` and `edits.set_command_payload()` accept a
-  `CommandRecord` on a device of the same class, so any payload
-  `read_payload()` returns can be saved back. An `IrPayload` is now also
-  refused on a Bluetooth device.
+Changes since `sofabaton-x-v0.2.0`. The release date will be set when
+publishing. This patch release includes a public return-type correction;
+review the migration below even if you already use 0.2.0.
+
+### Migration from 0.2.0
+
+**`AsyncXProxy.read_payload()` no longer treats every command as IR.** Its
+return type is `CommandPayload | None`, where `CommandPayload` is the union
+of `IrPayload`, `NetworkCommand` and the new `CommandRecord`.
+
+- IR/RF bodies of at least 10 bytes remain `IrPayload`.
+- Decodable `wifi_ip`, `wifi_roku`, `wifi_hue` and `wifi_sonos` bodies are
+  `NetworkCommand`, preserving their opaque `trailer_hex` bytes.
+- Bluetooth, `wifi_mqtt`, undecodable network bodies and other bodies
+  shorter than 10 bytes are `CommandRecord`. Previously Bluetooth/MQTT
+  records could appear as `None`, and network records as misleading IR.
+- An unknown class with a body at least 10 bytes long falls back to
+  `IrPayload`; no stored body still returns `None`.
+
+Check the type before accessing `kind`, `descriptor`, `carrier_hz` or
+calling `play()`. All three payload types expose `blob`, `hex`, `to_dict()`
+and `to_command_row()`:
+
+```python
+from sofabaton import IrPayload
+
+payload = await proxy.read_payload(device_id, command_id)
+if payload is None:
+    print("No stored payload")
+elif isinstance(payload, IrPayload):
+    print(payload.kind, payload.carrier_hz)
+else:
+    print(payload.device_class, payload.hex)
+```
+
+`edits.add_command()` and `edits.set_command_payload()` accept
+`CommandRecord` when its class matches the target device. Passing an
+`IrPayload` to a Bluetooth device is now refused. `NetworkCommand.to_dict()`
+includes `trailer_hex`; `from_dict()` accepts it, defaulting to empty for
+older documents. `NetworkCommand.hex` is also available.
+
+`WifiDeployment.target` is now optional: it is `None` for MQTT deployments.
+Check `deployment.transport` before using HTTP target fields. Stored HTTP
+deployments without a transport field continue to load as HTTP.
+
+### Added
+
+- **X2 MQTT Wifi Devices:** `deploy_wifi_device(spec, transport="mqtt")`
+  creates a `wifi_mqtt` device without a callback host or port. The hub
+  publishes presses to `<MAC>/up` on the broker configured in the Sofabaton
+  app; the consumer must subscribe. The library does not connect to MQTT.
+- **Slot assignments in managed Wifi Devices:** `WifiSlotSpec` accepts
+  `favorite`, `button`, `long_press`, `activities` and `input_activity_id`.
+  `snapshot_from_spec()` derives favorites, device/activity button bindings,
+  memberships and activity inputs. Deploy applies references after creating
+  the device; update writes them in place. Removal is based on references
+  owned by the previous spec. Removing a spec-owned activity membership
+  also makes the hub drop that device's other rows in that activity.
+- `WifiDeviceSpec.has_references`, `without_references()` and
+  `WifiUpdateDeclined.reason == "activity"` for missing activities.
+  `input_slots_from_spec`, `BINDABLE_BUTTON_CODES` and transport constants
+  live in `sofabaton.wifi_device`; they are not package-root exports.
+- **Command removal:** `sync_device(..., allow_command_removal=True)` and
+  `build_device_sync_plan(..., allow_command_removal=True)` delete omitted
+  commands, let the hub cascade references and rewrite display order once.
+  Both default to refusing removals.
+- `RestoreResult.erased` records whether a replacing restore wiped the hub.
+  `wrote_nothing` is false after an erase even if no entity was restored.
+
+### Fixed
+
+- On-demand reads wait while backup, restore, erase, refresh or a
+  configuration write holds the hub, avoiding requests between write pages.
+  A replacing restore holds it across both erase and rebuild. Complete
+  cached reads still work; a wait that times out raises `FetchTimeoutError`.
+- Input edits now enable inputs on an unconfigured device, append new
+  entries to its existing inputs page and verify by reading it back.
+  **Existing input removals/reorders remain unapplied**, even when sync
+  reports success, because activities address inputs by position.
+- An empty button-binding reply no longer incorrectly rejects the next
+  inputs request, which could hide configured inputs and stall later reads.
+- Managed MQTT updates preserve the hub's `wifi_mqtt` head/class and icon
+  when changing name or brand. A missing cached head fails the step rather
+  than constructing an HTTP callback head.
+
+Hardware coverage and remaining limits are recorded in the
+[live-hub notes](../docs/protocol/live-hub-testing.md). These changes do not
+make writes atomic or add rollback after a partial failure.
 
 ## 0.2.0 (2026-09-16)
 
