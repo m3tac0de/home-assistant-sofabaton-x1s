@@ -970,6 +970,64 @@ def test_update_wifi_device_renames_records_in_place(monkeypatch) -> None:
     asyncio.run(main())
 
 
+def test_update_wifi_device_applies_slot_references_and_checks_the_activities(monkeypatch) -> None:
+    async def main():
+        dep = _deployment()
+        engine, runs = _update_engine(monkeypatch, dep)
+        proxy = aio.AsyncXProxy.wrap(engine)
+        routed = _WifiDeviceSpec(name="Server", slots=(
+            _WifiSlotSpec("Play", favorite=True, button=0xB6, long_press=True, activities=(101,)), _WifiSlotSpec("Pause")))
+
+        updated = await proxy.update_wifi_device(dep, routed)
+
+        kinds = [(s.kind, s.payload.get("activity_id"), s.payload.get("command_id")) for s in runs[0].steps]
+        # The device is already a member of 101 (the fixture), so no join: a favorite, the activity's
+        # button with its long press, and the device-page binding.
+        assert kinds == [("binding_write", 12, 1), ("favorite_add", 101, 1), ("binding_write", 101, 1)]
+        assert runs[0].steps[-1].payload["long_press_command_id"] == 1 + _N
+        assert updated.spec.slots[0].button == 0xB6 and updated.spec.slots[0].activities == (101,)
+
+        # An activity the hub does not have is declined before anything is planned or written.
+        runs.clear()
+        gone = _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Play", favorite=True, activities=(150,)), _WifiSlotSpec("Pause")))
+        with pytest.raises(errors.WifiUpdateDeclined) as caught:
+            await proxy.update_wifi_device(dep, gone)
+        assert caught.value.reason == "activity" and "150" in str(caught.value) and runs == []
+
+    asyncio.run(main())
+
+
+def test_deploy_wifi_device_creates_bare_then_applies_the_references(monkeypatch) -> None:
+    async def main():
+        engine, creates = _wifi_engine(monkeypatch)
+        routed = _WifiDeviceSpec(name="Server", slots=(
+            _WifiSlotSpec("Play", button=0xB6, activities=(101,)), _WifiSlotSpec("Scene", input_activity_id=101)))
+        bare = routed.normalized().without_references()
+        created = wifi_device_mod.WifiDeployment(
+            device_id=12, spec=bare, target=wifi_device_mod.WifiTarget(_TARGET, 8060, "aabbccddeeff"),
+            labels=wifi_device_mod.labels_from_spec(bare), hub_version="X1S")
+        engine.state.activities = {101: {"name": "Watch"}}
+        engine._activities_catalog_ready = True
+        monkeypatch.setattr(engine, "backup_device", lambda dev_id, **kw: _live_device(created))
+        monkeypatch.setattr(engine, "backup_activity", lambda act_id, **kw: _live_activity(act_id, [5]))
+        captured: list = []
+        monkeypatch.setattr(engine, "run_wifi_inplace_plan", lambda plan, *, progress_callback=None: (
+            captured.append(plan) or {"status": "success", "completed_steps": len(plan.steps), "total_steps": len(plan.steps), "counters": {}}))
+        proxy = aio.AsyncXProxy.wrap(engine)
+
+        dep = await proxy.deploy_wifi_device(routed, host=_TARGET, port=8060)
+
+        # The create carries the records and the input list, no references; the first update applies them.
+        assert len(creates) == 1 and creates[0]["input_command_ids"] == [2]
+        assert dep.spec == routed.normalized() and dep.spec.slots[0].button == 0xB6
+        kinds = [(s.kind, s.payload.get("activity_id")) for s in captured[0].steps]
+        assert ("member_replay", 101) in kinds and ("binding_write", 101) in kinds and ("binding_write", 12) in kinds
+        join = next(s for s in captured[0].steps if s.kind == "member_replay")
+        assert join.payload["input_cmd_id"] == 2 and join.payload.get("join") is True
+
+    asyncio.run(main())
+
+
 def test_update_wifi_device_rename_on_x1_pins_the_head_address(monkeypatch) -> None:
     async def main():
         dep = _deployment(hub_version="X1")

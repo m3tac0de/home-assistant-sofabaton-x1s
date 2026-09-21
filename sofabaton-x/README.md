@@ -703,6 +703,29 @@ cleared. Preserving device/command IDs and generic bindings does not preserve
 omitted spec fields. Hook slots are **1..10**; callback path indexes are
 **0..9**. Short command IDs are `1..10`, long IDs `11..20`.
 
+A slot can also say where its command goes, so the bindings travel with
+the spec instead of being made one by one:
+
+```python
+WifiSlotSpec("Lights", favorite=True, button=ButtonName.VOL_UP, long_press=True, activities=(101, 102))
+WifiSlotSpec("Movie scene", input_activity_id=101)   # performed while activity 101 starts (X1S/X2)
+```
+
+`favorite` and `button` apply in every activity of `activities`;
+`long_press` also binds the slot's long record to that button's long press.
+One slot per button and one slot per input activity, a power slot is never
+an input, and `activities` is only kept while `favorite` or `button` is
+set (`normalized()` raises `ValueError` otherwise). `deploy_wifi_device`
+creates the device and applies the references as its first update;
+`update_wifi_device` writes them in place, joining the activities they
+name and giving the device's own page the buttons. The planner's ownership
+rule decides what is ever removed: only a favorite, a button or an activity
+membership that an earlier spec of this device put there, never one made
+with the generic helpers or in the Sofabaton app. A spec that stops naming
+an activity leaves it, and the hub then drops every row of the device in
+that activity. An activity the hub does not have is a `WifiUpdateDeclined`
+with `reason="activity"`.
+
 Every slot is written, defaults included. The
 callback target never changes in place: a new address is a remove and a new
 deploy. The X1 always calls port 8060 and ignores the power and input hooks.

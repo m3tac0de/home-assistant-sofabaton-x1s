@@ -96,6 +96,58 @@ export interface ServerInfo {
   [key: string]: unknown;
 }
 
+/** One command slot of a Wifi Device's spec (openapi `CallbackSlot`). */
+export interface WifiSlot {
+  label: string;
+  long_label?: string | null;
+  /** A favorite in each of `activities`. */
+  favorite?: boolean;
+  /** The hub button code bound to this command in each of `activities`. */
+  button?: number | null;
+  /** Also bind the slot's long record to that button's long press. */
+  long_press?: boolean;
+  activities?: number[];
+  /** The activity whose start performs this command (X1S, X2). */
+  input_activity_id?: number | null;
+}
+
+/** A Wifi Device's spec: what `POST` and `PUT /wifi-devices` take, whole (openapi `WifiDeviceRequest`). Hook slots are 1-based. */
+export interface WifiDeviceSpec {
+  name: string;
+  slots: WifiSlot[];
+  power_on_slot: number | null;
+  power_off_slot: number | null;
+  input_slots: number[];
+  brand?: string;
+}
+
+/** One managed Wifi Device as the server keeps it (openapi `CallbackDeviceView`). */
+export interface WifiDeviceView {
+  key: string;
+  transport: string;
+  device_id: number | null;
+  spec: WifiDeviceSpec;
+  target: { host: string; port: number; action_id: string };
+  labels: Record<string, string>;
+  hub_version: string;
+  deployed_at: string | null;
+  adopted: boolean;
+  stale: boolean;
+  deployed: boolean;
+  pending?: { op: string; started_at: string } | null;
+  last_press?: { seq: number; received_at: string } | null;
+  effective_destination?: { host: string; port: number } | null;
+}
+
+/** `GET /hubs/{id}/wifi-devices` (openapi `WifiDeviceList`). */
+export interface WifiDeviceList {
+  devices: WifiDeviceView[];
+  max_devices: number;
+  /** How a press can reach the server; a chooser appears once there is more than one. */
+  transports: string[];
+  effective_destination?: { host: string; port: number } | null;
+}
+
 /** One port in `GET /server/settings` (openapi `PortSetting`). */
 export interface PortSetting {
   running: number;
@@ -528,6 +580,32 @@ export class PanelApi {
 
   cancelJob(hubId: string, jobId: string): Promise<ApiResponse<JobView>> {
     return this.request<JobView>("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  // -- wifi devices (the Wifi Commands tab) -------------------------------------------------
+
+  wifiDevices(hubId: string): Promise<ApiResponse<WifiDeviceList>> {
+    return this.request<WifiDeviceList>("GET", `${this._hub(hubId)}/wifi-devices`);
+  }
+
+  /** Deploy a new Wifi Device (a job); the result is its record, with the key. */
+  createWifiDevice(hubId: string, spec: Omit<WifiDeviceSpec, "brand">, transport: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/wifi-devices`, { body: { ...spec, transport } });
+  }
+
+  /** Write a Wifi Device's whole spec in place (a job); the bindings made in the activity editor survive. */
+  updateWifiDevice(hubId: string, key: string, spec: Omit<WifiDeviceSpec, "brand">): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}`, { body: spec });
+  }
+
+  /** Remove a Wifi Device from the hub (a job); 409 `callback_device_referenced` unless `force`. */
+  removeWifiDevice(hubId: string, key: string, force = false): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}`, force ? { query: "force=true" } : {});
+  }
+
+  /** Deploy a stale Wifi Device again from its stored spec (a job). */
+  redeployWifiDevice(hubId: string, key: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}/redeploy`);
   }
 
   // -- backup and restore ------------------------------------------------------------

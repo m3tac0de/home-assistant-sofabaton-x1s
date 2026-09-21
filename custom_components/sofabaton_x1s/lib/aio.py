@@ -1771,7 +1771,11 @@ class AsyncXProxy:
                 "deploy_wifi_device: power/input hooks are ignored on an X1 "
                 "(one power and one input callback per transition regardless)"
             )
-        shape = snapshot_from_spec(normalized, device_id=0, hub_version=hub_version, target_host=target.host)
+        # The create writes the device and its records; where the commands go
+        # (favorites, buttons, input activities) is the in-place planner's
+        # work, so a spec that names any is applied as the first update.
+        bare = normalized.without_references() if normalized.has_references else normalized
+        shape = snapshot_from_spec(bare, device_id=0, hub_version=hub_version, target_host=target.host)
         result = await self._write(
             f"deploy_wifi_device({normalized.name!r})",
             self._proxy.create_wifi_device,
@@ -1788,13 +1792,16 @@ class AsyncXProxy:
         device_id = int(result.get("device_id") or 0) & 0xFF
         action_id = str(await self.run(self._proxy._stable_hub_action_id) or "")
         await self._rebase_after_write(result, device_ids=(device_id,), force=True)
-        return WifiDeployment(
+        deployment = WifiDeployment(
             device_id=device_id,
-            spec=normalized,
+            spec=bare,
             target=WifiTarget(host=target.host, port=target.port, action_id=action_id),
-            labels=labels_from_spec(normalized),
+            labels=labels_from_spec(bare),
             hub_version=hub_version,
         )
+        if bare is normalized:
+            return deployment
+        return await self.update_wifi_device(deployment, normalized)
 
     async def update_wifi_device(
         self,
@@ -1818,7 +1825,8 @@ class AsyncXProxy:
         already equals the desired one is a resumed interrupted update,
         one that equals neither raises :class:`WifiUpdateDeclined`
         (``reason="drift"``), as does a missing record (``"missing"``),
-        an unreadable or different device (``"device"``) or a diff the
+        an unreadable or different device (``"device"``), a slot naming an
+        activity the hub does not have (``"activity"``) or a diff the
         planner refuses (``"planner"``). A write the hub rejects raises
         :class:`WifiUpdateFailed`; the records already rewritten keep
         their new labels and the next update resumes. Returns the new
@@ -1869,6 +1877,9 @@ class AsyncXProxy:
         deployed = snapshot_from_spec(
             deployment.spec, device_id=dev_lo, hub_version=hub_version, target_host=deployment.target.host
         )
+        unknown = sorted(set(desired.activities) - set(activity_ids))
+        if unknown:
+            raise WifiUpdateDeclined("activity", detail=f"activities {unknown} are not on the hub")
         expected: dict[int, str] = {int(cid): str(label) for cid, label in deployment.labels.items()} or {
             cid: slot.label for cid, slot in deployed.slots.items()
         }

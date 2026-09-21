@@ -48,6 +48,10 @@ class HubRecord:
     # The callback device record (callbacks plan, section 8), owned by
     # the callback service; stored verbatim as ``callback_device``.
     callback_device: Optional[dict[str, Any]] = None
+    # The keyed Wifi Devices (server panel wifi commands plan, section 2):
+    # ``{key: record}``, the same record shape; ``callback_device`` is the
+    # one that answers to the reserved key ``default``.
+    wifi_devices: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = {
@@ -61,11 +65,14 @@ class HubRecord:
             data["hub_name"] = self.hub_name
         if self.callback_device is not None:
             data["callback_device"] = dict(self.callback_device)
+        if self.wifi_devices:
+            data["wifi_devices"] = {str(key): dict(row) for key, row in self.wifi_devices.items()}
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "HubRecord":
         callback = data.get("callback_device")
+        wifi = data.get("wifi_devices")
         return cls(
             hub_id=str(data["hub_id"]),
             config=HubConfig.from_dict(data["config"]),
@@ -74,6 +81,8 @@ class HubRecord:
             last_seen=data.get("last_seen"),
             hub_name=str(data["hub_name"]) if data.get("hub_name") else None,
             callback_device=dict(callback) if isinstance(callback, dict) else None,
+            wifi_devices={str(key): dict(row) for key, row in wifi.items() if isinstance(row, dict)}
+            if isinstance(wifi, dict) else {},
         )
 
 

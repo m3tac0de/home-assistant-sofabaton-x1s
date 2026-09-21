@@ -20,6 +20,7 @@ import { defineHubsView } from "./views/hubs-view";
 import { defineRemoteEditor } from "./views/remote-editor";
 import { defineRemoteView } from "./views/remote-view";
 import { defineServerView } from "./views/server-view";
+import { defineWifiDevicesView } from "./views/wifi-devices-view";
 
 export function bootstrapServerPanel(): void {
   installRemoteWebShims();
@@ -36,6 +37,7 @@ export function bootstrapServerPanel(): void {
   defineEventsView();
   defineServerView();
   defineBackupView();
+  defineWifiDevicesView();
   definePanel();
 }
 

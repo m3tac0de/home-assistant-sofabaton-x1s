@@ -226,14 +226,17 @@ confirmation and forgets cached state and the saved remote layout.
 | --- | --- |
 | **Hub setup** (cog menu) | Inspect the selected hub's details and status; enable, disable, retry a failed start or remove its registration. Discovery and registration are in the hub picker. |
 | **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. It does not edit configuration. |
+| **Wifi Commands** | Wifi Devices, as the HA control panel card's Wifi Commands tab without its Actions: add a Wifi Device, give each of its ten command slots a name, a favorite, a physical button with its long press, the activities those apply to and the activity it is the input of, choose the commands the hub performs when it powers the device on or off, Sync to Hub, delete. A press on the physical remote lights the device's row and the command's tile. See [Wifi Commands](#wifi-commands). |
 | **Backup** | Make, Edit and Restore, as the HA control panel card's Backup tab. Make reads the entire hub or selected devices into a bundle and offers it as a download for five minutes. Edit opens a backup file in the browser (devices, activities, commands, payloads, buttons, order, hub name) and downloads the result; nothing is sent to the hub, and the loaded file is kept in the browser for an hour. Restore loads a file, picks the activities and devices to write (an activity brings the devices it uses) and optionally erases the hub first. The server keeps no backup archive: the downloaded file is the backup. |
 | **Remote** | Control the selected hub and edit its saved remote layout. |
 | **API** | Select an OpenAPI operation or enter a method/path, send a request, inspect the response and follow a returned job. `{hub_id}` uses the selected hub. |
 | **Events** | Inspect the live WebSocket stream, filter by hub/text and identify callback presses. It reconnects after a server restart. |
 
-There is no dedicated callback-device, binding or full-configuration editor
-in 0.2.0. Use the starter's setup command or the API view for those writes;
-deployed callback commands can also be assigned in the official app.
+The Wifi Commands tab manages the server's Wifi Devices, the 0.2.0 callback
+device included, down to the favorites, buttons and inputs of each command.
+The Hub tab's activity editor, or the official app, binds their commands
+like any device's for everything else (macro steps, another device's
+activity).
 
 The panel supports light and dark themes. Like the API, it has no built-in
 authentication: anyone who can open it can control and change the hub.
@@ -664,6 +667,73 @@ before every deploy the server reconciles it, and a device it created
 but forgot (a crash before the save, a lost data directory) is adopted
 by that same identity check instead of being created twice
 (`adopted: true` on the record).
+
+## Wifi Commands
+
+A hub can hold several of these managed devices. The callback device
+above is one of them, under the reserved key `default`; the others are
+**Wifi Devices**, each under a key the server mints, and the control
+panel's Wifi Commands tab is built on them:
+
+```
+GET  /hubs/{id}/wifi-devices                  {devices, max_devices, transports, effective_destination}
+POST /hubs/{id}/wifi-devices                  deploy a new one (a job); the result is its record, with its `key`
+GET  /hubs/{id}/wifi-devices/{key}            one record
+PUT  /hubs/{id}/wifi-devices/{key}            the complete desired spec, in place (a job)
+DELETE /hubs/{id}/wifi-devices/{key}          remove it (409 while activities reference it; ?force=true)
+POST /hubs/{id}/wifi-devices/{key}/redeploy   a stale one again from its stored spec
+```
+
+Bodies, records, jobs, problem types, stale detection and recovery are
+the callback device's, per key; `/wifi-devices/default` and
+`/callback-device` are the same record. What the keys add:
+
+- A hub holds at most `max_devices` records (5, the callback device
+  included); one more is a `409 wifi_device_limit`.
+- A keyed device carries the brand `c0-<key>` on the hub. The Home
+  Assistant integration marks its own Wifi Devices `m3-<key>-<hash>`, so
+  a hub that has met both never has one side adopt, edit or delete the
+  other's devices. The two are not interchangeable: a device made here
+  does nothing in Home Assistant and the reverse.
+- A `press` carries `device_key`, the key of the device it resolved to
+  (`null` for an `unknown_device`), next to `device_id` and `slot`.
+- A slot can say where its command goes, as a slot of the Home Assistant
+  card does. Next to `label` and `long_label`: `favorite` and `button` (a
+  hub button code, the `button_code` of `GET .../buttons`) apply in every
+  activity of `activities`; `long_press` also binds the slot's long
+  record (command `slot + 10`) to that button's long press;
+  `input_activity_id` makes the command that activity's input, performed
+  while it starts (X1S/X2). One slot per button and one slot per input
+  activity, a power slot is never an input, `activities` is kept only
+  while `favorite` or `button` is set; anything else is a `422`. The
+  update writes these in place with the rest of the spec: the device
+  joins the activities it names, and its own page gets the buttons, which
+  is what lets an activity pick it as its volume or navigation device.
+  Ownership is by history: the server removes a favorite, a button or a
+  membership only when an earlier spec of this device put it there, so
+  what the activity editor or the app added survives. One consequence to
+  know: a spec that stops naming an activity leaves it, and the hub then
+  drops every row of the device in that activity. An activity id the hub
+  does not have fails the job with `callback_update_declined`
+  (`activity: ...`). `DELETE` asks for `?force=true` only for references
+  the device's own slots did not make.
+- Every record and the create body carry `transport`. `"http"` is the
+  only value today and the list's `transports` says so; the field is
+  there so a second delivery method can arrive without changing shapes.
+
+In the panel, **Add** deploys an empty device at once and opens it. The
+detail view edits a draft (the device's name, the power ON / OFF commands
+and, per slot, the card's dialog: name, favorite, physical button, long
+press, activities, activity input) and **Sync to Hub** writes it in place
+with one `PUT`. Taking a button another slot holds moves it; taking one
+another Wifi Device holds also clears it from that device, with a second
+`PUT` after the first. A slot nobody touched (`Button n`) shows as **Make
+Command**; clearing a slot returns it to that. The tiles carry the card's
+meta line: a heart, the button's icon, the long-press icon and "in N
+activities", or the power or input role. A device the hub lost shows **Missing from hub** and
+offers **Redeploy**. The line under the slots says which address the
+device calls; when the server's address has changed since the deploy, or
+the listener is not running, the view says so there.
 
 ## Discovery
 

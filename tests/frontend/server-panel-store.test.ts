@@ -599,8 +599,9 @@ test("a press frame lands on its hub's record with the panel's clock", async () 
   await flush();
   socket().open();
   await flush();
-  socket().push({ type: "press", seq: 7, hub_id: "a", device_id: 61, command_id: 3, slot: 2, label: "Lights", press_type: "long", resolution: "deployed", transport: "http" });
-  assert.deepEqual(rt(store).lastPress, { seq: 7, deviceId: 61, label: "Lights", pressType: "long", at: clock.now });
+  socket().push({ type: "press", seq: 7, hub_id: "a", device_id: 61, device_key: "a1b2c3d4", command_id: 12, slot: 2, label: "Lights", press_type: "long", resolution: "deployed", transport: "http" });
+  // The slot, the key and the command ride along: the Wifi Devices view lights the matching tile with them.
+  assert.deepEqual(rt(store).lastPress, { seq: 7, deviceId: 61, deviceKey: "a1b2c3d4", slot: 2, commandId: 12, label: "Lights", pressType: "long", resolution: "deployed", at: clock.now });
   socket().push({ type: "press", seq: 8, hub_id: "nope", device_id: 61, label: "x", press_type: "short" });
   assert.equal(rt(store).lastPress?.seq, 7);
   store.disconnect();

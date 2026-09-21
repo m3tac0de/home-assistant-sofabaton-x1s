@@ -790,6 +790,12 @@
             "title": "Hub Version",
             "type": "string"
           },
+          "key": {
+            "default": "default",
+            "description": "the record's key under /wifi-devices; the callback device is 'default'",
+            "title": "Key",
+            "type": "string"
+          },
           "labels": {
             "additionalProperties": {
               "type": "string"
@@ -828,6 +834,12 @@
           },
           "target": {
             "$ref": "#/components/schemas/CallbackTargetView"
+          },
+          "transport": {
+            "default": "http",
+            "description": "how its presses reach the server",
+            "title": "Transport",
+            "type": "string"
           }
         },
         "required": [
@@ -952,7 +964,46 @@
         "type": "object"
       },
       "CallbackSlot": {
+        "description": "One command slot: its labels and, optionally, where its command goes.\n\n``favorite`` and ``button`` apply in every activity of ``activities``;\nan update writes them in place and later removes only what an earlier\nspec put there. One slot per button and one slot per input activity.",
         "properties": {
+          "activities": {
+            "description": "activity ids; kept only while `favorite` or `button` is set",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "button": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "hub button code bound to this command in each of `activities`",
+            "title": "Button"
+          },
+          "favorite": {
+            "default": false,
+            "description": "a favorite in each of `activities`",
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "input_activity_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the activity whose start performs this command (X1S/X2)",
+            "title": "Input Activity Id"
+          },
           "label": {
             "maxLength": 30,
             "minLength": 1,
@@ -971,6 +1022,12 @@
             ],
             "description": "default: '<label> Long'",
             "title": "Long Label"
+          },
+          "long_press": {
+            "default": false,
+            "description": "also bind the slot's long record to that button's long press",
+            "title": "Long Press",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2488,6 +2545,18 @@
             "title": "Device Id",
             "type": "integer"
           },
+          "device_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the Wifi Device's key; null for an unknown device",
+            "title": "Device Key"
+          },
           "hub_id": {
             "title": "Hub Id",
             "type": "string"
@@ -3267,6 +3336,110 @@
         "title": "SyncPlanStepView",
         "type": "object"
       },
+      "WifiDeviceList": {
+        "description": "``GET /hubs/{id}/wifi-devices``: every managed Wifi Device of the hub,\nthe callback device (key ``default``) first.",
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/CallbackDeviceView"
+            },
+            "title": "Devices",
+            "type": "array"
+          },
+          "effective_destination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EffectiveDestination"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_devices": {
+            "title": "Max Devices",
+            "type": "integer"
+          },
+          "transports": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Transports",
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices",
+          "max_devices",
+          "transports"
+        ],
+        "title": "WifiDeviceList",
+        "type": "object"
+      },
+      "WifiDeviceRequest": {
+        "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there.",
+        "properties": {
+          "input_slots": {
+            "description": "slots offered as activity-start inputs (X1S/X2)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Input Slots",
+            "type": "array"
+          },
+          "name": {
+            "default": "Server",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "power_off_slot": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power Off Slot"
+          },
+          "power_on_slot": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "slot the hub fires when an activity powers on (X1S/X2)",
+            "title": "Power On Slot"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/CallbackSlot"
+            },
+            "maxItems": 10,
+            "title": "Slots",
+            "type": "array"
+          },
+          "transport": {
+            "const": "http",
+            "default": "http",
+            "description": "one of the list's `transports`",
+            "title": "Transport",
+            "type": "string"
+          }
+        },
+        "title": "WifiDeviceRequest",
+        "type": "object"
+      },
       "WriteProgress": {
         "description": "One progress report from a long-running operation (refresh, sync).\n\n``phase`` is the operation's own phase word (``preparing``, ``device``,\n``activity``, ``stale_check``, ``writing``, ``finalizing`` ...);\n``entity_kind`` / ``entity_id`` name the entity being worked on when\nthere is one; ``step_kind`` is the sync step kind while writing.",
         "properties": {
@@ -3488,6 +3661,18 @@
           "device_id": {
             "title": "Device Id",
             "type": "integer"
+          },
+          "device_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Device Key"
           },
           "hub_id": {
             "title": "Hub Id",
@@ -10167,6 +10352,460 @@
         "summary": "Store the web remote's card configuration for this hub (replaces the whole document)",
         "tags": [
           "ui"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/wifi-devices": {
+      "get": {
+        "operationId": "listWifiDevices",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WifiDeviceList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "The hub's managed Wifi Devices",
+        "tags": [
+          "callbacks"
+        ]
+      },
+      "post": {
+        "operationId": "deployWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Deploy a new Wifi Device (a job); the result is its record, with the key",
+        "tags": [
+          "callbacks"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/wifi-devices/{key}": {
+      "delete": {
+        "operationId": "removeWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "remove even when activities still reference the device",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "remove even when activities still reference the device",
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Remove a Wifi Device from the hub and forget it (a job)",
+        "tags": [
+          "callbacks"
+        ]
+      },
+      "get": {
+        "operationId": "getWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallbackDeviceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "One Wifi Device record",
+        "tags": [
+          "callbacks"
+        ]
+      },
+      "put": {
+        "operationId": "updateWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Edit a Wifi Device in place (a job); declined drift fails the job",
+        "tags": [
+          "callbacks"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/wifi-devices/{key}/redeploy": {
+      "post": {
+        "operationId": "redeployWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Deploy a stale Wifi Device again from its stored spec (a job)",
+        "tags": [
+          "callbacks"
         ]
       }
     },

@@ -86,7 +86,8 @@ class WifiUpdateDeclined(RuntimeError):
     nor the desired labels; ``command_ids`` names them), ``"missing"``
     (records the deployment wrote are gone; ``command_ids``),
     ``"device"`` (the device is not on the hub or is not the deployed
-    one) or ``"planner"`` (the in-place planner declined the diff;
+    one), ``"activity"`` (a slot names an activity the hub does not have;
+    ``detail`` lists them) or ``"planner"`` (the in-place planner declined the diff;
     ``detail`` carries its words). Nothing was written; the consumer
     resolves it explicitly, typically by removing and deploying again.
     """

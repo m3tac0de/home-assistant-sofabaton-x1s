@@ -469,7 +469,7 @@ class FakeProxy:
         normalized = spec.normalized()
         new_id = max([d.device_id for d in self.devices_data] + [0]) + 1
         self.wifi_deploys.append({"device_id": new_id, "spec": normalized, "host": host, "port": port})
-        self.place_wifi_device(new_id, normalized, host=host, port=port)
+        self.place_wifi_device(new_id, normalized, host=host, port=port, brand=normalized.brand)
         self._emit_snapshot_changed(device_ids=(new_id,))
         return WifiDeployment(device_id=new_id, spec=normalized, target=WifiTarget(host, port, self._action_id()),
                               labels=labels_from_spec(normalized), hub_version=self.model)

@@ -7,9 +7,9 @@
 // HA control panel card's tab bar.
 
 import { html, nothing, type TemplateResult } from "lit";
-import { mdiAudioVideo, mdiCogOutline, mdiChevronDown, mdiChevronUp, mdiContentSaveMoveOutline, mdiDatabaseImportOutline, mdiPencilBoxOutline, mdiPlayCircleOutline } from "@mdi/js";
+import { mdiAudioVideo, mdiCogOutline, mdiChevronDown, mdiChevronUp, mdiContentSaveMoveOutline, mdiDatabaseImportOutline, mdiPencilBoxOutline, mdiPlayCircleOutline, mdiWifi } from "@mdi/js";
 
-import { HUB_TABS, SUBTAB_LABELS, SUBTABS, TAB_LABELS, TOOL_LABELS, TOOL_PAGES, TOOL_SUBTABS, type HubTab, type Route, type ToolPage } from "../panel-route";
+import { HUB_TABS, SUBTABS, TAB_LABELS, TOOL_LABELS, TOOL_PAGES, TOOL_SUBTABS, subtabLabel, type HubTab, type Route, type ToolPage } from "../panel-route";
 import type { ThemeChoice } from "../panel-state";
 
 /** The subtabs that carry an icon, as the HA card's Activities / Devices and Make / Edit / Restore rows do. */
@@ -19,6 +19,7 @@ const SUBTAB_ICONS: Record<string, string> = {
   make: mdiContentSaveMoveOutline,
   edit: mdiPencilBoxOutline,
   restore: mdiDatabaseImportOutline,
+  "wifi/devices": mdiWifi,
 };
 
 export function renderTabBar(params: {
@@ -68,10 +69,11 @@ export function renderTabBar(params: {
       ${(onTool ? TOOL_SUBTABS[route.page] : SUBTABS[route.tab]).map(
         (sub) => {
           const count = params.subCounts?.[sub];
-          const iconPath = SUBTAB_ICONS[sub];
+          const scope = onTool ? route.page : route.tab;
+          const iconPath = SUBTAB_ICONS[`${scope}/${sub}`] ?? SUBTAB_ICONS[sub];
           return html`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>
             ${iconPath ? html`<svg class="subtab-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${iconPath}></path></svg>` : nothing}
-            <span class="subtab-label">${SUBTAB_LABELS[sub] ?? sub}</span>
+            <span class="subtab-label">${subtabLabel(scope, sub)}</span>
             ${typeof count === "number" ? html`<span class="subtab-count">${count}</span>` : nothing}
           </button>`;
         },

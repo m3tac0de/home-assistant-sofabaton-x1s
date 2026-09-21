@@ -561,6 +561,20 @@ when a deploy produces no presses, and the listener state from `GET /api/v1/serv
 `callback_listener.bound` is false (the port is usually taken by a Home
 Assistant install or Emulated Roku on the same host).
 
+One callback device is enough for most integrations. When users want
+their buttons grouped (one device for lights, one for blinds, each with
+its own power commands), use the keyed collection instead:
+`GET/POST /hubs/{id}/wifi-devices` and `GET/PUT/DELETE
+/hubs/{id}/wifi-devices/{key}` take the same bodies and answer with the
+same records, at most five per hub, and every `press` names its device in
+`device_key`. The callback device is the record under the key `default`. A slot may
+also carry `favorite`, `button`, `long_press`, `activities` and
+`input_activity_id`, and the server then writes those bindings with the
+spec instead of you calling the generic routes.
+The control panel's Wifi Commands tab manages all of them, so you can also
+leave that screen to the panel and only consume `press`.
+See the README's [Wifi Commands](../README.md#wifi-commands).
+
 ## 11. Give users a remote
 
 You do not have to build a remote control UI. The server serves the

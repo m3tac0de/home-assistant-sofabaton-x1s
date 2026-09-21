@@ -111,6 +111,9 @@ class WsPress:
     transport: str
     source: str
     received_at: str
+    # The key of the Wifi Device the press resolved to (``default`` for the
+    # callback device); null for an ``unknown_device``.
+    device_key: Optional[str] = None
     type: Literal["press"] = "press"
 
 

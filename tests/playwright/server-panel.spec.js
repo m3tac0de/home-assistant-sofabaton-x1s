@@ -2365,3 +2365,338 @@ test.describe("control panel, backup", () => {
     expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBeNull();
   });
 });
+
+// The Wifi Commands tab (docs/internal/server-panel-wifi-commands-plan.md):
+// the roster, create, the detail view's draft and Sync to Hub, the card's
+// slot dialog (favorite, physical button, long press, activities, activity
+// input), a button taken from another Wifi Device, the power lines, delete
+// with its referenced answer, a stale device's Redeploy, and the press glow
+// on the roster row and on the slot tile.
+test.describe("control panel, wifi commands", () => {
+  const H = `**${API}/hubs/${LIVING.hub_id}`;
+  const plain = { favorite: false, button: null, long_press: false, activities: [], input_activity_id: null };
+  const slots = (names = {}, roles = {}) => Array.from({ length: 10 }, (_row, i) => ({ label: names[i + 1] || `Button ${i + 1}`, long_label: `${names[i + 1] || `Button ${i + 1}`} Long`, ...plain, ...(roles[i + 1] || {}) }));
+  const wifiDevice = (overrides = {}) => ({
+    key: "a1b2c3d4", transport: "http", device_id: 7, hub_version: "X1S", deployed_at: "t", adopted: false, stale: false, deployed: true, pending: null, last_press: null, labels: {},
+    spec: { name: "Lights", slots: slots({ 1: "Lights on", 2: "Lights off" }, { 1: { favorite: true, activities: [101] }, 2: { button: 182, long_press: true, activities: [101] } }), power_on_slot: 1, power_off_slot: null, input_slots: [], brand: "c0-a1b2c3d4" },
+    target: { host: "192.168.1.10", port: 8060, action_id: "e26a44861b45" }, effective_destination: { host: "192.168.1.10", port: 8060 }, ...overrides,
+  });
+  const pressFrame = (overrides = {}) => JSON.stringify({ type: "press", seq: 1, hub_id: LIVING.hub_id, device_id: 7, device_key: "a1b2c3d4", command_id: 2, slot: 2, label: "Lights off", press_type: "short", resolution: "deployed", transport: "http", source: "192.168.1.50", received_at: "t", ...overrides });
+
+  // An in-memory /wifi-devices: jobs finish at once, the list follows the writes.
+  async function wifiServer(page, devices, { listener = { wanted: true, bound: true, port: 8060, bound_port: 8060, last_error: null, next_retry_at: null }, transports = ["http"], max = 5 } = {}) {
+    const state = { hubs: [LIVING, OFFICE], seen: [] };
+    const server = await mockServer(page, state);
+    const calls = [];
+    const world = { devices, results: {}, referenced: false, failUpdate: null };
+    const accept = (route, id, result) => { world.results[id] = result; route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: id, kind: id, status: "queued" })) }); };
+    await page.route(`${H}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, complete: true, payload_profile: "structural", devices: [],
+      activities: [{ kind: "activity_backup", complete: true, editable: true, fetched_at: "t", device: { device_id: 101, name: "Watch TV" },
+        favorite_slots: [{ device_id: 7, command_id: 1 }], button_bindings: [{ button_id: 182, device_id: 7, command_id: 2, long_press_device_id: 7, long_press_command_id: 12 }], macros: [] }],
+    }) }));
+    await page.route(`**${API}/server/callback-listener`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(listener) }));
+    await page.route(`${H}/wifi-devices`, (route) => {
+      if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ devices: world.devices, max_devices: max, transports, effective_destination: { host: "192.168.1.10", port: 8060 } }) });
+      const body = route.request().postDataJSON();
+      calls.push({ key: "create", body });
+      const created = wifiDevice({ key: "0badf00d", device_id: 8, spec: { ...body, brand: "c0-0badf00d", slots: body.slots.map((s) => ({ ...s, long_label: s.long_label || `${s.label} Long` })) } });
+      world.devices = [...world.devices, created];
+      accept(route, "deploy_wifi_device", created);
+    });
+    await page.route(`${H}/wifi-devices/*`, (route) => {
+      const key = route.request().url().split("?")[0].split("/").pop();
+      const method = route.request().method();
+      if (method === "PUT") {
+        const body = route.request().postDataJSON();
+        calls.push({ key: "update", device: key, body });
+        if (!world.failUpdate) world.devices = world.devices.map((d) => (d.key === key ? { ...d, spec: { ...d.spec, ...body, slots: body.slots.map((s) => ({ ...s, long_label: s.long_label || `${s.label} Long` })) } } : d));
+        return accept(route, "update_wifi_device", world.devices.find((d) => d.key === key));
+      }
+      if (method === "DELETE") {
+        const force = route.request().url().includes("force=true");
+        calls.push({ key: "delete", device: key, force });
+        if (world.referenced && !force) return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ type: "callback_device_referenced", title: "Activities still reference the callback device", status: 409, detail: "referenced by activity 101 (favorite, binding); clear them or pass ?force=true" }) });
+        world.devices = world.devices.filter((d) => d.key !== key);
+        return accept(route, "remove_wifi_device", { key });
+      }
+      return route.fallback();
+    });
+    await page.route(`${H}/wifi-devices/*/redeploy`, (route) => {
+      const key = route.request().url().split("/").slice(-2)[0];
+      calls.push({ key: "redeploy", device: key });
+      world.devices = world.devices.map((d) => (d.key === key ? { ...d, stale: false, deployed: true, device_id: 9 } : d));
+      accept(route, "redeploy_wifi_device", world.devices.find((d) => d.key === key));
+    });
+    await page.route(`${H}/jobs/*`, (route) => {
+      const id = route.request().url().split("/").pop();
+      const failed = id === "update_wifi_device" && world.failUpdate;
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: id, kind: id, status: failed ? "failed" : "done", result: failed ? null : world.results[id], error: failed ? world.failUpdate : null })) });
+    });
+    return { ...server, calls, world };
+  }
+
+  const view = (page) => page.locator("sb-panel-wifi-devices");
+
+  test("the tab, the roster, and creating a Wifi Device that opens in its detail view", async ({ page }, testInfo) => {
+    const { calls } = await wifiServer(page, []);
+    await page.goto(PAGE);
+    await page.click('#tabs button[data-tab="wifi"]');
+    await expect(page).toHaveURL(/#\/e26a44861b45\/wifi\/devices$/);
+    await expect(page.locator("#subtabs .subtab-btn")).toHaveText(["Wifi Devices"]);
+    await expect(page.locator("#dock-link")).toHaveText("Wifi Commands docs");
+    await expect(view(page).locator("#wifi-empty")).toContainText("No Wifi Devices configured yet");
+    await page.screenshot({ path: shot(testInfo, "wifi-empty") });
+
+    await view(page).locator("#wifi-add").click();
+    const dialog = view(page).locator("#wifi-create-dialog");
+    await expect(dialog.locator(".transport-choice")).toHaveCount(0);            // one transport: no chooser
+    await dialog.locator("#wifi-create-submit").click();
+    await expect(dialog.locator("#wifi-create-error")).toHaveText("Device name is required.");
+    await dialog.locator("#wifi-new-name").fill("Blinds & more, a very long name indeed");
+    await expect(dialog.locator("#wifi-new-name")).toHaveValue("Blinds & more, a ver");  // the card's 20
+    await dialog.locator("#wifi-new-name").fill("Blinds");
+    await dialog.locator("#wifi-new-name").press("Enter");
+    await expect(page).toHaveURL(/#\/e26a44861b45\/wifi\/devices\/0badf00d$/);
+    const created = calls.find((c) => c.key === "create").body;
+    expect(created.name).toBe("Blinds");
+    expect(created.transport).toBe("http");
+    expect(created.slots).toHaveLength(10);
+    expect(created.slots[0]).toEqual({ label: "Button 1", long_label: null, ...plain });
+
+    // A new device is ten Make Command tiles, already on the hub.
+    const detail = view(page).locator("#wifi-device-detail");
+    await expect(detail.locator(".detail-title")).toHaveText("Blinds");
+    await expect(detail.locator(".slot-btn.slot-empty")).toHaveCount(10);
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+    await expect(detail.locator("#wifi-sync")).toBeDisabled();
+    await expect(detail.locator("#wifi-callback-line")).toContainText("192.168.1.10:8060");
+    await page.screenshot({ path: shot(testInfo, "wifi-new-device") });
+    await detail.locator("#wifi-back").click();
+    await expect(view(page).locator(".device-card")).toHaveCount(1);
+    await expect(view(page).locator(".device-card-count")).toHaveText("0 slots");
+  });
+
+  test("the detail view edits a draft with the card's slot dialog; Sync to Hub writes the whole spec once", async ({ page }, testInfo) => {
+    const { calls } = await wifiServer(page, [wifiDevice()]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    const card = view(page).locator('.device-card[data-key="a1b2c3d4"]');
+    await expect(card.locator(".device-card-name")).toHaveText("Lights");
+    await expect(card.locator(".device-card-count")).toHaveText("2 slots");
+    await expect(card.locator(".status-pill")).toHaveClass(/sync-ok/);
+    await expect(card.locator(".transport-pill")).toHaveCount(0);
+    await card.click();
+    await expect(page).toHaveURL(/wifi\/devices\/a1b2c3d4$/);
+
+    const detail = view(page).locator("#wifi-device-detail");
+    const tile = (n) => detail.locator(`.slot-btn[data-slot="${n}"]`);
+    // The tiles are the card's without the action button: lean, the meta line from the slot's own choices.
+    await expect(tile(1).locator(".slot-name")).toHaveText("Lights on");
+    await expect(tile(1).locator(".slot-favorite")).toHaveCount(1);
+    await expect(tile(1).locator(".slot-flag.power-on")).toHaveCount(1);
+    await expect(tile(1).locator(".slot-meta-label")).toHaveText("in 1 activity");
+    await expect(tile(2).locator('.slot-meta-icon[data-button="volup"]')).toHaveCount(1);
+    await expect(tile(2).locator(".slot-meta-icon[data-long-press]")).toHaveCount(1);
+    await expect(tile(3)).toHaveClass(/slot-empty/);
+    await expect(detail.locator(".slot-action-btn")).toHaveCount(0);
+    expect((await tile(1).boundingBox()).height).toBeLessThan(80);
+
+    // Slot 3: a name, and under Advanced the input of the second activity.
+    await tile(3).click();
+    const dialog = view(page).locator("#wifi-slot-dialog");
+    await expect(dialog.locator(".dialog-title")).toHaveText("Command Slot 3");
+    await dialog.locator("#wifi-slot-save").click();
+    await expect(dialog.locator("#wifi-slot-error")).not.toBeEmpty();
+    await dialog.locator("#wifi-slot-name").fill("Movie scene");
+    await expect(dialog.locator(".activity-chip")).toHaveText(["Watch TV", "Listen"]);
+    await expect(dialog.locator(".activity-chip").first()).toBeDisabled();              // nothing to apply yet
+    await expect(dialog.locator("#wifi-slot-long-press")).toBeDisabled();
+    await dialog.locator("#wifi-slot-advanced").click();
+    await expect(dialog.locator("#wifi-slot-input-activity")).toBeDisabled();
+    await dialog.locator("#wifi-slot-input").check();
+    await dialog.locator("#wifi-slot-input-activity").selectOption({ label: "Listen" });
+    await dialog.locator("#wifi-slot-save").click();
+    await expect(tile(3).locator(".slot-name")).toHaveText("Movie scene");
+    await expect(tile(3).locator(".slot-flag.input")).toHaveCount(1);
+    await expect(tile(3).locator(".slot-meta-label")).toHaveText("Input for Listen");
+    await expect(detail.locator("#wifi-sync")).toHaveText("Sync to Hub");
+    await expect(page.locator("#dock-status")).toContainText("Unsynced changes");
+
+    // Slot 4: a favorite on VOL+ with its long press, in both activities. VOL+ is slot 2's: the dialog says so, the save takes it.
+    await tile(4).click();
+    await dialog.locator("#wifi-slot-name").fill("Vol");
+    await dialog.locator("#wifi-slot-favorite").check();
+    await expect(dialog.locator('.activity-chip[data-activity="101"]')).toHaveClass(/active/);   // the first activity by default
+    await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol +" });
+    await expect(dialog.locator("#wifi-slot-button-hint")).toHaveText('Replaces "Lights off" on this button');
+    await expect(dialog.locator("#wifi-slot-button option")).toHaveCount(21);             // an X1S: none plus 20, without the X2's keys
+    await dialog.locator("#wifi-slot-long-press").check();
+    await dialog.locator('.activity-chip[data-activity="102"]').click();
+    await dialog.locator('.activity-chip[data-activity="101"]').click();
+    await dialog.locator('.activity-chip[data-activity="102"]').click();                  // the last one stays
+    await expect(dialog.locator('.activity-chip[data-activity="102"]')).toHaveClass(/active/);
+    await dialog.locator('.activity-chip[data-activity="101"]').click();
+    await page.screenshot({ path: shot(testInfo, "wifi-slot-dialog") });
+    await dialog.locator("#wifi-slot-save").click();
+    await expect(tile(4).locator(".slot-favorite")).toHaveCount(1);
+    await expect(tile(4).locator('.slot-meta-icon[data-button="volup"]')).toHaveCount(1);
+    await expect(tile(4).locator(".slot-meta-icon[data-long-press]")).toHaveCount(1);
+    await expect(tile(4).locator(".slot-meta-label")).toHaveText("in 2 activities");
+    await expect(tile(2).locator(".slot-meta-icon[data-button]")).toHaveCount(0);
+    await expect(tile(2).locator(".slot-meta-label")).toHaveText("Unconfigured command");
+
+    // The power lines: OFF performs slot 2; clearing slot 1 drops its power-on role with it.
+    await detail.locator('.hub-event-action-link[data-power="off"]').click();
+    const picker = view(page).locator("#wifi-power-dialog");
+    await expect(picker.locator(".device-power-option")).toHaveText(["Nothing", "Lights on", "Lights off", "Movie scene", "Vol"]);
+    await picker.locator('.device-power-option[data-slot="2"]').click();
+    await expect(detail.locator('.hub-event-action-link[data-power="off"]')).toHaveText("perform Lights off");
+    await expect(tile(2).locator(".slot-meta-label")).toHaveText("Power OFF command");
+    await tile(1).locator(".slot-clear").click();
+    await expect(tile(1)).toHaveClass(/slot-confirming/);
+    await tile(1).locator("[data-confirm-clear]").click();
+    await expect(tile(1)).toHaveClass(/slot-empty/);
+    await expect(detail.locator('.hub-event-action-link[data-power="on"]')).toHaveText("do nothing");
+
+    // Rename the device; it is part of the same draft.
+    await detail.locator("#wifi-rename-open").click();
+    await view(page).locator("#wifi-rename").fill("Lamps");
+    await view(page).locator("#wifi-rename-save").click();
+    await expect(detail.locator(".detail-title")).toHaveText("Lamps");
+    await page.screenshot({ path: shot(testInfo, "wifi-detail-dirty") });
+
+    // Leaving asks with the card's dialog; Keep editing stays.
+    await page.click('#tabs button[data-tab="hub"]');
+    const leave = view(page).locator("#wifi-leave-dialog");
+    await expect(leave.locator(".dialog-title")).toHaveText("Unsynced changes");
+    await leave.getByRole("button", { name: "Keep editing" }).last().click();
+    await expect(page).toHaveURL(/wifi\/devices\/a1b2c3d4$/);
+
+    await detail.locator("#wifi-sync").click();
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
+    const body = calls.find((c) => c.key === "update").body;
+    expect(body.name).toBe("Lamps");
+    expect(body.slots).toHaveLength(10);
+    expect(body.slots[0]).toEqual({ label: "Button 1", long_label: null, ...plain });
+    expect(body.slots[1]).toEqual({ label: "Lights off", long_label: null, ...plain });
+    expect(body.slots[2]).toEqual({ label: "Movie scene", long_label: null, ...plain, input_activity_id: 102 });
+    expect(body.slots[3]).toEqual({ label: "Vol", long_label: null, favorite: true, button: 182, long_press: true, activities: [101, 102], input_activity_id: null });
+    expect([body.power_on_slot, body.power_off_slot, body.input_slots]).toEqual([null, 2, []]);
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+    await expect(page.locator("#dock-link")).toBeVisible();                          // the dock is idle again
+    // Clean again: leaving no longer asks.
+    await detail.locator("#wifi-back").click();
+    await expect(page).toHaveURL(/wifi\/devices$/);
+    await expect(view(page).locator(".device-card-name")).toHaveText("Lamps");
+  });
+
+  test("a button taken from another Wifi Device: the dialog names it, the sync clears it there too", async ({ page }) => {
+    const blinds = wifiDevice({ key: "0badf00d", device_id: 8, spec: { name: "Blinds", slots: slots({ 1: "Down" }, { 1: { favorite: true, button: 185, long_press: true, activities: [102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
+    const { calls } = await wifiServer(page, [wifiDevice(), blinds]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
+    const detail = view(page).locator("#wifi-device-detail");
+    await detail.locator('.slot-btn[data-slot="5"]').click();
+    const dialog = view(page).locator("#wifi-slot-dialog");
+    await dialog.locator("#wifi-slot-name").fill("Quieter");
+    await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol -" });
+    await expect(dialog.locator("#wifi-slot-button-hint")).toHaveText('Replaces "Down" from Blinds');
+    await dialog.locator("#wifi-slot-save").click();
+    await detail.locator("#wifi-sync").click();
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(2);
+    const updates = calls.filter((c) => c.key === "update");
+    expect(updates.map((c) => c.device)).toEqual(["a1b2c3d4", "0badf00d"]);             // this device first, then the one that lost the button
+    expect(updates[0].body.slots[4]).toMatchObject({ label: "Quieter", button: 185, activities: [101] });
+    expect(updates[1].body.slots[0]).toMatchObject({ label: "Down", favorite: true, button: null, long_press: false, activities: [102] });
+    expect(updates[1].body.name).toBe("Blinds");
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+  });
+
+  test("a press lights the roster row, then the slot tile of the open device, and only the matching one", async ({ page }) => {
+    const other = wifiDevice({ key: "0badf00d", device_id: 8, spec: { name: "Blinds", slots: slots({ 1: "Up" }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
+    const { sockets } = await wifiServer(page, [wifiDevice(), other]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    await expect(view(page).locator(".device-card")).toHaveCount(2);
+    await expect.poll(() => sockets.length).toBe(1);
+    sockets[0].send(pressFrame({ seq: 1 }));
+    await expect(view(page).locator('.device-card[data-key="a1b2c3d4"] .wifi-ir-flash')).toHaveCount(1);
+    await expect(view(page).locator('.device-card[data-key="0badf00d"] .wifi-ir-flash')).toHaveCount(0);
+    await expect(page.locator("#dock-flash")).toHaveAttribute("data-seq", "1");
+    // The glow is one shot: the overlay leaves the DOM when it ends.
+    await expect(view(page).locator(".wifi-ir-flash")).toHaveCount(0);
+
+    await view(page).locator('.device-card[data-key="a1b2c3d4"]').click();
+    const detail = view(page).locator("#wifi-device-detail");
+    await expect(detail.locator('.slot-btn[data-slot="2"]')).toBeVisible();
+    sockets[0].send(pressFrame({ seq: 2, press_type: "long", command_id: 12, label: "Lights off Long" }));
+    await expect(detail.locator('.slot-btn[data-slot="2"] .wifi-ir-flash')).toHaveCount(1);
+    await expect(detail.locator(".wifi-ir-flash")).toHaveCount(1);
+    await expect(detail.locator(".wifi-ir-flash")).toHaveCount(0);
+    // A press of another device's slot 1 lights nothing here, an unfilled slot's tile still glows.
+    sockets[0].send(pressFrame({ seq: 3, device_id: 8, device_key: "0badf00d", slot: 1, command_id: 1, label: "Up" }));
+    await page.waitForTimeout(150);
+    await expect(detail.locator(".wifi-ir-flash")).toHaveCount(0);
+    sockets[0].send(pressFrame({ seq: 4, slot: 5, command_id: 5, label: "Button 5" }));
+    await expect(detail.locator('.slot-btn[data-slot="5"].slot-empty .wifi-ir-flash')).toHaveCount(1);
+  });
+
+  test("delete names the activities first, a stale device redeploys, a failed sync keeps the draft", async ({ page }, testInfo) => {
+    const stale = wifiDevice({ key: "0badf00d", device_id: 8, stale: true, deployed: false, spec: { name: "Blinds", slots: slots({ 1: "Up" }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
+    const { calls, world } = await wifiServer(page, [wifiDevice(), stale]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    const card = (key) => view(page).locator(`.device-card[data-key="${key}"]`);
+    await expect(card("0badf00d").locator(".status-pill")).toHaveClass(/sync-error/);
+    await page.screenshot({ path: shot(testInfo, "wifi-roster") });
+
+    // A failed sync says why and keeps the edits.
+    world.failUpdate = { type: "callback_update_declined", title: "The callback device could not be updated in place", status: 409, detail: "drift: commands 2" };
+    await card("a1b2c3d4").click();
+    const detail = view(page).locator("#wifi-device-detail");
+    await detail.locator('.slot-btn[data-slot="4"]').click();
+    await view(page).locator("#wifi-slot-name").fill("Scene");
+    await view(page).locator("#wifi-slot-name").press("Enter");
+    await detail.locator("#wifi-sync").click();
+    await expect(detail.locator("#wifi-sync-error")).toContainText("drift: commands 2");
+    await expect(detail.locator('.slot-btn[data-slot="4"] .slot-name')).toHaveText("Scene");
+    await expect(detail.locator("#wifi-sync")).toHaveText("Sync to Hub");
+    // Leave without syncing drops the draft.
+    await detail.locator("#wifi-back").click();
+    await view(page).locator("#wifi-leave-discard").click();
+    await expect(page).toHaveURL(/wifi\/devices$/);
+
+    // The stale device: Redeploy instead of Sync.
+    await card("0badf00d").click();
+    await expect(detail.locator("#wifi-stale")).toBeVisible();
+    await detail.locator("#wifi-redeploy").click();
+    await expect.poll(() => calls.filter((c) => c.key === "redeploy").length).toBe(1);
+    await expect(detail.locator("#wifi-stale")).toHaveCount(0);
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+    await detail.locator("#wifi-back").click();
+
+    // Delete: the first answer names the activities, the second press forces.
+    world.referenced = true;
+    await card("a1b2c3d4").locator(".device-delete-btn").click();
+    const dialog = view(page).locator("#wifi-delete-dialog");
+    await expect(dialog.locator(".dialog-text")).toContainText('Delete "Lights" from the hub?');
+    await dialog.locator("#wifi-delete-submit").click();
+    await expect(dialog.locator("#wifi-delete-referenced")).toBeVisible();
+    await expect(dialog.locator("#wifi-delete-error")).toContainText("referenced by activity 101");
+    await expect(dialog.locator("#wifi-delete-submit")).toHaveText("Delete anyway");
+    await dialog.locator("#wifi-delete-submit").click();
+    await expect(view(page).locator(".device-card")).toHaveCount(1);
+    expect(calls.filter((c) => c.key === "delete").map((c) => c.force)).toEqual([false, true]);
+  });
+
+  test("the limit, a second transport and a listener that is not running", async ({ page }) => {
+    await wifiServer(page, [wifiDevice()], { max: 1, transports: ["http", "mqtt"], listener: { wanted: true, bound: false, port: 8060, bound_port: null, last_error: "address already in use", next_retry_at: null } });
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    await expect(view(page).locator(".wifi-max-devices-note")).toHaveText("Maximum number of devices reached");
+    await expect(view(page).locator("#wifi-add")).toBeDisabled();
+    await expect(view(page).locator("#wifi-listener-notice")).toContainText("port 8060");
+    await expect(view(page).locator("#wifi-listener-notice")).toContainText("address already in use");
+    // With a choice of transports every device says which one it uses.
+    await expect(view(page).locator(".device-card .transport-pill")).toHaveText("http");
+    // An unknown key (deleted elsewhere, an old bookmark) lands on the roster.
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/ffffffff`);
+    await expect(page).toHaveURL(/wifi\/devices$/);
+  });
+});

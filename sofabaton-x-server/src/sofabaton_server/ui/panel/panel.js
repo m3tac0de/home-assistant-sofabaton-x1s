@@ -924,10 +924,10 @@ function shortcutsRowEnabled(layout) {
 var SHORTCUT_SLOTS = ["left", "middle", "right"];
 function normalizedShortcutSlot(value) {
   if (!value || typeof value !== "object") return null;
-  const icon6 = String(value.icon ?? "").trim();
+  const icon7 = String(value.icon ?? "").trim();
   const commandId = Number(value.command_id);
-  if (!icon6 || !Number.isFinite(commandId)) return null;
-  return { icon: icon6, command_id: commandId };
+  if (!icon7 || !Number.isFinite(commandId)) return null;
+  return { icon: icon7, command_id: commandId };
 }
 function deviceShortcutsFromConfig(config, deviceId) {
   const result = {};
@@ -3302,7 +3302,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   if (!item || typeof item !== "object") return null;
   const name = String(item.name ?? item.label ?? "").trim();
   if (!name) return null;
-  const icon6 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+  const icon7 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
   const action = item.action && typeof item.action === "object" ? item.action : item.tap_action && typeof item.tap_action === "object" ? item.tap_action : null;
   const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
   const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
@@ -3314,7 +3314,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   return {
     __custom: true,
     name,
-    icon: icon6,
+    icon: icon7,
     action: hasAction ? action : null,
     command_id: Number.isFinite(cmd) ? cmd : null,
     device_id: Number.isFinite(dev) ? dev : null,
@@ -4649,12 +4649,12 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
   const label = capture.label || str().assist.automationAssistName;
-  const icon6 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
+  const icon7 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
     `name: ${label}`,
-    `icon: ${icon6}`,
+    `icon: ${icon7}`,
     "tap_action:",
     "  action: perform-action",
     "  perform_" + serviceYaml.substring(2),
@@ -5860,16 +5860,16 @@ var SbKeyButton = class extends BaseElement {
     control.type = "button";
     control.className = "sb-key-control";
     control.disabled = this._disabled;
-    const icon6 = document.createElement("ha-icon");
-    icon6.className = "sb-key-control__icon";
+    const icon7 = document.createElement("ha-icon");
+    icon7.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
     const trailingIcon = document.createElement("ha-icon");
     trailingIcon.className = "sb-key-control__trailing-icon";
-    control.append(icon6, label, trailingIcon);
+    control.append(icon7, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
-    this._iconEl = icon6;
+    this._iconEl = icon7;
     this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
@@ -7663,6 +7663,7 @@ var mdiPauseCircle = "M15,16H13V8H15M11,16H9V8H11M12,2A10,10 0 0,0 2,12A10,10 0 
 var mdiPauseCircleOutline = "M13,16V8H15V16H13M9,16V8H11V16H9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiPencil = "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z";
 var mdiPencilBoxOutline = "M19,19V5H5V19H19M19,3A2,2 0 0,1 21,5V19C21,20.11 20.1,21 19,21H5A2,2 0 0,1 3,19V5A2,2 0 0,1 5,3H19M16.7,9.35L15.7,10.35L13.65,8.3L14.65,7.3C14.86,7.08 15.21,7.08 15.42,7.3L16.7,8.58C16.92,8.79 16.92,9.14 16.7,9.35M7,14.94L13.06,8.88L15.12,10.94L9.06,17H7V14.94Z";
+var mdiPencilOutline = "M14.06,9L15,9.94L5.92,19H5V18.08L14.06,9M17.66,3C17.41,3 17.15,3.1 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18.17,3.09 17.92,3 17.66,3M14.06,6.19L3,17.25V21H6.75L17.81,9.94L14.06,6.19Z";
 var mdiPictureInPictureBottomRight = "M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19M21,19H3V4.97H21V19Z";
 var mdiPlay = "M8,5.14V19.14L19,12.14L8,5.14Z";
 var mdiPlayCircle = "M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
@@ -7756,6 +7757,7 @@ var mdiThermometer = "M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 1
 var mdiThermostat = "M16.95,16.95L14.83,14.83C15.55,14.1 16,13.1 16,12C16,11.26 15.79,10.57 15.43,10L17.6,7.81C18.5,9 19,10.43 19,12C19,13.93 18.22,15.68 16.95,16.95M12,5C13.57,5 15,5.5 16.19,6.4L14,8.56C13.43,8.21 12.74,8 12,8A4,4 0 0,0 8,12C8,13.1 8.45,14.1 9.17,14.83L7.05,16.95C5.78,15.68 5,13.93 5,12A7,7 0 0,1 12,5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12C22,6.47 17.5,2 12,2Z";
 var mdiTimer = "M19.03 7.39L20.45 5.97C20 5.46 19.55 5 19.04 4.56L17.62 6C16.07 4.74 14.12 4 12 4C7.03 4 3 8.03 3 13S7.03 22 12 22C17 22 21 17.97 21 13C21 10.88 20.26 8.93 19.03 7.39M13 14H11V7H13V14M15 1H9V3H15V1Z";
 var mdiTimerOutline = "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z";
+var mdiTimerSandFull = "M6,2V8H6V8L10,12L6,16V16H6V22H18V16H18V16L14,12L18,8V8H18V2H6Z";
 var mdiToggleSwitch = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z";
 var mdiToggleSwitchOff = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M7,15A3,3 0 0,1 4,12A3,3 0 0,1 7,9A3,3 0 0,1 10,12A3,3 0 0,1 7,15Z";
 var mdiTranslate = "M12.87,15.07L10.33,12.56L10.36,12.53C12.1,10.59 13.34,8.36 14.07,6H17V4H10V2H8V4H1V6H12.17C11.5,7.92 10.44,9.75 9,11.35C8.07,10.32 7.3,9.19 6.69,8H4.69C5.42,9.63 6.42,11.17 7.67,12.56L2.58,17.58L4,19L9,14L12.11,17.11L12.87,15.07M18.5,10H16.5L12,22H14L15.12,19H19.87L21,22H23L18.5,10M15.88,17L17.5,12.67L19.12,17H15.88Z";
@@ -8133,8 +8135,8 @@ var MDI_ICON_PATHS = {
 
 // remote-card/src/shims/ha-icon.ts
 var FALLBACK_PATH = "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z";
-function mdiPathFor(icon6) {
-  const name = String(icon6 ?? "").trim().replace(/^mdi:/, "");
+function mdiPathFor(icon7) {
+  const name = String(icon7 ?? "").trim().replace(/^mdi:/, "");
   if (!name) return null;
   return MDI_ICON_PATHS[name] ?? null;
 }
@@ -8161,10 +8163,10 @@ var SbHaIcon = class extends HTMLElement {
     this._render();
   }
   _render() {
-    const icon6 = this.icon;
-    if (this._rendered === icon6) return;
-    this._rendered = icon6;
-    const path = mdiPathFor(icon6) ?? FALLBACK_PATH;
+    const icon7 = this.icon;
+    if (this._rendered === icon7) return;
+    this._rendered = icon7;
+    const path = mdiPathFor(icon7) ?? FALLBACK_PATH;
     this._shadow.innerHTML = `
       <style>
         :host {
@@ -9890,7 +9892,7 @@ function renderBottomDock(params) {
     tone = "dock--dirty";
     center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
     actions = b2`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
-  } else if (model.kind === "unsaved_backup") {
+  } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
     tone = "dock--dirty";
     center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
   } else if (model.kind === "gate") {
@@ -9922,13 +9924,14 @@ function renderBottomDock(params) {
 }
 
 // server-panel/src/panel-route.ts
-var HUB_TABS = ["hub", "backup", "remote"];
+var HUB_TABS = ["hub", "wifi", "backup", "remote"];
 var SUBTABS = {
   hub: ["activities", "devices"],
+  wifi: ["devices"],
   backup: ["make", "edit", "restore"],
   remote: ["card", "layout"]
 };
-var TAB_LABELS = { hub: "Hub", backup: "Backup", remote: "Remote" };
+var TAB_LABELS = { hub: "Hub", wifi: "Wifi Commands", backup: "Backup", remote: "Remote" };
 var TOOL_PAGES = ["setup", "server", "debug"];
 var TOOL_LABELS = { setup: "Hub setup", server: "Server", debug: "Debug" };
 var TOOL_SUBTABS = {
@@ -9947,8 +9950,13 @@ var SUBTAB_LABELS = {
   hubs: "Hubs",
   status: "Status",
   api: "API console",
-  events: "Event stream"
+  events: "Event stream",
+  // A subtab id can repeat across tabs; `<tab>/<sub>` wins over the bare id.
+  "wifi/devices": "Wifi Devices"
 };
+function subtabLabel(scope, sub) {
+  return SUBTAB_LABELS[`${scope}/${sub}`] ?? SUBTAB_LABELS[sub] ?? sub;
+}
 function isHubTab(value) {
   return typeof value === "string" && HUB_TABS.includes(value);
 }
@@ -9964,9 +9972,17 @@ function normalizeEntity(tab, entity) {
   const id = typeof entity === "number" ? entity : typeof entity === "string" && /^\d+$/.test(entity) ? Number(entity) : NaN;
   return Number.isInteger(id) && id > 0 ? id : void 0;
 }
-function hubRoute(hubId, tab = "hub", sub, entity) {
+function normalizeItem(tab, item) {
+  if (tab !== "wifi" || typeof item !== "string") return void 0;
+  return /^[A-Za-z0-9_-]{1,32}$/.test(item) ? item : void 0;
+}
+function hubRoute(hubId, tab = "hub", sub, entity, item) {
   const id = normalizeEntity(tab, entity);
-  return id === void 0 ? { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) } : { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub), entity: id };
+  const key = normalizeItem(tab, item);
+  const route = { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) };
+  if (id !== void 0) route.entity = id;
+  if (key !== void 0) route.item = key;
+  return route;
 }
 function normalizeToolSub(page, sub) {
   const subs = TOOL_SUBTABS[page];
@@ -9999,16 +10015,17 @@ function parseRoute(hash) {
   const [first, tab, sub, entity] = parts;
   const hubId = first === "-" ? null : first;
   if (tab !== void 0 && !isHubTab(tab)) return hubRoute(hubId, "hub");
-  return hubRoute(hubId, tab ?? "hub", sub, normalizeEntity(tab ?? "hub", entity));
+  return hubRoute(hubId, tab ?? "hub", sub, normalizeEntity(tab ?? "hub", entity), normalizeItem(tab ?? "hub", entity));
 }
 function hashFor(route) {
   if (route.kind === "tool") return `#/${route.page}/${route.sub}`;
   const hub = route.hubId ? encodeURIComponent(route.hubId) : "-";
-  return `#/${hub}/${route.tab}/${route.sub}${route.entity !== void 0 ? `/${route.entity}` : ""}`;
+  const tail = route.entity !== void 0 ? `/${route.entity}` : route.item !== void 0 ? `/${encodeURIComponent(route.item)}` : "";
+  return `#/${hub}/${route.tab}/${route.sub}${tail}`;
 }
 function routeScope(route) {
   if (route.kind === "tool") return `${route.page}/${route.sub}`;
-  return `${route.tab}/${route.sub}${route.entity !== void 0 ? `/${route.entity}` : ""}`;
+  return `${route.tab}/${route.sub}${route.entity !== void 0 ? `/${route.entity}` : route.item !== void 0 ? `/${route.item}` : ""}`;
 }
 function sameRoute(a4, b3) {
   return hashFor(a4) === hashFor(b3);
@@ -10218,7 +10235,8 @@ var SUBTAB_ICONS = {
   devices: mdiAudioVideo,
   make: mdiContentSaveMoveOutline,
   edit: mdiPencilBoxOutline,
-  restore: mdiDatabaseImportOutline
+  restore: mdiDatabaseImportOutline,
+  "wifi/devices": mdiWifi
 };
 function renderTabBar(params) {
   const route = params.route;
@@ -10253,10 +10271,11 @@ function renderTabBar(params) {
       ${(onTool ? TOOL_SUBTABS[route.page] : SUBTABS[route.tab]).map(
     (sub) => {
       const count = params.subCounts?.[sub];
-      const iconPath = SUBTAB_ICONS[sub];
+      const scope = onTool ? route.page : route.tab;
+      const iconPath = SUBTAB_ICONS[`${scope}/${sub}`] ?? SUBTAB_ICONS[sub];
       return b2`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>
             ${iconPath ? b2`<svg class="subtab-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${iconPath}></path></svg>` : A}
-            <span class="subtab-label">${SUBTAB_LABELS[sub] ?? sub}</span>
+            <span class="subtab-label">${subtabLabel(scope, sub)}</span>
             ${typeof count === "number" ? b2`<span class="subtab-count">${count}</span>` : A}
           </button>`;
     }
@@ -11145,6 +11164,26 @@ var PanelApi = class {
   cancelJob(hubId, jobId) {
     return this.request("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
   }
+  // -- wifi devices (the Wifi Commands tab) -------------------------------------------------
+  wifiDevices(hubId) {
+    return this.request("GET", `${this._hub(hubId)}/wifi-devices`);
+  }
+  /** Deploy a new Wifi Device (a job); the result is its record, with the key. */
+  createWifiDevice(hubId, spec, transport) {
+    return this.request("POST", `${this._hub(hubId)}/wifi-devices`, { body: { ...spec, transport } });
+  }
+  /** Write a Wifi Device's whole spec in place (a job); the bindings made in the activity editor survive. */
+  updateWifiDevice(hubId, key, spec) {
+    return this.request("PUT", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}`, { body: spec });
+  }
+  /** Remove a Wifi Device from the hub (a job); 409 `callback_device_referenced` unless `force`. */
+  removeWifiDevice(hubId, key, force = false) {
+    return this.request("DELETE", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}`, force ? { query: "force=true" } : {});
+  }
+  /** Deploy a stale Wifi Device again from its stored spec (a job). */
+  redeployWifiDevice(hubId, key) {
+    return this.request("POST", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}/redeploy`);
+  }
   // -- backup and restore ------------------------------------------------------------
   /** Read a full, restorable bundle from the hub (a job); `deviceIds` limits it to those devices, without activities. */
   startBackup(hubId, deviceIds = null) {
@@ -11256,7 +11295,11 @@ var JOB_LABELS = {
   deploy_callback_device: "Deploying the callback device",
   update_callback_device: "Updating the callback device",
   remove_callback_device: "Removing the callback device",
-  redeploy_callback_device: "Redeploying the callback device"
+  redeploy_callback_device: "Redeploying the callback device",
+  deploy_wifi_device: "Deploying the Wifi Device",
+  update_wifi_device: "Syncing the Wifi Device",
+  remove_wifi_device: "Deleting the Wifi Device",
+  redeploy_wifi_device: "Redeploying the Wifi Device"
 };
 function jobLabel(kind) {
   return JOB_LABELS[kind] ?? kind;
@@ -11319,6 +11362,7 @@ function dockModel(snapshot, runtime, view = {}) {
   if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes \u2014 download the edited backup" };
+  if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes \u2014 sync to the hub to apply them" };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || gate !== "pass" && runtime) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };
@@ -11603,7 +11647,7 @@ var PanelStore = class {
     if (next.kind === "hub") {
       const hubId = next.hubId ?? this._snapshot.selectedHubId;
       this._lastHubTab = { tab: next.tab, sub: normalizeSub(next.tab, next.sub) };
-      next = hubRoute(hubId, next.tab, next.sub, next.entity);
+      next = hubRoute(hubId, next.tab, next.sub, next.entity, next.item);
     } else {
       next = { kind: "tool", page: next.page, sub: normalizeToolSub(next.page, next.sub) };
     }
@@ -11808,6 +11852,10 @@ var PanelStore = class {
     const press = {
       seq: typeof data.seq === "number" ? data.seq : 0,
       deviceId: typeof data.device_id === "number" ? data.device_id : null,
+      deviceKey: typeof data.device_key === "string" ? data.device_key : null,
+      slot: typeof data.slot === "number" ? data.slot : null,
+      commandId: typeof data.command_id === "number" ? data.command_id : null,
+      resolution: typeof data.resolution === "string" ? data.resolution : null,
       label: typeof data.label === "string" ? data.label : null,
       pressType: typeof data.press_type === "string" ? data.press_type : "short",
       at: this._now()
@@ -12120,7 +12168,8 @@ var README = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main
 var DOC_LINKS = {
   hub: { href: `${README}#control-panel`, label: "Control panel docs" },
   backup: { href: `${README}#ir-payloads-backup-restore`, label: "Backup and restore docs" },
-  remote: { href: `${README}#web-remote`, label: "Web remote docs" }
+  remote: { href: `${README}#web-remote`, label: "Web remote docs" },
+  wifi: { href: `${README}#wifi-commands`, label: "Wifi Commands docs" }
 };
 function storageOrNull() {
   try {
@@ -12136,6 +12185,8 @@ var SofabatonServerPanel = class extends i4 {
     this._cogOpen = false;
     /** The Backup tab's Edit section holds edits only a download keeps (its sb-backup-dirty). */
     this._backupDirty = false;
+    /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
+    this._wifiDirty = false;
     this._pickerManual = false;
     this._pickerActionsHubId = null;
     this._pickerBusy = /* @__PURE__ */ new Set();
@@ -12231,6 +12282,19 @@ var SofabatonServerPanel = class extends i4 {
   /** Leaving the draft's screen or its hub with unsaved work asks first (decision 8); nothing is lost either way.
    *  An open editor asks with the card's own "Unsynced changes" dialog and finishes the move itself (device editor plan, decision 3). */
   _confirmLeave(target) {
+    if (this._wifiDirty && this._snapshot.route.kind === "hub" && this._snapshot.route.tab === "wifi") {
+      const current2 = this._snapshot.route;
+      const staying = target.route?.kind === "hub" && target.route.tab === "wifi" && target.route.item === current2.item && target.hubId === void 0;
+      const view = this.renderRoot.querySelector("sb-panel-wifi-devices");
+      if (!staying && view && view.hasUnsyncedChanges()) {
+        view.askToLeave(() => {
+          this._wifiDirty = false;
+          if (target.route) this.store.navigate(target.route);
+          else if (target.hubId !== void 0) this.store.selectHub(target.hubId);
+        });
+        return false;
+      }
+    }
     const runtime = selectedRuntime(this._snapshot);
     if (!runtime || !hasDirtyDraft(runtime)) return true;
     const scope = runtime.draft.scope;
@@ -12406,7 +12470,7 @@ The server stops its proxy and forgets its registration, cached state and web re
   _onNavigate(event) {
     const d3 = event.detail;
     if (d3.page) this._go(toolRoute(d3.page));
-    else if (d3.tab) this._go(hubRoute(null, d3.tab, d3.sub, d3.entity));
+    else if (d3.tab) this._go(hubRoute(null, d3.tab, d3.sub, d3.entity, d3.item));
   }
   // -- render ---------------------------------------------------------------------------
   _renderView(ctx) {
@@ -12429,6 +12493,10 @@ The server stops its proxy and forgets its registration, cached state and web re
         return b2`<sb-panel-backup .ctx=${ctx} .store=${this.store} .section=${route.sub} @sb-backup-dirty=${(event) => {
           this._backupDirty = Boolean(event.detail?.dirty);
         }}></sb-panel-backup>`;
+      case "wifi":
+        return b2`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event) => {
+          this._wifiDirty = Boolean(event.detail?.dirty);
+        }}></sb-panel-wifi-devices>`;
       case "remote":
         return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
       default:
@@ -12506,7 +12574,7 @@ The server stops its proxy and forgets its registration, cached state and web re
           ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>${blocked.reason === "job" || blocked.reason === "local" ? "Hub busy" : "Hub unavailable"}</b><div class="hint">${blocked.label}</div></div></div>` : A}
         </main>
         ${renderBottomDock({
-      model: dockModel(s7, runtime, { unsavedBackup: this._backupDirty }),
+      model: dockModel(s7, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi" }),
       message: s7.message,
       connectivity: connectivityFor(runtime),
       hasHub: ctx.hub !== null,
@@ -12540,6 +12608,7 @@ SofabatonServerPanel.properties = {
   _pickerOpen: { state: true },
   _cogOpen: { state: true },
   _backupDirty: { state: true },
+  _wifiDirty: { state: true },
   _pickerManual: { state: true },
   _pickerActionsHubId: { state: true },
   _pickerBusy: { state: true },
@@ -14051,13 +14120,13 @@ function hubIcon(kind, classes = "") {
       <path d="M25.79,130c-7.42,0-14.04-1.44-19.67-4.22,5.85,12.19,14.63,22.79,26.26,31.66,9.25,7.11,24.67,15.57,45.76,15.57h264c14.9,0,28.65-4.5,42.02-13.76,12.95-9.01,22.84-19.89,29.61-32.48-6.92,2.72-14.25,3.23-20.98,3.23H25.79Z"></path>
     </svg>`;
   }
-  const icon6 = {
+  const icon7 = {
     activities: "mdi:play-circle-outline",
     devices: "mdi:audio-video",
     ip: "mdi:router-wireless",
     version: "mdi:cog-outline"
   }[kind];
-  return b2`<ha-icon class=${className.trim()} icon=${icon6}></ha-icon>`;
+  return b2`<ha-icon class=${className.trim()} icon=${icon7}></ha-icon>`;
 }
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
@@ -14065,77 +14134,77 @@ var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
 function decodedClassFormSpecs() {
-  const S8 = TOOLS_CARD_STRINGS.decodedPayload;
+  const S9 = TOOLS_CARD_STRINGS.decodedPayload;
   return {
     wifi_ip: {
-      title: S8.httpTitle,
-      subtitle: S8.httpSubtitle,
+      title: S9.httpTitle,
+      subtitle: S9.httpSubtitle,
       fields: [
-        { key: "host", label: S8.hostIpv4, helper: S8.hostExample },
-        { key: "port", label: S8.port, numeric: true },
-        { key: "method", label: S8.httpMethod, helper: S8.httpMethodExample },
-        { key: "path", label: S8.path },
+        { key: "host", label: S9.hostIpv4, helper: S9.hostExample },
+        { key: "port", label: S9.port, numeric: true },
+        { key: "method", label: S9.httpMethod, helper: S9.httpMethodExample },
+        { key: "path", label: S9.path },
         {
           key: "header",
-          label: S8.extraHeaders,
+          label: S9.extraHeaders,
           multiline: true,
           crlfOnWire: true,
-          helper: S8.extraHeadersHelper
+          helper: S9.extraHeadersHelper
         },
-        { key: "content_type", label: S8.contentType },
-        { key: "body", label: S8.body, multiline: true }
+        { key: "content_type", label: S9.contentType },
+        { key: "body", label: S9.body, multiline: true }
       ]
     },
     wifi_roku: {
-      title: S8.rokuTitle,
+      title: S9.rokuTitle,
       fields: [
-        { key: "path", label: S8.ecpPath, helper: S8.ecpPathExample }
+        { key: "path", label: S9.ecpPath, helper: S9.ecpPathExample }
       ]
     },
     wifi_hue: {
-      title: S8.hueTitle,
-      subtitle: S8.bodyBlockSubtitle,
+      title: S9.hueTitle,
+      subtitle: S9.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S8.urlPath },
+        { key: "path", label: S9.urlPath },
         {
           key: "body_block",
-          label: S8.bodyBlock,
+          label: S9.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S8.bodyBlockHelper
+          helper: S9.bodyBlockHelper
         }
       ]
     },
     wifi_sonos: {
-      title: S8.sonosTitle,
-      subtitle: S8.bodyBlockSubtitle,
+      title: S9.sonosTitle,
+      subtitle: S9.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S8.urlPath },
+        { key: "path", label: S9.urlPath },
         {
           key: "body_block",
-          label: S8.bodyBlock,
+          label: S9.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S8.bodyBlockHelper
+          helper: S9.bodyBlockHelper
         }
       ]
     },
     wifi_mqtt: {
-      title: S8.mqttTitle,
-      subtitle: S8.mqttSubtitle,
+      title: S9.mqttTitle,
+      subtitle: S9.mqttSubtitle,
       fields: [
-        { key: "device_id", label: S8.mqttDeviceId, numeric: true, readonly: true },
-        { key: "command_id", label: S8.mqttCommandId, numeric: true, readonly: true }
+        { key: "device_id", label: S9.mqttDeviceId, numeric: true, readonly: true },
+        { key: "command_id", label: S9.mqttCommandId, numeric: true, readonly: true }
       ]
     },
     ir: {
-      title: S8.irTitle,
-      subtitle: S8.irSubtitle,
+      title: S9.irTitle,
+      subtitle: S9.irSubtitle,
       fields: [
         {
           key: "descriptor",
-          label: S8.descriptor,
-          helper: S8.descriptorExample
+          label: S9.descriptor,
+          helper: S9.descriptorExample
         }
       ]
     }
@@ -15808,40 +15877,40 @@ function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices)
   });
 }
 function sharedButtonCatalog() {
-  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 174, name: S8.up, group: S8.navigation },
-    { code: 178, name: S8.down, group: S8.navigation },
-    { code: 175, name: S8.left, group: S8.navigation },
-    { code: 177, name: S8.right, group: S8.navigation },
-    { code: 176, name: S8.ok, group: S8.navigation },
-    { code: 180, name: S8.home, group: S8.navigation },
-    { code: 179, name: S8.back, group: S8.navigation },
-    { code: 181, name: S8.menu, group: S8.navigation },
-    { code: 182, name: S8.volumeUp, group: S8.volumeChannel },
-    { code: 185, name: S8.volumeDown, group: S8.volumeChannel },
-    { code: 184, name: S8.mute, group: S8.volumeChannel },
-    { code: 183, name: S8.channelUp, group: S8.volumeChannel },
-    { code: 186, name: S8.channelDown, group: S8.volumeChannel },
-    { code: 187, name: S8.rewind, group: S8.transport },
-    { code: 188, name: S8.pause, group: S8.transport },
-    { code: 189, name: S8.forward, group: S8.transport },
-    { code: 190, name: S8.red, group: S8.colour },
-    { code: 191, name: S8.green, group: S8.colour },
-    { code: 192, name: S8.yellow, group: S8.colour },
-    { code: 193, name: S8.blue, group: S8.colour }
+    { code: 174, name: S9.up, group: S9.navigation },
+    { code: 178, name: S9.down, group: S9.navigation },
+    { code: 175, name: S9.left, group: S9.navigation },
+    { code: 177, name: S9.right, group: S9.navigation },
+    { code: 176, name: S9.ok, group: S9.navigation },
+    { code: 180, name: S9.home, group: S9.navigation },
+    { code: 179, name: S9.back, group: S9.navigation },
+    { code: 181, name: S9.menu, group: S9.navigation },
+    { code: 182, name: S9.volumeUp, group: S9.volumeChannel },
+    { code: 185, name: S9.volumeDown, group: S9.volumeChannel },
+    { code: 184, name: S9.mute, group: S9.volumeChannel },
+    { code: 183, name: S9.channelUp, group: S9.volumeChannel },
+    { code: 186, name: S9.channelDown, group: S9.volumeChannel },
+    { code: 187, name: S9.rewind, group: S9.transport },
+    { code: 188, name: S9.pause, group: S9.transport },
+    { code: 189, name: S9.forward, group: S9.transport },
+    { code: 190, name: S9.red, group: S9.colour },
+    { code: 191, name: S9.green, group: S9.colour },
+    { code: 192, name: S9.yellow, group: S9.colour },
+    { code: 193, name: S9.blue, group: S9.colour }
   ];
 }
 function x2ExtraButtonCatalog() {
-  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 153, name: "A", group: S8.extra },
-    { code: 152, name: "B", group: S8.extra },
-    { code: 151, name: "C", group: S8.extra },
-    { code: 154, name: S8.exit, group: S8.extra },
-    { code: 155, name: S8.dvr, group: S8.extra },
-    { code: 156, name: S8.play, group: S8.extra },
-    { code: 157, name: S8.guide, group: S8.extra }
+    { code: 153, name: "A", group: S9.extra },
+    { code: 152, name: "B", group: S9.extra },
+    { code: 151, name: "C", group: S9.extra },
+    { code: 154, name: S9.exit, group: S9.extra },
+    { code: 155, name: S9.dvr, group: S9.extra },
+    { code: 156, name: S9.play, group: S9.extra },
+    { code: 157, name: S9.guide, group: S9.extra }
   ];
 }
 function bundleButtonCatalog(bundle) {
@@ -18752,28 +18821,28 @@ var SbPanelEntityEditor = class extends i4 {
   }
   // -- render ---------------------------------------------------------------------------------------------------
   render() {
-    const S8 = this.frameStrings;
+    const S9 = this.frameStrings;
     if (!this._hub && !this._offline || this.entityId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
     switch (this._stage) {
       case "loading":
-        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S8.loading}</div></div></div>`;
+        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S9.loading}</div></div></div>`;
       case "guard_firmware": {
         const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
-        return this._renderGuard(mdiChip, S8.firmwareUnsupportedTitle, S8.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-firmware");
+        return this._renderGuard(mdiChip, S9.firmwareUnsupportedTitle, S9.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-firmware");
       }
       case "needs_refresh":
-        return this._renderGuard(mdiDatabaseRefreshOutline, S8.needsRefreshTitle, S8.needsRefreshBody, b2`
-          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S8.refreshEntity}</button>
-          <button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-refresh");
+        return this._renderGuard(mdiDatabaseRefreshOutline, S9.needsRefreshTitle, S9.needsRefreshBody, b2`
+          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S9.refreshEntity}</button>
+          <button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-refresh");
       case "missing":
-        return this._renderGuard(mdiAlertCircleOutline, S8.missingTitle, this._notice ?? S8.missingBody, b2`<button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-missing");
+        return this._renderGuard(mdiAlertCircleOutline, S9.missingTitle, this._notice ?? S9.missingBody, b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-missing");
       case "sync_failed": {
         const failed = this._syncFailed;
         const stale = Boolean(failed?.stale);
-        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S8.syncStaleTitle : S8.syncFailedTitle, stale ? S8.syncStaleBody : failed?.message ?? "", b2`
-          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S8.syncRetry}</button>`}
-          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S8.syncReload}</button>
-          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S8.syncKeepEditing}</button>`, "sync-failed");
+        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S9.syncStaleTitle : S9.syncFailedTitle, stale ? S9.syncStaleBody : failed?.message ?? "", b2`
+          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S9.syncRetry}</button>`}
+          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S9.syncReload}</button>
+          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S9.syncKeepEditing}</button>`, "sync-failed");
       }
       default:
         return this._renderEditing();
@@ -18795,20 +18864,20 @@ var SbPanelEntityEditor = class extends i4 {
   }
   _renderExitConfirmDialog() {
     if (!this._exitConfirm) return A;
-    const S8 = this.frameStrings;
+    const S9 = this.frameStrings;
     const close = () => {
       this._exitConfirm = null;
     };
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="exit-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S8.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S8.syncKeepEditing} @click=${close}>${icon4(mdiClose)}</button></div>
-          <div class="dialog-body"><div class="dialog-text">${S8.exitUnsyncedBody}</div></div>
+          <div class="dialog-header"><div class="dialog-title">${S9.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S9.syncKeepEditing} @click=${close}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-body"><div class="dialog-text">${S9.exitUnsyncedBody}</div></div>
           <div class="dialog-footer">
-            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S8.exitWithoutSync}</button>
+            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S9.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
-              <button class="btn" id="exit-keep" type="button" @click=${close}>${S8.syncKeepEditing}</button>
-              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S8.exitSyncNow}</button>
+              <button class="btn" id="exit-keep" type="button" @click=${close}>${S9.syncKeepEditing}</button>
+              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S9.exitSyncNow}</button>
             </div>
           </div>
         </div>
@@ -22462,8 +22531,8 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<div class="field"><label><span class="field-label">${label}</span><select aria-label=${label} @change=${(event) => set(event.target.value)}>
       ${options.map((option) => b2`<option value=${option.value} .selected=${option.value === value}>${option.label}</option>`)}</select></label></div>`;
   }
-  _heading(label, icon6) {
-    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon6}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
+  _heading(label, icon7) {
+    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon7}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
   }
   _groups() {
     const c7 = this.config, s7 = this.selection, e6 = str().editor;
@@ -23280,6 +23349,1333 @@ function defineServerView() {
   if (!customElements.get(SERVER_VIEW_TAG)) customElements.define(SERVER_VIEW_TAG, SbPanelServer);
 }
 
+// server-panel/src/views/wifi-devices-state.ts
+var WIFI_SLOT_COUNT = 10;
+var WIFI_NAME_MAX = 20;
+var PRESS_FLASH_MS = 720;
+function defaultSlotLabel(slot) {
+  return `Button ${slot}`;
+}
+function emptySlot(slot) {
+  return { label: defaultSlotLabel(slot), longLabel: null, favorite: false, button: null, longPress: false, activities: [], inputActivityId: null };
+}
+function entityNumber(value) {
+  if (value === null || value === void 0 || value === "") return null;
+  const n7 = Number(value);
+  return Number.isInteger(n7) && n7 >= 1 && n7 <= 255 ? n7 : null;
+}
+function slotNumber(value) {
+  const n7 = Number(value);
+  return Number.isInteger(n7) && n7 >= 1 && n7 <= WIFI_SLOT_COUNT ? n7 : null;
+}
+function draftFromSpec(spec) {
+  const rows = Array.isArray(spec?.slots) ? spec.slots : [];
+  const slots = [];
+  for (let slot = 1; slot <= WIFI_SLOT_COUNT; slot++) {
+    const row = rows[slot - 1];
+    const label = String(row?.label ?? "").trim() || defaultSlotLabel(slot);
+    const long = String(row?.long_label ?? "").trim();
+    const button = entityNumber(row?.button);
+    const favorite = Boolean(row?.favorite);
+    const held = favorite || button !== null;
+    const activities = held && Array.isArray(row?.activities) ? [...new Set(row.activities.map(entityNumber).filter((n7) => n7 !== null))].sort((a4, b3) => a4 - b3) : [];
+    slots.push({
+      label,
+      longLabel: long && long !== `${label} Long` ? long : null,
+      favorite,
+      button,
+      longPress: Boolean(row?.long_press) && button !== null,
+      activities,
+      inputActivityId: entityNumber(row?.input_activity_id)
+    });
+  }
+  const inputs = (Array.isArray(spec?.input_slots) ? spec.input_slots : []).map(slotNumber).filter((n7) => n7 !== null);
+  return {
+    name: String(spec?.name ?? ""),
+    slots,
+    powerOn: slotNumber(spec?.power_on_slot),
+    powerOff: slotNumber(spec?.power_off_slot),
+    inputs: [...new Set(inputs)].sort((a4, b3) => a4 - b3)
+  };
+}
+function specFromDraft(draft) {
+  return {
+    name: draft.name.trim(),
+    slots: draft.slots.map((slot) => {
+      const held = slot.favorite || slot.button !== null;
+      return {
+        label: slot.label,
+        long_label: slot.longLabel,
+        favorite: slot.favorite,
+        button: slot.button,
+        long_press: slot.longPress && slot.button !== null,
+        // A list left over from an earlier choice never travels (the card's issue #258 rule, the library's too).
+        activities: held ? [...slot.activities].sort((a4, b3) => a4 - b3) : [],
+        input_activity_id: slot.inputActivityId
+      };
+    }),
+    power_on_slot: draft.powerOn,
+    power_off_slot: draft.powerOff,
+    input_slots: [...draft.inputs]
+  };
+}
+function draftsEqual(a4, b3) {
+  return JSON.stringify(a4) === JSON.stringify(b3);
+}
+function slotHasRole(draft, index) {
+  const slot = draft.slots[index];
+  const number = index + 1;
+  return Boolean(slot) && (slot.favorite || slot.button !== null || slot.inputActivityId !== null || draft.powerOn === number || draft.powerOff === number || draft.inputs.includes(number));
+}
+function isSlotConfigured(draft, index) {
+  const slot = draft.slots[index];
+  return Boolean(slot) && (slot.label !== defaultSlotLabel(index + 1) || slotHasRole(draft, index));
+}
+function configuredCount(draft) {
+  return draft.slots.filter((_slot, index) => isSlotConfigured(draft, index)).length;
+}
+function supportsPowerInput(hubVersion) {
+  return supportsUnicodeNames(hubVersion);
+}
+function sanitizeWifiName(hubVersion, value) {
+  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "").slice(0, WIFI_NAME_MAX);
+}
+function nameProblem(value, messages) {
+  if (!value.trim()) return messages.required;
+  if (value.startsWith(" ")) return messages.leadingSpace;
+  return null;
+}
+function withPowerSlot(draft, kind, slot) {
+  const next = { ...draft, [kind === "on" ? "powerOn" : "powerOff"]: slot };
+  if (slot !== null) {
+    next.inputs = draft.inputs.filter((n7) => n7 !== slot);
+    next.slots = draft.slots.map((row, i8) => i8 === slot - 1 && row.inputActivityId !== null ? { ...row, inputActivityId: null } : row);
+  }
+  return next;
+}
+function activitiesEnabled(slot) {
+  return slot.favorite || slot.button !== null;
+}
+function slotEditFrom(draft, index) {
+  const slot = draft.slots[index];
+  return {
+    label: isSlotConfigured(draft, index) && slot.label !== defaultSlotLabel(index + 1) ? slot.label : "",
+    favorite: slot.favorite,
+    button: slot.button,
+    longPress: slot.longPress,
+    activities: [...slot.activities],
+    inputActivityId: slot.inputActivityId
+  };
+}
+function withDefaultActivity(edit, activityIds) {
+  if (!activitiesEnabled(edit) || edit.activities.length || !activityIds.length) return edit;
+  return { ...edit, activities: [activityIds[0]] };
+}
+function withActivityToggled(edit, activityId) {
+  if (!activitiesEnabled(edit)) return edit;
+  const has = edit.activities.includes(activityId);
+  if (has && edit.activities.length > 1) return { ...edit, activities: edit.activities.filter((id) => id !== activityId) };
+  return has ? edit : { ...edit, activities: [...edit.activities, activityId].sort((a4, b3) => a4 - b3) };
+}
+function withSlotSaved(draft, index, edit, options) {
+  const number = index + 1;
+  const button = edit.button;
+  const held = edit.favorite || button !== null;
+  const inputActivityId = options.powerInput ? edit.inputActivityId : draft.slots[index].inputActivityId;
+  const slots = draft.slots.map((slot, i8) => {
+    if (i8 === index) {
+      return { ...slot, label: edit.label.trim(), favorite: edit.favorite, button, longPress: edit.longPress && button !== null, activities: held ? [...edit.activities].sort((a4, b3) => a4 - b3) : [], inputActivityId };
+    }
+    let next = slot;
+    if (button !== null && slot.button === button) next = { ...next, button: null, longPress: false, activities: next.favorite ? next.activities : [] };
+    if (inputActivityId !== null && slot.inputActivityId === inputActivityId) next = { ...next, inputActivityId: null };
+    return next;
+  });
+  const isInput = inputActivityId !== null;
+  return {
+    ...draft,
+    slots,
+    powerOn: isInput && draft.powerOn === number ? null : draft.powerOn,
+    powerOff: isInput && draft.powerOff === number ? null : draft.powerOff
+  };
+}
+function slotHoldingButton(draft, button, index) {
+  return button === null ? -1 : draft.slots.findIndex((slot, i8) => i8 !== index && slot.button === button);
+}
+function slotHoldingInput(draft, activityId, index) {
+  return activityId === null ? -1 : draft.slots.findIndex((slot, i8) => i8 !== index && slot.inputActivityId === activityId);
+}
+function otherDeviceHoldingButton(devices, key, button) {
+  if (button === null) return null;
+  for (const device of devices) {
+    if (device.key === key) continue;
+    const row = (device.spec.slots ?? []).find((slot) => Number(slot.button) === button);
+    if (row) return { device, slotLabel: row.label };
+  }
+  return null;
+}
+function buttonCleanups(devices, key, draft) {
+  const taken = new Set(draft.slots.map((slot) => slot.button).filter((b3) => b3 !== null));
+  const out = [];
+  for (const device of devices) {
+    if (device.key === key || device.stale || device.device_id == null) continue;
+    const theirs = draftFromSpec(device.spec);
+    if (!theirs.slots.some((slot) => slot.button !== null && taken.has(slot.button))) continue;
+    const cleared = { ...theirs, slots: theirs.slots.map((slot) => slot.button !== null && taken.has(slot.button) ? { ...slot, button: null, longPress: false, activities: slot.favorite ? slot.activities : [] } : slot) };
+    out.push({ device, spec: specFromDraft(cleared) });
+  }
+  return out;
+}
+function withSlotCleared(draft, index) {
+  const slot = index + 1;
+  return {
+    ...draft,
+    slots: draft.slots.map((row, i8) => i8 === index ? emptySlot(slot) : row),
+    powerOn: draft.powerOn === slot ? null : draft.powerOn,
+    powerOff: draft.powerOff === slot ? null : draft.powerOff,
+    inputs: draft.inputs.filter((n7) => n7 !== slot)
+  };
+}
+var hb = (name, code, group, x2Only = false) => ({ name, code, group, x2Only });
+var HARD_BUTTONS = [
+  hb("up", 174, "navigation"),
+  hb("down", 178, "navigation"),
+  hb("left", 175, "navigation"),
+  hb("right", 177, "navigation"),
+  hb("ok", 176, "navigation"),
+  hb("back", 179, "navigation"),
+  hb("home", 180, "navigation"),
+  hb("menu", 181, "navigation"),
+  hb("volup", 182, "transport"),
+  hb("voldn", 185, "transport"),
+  hb("mute", 184, "transport"),
+  hb("chup", 183, "transport"),
+  hb("chdn", 186, "transport"),
+  hb("play", 156, "media", true),
+  hb("pause", 188, "media"),
+  hb("rew", 187, "media"),
+  hb("fwd", 189, "media"),
+  hb("guide", 157, "media", true),
+  hb("dvr", 155, "media", true),
+  hb("exit", 154, "media", true),
+  hb("a", 153, "abc", true),
+  hb("b", 152, "abc", true),
+  hb("c", 151, "abc", true),
+  hb("red", 190, "color"),
+  hb("green", 191, "color"),
+  hb("yellow", 192, "color"),
+  hb("blue", 193, "color")
+];
+function hardButtonByCode(code) {
+  return code == null ? null : HARD_BUTTONS.find((button) => button.code === Number(code)) ?? null;
+}
+function availableHardButtons(hubVersion) {
+  const x2 = String(hubVersion ?? "").toUpperCase().includes("X2");
+  return HARD_BUTTONS.filter((button) => x2 || !button.x2Only);
+}
+function slotMeta(draft, index, options) {
+  const slot = draft.slots[index];
+  const number = index + 1;
+  if (!slotHasRole(draft, index)) return { kind: "unconfigured" };
+  if (options.powerInput && !activitiesEnabled(slot)) {
+    const on = draft.powerOn === number;
+    const off = draft.powerOff === number;
+    if (on || off) return { kind: "power", on, off };
+    if (slot.inputActivityId !== null || draft.inputs.includes(number)) return { kind: "input", activityId: slot.inputActivityId };
+  }
+  return { kind: "activities", count: activitiesEnabled(slot) ? slot.activities.length : 0 };
+}
+function deviceStatus(device, options = {}) {
+  if (options.deleting) return { tone: "sync-running", label: "Deleting\u2026" };
+  if (device.stale) return { tone: "sync-error", label: "Missing from hub" };
+  if (device.pending || device.device_id == null) return { tone: "sync-pending", label: "Pending" };
+  return { tone: "sync-ok", label: "Synced" };
+}
+function targetMoved(device) {
+  const now = device.effective_destination;
+  if (!now || device.device_id == null) return false;
+  return now.host !== device.target.host || Number(now.port) !== Number(device.target.port);
+}
+function pressIsFresh(press, now) {
+  if (!press) return false;
+  const elapsed = now - press.at;
+  return elapsed >= 0 && elapsed < PRESS_FLASH_MS;
+}
+function pressMatchesDevice(press, device) {
+  if (press.deviceKey) return press.deviceKey === device.key;
+  return press.deviceId != null && device.device_id != null && press.deviceId === device.device_id;
+}
+function pressMatchesSlot(press, device, index) {
+  return pressMatchesDevice(press, device) && press.slot === index + 1;
+}
+
+// server-panel/src/views/wifi-devices-view.ts
+var S8 = TOOLS_CARD_STRINGS.wifiCommands;
+var A3 = TOOLS_CARD_STRINGS.activities;
+var T2 = {
+  subtitle: "Use Wifi Commands to put buttons on your physical remote that call this server. Every press arrives as a press event on the event stream. Choose a Wifi Device to edit its command slots, or add a new one.",
+  slotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and on every press event.",
+  deleteBody: (name) => `Delete "${name}" from the hub? The hub removes it from every activity that uses it.`,
+  deleteReferenced: "Activities still use this device. Deleting it removes those favorites, buttons and macro steps too.",
+  deleteAnyway: "Delete anyway",
+  transportHttpHint: "The hub calls this server directly over your network.",
+  renameTitle: "Rename Wifi Device",
+  cleanupFailed: (name, why) => `Synced, but ${name} still claims a button this device took (${why}). Sync ${name} to settle it.`,
+  redeploy: "Redeploy",
+  staleNotice: "The hub no longer has this device (it was deleted in the app, or the hub was reset). Redeploy writes it again from what the server kept. Bindings in activities are gone and need to be made again.",
+  pendingNotice: "An earlier write to this device was interrupted. The server settles it the next time it is synced or the server starts.",
+  movedNotice: (was, now) => `This device calls ${was}, but the server now answers on ${now}. A deployed address cannot be moved: delete the device and add it again to use the new one.`,
+  listenerDown: (port) => `The server's callback listener is not running${port ? ` (port ${port})` : ""}, so presses cannot arrive.`,
+  listenerRetry: "Retry",
+  callsBack: (where) => `Presses call ${where} and arrive on the event stream.`,
+  x1Note: "An X1 hub fires its power and input callbacks on its own, so those options are not shown.",
+  leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them."
+};
+var BUTTON_ICONS = {
+  up: mdiArrowUpBold,
+  down: mdiArrowDownBold,
+  left: mdiArrowLeftBold,
+  right: mdiArrowRightBold,
+  ok: mdiCheckCircleOutline,
+  back: mdiArrowULeftTop,
+  home: mdiHomeOutline,
+  menu: mdiMenu,
+  volup: mdiVolumePlus,
+  voldn: mdiVolumeMinus,
+  mute: mdiVolumeMute,
+  chup: mdiChevronUpCircleOutline,
+  chdn: mdiChevronDownCircleOutline,
+  guide: mdiTelevisionGuide,
+  dvr: mdiRecordRec,
+  play: mdiPlayCircleOutline,
+  exit: mdiCloseCircleOutline,
+  rew: mdiRewind,
+  pause: mdiPauseCircleOutline,
+  fwd: mdiFastForward,
+  red: mdiCircle,
+  green: mdiCircle,
+  yellow: mdiCircle,
+  blue: mdiCircle,
+  a: mdiAlphaACircleOutline,
+  b: mdiAlphaBCircleOutline,
+  c: mdiAlphaCCircleOutline
+};
+var BUTTON_COLORS = { red: "#ef4444", green: "#22c55e", yellow: "#facc15", blue: "#3b82f6" };
+var BUTTON_GROUP_TITLES = { navigation: S8.navigationGroup, transport: S8.transportGroup, media: S8.mediaGroup, abc: S8.abcGroup, color: S8.colorGroup };
+var WIFI_DEVICES_VIEW_TAG = "sb-panel-wifi-devices";
+function icon6(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+function jobFailure(job) {
+  if (!job) return "the job could not be followed";
+  if (job.status === "done") return null;
+  const problem = job.error;
+  return problem ? [problem.title || problem.type, problem.detail].filter(Boolean).join(": ") : job.status;
+}
+var SbPanelWifiDevices = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.ctx = null;
+    /** The open device's key (the route's fourth segment); null shows the roster. */
+    this.deviceKey = null;
+    this._list = null;
+    /** The hub's activities, for the slot dialog's chips and its input select. */
+    this._activities = [];
+    this._listener = null;
+    this._loading = false;
+    this._error = null;
+    /** The detail view's working copy; null until the device is loaded. */
+    this._draft = null;
+    this._draftFor = null;
+    this._create = null;
+    this._delete = null;
+    this._slotEdit = null;
+    this._rename = null;
+    this._powerPicker = null;
+    this._confirmClear = null;
+    /** The pending move behind the "Unsynced changes" dialog. */
+    this._leave = null;
+    /** A job this view started and follows: the text the header's button shows. */
+    this._working = null;
+    this._syncError = null;
+    this._flashTick = 0;
+    this._loadedFor = null;
+    this._lastJobId = null;
+    this._flashTimer = null;
+    this._flashFor = null;
+    this._reportedDirty = false;
+    // -- create ------------------------------------------------------------------------------------------
+    this._openCreate = () => {
+      if (this._locked) return;
+      this._create = { name: "", transport: this._transports[0], busy: false, error: "" };
+      void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-new-name")?.focus());
+    };
+    this._closeCreate = () => {
+      if (!this._create?.busy) this._create = null;
+    };
+    this._submitCreate = async () => {
+      const state = this._create;
+      const hubId = this._hubId;
+      if (!state || !hubId || state.busy) return;
+      const name = sanitizeWifiName(this._hubVersion, state.name);
+      const problem = nameProblem(name, { required: S8.createDeviceNameRequired, leadingSpace: S8.commandNameLeadingSpace });
+      if (problem) {
+        this._create = { ...state, error: problem };
+        return;
+      }
+      this._create = { ...state, busy: true, error: "" };
+      const { job, error } = await this._runJob(S8.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
+      if (error) {
+        this._create = { ...state, busy: false, error: `${S8.createDeviceFailed}: ${error}` };
+        await this._load();
+        return;
+      }
+      this._create = null;
+      await this._load();
+      const key = typeof job?.result?.key === "string" ? job.result.key : null;
+      if (key) this._navigate(key);
+    };
+    this._closeDelete = () => {
+      if (!this._delete?.busy) this._delete = null;
+    };
+    this._submitDelete = async () => {
+      const state = this._delete;
+      const hubId = this._hubId;
+      if (!state || !hubId || state.busy) return;
+      this._delete = { ...state, busy: true, error: "" };
+      this._working = S8.deleteDeviceBusy;
+      let error = null;
+      try {
+        const started = await this.api.removeWifiDevice(hubId, state.key, state.referenced);
+        if (started.status === 409 && started.body?.type === "callback_device_referenced") {
+          const detail = started.body.detail ?? "";
+          this._delete = { ...state, busy: false, referenced: true, error: detail };
+          return;
+        }
+        if (started.status !== 202 || !started.body) {
+          error = problemText(started);
+        } else {
+          const job = await this.api.followJob(hubId, started.body.job_id);
+          if (job) this._lastJobId = job.job_id;
+          error = jobFailure(job);
+        }
+      } catch (err) {
+        error = String(err);
+      } finally {
+        this._working = null;
+      }
+      if (error) {
+        this._delete = { ...state, busy: false, error: `${S8.deleteDeviceFailed}: ${error}` };
+        await this._load();
+        return;
+      }
+      const wasOpen = this.deviceKey === state.key;
+      this._delete = null;
+      if (wasOpen) {
+        this._draft = null;
+        this._draftFor = null;
+      }
+      await this._load();
+      if (wasOpen) this._navigate(null);
+    };
+    this._closeSlot = () => {
+      this._slotEdit = null;
+    };
+    this._saveSlot = () => {
+      const state = this._slotEdit;
+      const draft = this._draft;
+      if (!state || !draft) return;
+      const label = sanitizeWifiName(this._hubVersion, state.edit.label);
+      const problem = nameProblem(label, { required: S8.commandNameLeadingSpace, leadingSpace: S8.commandNameLeadingSpace });
+      if (problem) {
+        this._slotEdit = { ...state, error: problem };
+        return;
+      }
+      this._edit(withSlotSaved(draft, state.index, { ...state.edit, label }, { powerInput: this._powerInput }));
+      this._slotEdit = null;
+    };
+    this._openRename = () => {
+      if (!this._draft || this._locked) return;
+      this._rename = { name: this._draft.name, error: "" };
+      void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-rename")?.select());
+    };
+    this._saveRename = () => {
+      const state = this._rename;
+      if (!state || !this._draft) return;
+      const name = sanitizeWifiName(this._hubVersion, state.name);
+      const problem = nameProblem(name, { required: S8.createDeviceNameRequired, leadingSpace: S8.commandNameLeadingSpace });
+      if (problem) {
+        this._rename = { ...state, error: problem };
+        return;
+      }
+      this._edit({ ...this._draft, name: name.trim() });
+      this._rename = null;
+    };
+    // -- sync, redeploy, leave ----------------------------------------------------------------------------------
+    this._sync = async () => {
+      const device = this._device;
+      const draft = this._draft;
+      const hubId = this._hubId;
+      if (!device || !draft || !hubId || this._locked) return false;
+      this._syncError = null;
+      const cleanups = buttonCleanups(this._devices, device.key, draft);
+      const { error } = await this._runJob(S8.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
+      if (error) {
+        this._syncError = error;
+        await this._load();
+        return false;
+      }
+      this._draftFor = null;
+      for (const cleanup of cleanups) {
+        const result = await this._runJob(S8.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
+        if (result.error) this._say(T2.cleanupFailed(cleanup.device.spec.name, result.error), false);
+      }
+      await this._load();
+      return true;
+    };
+    this._redeploy = async () => {
+      const device = this._device;
+      const hubId = this._hubId;
+      if (!device || !hubId || this._locked) return;
+      this._syncError = null;
+      const { error } = await this._runJob(`${T2.redeploy}\u2026`, () => this.api.redeployWifiDevice(hubId, device.key));
+      if (error) this._syncError = error;
+      await this._load();
+    };
+    this._back = () => {
+      this.askToLeave(() => this._navigate(null));
+    };
+    this._leaveWithoutSync = () => {
+      const then = this._leave;
+      this._leave = null;
+      this._draft = null;
+      this._draftFor = null;
+      this._reportDirty(false);
+      then?.();
+    };
+    this._leaveAfterSync = async () => {
+      const then = this._leave;
+      this._leave = null;
+      if (await this._sync()) then?.();
+    };
+    this._retryListener = async () => {
+      try {
+        const response = await this.api.retryCallbackListener();
+        if (response.ok && response.body) this._listener = response.body;
+        this._say(response.ok && response.body?.bound ? "The callback listener is running." : `The callback listener could not start${response.body?.last_error ? `: ${String(response.body.last_error)}` : ""}.`, Boolean(response.ok && response.body?.bound));
+      } catch (err) {
+        this._say(String(err), false);
+      }
+    };
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._flashTimer) clearTimeout(this._flashTimer);
+    this._flashTimer = null;
+    this._flashFor = null;
+    this._reportDirty(false);
+  }
+  // -- state ---------------------------------------------------------------------------------
+  get _hubId() {
+    return this.ctx?.hub?.hub_id ?? null;
+  }
+  get _hubVersion() {
+    return this.ctx?.hub?.status?.hub_version ?? this.ctx?.hub?.config?.hub_version ?? null;
+  }
+  get _locked() {
+    return Boolean(this._working) || (this.ctx ? !this.ctx.free : false);
+  }
+  get _devices() {
+    return this._list?.devices ?? [];
+  }
+  get _device() {
+    return this.deviceKey ? this._devices.find((device) => device.key === this.deviceKey) ?? null : null;
+  }
+  get _transports() {
+    return this._list?.transports?.length ? this._list.transports : ["http"];
+  }
+  hasUnsyncedChanges() {
+    const device = this._device;
+    return Boolean(device && this._draft && this._draftFor === device.key && !draftsEqual(this._draft, draftFromSpec(device.spec)));
+  }
+  /** The shell asks before it moves away (another tab, another hub); the dialog finishes the move. */
+  askToLeave(then) {
+    if (!this.hasUnsyncedChanges()) {
+      then();
+      return;
+    }
+    this._leave = then;
+  }
+  _reportDirty(dirty) {
+    if (dirty === this._reportedDirty) return;
+    this._reportedDirty = dirty;
+    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty } }));
+  }
+  _say(text, ok) {
+    this.dispatchEvent(new CustomEvent("sb-message", { bubbles: true, composed: true, detail: { text, ok } }));
+  }
+  _navigate(key) {
+    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "wifi", sub: "devices", item: key ?? void 0 } }));
+  }
+  // -- lifecycle -------------------------------------------------------------------------------
+  willUpdate(changed) {
+    if (changed.has("ctx")) {
+      const hubId = this._hubId;
+      if (hubId !== this._loadedFor) {
+        this._loadedFor = hubId;
+        this._lastJobId = this.ctx?.hub?.last_job?.job_id ?? null;
+        this._list = null;
+        this._activities = [];
+        this._draft = null;
+        this._draftFor = null;
+        this._error = null;
+        this._syncError = null;
+        this._create = this._delete = this._slotEdit = this._rename = null;
+        this._powerPicker = null;
+        this._confirmClear = null;
+        if (hubId) void this._load();
+      } else {
+        const jobId = this.ctx?.hub?.last_job?.job_id ?? null;
+        if (jobId && jobId !== this._lastJobId) {
+          this._lastJobId = jobId;
+          if (!this._working) void this._load();
+        }
+      }
+    }
+    if (changed.has("deviceKey") || changed.has("_list")) this._adoptDraft();
+    this._scheduleFlashEnd();
+  }
+  updated() {
+    this._reportDirty(this.hasUnsyncedChanges());
+    if (this.deviceKey && this._list !== null && !this._device && !this._working) this._navigate(null);
+  }
+  /** The draft follows the open device; a reload keeps unsynced edits and rebases a clean one. */
+  _adoptDraft() {
+    const device = this._device;
+    if (!device) {
+      if (!this.deviceKey) {
+        this._draft = null;
+        this._draftFor = null;
+      }
+      return;
+    }
+    if (this._draftFor !== device.key) {
+      this._draft = draftFromSpec(device.spec);
+      this._draftFor = device.key;
+      this._syncError = null;
+      this._confirmClear = null;
+    }
+  }
+  async _load() {
+    const hubId = this._hubId;
+    if (!hubId) return;
+    this._loading = this._list === null;
+    try {
+      const [list, activities, listener] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener()]);
+      if (this._loadedFor !== hubId) return;
+      if (!list.ok || !list.body) {
+        this._error = problemText(list);
+        return;
+      }
+      this._error = null;
+      const dirty = this.hasUnsyncedChanges();
+      this._list = list.body;
+      if (activities.ok && activities.body) this._activities = activities.body.map((a4) => ({ id: a4.activity_id, name: a4.name })).filter((a4) => Number.isInteger(a4.id) && a4.name);
+      this._listener = listener.ok ? listener.body : this._listener;
+      if (!dirty) this._draftFor = null;
+    } catch (err) {
+      if (this._loadedFor === hubId) this._error = String(err);
+    } finally {
+      this._loading = false;
+    }
+  }
+  /** Start a job, follow it, reload. Resolves with the finished job, or null with the error said. */
+  async _runJob(label, start) {
+    const hubId = this._hubId;
+    if (!hubId) return { job: null, error: "no hub" };
+    this._working = label;
+    try {
+      const started = await start();
+      if (started.status !== 202 || !started.body) return { job: null, error: problemText(started) };
+      const job = await this.api.followJob(hubId, started.body.job_id);
+      if (job) this._lastJobId = job.job_id;
+      return { job, error: jobFailure(job) };
+    } catch (err) {
+      return { job: null, error: String(err) };
+    } finally {
+      this._working = null;
+    }
+  }
+  // -- the press glow ----------------------------------------------------------------------------
+  _activePress() {
+    const press = this.ctx?.runtime?.lastPress ?? null;
+    return pressIsFresh(press, Date.now()) ? press : null;
+  }
+  /** One re-render when the glow ends, so the overlay leaves the DOM (the card's clear timer). */
+  _scheduleFlashEnd() {
+    const press = this._activePress();
+    if (!press || this._flashFor === press.at) return;
+    if (this._flashTimer) clearTimeout(this._flashTimer);
+    this._flashFor = press.at;
+    this._flashTimer = setTimeout(() => {
+      this._flashTimer = null;
+      this._flashFor = null;
+      this._flashTick += 1;
+    }, Math.max(0, PRESS_FLASH_MS - (Date.now() - press.at)) + 16);
+  }
+  _flash(matches, at) {
+    return matches ? i7(at, b2`<div class="wifi-ir-flash" aria-hidden="true"></div>`) : A;
+  }
+  // -- delete ------------------------------------------------------------------------------------------
+  _promptDelete(key, event) {
+    event.stopPropagation();
+    if (this._locked) return;
+    this._delete = { key, busy: false, error: "", referenced: false };
+  }
+  // -- the detail view's edits ------------------------------------------------------------------------------
+  _edit(next) {
+    this._draft = next;
+    this._syncError = null;
+  }
+  get _powerInput() {
+    return supportsPowerInput(this._hubVersion);
+  }
+  _activityName(id) {
+    if (id === null) return "";
+    return this._activities.find((a4) => a4.id === id)?.name ?? TOOLS_CARD_STRINGS.common.activityFallback(id);
+  }
+  _openSlot(index) {
+    const draft = this._draft;
+    if (!draft || this._locked) return;
+    this._confirmClear = null;
+    const edit = withDefaultActivity(slotEditFrom(draft, index), this._activities.map((a4) => a4.id));
+    this._slotEdit = { index, edit, advanced: false, error: "" };
+    void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-slot-name")?.focus());
+  }
+  /** A change in the slot dialog; a favorite or a button that just appeared takes the first activity (the card's default). */
+  _patchSlot(patch) {
+    const state = this._slotEdit;
+    if (!state) return;
+    let edit = { ...state.edit, ...patch };
+    if (edit.button === null) edit = { ...edit, longPress: false };
+    edit = withDefaultActivity(edit, this._activities.map((a4) => a4.id));
+    this._slotEdit = { ...state, edit, error: "" };
+  }
+  _clearSlot(index) {
+    if (this._draft) this._edit(withSlotCleared(this._draft, index));
+    this._confirmClear = null;
+  }
+  _pickPower(kind, slot) {
+    this._powerPicker = null;
+    if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
+  }
+  // -- render: shared bits -----------------------------------------------------------------------------------------
+  _renderTransportPill(device) {
+    if (this._transports.length < 2 && device.transport === "http") return A;
+    return b2`<span class="transport-pill ${device.transport}" title=${S8.transportPillDeployedTitle}>${device.transport}</span>`;
+  }
+  _renderListenerNotice() {
+    const listener = this._listener;
+    if (!listener || !listener.wanted || listener.bound) return A;
+    const port = listener.port != null ? String(listener.port) : "";
+    return b2`<div class="wifi-notice error" id="wifi-listener-notice">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.listenerDown(port)}${listener.last_error ? ` ${String(listener.last_error)}` : ""}</span><button class="btn" type="button" @click=${this._retryListener}>${T2.listenerRetry}</button></div>`;
+  }
+  // -- render: the roster ---------------------------------------------------------------------------------------------
+  _renderList() {
+    const devices = this._devices;
+    const max = this._list?.max_devices ?? 5;
+    const canAdd = devices.length < max;
+    const press = this._activePress();
+    return b2`
+      <div class="list-view" id="wifi-device-list">
+        <div class="list-header">
+          <div class="list-header-copy"><div class="section-subtitle">${T2.subtitle}</div></div>
+          <div class="list-header-action">
+            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon6(mdiPlus)}<span>${S8.addDeviceButton}</span></button>
+          </div>
+        </div>
+        <div class="wifi-notices">${this._renderListenerNotice()}</div>
+        ${this._error ? b2`<div class="wifi-notice error" id="wifi-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${this._error}</span></div>` : A}
+        ${this._loading ? b2`<div class="wifi-state">${TOOLS_CARD_STRINGS.common.loading}</div>` : devices.length ? b2`<div class="device-list">
+                ${devices.map((device) => {
+      const deleting = this._delete?.busy === true && this._delete.key === device.key;
+      const status = deviceStatus(device, { deleting });
+      const statusIcon = status.tone === "sync-ok" ? mdiCheckCircleOutline : status.tone === "sync-error" ? mdiAlertCircleOutline : mdiProgressClock;
+      const open = () => {
+        if (!deleting) this._navigate(device.key);
+      };
+      return b2`
+                    <div class="device-card" role="button" data-key=${device.key} tabindex=${deleting ? -1 : 0} aria-disabled=${String(deleting)}
+                      @click=${open}
+                      @keydown=${(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      }}>
+                      <div class="device-card-main">
+                        <span class="device-card-lead">${icon6(mdiWifi)}</span>
+                        <div class="device-card-copy">
+                          <div class="device-card-name">${device.spec.name}</div>
+                          <div class="device-card-count">${S8.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
+                        </div>
+                        <div class="device-card-meta">
+                          ${this._renderTransportPill(device)}
+                          <span class="status-pill device-status-pill ${status.tone}">${icon6(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
+                        </div>
+                      </div>
+                      <button class="device-delete-btn" type="button" title=${S8.deleteDeviceAria} aria-label=${S8.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon6(mdiTrashCanOutline)}</button>
+                      ${this._flash(Boolean(press && pressMatchesDevice(press, device)), press?.at ?? 0)}
+                    </div>`;
+    })}
+              </div>` : this._error ? A : b2`<div class="empty-state-card" id="wifi-empty">${S8.emptyDevices}</div>`}
+        ${!canAdd ? b2`<div class="wifi-max-devices-note">${S8.maximumDevices}</div>` : A}
+      </div>
+    `;
+  }
+  // -- render: the detail view -------------------------------------------------------------------------------------------
+  _renderSyncButton(device) {
+    if (device.stale) {
+      return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-redeploy" type="button" ?disabled=${this._locked} @click=${this._redeploy}>${this._working ?? T2.redeploy}</button>`;
+    }
+    const dirty = this.hasUnsyncedChanges();
+    if (this._working) return b2`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
+    if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S8.actionButtonUpToDate}</button>`;
+    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${this._locked || device.device_id == null} @click=${() => void this._sync()}>${S8.actionButtonSyncToHub}</button>`;
+  }
+  _renderPowerLines(draft) {
+    if (!supportsPowerInput(this._hubVersion)) return A;
+    const rows = [
+      { kind: "on", label: S8.devicePowerOnLabel, slot: draft.powerOn },
+      { kind: "off", label: S8.devicePowerOffLabel, slot: draft.powerOff }
+    ];
+    return b2`
+      <ul class="device-power-lines" id="wifi-power-lines">
+        ${rows.map(({ kind, label, slot }) => b2`
+          <li class="hub-event-line">
+            <span class="hub-event-icon ${kind === "on" ? "power-on" : "power-off"}">${icon6(mdiPower)}</span>
+            <span class="hub-event-text">${label},
+              <button class="hub-event-action-link" type="button" data-power=${kind} ?disabled=${this._locked} @click=${() => {
+      this._powerPicker = kind;
+    }}>${slot !== null ? S8.devicePowerPerform(draft.slots[slot - 1].label) : S8.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S8.hubEventClearTitle} aria-label=${S8.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon6(mdiClose)}</button>` : A}.
+            </span>
+          </li>`)}
+      </ul>`;
+  }
+  _renderSlot(draft, index, flash) {
+    const slot = index + 1;
+    if (this._confirmClear === index) {
+      return b2`
+        <div class="slot-btn slot-confirming" data-slot=${slot}>
+          <div class="slot-confirm-title">${S8.clearSlotTitle}</div>
+          <div class="slot-confirm-actions">
+            <button class="dialog-btn" type="button" @click=${() => {
+        this._confirmClear = null;
+      }}>${S8.clearSlotNo}</button>
+            <button class="dialog-btn dialog-btn-primary" type="button" data-confirm-clear @click=${() => this._clearSlot(index)}>${S8.clearSlotYes}</button>
+          </div>
+          ${flash}
+        </div>`;
+    }
+    if (!isSlotConfigured(draft, index)) {
+      return b2`<button class="slot-btn slot-empty" type="button" data-slot=${slot} ?disabled=${this._locked} @click=${() => this._openSlot(index)}><span class="slot-index">${slot}</span><span class="slot-plus">+</span><span class="slot-name">${S8.makeCommand}</span>${flash}</button>`;
+    }
+    const row = draft.slots[index];
+    const powerInput = this._powerInput;
+    const isOn = powerInput && draft.powerOn === slot;
+    const isOff = powerInput && draft.powerOff === slot;
+    const isInput = powerInput && (row.inputActivityId !== null || draft.inputs.includes(slot));
+    const meta = slotMeta(draft, index, { powerInput });
+    const metaLabel = meta.kind === "unconfigured" ? S8.unconfiguredCommand : meta.kind === "power" ? meta.on && meta.off ? S8.powerBothCommand : meta.on ? S8.powerOnCommand : S8.powerOffCommand : meta.kind === "input" ? meta.activityId !== null ? S8.inputFor(this._activityName(meta.activityId)) : S8.inputCommand : S8.inActivities(meta.count);
+    const button = hardButtonByCode(row.button);
+    const name = row.label !== defaultSlotLabel(slot) ? row.label : TOOLS_CARD_STRINGS.common.commandFallback(slot);
+    const where = activitiesEnabled(row) ? row.activities.map((id) => this._activityName(id)).join(", ") : "";
+    return b2`
+      <div class="slot-btn" data-slot=${slot}>
+        <button class="slot-main" type="button" ?disabled=${this._locked} title=${where} @click=${() => this._openSlot(index)}>
+          <span class="slot-index">${slot}</span>
+          <span class="slot-text-wrap">
+            <span class="slot-name">${name}</span>
+            <span class="slot-meta">
+              ${row.favorite ? b2`<span class="slot-favorite">${icon6(mdiHeart)}</span>` : A}
+              ${button ? b2`<span class="slot-meta-icon" data-button=${button.name} style=${BUTTON_COLORS[button.name] ? `color:${BUTTON_COLORS[button.name]}` : ""}>${icon6(BUTTON_ICONS[button.name] ?? mdiGestureTapButton)}</span>` : A}
+              ${row.longPress ? b2`<span class="slot-meta-icon" data-long-press>${icon6(mdiTimerSandFull)}</span>` : A}
+              ${meta.kind === "unconfigured" ? b2`<span class="slot-meta-icon warning">${icon6(mdiAlertCircle)}</span>` : A}
+              <span class="slot-meta-label">${metaLabel}</span>
+            </span>
+          </span>
+        </button>
+        <div class="slot-actions">
+          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S8.powerBothCommand}>${icon6(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S8.powerOnCommand}>${icon6(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S8.powerOffCommand}>${icon6(mdiPower)}</span>` : A}
+          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S8.inputFor(this._activityName(row.inputActivityId)) : S8.inputCommand}>${icon6(mdiVideoInputHdmi)}</span>` : A}
+          <button class="slot-clear" type="button" aria-label=${S8.clearSlotTitle} title=${S8.clearSlotTitle} ?disabled=${this._locked} @click=${() => {
+      this._confirmClear = index;
+    }}>${icon6(mdiClose)}</button>
+        </div>
+        ${flash}
+      </div>`;
+  }
+  _renderDetail(device, draft) {
+    const press = this._activePress();
+    const target = `${device.target.host}:${device.target.port}`;
+    const now = device.effective_destination ? `${device.effective_destination.host}:${device.effective_destination.port}` : "";
+    return b2`
+      <div class="tab-panel--detail" id="wifi-device-detail" data-key=${device.key}>
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon6(mdiArrowLeft)}</button>
+                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon6(mdiPencilOutline)}</button>
+                ${this._renderTransportPill(device)}
+              </div>
+              <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            <div class="wifi-notices">
+              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S8.syncMessageFailed} ${this._syncError}</span></div>` : A}
+              ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
+              ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon6(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
+              ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
+              ${this._renderListenerNotice()}
+            </div>
+            ${this._renderPowerLines(draft)}
+            <div class="command-grid" id="wifi-slots">
+              ${draft.slots.map((_slot, index) => this._renderSlot(draft, index, this._flash(Boolean(press && pressMatchesSlot(press, device, index)), press?.at ?? 0)))}
+            </div>
+            <div class="callback-line" id="wifi-callback-line">${T2.callsBack(target)}${device.device_id != null ? b2` DevID <code>${device.device_id}</code>.` : A}${supportsPowerInput(this._hubVersion) ? A : b2` ${T2.x1Note}`}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // -- render: dialogs ------------------------------------------------------------------------------------------------------
+  _nameInput(id, value, label, disabled, onInput, onEnter) {
+    return b2`
+      <label class="wifi-field">
+        <span class="wifi-field-label">${label}</span>
+        <input class="wifi-input" id=${id} type="text" autocomplete="off" maxlength=${WIFI_NAME_MAX} .value=${value} ?disabled=${disabled}
+          @input=${(event) => {
+      const input = event.currentTarget;
+      const clean = sanitizeWifiName(this._hubVersion, input.value);
+      if (input.value !== clean) input.value = clean;
+      onInput(clean);
+    }}
+          @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onEnter();
+      }
+    }} />
+      </label>`;
+  }
+  _renderCreateDialog() {
+    const state = this._create;
+    if (!state) return A;
+    const transports = this._transports;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeCreate}>
+        <div class="dialog small" id="wifi-create-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${S8.addDevice}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeCreate}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">
+            ${this._nameInput("wifi-new-name", state.name, S8.deviceName, state.busy, (name) => {
+      this._create = { ...state, name, error: "" };
+    }, () => void this._submitCreate())}
+            ${transports.length > 1 ? b2`<div class="transport-choice">
+                  <div class="transport-choice-label">${S8.transportLabel}</div>
+                  ${transports.map((option) => b2`
+                    <label class="transport-option ${state.transport === option ? "selected" : ""}">
+                      <input type="radio" name="wifi-new-transport" .checked=${state.transport === option} ?disabled=${state.busy} @change=${() => {
+      this._create = { ...state, transport: option };
+    }} />
+                      <span class="transport-option-copy"><span class="transport-option-name">${option.toUpperCase()}</span><span class="transport-option-hint">${option === "http" ? T2.transportHttpHint : S8.transportMqttHint}</span></span>
+                    </label>`)}
+                  <div class="transport-choice-note">${S8.transportLockedNote}</div>
+                </div>` : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note" id="wifi-create-error">${state.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeCreate}>${S8.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-create-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitCreate()}>${state.busy ? S8.createDeviceBusy : S8.createModalCreate}</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  _renderDeleteDialog() {
+    const state = this._delete;
+    const device = state ? this._devices.find((row) => row.key === state.key) : null;
+    if (!state || !device) return A;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeDelete}>
+        <div class="dialog small" id="wifi-delete-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${S8.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeDelete}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">
+            <div class="dialog-text">${T2.deleteBody(device.spec.name)}</div>
+            ${state.referenced ? b2`<div class="wifi-notice" id="wifi-delete-referenced">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.deleteReferenced}</span></div>` : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note" id="wifi-delete-error">${state.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeDelete}>${S8.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" id="wifi-delete-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitDelete()}>${state.busy ? S8.deleteDeviceBusy : state.referenced ? T2.deleteAnyway : S8.deleteModalDelete}</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  _renderSlotDialog() {
+    const state = this._slotEdit;
+    const draft = this._draft;
+    const device = this._device;
+    if (!state || !draft || !device) return A;
+    const edit = state.edit;
+    const activities = this._activities;
+    const hasActivities = activities.length > 0;
+    const chipsEnabled = activitiesEnabled(edit);
+    const inputOn = edit.inputActivityId !== null;
+    const setInput = (on) => {
+      if (!hasActivities) return;
+      this._patchSlot({ inputActivityId: on ? edit.inputActivityId ?? activities[0].id : null });
+    };
+    const inputHolder = slotHoldingInput(draft, edit.inputActivityId, state.index);
+    const inputHint = !hasActivities ? S8.noActivitiesForHub : inputHolder >= 0 ? S8.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId)) : S8.activityInputHint;
+    const buttonHolder = slotHoldingButton(draft, edit.button, state.index);
+    const otherHolder = buttonHolder < 0 ? otherDeviceHoldingButton(this._devices, device.key, edit.button) : null;
+    const buttonHint = buttonHolder >= 0 ? S8.replacesOnButton(draft.slots[buttonHolder].label) : otherHolder ? S8.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name) : "";
+    const keyLabels = S8.keyLabels;
+    const buttons = availableHardButtons(this._hubVersion).filter((button) => keyLabels[button.name]);
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeSlot}>
+        <div class="dialog" id="wifi-slot-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${S8.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeSlot}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">
+            <div class="dialog-note">${T2.slotDescription}</div>
+            <div class="config-block">
+              <div class="config-group">
+                ${this._nameInput("wifi-slot-name", edit.label, S8.commandDisplayName, false, (label) => this._patchSlot({ label }), this._saveSlot)}
+                ${this._powerInput ? b2`
+                      <button class="advanced-toggle ${state.advanced ? "expanded" : ""}" id="wifi-slot-advanced" type="button" aria-expanded=${String(state.advanced)} @click=${() => {
+      this._slotEdit = { ...state, advanced: !state.advanced };
+    }}><span>${S8.advanced}</span>${icon6(mdiChevronDown)}</button>
+                      ${state.advanced ? b2`<div class="advanced-panel">
+                            <label class="checkbox-row ${inputOn ? "active" : ""} ${hasActivities ? "" : "disabled"}">
+                              <span class="checkbox-icon">${icon6(mdiVideoInputHdmi)}</span>
+                              <span class="checkbox-copy"><span>${S8.activityInput}</span><span class="checkbox-subtext" id="wifi-slot-input-hint">${inputHint}</span></span>
+                              <input class="sb-switch" id="wifi-slot-input" type="checkbox" .checked=${inputOn} ?disabled=${!hasActivities} @change=${(event) => setInput(event.currentTarget.checked)} />
+                            </label>
+                            <label class="wifi-field nested-control">
+                              <span class="wifi-field-label">${S8.activityInputLabel}</span>
+                              <select class="wifi-input" id="wifi-slot-input-activity" ?disabled=${!inputOn || !hasActivities} @change=${(event) => this._patchSlot({ inputActivityId: Number(event.currentTarget.value) })}>
+                                ${activities.map((activity) => b2`<option value=${String(activity.id)} ?selected=${(edit.inputActivityId ?? activities[0]?.id) === activity.id}>${activity.name}</option>`)}
+                              </select>
+                            </label>
+                          </div>` : A}` : A}
+              </div>
+              <div class="config-group">
+                <label class="checkbox-row ${edit.favorite ? "active" : ""}">
+                  <span class="checkbox-icon plain">${icon6(mdiHeart)}</span>
+                  <span class="checkbox-copy"><span>${S8.favorite}</span></span>
+                  <input class="sb-switch" id="wifi-slot-favorite" type="checkbox" .checked=${edit.favorite} @change=${(event) => this._patchSlot({ favorite: event.currentTarget.checked })} />
+                </label>
+                <label class="wifi-field">
+                  <span class="wifi-field-label">${S8.physicalButtonAssignment}</span>
+                  <select class="wifi-input" id="wifi-slot-button" @change=${(event) => {
+      const value = event.currentTarget.value;
+      this._patchSlot({ button: value ? Number(value) : null });
+    }}>
+                    <option value="" ?selected=${edit.button === null}>${S8.none}</option>
+                    ${buttons.map((button) => b2`<option value=${String(button.code)} ?selected=${edit.button === button.code}>${BUTTON_GROUP_TITLES[button.group]} - ${keyLabels[button.name]}</option>`)}
+                  </select>
+                </label>
+                ${buttonHint ? b2`<div class="button-conflict-hint" id="wifi-slot-button-hint">${buttonHint}</div>` : A}
+                <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
+                  <span class="checkbox-icon plain">${icon6(mdiTimerSandFull)}</span>
+                  <span class="checkbox-copy"><span>${S8.enableLongPress}</span></span>
+                  <input class="sb-switch" id="wifi-slot-long-press" type="checkbox" .checked=${edit.button !== null && edit.longPress} ?disabled=${edit.button === null} @change=${(event) => this._patchSlot({ longPress: event.currentTarget.checked })} />
+                </label>
+                <div class="activities-label ${chipsEnabled ? "" : "disabled"}">${S8.applyToActivities}</div>
+                <div class="activity-chip-row" id="wifi-slot-activities">
+                  ${hasActivities ? activities.map((activity) => b2`<button class="activity-chip ${chipsEnabled && edit.activities.includes(activity.id) ? "active" : ""}" type="button" data-activity=${activity.id} ?disabled=${!chipsEnabled} @click=${() => {
+      if (this._slotEdit) this._slotEdit = { ...this._slotEdit, edit: withActivityToggled(this._slotEdit.edit, activity.id), error: "" };
+    }}>${activity.name}</button>`) : b2`<div class="empty-hint">${S8.noActivitiesForHub}</div>`}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note" id="wifi-slot-error">${state.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" @click=${this._closeSlot}>${S8.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-slot-save" type="button" @click=${this._saveSlot}>${S8.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  _renderRenameDialog() {
+    const state = this._rename;
+    if (!state) return A;
+    const close = () => {
+      this._rename = null;
+    };
+    return b2`
+      <div class="modal-backdrop" @click=${close}>
+        <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S8.deviceName, false, (name) => {
+      this._rename = { name, error: "" };
+    }, this._saveRename)}</div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${state.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" @click=${close}>${S8.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-rename-save" type="button" @click=${this._saveRename}>${S8.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  _renderPowerPicker() {
+    const kind = this._powerPicker;
+    const draft = this._draft;
+    if (!kind || !draft) return A;
+    const close = () => {
+      this._powerPicker = null;
+    };
+    const current = kind === "on" ? draft.powerOn : draft.powerOff;
+    const options = draft.slots.map((slot, index) => ({ slot: index + 1, label: slot.label })).filter((row) => isSlotConfigured(draft, row.slot - 1));
+    return b2`
+      <div class="modal-backdrop" @click=${close}>
+        <div class="dialog small" id="wifi-power-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S8.devicePowerOnLabel : S8.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">
+            <div class="dialog-note">${S8.devicePowerHint}</div>
+            <div class="device-power-options">
+              <button class="device-power-option ${current === null ? "active" : ""}" type="button" @click=${() => this._pickPower(kind, null)}>${S8.devicePowerNothing}</button>
+              ${options.map((option) => b2`<button class="device-power-option ${current === option.slot ? "active" : ""}" type="button" data-slot=${option.slot} @click=${() => this._pickPower(kind, option.slot)}>${option.label}</button>`)}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  _renderLeaveDialog() {
+    if (!this._leave) return A;
+    const close = () => {
+      this._leave = null;
+    };
+    const device = this._device;
+    return b2`
+      <div class="modal-backdrop" @click=${close}>
+        <div class="dialog small" id="wifi-leave-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${A3.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A3.syncKeepEditing} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body"><div class="dialog-text">${T2.leaveBody}</div></div>
+          <div class="dialog-footer">
+            <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A3.exitWithoutSync}</button>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" type="button" @click=${close}>${A3.syncKeepEditing}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-leave-sync" type="button" ?disabled=${this._locked || !device || device.stale} @click=${() => void this._leaveAfterSync()}>${A3.exitSyncNow}</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  render() {
+    if (!this.ctx?.hub) return b2`<div class="wifi-state">${TOOLS_CARD_STRINGS.common.noHubsFound}</div>`;
+    const device = this._device;
+    let body;
+    if (this.deviceKey && device && this._draft) body = this._renderDetail(device, this._draft);
+    else if (this.deviceKey && this._list === null) body = b2`<div class="wifi-state">${this._error ?? TOOLS_CARD_STRINGS.common.loading}</div>`;
+    else body = this._renderList();
+    return b2`${body}${this._renderCreateDialog()}${this._renderDeleteDialog()}${this._renderSlotDialog()}${this._renderRenameDialog()}${this._renderPowerPicker()}${this._renderLeaveDialog()}`;
+  }
+};
+SbPanelWifiDevices.properties = {
+  api: { attribute: false },
+  ctx: { attribute: false },
+  deviceKey: { attribute: false },
+  _list: { state: true },
+  _activities: { state: true },
+  _listener: { state: true },
+  _loading: { state: true },
+  _error: { state: true },
+  _draft: { state: true },
+  _create: { state: true },
+  _delete: { state: true },
+  _slotEdit: { state: true },
+  _rename: { state: true },
+  _powerPicker: { state: true },
+  _confirmClear: { state: true },
+  _leave: { state: true },
+  _working: { state: true },
+  _syncError: { state: true },
+  _flashTick: { state: true }
+};
+SbPanelWifiDevices.styles = [
+  PANEL_BASE_CSS,
+  EDITOR_CSS,
+  i`
+      /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
+      .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
+      .list-header-copy { flex: 1 1 240px; min-width: 0; }
+      .section-subtitle { font-size: 13px; line-height: 1.5; color: var(--sbp-muted); }
+      .list-header-action { flex: 0 0 auto; margin-left: auto; align-self: flex-start; }
+      .device-list { display: grid; gap: 6px; }
+      .device-card { position: relative; width: 100%; max-width: 100%; border: 1px solid var(--sbp-line); border-radius: 12px; padding: 9px 10px 9px 12px; background: var(--sbp-panel-2); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; transition: border-color 120ms ease, background-color 120ms ease; }
+      .device-card:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .device-card:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
+      .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
+      .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+      .device-card-lead { color: var(--sbp-muted); display: inline-flex; flex: 0 0 auto; }
+      .device-card-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+      .device-card-name { font-size: 13px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .device-card-count { font-size: 10px; line-height: 1.05; color: var(--sbp-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .device-card-meta { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; min-width: 0; }
+      .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--sbp-line); background: var(--sbp-panel); white-space: nowrap; flex: 0 0 auto; }
+      .status-pill .mdi { width: 18px; height: 18px; }
+      .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--sbp-line)); color: color-mix(in srgb, #2e7d32 40%, var(--sbp-text)); background: color-mix(in srgb, #48b851 16%, var(--sbp-panel)); }
+      .status-pill.sync-error { border-color: color-mix(in srgb, var(--sbp-err) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-err) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-err) 12%, var(--sbp-panel)); }
+      .status-pill.sync-running { border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-accent) 12%, var(--sbp-panel)); }
+      .status-pill.sync-pending { border-color: color-mix(in srgb, var(--sbp-warn) 40%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-warn) 30%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-warn) 12%, var(--sbp-panel)); }
+      .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: var(--sbp-panel); white-space: nowrap; flex: 0 0 auto; text-transform: uppercase; }
+      .transport-pill.mqtt { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); color: var(--sbp-accent); }
+      .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; color: var(--sbp-muted); cursor: pointer; flex: 0 0 auto; margin-left: 4px; }
+      .device-delete-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .device-delete-btn:disabled { opacity: 0.42; cursor: default; }
+      .empty-state-card { border: 1px dashed var(--sbp-line); border-radius: 12px; padding: 18px; color: var(--sbp-muted); line-height: 1.5; font-size: 13px; }
+      .wifi-max-devices-note { display: flex; justify-content: center; padding: 12px 16px 4px; font-size: 13px; color: var(--sbp-muted); }
+      .wifi-state { padding: 24px 16px; text-align: center; font-size: 13px; color: var(--sbp-muted); }
+      .wifi-notice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45; border: 1px solid color-mix(in srgb, var(--sbp-warn) 40%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, var(--sbp-panel)); color: var(--sbp-text); }
+      .wifi-notice.error { border-color: color-mix(in srgb, var(--sbp-err) 40%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 10%, var(--sbp-panel)); }
+      .wifi-notice .mdi { width: 18px; height: 18px; margin-top: 1px; color: var(--sbp-warn); }
+      .wifi-notice.error .mdi { color: var(--sbp-err); }
+      .wifi-notice-copy { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+      .wifi-notice .btn { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
+      .wifi-notices { display: grid; gap: 8px; }
+      .wifi-notices:empty { display: none; }
+
+      /* -- the press glow (the card's .wifi-ir-flash, same 720 ms as the dock's sweep) ---------- */
+      .wifi-ir-flash { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sbp-accent) 75%, transparent), inset 0 0 14px color-mix(in srgb, var(--sbp-accent) 22%, transparent), 0 0 14px color-mix(in srgb, var(--sbp-accent) 30%, transparent); opacity: 0; animation: wifiIrGlow 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
+      @keyframes wifiIrGlow { 0% { opacity: 0; } 18% { opacity: 1; } 80% { opacity: 0.7; } 100% { opacity: 0; } }
+      @media (prefers-reduced-motion: reduce) { .wifi-ir-flash { animation: none; opacity: 0; } }
+
+      /* -- the detail view ---------------------------------------------------------------------- */
+      .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+      .detail-title-btn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; cursor: pointer; color: var(--sbp-text); }
+      .detail-title-btn .mdi { color: var(--sbp-muted); opacity: 0; transition: opacity 120ms ease; }
+      .detail-title-btn:hover .mdi, .detail-title-btn:focus-visible .mdi { opacity: 1; }
+      .detail-title-btn .detail-title { width: auto; }
+      .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+      .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
+      .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
+      .hub-event-icon.power-on { color: #2e7d32; }
+      .hub-event-icon.power-off { color: #c62828; }
+      .hub-event-text { min-width: 0; }
+      .hub-event-action-link { display: inline; font: inherit; font-weight: 700; font-style: italic; color: var(--sbp-text); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; white-space: normal; }
+      .hub-event-action-link:hover { text-decoration-color: var(--sbp-accent); }
+      .hub-event-clear { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; width: 18px; height: 18px; margin-left: 4px; border: 1px solid var(--sbp-line); border-radius: 50%; color: var(--sbp-muted); cursor: pointer; }
+      .hub-event-clear:hover { border-color: var(--sbp-accent); color: var(--sbp-text); }
+      .hub-event-clear .mdi { width: 12px; height: 12px; }
+      .device-power-options { display: grid; gap: 8px; }
+      .device-power-option { border: 1px solid var(--sbp-line); border-radius: 10px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 600; text-align: left; padding: 10px 12px; cursor: pointer; white-space: normal; transition: border-color 120ms ease, background-color 120ms ease; }
+      .device-power-option:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .device-power-option.active { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.14); }
+
+      /* The card's slot tile without its action button: about half the height, so all ten fit a screen. */
+      .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .slot-btn { position: relative; border: 1px solid var(--sbp-line); border-radius: 12px; min-height: 58px; text-align: left; display: flex; align-items: stretch; overflow: hidden; background: var(--sbp-panel); color: var(--sbp-text); }
+      .slot-btn:hover { border-color: var(--sbp-accent); }
+      button.slot-btn { cursor: pointer; width: 100%; }
+      .slot-btn.slot-empty { align-items: center; justify-content: center; gap: 8px; color: var(--sbp-muted); border-style: dashed; }
+      .slot-btn.slot-empty .slot-plus { font-size: 20px; line-height: 1; }
+      .slot-btn.slot-empty .slot-index { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); }
+      .slot-btn.slot-empty .slot-name { font-size: 13px; color: var(--sbp-muted); }
+      .slot-main { display: flex; align-items: center; gap: 8px; padding: 9px 12px; min-width: 0; width: 100%; cursor: pointer; text-align: left; color: inherit; }
+      .slot-index { flex: 0 0 auto; width: 20px; font-size: 11px; font-weight: 700; color: var(--sbp-muted); font-variant-numeric: tabular-nums; }
+      .slot-text-wrap { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+      .slot-name { font-size: 14px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--sbp-text); }
+      .slot-meta { font-size: 11.5px; color: var(--sbp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 4px; min-width: 0; }
+      .slot-meta .mdi { width: 13px; height: 13px; }
+      .slot-meta-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      .slot-favorite { color: var(--sbp-err); display: inline-flex; }
+      .slot-meta-icon { display: inline-flex; }
+      .slot-meta-icon.warning { color: var(--sbp-err); }
+      .slot-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; padding-right: 8px; }
+      .slot-flag, .slot-clear { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); color: var(--sbp-muted); display: inline-flex; align-items: center; justify-content: center; }
+      .slot-flag .mdi { width: 14px; height: 14px; }
+      .slot-flag.power-on { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 35%, var(--sbp-line)); }
+      .slot-flag.power-off { color: #c62828; border-color: color-mix(in srgb, #c62828 35%, var(--sbp-line)); }
+      .slot-flag.power-both { color: #f59e0b; border-color: color-mix(in srgb, #f59e0b 35%, var(--sbp-line)); }
+      .slot-flag.input { color: var(--sbp-accent); border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); }
+      .slot-clear { cursor: pointer; }
+      .slot-clear:hover { border-color: var(--sbp-accent); color: var(--sbp-text); }
+      .slot-btn.slot-confirming { align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px 8px 12px; }
+      .slot-confirm-title { font-size: 13px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .slot-confirm-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+      .slot-confirm-actions .dialog-btn { padding: 6px 10px; }
+      .callback-line { font-size: 12px; line-height: 1.5; color: var(--sbp-muted); overflow-wrap: anywhere; }
+      .callback-line code { font-family: var(--sbp-mono); font-size: 11.5px; }
+
+      /* -- dialogs -------------------------------------------------------------------------------- */
+      .dialog-note { border: 1px solid color-mix(in srgb, var(--sbp-accent) 42%, var(--sbp-line)); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); font-size: 13px; line-height: 1.45; }
+      .wifi-field { display: flex; flex-direction: column; gap: 4px; margin: 0; text-transform: none; letter-spacing: 0; }
+      .wifi-field-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--sbp-muted); }
+      .wifi-input { width: 100%; padding: 9px 10px; border: 1px solid var(--sbp-line); border-radius: 8px; background: var(--sbp-input); color: var(--sbp-text); font: inherit; font-size: 13.5px; }
+      .wifi-input:focus { outline: none; border-color: var(--sbp-accent); }
+      .advanced-toggle { width: fit-content; color: var(--sbp-muted); display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; }
+      .advanced-toggle:hover { color: var(--sbp-text); }
+      .advanced-toggle .mdi { width: 18px; height: 18px; transition: transform 120ms ease; }
+      .advanced-toggle.expanded .mdi { transform: rotate(180deg); }
+      .checkbox-row { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px; font-size: 13px; cursor: pointer; color: inherit; text-align: left; white-space: normal; margin: 0; text-transform: none; letter-spacing: 0; }
+      .checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--sbp-line); display: flex; align-items: center; justify-content: center; color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.14); }
+      .checkbox-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; color: var(--sbp-text); }
+      .checkbox-subtext { font-size: 12px; line-height: 1.35; color: var(--sbp-muted); }
+      .config-block { display: grid; gap: 14px; }
+      .config-group { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-panel) 92%, #000); }
+      .advanced-panel { display: grid; gap: 14px; padding-top: 2px; }
+      .checkbox-row.disabled { cursor: default; opacity: 0.6; }
+      .checkbox-row.nested-control, .wifi-field.nested-control { padding-left: 36px; }
+      .checkbox-icon.plain { color: var(--sbp-text); background: color-mix(in srgb, var(--sbp-panel) 88%, #000); }
+      .checkbox-row.active .checkbox-icon.plain { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.2); }
+      select.wifi-input { cursor: pointer; }
+      select.wifi-input:disabled { cursor: default; opacity: 0.6; }
+      .button-conflict-hint { font-size: 12px; line-height: 1.35; color: var(--sbp-warn); padding: 0 0 2px; }
+      .activities-label { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); }
+      .activities-label.disabled { opacity: 0.55; }
+      .activity-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+      .activity-chip { border: 1px solid var(--sbp-line); border-radius: 999px; background: color-mix(in srgb, var(--sbp-panel) 90%, #000); color: var(--sbp-text); padding: 6px 12px; font: inherit; cursor: pointer; }
+      .activity-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+      .activity-chip.active { background: rgba(var(--sbp-accent-rgb), 0.2); border-color: var(--sbp-accent); color: var(--sbp-accent); }
+      .activity-chip:disabled, .activity-chip:disabled.active { opacity: 0.45; cursor: default; border-color: var(--sbp-line); background: color-mix(in srgb, var(--sbp-panel) 90%, #000); color: var(--sbp-text); }
+      .empty-hint { font-size: 13px; color: var(--sbp-muted); }
+      .transport-choice { display: flex; flex-direction: column; gap: 8px; }
+      .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--sbp-muted); }
+      .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; cursor: pointer; margin: 0; text-transform: none; letter-spacing: 0; }
+      .transport-option.selected { border-color: var(--sbp-accent); }
+      .transport-option input { width: auto; margin-top: 2px; accent-color: var(--sbp-accent); }
+      .transport-option-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .transport-option-name { font-size: 13px; font-weight: 700; color: var(--sbp-text); }
+      .transport-option-hint, .transport-choice-note { font-size: 12px; color: var(--sbp-muted); }
+
+      @container (max-width: 480px) {
+        .command-grid { grid-template-columns: 1fr; gap: 8px; }
+        .device-card { padding: 10px 12px; }
+        .device-status-pill { padding: 6px; min-width: 32px; justify-content: center; }
+        .device-status-pill-label { display: none; }
+        .slot-btn { min-height: 52px; }
+        .slot-flag, .slot-clear { width: 32px; height: 32px; }
+        .detail-title-btn .mdi { opacity: 1; }
+      }
+    `
+];
+function defineWifiDevicesView() {
+  if (!customElements.get(WIFI_DEVICES_VIEW_TAG)) customElements.define(WIFI_DEVICES_VIEW_TAG, SbPanelWifiDevices);
+}
+
 // server-panel/src/panel.ts
 function bootstrapServerPanel() {
   installRemoteWebShims();
@@ -23296,6 +24692,7 @@ function bootstrapServerPanel() {
   defineEventsView();
   defineServerView();
   defineBackupView();
+  defineWifiDevicesView();
   definePanel();
 }
 if (typeof window !== "undefined" && typeof customElements !== "undefined") {

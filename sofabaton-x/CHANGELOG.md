@@ -11,6 +11,19 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+- `WifiSlotSpec` can say where a slot's command goes: `favorite`, `button`
+  (a hub button code), `long_press`, `activities` and `input_activity_id`.
+  `snapshot_from_spec` derives the per-activity favorites, button bindings,
+  input selection, memberships and the device-page bindings from them, the
+  same expansion the Home Assistant integration's Wifi Commands uses, so
+  `update_wifi_device` writes them in place and removes only what an earlier
+  spec put there. `deploy_wifi_device` creates the device and applies the
+  references as its first update. New: `WifiDeviceSpec.has_references`,
+  `WifiDeviceSpec.without_references()`, `input_slots_from_spec()`,
+  `BINDABLE_BUTTON_CODES`, and the `WifiUpdateDeclined` reason
+  `"activity"` for an activity the hub does not have. Additive: a spec or
+  a stored deployment without the new fields reads and plans exactly as
+  before.
 - Fixed: a read could reach the hub in the middle of a write. Reads are
   cache reads, except one whose cache is not complete, which fetches on
   demand; after the erase of `restore(replace=True)` every cache is empty,

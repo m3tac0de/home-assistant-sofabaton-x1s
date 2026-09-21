@@ -22,6 +22,7 @@ import { PanelStore, type PanelSnapshot } from "./panel-store";
 import { PanelStream } from "./panel-stream";
 import { PANEL_BASE_CSS } from "./panel-styles";
 import type { SbPanelEntityEditor } from "./views/entity-editor-base";
+import type { SbPanelWifiDevices } from "./views/wifi-devices-view";
 
 export const PANEL_TAG = "sofabaton-server-panel";
 
@@ -30,6 +31,7 @@ const DOC_LINKS: Record<HubTab, DockLink> = {
   hub: { href: `${README}#control-panel`, label: "Control panel docs" },
   backup: { href: `${README}#ir-payloads-backup-restore`, label: "Backup and restore docs" },
   remote: { href: `${README}#web-remote`, label: "Web remote docs" },
+  wifi: { href: `${README}#wifi-commands`, label: "Wifi Commands docs" },
 };
 
 function storageOrNull(): Storage | null {
@@ -46,6 +48,7 @@ export class SofabatonServerPanel extends LitElement {
     _pickerOpen: { state: true },
     _cogOpen: { state: true },
     _backupDirty: { state: true },
+    _wifiDirty: { state: true },
     _pickerManual: { state: true },
     _pickerActionsHubId: { state: true },
     _pickerBusy: { state: true },
@@ -200,6 +203,8 @@ export class SofabatonServerPanel extends LitElement {
   private _cogOpen = false;
   /** The Backup tab's Edit section holds edits only a download keeps (its sb-backup-dirty). */
   private _backupDirty = false;
+  /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
+  private _wifiDirty = false;
   private _pickerManual = false;
   private _pickerActionsHubId: string | null = null;
   private _pickerBusy = new Set<string>();
@@ -311,6 +316,20 @@ export class SofabatonServerPanel extends LitElement {
   /** Leaving the draft's screen or its hub with unsaved work asks first (decision 8); nothing is lost either way.
    *  An open editor asks with the card's own "Unsynced changes" dialog and finishes the move itself (device editor plan, decision 3). */
   private _confirmLeave(target: { hubId?: string | null; route?: Route }): boolean {
+    if (this._wifiDirty && this._snapshot.route.kind === "hub" && this._snapshot.route.tab === "wifi") {
+      // The draft lives in the view: the view asks (the card's dialog) and finishes the move itself.
+      const current = this._snapshot.route;
+      const staying = target.route?.kind === "hub" && target.route.tab === "wifi" && target.route.item === current.item && target.hubId === undefined;
+      const view = this.renderRoot.querySelector<SbPanelWifiDevices>("sb-panel-wifi-devices");
+      if (!staying && view && view.hasUnsyncedChanges()) {
+        view.askToLeave(() => {
+          this._wifiDirty = false;
+          if (target.route) this.store.navigate(target.route);
+          else if (target.hubId !== undefined) this.store.selectHub(target.hubId);
+        });
+        return false;
+      }
+    }
     const runtime = selectedRuntime(this._snapshot);
     if (!runtime || !hasDirtyDraft(runtime)) return true;
     const scope = runtime.draft!.scope;
@@ -502,10 +521,10 @@ export class SofabatonServerPanel extends LitElement {
     void this.store.refreshHubs();
   }
 
-  private _onNavigate(event: CustomEvent<{ tab?: HubTab; sub?: string; page?: ToolPage; entity?: number }>): void {
+  private _onNavigate(event: CustomEvent<{ tab?: HubTab; sub?: string; page?: ToolPage; entity?: number; item?: string }>): void {
     const d = event.detail;
     if (d.page) this._go(toolRoute(d.page));
-    else if (d.tab) this._go(hubRoute(null, d.tab, d.sub, d.entity));
+    else if (d.tab) this._go(hubRoute(null, d.tab, d.sub, d.entity, d.item));
   }
 
   // -- render ---------------------------------------------------------------------------
@@ -528,6 +547,8 @@ export class SofabatonServerPanel extends LitElement {
     switch (route.tab) {
       case "backup":
         return html`<sb-panel-backup .ctx=${ctx} .store=${this.store} .section=${route.sub} @sb-backup-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._backupDirty = Boolean(event.detail?.dirty); }}></sb-panel-backup>`;
+      case "wifi":
+        return html`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._wifiDirty = Boolean(event.detail?.dirty); }}></sb-panel-wifi-devices>`;
       case "remote":
         return html`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
       default:
@@ -610,7 +631,7 @@ export class SofabatonServerPanel extends LitElement {
             : nothing}
         </main>
         ${renderBottomDock({
-          model: dockModel(s, runtime, { unsavedBackup: this._backupDirty }),
+          model: dockModel(s, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi" }),
           message: s.message,
           connectivity: connectivityFor(runtime),
           hasHub: ctx.hub !== null,

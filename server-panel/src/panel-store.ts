@@ -34,8 +34,14 @@ export interface LocalBusy {
 export interface PressEvent {
   seq: number;
   deviceId: number | null;
+  /** The Wifi Device's key on the server (`default` for the callback device); null for an unknown device. */
+  deviceKey: string | null;
+  /** The 1-based slot the press resolved to; null for an unknown slot or device. */
+  slot: number | null;
+  commandId: number | null;
   label: string | null;
   pressType: string;
+  resolution: string | null;
   /** The panel's clock when it arrived; keys the dock's flash. */
   at: number;
 }
@@ -299,7 +305,7 @@ export class PanelStore {
       const hubId = next.hubId ?? this._snapshot.selectedHubId;
       // Prefs remember the tab and subtab, never an open editor.
       this._lastHubTab = { tab: next.tab, sub: normalizeSub(next.tab, next.sub) };
-      next = hubRoute(hubId, next.tab, next.sub, next.entity);
+      next = hubRoute(hubId, next.tab, next.sub, next.entity, next.item);
     } else {
       next = { kind: "tool", page: next.page, sub: normalizeToolSub(next.page, next.sub) };
     }
@@ -537,6 +543,10 @@ export class PanelStore {
     const press: PressEvent = {
       seq: typeof data.seq === "number" ? data.seq : 0,
       deviceId: typeof data.device_id === "number" ? data.device_id : null,
+      deviceKey: typeof data.device_key === "string" ? data.device_key : null,
+      slot: typeof data.slot === "number" ? data.slot : null,
+      commandId: typeof data.command_id === "number" ? data.command_id : null,
+      resolution: typeof data.resolution === "string" ? data.resolution : null,
       label: typeof data.label === "string" ? data.label : null,
       pressType: typeof data.press_type === "string" ? data.press_type : "short",
       at: this._now(),

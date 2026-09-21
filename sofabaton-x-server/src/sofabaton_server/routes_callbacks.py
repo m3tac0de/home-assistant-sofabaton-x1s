@@ -1,5 +1,7 @@
-"""``/api/v1/hubs/{hub_id}/callback-device``, ``/presses`` and the listener
-routes (callbacks plan, C2 to C4).
+"""``/api/v1/hubs/{hub_id}/callback-device``, ``/wifi-devices``, ``/presses``
+and the listener routes (callbacks plan, C2 to C4; server panel wifi
+commands plan, section 2: the callback device is the Wifi Device under
+the key ``default``, and both route families share one implementation).
 
 The rule the routes follow: an immediate 409 is something the record
 alone decides (a device already deployed, a stale one, an X1 with the
@@ -13,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
@@ -22,6 +24,9 @@ from sofabaton import WIFI_SLOT_COUNT, AsyncXProxy
 
 from . import API_PREFIX
 from .callbacks import (
+    DEFAULT_DEVICE_KEY,
+    MAX_WIFI_DEVICES,
+    TRANSPORTS,
     CallbackDeviceExists,
     CallbackDeviceMissing,
     CallbackDeviceNotStale,
@@ -29,6 +34,7 @@ from .callbacks import (
     CallbackPortRefused,
     CallbackService,
     ListenerState,
+    WifiDeviceLimit,
 )
 from .jobs import JobView
 from .manager import HubDisabled, HubNotFound
@@ -49,8 +55,20 @@ _ERRORS = {404: {"model": Problem}, 409: {"model": Problem}, 422: {"model": Prob
 
 
 class CallbackSlot(BaseModel):
+    """One command slot: its labels and, optionally, where its command goes.
+
+    ``favorite`` and ``button`` apply in every activity of ``activities``;
+    an update writes them in place and later removes only what an earlier
+    spec put there. One slot per button and one slot per input activity.
+    """
+
     label: str = Field(min_length=1, max_length=30)
     long_label: Optional[str] = Field(None, max_length=30, description="default: '<label> Long'")
+    favorite: bool = Field(False, description="a favorite in each of `activities`")
+    button: Optional[int] = Field(None, description="hub button code bound to this command in each of `activities`")
+    long_press: bool = Field(False, description="also bind the slot's long record to that button's long press")
+    activities: list[int] = Field(default_factory=list, description="activity ids; kept only while `favorite` or `button` is set")
+    input_activity_id: Optional[int] = Field(None, description="the activity whose start performs this command (X1S/X2)")
 
 
 class CallbackDeviceRequest(BaseModel):
@@ -115,6 +133,28 @@ class CallbackDeviceView(BaseModel):
     pending: Optional[CallbackPendingView] = None
     last_press: Optional[CallbackLastPress] = None
     effective_destination: Optional[EffectiveDestination] = None
+    key: str = Field(DEFAULT_DEVICE_KEY, description="the record's key under /wifi-devices; the callback device is 'default'")
+    transport: str = Field("http", description="how its presses reach the server")
+
+
+class WifiDeviceRequest(CallbackDeviceRequest):
+    """Body of ``POST /wifi-devices``: the callback device's spec plus the transport.
+
+    ``PUT /wifi-devices/{key}`` takes the same body; the transport of a
+    deployed device is fixed and the field is ignored there.
+    """
+
+    transport: Literal["http"] = Field("http", description="one of the list's `transports`")
+
+
+class WifiDeviceList(BaseModel):
+    """``GET /hubs/{id}/wifi-devices``: every managed Wifi Device of the hub,
+    the callback device (key ``default``) first."""
+
+    devices: list[CallbackDeviceView]
+    max_devices: int
+    transports: list[str]
+    effective_destination: Optional[EffectiveDestination] = None
 
 
 class CallbackReference(BaseModel):
@@ -136,6 +176,7 @@ class PressView(BaseModel):
     transport: str
     source: str
     received_at: str
+    device_key: Optional[str] = Field(None, description="the Wifi Device's key; null for an unknown device")
 
 
 class PressPage(BaseModel):
@@ -185,24 +226,150 @@ def _known_hub(request: Request, hub_id: str) -> None:
         raise hub_not_found(hub_id) from None
 
 
-def _view(service: CallbackService, hub_id: str, request: Request) -> CallbackDeviceView:
-    record = service.record(hub_id)
-    if record is None:
-        raise ApiProblem(404, "callback_device_not_found", "No callback device on this hub",
-                         detail="deploy one with POST /callback-device", hub_id=hub_id)
-    destination = None
+def _destination(service: CallbackService, hub_id: str, request: Request) -> Optional[dict[str, Any]]:
     try:
         proxy = request.app.state.hub_manager.proxy(hub_id)
     except (HubNotFound, HubDisabled):
-        proxy = None
-    if proxy is not None:
-        host, port = service.target_for(proxy)
-        destination = {"host": host, "port": port}
-    return CallbackDeviceView(**record.view(effective_destination=destination))
+        return None
+    host, port = service.target_for(proxy)
+    return {"host": host, "port": port}
+
+
+def _not_found(hub_id: str, key: str) -> ApiProblem:
+    if key == DEFAULT_DEVICE_KEY:
+        return ApiProblem(404, "callback_device_not_found", "No callback device on this hub",
+                          detail="deploy one with POST /callback-device", hub_id=hub_id)
+    return ApiProblem(404, "callback_device_not_found", "No such Wifi Device on this hub",
+                      detail=f"no Wifi Device has the key {key!r}", hub_id=hub_id)
+
+
+def _view(service: CallbackService, hub_id: str, request: Request, key: str = DEFAULT_DEVICE_KEY) -> CallbackDeviceView:
+    record = service.record(hub_id, key)
+    if record is None:
+        raise _not_found(hub_id, key)
+    return CallbackDeviceView(**record.view(effective_destination=_destination(service, hub_id, request)))
 
 
 def _listener_view(state: ListenerState) -> CallbackListenerView:
     return CallbackListenerView(**asdict(state))
+
+
+# -- the four operations, shared by /callback-device and /wifi-devices ---------------------
+
+
+async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *, key: str, transport: str,
+                  kind: str) -> JobView:
+    service = _service(request)
+    proxy = _proxy(request, hub_id)
+    existing = service.record(hub_id, key)
+    if existing is not None and existing.device_id is not None and existing.pending is None:
+        raise ApiProblem(409, "callback_device_exists", "A callback device is already deployed",
+                         detail=f"device {existing.device_id}; update it, or remove it first", hub_id=hub_id)
+    try:
+        if existing is None:
+            service.check_limit(hub_id)
+        spec = service.spec_from_body(body.model_dump(), key=key)
+        service.check_port((await proxy.status()).hub_version)
+    except WifiDeviceLimit as err:
+        raise ApiProblem(409, "wifi_device_limit", "The hub holds the maximum number of Wifi Devices",
+                         detail=str(err), hub_id=hub_id) from err
+    except CallbackPortRefused as err:
+        raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
+                         detail=str(err), hub_id=hub_id) from err
+    except ValueError as err:
+        raise ApiProblem(422, "invalid_request", "Invalid callback device", detail=str(err), hub_id=hub_id) from err
+    await _require_control(proxy, hub_id)
+
+    async def run(progress) -> dict[str, Any]:
+        try:
+            record = await service.deploy(hub_id, proxy, spec, key=key, transport=transport)
+        except CallbackDeviceExists as err:
+            raise ApiProblem(409, "callback_device_exists", "A callback device is already deployed",
+                             detail=str(err), hub_id=hub_id) from err
+        except WifiDeviceLimit as err:
+            raise ApiProblem(409, "wifi_device_limit", "The hub holds the maximum number of Wifi Devices",
+                             detail=str(err), hub_id=hub_id) from err
+        host, port = service.target_for(proxy)
+        return record.view(effective_destination={"host": host, "port": port})
+
+    return start_job(request, hub_id, kind, run, cancellable=False)
+
+
+async def _update(request: Request, hub_id: str, body: CallbackDeviceRequest, *, key: str, kind: str) -> JobView:
+    service = _service(request)
+    proxy = _proxy(request, hub_id)
+    record = service.record(hub_id, key)
+    if record is None or record.device_id is None:
+        raise _not_found(hub_id, key)
+    if record.stale:
+        raise ApiProblem(409, "callback_device_stale", "The callback device is stale",
+                         detail="the hub no longer has it; redeploy it", hub_id=hub_id)
+    try:
+        spec = service.spec_from_body(body.model_dump(), key=key)
+    except ValueError as err:
+        raise ApiProblem(422, "invalid_request", "Invalid callback device", detail=str(err), hub_id=hub_id) from err
+    await _require_control(proxy, hub_id)
+
+    async def run(progress) -> dict[str, Any]:
+        updated = await service.update(hub_id, proxy, spec, key=key, progress=progress)
+        host, port = service.target_for(proxy)
+        return updated.view(effective_destination={"host": host, "port": port})
+
+    return start_job(request, hub_id, kind, run, cancellable=False)
+
+
+async def _remove(request: Request, hub_id: str, *, key: str, force: bool, kind: str) -> JobView:
+    service = _service(request)
+    proxy = _proxy(request, hub_id)
+    record = service.record(hub_id, key)
+    if record is None:
+        raise _not_found(hub_id, key)
+    if record.device_id is not None and not force:
+        try:
+            own_spec = record.deployment().spec
+        except ValueError:
+            own_spec = None
+        references = service.references(await proxy.snapshot(), record.device_id, spec=own_spec)
+        if references:
+            names = ", ".join(f"{r['activity_id']} ({', '.join(r['kinds'])})" for r in references)
+            raise ApiProblem(409, "callback_device_referenced", "Activities still reference the callback device",
+                             detail=f"referenced by activity {names}; clear them or pass ?force=true", hub_id=hub_id)
+    await _require_control(proxy, hub_id)
+
+    async def run(progress) -> dict[str, Any]:
+        return await service.remove(hub_id, proxy, key=key)
+
+    return start_job(request, hub_id, kind, run, cancellable=False)
+
+
+async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> JobView:
+    service = _service(request)
+    proxy = _proxy(request, hub_id)
+    record = service.record(hub_id, key)
+    if record is None or record.device_id is None:
+        raise _not_found(hub_id, key)
+    if not record.stale:
+        raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
+                         detail="it is still on the hub; update it instead", hub_id=hub_id)
+    try:
+        service.check_port((await proxy.status()).hub_version)
+    except CallbackPortRefused as err:
+        raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
+                         detail=str(err), hub_id=hub_id) from err
+    await _require_control(proxy, hub_id)
+
+    async def run(progress) -> dict[str, Any]:
+        try:
+            fresh = await service.redeploy(hub_id, proxy, key=key)
+        except CallbackDeviceNotStale as err:
+            raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
+                             detail=str(err), hub_id=hub_id) from err
+        except CallbackDeviceMissing as err:
+            raise _not_found(hub_id, key) from err
+        host, port = service.target_for(proxy)
+        return fresh.view(effective_destination={"host": host, "port": port})
+
+    return start_job(request, hub_id, kind, run, cancellable=False)
 
 
 # -- the callback device ---------------------------------------------------------------
@@ -218,57 +385,13 @@ async def get_callback_device(request: Request, hub_id: str) -> CallbackDeviceVi
 @router.post("/callback-device", operation_id="deployCallbackDevice", response_model=JobView, status_code=202,
              summary="Deploy the callback device (a job); the result is the record", responses=_ERRORS)
 async def deploy_callback_device(request: Request, hub_id: str, body: CallbackDeviceRequest) -> JobView:
-    service = _service(request)
-    proxy = _proxy(request, hub_id)
-    existing = service.record(hub_id)
-    if existing is not None and existing.device_id is not None and existing.pending is None:
-        raise ApiProblem(409, "callback_device_exists", "A callback device is already deployed",
-                         detail=f"device {existing.device_id}; update it, or remove it first", hub_id=hub_id)
-    try:
-        spec = service.spec_from_body(body.model_dump())
-        service.check_port((await proxy.status()).hub_version)
-    except CallbackPortRefused as err:
-        raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
-                         detail=str(err), hub_id=hub_id) from err
-    except ValueError as err:
-        raise ApiProblem(422, "invalid_request", "Invalid callback device", detail=str(err), hub_id=hub_id) from err
-    await _require_control(proxy, hub_id)
-
-    async def run(progress) -> dict[str, Any]:
-        try:
-            record = await service.deploy(hub_id, proxy, spec)
-        except CallbackDeviceExists as err:
-            raise ApiProblem(409, "callback_device_exists", "A callback device is already deployed",
-                             detail=str(err), hub_id=hub_id) from err
-        host, port = service.target_for(proxy)
-        return record.view(effective_destination={"host": host, "port": port})
-
-    return start_job(request, hub_id, "deploy_callback_device", run, cancellable=False)
+    return await _deploy(request, hub_id, body, key=DEFAULT_DEVICE_KEY, transport="http", kind="deploy_callback_device")
 
 
 @router.put("/callback-device", operation_id="updateCallbackDevice", response_model=JobView, status_code=202,
             summary="Edit the callback device in place (a job); declined drift fails the job", responses=_ERRORS)
 async def update_callback_device(request: Request, hub_id: str, body: CallbackDeviceRequest) -> JobView:
-    service = _service(request)
-    proxy = _proxy(request, hub_id)
-    record = service.record(hub_id)
-    if record is None or record.device_id is None:
-        raise ApiProblem(404, "callback_device_not_found", "No callback device on this hub", hub_id=hub_id)
-    if record.stale:
-        raise ApiProblem(409, "callback_device_stale", "The callback device is stale",
-                         detail="the hub no longer has it; POST /callback-device/redeploy", hub_id=hub_id)
-    try:
-        spec = service.spec_from_body(body.model_dump())
-    except ValueError as err:
-        raise ApiProblem(422, "invalid_request", "Invalid callback device", detail=str(err), hub_id=hub_id) from err
-    await _require_control(proxy, hub_id)
-
-    async def run(progress) -> dict[str, Any]:
-        updated = await service.update(hub_id, proxy, spec)
-        host, port = service.target_for(proxy)
-        return updated.view(effective_destination={"host": host, "port": port})
-
-    return start_job(request, hub_id, "update_callback_device", run, cancellable=False)
+    return await _update(request, hub_id, body, key=DEFAULT_DEVICE_KEY, kind="update_callback_device")
 
 
 @router.delete("/callback-device", operation_id="removeCallbackDevice", response_model=JobView, status_code=202,
@@ -277,56 +400,68 @@ async def remove_callback_device(
     request: Request, hub_id: str,
     force: bool = Query(False, description="remove even when activities still reference the device"),
 ) -> JobView:
-    service = _service(request)
-    proxy = _proxy(request, hub_id)
-    record = service.record(hub_id)
-    if record is None:
-        raise ApiProblem(404, "callback_device_not_found", "No callback device on this hub", hub_id=hub_id)
-    if record.device_id is not None and not force:
-        references = service.references(await proxy.snapshot(), record.device_id)
-        if references:
-            names = ", ".join(f"{r['activity_id']} ({', '.join(r['kinds'])})" for r in references)
-            raise ApiProblem(409, "callback_device_referenced", "Activities still reference the callback device",
-                             detail=f"referenced by activity {names}; clear them or pass ?force=true", hub_id=hub_id)
-    await _require_control(proxy, hub_id)
-
-    async def run(progress) -> dict[str, Any]:
-        return await service.remove(hub_id, proxy)
-
-    return start_job(request, hub_id, "remove_callback_device", run, cancellable=False)
+    return await _remove(request, hub_id, key=DEFAULT_DEVICE_KEY, force=force, kind="remove_callback_device")
 
 
 @router.post("/callback-device/redeploy", operation_id="redeployCallbackDevice", response_model=JobView,
              status_code=202, summary="Deploy a stale callback device again from its stored spec (a job)",
              responses=_ERRORS)
 async def redeploy_callback_device(request: Request, hub_id: str) -> JobView:
+    return await _redeploy(request, hub_id, key=DEFAULT_DEVICE_KEY, kind="redeploy_callback_device")
+
+
+# -- wifi devices: the keyed collection the callback device is one of -----------------------
+
+
+@router.get("/wifi-devices", operation_id="listWifiDevices", response_model=WifiDeviceList,
+            summary="The hub's managed Wifi Devices", responses={404: {"model": Problem}})
+async def list_wifi_devices(request: Request, hub_id: str) -> WifiDeviceList:
+    _known_hub(request, hub_id)
     service = _service(request)
-    proxy = _proxy(request, hub_id)
-    record = service.record(hub_id)
-    if record is None or record.device_id is None:
-        raise ApiProblem(404, "callback_device_not_found", "No callback device on this hub", hub_id=hub_id)
-    if not record.stale:
-        raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
-                         detail="it is still on the hub; update it instead", hub_id=hub_id)
-    try:
-        service.check_port((await proxy.status()).hub_version)
-    except CallbackPortRefused as err:
-        raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
-                         detail=str(err), hub_id=hub_id) from err
-    await _require_control(proxy, hub_id)
+    destination = _destination(service, hub_id, request)
+    return WifiDeviceList(
+        devices=[CallbackDeviceView(**record.view(effective_destination=destination)) for record in service.records(hub_id)],
+        max_devices=MAX_WIFI_DEVICES,
+        transports=list(TRANSPORTS),
+        effective_destination=destination,
+    )
 
-    async def run(progress) -> dict[str, Any]:
-        try:
-            fresh = await service.redeploy(hub_id, proxy)
-        except CallbackDeviceNotStale as err:
-            raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
-                             detail=str(err), hub_id=hub_id) from err
-        except CallbackDeviceMissing as err:
-            raise ApiProblem(404, "callback_device_not_found", "No callback device on this hub", hub_id=hub_id) from err
-        host, port = service.target_for(proxy)
-        return fresh.view(effective_destination={"host": host, "port": port})
 
-    return start_job(request, hub_id, "redeploy_callback_device", run, cancellable=False)
+@router.post("/wifi-devices", operation_id="deployWifiDevice", response_model=JobView, status_code=202,
+             summary="Deploy a new Wifi Device (a job); the result is its record, with the key", responses=_ERRORS)
+async def deploy_wifi_device(request: Request, hub_id: str, body: WifiDeviceRequest) -> JobView:
+    _known_hub(request, hub_id)
+    key = _service(request).new_key(hub_id)
+    return await _deploy(request, hub_id, body, key=key, transport=body.transport, kind="deploy_wifi_device")
+
+
+@router.get("/wifi-devices/{key}", operation_id="getWifiDevice", response_model=CallbackDeviceView,
+            summary="One Wifi Device record", responses={404: {"model": Problem}})
+async def get_wifi_device(request: Request, hub_id: str, key: str) -> CallbackDeviceView:
+    _known_hub(request, hub_id)
+    return _view(_service(request), hub_id, request, key)
+
+
+@router.put("/wifi-devices/{key}", operation_id="updateWifiDevice", response_model=JobView, status_code=202,
+            summary="Edit a Wifi Device in place (a job); declined drift fails the job", responses=_ERRORS)
+async def update_wifi_device(request: Request, hub_id: str, key: str, body: WifiDeviceRequest) -> JobView:
+    return await _update(request, hub_id, body, key=key, kind="update_wifi_device")
+
+
+@router.delete("/wifi-devices/{key}", operation_id="removeWifiDevice", response_model=JobView, status_code=202,
+               summary="Remove a Wifi Device from the hub and forget it (a job)", responses=_ERRORS)
+async def remove_wifi_device(
+    request: Request, hub_id: str, key: str,
+    force: bool = Query(False, description="remove even when activities still reference the device"),
+) -> JobView:
+    return await _remove(request, hub_id, key=key, force=force, kind="remove_wifi_device")
+
+
+@router.post("/wifi-devices/{key}/redeploy", operation_id="redeployWifiDevice", response_model=JobView,
+             status_code=202, summary="Deploy a stale Wifi Device again from its stored spec (a job)",
+             responses=_ERRORS)
+async def redeploy_wifi_device(request: Request, hub_id: str, key: str) -> JobView:
+    return await _redeploy(request, hub_id, key=key, kind="redeploy_wifi_device")
 
 
 # -- presses -----------------------------------------------------------------------------

@@ -3,24 +3,27 @@
 // the pages under the cog menu (Hub setup, Server, Debug); the Hub tab's
 // subtabs take an optional fourth segment, an entity id, which opens that
 // entity's editor (`#/<hubId>/hub/devices/12`; device editor plan,
-// decision 2). Every tab and
+// decision 2); the Wifi Commands tab's fourth segment is a Wifi Device's
+// key (`#/<hubId>/wifi/devices/a1b2c3d4`; wifi commands plan, section 3).
+// Every tab and
 // every page has subtabs, which double as the headers of what they hold,
 // even when there is only one. The URL is the source of truth; the
 // persisted preferences only fill in a bare one. The first panel's
 // `#hubs`, `#catalog`, `#remote`, `#api` and `#events`, and the first
 // shell's `#/api` and `#/events`, still resolve so old bookmarks land.
 
-export const HUB_TABS = ["hub", "backup", "remote"] as const;
+export const HUB_TABS = ["hub", "wifi", "backup", "remote"] as const;
 export type HubTab = (typeof HUB_TABS)[number];
 
 // The Hub tab's subtabs follow the HA control panel card: Activities first.
 export const SUBTABS: Record<HubTab, readonly string[]> = {
   hub: ["activities", "devices"],
+  wifi: ["devices"],
   backup: ["make", "edit", "restore"],
   remote: ["card", "layout"],
 };
 
-export const TAB_LABELS: Record<HubTab, string> = { hub: "Hub", backup: "Backup", remote: "Remote" };
+export const TAB_LABELS: Record<HubTab, string> = { hub: "Hub", wifi: "Wifi Commands", backup: "Backup", remote: "Remote" };
 
 export const TOOL_PAGES = ["setup", "server", "debug"] as const;
 export type ToolPage = (typeof TOOL_PAGES)[number];
@@ -44,10 +47,17 @@ export const SUBTAB_LABELS: Record<string, string> = {
   status: "Status",
   api: "API console",
   events: "Event stream",
+  // A subtab id can repeat across tabs; `<tab>/<sub>` wins over the bare id.
+  "wifi/devices": "Wifi Devices",
 };
 
+/** The subtab's label under its tab or tool page. */
+export function subtabLabel(scope: string, sub: string): string {
+  return SUBTAB_LABELS[`${scope}/${sub}`] ?? SUBTAB_LABELS[sub] ?? sub;
+}
+
 export type Route =
-  | { kind: "hub"; hubId: string | null; tab: HubTab; sub: string; entity?: number }
+  | { kind: "hub"; hubId: string | null; tab: HubTab; sub: string; entity?: number; item?: string }
   | { kind: "tool"; page: ToolPage; sub: string };
 
 export function isHubTab(value: unknown): value is HubTab {
@@ -71,9 +81,19 @@ export function normalizeEntity(tab: HubTab, entity: unknown): number | undefine
   return Number.isInteger(id) && id > 0 ? id : undefined;
 }
 
-export function hubRoute(hubId: string | null, tab: HubTab = "hub", sub?: string | null, entity?: number | null): Route {
+/** A Wifi Device's key belongs on the Wifi Commands tab only; anything else drops it. */
+export function normalizeItem(tab: HubTab, item: unknown): string | undefined {
+  if (tab !== "wifi" || typeof item !== "string") return undefined;
+  return /^[A-Za-z0-9_-]{1,32}$/.test(item) ? item : undefined;
+}
+
+export function hubRoute(hubId: string | null, tab: HubTab = "hub", sub?: string | null, entity?: number | null, item?: string | null): Route {
   const id = normalizeEntity(tab, entity);
-  return id === undefined ? { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) } : { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub), entity: id };
+  const key = normalizeItem(tab, item);
+  const route: Route = { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) };
+  if (id !== undefined) route.entity = id;
+  if (key !== undefined) route.item = key;
+  return route;
 }
 
 /** The page's first subtab, or the one given when it belongs to the page. */
@@ -113,19 +133,20 @@ export function parseRoute(hash: string): Route | null {
   const [first, tab, sub, entity] = parts;
   const hubId = first === "-" ? null : first;
   if (tab !== undefined && !isHubTab(tab)) return hubRoute(hubId, "hub");
-  return hubRoute(hubId, tab ?? "hub", sub, normalizeEntity(tab ?? "hub", entity));
+  return hubRoute(hubId, tab ?? "hub", sub, normalizeEntity(tab ?? "hub", entity), normalizeItem(tab ?? "hub", entity));
 }
 
 export function hashFor(route: Route): string {
   if (route.kind === "tool") return `#/${route.page}/${route.sub}`;
   const hub = route.hubId ? encodeURIComponent(route.hubId) : "-";
-  return `#/${hub}/${route.tab}/${route.sub}${route.entity !== undefined ? `/${route.entity}` : ""}`;
+  const tail = route.entity !== undefined ? `/${route.entity}` : route.item !== undefined ? `/${encodeURIComponent(route.item)}` : "";
+  return `#/${hub}/${route.tab}/${route.sub}${tail}`;
 }
 
 /** The draft scope of a hub route: `hub/devices` for a list, `hub/devices/12` for an editor. */
 export function routeScope(route: Route): string {
   if (route.kind === "tool") return `${route.page}/${route.sub}`;
-  return `${route.tab}/${route.sub}${route.entity !== undefined ? `/${route.entity}` : ""}`;
+  return `${route.tab}/${route.sub}${route.entity !== undefined ? `/${route.entity}` : route.item !== undefined ? `/${route.item}` : ""}`;
 }
 
 export function sameRoute(a: Route, b: Route): boolean {

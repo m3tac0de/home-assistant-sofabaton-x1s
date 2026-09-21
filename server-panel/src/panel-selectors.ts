@@ -96,6 +96,10 @@ const JOB_LABELS: Record<string, string> = {
   update_callback_device: "Updating the callback device",
   remove_callback_device: "Removing the callback device",
   redeploy_callback_device: "Redeploying the callback device",
+  deploy_wifi_device: "Deploying the Wifi Device",
+  update_wifi_device: "Syncing the Wifi Device",
+  remove_wifi_device: "Deleting the Wifi Device",
+  redeploy_wifi_device: "Redeploying the Wifi Device",
 };
 
 export function jobLabel(kind: string): string {
@@ -158,6 +162,7 @@ export type DockModel =
   | { kind: "draft_stale"; scope: string; text: string }
   | { kind: "dirty"; scope: string; text: string }
   | { kind: "unsaved_backup"; text: string }
+  | { kind: "unsynced_view"; text: string }
   | { kind: "gate"; gate: Exclude<Gate, "pass">; text: string }
   | { kind: "idle" };
 
@@ -181,7 +186,7 @@ export function draftBannerText(scope: string): string {
 /** What the bottom dock narrates for a hub, by the card's precedence: a
  *  running job, then a notice, then a stopped apply, then a gate, then idle.
  *  An unreachable server is said even with no hub selected. */
-export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, view: { unsavedBackup?: boolean } = {}): DockModel {
+export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, view: { unsavedBackup?: boolean; unsyncedWifi?: boolean } = {}): DockModel {
   const job = activeJob(runtime?.hub);
   if (job) {
     const cancelling = runtime?.cancelRequestedJobId === job.job_id;
@@ -195,6 +200,8 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, v
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
   // The Backup tab's edited file (the card's banner): kept in the browser's edit session, so nothing to discard here.
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes — download the edited backup" };
+  // The Wifi Device's draft lives in its view (wifi commands plan, section 3); Sync to Hub is up in the view's header.
+  if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes — sync to the hub to apply them" };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || (gate !== "pass" && runtime)) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };

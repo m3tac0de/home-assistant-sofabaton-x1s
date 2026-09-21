@@ -8,7 +8,8 @@ through its command-config store; this module is the store-free form a
 server or a script uses with :meth:`AsyncXProxy.deploy_wifi_device` and
 :meth:`AsyncXProxy.update_wifi_device`.
 
-Three rules keep deploy and update in step (callbacks plan, C0a):
+Four rules keep deploy and update in step (callbacks plan, C0a; server
+panel wifi commands plan, section 6):
 
 * :func:`snapshot_from_spec` is the ONE normalization. Deploy builds the
   create profile from it, update builds the desired and the deployed
@@ -16,9 +17,15 @@ Three rules keep deploy and update in step (callbacks plan, C0a):
 * Every slot is always written, defaults included: shorts at ``1..N``
   and longs at ``N+1..2N`` with ``N`` fixed at :data:`WIFI_SLOT_COUNT`
   (the long-record id law the in-place planner and the remote rely on).
-* The spec carries no favorites, hard buttons or activity memberships.
-  Those are made with the generic edit intents against the device's
-  command ids and the planner's ownership rule leaves them alone.
+* A slot may say where its command goes: a favorite, a hard button
+  (with or without its long press) in a list of activities, and the
+  activity whose start performs it. :func:`snapshot_from_spec` derives
+  the per-activity references from that exactly as the Home Assistant
+  adapter does, so the in-place planner writes them and, by its
+  ownership rule, later removes only what an earlier spec put there.
+* Everything a slot does not name stays the consumer's: favorites,
+  buttons and memberships made with the generic edit intents against
+  the device's command ids are never planned away.
 
 Nothing here talks to a hub.
 """
@@ -30,10 +37,12 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Sequence
 
 from .hub_versions import HUB_VERSION_X1
+from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
 from .wifi_inplace_plan import (
     WIFI_COMMAND_LONG_PRESS_OFFSET,
     WIFI_COMMAND_SLOT_COUNT,
     ManagedWifiSnapshot,
+    WifiActivityRefs,
     WifiCommandSlot,
 )
 
@@ -48,6 +57,8 @@ __all__ = [
     "snapshot_from_spec",
     "labels_from_spec",
     "command_defs_from_spec",
+    "input_slots_from_spec",
+    "BINDABLE_BUTTON_CODES",
 ]
 
 #: Slots per managed device; longs live at ``slot + WIFI_SLOT_COUNT``.
@@ -62,6 +73,11 @@ MAX_SLOT_LABEL_LEN = 30
 MAX_DEVICE_NAME_LEN = 30
 
 _LONG_PRESS_OFFSET = WIFI_COMMAND_LONG_PRESS_OFFSET
+
+#: Hard buttons a slot can claim: every named key but the two power macros.
+BINDABLE_BUTTON_CODES = frozenset(
+    int(code) for code in BUTTONNAME_BY_CODE if int(code) not in (ButtonName.POWER_ON, ButtonName.POWER_OFF)
+)
 
 
 def _clean(text: Any, *, what: str, limit: int) -> str:
@@ -83,16 +99,39 @@ def _slot_index(value: Any, *, what: str) -> int:
     return index
 
 
+def _entity_id(value: Any, *, what: str) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as err:
+        raise ValueError(f"{what} must be an activity id") from err
+    if number < 1 or number > 0xFF:
+        raise ValueError(f"{what} {number} is not an activity id")
+    return number
+
+
 @dataclass(frozen=True)
 class WifiSlotSpec:
-    """One command slot: the short-press label and the long-press label.
+    """One command slot: its labels and where its command goes.
 
     ``long_label`` ``None`` means ``"<label> Long"``; the long record always
     exists, a consumer that does not want long presses ignores them.
+
+    ``favorite`` and ``button`` (a hub button code) apply in every activity
+    of ``activities``; ``long_press`` also binds the slot's long record to
+    that button's long press and means nothing without a button. The
+    activity list is only kept while the slot is a favorite or has a
+    button, so a list left over from an earlier choice never pulls the
+    device into an activity. ``input_activity_id`` makes the command that
+    activity's input, performed while the activity starts (X1S/X2 only).
     """
 
     label: str
     long_label: Optional[str] = None
+    favorite: bool = False
+    button: Optional[int] = None
+    long_press: bool = False
+    activities: tuple[int, ...] = ()
+    input_activity_id: Optional[int] = None
 
     def normalized(self, index: int) -> "WifiSlotSpec":
         label = _clean(self.label or f"Button {index}", what=f"slot {index}", limit=MAX_SLOT_LABEL_LEN)
@@ -100,18 +139,61 @@ class WifiSlotSpec:
         if long_label is None or not str(long_label).strip():
             long_label = f"{label} Long"
         long_label = _clean(long_label, what=f"slot {index} long press", limit=MAX_SLOT_LABEL_LEN)
-        return WifiSlotSpec(label=label, long_label=long_label)
+        button: Optional[int] = None
+        if self.button is not None and str(self.button).strip() != "":
+            try:
+                button = int(self.button)
+            except (TypeError, ValueError) as err:
+                raise ValueError(f"slot {index}: the button must be a hub button code") from err
+            if button not in BINDABLE_BUTTON_CODES:
+                raise ValueError(f"slot {index}: {button} is not a bindable button code")
+        favorite = bool(self.favorite)
+        activities: tuple[int, ...] = ()
+        if favorite or button is not None:
+            activities = tuple(sorted({_entity_id(a, what=f"slot {index}: an activity") for a in self.activities or ()}))
+        input_activity = None
+        if self.input_activity_id is not None and str(self.input_activity_id).strip() != "":
+            input_activity = _entity_id(self.input_activity_id, what=f"slot {index}: the input activity")
+        return WifiSlotSpec(
+            label=label,
+            long_label=long_label,
+            favorite=favorite,
+            button=button,
+            long_press=bool(self.long_press) and button is not None,
+            activities=activities,
+            input_activity_id=input_activity,
+        )
+
+    @property
+    def has_references(self) -> bool:
+        return bool(self.favorite or self.button is not None or self.input_activity_id is not None)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"label": self.label, "long_label": self.long_label}
+        return {
+            "label": self.label,
+            "long_label": self.long_label,
+            "favorite": self.favorite,
+            "button": self.button,
+            "long_press": self.long_press,
+            "activities": list(self.activities),
+            "input_activity_id": self.input_activity_id,
+        }
 
     @classmethod
     def from_dict(cls, data: Any) -> "WifiSlotSpec":
         if isinstance(data, str):
             return cls(label=data)
         if not isinstance(data, Mapping):
-            raise ValueError("a slot is a label or a {label, long_label} mapping")
-        return cls(label=str(data.get("label") or ""), long_label=data.get("long_label"))
+            raise ValueError("a slot is a label or a {label, long_label, ...} mapping")
+        return cls(
+            label=str(data.get("label") or ""),
+            long_label=data.get("long_label"),
+            favorite=bool(data.get("favorite", False)),
+            button=data.get("button"),
+            long_press=bool(data.get("long_press", False)),
+            activities=tuple(data.get("activities") or ()),
+            input_activity_id=data.get("input_activity_id"),
+        )
 
 
 @dataclass(frozen=True)
@@ -162,8 +244,25 @@ class WifiDeviceSpec:
             if index in inputs:
                 raise ValueError(f"input slot {index} is listed twice")
             inputs.append(index)
+        claimed_buttons: dict[int, int] = {}
+        claimed_inputs: dict[int, int] = {}
+        for index, slot in enumerate(slots, start=1):
+            if slot.button is not None:
+                if slot.button in claimed_buttons:
+                    raise ValueError(
+                        f"slots {claimed_buttons[slot.button]} and {index} both claim button {slot.button}"
+                    )
+                claimed_buttons[slot.button] = index
+            if slot.input_activity_id is not None:
+                if slot.input_activity_id in claimed_inputs:
+                    raise ValueError(
+                        f"slots {claimed_inputs[slot.input_activity_id]} and {index} are both the input "
+                        f"of activity {slot.input_activity_id}"
+                    )
+                claimed_inputs[slot.input_activity_id] = index
+        input_like = set(inputs) | {i for i, slot in enumerate(slots, start=1) if slot.input_activity_id is not None}
         for hook in (power_on, power_off):
-            if hook is not None and hook in inputs:
+            if hook is not None and hook in input_like:
                 raise ValueError(f"slot {hook} cannot be both a power hook and an input")
         return WifiDeviceSpec(
             name=name,
@@ -172,6 +271,27 @@ class WifiDeviceSpec:
             power_off_slot=power_off,
             input_slots=tuple(inputs),
             brand=brand,
+        )
+
+    @property
+    def has_references(self) -> bool:
+        """True when any slot names a favorite, a button or an input activity."""
+
+        return any(isinstance(slot, WifiSlotSpec) and slot.has_references for slot in self.slots)
+
+    def without_references(self) -> "WifiDeviceSpec":
+        """The same device with no slot saying where its command goes: what
+        a create writes, before the first update applies the references.
+        The input list keeps the slots an input activity put on it."""
+
+        normalized = self.normalized()
+        return WifiDeviceSpec(
+            name=normalized.name,
+            slots=tuple(WifiSlotSpec(label=slot.label, long_label=slot.long_label) for slot in normalized.slots),
+            power_on_slot=normalized.power_on_slot,
+            power_off_slot=normalized.power_off_slot,
+            input_slots=input_slots_from_spec(normalized),
+            brand=normalized.brand,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -278,12 +398,25 @@ class WifiDeployment:
         )
 
 
+def input_slots_from_spec(spec: WifiDeviceSpec) -> tuple[int, ...]:
+    """The device's ordered input list: ``input_slots`` as given, then the
+    slots an input activity names that are not on it yet, in slot order.
+    An activity selects its input by position in this list, so the order
+    is part of what was deployed."""
+
+    inputs = [int(slot) for slot in spec.input_slots or ()]
+    for index, slot in enumerate(spec.slots, start=1):
+        if isinstance(slot, WifiSlotSpec) and slot.input_activity_id is not None and index not in inputs:
+            inputs.append(index)
+    return tuple(inputs)
+
+
 def _hooks(spec: WifiDeviceSpec, hub_version: Optional[str]) -> tuple[Optional[int], Optional[int], tuple[int, ...]]:
     """Power and input hooks as command ids, or none on the X1."""
 
     if str(hub_version or "") == HUB_VERSION_X1:
         return None, None, ()
-    return spec.power_on_slot, spec.power_off_slot, tuple(spec.input_slots)
+    return spec.power_on_slot, spec.power_off_slot, input_slots_from_spec(spec)
 
 
 def labels_from_spec(spec: WifiDeviceSpec) -> dict[int, str]:
@@ -307,9 +440,13 @@ def snapshot_from_spec(
     """The planner-side view of ``spec``: desired for an update, deployed
     for the ownership scope, and the source of the create profile.
 
-    No activity references and no device-page bindings: the consumer
-    makes those with the generic intents, and the planner never touches
-    what the deployed expansion did not create.
+    The per-activity references come from the slots, derived as the Home
+    Assistant adapter derives them (``desired_snapshot_from_config``): a
+    favorite and a button binding in each of the slot's activities, the
+    input ordinal of an input activity, membership of every activity so
+    referenced, and one device-page binding per claimed button (what makes
+    the device selectable as a role-group controller). Whatever a slot
+    does not name is absent here, so the planner never touches it.
     """
 
     normalized = spec.normalized()
@@ -321,6 +458,31 @@ def snapshot_from_spec(
             label=label,
             press_type="long" if cid > _LONG_PRESS_OFFSET else "short",
         )
+    favorites: dict[int, dict[int, int]] = {}
+    bindings: dict[int, list[tuple[int, int, Optional[int]]]] = {}
+    input_ordinal: dict[int, int] = {}
+    device_bindings: list[tuple[int, int, Optional[int]]] = []
+    for index, slot in enumerate(normalized.slots, start=1):
+        if slot.input_activity_id is not None and index in inputs:
+            input_ordinal[slot.input_activity_id] = inputs.index(index) + 1
+        long_id = index + _LONG_PRESS_OFFSET if slot.long_press else None
+        if slot.button is not None:
+            device_bindings.append((slot.button, index, long_id))
+        for activity_id in slot.activities:
+            if slot.favorite:
+                favorites.setdefault(activity_id, {})[index] = 0
+            if slot.button is not None:
+                bindings.setdefault(activity_id, []).append((slot.button, index, long_id))
+    referenced = set(favorites) | set(bindings) | set(input_ordinal)
+    activities = {
+        activity_id: WifiActivityRefs(
+            activity_id=activity_id,
+            input_ordinal=input_ordinal.get(activity_id, 0),
+            favorites=favorites.get(activity_id, {}),
+            bindings=tuple(bindings.get(activity_id, ())),
+        )
+        for activity_id in sorted(referenced)
+    }
     return ManagedWifiSnapshot(
         device_id=int(device_id) & 0xFF,
         device_name=normalized.name,
@@ -329,8 +491,8 @@ def snapshot_from_spec(
         power_off_command_id=power_off,
         input_command_ids=inputs,
         slots=slots,
-        activities={},
-        device_bindings=(),
+        activities=activities,
+        device_bindings=tuple(sorted(device_bindings)),
         target_host=str(target_host or "") or None,
     )
 
