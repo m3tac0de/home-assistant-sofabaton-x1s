@@ -410,7 +410,7 @@ export class SofabatonServerPanel extends LitElement {
   private async _pickerAct(hub: HubView, action: HubAction): Promise<void> {
     const id = hub.hub_id;
     if (this._pickerBusy.has(id)) return;
-    if (action === "remove" && !confirm(`Unregister ${hubDisplayName(hub)}?\n\nThe server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
+    if (action === "remove" && !confirm(`Remove ${hubDisplayName(hub)}?\n\nThe server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
     this._pickerBusy = new Set(this._pickerBusy).add(id);
     this._pickerError = null;
     try {

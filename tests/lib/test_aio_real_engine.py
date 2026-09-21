@@ -777,22 +777,39 @@ def test_restore_preflight_rejects_a_bad_bundle_before_any_write(monkeypatch) ->
     asyncio.run(main())
 
 
+def _record_rereads(monkeypatch) -> list:
+    """Capture what a write asks to have read back, in place of the reads
+    (the wire of these engines is stubbed; nothing would answer them)."""
+
+    rereads: list = []
+
+    async def record(self, device_ids, activity_ids, *, refresh_catalog=False, **kw):
+        if list(device_ids) or list(activity_ids):
+            rereads.append((tuple(device_ids), tuple(activity_ids), refresh_catalog))
+
+    monkeypatch.setattr(aio.AsyncXProxy, "_reread_after_write", record)
+    return rereads
+
+
 def test_restore_adapts_the_engine_result_shape(monkeypatch) -> None:
     async def main():
         engine = _engine()
         _hub_link(engine, True)
         monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: {"status": "success", "device_id": 9, "restored_commands": 0})
         monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: True)
+        rereads = _record_rereads(monkeypatch)
         proxy = aio.AsyncXProxy.wrap(engine)
         result = await proxy.restore(_full_bundle())      # the REAL restore_hub_bundle
         assert result.ok and result.restored_devices == 1 and result.restored_activities == 0
         assert result.device_id_map == {5: 9} and result.restored["devices"][0]["device_id"] == 9
         assert result.to_dict()["restored_devices"] == 1
+        assert rereads == [((9,), (), True)]             # what the rebuild made, lists included
 
         # A first-entity failure keeps the counts honest and is not a success.
         monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: None)
         failed = await proxy.restore(_full_bundle())
         assert not failed.ok and failed.failed_at == ("device", 5) and failed.wrote_nothing
+        assert len(rereads) == 1                         # nothing made, nothing to read back
 
     asyncio.run(main())
 
@@ -823,6 +840,7 @@ def _wifi_engine(monkeypatch, hub_version: str = "X1S", *, device_id: int = 12):
 
     monkeypatch.setattr(engine, "create_wifi_device", fake_create)
     monkeypatch.setattr(engine, "_stable_hub_action_id", lambda: "aabbccddeeff")
+    engine.rereads = _record_rereads(monkeypatch)
     return engine, creates
 
 
@@ -848,6 +866,8 @@ def test_deploy_wifi_device_builds_the_profile_and_returns_the_deployment(monkey
         assert kw["commands"][_N]["command_index"] == 0
         assert kw["power_on_command_id"] == 1 and kw["power_off_command_id"] is None
         assert kw["input_command_ids"] == [2]
+        # The create seeds a head and labels only: the device is read back, its list too.
+        assert engine.rereads == [((12,), (), True)]
 
     asyncio.run(main())
 
@@ -916,13 +936,26 @@ def _update_engine(monkeypatch, dep, *, hub_version="X1S", device=None, run_resu
     _hub_link(engine, True)
     engine.state.activities = {101: {"name": "Watch"}}
     engine._activities_catalog_ready = True
+    engine.state.devices = {dep.device_id: {"name": dep.spec.name}}
     live = device if device is not None else _live_device(dep)
-    monkeypatch.setattr(engine, "backup_device", lambda dev_id, **kw: live if dev_id == dep.device_id else None)
-    monkeypatch.setattr(engine, "backup_activity", lambda act_id, **kw: _live_activity(act_id, [dep.device_id, 5]))
+    # Hub traffic in order: every read, and the plan run between them.
+    engine.trace = trace = []
+
+    def read_device(dev_id, **kw):
+        trace.append(("device", dev_id))
+        return live if dev_id == dep.device_id else None
+
+    def read_activity(act_id, **kw):
+        trace.append(("activity", act_id))
+        return _live_activity(act_id, [dep.device_id, 5])
+
+    monkeypatch.setattr(engine, "backup_device", read_device)
+    monkeypatch.setattr(engine, "backup_activity", read_activity)
     runs: list = []
 
     def fake_run(plan, *, progress_callback=None):
         runs.append(plan)
+        trace.append("run")
         if run_result is not None:
             return run_result
         return {"status": "success", "completed_steps": len(plan.steps), "total_steps": len(plan.steps), "counters": {}}
@@ -945,6 +978,7 @@ def test_update_wifi_device_with_an_unchanged_spec_writes_nothing(monkeypatch) -
         proxy = aio.AsyncXProxy.wrap(engine)
         again = await proxy.update_wifi_device(dep, _WifiDeviceSpec.from_dict(dep.spec.to_dict()))
         assert runs == [] and again.labels == dep.labels and again.spec == dep.spec
+        assert engine.trace == [("device", 12), ("activity", 101)]      # the baseline read; nothing written, nothing re-read
 
     asyncio.run(main())
 
@@ -966,6 +1000,12 @@ def test_update_wifi_device_renames_records_in_place(monkeypatch) -> None:
         assert updated.labels[2] == "Pause" and updated.target == dep.target
         # The activity the device is a member of was never planned away.
         assert not any(s.kind == "membership_remove" for s in runs[0].steps)
+        # No step wrote to an activity, but a renamed record changes the labels every activity
+        # naming the device holds: those are read back with the device.
+        monkeypatch.setattr(engine, "activities_referencing_device", lambda dev_id: [101])
+        engine.trace.clear()
+        await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Go"), _WifiSlotSpec("Pause"))))
+        assert engine.trace[engine.trace.index("run"):] == ["run", ("device", 12), ("activity", 101)]
 
     asyncio.run(main())
 
@@ -986,6 +1026,10 @@ def test_update_wifi_device_applies_slot_references_and_checks_the_activities(mo
         assert kinds == [("binding_write", 12, 1), ("favorite_add", 101, 1), ("binding_write", 101, 1)]
         assert runs[0].steps[-1].payload["long_press_command_id"] == 1 + _N
         assert updated.spec.slots[0].button == 0xB6 and updated.spec.slots[0].activities == (101,)
+        # The engine's favorite write drops the activity's favorites and leaves the re-read to its
+        # caller: after the run the device and the activity written to are read back (found live
+        # 2026-09-21: a deploy left the Hub tab counting 0 favorites).
+        assert engine.trace == [("device", 12), ("activity", 101), "run", ("device", 12), ("activity", 101)]
 
         # An activity the hub does not have is declined before anything is planned or written.
         runs.clear()
@@ -1024,6 +1068,9 @@ def test_deploy_wifi_device_creates_bare_then_applies_the_references(monkeypatch
         assert ("member_replay", 101) in kinds and ("binding_write", 101) in kinds and ("binding_write", 12) in kinds
         join = next(s for s in captured[0].steps if s.kind == "member_replay")
         assert join.payload["input_cmd_id"] == 2 and join.payload.get("join") is True
+        # The create leaves the read to the update (its baseline reads the device); the update
+        # reads back the device and the activity its steps wrote to.
+        assert engine.rereads == [((12,), (101,), False)]
 
     asyncio.run(main())
 
@@ -1035,6 +1082,7 @@ def test_deploy_wifi_device_over_mqtt_is_x2_only_and_names_no_address(monkeypatc
         creates: list[dict] = []
         monkeypatch.setattr(engine, "create_wifi_mqtt_device", lambda **kw: creates.append(kw) or {"device_id": 12, "status": "success"})
         monkeypatch.setattr(engine, "create_wifi_device", lambda **kw: pytest.fail("an mqtt deploy must not build callback records"))
+        rereads = _record_rereads(monkeypatch)
         proxy = aio.AsyncXProxy.wrap(engine)
         spec = _WifiDeviceSpec(name="Lights", slots=(_WifiSlotSpec("On"), _WifiSlotSpec("Scene")), power_on_slot=1,
                                input_slots=(2,), brand="c0-a1b2c3d4")
@@ -1047,6 +1095,7 @@ def test_deploy_wifi_device_over_mqtt_is_x2_only_and_names_no_address(monkeypatc
         assert kw["device_name"] == "Lights" and kw["brand_name"] == "c0-a1b2c3d4"
         assert kw["power_on_command_id"] == 1 and kw["input_command_ids"] == [2]
         assert len(kw["commands"]) == 2 * _N and "request_port" not in kw and "ip_address" not in kw
+        assert rereads == [((12,), (), True)]
 
         # Any other hub: refused before the hub is touched.
         for version in ("X1", "X1S"):

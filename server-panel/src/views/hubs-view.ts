@@ -1,4 +1,4 @@
-// Hub setup retains the selected hub details and lifecycle actions.
+// Hub settings retains the selected hub details and lifecycle actions.
 // Discovery and registration live in the top-dock hub picker.
 import { LitElement, html, nothing, css, type PropertyValues, type TemplateResult } from "lit";
 

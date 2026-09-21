@@ -83,13 +83,13 @@ export function interactionFor(snapshot: PanelSnapshot, runtime: HubRuntime | nu
 
 const JOB_LABELS: Record<string, string> = {
   refresh: "Refreshing the hub",
-  refresh_entity: "Refreshing an entity",
-  sync_device: "Writing a device",
-  sync_activity: "Writing an activity",
+  refresh_entity: "Refreshing from the hub",
+  sync_device: "Syncing the device to the hub",
+  sync_activity: "Syncing the activity to the hub",
   sync_hub: "Applying the document",
   resume_apply: "Resuming the apply",
-  backup: "Making a backup",
-  restore: "Restoring",
+  backup: "Backing up the hub",
+  restore: "Restoring the backup",
   erase: "Erasing the hub",
   learn_ir: "Learning an IR code",
   deploy_callback_device: "Deploying the callback device",
@@ -122,20 +122,63 @@ export function jobProgress(job: JobView | null): JobProgressModel {
   return { current: Number.isFinite(current) ? current : null, total: hasTotal ? total : null, percent, indeterminate: !hasTotal };
 }
 
-/** "Restoring · Writing device 8 · 3/12" style, from the kind and the last progress. */
-export function jobNarration(job: JobView): string {
-  const parts: string[] = [jobLabel(job.kind)];
+/** The jobs that work on one device or activity: their phrase names it once the progress does. */
+const ENTITY_JOB_LABELS: Record<string, (entity: string) => string> = {
+  refresh_entity: (entity) => `Refreshing ${entity}`,
+  sync_device: (entity) => `Syncing ${entity} to the hub`,
+  sync_activity: (entity) => `Syncing ${entity} to the hub`,
+};
+
+/** "device 13", from the last progress; null while it names none. */
+function jobEntity(job: JobView): string | null {
   const p = (job.progress ?? {}) as Record<string, unknown>;
-  const message = typeof p.message === "string" ? p.message.trim() : "";
-  if (message) parts.push(message);
-  const entityKind = typeof p.entity_kind === "string" ? p.entity_kind : null;
-  const entityId = typeof p.entity_id === "number" ? p.entity_id : null;
-  if (entityId !== null && !message.includes(String(entityId))) parts.push(`${entityKind ?? "entity"} ${entityId}`);
+  if (typeof p.entity_id !== "number") return null;
+  return `${typeof p.entity_kind === "string" ? p.entity_kind : "entity"} ${p.entity_id}`;
+}
+
+/** What the job is, in one phrase: "Refreshing the hub", "Syncing device 13 to the hub". */
+export function jobHeadline(job: JobView): string {
+  const entity = jobEntity(job);
+  return entity && job.kind in ENTITY_JOB_LABELS ? ENTITY_JOB_LABELS[job.kind](entity) : jobLabel(job.kind);
+}
+
+/** The library's step message without its closing "…" or "."; "" when there is none. */
+function stepMessage(job: JobView): string {
+  const message = (job.progress as { message?: unknown } | null)?.message;
+  return typeof message === "string" ? message.trim().replace(/(…|\.+)$/u, "").trim() : "";
+}
+
+/** A step that says the headline again ("Refreshing the hub" over "Refreshing device 13",
+ *  "Backing up the hub" over "Backed up device 3"): both open on the same verb. */
+function restates(headline: string, step: string): boolean {
+  const verb = (text: string) => text.split(/\s+/u)[0].toLowerCase();
+  const stem = verb(headline).replace(/ing$/u, "");
+  return stem.length > 2 && verb(step).startsWith(stem);
+}
+
+/** "Restoring device 8 · 3/12" style, from the kind and the last progress. Each
+ *  thing is said once: a step that restates the headline replaces it, unless
+ *  the headline is the one naming the entity. */
+export function jobNarration(job: JobView): string {
+  const headline = jobHeadline(job);
+  const entity = jobEntity(job);
+  let step = stepMessage(job);
+  // "Syncing device 13 to the hub · Updating inputs on device 13": the headline said which.
+  if (entity && headline.includes(entity) && step.endsWith(` on ${entity}`)) step = step.slice(0, -` on ${entity}`.length);
+  const parts: string[] = [];
+  if (!step || step.toLowerCase() === headline.toLowerCase()) parts.push(headline);
+  else if (restates(headline, step)) parts.push(job.kind in ENTITY_JOB_LABELS ? headline : step);
+  else parts.push(headline, step);
+  const entityId = (job.progress as { entity_id?: unknown } | null)?.entity_id;
+  if (entity && !new RegExp(`\\b${entityId}\\b`, "u").test(parts.join(" "))) parts.push(entity);
+  const p = (job.progress ?? {}) as Record<string, unknown>;
   const itemIndex = typeof p.item_index === "number" ? p.item_index : null;
   const itemCount = typeof p.item_count === "number" ? p.item_count : null;
-  if (itemIndex !== null && itemCount !== null && itemCount > 0) parts.push(`item ${itemIndex + 1}/${itemCount}`);
+  const hasItems = itemIndex !== null && itemCount !== null && itemCount > 0;
+  if (hasItems) parts.push(`item ${itemIndex + 1}/${itemCount}`);
   const progress = jobProgress(job);
-  if (!progress.indeterminate) parts.push(`${progress.current ?? 0}/${progress.total}`);
+  // Two counters side by side need their names; one alone reads as the job's own.
+  if (!progress.indeterminate) parts.push(`${hasItems ? "step " : ""}${progress.current ?? 0}/${progress.total}`);
   else if (job.status === "queued") parts.push("queued");
   return parts.join(" · ");
 }
@@ -143,7 +186,7 @@ export function jobNarration(job: JobView): string {
 /** The notice a finished job leaves (decision 6); null while it is not finished. */
 export function noticeForJob(job: JobView, at: number): HubNotice | null {
   if (!TERMINAL_JOB_STATES.has(job.status)) return null;
-  const label = jobLabel(job.kind);
+  const label = jobHeadline(job);
   if (job.status === "failed") {
     const problem = job.error;
     const head = problem?.title || problem?.type || "failed";

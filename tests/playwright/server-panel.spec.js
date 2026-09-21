@@ -579,9 +579,9 @@ test.describe("control panel, shell", () => {
     const { sockets } = await mockServer(page, state);
     await page.goto(PAGE);
     await expect(page.locator("#blocked-scrim")).toContainText("Hub busy");
-    await expect(page.locator("#blocked-scrim")).toContainText("Restoring · Writing device 8 · 3/12");
+    await expect(page.locator("#blocked-scrim")).toContainText("Restoring the backup · Writing device 8 · 3/12");
     await expect(page.locator("#stage-wrap")).toHaveAttribute("inert", "");
-    await expect(page.locator("#dock-status")).toHaveText("Restoring · Writing device 8 · 3/12");
+    await expect(page.locator("#dock-status")).toHaveText("Restoring the backup · Writing device 8 · 3/12");
     await expect(page.locator("#dock-cancel")).toHaveCount(0);
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--running/);
     await page.screenshot({ path: shot(testInfo, "blocked"), fullPage: true });
@@ -598,7 +598,7 @@ test.describe("control panel, shell", () => {
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: state.hubs[0].last_job }));
     await expect(page.locator("#blocked-scrim")).toHaveCount(0);
     await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
-    await expect(page.locator("#dock-status")).toHaveText("Restoring: done");
+    await expect(page.locator("#dock-status")).toHaveText("Restoring the backup: done");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
     await page.click("#dock-dismiss");
     await expect(page.locator("#dock-link")).toBeVisible();
@@ -607,10 +607,10 @@ test.describe("control panel, shell", () => {
     const failed = job({ job_id: "j2", status: "failed", finished_at: new Date().toISOString(), error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
     state.hubs[0].last_job = failed;
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: failed }));
-    await expect(page.locator("#dock-status")).toContainText("Restoring: Hub disconnected");
+    await expect(page.locator("#dock-status")).toContainText("Restoring the backup: Hub disconnected");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--error/);
     await page.reload();
-    await expect(page.locator("#dock-status")).toContainText("Restoring: Hub disconnected");
+    await expect(page.locator("#dock-status")).toContainText("Restoring the backup: Hub disconnected");
     await page.click("#dock-dismiss");
     await expect(page.locator("#dock-link")).toBeVisible();
     await page.reload();
@@ -1832,13 +1832,13 @@ test.describe("control panel, integrated picker", () => {
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
     await controls.getByRole("button", { name: "Disable", exact: true }).click();
     await expect(controls.getByRole("button", { name: "Enable", exact: true })).toBeEnabled();
-    await controls.getByRole("button", { name: "Unregister…", exact: true }).click();
+    await controls.getByRole("button", { name: "Remove…", exact: true }).click();
     expect(calls.some((c) => c.key === `DELETE /hubs/${OFFICE.hub_id}`)).toBe(false);
     page.once("dialog", (dialog) => {
       expect(dialog.message()).toContain("cached state and web remote layout");
       dialog.accept();
     });
-    await controls.getByRole("button", { name: "Unregister…", exact: true }).click();
+    await controls.getByRole("button", { name: "Remove…", exact: true }).click();
     await expect(options(page)).toHaveCount(1);
     // The stale registered_hub_id does not hide a newly unregistered advertisement.
     await expect(page.locator(".picker-seen")).toContainText("Office");
@@ -2116,7 +2116,7 @@ test.describe("control panel, backup", () => {
     await expect(view.locator("#backup-progress")).toContainText("Creating backup");
     await expect(view.locator("#backup-progress")).toContainText("Backing up device 1");
     await expect(view.locator(".backup-drawer-sub")).toHaveText("The hub is creating your backup.");
-    await expect(page.locator("#dock-status")).toContainText("Making a backup");
+    await expect(page.locator("#dock-status")).toHaveText("Backing up device 1 · 0/1");
     await expect(page.locator("#blocked-scrim")).toBeVisible();
 
     push({ status: "done", finished_at: new Date().toISOString(), result: result() });

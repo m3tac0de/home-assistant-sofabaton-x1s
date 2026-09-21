@@ -55,7 +55,7 @@ Open the control panel at `http://<server>:8480/` (it lives at `/ui/`).
 Use `localhost` when browsing on the server host. Open the hub picker to
 see registered hubs and hubs discovered on the LAN. Add a discovered hub
 with its Add button, or choose **Add by address…** for manual registration.
-Each registered hub's **⋯** actions enable, disable or unregister it (see
+Each registered hub's **⋯** actions enable, disable or remove it (see
 [Control panel](#control-panel)). If the hub is missing, make sure the app
 is fully closed and scan again. Keep the data directory (default `./data`)
 across restarts. `--hub <physical IP>` is an alternative for seeding the
@@ -237,12 +237,12 @@ with unregistered discoveries in a separate group. Opening it scans the LAN;
 the scan button repeats discovery. Older discoveries are marked when no
 longer present. **Add by address…** accepts an address, an optional name and
 the option to start disabled. The **⋯** actions on registered hubs enable,
-disable, retry a failed start or unregister them. Unregistering requires
+disable, retry a failed start or remove them. Removing a hub requires
 confirmation and forgets cached state and the saved remote layout.
 
 | View | What users can do |
 | --- | --- |
-| **Hub setup** (cog menu) | Inspect the selected hub's details and status; enable, disable, retry a failed start or remove its registration. Discovery and registration are in the hub picker. |
+| **Hub settings** (cog menu) | Inspect the selected hub's details and status; enable, disable, retry a failed start or remove its registration. Discovery and registration are in the hub picker. |
 | **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. Edit devices and activities in place: names, commands and payloads, buttons, favorites, macros, membership, power sequences and inputs. Review the draft, then Sync to Hub; deleting a command also removes its hub references. |
 | **Wifi Commands** | Wifi Devices, as the HA control panel card's Wifi Commands tab without its Actions: add a Wifi Device, give each of its ten command slots a name, a favorite, a physical button with its long press, the activities those apply to and the activity it is the input of, choose the commands the hub performs when it powers the device on or off, Sync to Hub, delete. A press on the physical remote lights the device's row and the command's tile. See [Wifi Commands](#wifi-commands). |
 | **Backup** | Make, Edit and Restore, as the HA control panel card's Backup tab. Make reads the entire hub or selected devices into a bundle and offers it as a download for five minutes. Edit opens a backup file in the browser (devices, activities, commands, payloads, buttons, order, hub name) and downloads the result; nothing is sent to the hub, and the loaded file is kept in the browser for an hour. Restore loads a file, picks the activities and devices to write (an activity brings the devices it uses) and optionally erases the hub first. The server keeps no backup archive: the downloaded file is the backup. |

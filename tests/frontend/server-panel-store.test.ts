@@ -282,7 +282,7 @@ test("a finished job announced again (a staged backup bundle downloaded or expir
   const backup = job({ job_id: "b1", kind: "backup", status: "done", cancellable: false, finished_at: "2026-09-17T10:00:09Z", result: { bundle_available: true, bundle_downloaded: false } });
   api.hubs = [hub({ last_job: backup })];
   socket().push({ type: "job_event", hub_id: "a", job: backup });
-  assert.equal(rt(store).notice?.label, "Making a backup: done");
+  assert.equal(rt(store).notice?.label, "Backing up the hub: done");
   store.dismissNotice("a");
 
   // The same job, downloaded: the record follows, the notice does not come back.

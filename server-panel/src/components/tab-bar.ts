@@ -37,6 +37,9 @@ export function renderTabBar(params: {
 }): TemplateResult {
   const route = params.route;
   const onTool = route.kind === "tool";
+  const pageItem = (page: ToolPage) => html`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
+    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? html` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : nothing}</span></span>
+  </button>`;
   return html`
     <div class="tabs" id="tabs">
       <div class="tabs-scroll" role="tablist" aria-label="Hub sections">
@@ -52,12 +55,9 @@ export function renderTabBar(params: {
         </button>
         ${params.cogOpen
           ? html`<div class="menu cog-menu" id="cog-menu" role="menu">
-              ${TOOL_PAGES.map(
-                (page) => html`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
-                  <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? html` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : nothing}</span></span>
-                </button>`,
-              )}
+              ${TOOL_PAGES.filter((page) => page !== "server").map(pageItem)}
               <div class="menu-sep"></div>
+              ${pageItem("server")}
               <button class="menu-item" type="button" role="menuitem" id="theme-toggle" title="theme: ${params.theme}" @click=${params.onTheme}>
                 <span class="menu-main"><span class="menu-title">Theme: ${params.theme}</span><span class="menu-sub">tap to cycle auto, light, dark</span></span>
               </button>

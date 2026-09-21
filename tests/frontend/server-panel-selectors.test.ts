@@ -14,6 +14,7 @@ import {
   hubsSummary,
   interactionFor,
   jobLabel,
+  jobHeadline,
   jobNarration,
   jobProgress,
   noticeForJob,
@@ -120,7 +121,7 @@ test("busy: a live job first, then a local call, else nothing; a finished active
 
 test("interaction: a gate outranks a job, a job outranks a local call", () => {
   const busyHub = hub({ active_job: job({ progress: { phase: "device", message: "Writing device 8", completed_steps: 3, total_steps: 12 } }) });
-  assert.deepEqual(interactionFor(snapshot([runtime()]), runtime(busyHub)), { kind: "blocked", reason: "job", label: "Restoring · Writing device 8 · 3/12" });
+  assert.deepEqual(interactionFor(snapshot([runtime()]), runtime(busyHub)), { kind: "blocked", reason: "job", label: "Restoring the backup · Writing device 8 · 3/12" });
   assert.deepEqual(interactionFor(snapshot([runtime()]), runtime(hub({ ...busyHub, status: { ...busyHub.status!, mode: "observe" } }))), {
     kind: "blocked",
     reason: "app_holds_hub",
@@ -135,9 +136,23 @@ test("job phrases: labels per kind, narration from the progress record, progress
   assert.equal(jobLabel("deploy_callback_device"), "Deploying the callback device");
   assert.equal(jobLabel("something_new"), "something_new");
   assert.equal(jobNarration(job({ kind: "refresh", status: "queued" })), "Refreshing the hub · queued");
-  assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "device", message: "Refreshing 3", completed_steps: 1, total_steps: 4, entity_kind: "device", entity_id: 3 } })), "Refreshing the hub · Refreshing 3 · 1/4");
-  assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Rename TV", completed_steps: 0, total_steps: 1, item_index: 1, item_count: 5 } })), "Applying the document · Rename TV · item 2/5 · 0/1");
-  assert.equal(jobNarration(job({ kind: "backup", progress: { phase: "reading", message: "", completed_steps: 0, total_steps: 0, entity_kind: "activity", entity_id: 101 } })), "Making a backup · activity 101");
+  // A step that restates the headline replaces it: each thing is said once.
+  assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "device", message: "Refreshing device 13…", completed_steps: 1, total_steps: 4, entity_kind: "device", entity_id: 13 } })), "Refreshing device 13 · 1/4");
+  assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "finalizing", message: "Finalizing snapshot…", completed_steps: 4, total_steps: 4 } })), "Refreshing the hub · Finalizing snapshot · 4/4");
+  assert.equal(jobNarration(job({ kind: "backup", progress: { phase: "device", message: "Backed up device 3.", completed_steps: 2, total_steps: 9, entity_kind: "device", entity_id: 3 } })), "Backed up device 3 · 2/9");
+  assert.equal(jobNarration(job({ kind: "restore", progress: { phase: "activity", message: "Restoring activity 101…", completed_steps: 5, total_steps: 9, entity_kind: "activity", entity_id: 101 } })), "Restoring activity 101 · 5/9");
+  // An entity's job names the entity in its headline, and keeps the headline over a restating step.
+  assert.equal(jobNarration(job({ kind: "sync_device", status: "queued" })), "Syncing the device to the hub · queued");
+  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "writing", message: "Renaming the device…", completed_steps: 1, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Syncing device 13 to the hub · Renaming the device · 1/5");
+  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "writing", message: "Updating inputs on device 13…", completed_steps: 2, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Syncing device 13 to the hub · Updating inputs · 2/5");
+  assert.equal(jobNarration(job({ kind: "sync_activity", progress: { phase: "writing", message: "Updating inputs on device 13…", completed_steps: 2, total_steps: 5, entity_kind: "activity", entity_id: 101 } })), "Syncing activity 101 to the hub · Updating inputs on device 13 · 2/5");
+  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "completed", message: "Synced to hub.", completed_steps: 5, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Syncing device 13 to the hub · 5/5");
+  assert.equal(jobNarration(job({ kind: "refresh_entity", progress: { phase: "device", message: "Refreshing device 13…", completed_steps: 0, total_steps: 1, entity_kind: "device", entity_id: 13 } })), "Refreshing device 13 · 0/1");
+  assert.equal(jobHeadline(job({ kind: "refresh_entity" })), "Refreshing from the hub");
+  // Two counters carry their names; an entity no phrase mentions is appended, matched as a whole number.
+  assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Rename TV", completed_steps: 0, total_steps: 1, item_index: 1, item_count: 5 } })), "Applying the document · Rename TV · item 2/5 · step 0/1");
+  assert.equal(jobNarration(job({ kind: "backup", progress: { phase: "reading", message: "", completed_steps: 0, total_steps: 0, entity_kind: "activity", entity_id: 101 } })), "Backing up the hub · activity 101");
+  assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Creating device 113", completed_steps: 0, total_steps: 0, entity_kind: "device", entity_id: 13 } })), "Applying the document · Creating device 113 · device 13");
   assert.deepEqual(jobProgress(job({ progress: { completed_steps: 3, total_steps: 12 } })), { current: 3, total: 12, percent: 25, indeterminate: false });
   assert.deepEqual(jobProgress(job({ progress: { completed_steps: 30, total_steps: 12 } })), { current: 30, total: 12, percent: 100, indeterminate: false });
   assert.deepEqual(jobProgress(job()), { current: 0, total: null, percent: null, indeterminate: true });
@@ -145,11 +160,12 @@ test("job phrases: labels per kind, narration from the progress record, progress
 
 test("noticeForJob: nothing while running; success and cancelled expire, a failure is sticky with the problem", () => {
   assert.equal(noticeForJob(job(), 5), null);
-  assert.deepEqual(noticeForJob(job({ status: "done" }), 5), { tone: "success", label: "Restoring: done", detail: null, jobId: "j1", sticky: false, at: 5 });
+  assert.deepEqual(noticeForJob(job({ status: "done" }), 5), { tone: "success", label: "Restoring the backup: done", detail: null, jobId: "j1", sticky: false, at: 5 });
   assert.deepEqual(noticeForJob(job({ status: "cancelled", kind: "refresh" }), 5), { tone: "neutral", label: "Refreshing the hub: cancelled", detail: null, jobId: "j1", sticky: false, at: 5 });
   const failed = job({ status: "failed", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
-  assert.deepEqual(noticeForJob(failed, 5), { tone: "error", label: "Restoring: Hub disconnected", detail: "the hub went away", jobId: "j1", sticky: true, at: 5 });
-  assert.equal(noticeForJob(job({ status: "failed", error: null }), 5)?.label, "Restoring: failed");
+  assert.deepEqual(noticeForJob(failed, 5), { tone: "error", label: "Restoring the backup: Hub disconnected", detail: "the hub went away", jobId: "j1", sticky: true, at: 5 });
+  assert.equal(noticeForJob(job({ status: "failed", error: null }), 5)?.label, "Restoring the backup: failed");
+  assert.equal(noticeForJob(job({ status: "done", kind: "sync_device", progress: { phase: "completed", message: "Synced to hub.", completed_steps: 5, total_steps: 5, entity_kind: "device", entity_id: 13 } }), 5)?.label, "Syncing device 13 to the hub: done");
 });
 
 test("dockModel precedence: running job, notice, stopped apply, gate, idle", () => {
@@ -160,7 +176,7 @@ test("dockModel precedence: running job, notice, stopped apply, gate, idle", () 
   const running = dockModel(s, everything);
   assert.equal(running.kind, "running");
   if (running.kind === "running") {
-    assert.equal(running.text, "Restoring");
+    assert.equal(running.text, "Restoring the backup");
     assert.equal(running.cancellable, true);
     assert.equal(running.cancelling, false);
     assert.equal(running.progress.indeterminate, true);
@@ -168,7 +184,7 @@ test("dockModel precedence: running job, notice, stopped apply, gate, idle", () 
   const cancelling = dockModel(s, { ...everything, cancelRequestedJobId: "j1" });
   assert.equal(cancelling.kind, "running");
   if (cancelling.kind === "running") {
-    assert.equal(cancelling.text, "Restoring · cancelling");
+    assert.equal(cancelling.text, "Restoring the backup · cancelling");
     assert.equal(cancelling.cancelling, true);
   }
   const noJob = runtime(hub({ status: { mode: "observe" } }), { notice, stoppedApplies: [stopped] });

@@ -104,7 +104,7 @@ export function renderHubPicker(params: {
                   ${expanded ? html`<div class="picker-actions" role="group" aria-label=${`Actions for ${name}`}>
                     ${!hub.enabled || !hub.status ? html`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : nothing}
                     ${hub.enabled ? html`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : nothing}
-                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Unregister…</button>
+                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Remove…</button>
                   </div>` : nothing}
                 `;
               }) : html`<p class="picker-empty">No hubs registered yet.</p>`}

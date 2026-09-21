@@ -9933,7 +9933,7 @@ var SUBTABS = {
 };
 var TAB_LABELS = { hub: "Hub", wifi: "Wifi Commands", backup: "Backup", remote: "Remote" };
 var TOOL_PAGES = ["setup", "server", "debug"];
-var TOOL_LABELS = { setup: "Hub setup", server: "Server", debug: "Debug" };
+var TOOL_LABELS = { setup: "Hub settings", server: "Server settings", debug: "Debug" };
 var TOOL_SUBTABS = {
   setup: ["hubs"],
   server: ["status"],
@@ -10205,7 +10205,7 @@ function renderHubPicker(params) {
                   ${expanded ? b2`<div class="picker-actions" role="group" aria-label=${`Actions for ${name}`}>
                     ${!hub.enabled || !hub.status ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : A}
                     ${hub.enabled ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : A}
-                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Unregister…</button>
+                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Remove…</button>
                   </div>` : A}
                 `;
   }) : b2`<p class="picker-empty">No hubs registered yet.</p>`}
@@ -10241,6 +10241,9 @@ var SUBTAB_ICONS = {
 function renderTabBar(params) {
   const route = params.route;
   const onTool = route.kind === "tool";
+  const pageItem = (page) => b2`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
+    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? b2` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : A}</span></span>
+  </button>`;
   return b2`
     <div class="tabs" id="tabs">
       <div class="tabs-scroll" role="tablist" aria-label="Hub sections">
@@ -10255,12 +10258,9 @@ function renderTabBar(params) {
           <svg class="cog-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiCogOutline}></path></svg><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.cogOpen ? mdiChevronUp : mdiChevronDown}></path></svg>
         </button>
         ${params.cogOpen ? b2`<div class="menu cog-menu" id="cog-menu" role="menu">
-              ${TOOL_PAGES.map(
-    (page) => b2`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
-                  <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? b2` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : A}</span></span>
-                </button>`
-  )}
+              ${TOOL_PAGES.filter((page) => page !== "server").map(pageItem)}
               <div class="menu-sep"></div>
+              ${pageItem("server")}
               <button class="menu-item" type="button" role="menuitem" id="theme-toggle" title="theme: ${params.theme}" @click=${params.onTheme}>
                 <span class="menu-main"><span class="menu-title">Theme: ${params.theme}</span><span class="menu-sub">tap to cycle auto, light, dark</span></span>
               </button>
@@ -11286,13 +11286,13 @@ function interactionFor(snapshot, runtime) {
 }
 var JOB_LABELS = {
   refresh: "Refreshing the hub",
-  refresh_entity: "Refreshing an entity",
-  sync_device: "Writing a device",
-  sync_activity: "Writing an activity",
+  refresh_entity: "Refreshing from the hub",
+  sync_device: "Syncing the device to the hub",
+  sync_activity: "Syncing the activity to the hub",
   sync_hub: "Applying the document",
   resume_apply: "Resuming the apply",
-  backup: "Making a backup",
-  restore: "Restoring",
+  backup: "Backing up the hub",
+  restore: "Restoring the backup",
   erase: "Erasing the hub",
   learn_ir: "Learning an IR code",
   deploy_callback_device: "Deploying the callback device",
@@ -11315,25 +11315,53 @@ function jobProgress(job) {
   const percent = hasTotal ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
   return { current: Number.isFinite(current) ? current : null, total: hasTotal ? total : null, percent, indeterminate: !hasTotal };
 }
-function jobNarration(job) {
-  const parts = [jobLabel(job.kind)];
+var ENTITY_JOB_LABELS = {
+  refresh_entity: (entity) => `Refreshing ${entity}`,
+  sync_device: (entity) => `Syncing ${entity} to the hub`,
+  sync_activity: (entity) => `Syncing ${entity} to the hub`
+};
+function jobEntity(job) {
   const p4 = job.progress ?? {};
-  const message = typeof p4.message === "string" ? p4.message.trim() : "";
-  if (message) parts.push(message);
-  const entityKind = typeof p4.entity_kind === "string" ? p4.entity_kind : null;
-  const entityId = typeof p4.entity_id === "number" ? p4.entity_id : null;
-  if (entityId !== null && !message.includes(String(entityId))) parts.push(`${entityKind ?? "entity"} ${entityId}`);
+  if (typeof p4.entity_id !== "number") return null;
+  return `${typeof p4.entity_kind === "string" ? p4.entity_kind : "entity"} ${p4.entity_id}`;
+}
+function jobHeadline(job) {
+  const entity = jobEntity(job);
+  return entity && job.kind in ENTITY_JOB_LABELS ? ENTITY_JOB_LABELS[job.kind](entity) : jobLabel(job.kind);
+}
+function stepMessage(job) {
+  const message = job.progress?.message;
+  return typeof message === "string" ? message.trim().replace(/(…|\.+)$/u, "").trim() : "";
+}
+function restates(headline, step) {
+  const verb = (text) => text.split(/\s+/u)[0].toLowerCase();
+  const stem = verb(headline).replace(/ing$/u, "");
+  return stem.length > 2 && verb(step).startsWith(stem);
+}
+function jobNarration(job) {
+  const headline = jobHeadline(job);
+  const entity = jobEntity(job);
+  let step = stepMessage(job);
+  if (entity && headline.includes(entity) && step.endsWith(` on ${entity}`)) step = step.slice(0, -` on ${entity}`.length);
+  const parts = [];
+  if (!step || step.toLowerCase() === headline.toLowerCase()) parts.push(headline);
+  else if (restates(headline, step)) parts.push(job.kind in ENTITY_JOB_LABELS ? headline : step);
+  else parts.push(headline, step);
+  const entityId = job.progress?.entity_id;
+  if (entity && !new RegExp(`\\b${entityId}\\b`, "u").test(parts.join(" "))) parts.push(entity);
+  const p4 = job.progress ?? {};
   const itemIndex = typeof p4.item_index === "number" ? p4.item_index : null;
   const itemCount = typeof p4.item_count === "number" ? p4.item_count : null;
-  if (itemIndex !== null && itemCount !== null && itemCount > 0) parts.push(`item ${itemIndex + 1}/${itemCount}`);
+  const hasItems = itemIndex !== null && itemCount !== null && itemCount > 0;
+  if (hasItems) parts.push(`item ${itemIndex + 1}/${itemCount}`);
   const progress = jobProgress(job);
-  if (!progress.indeterminate) parts.push(`${progress.current ?? 0}/${progress.total}`);
+  if (!progress.indeterminate) parts.push(`${hasItems ? "step " : ""}${progress.current ?? 0}/${progress.total}`);
   else if (job.status === "queued") parts.push("queued");
   return parts.join(" \xB7 ");
 }
 function noticeForJob(job, at) {
   if (!TERMINAL_JOB_STATES.has(job.status)) return null;
-  const label = jobLabel(job.kind);
+  const label = jobHeadline(job);
   if (job.status === "failed") {
     const problem = job.error;
     const head = problem?.title || problem?.type || "failed";
@@ -12369,7 +12397,7 @@ var SofabatonServerPanel = class extends i4 {
   async _pickerAct(hub, action) {
     const id = hub.hub_id;
     if (this._pickerBusy.has(id)) return;
-    if (action === "remove" && !confirm(`Unregister ${hubDisplayName(hub)}?
+    if (action === "remove" && !confirm(`Remove ${hubDisplayName(hub)}?
 
 The server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
     this._pickerBusy = new Set(this._pickerBusy).add(id);

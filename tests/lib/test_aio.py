@@ -400,16 +400,28 @@ class FakeProxy:
     # -- lazy getters ----------------------------------------------------
     # NOTE: catalog getters gate on force_refresh (matching the real
     # engine); per-entity getters below gate on fetch_if_missing.
+    # A test that lets a write read its catalogs back (restore, a wifi
+    # deploy) sets this: the forced refresh then lands by itself, with the
+    # catalog the fake holds, as a hub's reply would.
+    lands_catalogs = False
+
+    def _catalog_fetch(self, key: str) -> None:
+        self.fetch_calls.append((key, None))
+        if self.lands_catalogs:
+            if self._ready[key] is None:
+                self._ready[key] = {}
+            threading.Timer(0.01, self.fire_burst, [key]).start()
+
     def get_activities(self, *, force_refresh=True):
         if force_refresh:
-            self.fetch_calls.append(("activities", None))
+            self._catalog_fetch("activities")
             return ({}, False)
         data = self._ready["activities"]
         return (data, True) if data is not None else ({}, False)
 
     def get_devices(self, *, force_refresh=False):
         if force_refresh:
-            self.fetch_calls.append(("devices", None))
+            self._catalog_fetch("devices")
             return ({}, False)
         data = self._ready["devices"]
         return (data, True) if data is not None else ({}, False)
@@ -2040,6 +2052,9 @@ def test_add_and_remove_device_rebase_and_announce() -> None:
         assert removed_ev.payload.device_ids == (5,) and removed_ev.payload.activity_ids == (101,)
         assert act_removed.payload.activity_ids == (101,) and act_removed.payload.device_ids == ()
         assert fake.write_calls == [("create_device", "Lamp", "ir"), ("delete_device", 5), ("delete_device", 101)]
+        # Each write reads back what it left behind: the created device,
+        # then the activity the hub cascaded the delete into.
+        assert fake.backup_calls == [("device", 8, False), ("activity", 101, False)]
         try:
             await proxy.remove_activity(5)
         except ValueError:
@@ -2049,8 +2064,90 @@ def test_add_and_remove_device_rebase_and_announce() -> None:
         after = await proxy.snapshot()
         assert after.snapshot_id != before.snapshot_id
         assert [e.entity_id for e in after.devices] == [7, 8]
-        assert not after.entity("device", 8).editable          # new: never fetched
+        assert after.entity("device", 8).editable              # new: read back by the create
         assert after.entity("activity", 101) is None           # removed
+
+    asyncio.run(main())
+
+
+def test_a_sync_reads_back_what_the_engine_left_behind() -> None:
+    async def main():
+        class WithSync(FakeProxy):
+            outcome: dict = {}
+
+            def sync_activity(self, *, baseline, edited, activity_id, progress_callback=None):
+                return dict(self.outcome)
+
+            def sync_device(self, *, baseline, edited, device_id, progress_callback=None):
+                return dict(self.outcome)
+
+            def activities_referencing_device(self, device_id):
+                return [101] if device_id == 5 else []
+
+        fake = WithSync()
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {101: {"name": "Watch"}}
+        proxy = _wrap(fake)
+        done = {"status": "success", "completed_steps": 1, "total_steps": 1}
+
+        # A completed sync ends with the engine's own re-read of its entity: nothing more.
+        fake.outcome = {**done, "counters": {"binding_write": 1}}
+        await proxy.sync_activity(baseline={}, edited={}, activity_id=101)
+        await proxy.sync_device(baseline={}, edited={}, device_id=5)
+        assert fake.backup_calls == []
+
+        # A rewritten or deleted record changes what every activity naming the device holds.
+        fake.outcome = {**done, "counters": {"command_add": 1}}
+        await proxy.sync_device(baseline={}, edited={}, device_id=5)
+        assert fake.backup_calls == []                      # nothing names a command that is new
+        for kind in ("command_rename", "command_payload", "command_delete"):
+            fake.backup_calls.clear()
+            fake.outcome = {**done, "counters": {kind: 1}}
+            await proxy.sync_device(baseline={}, edited={}, device_id=5)
+            assert fake.backup_calls == [("activity", 101, False)], kind
+
+        # A sync that stopped part-way returns from the failed step, never re-read by the engine.
+        fake.backup_calls.clear()
+        fake.outcome = {"status": "failed", "failed_at": "favorite_add", "completed_steps": 1, "total_steps": 3}
+        await proxy.sync_activity(baseline={}, edited={}, activity_id=101)
+        assert fake.backup_calls == [("activity", 101, False)]
+        fake.backup_calls.clear()
+        await proxy.sync_device(baseline={}, edited={}, device_id=5)
+        assert fake.backup_calls == [("device", 5, False), ("activity", 101, False)]
+
+        # One that wrote nothing reads nothing.
+        fake.backup_calls.clear()
+        fake.outcome = {"status": "failed", "failed_at": "stale_check"}
+        await proxy.sync_activity(baseline={}, edited={}, activity_id=101)
+        await proxy.sync_device(baseline={}, edited={}, device_id=5)
+        assert fake.backup_calls == []
+
+    asyncio.run(main())
+
+
+def test_a_read_back_that_fails_invalidates_instead_of_failing_the_write() -> None:
+    async def main():
+        class Unreadable(FakeProxy):
+            cleared: list = []
+
+            def backup_activity(self, activity_id, **kwargs):
+                raise errors.FetchTimeoutError("the hub never answered")
+
+            def clear_entity_cache(self, ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False, **kw):
+                self.cleared.append((ent_id, clear_buttons, clear_favorites, clear_macros))
+                self.detail["activity"].pop(ent_id, None)
+
+        fake = Unreadable()
+        fake._ready["devices"] = {5: {"name": "TV"}, 7: {"name": "Amp"}}
+        fake._ready["activities"] = {101: {"name": "Watch"}}
+        fake.detail["activity"][101] = [{"button_id": 1}]
+        proxy = _wrap(fake)
+
+        removed = await proxy.remove_device(5)             # the write landed: no error
+        assert removed.impacted_activity_ids == (101,)
+        # The activity could not be read back, so it says "not fetched" and not what the write made wrong.
+        assert fake.cleared == [(101, True, True, True)]
+        assert not (await proxy.snapshot()).entity("activity", 101).complete
 
     asyncio.run(main())
 
@@ -2086,6 +2183,7 @@ def test_reorder_rename_erase_go_through_the_engine_and_announce() -> None:
 def test_backup_and_restore_typed_results_and_replace() -> None:
     async def main():
         fake = _write_fake()
+        fake.lands_catalogs = True
         proxy = _wrap(fake)
         progress: list = []
         bundle = await proxy.backup(progress=progress.append)
@@ -2101,6 +2199,12 @@ def test_backup_and_restore_typed_results_and_replace() -> None:
         kinds = [c[0] for c in fake.write_calls]
         assert kinds == ["backup", "preflight", "erase", "restore"]
         assert result.restored["devices"][0]["device_id"] == 9
+        # The rebuild only writes: the restore reads back what it made (the
+        # lists once, then each entity), so the snapshot shows the hub.
+        assert fake.fetch_calls == [("devices", None), ("activities", None)]
+        assert fake.backup_calls[-1] == ("device", 9, False)
+        assert (await proxy.snapshot()).entity("device", 9).editable
+        assert progress[-1].phase == "reading_back" and progress[-1].entity_id == 9
         # A bundle the restore would refuse never reaches the erase.
         fake.write_calls.clear()
         try:
@@ -2842,6 +2946,7 @@ def test_a_read_with_an_empty_cache_never_reaches_the_hub_while_a_restore_holds_
                 return super().restore_hub_bundle(payload, **kwargs)
 
         fake = SlowRestore()
+        fake.lands_catalogs = True
         fake._ready["devices"] = {5: {"name": "TV"}}
         fake._ready["activities"] = {101: {"name": "Watch"}}
         proxy = _wrap(fake)
@@ -2868,9 +2973,14 @@ def test_a_read_with_an_empty_cache_never_reaches_the_hub_while_a_restore_holds_
         result = await restoring
         assert result.ok
         assert [d.device_id for d in await reading] == [9]
-        assert fake.fetch_calls == []
+        # The only hub reads were the restore's own read-back, inside its hold.
+        assert fake.fetch_calls == [("devices", None), ("activities", None)]
+        assert fake.backup_calls == [("device", 9, False)]
 
         # Free again: a read that needs the hub fetches as it always did.
+        fake.lands_catalogs = False
+        fake._ready["activities"] = None
+        fake.fetch_calls.clear()
         asyncio.get_running_loop().call_later(0.05, _land, fake, "activities", {101: {"name": "Watch"}})
         assert [a.activity_id for a in await proxy.activities(timeout=2.0)] == [101]
         assert ("activities", None) in fake.fetch_calls
@@ -2898,6 +3008,7 @@ def test_the_holder_reads_the_hub_itself_and_nested_holds_release_once() -> None
 def test_a_failed_replacing_restore_says_the_hub_was_erased() -> None:
     async def main():
         fake = FakeProxy()
+        fake.lands_catalogs = True
         fake._ready["devices"] = {5: {"name": "TV"}}
         fake._ready["activities"] = {}
         proxy = _wrap(fake)

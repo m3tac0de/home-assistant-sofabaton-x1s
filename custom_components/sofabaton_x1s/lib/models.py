@@ -326,7 +326,8 @@ class WriteProgress:
     """One progress report from a long-running operation (refresh, sync).
 
     ``phase`` is the operation's own phase word (``preparing``, ``device``,
-    ``activity``, ``stale_check``, ``writing``, ``finalizing`` ...);
+    ``activity``, ``stale_check``, ``writing``, ``reading_back``,
+    ``finalizing`` ...);
     ``entity_kind`` / ``entity_id`` name the entity being worked on when
     there is one; ``step_kind`` is the sync step kind while writing.
     """

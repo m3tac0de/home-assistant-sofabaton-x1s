@@ -1,6 +1,6 @@
 // The panel's routes (docs/internal/server-panel-state-plan.md, decision
 // 9): `#/<hubId>/<tab>/<sub>` for the hub tabs and `#/<page>/<sub>` for
-// the pages under the cog menu (Hub setup, Server, Debug); the Hub tab's
+// the pages under the cog menu (Hub settings, Server settings, Debug); the Hub tab's
 // subtabs take an optional fourth segment, an entity id, which opens that
 // entity's editor (`#/<hubId>/hub/devices/12`; device editor plan,
 // decision 2); the Wifi Commands tab's fourth segment is a Wifi Device's
@@ -27,7 +27,7 @@ export const TAB_LABELS: Record<HubTab, string> = { hub: "Hub", wifi: "Wifi Comm
 
 export const TOOL_PAGES = ["setup", "server", "debug"] as const;
 export type ToolPage = (typeof TOOL_PAGES)[number];
-export const TOOL_LABELS: Record<ToolPage, string> = { setup: "Hub setup", server: "Server", debug: "Debug" };
+export const TOOL_LABELS: Record<ToolPage, string> = { setup: "Hub settings", server: "Server settings", debug: "Debug" };
 
 export const TOOL_SUBTABS: Record<ToolPage, readonly string[]> = {
   setup: ["hubs"],
