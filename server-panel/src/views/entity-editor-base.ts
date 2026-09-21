@@ -28,7 +28,7 @@ import { applyBundleDelete } from "../../../custom_components/sofabaton_x1s/www/
 import { jobStepMessage, renderOperationProgress } from "../components/operation-progress";
 import { problemText, type ApiResponse, type HubInfo, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
-import { activeJob } from "../panel-selectors";
+import { activeJob, type Gate } from "../panel-selectors";
 import type { PanelStore } from "../panel-store";
 import { firmwareUnsupported, elementsEqual, snapshotAsBundle } from "./device-editor-state";
 import {
@@ -116,6 +116,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
   protected _notice: string | null = null;
   private _loadedKey: string | null = null;
   private _loadSeq = 0;
+  /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
+  private _loadedGate: Gate | null = null;
 
   // -- what a subclass names ------------------------------------------------------------------------
 
@@ -165,6 +167,11 @@ export abstract class SbPanelEntityEditor extends LitElement {
       this._loadedKey = key;
       this._reset();
       if (this.ctx?.hub && this.entityId != null) void this._load();
+    } else if (changed.has("ctx") && this._stage === "missing" && this.ctx?.gate === "pass" && this._loadedGate !== "pass") {
+      // The snapshot was asked for while the hub could not answer (disabled: a 409); it can now.
+      this._stage = "loading";
+      this._notice = null;
+      void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       // The dock's Discard dropped the draft: the working copy follows.
       this._working = this._baseline ? structuredClone(this._baseline) : null;
@@ -207,6 +214,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     const kind = this.entityKind;
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
+    this._loadedGate = this.ctx?.gate ?? null;
     const [snapshot, info, callback] = await Promise.all([
       this.api.snapshot(hubId),
       this.api.hubInfo(hubId).catch(() => null),

@@ -822,8 +822,6 @@ test.describe("control panel, views", () => {
     const { calls } = await mockServer(page, state);
     await page.goto(`${PAGE}#/e26a44861b45/remote/card`);
     await expect(page.locator("#view-remote")).toBeVisible();
-    await expect(page.locator("#remote-title")).toHaveText("Living room");
-    await expect(page.locator("#remote-link")).toHaveAttribute("href", /\/ui\/remote\/\?hub=e26a44861b45$/);
     // The real card is mounted over the mocked server, with the stored document applied.
     const card = page.locator("#stage sofabaton-virtual-remote");
     await expect(card).toBeVisible();
@@ -861,10 +859,48 @@ test.describe("control panel, views", () => {
     // Picking another hub re-targets the card and the editor.
     await pickHub(page, "192.168.1.60");
     await page.click('#subtabs button[data-sub="card"]');
-    await expect(page.locator("#remote-title")).toHaveText("192.168.1.60");
-    await expect(page.locator("#remote-link")).toHaveAttribute("href", /\/ui\/remote\/\?hub=192\.168\.1\.60$/);
     await expect.poll(() => calls.some((c) => c.key === "GET /hubs/192.168.1.60/ui/remote-card")).toBe(true);
     await expect(page.locator("#remote-banner")).toBeVisible();
+  });
+
+  test("the remote card scales to fit between the docks, whatever the viewport's height", async ({ page }, testInfo) => {
+    await mockServer(page, { hubs: [LIVING], seen: [], document: null });
+    const width = page.viewportSize().width;
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto(`${PAGE}#/e26a44861b45/remote/card`);
+    const card = page.locator("#stage sofabaton-virtual-remote");
+    await expect(card.locator(".dpad .area-up >> visible=true").first()).toBeVisible();
+    const fit = () => page.evaluate(() => {
+      const panel = document.querySelector("sofabaton-server-panel").shadowRoot;
+      const view = panel.querySelector("sb-panel-remote").shadowRoot;
+      return {
+        zoom: parseFloat(view.querySelector("#stage").style.getPropertyValue("--fit-scale")) || 1,
+        frameBottom: view.querySelector("#remote-frame").getBoundingClientRect().bottom,
+        dockTop: panel.querySelector("#bottom-dock").getBoundingClientRect().top,
+        scrolls: document.documentElement.scrollHeight > document.documentElement.clientHeight,
+      };
+    });
+    // Too short for the card at full size: it shrinks, and the page does not scroll.
+    await expect.poll(async () => (await fit()).zoom).toBeLessThan(1);
+    await expect.poll(async () => { const at = await fit(); return at.frameBottom <= at.dockTop; }).toBe(true);
+    const short = await fit();
+    expect(short.frameBottom).toBeLessThanOrEqual(short.dockTop);
+    expect(short.scrolls).toBe(false);
+    await page.screenshot({ path: shot(testInfo, "remote-fit") });
+    // The scaled card still takes presses, and its menu opens at its trigger.
+    const select = card.locator("ha-select.sb-activity-select >> visible=true").first();
+    await select.click();
+    const gap = await select.evaluate((el) => {
+      const menu = el.shadowRoot.querySelector(".menu") || el.shadowRoot.querySelector("[role=listbox]");
+      const trigger = el.getBoundingClientRect();
+      const box = menu.getBoundingClientRect();
+      return Math.min(Math.abs(box.top - trigger.bottom), Math.abs(box.bottom - trigger.top));
+    });
+    expect(gap).toBeLessThan(12);
+    await page.keyboard.press("Escape");
+    // Room for the whole card: back to full size.
+    await page.setViewportSize({ width, height: 1400 });
+    await expect.poll(async () => (await fit()).zoom).toBe(1);
   });
 
   test("remote visual editor previews, inherits layouts, reorders and round-trips JSON", async ({ page }, testInfo) => {
@@ -1968,6 +2004,58 @@ test.describe("control panel, integrated picker", () => {
     expect(calls.filter((c) => c.key.startsWith('POST /hubs/')).map((c) => c.key)).toEqual([
       `POST /hubs/${OFFICE.hub_id}/enable`, `POST /hubs/${OFFICE.hub_id}/disable`,
     ]);
+  });
+
+  test("a disabled hub enabled from the picker: the open view reads the hub again once it passes its gates", async ({ page }) => {
+    const state = { hubs: [{ ...LIVING, enabled: false, status: null }], seen: [] };
+    const { calls, sockets } = await mockServer(page, state);
+    const hub = () => state.hubs[0];
+    // As the server answers: a 409 while disabled, an empty cache until the first sync, then the catalog.
+    const snapshot = {
+      snapshot_id: "abc123", captured_at: "2026-09-16T10:00:00Z", engine_generation: 3, complete: false, payload_profile: "x1s",
+      devices: [{ kind: "device", device: { device_id: 1, name: "TV" }, complete: false, editable: true, fetched_at: null }],
+      activities: [],
+    };
+    const data = (full, empty) => (route) => {
+      const body = !hub().enabled ? problem(409, "hub_disabled", "enable it first", { hub_id: LIVING.hub_id, mode: "disconnected" }).body : hub().status?.catalog_ready ? full : empty;
+      return route.fulfill({ status: hub().enabled ? 200 : 409, contentType: "application/json", body: JSON.stringify(body) });
+    };
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/activities`, data([{ activity_id: 101, name: "Watch TV", active: false, needs_confirm: false }], []));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices`, data([{ device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2 }], []));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, data(snapshot, { ...snapshot, devices: [] }));
+    // The proxy starts before the hub dials in: enabled, not connected yet.
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/enable`, (route) => {
+      calls.push({ key: `POST /hubs/${LIVING.hub_id}/enable`, body: null });
+      hub().enabled = true;
+      hub().status = { ...CONTROL, hub_connected: false, mode: "disconnected", catalog_ready: false, running_activity: null };
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(hub()) });
+    });
+    const enable = async () => {
+      await chip(page).click();
+      await page.getByRole("button", { name: "Manage Living room", exact: true }).click();
+      await page.getByRole("group", { name: "Actions for Living room", exact: true }).getByRole("button", { name: "Enable", exact: true }).click();
+      await expect(page.locator("#blocked-scrim")).toContainText("Waiting for the hub to connect");
+      hub().status = { ...CONTROL };
+      for (const ws of sockets) ws.send(JSON.stringify({ type: "hub_event", hub_id: LIVING.hub_id, event: { kind: "catalog_ready", seq: 1 } }));
+      await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    };
+
+    await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/activities`);
+    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
+    await expect(page.locator("#catalog-notice")).toContainText("hub_disabled");
+    await enable();
+    await expect(page.locator("#catalog-rows .entity-block")).toHaveCount(1);
+    await expect(page.locator("#catalog-rows .entity-name-label")).toHaveText("Watch TV");
+    await expect(page.locator("#catalog-notice")).toHaveCount(0);
+
+    // The same for an editor opened on the disabled hub.
+    hub().enabled = false;
+    hub().status = null;
+    await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/devices/1`);
+    await page.reload();
+    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
+    await enable();
+    await expect(page.locator("#editor-refresh")).toBeVisible();
   });
 
   test("shows lifecycle errors inline and retries a registered hub that failed to start", async ({ page }) => {

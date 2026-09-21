@@ -8,7 +8,7 @@ import { LitElement, html, css, type PropertyValues, type TemplateResult } from 
 
 import { ServerRemoteBackend } from "../../../remote-card/src/backend/server-backend";
 import type { SofabatonRemoteCard } from "../../../remote-card/src/remote-card-element";
-import { CARD_VERSION, TYPE } from "../../../remote-card/src/remote-card-shared";
+import { TYPE } from "../../../remote-card/src/remote-card-shared";
 import type { RemoteSnapshot } from "../../../remote-card/src/backend/remote-backend";
 import { deviceModeEnabledInConfig, isDeviceLayoutKey } from "../../../remote-card/src/remote-card-layout";
 import { cardConfigForWebRemote } from "../../../remote-card/src/remote-web-config";
@@ -18,6 +18,20 @@ import { formatWhen, hubDisplayName } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
 export const REMOTE_VIEW_TAG = "sb-panel-remote";
+
+/** Below this the keys are too small to make out: the page scrolls instead. */
+const MIN_FIT_SCALE = 0.25;
+
+/** What the ancestors put under an element: their bottom padding, border and margin (the page's padding reserves the bottom dock). */
+function spaceBelow(element: Element): number {
+  let total = 0;
+  let node: Element | null = element;
+  while ((node = node.parentElement ?? ((node.getRootNode() as ShadowRoot).host ?? null))) {
+    const style = getComputedStyle(node);
+    total += (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) + (parseFloat(style.marginBottom) || 0);
+  }
+  return total;
+}
 
 export class SbPanelRemote extends LitElement {
   static properties = {
@@ -30,6 +44,7 @@ export class SbPanelRemote extends LitElement {
     _banner: { state: true },
     _documentText: { state: true },
     _mode: { state: true }, _busy: { state: true }, _loaded: { state: true }, _draft: { state: true }, _snapshot: { state: true },
+    _scale: { state: true }, _natural: { state: true },
   };
 
   static styles = [
@@ -38,14 +53,20 @@ export class SbPanelRemote extends LitElement {
       :host { display: block; height: 100%; }
       .frame { max-width: 420px; margin: 0 auto; }
       .frame { background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); overflow: hidden; }
-      .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sbp-line); font-size: 12px; color: var(--sbp-muted); white-space: nowrap; }
-      .bar .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      /* The card subtab: the bare card, centred. The notices keep the full width while the card's box narrows with the scale. */
+      .fit { max-width: 420px; margin: 0 auto; }
+      .fit .stage { padding: 0; }
+      .fit .banner, .fit .busy-note { margin: 0 0 10px; }
+      #stage-box { margin: 0 auto; }
+      /* Laid out at the full width, then scaled into the box. */
+      .fit .stage.is-scaled { width: calc(100% / var(--fit-scale)); transform: scale(var(--fit-scale)); transform-origin: 0 0; }
       .stage { padding: 10px; }
+      /* Sized by the docks, so the fit re-runs when either one changes height. */
+      .dock-probe { position: fixed; top: 0; left: 0; visibility: hidden; pointer-events: none; width: 0; height: calc(var(--top-dock-height, 0px) + var(--bottom-dock-height, 0px)); }
       /* A job holds the hub: the server does not refuse a send, so the card waits here (disabled, as a control would be). */
       .stage.is-busy { opacity: 0.5; pointer-events: none; }
       .busy-note { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-muted); font-size: 13px; }
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
-      .foot { padding: 6px 10px 8px; color: var(--sbp-muted); font-size: 11px; text-align: center; }
       textarea { min-height: 380px; margin-top: 10px; }
       .layout-content { min-width: 0; }
       .layout-content h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
@@ -88,9 +109,26 @@ export class SbPanelRemote extends LitElement {
   private _unsubscribe: (() => void) | null = null;
   private _mountedFor: string | null = null;
   private _document: Record<string, unknown> | null = null;
+  /** The card subtab's scale: the whole remote fits between the docks. */
+  private _scale = 1;
+  /** The card's height at full size, which the scaled box is sized from. */
+  private _natural = 0;
+  private _fitObserver: ResizeObserver | null = null;
+  private _fitFrame: HTMLElement | null = null;
+  private _onWindowResize = (): void => this._fit();
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this._fitObserver = new ResizeObserver(() => this._fit());
+    window.addEventListener("resize", this._onWindowResize);
+  }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.removeEventListener("resize", this._onWindowResize);
+    this._fitObserver?.disconnect();
+    this._fitObserver = null;
+    this._fitFrame = null;
     this._unmount();
   }
 
@@ -110,6 +148,35 @@ export class SbPanelRemote extends LitElement {
     // The stage div is re-rendered with the view; keep the card in it.
     const stage = this.renderRoot.querySelector<HTMLElement>("#stage");
     if (stage && this._card && this._card.parentElement !== stage) stage.appendChild(this._card);
+    // The subtabs render different elements: watch the card subtab's.
+    const frame = this.section === "card" ? this.renderRoot.querySelector<HTMLElement>("#remote-frame") : null;
+    if (frame !== this._fitFrame) {
+      this._fitFrame = frame;
+      this._fitObserver?.disconnect();
+      for (const el of frame ? [frame, ...this.renderRoot.querySelectorAll("#stage, .dock-probe")] : []) this._fitObserver?.observe(el);
+    }
+  }
+
+  /**
+   * Scale the card so the whole remote shows between the docks without
+   * scrolling. A transform, not CSS zoom: a transform leaves the card's
+   * layout alone, so its height is one number whatever the scale is
+   * (Firefox lays a zoomed card out again, container units and all, and
+   * a fit measured that way never settles). The box takes the scaled
+   * size in the flow; the card's fixed menus measure the scale they are under.
+   */
+  private _fit(): void {
+    const frame = this._fitFrame;
+    const box = this.renderRoot.querySelector<HTMLElement>("#stage-box");
+    const stage = this.renderRoot.querySelector<HTMLElement>("#stage");
+    if (!frame || !box || !stage) return;
+    const natural = stage.offsetHeight;
+    if (!natural) return;
+    const frameRect = frame.getBoundingClientRect();
+    const chrome = frameRect.height - box.getBoundingClientRect().height;
+    const room = document.documentElement.clientHeight - (frameRect.top + window.scrollY) - chrome - spaceBelow(this);
+    this._natural = natural;
+    this._scale = Math.min(1, Math.max(MIN_FIT_SCALE, Math.floor((room / natural) * 1000) / 1000));
   }
 
   private _unmount(): void {
@@ -317,18 +384,15 @@ export class SbPanelRemote extends LitElement {
   private _renderCard(hub: HubView | null): TemplateResult {
     const interaction = this.ctx?.interaction ?? null;
     const busy = interaction?.kind === "blocked" && (interaction.reason === "job" || interaction.reason === "local");
+    const scale = this._scale;
+    const scaled = scale < 1 && this._natural > 0;
     return html`
-        <div class="frame">
-          <div class="bar">
-            <span class="title" id="remote-title" title=${hub ? `web remote for ${hub.hub_id}` : ""}>${hub ? hubDisplayName(hub) : "no hub selected"}</span>
-            <span class="spacer"></span>
-            <a class="hint" id="remote-link" href=${this.api.remoteUrl(hub?.hub_id ?? null)} target="_blank" rel="noopener" title="open the remote in its own tab">open ↗</a>
-          </div>
+        <div class="fit" id="remote-frame">
           ${this._banner ? html`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
           ${busy ? html`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
-          <div class="stage ${busy ? "is-busy" : ""}" id="stage" ?inert=${busy}>${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div>
-          ${hub ? html`<div class="foot">${hubDisplayName(hub)} · remote card ${CARD_VERSION}</div>` : ""}
+          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div></div>
         </div>
+        <div class="dock-probe" aria-hidden="true"></div>
     `;
   }
 

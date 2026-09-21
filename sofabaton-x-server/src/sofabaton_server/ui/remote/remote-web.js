@@ -9096,8 +9096,9 @@ var SbHaSelect = class extends HTMLElement {
    * visible card where possible. Measured as a delta from where
    * the menu lands at (0, 0): a transformed ancestor (the card animates
    * with one) makes itself the containing block for fixed descendants,
-   * and a zoomed ancestor (the page's zoom= parameter) scales the length
-   * units, so absolute viewport coordinates would be wrong in both cases.
+   * and a zoomed or scaled ancestor (the page's zoom= parameter, the
+   * control panel's fitted card) scales the length units, so absolute
+   * viewport coordinates would be wrong in every case.
    */
   _placeMenu() {
     const menu = this._menu;
@@ -9105,10 +9106,10 @@ var SbHaSelect = class extends HTMLElement {
     if (!menu || !trigger || !this.hasAttribute("open")) return;
     menu.style.left = "0px";
     menu.style.top = "0px";
-    menu.style.width = "0px";
+    menu.style.width = `${PROBE_WIDTH}px`;
     const origin = menu.getBoundingClientRect();
     const anchor = trigger.getBoundingClientRect();
-    const zoom = effectiveZoom(this);
+    const zoom = origin.width > 0 ? origin.width / PROBE_WIDTH : effectiveZoom(this);
     menu.style.left = `${(anchor.left - origin.left) / zoom}px`;
     menu.style.top = `${(anchor.bottom + 4 - origin.top) / zoom}px`;
     menu.style.width = `${anchor.width / zoom}px`;
@@ -9129,6 +9130,7 @@ var SbHaSelect = class extends HTMLElement {
     if (upwards) menu.style.top = `${(anchor.top - 4 - origin.top - menu.getBoundingClientRect().height) / zoom}px`;
   }
 };
+var PROBE_WIDTH = 100;
 function effectiveZoom(element) {
   const current = element.currentCSSZoom;
   if (typeof current === "number" && current > 0) return current;

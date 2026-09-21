@@ -34,6 +34,7 @@ import {
   type SnapshotEntity,
 } from "../panel-api";
 import type { HubContext } from "../panel-context";
+import type { Gate } from "../panel-selectors";
 import { formatWhen } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { PointerReorder } from "../pointer-reorder";
@@ -362,6 +363,9 @@ export class SbPanelCatalog extends LitElement {
   private _refresh: RefreshState | null = null;
   private _loading = false;
   private _loadedFor: string | null = null;
+  /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
+  private _loadedGate: Gate | null = null;
+  private _loadSeq = 0;
   private _lastJobId: string | null = null;
   private _pendingScroll: string | null = null;
   private _devices: Device[] = [];
@@ -421,6 +425,9 @@ export class SbPanelCatalog extends LitElement {
         }
       }
     }
+    // A load that ran while the hub could not answer (disabled: a 409; not
+    // synced yet: no catalog) is run again once the hub passes its gates.
+    if (changed.has("ctx") && this._loadedFor && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._refresh) void this._reloadAll();
     if (this._pendingScroll) {
       const key = this._pendingScroll;
       this._pendingScroll = null;
@@ -457,10 +464,12 @@ export class SbPanelCatalog extends LitElement {
   async _load(): Promise<void> {
     const hubId = this.hub?.hub_id;
     if (!hubId) return;
+    const seq = ++this._loadSeq;
+    this._loadedGate = this.ctx?.gate ?? null;
     this._loading = true;
     try {
       const [devices, activities, snapshot] = await Promise.all([this.api.devices(hubId), this.api.activities(hubId), this.api.snapshot(hubId)]);
-      if (this._loadedFor !== hubId) return;
+      if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       const failed = [devices, activities].find((r) => !r.ok);
       if (failed) {
         this._notice = problemText(failed);
@@ -476,7 +485,7 @@ export class SbPanelCatalog extends LitElement {
     } catch (err) {
       this._notice = String(err);
     } finally {
-      this._loading = false;
+      if (seq === this._loadSeq) this._loading = false;
     }
   }
 

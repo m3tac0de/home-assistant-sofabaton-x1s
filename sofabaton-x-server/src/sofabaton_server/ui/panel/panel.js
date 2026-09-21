@@ -2796,9 +2796,9 @@ function drawerDesiredHeight(scrollHeight, maxHeight = DRAWER_MAX_HEIGHT) {
 function drawerDirection(input) {
   const { desired, rowTop, rowBottom, cardTop, cardBottom, viewportHeight } = input;
   if (cardTop == null || cardBottom == null) {
-    const spaceBelow = viewportHeight - rowBottom;
+    const spaceBelow2 = viewportHeight - rowBottom;
     const spaceAbove = rowTop;
-    const shouldOpenUp = spaceBelow < desired && spaceAbove > spaceBelow;
+    const shouldOpenUp = spaceBelow2 < desired && spaceAbove > spaceBelow2;
     return shouldOpenUp ? "up" : "down";
   }
   const spaceBelowInCard = cardBottom - rowBottom;
@@ -8482,8 +8482,9 @@ var SbHaSelect = class extends HTMLElement {
    * visible card where possible. Measured as a delta from where
    * the menu lands at (0, 0): a transformed ancestor (the card animates
    * with one) makes itself the containing block for fixed descendants,
-   * and a zoomed ancestor (the page's zoom= parameter) scales the length
-   * units, so absolute viewport coordinates would be wrong in both cases.
+   * and a zoomed or scaled ancestor (the page's zoom= parameter, the
+   * control panel's fitted card) scales the length units, so absolute
+   * viewport coordinates would be wrong in every case.
    */
   _placeMenu() {
     const menu = this._menu;
@@ -8491,10 +8492,10 @@ var SbHaSelect = class extends HTMLElement {
     if (!menu || !trigger || !this.hasAttribute("open")) return;
     menu.style.left = "0px";
     menu.style.top = "0px";
-    menu.style.width = "0px";
+    menu.style.width = `${PROBE_WIDTH}px`;
     const origin = menu.getBoundingClientRect();
     const anchor = trigger.getBoundingClientRect();
-    const zoom = effectiveZoom(this);
+    const zoom = origin.width > 0 ? origin.width / PROBE_WIDTH : effectiveZoom(this);
     menu.style.left = `${(anchor.left - origin.left) / zoom}px`;
     menu.style.top = `${(anchor.bottom + 4 - origin.top) / zoom}px`;
     menu.style.width = `${anchor.width / zoom}px`;
@@ -8515,6 +8516,7 @@ var SbHaSelect = class extends HTMLElement {
     if (upwards) menu.style.top = `${(anchor.top - 4 - origin.top - menu.getBoundingClientRect().height) / zoom}px`;
   }
 };
+var PROBE_WIDTH = 100;
 function effectiveZoom(element) {
   const current = element.currentCSSZoom;
   if (typeof current === "number" && current > 0) return current;
@@ -16605,6 +16607,8 @@ var SbPanelBackup = class extends i4 {
     this._hubId = null;
     this._jobsSeq = 0;
     this._jobsKey = "";
+    /** The hub's gate when the device list was last read; anything but "pass" asks for another read once it passes. */
+    this._devicesGate = null;
     this._expiryTimer = null;
     // Make
     this._scope = "whole_hub";
@@ -16763,6 +16767,7 @@ var SbPanelBackup = class extends i4 {
         this._jobsKey = key;
         void this._loadJobs();
       }
+      if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
     }
     if (!this._editSessionTried && hubId && this.section === "edit" && !this._editBundle) {
       this._editSessionTried = true;
@@ -16860,6 +16865,7 @@ var SbPanelBackup = class extends i4 {
     const hubId = this._hubId;
     const api = this._api;
     if (!hubId || !api) return;
+    this._devicesGate = this.ctx?.gate ?? null;
     try {
       const response = await api.snapshot(hubId);
       if (hubId !== this._hubId || !response.ok || !response.body) return;
@@ -17561,6 +17567,9 @@ var SbPanelCatalog = class extends i4 {
     this._refresh = null;
     this._loading = false;
     this._loadedFor = null;
+    /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
+    this._loadedGate = null;
+    this._loadSeq = 0;
     this._lastJobId = null;
     this._pendingScroll = null;
     this._devices = [];
@@ -17681,6 +17690,7 @@ var SbPanelCatalog = class extends i4 {
         }
       }
     }
+    if (changed.has("ctx") && this._loadedFor && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._refresh) void this._reloadAll();
     if (this._pendingScroll) {
       const key = this._pendingScroll;
       this._pendingScroll = null;
@@ -17711,10 +17721,12 @@ var SbPanelCatalog = class extends i4 {
   async _load() {
     const hubId = this.hub?.hub_id;
     if (!hubId) return;
+    const seq = ++this._loadSeq;
+    this._loadedGate = this.ctx?.gate ?? null;
     this._loading = true;
     try {
       const [devices, activities, snapshot] = await Promise.all([this.api.devices(hubId), this.api.activities(hubId), this.api.snapshot(hubId)]);
-      if (this._loadedFor !== hubId) return;
+      if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       const failed = [devices, activities].find((r6) => !r6.ok);
       if (failed) {
         this._notice = problemText(failed);
@@ -17730,7 +17742,7 @@ var SbPanelCatalog = class extends i4 {
     } catch (err) {
       this._notice = String(err);
     } finally {
-      this._loading = false;
+      if (seq === this._loadSeq) this._loading = false;
     }
   }
   /** The lists and every loaded drawer again (after a refresh, or a job that ended elsewhere). */
@@ -18176,8 +18188,8 @@ var OVERLAY_MENU_MAX_HEIGHT = 240;
 function overlayMenuPosition(anchor, align) {
   if (!anchor) return "";
   const gap = 4;
-  const spaceBelow = window.innerHeight - anchor.bottom;
-  const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && anchor.top > spaceBelow;
+  const spaceBelow2 = window.innerHeight - anchor.bottom;
+  const openUp = spaceBelow2 < OVERLAY_MENU_MAX_HEIGHT + gap && anchor.top > spaceBelow2;
   const vertical = openUp ? `bottom: ${Math.round(window.innerHeight - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom + gap)}px; bottom: auto;`;
   const horizontal = align === "right" ? `right: ${Math.round(window.innerWidth - anchor.right)}px; left: auto;` : `left: ${Math.round(anchor.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
@@ -18593,6 +18605,8 @@ var SbPanelEntityEditor = class extends i4 {
     this._notice = null;
     this._loadedKey = null;
     this._loadSeq = 0;
+    /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
+    this._loadedGate = null;
     this._requestClose = () => {
       this.askToLeave(() => this._goToList());
     };
@@ -18659,6 +18673,10 @@ var SbPanelEntityEditor = class extends i4 {
       this._loadedKey = key;
       this._reset();
       if (this.ctx?.hub && this.entityId != null) void this._load();
+    } else if (changed.has("ctx") && this._stage === "missing" && this.ctx?.gate === "pass" && this._loadedGate !== "pass") {
+      this._stage = "loading";
+      this._notice = null;
+      void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       this._working = this._baseline ? structuredClone(this._baseline) : null;
     }
@@ -18693,6 +18711,7 @@ var SbPanelEntityEditor = class extends i4 {
     const kind = this.entityKind;
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
+    this._loadedGate = this.ctx?.gate ?? null;
     const [snapshot, info, callback] = await Promise.all([
       this.api.snapshot(hubId),
       this.api.hubInfo(hubId).catch(() => null),
@@ -22888,6 +22907,16 @@ function defineRemoteEditor() {
 
 // server-panel/src/views/remote-view.ts
 var REMOTE_VIEW_TAG = "sb-panel-remote";
+var MIN_FIT_SCALE = 0.25;
+function spaceBelow(element) {
+  let total = 0;
+  let node = element;
+  while (node = node.parentElement ?? (node.getRootNode().host ?? null)) {
+    const style = getComputedStyle(node);
+    total += (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) + (parseFloat(style.marginBottom) || 0);
+  }
+  return total;
+}
 var SbPanelRemote = class extends i4 {
   constructor() {
     super(...arguments);
@@ -22910,9 +22939,25 @@ var SbPanelRemote = class extends i4 {
     this._unsubscribe = null;
     this._mountedFor = null;
     this._document = null;
+    /** The card subtab's scale: the whole remote fits between the docks. */
+    this._scale = 1;
+    /** The card's height at full size, which the scaled box is sized from. */
+    this._natural = 0;
+    this._fitObserver = null;
+    this._fitFrame = null;
+    this._onWindowResize = () => this._fit();
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    this._fitObserver = new ResizeObserver(() => this._fit());
+    window.addEventListener("resize", this._onWindowResize);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener("resize", this._onWindowResize);
+    this._fitObserver?.disconnect();
+    this._fitObserver = null;
+    this._fitFrame = null;
     this._unmount();
   }
   willUpdate(changed) {
@@ -22929,6 +22974,33 @@ var SbPanelRemote = class extends i4 {
     if (changed.has("section")) this._updateCard();
     const stage = this.renderRoot.querySelector("#stage");
     if (stage && this._card && this._card.parentElement !== stage) stage.appendChild(this._card);
+    const frame = this.section === "card" ? this.renderRoot.querySelector("#remote-frame") : null;
+    if (frame !== this._fitFrame) {
+      this._fitFrame = frame;
+      this._fitObserver?.disconnect();
+      for (const el of frame ? [frame, ...this.renderRoot.querySelectorAll("#stage, .dock-probe")] : []) this._fitObserver?.observe(el);
+    }
+  }
+  /**
+   * Scale the card so the whole remote shows between the docks without
+   * scrolling. A transform, not CSS zoom: a transform leaves the card's
+   * layout alone, so its height is one number whatever the scale is
+   * (Firefox lays a zoomed card out again, container units and all, and
+   * a fit measured that way never settles). The box takes the scaled
+   * size in the flow; the card's fixed menus measure the scale they are under.
+   */
+  _fit() {
+    const frame = this._fitFrame;
+    const box = this.renderRoot.querySelector("#stage-box");
+    const stage = this.renderRoot.querySelector("#stage");
+    if (!frame || !box || !stage) return;
+    const natural = stage.offsetHeight;
+    if (!natural) return;
+    const frameRect = frame.getBoundingClientRect();
+    const chrome = frameRect.height - box.getBoundingClientRect().height;
+    const room = document.documentElement.clientHeight - (frameRect.top + window.scrollY) - chrome - spaceBelow(this);
+    this._natural = natural;
+    this._scale = Math.min(1, Math.max(MIN_FIT_SCALE, Math.floor(room / natural * 1e3) / 1e3));
   }
   _unmount() {
     this._generation++;
@@ -23120,18 +23192,15 @@ var SbPanelRemote = class extends i4 {
   _renderCard(hub) {
     const interaction = this.ctx?.interaction ?? null;
     const busy = interaction?.kind === "blocked" && (interaction.reason === "job" || interaction.reason === "local");
+    const scale = this._scale;
+    const scaled = scale < 1 && this._natural > 0;
     return b2`
-        <div class="frame">
-          <div class="bar">
-            <span class="title" id="remote-title" title=${hub ? `web remote for ${hub.hub_id}` : ""}>${hub ? hubDisplayName(hub) : "no hub selected"}</span>
-            <span class="spacer"></span>
-            <a class="hint" id="remote-link" href=${this.api.remoteUrl(hub?.hub_id ?? null)} target="_blank" rel="noopener" title="open the remote in its own tab">open ↗</a>
-          </div>
+        <div class="fit" id="remote-frame">
           ${this._banner ? b2`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
           ${busy ? b2`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
-          <div class="stage ${busy ? "is-busy" : ""}" id="stage" ?inert=${busy}>${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div>
-          ${hub ? b2`<div class="foot">${hubDisplayName(hub)} · remote card ${CARD_VERSION}</div>` : ""}
+          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div></div>
         </div>
+        <div class="dock-probe" aria-hidden="true"></div>
     `;
   }
   _renderLayout(hub) {
@@ -23197,7 +23266,9 @@ SbPanelRemote.properties = {
   _busy: { state: true },
   _loaded: { state: true },
   _draft: { state: true },
-  _snapshot: { state: true }
+  _snapshot: { state: true },
+  _scale: { state: true },
+  _natural: { state: true }
 };
 SbPanelRemote.styles = [
   PANEL_BASE_CSS,
@@ -23205,14 +23276,20 @@ SbPanelRemote.styles = [
       :host { display: block; height: 100%; }
       .frame { max-width: 420px; margin: 0 auto; }
       .frame { background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); overflow: hidden; }
-      .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sbp-line); font-size: 12px; color: var(--sbp-muted); white-space: nowrap; }
-      .bar .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      /* The card subtab: the bare card, centred. The notices keep the full width while the card's box narrows with the scale. */
+      .fit { max-width: 420px; margin: 0 auto; }
+      .fit .stage { padding: 0; }
+      .fit .banner, .fit .busy-note { margin: 0 0 10px; }
+      #stage-box { margin: 0 auto; }
+      /* Laid out at the full width, then scaled into the box. */
+      .fit .stage.is-scaled { width: calc(100% / var(--fit-scale)); transform: scale(var(--fit-scale)); transform-origin: 0 0; }
       .stage { padding: 10px; }
+      /* Sized by the docks, so the fit re-runs when either one changes height. */
+      .dock-probe { position: fixed; top: 0; left: 0; visibility: hidden; pointer-events: none; width: 0; height: calc(var(--top-dock-height, 0px) + var(--bottom-dock-height, 0px)); }
       /* A job holds the hub: the server does not refuse a send, so the card waits here (disabled, as a control would be). */
       .stage.is-busy { opacity: 0.5; pointer-events: none; }
       .busy-note { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--sbp-accent-rgb), 0.08); color: var(--sbp-muted); font-size: 13px; }
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
-      .foot { padding: 6px 10px 8px; color: var(--sbp-muted); font-size: 11px; text-align: center; }
       textarea { min-height: 380px; margin-top: 10px; }
       .layout-content { min-width: 0; }
       .layout-content h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
@@ -23828,6 +23905,9 @@ var SbPanelWifiDevices = class extends i4 {
     this._syncError = null;
     this._flashTick = 0;
     this._loadedFor = null;
+    /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
+    this._loadedGate = null;
+    this._loadSeq = 0;
     this._lastJobId = null;
     this._flashTimer = null;
     this._flashFor = null;
@@ -24068,6 +24148,7 @@ var SbPanelWifiDevices = class extends i4 {
           this._lastJobId = jobId;
           if (!this._working) void this._load();
         }
+        if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
       }
     }
     if (changed.has("deviceKey") || changed.has("_list")) this._adoptDraft();
@@ -24097,10 +24178,12 @@ var SbPanelWifiDevices = class extends i4 {
   async _load() {
     const hubId = this._hubId;
     if (!hubId) return;
+    const seq = ++this._loadSeq;
+    this._loadedGate = this.ctx?.gate ?? null;
     this._loading = this._list === null;
     try {
       const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
-      if (this._loadedFor !== hubId) return;
+      if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
         return;
@@ -24113,9 +24196,9 @@ var SbPanelWifiDevices = class extends i4 {
       this._mqtt = mqtt.ok ? mqtt.body : this._mqtt;
       if (!dirty) this._draftFor = null;
     } catch (err) {
-      if (this._loadedFor === hubId) this._error = String(err);
+      if (this._loadedFor === hubId && seq === this._loadSeq) this._error = String(err);
     } finally {
-      this._loading = false;
+      if (seq === this._loadSeq) this._loading = false;
     }
   }
   /** Start a job, follow it, reload. Resolves with the finished job, or null with the error said. */

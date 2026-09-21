@@ -57,6 +57,7 @@ import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www
 
 import { problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import type { HubContext } from "../panel-context";
+import type { Gate } from "../panel-selectors";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import {
@@ -362,6 +363,9 @@ export class SbPanelWifiDevices extends LitElement {
   private _flashTick = 0;
 
   private _loadedFor: string | null = null;
+  /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
+  private _loadedGate: Gate | null = null;
+  private _loadSeq = 0;
   private _lastJobId: string | null = null;
   private _flashTimer: ReturnType<typeof setTimeout> | null = null;
   private _flashFor: number | null = null;
@@ -455,6 +459,9 @@ export class SbPanelWifiDevices extends LitElement {
           this._lastJobId = jobId;
           if (!this._working) void this._load();
         }
+        // A load that ran while the hub could not answer (disabled: a 409; not
+        // synced yet: no roster) is run again once the hub passes its gates.
+        if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
       }
     }
     if (changed.has("deviceKey") || changed.has("_list")) this._adoptDraft();
@@ -488,10 +495,12 @@ export class SbPanelWifiDevices extends LitElement {
   private async _load(): Promise<void> {
     const hubId = this._hubId;
     if (!hubId) return;
+    const seq = ++this._loadSeq;
+    this._loadedGate = this.ctx?.gate ?? null;
     this._loading = this._list === null;
     try {
       const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
-      if (this._loadedFor !== hubId) return;
+      if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
         return;
@@ -505,9 +514,9 @@ export class SbPanelWifiDevices extends LitElement {
       // A clean working copy follows the server; unsynced edits stay the user's.
       if (!dirty) this._draftFor = null;
     } catch (err) {
-      if (this._loadedFor === hubId) this._error = String(err);
+      if (this._loadedFor === hubId && seq === this._loadSeq) this._error = String(err);
     } finally {
-      this._loading = false;
+      if (seq === this._loadSeq) this._loading = false;
     }
   }
 

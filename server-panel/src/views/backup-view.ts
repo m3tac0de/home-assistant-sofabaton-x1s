@@ -45,6 +45,7 @@ import {
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { problemText, type HubView, type JobView, type PanelApi } from "../panel-api";
 import type { HubContext } from "../panel-context";
+import type { Gate } from "../panel-selectors";
 import type { PanelStore } from "../panel-store";
 import { OPERATION_PROGRESS_CSS, renderOperationProgress } from "../components/operation-progress";
 import { PANEL_BASE_CSS } from "../panel-styles";
@@ -243,6 +244,8 @@ export class SbPanelBackup extends LitElement {
   private _hubId: string | null = null;
   private _jobsSeq = 0;
   private _jobsKey = "";
+  /** The hub's gate when the device list was last read; anything but "pass" asks for another read once it passes. */
+  private _devicesGate: Gate | null = null;
   private _expiryTimer: number | null = null;
 
   // Make
@@ -322,6 +325,8 @@ export class SbPanelBackup extends LitElement {
         this._jobsKey = key;
         void this._loadJobs();
       }
+      // A device list read while the hub could not answer (disabled: a 409) is read again once it passes its gates.
+      if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
     }
     if (!this._editSessionTried && hubId && this.section === "edit" && !this._editBundle) {
       // Only on the Edit section itself: restoring elsewhere would pull an open detail view over another screen.
@@ -433,6 +438,7 @@ export class SbPanelBackup extends LitElement {
     const hubId = this._hubId;
     const api = this._api;
     if (!hubId || !api) return;
+    this._devicesGate = this.ctx?.gate ?? null;
     try {
       const response = await api.snapshot(hubId);
       if (hubId !== this._hubId || !response.ok || !response.body) return;
