@@ -65,6 +65,11 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
   environment/CLI overrides are pinned and cannot be changed through the API.
 - Activity edit and plan bodies accept a `devices` list for associated input
   records, idle behavior and command-name edits in the same job.
+- `POST /hubs/{id}/resync-remote` makes the physical remotes run a full sync
+  with the hub, and the panel's hub settings have a **Sync remote** button.
+  The hub pushes writes to its remotes on its own; this is the manual
+  trigger for a remote that missed them. Refused with `409 hub_job_running`
+  while a job holds the hub.
 
 ### Fixed
 
@@ -76,6 +81,9 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
 - Uncached reads wait for exclusive configuration operations rather than
   interrupting restore/write pages; a timeout reports `504 hub_timeout`.
 - MQTT device updates preserve the hub's class and icon.
+- Wifi Device deploys and updates end with one remote-sync trigger after
+  their last write, through the library fix. Updates and MQTT deploys sent
+  none before; an HTTP deploy with slot assignments sent it too early.
 
 The [guides](docs/getting-started.md) and examples target this release.
 The Hubitat example still consumes only the default callback device;

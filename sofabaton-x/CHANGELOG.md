@@ -92,6 +92,11 @@ deployments without a transport field continue to load as HTTP.
   reports success, because activities address inputs by position.
 - An empty button-binding reply no longer incorrectly rejects the next
   inputs request, which could hide configured inputs and stall later reads.
+- Managed Wifi Device writes now end with one physical remote-sync trigger,
+  after every write. `update_wifi_device()` sent none, an MQTT deploy sent
+  none, and an HTTP deploy with slot assignments sent its trigger after the
+  create and then kept writing. An update that writes nothing sends none;
+  inside `batch_writes()` the trigger is coalesced with the batch's own.
 - Managed MQTT updates preserve the hub's `wifi_mqtt` head/class and icon
   when changing name or brand. A missing cached head fails the step rather
   than constructing an HTTP callback head.

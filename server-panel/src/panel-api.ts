@@ -523,6 +523,11 @@ export class PanelApi {
     return this.request<PayloadView>("GET", `${this._hub(hubId)}/devices/${deviceId}/commands/${commandId}/payload`);
   }
 
+  /** Make the physical remotes run a full sync with the hub (409 while a job holds it). */
+  resyncRemote(hubId: string): Promise<ApiResponse<{ accepted: boolean; mode: string }>> {
+    return this.request<{ accepted: boolean; mode: string }>("POST", `${this._hub(hubId)}/resync-remote`);
+  }
+
   /** Fire a payload from the hub's blaster once; nothing is saved. */
   playPayload(hubId: string, spec: PayloadSpec): Promise<ApiResponse<{ accepted: boolean; mode: string }>> {
     return this.request<{ accepted: boolean; mode: string }>("POST", `${this._hub(hubId)}/play`, { body: spec });

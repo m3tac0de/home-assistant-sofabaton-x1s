@@ -316,6 +316,11 @@ def test_disable_and_remove_are_refused_while_a_job_holds_the_hub(tmp_path: Path
         r = client.delete(f"{H}")
         assert r.status_code == 409 and r.json()["type"] == "hub_job_running"
         assert proxy.stops == [] and client.get(f"{H}/jobs/{job_id}").json()["status"] == "running"
+        # So is a manual remote resync: a trigger mid-write restarts the remote's sync.
+        r = client.post(f"{H}/resync-remote")
+        assert r.status_code == 409 and r.json()["type"] == "hub_job_running"
+        assert ("resync", ()) not in proxy.sent
         client.portal.call(proxy.restore_gate.set)
         assert _wait(client, job_id)["status"] == "done"
+        assert client.post(f"{H}/resync-remote").status_code == 200
         assert client.post(f"{H}/disable").status_code == 200

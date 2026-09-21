@@ -208,6 +208,10 @@ class FakeProxy:
         self.sent.append(("find", ()))
         return not self.refuse
 
+    async def resync_remote(self) -> bool:
+        self.sent.append(("resync", ()))
+        return not self.refuse
+
     # -- snapshot / state document (phase 3) -----------------------------------
 
     def _entity(self, kind: str, entity_id: int, name: str) -> dict:

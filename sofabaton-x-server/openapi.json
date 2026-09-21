@@ -9873,6 +9873,89 @@
         ]
       }
     },
+    "/api/v1/hubs/{hub_id}/resync-remote": {
+      "post": {
+        "description": "The hub pushes configuration writes to its remotes on its own; this is the manual trigger for a remote that missed them. Refused with 409 while a job holds the hub: a trigger in the middle of a write restarts the remote's sync, and the writes that need one send it themselves when they finish.",
+        "operationId": "resyncRemote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Make the physical remotes run a full sync with the hub",
+        "tags": [
+          "hub"
+        ]
+      }
+    },
     "/api/v1/hubs/{hub_id}/send": {
       "post": {
         "operationId": "sendCommand",

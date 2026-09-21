@@ -126,6 +126,11 @@ function makeRoutes(state) {
       hub.enabled = false; hub.status = null;
       return { status: 200, body: hub };
     },
+    "POST /hubs/{id}/resync-remote": (_body, id) => {
+      if (!find(id)) return problem(404, "hub_not_found", null, { hub_id: id });
+      if (state.jobRuns) return problem(409, "hub_job_running", "job j1 (restore) is running; wait for it to finish", { hub_id: id });
+      return { status: 200, body: { accepted: true, mode: "control" } };
+    },
     "DELETE /hubs/{id}": (_body, id) => {
       if (!find(id)) return problem(404, "hub_not_found", null, { hub_id: id });
       state.hubs = state.hubs.filter((h) => h.hub_id !== id);
@@ -158,7 +163,7 @@ async function mockServer(page, state) {
     let handler = routes[`${method} ${rel}`];
     let id = null;
     if (!handler) {
-      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/ui\/remote-card|\/applies|\/jobs)?$/);
+      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
       if (m) { id = m[1]; handler = routes[`${method} /hubs/{id}${m[2] || ""}`]; }
     }
     calls.push({ key: `${method} ${rel}`, body });
@@ -453,6 +458,18 @@ test.describe("control panel, hubs", () => {
     await actions(page).getByRole("button", { name: "Disable" }).click();
     await expect(msg(page)).toHaveText("e26a44861b45: hub_job_running: job j1 (restore) is running; wait for it to finish");
     await expect(actions(page).getByRole("button", { name: "Disable" })).toBeEnabled();
+  });
+
+  test("Sync remote calls the resync route; a disabled hub does not offer it", async ({ page }) => {
+    const { calls } = await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/setup`);
+    await actions(page).getByRole("button", { name: "Sync remote" }).click();
+    await expect.poll(() => calls.some((c) => c.key === "POST /hubs/e26a44861b45/resync-remote")).toBe(true);
+    await expect(msg(page)).toHaveText("e26a44861b45: the remote is syncing with the hub");
+
+    await actions(page).getByRole("button", { name: "Disable" }).click();
+    await expect(actions(page).getByRole("button", { name: "Enable" })).toBeVisible();
+    await expect(actions(page).getByRole("button", { name: "Sync remote" })).toHaveCount(0);
   });
 
   test("a discovered hub is added with its advertised configuration", async ({ page }) => {

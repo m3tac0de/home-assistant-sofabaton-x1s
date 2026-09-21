@@ -1948,7 +1948,10 @@ class AsyncXProxy:
             power_on_command_id=shape.power_on_command_id,
             power_off_command_id=shape.power_off_command_id,
             input_command_ids=list(shape.input_command_ids) or None,
-            send_remote_sync=True,
+            # With references the first update keeps writing after the
+            # create, so the create's own trigger is skipped and one
+            # terminal trigger follows every write (see _finish_wifi_deploy).
+            send_remote_sync=bare is normalized,
             ip_address=target.host,
         )
         device_id = int(result.get("device_id") or 0) & 0xFF
@@ -1969,7 +1972,35 @@ class AsyncXProxy:
         )
         if bare is normalized:
             return deployment
-        return await self.update_wifi_device(deployment, normalized)
+        return await self._finish_wifi_deploy(deployment, normalized)
+
+    async def _finish_wifi_deploy(self, deployment: WifiDeployment, spec: WifiDeviceSpec) -> WifiDeployment:
+        """Apply a fresh deployment's references, then send the one trigger.
+
+        The trigger goes out whatever the update did: a declined or failed
+        update still leaves the create's writes on the hub.
+        """
+
+        try:
+            return await self._update_wifi_device(deployment, spec, remote_sync=False)
+        finally:
+            await self._resync_remote_after(f"deploy_wifi_device({spec.name!r})")
+
+    async def _resync_remote_after(self, what: str) -> None:
+        """The physical remote-sync trigger closing a multi-write operation.
+
+        Inside :meth:`batch_writes` the engine defers it to the batch end.
+        Never raises: the configuration writes stand without it and
+        ``resync_remote`` can be retried alone.
+        """
+
+        try:
+            sent = bool(await self.run(self._proxy.resync_remote))
+        except Exception:  # noqa: BLE001 - the trigger is best-effort
+            _LOG.warning("%s: the remote-sync trigger raised", what, exc_info=True)
+            return
+        if not sent:
+            _LOG.warning("%s: the remote-sync trigger was not sent", what)
 
     async def _deploy_wifi_mqtt_device(self, normalized: WifiDeviceSpec, hub_version: str) -> WifiDeployment:
         if hub_version != HUB_VERSION_X2:
@@ -2000,8 +2031,11 @@ class AsyncXProxy:
             transport=WIFI_TRANSPORT_MQTT,
         )
         if bare is normalized:
+            # The restore pipeline behind the mqtt create sends no trigger
+            # of its own.
+            await self._resync_remote_after(f"deploy_wifi_device({normalized.name!r}, mqtt)")
             return deployment
-        return await self.update_wifi_device(deployment, normalized)
+        return await self._finish_wifi_deploy(deployment, normalized)
 
     async def update_wifi_device(
         self,
@@ -2033,8 +2067,24 @@ class AsyncXProxy:
         :class:`WifiUpdateFailed`; the records already rewritten keep
         their new labels and the next update resumes. Returns the new
         :class:`WifiDeployment`.
+
+        An update that wrote anything ends with one physical remote-sync
+        trigger (deferred to the batch end inside :meth:`batch_writes`);
+        an unchanged spec sends none.
         """
 
+        return await self._update_wifi_device(deployment, spec, progress=progress, remote_sync=True)
+
+    async def _update_wifi_device(
+        self,
+        deployment: WifiDeployment,
+        spec: WifiDeviceSpec,
+        *,
+        progress: Optional[Callable] = None,
+        remote_sync: bool,
+    ) -> WifiDeployment:
+        # ``remote_sync=False`` is the deploy's first update: the deploy
+        # sends the terminal trigger itself (see _finish_wifi_deploy).
         normalized = spec.normalized()
         dev_lo = int(deployment.device_id) & 0xFF
         if not dev_lo:
@@ -2149,6 +2199,8 @@ class AsyncXProxy:
                 completed_steps=int(data.get("completed_steps") or 0),
                 message=str(data.get("message") or "") or None,
             )
+        if remote_sync:
+            await self._resync_remote_after(what)
         return updated
 
     async def _check_order(self, kind: str, ordered_ids: Sequence[int]) -> tuple[int, ...]:

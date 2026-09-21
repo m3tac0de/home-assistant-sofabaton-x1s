@@ -961,6 +961,7 @@ def _update_engine(monkeypatch, dep, *, hub_version="X1S", device=None, run_resu
         return {"status": "success", "completed_steps": len(plan.steps), "total_steps": len(plan.steps), "counters": {}}
 
     monkeypatch.setattr(engine, "run_wifi_inplace_plan", fake_run)
+    monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: trace.append("resync") or True)
     return engine, runs
 
 
@@ -978,7 +979,8 @@ def test_update_wifi_device_with_an_unchanged_spec_writes_nothing(monkeypatch) -
         proxy = aio.AsyncXProxy.wrap(engine)
         again = await proxy.update_wifi_device(dep, _WifiDeviceSpec.from_dict(dep.spec.to_dict()))
         assert runs == [] and again.labels == dep.labels and again.spec == dep.spec
-        assert engine.trace == [("device", 12), ("activity", 101)]      # the baseline read; nothing written, nothing re-read
+        # The baseline read; nothing written, nothing re-read, no remote-sync trigger.
+        assert engine.trace == [("device", 12), ("activity", 101)]
 
     asyncio.run(main())
 
@@ -1005,7 +1007,8 @@ def test_update_wifi_device_renames_records_in_place(monkeypatch) -> None:
         monkeypatch.setattr(engine, "activities_referencing_device", lambda dev_id: [101])
         engine.trace.clear()
         await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Go"), _WifiSlotSpec("Pause"))))
-        assert engine.trace[engine.trace.index("run"):] == ["run", ("device", 12), ("activity", 101)]
+        # One remote-sync trigger closes the update, after the read-back.
+        assert engine.trace[engine.trace.index("run"):] == ["run", ("device", 12), ("activity", 101), "resync"]
 
     asyncio.run(main())
 
@@ -1029,7 +1032,7 @@ def test_update_wifi_device_applies_slot_references_and_checks_the_activities(mo
         # The engine's favorite write drops the activity's favorites and leaves the re-read to its
         # caller: after the run the device and the activity written to are read back (found live
         # 2026-09-21: a deploy left the Hub tab counting 0 favorites).
-        assert engine.trace == [("device", 12), ("activity", 101), "run", ("device", 12), ("activity", 101)]
+        assert engine.trace == [("device", 12), ("activity", 101), "run", ("device", 12), ("activity", 101), "resync"]
 
         # An activity the hub does not have is declined before anything is planned or written.
         runs.clear()
@@ -1057,12 +1060,17 @@ def test_deploy_wifi_device_creates_bare_then_applies_the_references(monkeypatch
         captured: list = []
         monkeypatch.setattr(engine, "run_wifi_inplace_plan", lambda plan, *, progress_callback=None: (
             captured.append(plan) or {"status": "success", "completed_steps": len(plan.steps), "total_steps": len(plan.steps), "counters": {}}))
+        resyncs: list = []
+        monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: resyncs.append(len(captured)) or True)
         proxy = aio.AsyncXProxy.wrap(engine)
 
         dep = await proxy.deploy_wifi_device(routed, host=_TARGET, port=8060)
 
         # The create carries the records and the input list, no references; the first update applies them.
         assert len(creates) == 1 and creates[0]["input_command_ids"] == [2]
+        # The update keeps writing after the create, so the create sends no remote-sync trigger
+        # and exactly one goes out after the update's plan ran.
+        assert creates[0]["send_remote_sync"] is False and resyncs == [1]
         assert dep.spec == routed.normalized() and dep.spec.slots[0].button == 0xB6
         kinds = [(s.kind, s.payload.get("activity_id")) for s in captured[0].steps]
         assert ("member_replay", 101) in kinds and ("binding_write", 101) in kinds and ("binding_write", 12) in kinds
@@ -1083,11 +1091,16 @@ def test_deploy_wifi_device_over_mqtt_is_x2_only_and_names_no_address(monkeypatc
         monkeypatch.setattr(engine, "create_wifi_mqtt_device", lambda **kw: creates.append(kw) or {"device_id": 12, "status": "success"})
         monkeypatch.setattr(engine, "create_wifi_device", lambda **kw: pytest.fail("an mqtt deploy must not build callback records"))
         rereads = _record_rereads(monkeypatch)
+        resyncs: list = []
+        monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: resyncs.append(len(rereads)) or True)
         proxy = aio.AsyncXProxy.wrap(engine)
         spec = _WifiDeviceSpec(name="Lights", slots=(_WifiSlotSpec("On"), _WifiSlotSpec("Scene")), power_on_slot=1,
                                input_slots=(2,), brand="c0-a1b2c3d4")
 
         dep = await proxy.deploy_wifi_device(spec, transport="mqtt")
+
+        # The mqtt create sends no remote-sync trigger of its own: the deploy closes with one.
+        assert resyncs == [1]
 
         assert dep.transport == "mqtt" and dep.target is None and dep.device_id == 12 and dep.hub_version == "X2"
         assert dep.labels[1] == "On" and dep.labels[1 + _N] == "On Long"
@@ -1238,6 +1251,7 @@ def test_update_wifi_device_reports_a_rejected_step(monkeypatch) -> None:
             await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Start"),)))
         assert info.value.failed_at == "command_rename" and info.value.completed_steps == 1
         assert isinstance(info.value, errors.HubRejectedError) and len(runs) == 1
+        assert "resync" not in engine.trace         # the resumed update sends the trigger, not the failed one
 
     asyncio.run(main())
 

@@ -133,6 +133,7 @@ configuration edits use jobs (section 7).
 | switch activity | `POST /hubs/{id}/activities/{act}/start`, `.../stop` |
 | send a command | `POST /hubs/{id}/send` `{entity_id, command_id}` |
 | beep the remote | `POST /hubs/{id}/find-remote` |
+| make the remotes re-sync with the hub | `POST /hubs/{id}/resync-remote` (409 `hub_job_running` while a job holds the hub) |
 
 `mode` explains refusals: `control` (the server owns the hub),
 `observe` (the official app is attached through the proxy; reads work

@@ -11102,6 +11102,10 @@ var PanelApi = class {
   commandPayload(hubId, deviceId, commandId) {
     return this.request("GET", `${this._hub(hubId)}/devices/${deviceId}/commands/${commandId}/payload`);
   }
+  /** Make the physical remotes run a full sync with the hub (409 while a job holds it). */
+  resyncRemote(hubId) {
+    return this.request("POST", `${this._hub(hubId)}/resync-remote`);
+  }
   /** Fire a payload from the hub's blaster once; nothing is saved. */
   playPayload(hubId, spec) {
     return this.request("POST", `${this._hub(hubId)}/play`, { body: spec });
@@ -22110,6 +22114,23 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
     }
     this._emit("sb-hubs-changed");
   }
+  // The hub pushes writes to its remotes on its own; this is the manual
+  // trigger for a remote that missed them (the HA card's "Sync Remote").
+  async _resyncRemote(hubId) {
+    if (this._busy.has(hubId)) return;
+    this._busy = new Set(this._busy).add(hubId);
+    try {
+      const response = await this.api.resyncRemote(hubId);
+      if (response.ok) this._message(`${hubId}: the remote is syncing with the hub`);
+      else this._message(`${hubId}: ${problemText(response)}`, false);
+    } catch (err) {
+      this._message(String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
+    }
+  }
   render() {
     return b2`<div class="panel" id="hub-detail">${this._renderDetail()}</div>`;
   }
@@ -22142,6 +22163,9 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
         ${!h6.enabled ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Enable</button>` : A}
         ${h6.enabled && !s7 ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Retry start</button>` : A}
         ${h6.enabled ? b2`<button ?disabled=${busy} @click=${() => this._act(h6.hub_id, "disable")}>Disable</button>` : A}
+        ${h6.enabled && s7 ? b2`<button id="resync-remote" ?disabled=${busy || !s7.controllable || this.ctx?.free === false}
+          title="Make the physical remotes run a full sync with the hub"
+          @click=${() => this._resyncRemote(h6.hub_id)}>Sync remote</button>` : A}
         <button class="danger" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>Remove</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
