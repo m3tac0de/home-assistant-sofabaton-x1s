@@ -233,6 +233,10 @@ export class SbPanelServer extends LitElement {
     const info = this.info;
     const listener = this._listener ?? info?.callback_listener ?? null;
     const listenerText = !listener ? "unknown" : listener.bound ? `bound on :${listener.bound_port}` : listener.wanted ? "wanted, not bound" : "idle (no callback devices)";
+    // Set on the server's command line or in its environment only; the panel shows it, never edits it.
+    const mqtt = (info?.mqtt ?? null) as { configured?: boolean; connected?: boolean; wanted?: boolean; host?: string | null; port?: number | null; tls?: boolean; last_error?: string | null } | null;
+    const mqttAt = mqtt ? `${mqtt.host}:${mqtt.port}${mqtt.tls ? " (TLS)" : ""}` : "";
+    const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (--mqtt-host)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;
     const facts: [string, string][] = [
       ["server", this.error ?? (info ? info.version : "connecting…")],
       ["library", info?.library_version ?? "?"],
@@ -241,6 +245,7 @@ export class SbPanelServer extends LitElement {
       ["hubs", String(this.hubCount)],
       ["event stream", this.streamOn ? "live" : "off"],
       ["callback listener", listenerText],
+      ["mqtt broker", mqttText],
     ];
     return html`
       <div class="panel" id="server-detail">
@@ -250,7 +255,7 @@ export class SbPanelServer extends LitElement {
           <button class="small" id="listener-retry" ?disabled=${this._retrying || !this.reachable} @click=${this._retry} title="POST /server/callback-listener/retry">${this._retrying ? "retrying…" : "Retry callback listener"}</button>
           <span class="msg" id="server-status">${this._status}</span>
         </div>
-        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The event stream is this page's live feed from the server.</div>
+        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The MQTT broker is where an X2's Wifi Devices on the mqtt transport publish their presses; it is set with <span class="mono">--mqtt-host</span> or <span class="mono">SOFABATON_MQTT_*</span> when the server starts, never stored, and connected only while a device uses it. The event stream is this page's live feed from the server.</div>
       </div>
       ${this._renderPorts()}
     `;

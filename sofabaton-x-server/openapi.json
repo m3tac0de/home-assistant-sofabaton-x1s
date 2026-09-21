@@ -813,6 +813,18 @@
               }
             ]
           },
+          "mqtt_topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "an mqtt device's press topic on the broker, `<MAC>/up`",
+            "title": "Mqtt Topic"
+          },
           "pending": {
             "anyOf": [
               {
@@ -833,11 +845,19 @@
             "type": "boolean"
           },
           "target": {
-            "$ref": "#/components/schemas/CallbackTargetView"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallbackTargetView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null for an mqtt device: it calls no address"
           },
           "transport": {
             "default": "http",
-            "description": "how its presses reach the server",
+            "description": "how its presses reach the server: http or mqtt",
             "title": "Transport",
             "type": "string"
           }
@@ -845,7 +865,6 @@
         "required": [
           "device_id",
           "spec",
-          "target",
           "labels",
           "hub_version",
           "deployed_at",
@@ -2294,6 +2313,223 @@
         "title": "Macro",
         "type": "object"
       },
+      "MqttState": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "tls": {
+            "title": "Tls",
+            "type": "boolean"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "wanted": {
+            "title": "Wanted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "wanted",
+          "connected",
+          "host",
+          "port",
+          "tls",
+          "username",
+          "topics",
+          "last_error",
+          "connected_at",
+          "next_retry_at"
+        ],
+        "title": "MqttState",
+        "type": "object"
+      },
+      "MqttView": {
+        "description": "The server's broker connection. The settings come from the command line or the\nenvironment only, and the password is not part of any answer. ``wanted`` is true\nwhile a device uses the transport; the connection exists only then.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "tls": {
+            "title": "Tls",
+            "type": "boolean"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "wanted": {
+            "title": "Wanted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "wanted",
+          "connected",
+          "host",
+          "port",
+          "tls",
+          "username",
+          "topics",
+          "last_error",
+          "connected_at",
+          "next_retry_at"
+        ],
+        "title": "MqttView",
+        "type": "object"
+      },
       "NewCommandRequest": {
         "properties": {
           "command_id": {
@@ -2963,6 +3199,16 @@
             "title": "Library Version",
             "type": "string"
           },
+          "mqtt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MqttState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -3377,7 +3623,7 @@
         "type": "object"
       },
       "WifiDeviceRequest": {
-        "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there.",
+        "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there. ``mqtt``\nneeds an X2 and a server started with a broker (``--mqtt-host``): the\nhub then publishes the presses to the broker set in the Sofabaton\napp, no listener and no callback address involved.",
         "properties": {
           "input_slots": {
             "description": "slots offered as activity-start inputs (X1S/X2)",
@@ -3430,9 +3676,12 @@
             "type": "array"
           },
           "transport": {
-            "const": "http",
             "default": "http",
             "description": "one of the list's `transports`",
+            "enum": [
+              "http",
+              "mqtt"
+            ],
             "title": "Transport",
             "type": "string"
           }
@@ -10867,6 +11116,27 @@
           }
         },
         "summary": "Try to bind the callback listener now",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/mqtt": {
+      "get": {
+        "operationId": "getMqtt",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MqttView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "State of the MQTT broker connection (never the password)",
         "tags": [
           "server"
         ]

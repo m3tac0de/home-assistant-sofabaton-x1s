@@ -23,6 +23,14 @@ DEFAULT_CALLBACK_PORT = 8060
 # The settings the control panel may write to server.json.
 EDITABLE_PORTS = ("hub_listen_port", "app_discovery_port", "callback_port")
 DEFAULT_BIND = "0.0.0.0"
+DEFAULT_MQTT_PORT = 1883
+DEFAULT_MQTT_TLS_PORT = 8883
+# The broker settings hold a secret, so they are read from the command
+# line and the environment only: server.json never carries them (a file
+# that does is refused), the control panel cannot write them, and the
+# password is left out of everything the server prints or serves.
+MQTT_FIELDS = ("mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password", "mqtt_password_file",
+               "mqtt_tls", "mqtt_tls_ca", "mqtt_tls_insecure", "mqtt_client_id")
 SETTINGS_FILE = "server.json"
 ENV_PREFIX = "SOFABATON_"
 
@@ -62,6 +70,21 @@ class Settings:
     # Terminal apply records kept per hub: success, stopped and cancelled
     # all count, including resumable records. Queued/running are not pruned.
     apply_keep: int = 20
+    # The MQTT broker an X2 publishes its Wifi Device presses to (the one
+    # set in the Sofabaton app). With a host set, the mqtt transport is
+    # offered for X2 hubs and the server subscribes to `<MAC>/up` while a
+    # device uses it. CLI flags and environment only, see MQTT_FIELDS.
+    # `mqtt_password_file` is for container secrets; the file's first line
+    # is the password.
+    mqtt_host: Optional[str] = None
+    mqtt_port: Optional[int] = None
+    mqtt_username: Optional[str] = None
+    mqtt_password: Optional[str] = field(default=None, repr=False)
+    mqtt_password_file: Optional[Path] = None
+    mqtt_tls: bool = False
+    mqtt_tls_ca: Optional[Path] = None
+    mqtt_tls_insecure: bool = False
+    mqtt_client_id: Optional[str] = None
     # Settings that came from the environment or a CLI flag; server.json
     # cannot change them. Filled by load_settings, never read from a layer.
     pinned: frozenset[str] = field(default=frozenset(), compare=False)
@@ -88,6 +111,28 @@ class Settings:
             object.__setattr__(self, "callback_host", host or None)
         if isinstance(self.apply_keep, bool) or not isinstance(self.apply_keep, int) or self.apply_keep < 0:
             raise ValueError(f"apply_keep must be a non-negative integer, got {self.apply_keep!r}")
+        host = str(self.mqtt_host or "").strip()
+        object.__setattr__(self, "mqtt_host", host or None)
+        for name in ("mqtt_username", "mqtt_client_id"):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip() or None)
+        if self.mqtt_port is not None and (isinstance(self.mqtt_port, bool) or not isinstance(self.mqtt_port, int)
+                                           or not (0 < self.mqtt_port < 65536)):
+            raise ValueError(f"mqtt_port must be a port number, got {self.mqtt_port!r}")
+        for name in ("mqtt_password_file", "mqtt_tls_ca"):
+            if getattr(self, name) is not None:
+                object.__setattr__(self, name, Path(getattr(self, name)))
+        if self.mqtt_password is not None and self.mqtt_password_file is not None:
+            raise ValueError("set mqtt_password or mqtt_password_file, not both")
+        if self.mqtt_password_file is not None:
+            try:
+                lines = self.mqtt_password_file.read_text(encoding="utf-8").splitlines()
+            except OSError as err:
+                raise ValueError(f"mqtt_password_file {str(self.mqtt_password_file)!r} cannot be read: {err}") from err
+            object.__setattr__(self, "mqtt_password", lines[0] if lines else "")
+        if not self.mqtt_host and any(getattr(self, name) not in (None, False) for name in MQTT_FIELDS if name != "mqtt_host"):
+            raise ValueError("mqtt settings need mqtt_host (the broker's address)")
+        if (self.mqtt_tls_ca is not None or self.mqtt_tls_insecure) and not self.mqtt_tls:
+            raise ValueError("mqtt_tls_ca and mqtt_tls_insecure need mqtt_tls")
         if not isinstance(self.bind, str) or not self.bind.strip():
             raise ValueError("bind must be a non-empty address")
         if (self.tls_cert is None) != (self.tls_key is None):
@@ -108,11 +153,18 @@ class Settings:
             object.__setattr__(self, "tls_cert", Path(self.tls_cert))
             object.__setattr__(self, "tls_key", Path(self.tls_key))  # type: ignore[arg-type]
 
+    @property
+    def mqtt_effective_port(self) -> int:
+        return int(self.mqtt_port or (DEFAULT_MQTT_TLS_PORT if self.mqtt_tls else DEFAULT_MQTT_PORT))
+
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
+        """For `--print-settings` and logs: the password is never in it."""
+
         data = asdict(self)
-        for key in ("data_dir", "tls_cert", "tls_key"):
+        data["mqtt_password_set"] = data.pop("mqtt_password") is not None
+        for key in ("data_dir", "tls_cert", "tls_key", "mqtt_password_file", "mqtt_tls_ca"):
             if data[key] is not None:
                 data[key] = str(data[key])
         data["trusted_proxies"] = list(self.trusted_proxies)
@@ -131,8 +183,17 @@ _LIST_FIELDS = {"trusted_proxies", "initial_hubs"}
 def _coerce(name: str, value: Any) -> Any:
     if value is None:
         return None
-    if name in ("port", "callback_port", "hub_listen_port", "app_discovery_port", "apply_keep"):
+    if name in ("port", "callback_port", "hub_listen_port", "app_discovery_port", "apply_keep", "mqtt_port"):
         return int(value)
+    if name in ("mqtt_tls", "mqtt_tls_insecure"):
+        if isinstance(value, str):
+            word = value.strip().lower()
+            if word in ("1", "true", "yes", "on"):
+                return True
+            if word in ("", "0", "false", "no", "off"):
+                return False
+            raise ValueError(f"{name} must be true or false, got {value!r}")
+        return bool(value)
     if name in _LIST_FIELDS:
         if isinstance(value, str):
             return tuple(v.strip() for v in value.split(",") if v.strip())
@@ -157,7 +218,17 @@ def settings_from_file(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected a JSON object")
+    _refuse_mqtt_in_file(data, path)
     return _filtered(data)
+
+
+def _refuse_mqtt_in_file(data: Mapping[str, Any], path: Path) -> None:
+    found = sorted(key for key in data if str(key).startswith("mqtt_"))
+    if found:
+        raise ValueError(
+            f"{path}: {found} do not belong in a file; give the MQTT broker settings as command line flags "
+            "(--mqtt-host ...) or SOFABATON_MQTT_* environment variables, so no secret is kept on disk"
+        )
 
 
 def settings_from_env(environ: Mapping[str, str] = os.environ) -> dict[str, Any]:
@@ -226,6 +297,7 @@ def write_settings_file(data_dir: Path, changes: Mapping[str, Any]) -> None:
             raise ValueError(f"{path}: expected a JSON object")
         data = loaded
     data.update(changes)
+    _refuse_mqtt_in_file(data, path)
     _filtered(data)  # refuse to write a file the next start would reject
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")

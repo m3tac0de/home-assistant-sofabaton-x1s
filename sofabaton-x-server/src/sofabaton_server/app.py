@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from . import API_PREFIX, API_VERSION, __version__
 from .callbacks import CallbackService, ListenerState
+from .mqtt_client import MqttState
 from .backup_stage import BackupStage
 from .config import Settings
 from .discovery import DiscoveryService
@@ -59,6 +60,8 @@ class ServerInfo:
     # Minted at boot; the press sequence and ring belong to it.
     instance_id: str = ""
     callback_listener: ListenerState | None = None
+    # The broker connection for X2 Wifi Devices on the mqtt transport; never the password.
+    mqtt: MqttState | None = None
 
 
 def create_app(settings: Settings | None = None, *, manager: Optional[HubManager] = None,
@@ -159,9 +162,11 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
             hubs=_hub_count(app),
             uptime_seconds=round(time.monotonic() - started, 1),
             base_url=settings.advertise_url,
-            features=(["discovery"] if discovery_service.enabled else []) + ["callbacks"],
+            features=(["discovery"] if discovery_service.enabled else []) + ["callbacks"]
+                     + (["mqtt"] if callback_service.mqtt.configured else []),
             instance_id=callback_service.ring.instance_id,
             callback_listener=callback_service.listener_state(),
+            mqtt=callback_service.mqtt_state(),
         )
 
     return app

@@ -1028,6 +1028,80 @@ def test_deploy_wifi_device_creates_bare_then_applies_the_references(monkeypatch
     asyncio.run(main())
 
 
+def test_deploy_wifi_device_over_mqtt_is_x2_only_and_names_no_address(monkeypatch) -> None:
+    async def main():
+        engine = _engine("X2")
+        _hub_link(engine, True)
+        creates: list[dict] = []
+        monkeypatch.setattr(engine, "create_wifi_mqtt_device", lambda **kw: creates.append(kw) or {"device_id": 12, "status": "success"})
+        monkeypatch.setattr(engine, "create_wifi_device", lambda **kw: pytest.fail("an mqtt deploy must not build callback records"))
+        proxy = aio.AsyncXProxy.wrap(engine)
+        spec = _WifiDeviceSpec(name="Lights", slots=(_WifiSlotSpec("On"), _WifiSlotSpec("Scene")), power_on_slot=1,
+                               input_slots=(2,), brand="c0-a1b2c3d4")
+
+        dep = await proxy.deploy_wifi_device(spec, transport="mqtt")
+
+        assert dep.transport == "mqtt" and dep.target is None and dep.device_id == 12 and dep.hub_version == "X2"
+        assert dep.labels[1] == "On" and dep.labels[1 + _N] == "On Long"
+        kw = creates[0]
+        assert kw["device_name"] == "Lights" and kw["brand_name"] == "c0-a1b2c3d4"
+        assert kw["power_on_command_id"] == 1 and kw["input_command_ids"] == [2]
+        assert len(kw["commands"]) == 2 * _N and "request_port" not in kw and "ip_address" not in kw
+
+        # Any other hub: refused before the hub is touched.
+        for version in ("X1", "X1S"):
+            other = _engine(version)
+            _hub_link(other, True)
+            monkeypatch.setattr(other, "create_wifi_mqtt_device", lambda **kw: pytest.fail("not an X2"))
+            with pytest.raises(ValueError, match="X2 only"):
+                await aio.AsyncXProxy.wrap(other).deploy_wifi_device(spec, transport="mqtt")
+        with pytest.raises(ValueError):
+            await proxy.deploy_wifi_device(spec, transport="smoke signals")
+        with pytest.raises(ValueError, match="host and port"):
+            await proxy.deploy_wifi_device(spec)                              # http without an address
+
+    asyncio.run(main())
+
+
+def test_update_of_an_mqtt_device_keeps_its_head_an_mqtt_head(monkeypatch) -> None:
+    async def main():
+        spec = _WifiDeviceSpec(name="Lights", slots=(_WifiSlotSpec("On"),), brand="c0-a1b2c3d4").normalized()
+        dep = wifi_device_mod.WifiDeployment(device_id=12, spec=spec, target=None, labels=wifi_device_mod.labels_from_spec(spec),
+                                             hub_version="X2", transport="mqtt")
+        live = _live_device(dep, ip=None)
+        live["device"]["device_class"] = "wifi_mqtt"
+        engine, runs = _update_engine(monkeypatch, dep, hub_version="X2", device=live)
+        proxy = aio.AsyncXProxy.wrap(engine)
+
+        updated = await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Lamps", slots=spec.slots, brand=spec.brand))
+
+        assert updated.transport == "mqtt" and updated.target is None
+        head = [s for s in runs[0].steps if s.kind == "wifi_head_commit"]
+        assert len(head) == 1 and "ip_address" not in head[0].payload
+
+        # The real executor for that step, over the head the hub has: the vendor's wifi_mqtt head
+        # (code type 0x20, icon 8, idle behaviour and power fields as captured). Only the name moves.
+        current = devices_mod.DeviceConfig(name="Lights", brand="c0-a1b2c3d4", device_id=12, code_type=0x20, device_type=0x10,
+                                           icon=8, input_mode=2, power_mode=1, tail_marker=1)
+        raw = devices_mod.build_device_create_payload(current, hub_version="X2")[3:]
+        engine.state.devices[12] = {"name": "Lights", "brand": "c0-a1b2c3d4", "device_class": "wifi_mqtt", "raw_body": raw}
+        sent: list[dict] = []
+        monkeypatch.setattr(engine, "_send_step", lambda **kw: sent.append(kw) or _ok_step())
+        monkeypatch.setattr(engine, "_build_wifi_device_payload", lambda **kw: pytest.fail("that builder writes an http head"))
+        assert engine._sync_step_wifi_head_commit(head[0].payload) is True
+        written = devices_mod.parse_device_record(sent[0]["payload"][3:], hub_version="X2", entity_kind="device")
+        assert (written.name, written.brand, written.device_id) == ("Lamps", "c0-a1b2c3d4", 12)
+        assert (written.code_type, written.icon, written.input_mode, written.power_mode, written.tail_marker) == (0x20, 8, 2, 1, 1)
+        assert sent[0]["family"] == 0x08 and engine.state.devices[12]["name"] == "Lamps"
+
+        # With no head in the cache there is nothing safe to write: the step fails, nothing is sent.
+        sent.clear()
+        engine.state.devices[12] = {"name": "Lamps", "device_class": "wifi_mqtt"}
+        assert engine._sync_step_wifi_head_commit(head[0].payload) is False and sent == []
+
+    asyncio.run(main())
+
+
 def test_update_wifi_device_rename_on_x1_pins_the_head_address(monkeypatch) -> None:
     async def main():
         dep = _deployment(hub_version="X1")

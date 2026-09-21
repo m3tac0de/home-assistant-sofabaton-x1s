@@ -17,6 +17,14 @@ Four parts, all in this module:
   redeploy as job bodies, reconciliation of pending intents and orphans,
   stale detection on every snapshot change, and the press pipeline.
 
+Presses reach the server over one of two transports (server panel wifi
+commands plan, section 7). ``http``: the hub calls the listener above.
+``mqtt`` (X2 only): the device's records are inert and the hub publishes
+``{"device_id", "key_id"}`` to ``<MAC>/up`` on the broker set in the
+Sofabaton app; the server subscribes there (``mqtt_client``) while a
+device uses it, with the broker settings taken from the command line or
+the environment only. Both end in the same ``press``.
+
 The service never touches the engine; every hub operation goes through
 the library's facade (``deploy_wifi_device``, ``update_wifi_device``,
 ``remove_device``, ``read_payload``, ``snapshot``).
@@ -26,7 +34,9 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import logging
+import re
 import secrets
 from collections import deque
 from dataclasses import asdict, dataclass, field
@@ -46,6 +56,7 @@ from sofabaton.wifi_device import DEFAULT_WIFI_BRAND
 
 from .config import Settings
 from .manager import HubDisabled, HubManager, HubNotFound
+from .mqtt_client import MqttState, MqttSubscriber
 from .models import mac_key, now_iso
 
 log = logging.getLogger(__name__)
@@ -84,8 +95,14 @@ MAX_WIFI_DEVICES = 5
 #: devices for its own, and the key never changes, so a rename still
 #: plans no head commit.
 SERVER_BRAND_PREFIX = "c0"
-#: How a press can reach the server. MQTT adds a value here.
-TRANSPORTS: tuple[str, ...] = ("http",)
+#: How a press can reach the server. What a hub is offered depends on the
+#: hub and the settings, see ``CallbackService.transports_for``.
+TRANSPORT_HTTP = "http"
+TRANSPORT_MQTT = "mqtt"
+TRANSPORTS: tuple[str, ...] = (TRANSPORT_HTTP, TRANSPORT_MQTT)
+#: The only hub that publishes presses to a broker.
+MQTT_HUB_VERSION = "X2"
+_MAC_SHAPE = re.compile(r"^[0-9A-Fa-f]{2}([:-]?[0-9A-Fa-f]{2}){5}$")
 
 
 def brand_for_key(key: str) -> str:
@@ -160,7 +177,7 @@ class CallbackRecord:
         return cls(
             device_id=int(deployment.device_id),
             spec=deployment.spec.to_dict(),
-            target=deployment.target.to_dict(),
+            target=deployment.target.to_dict() if deployment.target is not None else {},
             labels=dict(deployment.labels),
             hub_version=deployment.hub_version,
             deployed_at=now_iso(),
@@ -175,9 +192,10 @@ class CallbackRecord:
         return WifiDeployment(
             device_id=int(self.device_id),
             spec=WifiDeviceSpec.from_dict(self.spec).normalized(),
-            target=WifiTarget.from_dict(self.target),
+            target=WifiTarget.from_dict(self.target) if self.transport != TRANSPORT_MQTT else None,
             labels=dict(self.labels),
             hub_version=self.hub_version,
+            transport=self.transport,
         )
 
     @property
@@ -186,6 +204,8 @@ class CallbackRecord:
 
     def view(self, *, effective_destination: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         out = self.to_dict()
+        if not out["target"]:
+            out["target"] = None                     # an mqtt device calls nothing
         out["deployed"] = self.device_id is not None and not self.stale
         if effective_destination is not None:
             out["effective_destination"] = effective_destination
@@ -580,6 +600,10 @@ class WifiDeviceLimit(RuntimeError):
     """The hub already holds ``MAX_WIFI_DEVICES`` records."""
 
 
+class MqttUnavailable(RuntimeError):
+    """The mqtt transport was asked for where it cannot work; the message says why."""
+
+
 class CallbackService:
     """Everything callback-device related, one instance per server."""
 
@@ -592,6 +616,13 @@ class CallbackService:
         self._press_listeners: list[Callable[[Press], Any]] = []
         self._verify_tasks: dict[str, asyncio.Task] = {}
         self.listener = listener_factory(settings.callback_port, self.handle_callback, on_state=self._on_listener_state)
+        self.mqtt = MqttSubscriber(
+            host=settings.mqtt_host, port=settings.mqtt_effective_port, username=settings.mqtt_username,
+            password=settings.mqtt_password, tls=settings.mqtt_tls,
+            tls_ca=str(settings.mqtt_tls_ca) if settings.mqtt_tls_ca else None,
+            tls_insecure=settings.mqtt_tls_insecure, client_id=settings.mqtt_client_id,
+            on_message=self.handle_mqtt_message, on_state=self._on_listener_state,
+        )
         manager.on_hub_event(self._on_hub_event)
         manager.on_server_event(self._on_server_event)
 
@@ -619,6 +650,7 @@ class CallbackService:
         for task in list(self._verify_tasks.values()):
             task.cancel()
         await self.listener.stop()
+        await self.mqtt.stop()
 
     def on_press(self, listener: Callable[[Press], Any]) -> None:
         self._press_listeners.append(listener)
@@ -674,10 +706,97 @@ class CallbackService:
             raise WifiDeviceLimit(f"a hub holds at most {MAX_WIFI_DEVICES} Wifi Devices")
 
     def wanted(self) -> bool:
-        return any(self.records(hub_id) for hub_id in self._manager.ids())
+        """The listener is needed while a device calls it; an mqtt device never does."""
+
+        return any(record.transport != TRANSPORT_MQTT for hub_id in self._manager.ids() for record in self.records(hub_id))
 
     async def ensure_listener(self) -> None:
+        """Bring both ingresses in line with the records: the listener, and the broker subscriptions."""
+
         await self.listener.set_wanted(self.wanted())
+        await self.mqtt.set_topics(set(self._mqtt_topics()))
+
+    # -- mqtt ---------------------------------------------------------------------
+
+    def mqtt_state(self) -> MqttState:
+        return self.mqtt.state()
+
+    def mqtt_topic_for(self, hub_id: str) -> Optional[str]:
+        """``<MAC>/up``, the MAC in upper-case hex: the form the hub publishes on (a lower-case
+        topic stays silent). None while the hub's MAC is not known."""
+
+        try:
+            row = self._manager.record(hub_id)
+        except HubNotFound:
+            return None
+        for candidate in (row.config.mac, hub_id):
+            # A hub id is the MAC once known and the host before that; only the MAC shape counts
+            # (an address like 192.168.100.250 is twelve hex digits too).
+            if _MAC_SHAPE.match(str(candidate or "").strip()):
+                return f"{mac_key(str(candidate)).upper()}/up"
+        return None
+
+    def _mqtt_topics(self) -> dict[str, str]:
+        """topic -> hub id, for every enabled hub with a device on the mqtt transport."""
+
+        topics: dict[str, str] = {}
+        for hub_id in self._manager.ids():
+            if not self._manager.record(hub_id).enabled:
+                continue
+            if any(record.transport == TRANSPORT_MQTT for record in self.records(hub_id)):
+                topic = self.mqtt_topic_for(hub_id)
+                if topic is not None:
+                    topics[topic] = hub_id
+        return topics
+
+    def mqtt_unavailable_reason(self, hub_id: str, hub_version: Optional[str]) -> Optional[str]:
+        if not self.mqtt.configured:
+            return "the server has no MQTT broker (start it with --mqtt-host or SOFABATON_MQTT_HOST)"
+        if str(hub_version or "") != MQTT_HUB_VERSION:
+            return f"only an {MQTT_HUB_VERSION} publishes presses to a broker; this hub is {hub_version or 'of an unknown model'}"
+        if self.mqtt_topic_for(hub_id) is None:
+            return "the hub's MAC is not known yet, so its topic is not either"
+        return None
+
+    def transports_for(self, hub_id: str, hub_version: Optional[str]) -> list[str]:
+        """What a new device on this hub may use, the preferred one first (mqtt is the faster
+        delivery where it exists, as in the Home Assistant card)."""
+
+        if self.mqtt_unavailable_reason(hub_id, hub_version) is None:
+            return [TRANSPORT_MQTT, TRANSPORT_HTTP]
+        return [TRANSPORT_HTTP]
+
+    def handle_mqtt_message(self, topic: str, payload: bytes, retain: bool) -> None:
+        """One publish on a subscribed topic. A retained message is never a press: the hub retains
+        nothing, so it is a broker or a bridge replaying an old one. A device that is not ours is
+        someone's own MQTT device from the Sofabaton app, and none of our business."""
+
+        if retain:
+            log.debug("mqtt: dropped a retained message on %s", topic)
+            return
+        hub_id = self._mqtt_topics().get(topic)
+        if hub_id is None:
+            return
+        try:
+            data = json.loads(payload.decode("utf-8"))
+            device_id, key_id = int(data["device_id"]), int(data["key_id"])
+        except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+            log.info("mqtt: %s: not a press: %r", topic, payload[:80])
+            return
+        record = next((row for row in self.records(hub_id)
+                       if row.transport == TRANSPORT_MQTT and row.device_id == device_id), None)
+        if record is None:
+            log.debug("mqtt: %s: device %s is not a server-managed mqtt device", topic, device_id)
+            return
+        # The hub publishes the command id of the record it executed; our layout puts the long
+        # records at slot + WIFI_SLOT_COUNT, so the id read back says which press it was.
+        if 1 <= key_id <= WIFI_SLOT_COUNT:
+            parsed = ParsedPath(action_id="", device_id=device_id, slot_index=key_id - 1, press_type="short")
+        elif WIFI_SLOT_COUNT < key_id <= 2 * WIFI_SLOT_COUNT:
+            parsed = ParsedPath(action_id="", device_id=device_id, slot_index=key_id - WIFI_SLOT_COUNT - 1, press_type="long")
+        else:
+            parsed = ParsedPath(action_id="", device_id=device_id, slot_index=key_id - 1, press_type="short")
+        self._record_press(hub_id, parsed, "", transport=TRANSPORT_MQTT)
 
     def listener_state(self) -> ListenerState:
         return self.listener.state()
@@ -763,7 +882,7 @@ class CallbackService:
                 return forwarded.split(",", 1)[0].strip()
         return source_ip
 
-    def _record_press(self, hub_id: str, parsed: ParsedPath, source: str) -> Press:
+    def _record_press(self, hub_id: str, parsed: ParsedPath, source: str, *, transport: str = TRANSPORT_HTTP) -> Press:
         record = next((row for row in self.records(hub_id) if row.device_id == parsed.device_id), None)
         slot = parsed.slot_index + 1
         command_id: Optional[int] = None
@@ -783,14 +902,14 @@ class CallbackService:
         press = self.ring.append(
             hub_id,
             device_id=parsed.device_id, command_id=command_id, slot=slot if command_id is not None else None,
-            label=label, press_type=parsed.press_type, resolution=resolution, transport="http",
+            label=label, press_type=parsed.press_type, resolution=resolution, transport=transport,
             source=source, received_at=now_iso(), device_key=record.key if record is not None else None,
         )
         if record is not None:
             record.last_press = {"seq": press.seq, "received_at": press.received_at}
             # In memory only: a press must not cost a hubs.json write.
             self._store(hub_id, record, record.key)
-        log.info("callback: hub %s device %s slot %s %s -> %s", hub_id, parsed.device_id, slot,
+        log.info("%s press: hub %s device %s slot %s %s -> %s", transport, hub_id, parsed.device_id, slot,
                  parsed.press_type, resolution)
         for listener in list(self._press_listeners):
             try:
@@ -835,6 +954,8 @@ class CallbackService:
         if adopted is not None and adopted.device_id is not None:
             await self.ensure_listener()
             return adopted
+        if transport == TRANSPORT_MQTT:
+            return await self._deploy_mqtt(hub_id, proxy, spec, key=key)
         # The listener comes up before the target is computed, so the port
         # baked into the records is the one actually bound (a failed bind
         # falls back to the configured port and the retry loop takes over).
@@ -853,6 +974,21 @@ class CallbackService:
             await self.ensure_listener()
             raise
         record = CallbackRecord.from_deployment(deployment, key=key, transport=transport)
+        self.save(hub_id, record)
+        await self.ensure_listener()
+        return record
+
+    async def _deploy_mqtt(self, hub_id: str, proxy: AsyncXProxy, spec: WifiDeviceSpec, *, key: str) -> CallbackRecord:
+        """An mqtt device names no address: no listener, no target, no port rule."""
+
+        reason = self.mqtt_unavailable_reason(hub_id, (await proxy.status()).hub_version)
+        if reason is not None:
+            raise MqttUnavailable(reason)
+        pending = CallbackRecord(device_id=None, spec=spec.to_dict(), target={},
+                                 pending={"op": "create", "started_at": now_iso()}, key=key, transport=TRANSPORT_MQTT)
+        self.save(hub_id, pending)
+        deployment = await proxy.deploy_wifi_device(spec, transport=TRANSPORT_MQTT)
+        record = CallbackRecord.from_deployment(deployment, key=key, transport=TRANSPORT_MQTT)
         self.save(hub_id, record)
         await self.ensure_listener()
         return record
@@ -973,7 +1109,7 @@ class CallbackService:
             raise CallbackDeviceNotStale("the callback device is not stale")
         spec = WifiDeviceSpec.from_dict(record.spec).normalized()
         # The device may have come back under a verified identity.
-        if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id)):
+        if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id), transport=record.transport):
             record.stale = False
             self.save(hub_id, record)
             return record
@@ -1049,16 +1185,23 @@ class CallbackService:
                 continue
             candidates.append((int(block.get("device_id") or 0), payload))
         for device_id, payload in candidates:
-            blob = await self._identity_blob(proxy, device_id, action_id)
-            if blob is None:
-                continue
+            if transport == TRANSPORT_MQTT:
+                # Inert records carry no path to recognise; the brand carries the record's own key
+                # and the class says what kind of device it is, which is identity enough.
+                if str(((payload or {}).get("device") or {}).get("device_class") or "") != "wifi_mqtt":
+                    continue
+                target: Optional[WifiTarget] = None
+            else:
+                blob = await self._identity_blob(proxy, device_id, action_id)
+                if blob is None:
+                    continue
+                host, port = self._target_from_blob(blob, payload, proxy)
+                target = WifiTarget(host=host, port=port, action_id=action_id)
             adopted_spec = spec or self._spec_from_live(payload)
             labels = self._labels_from_live(payload, adopted_spec)
-            host, port = self._target_from_blob(blob, payload, proxy)
             deployment = WifiDeployment(
-                device_id=device_id, spec=adopted_spec,
-                target=WifiTarget(host=host, port=port, action_id=action_id),
-                labels=labels, hub_version=str((await proxy.status()).hub_version or ""),
+                device_id=device_id, spec=adopted_spec, target=target,
+                labels=labels, hub_version=str((await proxy.status()).hub_version or ""), transport=transport,
             )
             record = CallbackRecord.from_deployment(deployment, adopted=True, key=key, transport=transport)
             self.save(hub_id, record)
@@ -1066,7 +1209,8 @@ class CallbackService:
             return record
         return None
 
-    async def _verify_identity(self, proxy: AsyncXProxy, device_id: int, spec: WifiDeviceSpec, action_id: str) -> bool:
+    async def _verify_identity(self, proxy: AsyncXProxy, device_id: int, spec: WifiDeviceSpec, action_id: str, *,
+                               transport: str = TRANSPORT_HTTP) -> bool:
         snap = await proxy.snapshot()
         entity = snap.entity("device", device_id)
         if entity is None:
@@ -1077,6 +1221,8 @@ class CallbackService:
                 continue
             if str(block.get("brand") or "") != spec.brand or str(block.get("name") or "") != spec.name:
                 return False
+            if transport == TRANSPORT_MQTT:
+                return str(block.get("device_class") or "") == "wifi_mqtt"
             return await self._identity_blob(proxy, device_id, action_id) is not None
         return False
 
@@ -1176,7 +1322,8 @@ class CallbackService:
             elif present and record.stale:
                 # The same numeric id is not proof; verify before clearing.
                 spec = WifiDeviceSpec.from_dict(record.spec).normalized()
-                if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id)):
+                if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id),
+                                               transport=record.transport):
                     fresh = self.record(hub_id, key)
                     if fresh is not None and fresh.stale:
                         fresh.stale = False

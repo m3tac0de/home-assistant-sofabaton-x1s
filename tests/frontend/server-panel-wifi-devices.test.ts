@@ -26,6 +26,7 @@ import {
   draftsEqual,
   hardButtonByCode,
   isSlotConfigured,
+  mqttProblem,
   nameProblem,
   otherDeviceHoldingButton,
   pressIsFresh,
@@ -221,6 +222,18 @@ test("the roster's status and the moved-address check", () => {
   assert.equal(targetMoved(device({ effective_destination: null })), false);          // the hub is disabled: nothing to compare
 });
 
+test("an mqtt device calls no address; the panel says when the broker side cannot deliver", () => {
+  const mqtt = device({ transport: "mqtt", target: null, mqtt_topic: "E26A44861B45/up", effective_destination: null });
+  assert.equal(targetMoved(mqtt), false);
+  assert.deepEqual(deviceStatus(mqtt), { tone: "sync-ok", label: "Synced" });
+  const up = { configured: true, connected: true, host: "broker.lan", port: 1883, last_error: null };
+  assert.equal(mqttProblem(mqtt, up), null);
+  assert.match(mqttProblem(mqtt, { ...up, connected: false, last_error: "bad user name or password" })!, /broker\.lan:1883 \(bad user name or password\)/);
+  assert.match(mqttProblem(mqtt, { ...up, configured: false, connected: false })!, /--mqtt-host/);
+  assert.equal(mqttProblem(device(), { ...up, connected: false }), null);              // an http device does not care
+  assert.equal(mqttProblem(mqtt, null), null);                                        // not known yet: say nothing
+});
+
 test("the glow: fresh for 720 ms, matched by key (or by device id), a long press lights its slot's tile", () => {
   assert.equal(PRESS_FLASH_MS, 720);
   assert.equal(pressIsFresh(press(), 1000), true);
@@ -268,6 +281,8 @@ test("the API client's wifi-devices calls and the job labels", async () => {
   await api.removeWifiDevice("aabb", "a1b2c3d4");
   await api.removeWifiDevice("aabb", "a1b2c3d4", true);
   await api.redeployWifiDevice("aabb", "a1b2c3d4");
+  await api.mqttState();
+  assert.equal(calls.pop()!.url, "http://host:8480/api/v1/server/mqtt");
   assert.deepEqual(calls.map((c) => `${c.init?.method} ${c.url.replace("http://host:8480/api/v1/", "")}`), [
     "GET hubs/aa%20bb/wifi-devices",
     "POST hubs/aabb/wifi-devices",

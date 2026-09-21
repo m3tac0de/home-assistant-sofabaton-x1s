@@ -48,6 +48,9 @@ from .wifi_inplace_plan import (
 
 __all__ = [
     "DEFAULT_WIFI_BRAND",
+    "WIFI_TRANSPORT_HTTP",
+    "WIFI_TRANSPORT_MQTT",
+    "WIFI_TRANSPORTS",
     "WIFI_SLOT_COUNT",
     "X1_CALLBACK_PORT",
     "WifiSlotSpec",
@@ -67,6 +70,13 @@ WIFI_SLOT_COUNT = WIFI_COMMAND_SLOT_COUNT
 DEFAULT_WIFI_BRAND = "m3tac0de"
 #: The X1 Roku replay always calls port 8060 (the head carries no port).
 X1_CALLBACK_PORT = 8060
+#: How a press leaves the hub. ``http``: every record calls the consumer's
+#: listener. ``mqtt`` (X2 only): the records are inert and the hub publishes
+#: ``{"device_id", "key_id"}`` to ``<MAC>/up`` on the broker set in the
+#: Sofabaton app; the consumer subscribes there. Fixed at deploy.
+WIFI_TRANSPORT_HTTP = "http"
+WIFI_TRANSPORT_MQTT = "mqtt"
+WIFI_TRANSPORTS = (WIFI_TRANSPORT_HTTP, WIFI_TRANSPORT_MQTT)
 #: Label width the hub keeps (30 ASCII on X1, 60 UTF-16 bytes elsewhere);
 #: the spec caps at the shorter so labels round-trip on every hub.
 MAX_SLOT_LABEL_LEN = 30
@@ -365,21 +375,35 @@ class WifiDeployment:
     ``2 * WIFI_SLOT_COUNT`` records); the update's drift gate compares the
     live device against it. ``spec`` is the normalized spec that produced
     them; the planner's ownership rule is scoped by its expansion.
+
+    ``transport`` is how its presses leave the hub. An ``mqtt`` deployment
+    has no callback ``target`` (``None``): nothing on the device names an
+    address, the hub publishes to its own broker.
     """
 
     device_id: int
     spec: WifiDeviceSpec
-    target: WifiTarget
+    target: Optional[WifiTarget]
     labels: Mapping[int, str] = field(default_factory=dict)
     hub_version: str = ""
+    transport: str = WIFI_TRANSPORT_HTTP
+
+    def __post_init__(self) -> None:
+        transport = str(self.transport or WIFI_TRANSPORT_HTTP)
+        if transport not in WIFI_TRANSPORTS:
+            raise ValueError(f"transport must be one of {WIFI_TRANSPORTS}, got {self.transport!r}")
+        object.__setattr__(self, "transport", transport)
+        if transport == WIFI_TRANSPORT_HTTP and self.target is None:
+            raise ValueError("an http deployment needs its callback target")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "device_id": int(self.device_id),
             "spec": self.spec.to_dict(),
-            "target": self.target.to_dict(),
+            "target": self.target.to_dict() if self.target is not None else None,
             "labels": {str(int(cid)): str(label) for cid, label in sorted(self.labels.items())},
             "hub_version": self.hub_version,
+            "transport": self.transport,
         }
 
     @classmethod
@@ -389,12 +413,15 @@ class WifiDeployment:
         labels_raw = data.get("labels") or {}
         if not isinstance(labels_raw, Mapping):
             raise ValueError("deployment labels must be a mapping of command id to label")
+        transport = str(data.get("transport") or WIFI_TRANSPORT_HTTP)
+        target_raw = data.get("target")
         return cls(
             device_id=int(data.get("device_id") or 0),
             spec=WifiDeviceSpec.from_dict(data.get("spec") or {}).normalized(),
-            target=WifiTarget.from_dict(data.get("target") or {}),
+            target=WifiTarget.from_dict(target_raw or {}) if (target_raw or transport == WIFI_TRANSPORT_HTTP) else None,
             labels={int(cid): str(label) for cid, label in labels_raw.items()},
             hub_version=str(data.get("hub_version") or ""),
+            transport=transport,
         )
 
 

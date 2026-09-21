@@ -42,10 +42,13 @@ from .errors import (
     WifiUpdateFailed,
 )
 from .hub_listener import release_hub_from_listener
-from .hub_versions import HUB_VERSION_X1, HVER_BY_HUB_VERSION
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X2, HVER_BY_HUB_VERSION
 from .commands import hub_command_label
 from .wifi_inplace_plan import baseline_snapshot_from_bundle, build_wifi_inplace_plan
 from .wifi_device import (
+    WIFI_TRANSPORT_HTTP,
+    WIFI_TRANSPORT_MQTT,
+    WIFI_TRANSPORTS,
     X1_CALLBACK_PORT,
     WifiDeployment,
     WifiDeviceSpec,
@@ -1739,9 +1742,23 @@ class AsyncXProxy:
         return str(self._proxy.get_routed_local_ip())
 
     async def deploy_wifi_device(
-        self, spec: WifiDeviceSpec, *, host: str, port: int
+        self,
+        spec: WifiDeviceSpec,
+        *,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        transport: str = WIFI_TRANSPORT_HTTP,
     ) -> WifiDeployment:
-        """Create a managed Wifi Device whose commands call ``host:port``.
+        """Create a managed Wifi Device whose commands call ``host:port``, or,
+        with ``transport="mqtt"`` on an X2, one whose presses the hub
+        publishes to ``<MAC>/up`` on the broker set in the Sofabaton app.
+
+        An MQTT device takes no ``host`` or ``port``: its records are inert
+        and nothing on it names an address. The consumer subscribes to the
+        topic itself; the payload is ``{"device_id", "key_id"}`` with the
+        command id of the record the hub executed (shorts ``1..10``, longs
+        ``11..20``). Anything but an X2 is a ``ValueError`` before the hub
+        is touched.
 
         Every slot of ``spec`` (defaults included) becomes a short and a
         long press record whose callback path is
@@ -1756,8 +1773,14 @@ class AsyncXProxy:
         """
 
         normalized = spec.normalized()
-        target = WifiTarget(host=host, port=port)
         hub_version = str(getattr(self._proxy, "hub_version", "") or "")
+        if transport == WIFI_TRANSPORT_MQTT:
+            return await self._deploy_wifi_mqtt_device(normalized, hub_version)
+        if transport != WIFI_TRANSPORT_HTTP:
+            raise ValueError(f"transport must be one of {WIFI_TRANSPORTS}, got {transport!r}")
+        if host is None or port is None:
+            raise ValueError("an http deployment needs the host and port its commands call")
+        target = WifiTarget(host=host, port=port)
         if hub_version == HUB_VERSION_X1 and target.port != X1_CALLBACK_PORT:
             raise ValueError(
                 f"an X1 hub always calls back on port {X1_CALLBACK_PORT}; got {target.port}"
@@ -1803,6 +1826,35 @@ class AsyncXProxy:
             return deployment
         return await self.update_wifi_device(deployment, normalized)
 
+    async def _deploy_wifi_mqtt_device(self, normalized: WifiDeviceSpec, hub_version: str) -> WifiDeployment:
+        if hub_version != HUB_VERSION_X2:
+            raise ValueError(f"the mqtt transport exists on the X2 only; this hub is {hub_version or 'unknown'}")
+        bare = normalized.without_references() if normalized.has_references else normalized
+        shape = snapshot_from_spec(bare, device_id=0, hub_version=hub_version)
+        result = await self._write(
+            f"deploy_wifi_device({normalized.name!r}, mqtt)",
+            self._proxy.create_wifi_mqtt_device,
+            device_name=normalized.name,
+            commands=command_defs_from_spec(normalized),
+            brand_name=normalized.brand,
+            power_on_command_id=shape.power_on_command_id,
+            power_off_command_id=shape.power_off_command_id,
+            input_command_ids=list(shape.input_command_ids) or None,
+        )
+        device_id = int(result.get("device_id") or 0) & 0xFF
+        await self._rebase_after_write(result, device_ids=(device_id,), force=True)
+        deployment = WifiDeployment(
+            device_id=device_id,
+            spec=bare,
+            target=None,
+            labels=labels_from_spec(bare),
+            hub_version=hub_version,
+            transport=WIFI_TRANSPORT_MQTT,
+        )
+        if bare is normalized:
+            return deployment
+        return await self.update_wifi_device(deployment, normalized)
+
     async def update_wifi_device(
         self,
         deployment: WifiDeployment,
@@ -1818,7 +1870,9 @@ class AsyncXProxy:
         memberships the consumer made with the generic intents survive).
         The callback target never changes here: it is what
         ``deployment.target`` says, and a rename on an X1 rewrites the
-        head with exactly that address.
+        head with exactly that address. Neither does the transport: an
+        ``mqtt`` deployment stays one, and its rename keeps the hub's own
+        head, changing the name only.
 
         Before any write the live records must still be the deployment's:
         a record whose label equals the deployed one is fine, one that
@@ -1871,12 +1925,9 @@ class AsyncXProxy:
         if baseline.device_id != dev_lo:
             raise WifiUpdateDeclined("device", detail=f"device {dev_lo} is not on the hub")
 
-        desired = snapshot_from_spec(
-            normalized, device_id=dev_lo, hub_version=hub_version, target_host=deployment.target.host
-        )
-        deployed = snapshot_from_spec(
-            deployment.spec, device_id=dev_lo, hub_version=hub_version, target_host=deployment.target.host
-        )
+        target_host = deployment.target.host if deployment.target is not None else None
+        desired = snapshot_from_spec(normalized, device_id=dev_lo, hub_version=hub_version, target_host=target_host)
+        deployed = snapshot_from_spec(deployment.spec, device_id=dev_lo, hub_version=hub_version, target_host=target_host)
         unknown = sorted(set(desired.activities) - set(activity_ids))
         if unknown:
             raise WifiUpdateDeclined("activity", detail=f"activities {unknown} are not on the hub")
@@ -1914,6 +1965,7 @@ class AsyncXProxy:
             target=deployment.target,
             labels=labels_from_spec(normalized),
             hub_version=hub_version,
+            transport=deployment.transport,
         )
         if not plan.steps:
             return updated

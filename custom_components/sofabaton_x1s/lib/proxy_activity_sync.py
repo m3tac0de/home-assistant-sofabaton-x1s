@@ -42,6 +42,8 @@ from .devices import build_device_create_payload, parse_device_record
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
+    DEVICE_CLASS_CODE_WIFI_MQTT,
+    DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_BY_CODE,
     FAMILY_FAV_DELETE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
@@ -1948,6 +1950,7 @@ class ActivitySyncMixin:
         device = self.state.entities("device").get(dev_lo)
         raw = device.get("raw_body") if isinstance(device, dict) else None
         wifi_power_state: tuple[int, int, int] | None = None
+        config = None
         if isinstance(raw, (bytes, bytearray)):
             try:
                 config = parse_device_record(
@@ -1955,7 +1958,49 @@ class ActivitySyncMixin:
                 )
                 wifi_power_state = (config.power_mode, config.power_style, config.tail_marker)
             except (ValueError, TypeError):
+                config = None
                 wifi_power_state = None
+
+        is_mqtt = (
+            config is not None and int(config.code_type) == DEVICE_CLASS_CODE_WIFI_MQTT
+        ) or (isinstance(device, dict) and device.get("device_class") == DEVICE_CLASS_WIFI_MQTT)
+        if is_mqtt:
+            # A wifi_mqtt head is not the callback head the builder below
+            # writes (code type 0x1C, or the Roku head on an X1). The X2
+            # keeps publishing the presses either way, since it goes by
+            # the command records (bench_250, 2026-09-21), but the device
+            # then reads back as wifi_ip with the wrong icon, and everything
+            # that goes by the class (backup and restore, the consumer's
+            # identity check) takes it for an HTTP device. Keep every field
+            # of the head the hub has and change the name and the brand
+            # only. Without a head to keep there is nothing safe to write.
+            if config is None:
+                self._log.warning(
+                    "[WIFI] head commit skipped for wifi_mqtt dev=0x%02X: no head record in the cache", dev_lo
+                )
+                return False
+            body = build_device_create_payload(
+                replace(
+                    config,
+                    name=new_name,
+                    brand=str(new_brand) if new_brand is not None else config.brand,
+                    device_id=dev_lo,
+                ),
+                hub_version=self.hub_version,
+            )
+            self.reset_ack_queues()
+            step = self._send_step(
+                step_name=f"wifi-head-commit[dev=0x{dev_lo:02X},mqtt]",
+                family=0x08,
+                payload=body,
+                ack_opcode=ACK_OPCODE_STATUS,
+                timeout=5.0,
+            )
+            if step.ok and isinstance(device, dict):
+                device["name"] = new_name
+                if new_brand is not None:
+                    device["brand"] = str(new_brand)
+            return step.ok
 
         ip_device = self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
         # A step that names the callback address pins it (the X1 Roku head

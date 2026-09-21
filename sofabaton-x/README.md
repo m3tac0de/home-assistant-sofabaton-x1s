@@ -726,6 +726,14 @@ an activity leaves it, and the hub then drops every row of the device in
 that activity. An activity the hub does not have is a `WifiUpdateDeclined`
 with `reason="activity"`.
 
+On an X2, `deploy_wifi_device(spec, transport="mqtt")` takes no host or
+port: the device's records are inert and the hub publishes
+`{"device_id", "key_id"}` to `<MAC>/up` on the broker set in the Sofabaton
+app (`key_id` is the command id of the record it executed: 1..10 short,
+11..20 long). Subscribing is the consumer's job; the library never talks
+to a broker. The deployment carries `transport="mqtt"` and `target=None`,
+and `update_wifi_device` keeps both. Any other hub is a `ValueError`.
+
 Every slot is written, defaults included. The
 callback target never changes in place: a new address is a remove and a new
 deploy. The X1 always calls port 8060 and ignores the power and input hooks.

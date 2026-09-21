@@ -2384,11 +2384,12 @@ test.describe("control panel, wifi commands", () => {
   const pressFrame = (overrides = {}) => JSON.stringify({ type: "press", seq: 1, hub_id: LIVING.hub_id, device_id: 7, device_key: "a1b2c3d4", command_id: 2, slot: 2, label: "Lights off", press_type: "short", resolution: "deployed", transport: "http", source: "192.168.1.50", received_at: "t", ...overrides });
 
   // An in-memory /wifi-devices: jobs finish at once, the list follows the writes.
-  async function wifiServer(page, devices, { listener = { wanted: true, bound: true, port: 8060, bound_port: 8060, last_error: null, next_retry_at: null }, transports = ["http"], max = 5 } = {}) {
+  async function wifiServer(page, devices, { listener = { wanted: true, bound: true, port: 8060, bound_port: 8060, last_error: null, next_retry_at: null }, transports = ["http"], max = 5,
+    mqtt = { configured: false, wanted: false, connected: false, host: null, port: null, tls: false, username: null, topics: [], last_error: null, connected_at: null, next_retry_at: null } } = {}) {
     const state = { hubs: [LIVING, OFFICE], seen: [] };
     const server = await mockServer(page, state);
     const calls = [];
-    const world = { devices, results: {}, referenced: false, failUpdate: null };
+    const world = { devices, results: {}, referenced: false, failUpdate: null, mqtt };
     const accept = (route, id, result) => { world.results[id] = result; route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: id, kind: id, status: "queued" })) }); };
     await page.route(`${H}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
       snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, complete: true, payload_profile: "structural", devices: [],
@@ -2396,11 +2397,14 @@ test.describe("control panel, wifi commands", () => {
         favorite_slots: [{ device_id: 7, command_id: 1 }], button_bindings: [{ button_id: 182, device_id: 7, command_id: 2, long_press_device_id: 7, long_press_command_id: 12 }], macros: [] }],
     }) }));
     await page.route(`**${API}/server/callback-listener`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(listener) }));
+    await page.route(`**${API}/server/mqtt`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(world.mqtt) }));
     await page.route(`${H}/wifi-devices`, (route) => {
       if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ devices: world.devices, max_devices: max, transports, effective_destination: { host: "192.168.1.10", port: 8060 } }) });
       const body = route.request().postDataJSON();
       calls.push({ key: "create", body });
-      const created = wifiDevice({ key: "0badf00d", device_id: 8, spec: { ...body, brand: "c0-0badf00d", slots: body.slots.map((s) => ({ ...s, long_label: s.long_label || `${s.label} Long` })) } });
+      const overMqtt = body.transport === "mqtt";
+      const created = wifiDevice({ key: "0badf00d", device_id: 8, transport: body.transport, ...(overMqtt ? { target: null, effective_destination: null, mqtt_topic: "E26A44861B45/up" } : {}),
+        spec: { ...body, brand: "c0-0badf00d", slots: body.slots.map((s) => ({ ...s, long_label: s.long_label || `${s.label} Long` })) } });
       world.devices = [...world.devices, created];
       accept(route, "deploy_wifi_device", created);
     });
@@ -2684,6 +2688,44 @@ test.describe("control panel, wifi commands", () => {
     await dialog.locator("#wifi-delete-submit").click();
     await expect(view(page).locator(".device-card")).toHaveCount(1);
     expect(calls.filter((c) => c.key === "delete").map((c) => c.force)).toEqual([false, true]);
+  });
+
+  test("an X2 with a broker: MQTT is the preselected delivery method, the device names its topic, a broker that is down is said", async ({ page }, testInfo) => {
+    const broker = { configured: true, wanted: true, connected: true, host: "broker.lan", port: 1883, tls: false, username: "hub", topics: ["E26A44861B45/up"], last_error: null, connected_at: "t", next_retry_at: null };
+    const { calls, world } = await wifiServer(page, [], { transports: ["mqtt", "http"], mqtt: broker });
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    await view(page).locator("#wifi-add").click();
+    const dialog = view(page).locator("#wifi-create-dialog");
+    await expect(dialog.locator(".transport-option-name")).toHaveText(["MQTT", "HTTP"]);
+    await expect(dialog.locator(".transport-option.selected .transport-option-name")).toHaveText("MQTT");
+    await expect(dialog.locator(".transport-option-hint").first()).toContainText("same broker");
+    await expect(dialog.locator(".transport-choice-note")).toContainText("cannot be changed");
+    await page.screenshot({ path: shot(testInfo, "wifi-create-mqtt") });
+    await dialog.locator("#wifi-new-name").fill("Lights");
+    await dialog.locator("#wifi-create-submit").click();
+    await expect(page).toHaveURL(/wifi\/devices\/0badf00d$/);
+    expect(calls.find((c) => c.key === "create").body.transport).toBe("mqtt");
+
+    const detail = view(page).locator("#wifi-device-detail");
+    await expect(detail.locator(".transport-pill")).toHaveText("mqtt");
+    await expect(detail.locator(".transport-pill")).toHaveClass(/mqtt/);
+    await expect(detail.locator("#wifi-callback-line")).toContainText("MQTT topic E26A44861B45/up");
+    await expect(detail.locator("#wifi-mqtt-notice")).toHaveCount(0);
+    await expect(detail.locator("#wifi-moved")).toHaveCount(0);
+    // The broker goes away: the device's view says so, with the server's own words for why.
+    world.mqtt = { ...broker, connected: false, last_error: "the broker closed the connection" };
+    await page.reload();
+    await expect(detail.locator("#wifi-mqtt-notice")).toContainText("broker.lan:1883 (the broker closed the connection)");
+    await expect(detail.locator("#wifi-listener-notice")).toHaveCount(0);           // the HTTP listener is not this device's business
+    await page.screenshot({ path: shot(testInfo, "wifi-mqtt-broker-down") });
+    // Choosing HTTP instead is one click.
+    await detail.locator("#wifi-back").click();
+    await view(page).locator("#wifi-add").click();
+    await dialog.locator(".transport-option").nth(1).click();
+    await dialog.locator("#wifi-new-name").fill("Blinds");
+    await dialog.locator("#wifi-create-submit").click();
+    await expect.poll(() => calls.filter((c) => c.key === "create").length).toBe(2);
+    expect(calls.filter((c) => c.key === "create")[1].body.transport).toBe("http");
   });
 
   test("the limit, a second transport and a listener that is not running", async ({ page }) => {

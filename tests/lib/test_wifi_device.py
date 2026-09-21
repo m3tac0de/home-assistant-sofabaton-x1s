@@ -272,6 +272,27 @@ def test_the_planner_writes_what_a_slot_names_and_removes_only_what_a_spec_put_t
     assert wifi_inplace_plan.build_wifi_inplace_plan(live, snap(routed), deployed=snap(routed)).steps == ()
 
 
+def test_a_deployment_knows_its_transport_and_an_mqtt_one_has_no_target() -> None:
+    spec = WifiDeviceSpec(name="Lights", slots=(WifiSlotSpec("On"),)).normalized()
+    mqtt = WifiDeployment(device_id=12, spec=spec, target=None, labels=wifi_device.labels_from_spec(spec),
+                          hub_version="X2", transport="mqtt")
+    assert mqtt.to_dict()["target"] is None and mqtt.to_dict()["transport"] == "mqtt"
+    assert WifiDeployment.from_dict(mqtt.to_dict()) == mqtt
+    # A record from before transports existed is an http one, target and all.
+    http = WifiDeployment(device_id=12, spec=spec, target=WifiTarget("192.168.1.10", 8060, "aabbccddeeff"), hub_version="X1S")
+    old = {k: v for k, v in http.to_dict().items() if k != "transport"}
+    assert WifiDeployment.from_dict(old) == http and http.transport == "http"
+    with pytest.raises(ValueError):
+        WifiDeployment(device_id=12, spec=spec, target=None)                 # http needs its target
+    with pytest.raises(ValueError):
+        WifiDeployment(device_id=12, spec=spec, target=None, transport="carrier pigeon")
+    # No target host: a rename plans a head commit that names no address.
+    a = wifi_device.snapshot_from_spec(spec, device_id=12, hub_version="X2")
+    b = wifi_device.snapshot_from_spec(WifiDeviceSpec(name="Lamps", slots=spec.slots), device_id=12, hub_version="X2")
+    plan = wifi_inplace_plan.build_wifi_inplace_plan(a, b, deployed=a)
+    assert [s.kind for s in plan.steps] == ["wifi_head_commit"] and "ip_address" not in plan.steps[0].payload
+
+
 # ---------------------------------------------------------------------------
 # the planner carries the callback address into the head commit
 # ---------------------------------------------------------------------------

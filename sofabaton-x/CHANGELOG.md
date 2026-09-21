@@ -11,6 +11,24 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+- `deploy_wifi_device(spec, transport="mqtt")` creates an X2 `wifi_mqtt`
+  device (no host, no port; the hub publishes presses to `<MAC>/up` on its
+  own broker). `WifiDeployment` gained `transport` (`"http"` by default)
+  and its `target` is `None` for an mqtt deployment; stored http
+  deployments read back unchanged. The names live in
+  `sofabaton.wifi_device` (`WIFI_TRANSPORT_HTTP`, `WIFI_TRANSPORT_MQTT`,
+  `WIFI_TRANSPORTS`); the root package's surface is unchanged.
+- Fixed: the in-place head commit rewrote every managed Wifi Device's head
+  as a callback head (code type `0x1C`, or the Roku head on an X1), a
+  `wifi_mqtt` device's (`0x20`) included. Measured on a live X2
+  (`bench_250`): the hub keeps publishing the presses, it goes by the
+  command records, so nothing visibly broke; but the device then read back
+  as `wifi_ip` with the generic icon, which misleads everything that goes
+  by the class (backup and restore, a consumer's identity check). The
+  commit now keeps the hub's own head for a `wifi_mqtt` device and changes
+  the name and the brand only; without a cached head it fails the step
+  instead of guessing. Confirmed on the X2: after a rename the head still
+  reads `0x20`, icon 8, and presses arrive.
 - `WifiSlotSpec` can say where a slot's command goes: `favorite`, `button`
   (a hub button code), `long_press`, `activities` and `input_activity_id`.
   `snapshot_from_spec` derives the per-activity favorites, button bindings,

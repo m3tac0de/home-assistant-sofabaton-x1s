@@ -11025,6 +11025,9 @@ var PanelApi = class {
   callbackListener() {
     return this.request("GET", "server/callback-listener");
   }
+  mqttState() {
+    return this.request("GET", "server/mqtt");
+  }
   retryCallbackListener() {
     return this.request("POST", "server/callback-listener/retry");
   }
@@ -23292,6 +23295,9 @@ var SbPanelServer = class extends i4 {
     const info = this.info;
     const listener = this._listener ?? info?.callback_listener ?? null;
     const listenerText = !listener ? "unknown" : listener.bound ? `bound on :${listener.bound_port}` : listener.wanted ? "wanted, not bound" : "idle (no callback devices)";
+    const mqtt = info?.mqtt ?? null;
+    const mqttAt = mqtt ? `${mqtt.host}:${mqtt.port}${mqtt.tls ? " (TLS)" : ""}` : "";
+    const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (--mqtt-host)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;
     const facts = [
       ["server", this.error ?? (info ? info.version : "connecting\u2026")],
       ["library", info?.library_version ?? "?"],
@@ -23299,7 +23305,8 @@ var SbPanelServer = class extends i4 {
       ["instance", info?.instance_id ?? "?"],
       ["hubs", String(this.hubCount)],
       ["event stream", this.streamOn ? "live" : "off"],
-      ["callback listener", listenerText]
+      ["callback listener", listenerText],
+      ["mqtt broker", mqttText]
     ];
     return b2`
       <div class="panel" id="server-detail">
@@ -23309,7 +23316,7 @@ var SbPanelServer = class extends i4 {
           <button class="small" id="listener-retry" ?disabled=${this._retrying || !this.reachable} @click=${this._retry} title="POST /server/callback-listener/retry">${this._retrying ? "retrying\u2026" : "Retry callback listener"}</button>
           <span class="msg" id="server-status">${this._status}</span>
         </div>
-        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The event stream is this page's live feed from the server.</div>
+        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The MQTT broker is where an X2's Wifi Devices on the mqtt transport publish their presses; it is set with <span class="mono">--mqtt-host</span> or <span class="mono">SOFABATON_MQTT_*</span> when the server starts, never stored, and connected only while a device uses it. The event stream is this page's live feed from the server.</div>
       </div>
       ${this._renderPorts()}
     `;
@@ -23594,8 +23601,14 @@ function deviceStatus(device, options = {}) {
 }
 function targetMoved(device) {
   const now = device.effective_destination;
-  if (!now || device.device_id == null) return false;
+  if (!now || !device.target || device.device_id == null) return false;
   return now.host !== device.target.host || Number(now.port) !== Number(device.target.port);
+}
+function mqttProblem(device, mqtt) {
+  if (device.transport !== "mqtt" || !mqtt) return null;
+  if (!mqtt.configured) return "This device delivers its presses over MQTT, but the server was started without a broker (--mqtt-host or SOFABATON_MQTT_HOST), so they cannot arrive.";
+  if (!mqtt.connected) return `The server is not connected to the MQTT broker at ${mqtt.host}:${mqtt.port}${mqtt.last_error ? ` (${mqtt.last_error})` : ""}, so presses cannot arrive. It keeps trying.`;
+  return null;
 }
 function pressIsFresh(press, now) {
   if (!press) return false;
@@ -23620,6 +23633,8 @@ var T2 = {
   deleteReferenced: "Activities still use this device. Deleting it removes those favorites, buttons and macro steps too.",
   deleteAnyway: "Delete anyway",
   transportHttpHint: "The hub calls this server directly over your network.",
+  transportMqttHint: "The hub publishes each press to the MQTT broker set in the Sofabaton app, and this server picks it up there. Faster than HTTP, and no callback listener is involved. The hub and this server must use the same broker.",
+  arrivesOverMqtt: (topic) => `Presses are published by the hub to the MQTT topic ${topic} and arrive on the event stream.`,
   renameTitle: "Rename Wifi Device",
   cleanupFailed: (name, why) => `Synced, but ${name} still claims a button this device took (${why}). Sync ${name} to settle it.`,
   redeploy: "Redeploy",
@@ -23683,6 +23698,7 @@ var SbPanelWifiDevices = class extends i4 {
     /** The hub's activities, for the slot dialog's chips and its input select. */
     this._activities = [];
     this._listener = null;
+    this._mqtt = null;
     this._loading = false;
     this._error = null;
     /** The detail view's working copy; null until the device is loaded. */
@@ -23972,7 +23988,7 @@ var SbPanelWifiDevices = class extends i4 {
     if (!hubId) return;
     this._loading = this._list === null;
     try {
-      const [list, activities, listener] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener()]);
+      const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
       if (this._loadedFor !== hubId) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
@@ -23983,6 +23999,7 @@ var SbPanelWifiDevices = class extends i4 {
       this._list = list.body;
       if (activities.ok && activities.body) this._activities = activities.body.map((a4) => ({ id: a4.activity_id, name: a4.name })).filter((a4) => Number.isInteger(a4.id) && a4.name);
       this._listener = listener.ok ? listener.body : this._listener;
+      this._mqtt = mqtt.ok ? mqtt.body : this._mqtt;
       if (!dirty) this._draftFor = null;
     } catch (err) {
       if (this._loadedFor === hubId) this._error = String(err);
@@ -24218,7 +24235,8 @@ var SbPanelWifiDevices = class extends i4 {
   }
   _renderDetail(device, draft) {
     const press = this._activePress();
-    const target = `${device.target.host}:${device.target.port}`;
+    const target = device.target ? `${device.target.host}:${device.target.port}` : "";
+    const mqttNotice = mqttProblem(device, this._mqtt);
     const now = device.effective_destination ? `${device.effective_destination.host}:${device.effective_destination.port}` : "";
     return b2`
       <div class="tab-panel--detail" id="wifi-device-detail" data-key=${device.key}>
@@ -24239,13 +24257,14 @@ var SbPanelWifiDevices = class extends i4 {
               ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
               ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon6(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
               ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
-              ${this._renderListenerNotice()}
+              ${mqttNotice ? b2`<div class="wifi-notice error" id="wifi-mqtt-notice">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${mqttNotice}</span></div>` : A}
+              ${device.transport === "mqtt" ? A : this._renderListenerNotice()}
             </div>
             ${this._renderPowerLines(draft)}
             <div class="command-grid" id="wifi-slots">
               ${draft.slots.map((_slot, index) => this._renderSlot(draft, index, this._flash(Boolean(press && pressMatchesSlot(press, device, index)), press?.at ?? 0)))}
             </div>
-            <div class="callback-line" id="wifi-callback-line">${T2.callsBack(target)}${device.device_id != null ? b2` DevID <code>${device.device_id}</code>.` : A}${supportsPowerInput(this._hubVersion) ? A : b2` ${T2.x1Note}`}</div>
+            <div class="callback-line" id="wifi-callback-line">${device.transport === "mqtt" ? T2.arrivesOverMqtt(device.mqtt_topic ?? "<MAC>/up") : T2.callsBack(target)}${device.device_id != null ? b2` DevID <code>${device.device_id}</code>.` : A}${supportsPowerInput(this._hubVersion) ? A : b2` ${T2.x1Note}`}</div>
           </div>
         </div>
       </div>
@@ -24290,7 +24309,7 @@ var SbPanelWifiDevices = class extends i4 {
                       <input type="radio" name="wifi-new-transport" .checked=${state.transport === option} ?disabled=${state.busy} @change=${() => {
       this._create = { ...state, transport: option };
     }} />
-                      <span class="transport-option-copy"><span class="transport-option-name">${option.toUpperCase()}</span><span class="transport-option-hint">${option === "http" ? T2.transportHttpHint : S8.transportMqttHint}</span></span>
+                      <span class="transport-option-copy"><span class="transport-option-name">${option.toUpperCase()}</span><span class="transport-option-hint">${option === "http" ? T2.transportHttpHint : T2.transportMqttHint}</span></span>
                     </label>`)}
                   <div class="transport-choice-note">${S8.transportLockedNote}</div>
                 </div>` : A}
@@ -24500,6 +24519,7 @@ SbPanelWifiDevices.properties = {
   _list: { state: true },
   _activities: { state: true },
   _listener: { state: true },
+  _mqtt: { state: true },
   _loading: { state: true },
   _error: { state: true },
   _draft: { state: true },

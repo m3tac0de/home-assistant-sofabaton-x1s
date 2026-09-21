@@ -2412,3 +2412,38 @@ more than one 247-byte chunk (six or more entries on the X1S), and the
 non-direct input styles (`input_mode` 2 and 3), whose pages are appended
 to as read but were not exercised.
 
+
+## ◇ Measured: a wifi_mqtt device's head class does not gate its presses (X2, 2026-09-21)
+
+`bench_250_mqtt_head_commit.py`, on a sacrificial server-made `wifi_mqtt`
+device (brand `c0-...`), broker subscription on `FC012C39D390/up`, presses
+produced with `REQ_ACTIVATE` of the device's command 1:
+
+| Head on the hub | Read back | Press published |
+| --- | --- | --- |
+| as created (`code_type 0x20`, icon 8, `power (1, 0, 1)`) | `0x20` | yes, `key_id 1` |
+| rewritten as the in-place head commit wrote it until this date (`_build_wifi_device_payload`, `ip_device=True`: `code_type 0x1C`, icon 1) | `0x1C`, icon 1 | **yes**, twice |
+| original head written back | `0x20`, icon 8 | yes |
+
+The X2 resolves a press from the command record (library type 32), not from
+the device head's code type. The head rewrite is therefore functionally
+silent, which is why it was never noticed; what it changes is how the
+device reads back (`wifi_ip` instead of `wifi_mqtt`, the generic icon), and
+with that anything keyed on the class. The head commit now preserves a
+`wifi_mqtt` head (name and brand only). Not measured: a press from the
+physical remote with the rewritten head (the remote holds its own synced
+copy of the device).
+
+## ◇ Validated: sofabaton-x-server mqtt transport (X2, 2026-09-21)
+
+Through the control panel at :8482, server started with `--mqtt-host
+192.168.2.77` (credentials from a password file, nothing persisted):
+`transports: ["mqtt", "http"]` for the X2; deploy over MQTT = a `wifi_mqtt`
+device, brand `c0-<key>`, no callback target, no listener demand; the server
+connects to the broker and subscribes to `<MAC>/up` only while such a device
+exists; a press reaches the event stream as `transport: "mqtt"` with the
+slot's label, first glow in the panel 93 ms after the send (HTTP on the same
+day: 129 to 270 ms); command 12 is the long press of slot 2; an in-place
+sync with a device rename keeps the head `0x20` and presses keep arriving;
+a server restart restores the subscription from the record; delete ends the
+subscription and the connection. Hub left at its baseline.

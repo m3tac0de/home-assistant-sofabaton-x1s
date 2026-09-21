@@ -31,3 +31,7 @@ services:
       # SOFABATON_TRUSTED_PROXIES: "127.0.0.1"
       # SOFABATON_BIND: "127.0.0.1"      # when a reverse proxy on this host fronts it
       SOFABATON_LOG_LEVEL: "info"
+      # X2 only: the MQTT broker set in the Sofabaton app. Environment or flags only, never server.json.
+      # SOFABATON_MQTT_HOST: "192.168.1.20"
+      # SOFABATON_MQTT_USERNAME: "sofabaton"
+      # SOFABATON_MQTT_PASSWORD_FILE: "/run/secrets/mqtt_password"

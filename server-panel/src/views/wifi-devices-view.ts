@@ -55,7 +55,7 @@ import {
 
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
-import { problemText, type ApiResponse, type CallbackListener, type JobView, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
+import { problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import type { HubContext } from "../panel-context";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
@@ -72,6 +72,7 @@ import {
   draftsEqual,
   hardButtonByCode,
   isSlotConfigured,
+  mqttProblem,
   nameProblem,
   otherDeviceHoldingButton,
   pressIsFresh,
@@ -105,6 +106,8 @@ const T = {
   deleteReferenced: "Activities still use this device. Deleting it removes those favorites, buttons and macro steps too.",
   deleteAnyway: "Delete anyway",
   transportHttpHint: "The hub calls this server directly over your network.",
+  transportMqttHint: "The hub publishes each press to the MQTT broker set in the Sofabaton app, and this server picks it up there. Faster than HTTP, and no callback listener is involved. The hub and this server must use the same broker.",
+  arrivesOverMqtt: (topic: string) => `Presses are published by the hub to the MQTT topic ${topic} and arrive on the event stream.`,
   renameTitle: "Rename Wifi Device",
   cleanupFailed: (name: string, why: string) => `Synced, but ${name} still claims a button this device took (${why}). Sync ${name} to settle it.`,
   redeploy: "Redeploy",
@@ -155,6 +158,7 @@ export class SbPanelWifiDevices extends LitElement {
     _list: { state: true },
     _activities: { state: true },
     _listener: { state: true },
+    _mqtt: { state: true },
     _loading: { state: true },
     _error: { state: true },
     _draft: { state: true },
@@ -338,6 +342,7 @@ export class SbPanelWifiDevices extends LitElement {
   /** The hub's activities, for the slot dialog's chips and its input select. */
   private _activities: ActivityOption[] = [];
   private _listener: CallbackListener | null = null;
+  private _mqtt: MqttState | null = null;
   private _loading = false;
   private _error: string | null = null;
   /** The detail view's working copy; null until the device is loaded. */
@@ -485,7 +490,7 @@ export class SbPanelWifiDevices extends LitElement {
     if (!hubId) return;
     this._loading = this._list === null;
     try {
-      const [list, activities, listener] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener()]);
+      const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
       if (this._loadedFor !== hubId) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
@@ -496,6 +501,7 @@ export class SbPanelWifiDevices extends LitElement {
       this._list = list.body;
       if (activities.ok && activities.body) this._activities = activities.body.map((a) => ({ id: a.activity_id, name: a.name })).filter((a) => Number.isInteger(a.id) && a.name);
       this._listener = listener.ok ? listener.body : this._listener;
+      this._mqtt = mqtt.ok ? mqtt.body : this._mqtt;
       // A clean working copy follows the server; unsynced edits stay the user's.
       if (!dirty) this._draftFor = null;
     } catch (err) {
@@ -946,7 +952,8 @@ export class SbPanelWifiDevices extends LitElement {
 
   private _renderDetail(device: WifiDeviceView, draft: WifiDraft): TemplateResult {
     const press = this._activePress();
-    const target = `${device.target.host}:${device.target.port}`;
+    const target = device.target ? `${device.target.host}:${device.target.port}` : "";
+    const mqttNotice = mqttProblem(device, this._mqtt);
     const now = device.effective_destination ? `${device.effective_destination.host}:${device.effective_destination.port}` : "";
     return html`
       <div class="tab-panel--detail" id="wifi-device-detail" data-key=${device.key}>
@@ -967,13 +974,14 @@ export class SbPanelWifiDevices extends LitElement {
               ${device.stale ? html`<div class="wifi-notice error" id="wifi-stale">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T.staleNotice}</span></div>` : nothing}
               ${device.pending && !device.stale ? html`<div class="wifi-notice" id="wifi-pending">${icon(mdiProgressClock)}<span class="wifi-notice-copy">${T.pendingNotice}</span></div>` : nothing}
               ${targetMoved(device) ? html`<div class="wifi-notice" id="wifi-moved">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T.movedNotice(target, now)}</span></div>` : nothing}
-              ${this._renderListenerNotice()}
+              ${mqttNotice ? html`<div class="wifi-notice error" id="wifi-mqtt-notice">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${mqttNotice}</span></div>` : nothing}
+              ${device.transport === "mqtt" ? nothing : this._renderListenerNotice()}
             </div>
             ${this._renderPowerLines(draft)}
             <div class="command-grid" id="wifi-slots">
               ${draft.slots.map((_slot, index) => this._renderSlot(draft, index, this._flash(Boolean(press && pressMatchesSlot(press, device, index)), press?.at ?? 0)))}
             </div>
-            <div class="callback-line" id="wifi-callback-line">${T.callsBack(target)}${device.device_id != null ? html` DevID <code>${device.device_id}</code>.` : nothing}${supportsPowerInput(this._hubVersion) ? nothing : html` ${T.x1Note}`}</div>
+            <div class="callback-line" id="wifi-callback-line">${device.transport === "mqtt" ? T.arrivesOverMqtt(device.mqtt_topic ?? "<MAC>/up") : T.callsBack(target)}${device.device_id != null ? html` DevID <code>${device.device_id}</code>.` : nothing}${supportsPowerInput(this._hubVersion) ? nothing : html` ${T.x1Note}`}</div>
           </div>
         </div>
       </div>
@@ -1013,7 +1021,7 @@ export class SbPanelWifiDevices extends LitElement {
                   ${transports.map((option) => html`
                     <label class="transport-option ${state.transport === option ? "selected" : ""}">
                       <input type="radio" name="wifi-new-transport" .checked=${state.transport === option} ?disabled=${state.busy} @change=${() => { this._create = { ...state, transport: option }; }} />
-                      <span class="transport-option-copy"><span class="transport-option-name">${option.toUpperCase()}</span><span class="transport-option-hint">${option === "http" ? T.transportHttpHint : S.transportMqttHint}</span></span>
+                      <span class="transport-option-copy"><span class="transport-option-name">${option.toUpperCase()}</span><span class="transport-option-hint">${option === "http" ? T.transportHttpHint : T.transportMqttHint}</span></span>
                     </label>`)}
                   <div class="transport-choice-note">${S.transportLockedNote}</div>
                 </div>`

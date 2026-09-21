@@ -127,7 +127,10 @@ export interface WifiDeviceView {
   transport: string;
   device_id: number | null;
   spec: WifiDeviceSpec;
-  target: { host: string; port: number; action_id: string };
+  /** The address the device calls; null for an mqtt device, which calls nothing. */
+  target: { host: string; port: number; action_id: string } | null;
+  /** An mqtt device's press topic on the broker, `<MAC>/up`. */
+  mqtt_topic?: string | null;
   labels: Record<string, string>;
   hub_version: string;
   deployed_at: string | null;
@@ -146,6 +149,23 @@ export interface WifiDeviceList {
   /** How a press can reach the server; a chooser appears once there is more than one. */
   transports: string[];
   effective_destination?: { host: string; port: number } | null;
+}
+
+/** `GET /server/mqtt` (openapi `MqttView`): the server's broker connection. The broker is set on the
+ *  server's command line or in its environment only; the password is in no answer. */
+export interface MqttState {
+  configured: boolean;
+  /** A device uses the transport; the connection exists only then. */
+  wanted: boolean;
+  connected: boolean;
+  host: string | null;
+  port: number | null;
+  tls: boolean;
+  username: string | null;
+  topics: string[];
+  last_error: string | null;
+  connected_at: string | null;
+  next_retry_at: string | null;
 }
 
 /** One port in `GET /server/settings` (openapi `PortSetting`). */
@@ -399,6 +419,10 @@ export class PanelApi {
 
   callbackListener(): Promise<ApiResponse<CallbackListener>> {
     return this.request<CallbackListener>("GET", "server/callback-listener");
+  }
+
+  mqttState(): Promise<ApiResponse<MqttState>> {
+    return this.request<MqttState>("GET", "server/mqtt");
   }
 
   retryCallbackListener(): Promise<ApiResponse<CallbackListener>> {

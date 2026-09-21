@@ -26,7 +26,8 @@ from . import API_PREFIX
 from .callbacks import (
     DEFAULT_DEVICE_KEY,
     MAX_WIFI_DEVICES,
-    TRANSPORTS,
+    TRANSPORT_HTTP,
+    TRANSPORT_MQTT,
     CallbackDeviceExists,
     CallbackDeviceMissing,
     CallbackDeviceNotStale,
@@ -34,8 +35,10 @@ from .callbacks import (
     CallbackPortRefused,
     CallbackService,
     ListenerState,
+    MqttUnavailable,
     WifiDeviceLimit,
 )
+from .mqtt_client import MqttState
 from .jobs import JobView
 from .manager import HubDisabled, HubNotFound
 from .models import Problem
@@ -123,7 +126,7 @@ class CallbackDeviceView(BaseModel):
 
     device_id: Optional[int]
     spec: dict[str, Any]
-    target: CallbackTargetView
+    target: Optional[CallbackTargetView] = Field(None, description="null for an mqtt device: it calls no address")
     labels: dict[str, str]
     hub_version: str
     deployed_at: Optional[str]
@@ -134,17 +137,21 @@ class CallbackDeviceView(BaseModel):
     last_press: Optional[CallbackLastPress] = None
     effective_destination: Optional[EffectiveDestination] = None
     key: str = Field(DEFAULT_DEVICE_KEY, description="the record's key under /wifi-devices; the callback device is 'default'")
-    transport: str = Field("http", description="how its presses reach the server")
+    transport: str = Field("http", description="how its presses reach the server: http or mqtt")
+    mqtt_topic: Optional[str] = Field(None, description="an mqtt device's press topic on the broker, `<MAC>/up`")
 
 
 class WifiDeviceRequest(CallbackDeviceRequest):
     """Body of ``POST /wifi-devices``: the callback device's spec plus the transport.
 
     ``PUT /wifi-devices/{key}`` takes the same body; the transport of a
-    deployed device is fixed and the field is ignored there.
+    deployed device is fixed and the field is ignored there. ``mqtt``
+    needs an X2 and a server started with a broker (``--mqtt-host``): the
+    hub then publishes the presses to the broker set in the Sofabaton
+    app, no listener and no callback address involved.
     """
 
-    transport: Literal["http"] = Field("http", description="one of the list's `transports`")
+    transport: Literal["http", "mqtt"] = Field("http", description="one of the list's `transports`")
 
 
 class WifiDeviceList(BaseModel):
@@ -192,6 +199,24 @@ class PressPage(BaseModel):
     last_seq: int
     expired: bool
     presses: list[PressView]
+
+
+class MqttView(BaseModel):
+    """The server's broker connection. The settings come from the command line or the
+    environment only, and the password is not part of any answer. ``wanted`` is true
+    while a device uses the transport; the connection exists only then."""
+
+    configured: bool
+    wanted: bool
+    connected: bool
+    host: Optional[str]
+    port: Optional[int]
+    tls: bool
+    username: Optional[str]
+    topics: list[str]
+    last_error: Optional[str]
+    connected_at: Optional[str]
+    next_retry_at: Optional[str]
 
 
 class CallbackListenerView(BaseModel):
@@ -243,11 +268,31 @@ def _not_found(hub_id: str, key: str) -> ApiProblem:
                       detail=f"no Wifi Device has the key {key!r}", hub_id=hub_id)
 
 
+def _record_view(service: CallbackService, hub_id: str, record: Any, destination: Optional[dict[str, Any]]) -> CallbackDeviceView:
+    mqtt = record.transport == TRANSPORT_MQTT
+    # The callback address means nothing to a device that calls nothing.
+    view = CallbackDeviceView(**record.view(effective_destination=None if mqtt else destination))
+    if mqtt:
+        view.mqtt_topic = service.mqtt_topic_for(hub_id)
+    return view
+
+
 def _view(service: CallbackService, hub_id: str, request: Request, key: str = DEFAULT_DEVICE_KEY) -> CallbackDeviceView:
     record = service.record(hub_id, key)
     if record is None:
         raise _not_found(hub_id, key)
-    return CallbackDeviceView(**record.view(effective_destination=_destination(service, hub_id, request)))
+    return _record_view(service, hub_id, record, _destination(service, hub_id, request))
+
+
+def _job_view(service: CallbackService, hub_id: str, record: Any, proxy: AsyncXProxy) -> dict[str, Any]:
+    host, port = service.target_for(proxy)
+    return _record_view(service, hub_id, record, {"host": host, "port": port}).model_dump()
+
+
+def _mqtt_view(state: MqttState) -> MqttView:
+    data = asdict(state)
+    data["topics"] = list(state.topics)
+    return MqttView(**data)
 
 
 def _listener_view(state: ListenerState) -> CallbackListenerView:
@@ -269,7 +314,14 @@ async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
         if existing is None:
             service.check_limit(hub_id)
         spec = service.spec_from_body(body.model_dump(), key=key)
-        service.check_port((await proxy.status()).hub_version)
+        hub_version = (await proxy.status()).hub_version
+        if transport == TRANSPORT_MQTT:
+            reason = service.mqtt_unavailable_reason(hub_id, hub_version)
+            if reason is not None:
+                raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                                 detail=reason, hub_id=hub_id)
+        else:
+            service.check_port(hub_version)
     except WifiDeviceLimit as err:
         raise ApiProblem(409, "wifi_device_limit", "The hub holds the maximum number of Wifi Devices",
                          detail=str(err), hub_id=hub_id) from err
@@ -289,8 +341,10 @@ async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
         except WifiDeviceLimit as err:
             raise ApiProblem(409, "wifi_device_limit", "The hub holds the maximum number of Wifi Devices",
                              detail=str(err), hub_id=hub_id) from err
-        host, port = service.target_for(proxy)
-        return record.view(effective_destination={"host": host, "port": port})
+        except MqttUnavailable as err:
+            raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                             detail=str(err), hub_id=hub_id) from err
+        return _job_view(service, hub_id, record, proxy)
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 
@@ -312,8 +366,7 @@ async def _update(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
 
     async def run(progress) -> dict[str, Any]:
         updated = await service.update(hub_id, proxy, spec, key=key, progress=progress)
-        host, port = service.target_for(proxy)
-        return updated.view(effective_destination={"host": host, "port": port})
+        return _job_view(service, hub_id, updated, proxy)
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 
@@ -352,7 +405,8 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
         raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
                          detail="it is still on the hub; update it instead", hub_id=hub_id)
     try:
-        service.check_port((await proxy.status()).hub_version)
+        if record.transport != TRANSPORT_MQTT:
+            service.check_port((await proxy.status()).hub_version)
     except CallbackPortRefused as err:
         raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
                          detail=str(err), hub_id=hub_id) from err
@@ -361,13 +415,15 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
     async def run(progress) -> dict[str, Any]:
         try:
             fresh = await service.redeploy(hub_id, proxy, key=key)
+        except MqttUnavailable as err:
+            raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                             detail=str(err), hub_id=hub_id) from err
         except CallbackDeviceNotStale as err:
             raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
                              detail=str(err), hub_id=hub_id) from err
         except CallbackDeviceMissing as err:
             raise _not_found(hub_id, key) from err
-        host, port = service.target_for(proxy)
-        return fresh.view(effective_destination={"host": host, "port": port})
+        return _job_view(service, hub_id, fresh, proxy)
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 
@@ -419,10 +475,16 @@ async def list_wifi_devices(request: Request, hub_id: str) -> WifiDeviceList:
     _known_hub(request, hub_id)
     service = _service(request)
     destination = _destination(service, hub_id, request)
+    manager = request.app.state.hub_manager
+    hub_version = manager.record(hub_id).config.hub_version
+    try:
+        hub_version = (await manager.proxy(hub_id).status()).hub_version or hub_version
+    except (HubNotFound, HubDisabled):
+        pass
     return WifiDeviceList(
-        devices=[CallbackDeviceView(**record.view(effective_destination=destination)) for record in service.records(hub_id)],
+        devices=[_record_view(service, hub_id, record, destination) for record in service.records(hub_id)],
         max_devices=MAX_WIFI_DEVICES,
-        transports=list(TRANSPORTS),
+        transports=service.transports_for(hub_id, hub_version),
         effective_destination=destination,
     )
 
@@ -492,6 +554,12 @@ async def list_presses(
                    summary="State of the callback listener")
 async def get_callback_listener(request: Request) -> CallbackListenerView:
     return _listener_view(_service(request).listener_state())
+
+
+@server_router.get("/mqtt", operation_id="getMqtt", response_model=MqttView,
+                   summary="State of the MQTT broker connection (never the password)")
+async def get_mqtt(request: Request) -> MqttView:
+    return _mqtt_view(_service(request).mqtt_state())
 
 
 @server_router.post("/callback-listener/retry", operation_id="retryCallbackListener",

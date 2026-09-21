@@ -173,6 +173,22 @@ variables, then flags; each layer overrides the one before.
 | `--app-discovery-port` | `SOFABATON_APP_DISCOVERY_PORT` | `8102` | UDP port the official app discovers and calls the proxies on; keep it for iOS |
 | no flag (`server.json`: `apply_keep`) | `SOFABATON_APPLY_KEEP` | `20` | retained terminal apply records per hub, including stopped/cancelled ones |
 | `--log-level` | `SOFABATON_LOG_LEVEL` | `info` | |
+| `--mqtt-host` | `SOFABATON_MQTT_HOST` | none | the MQTT broker an X2 publishes button presses to (the one set in the Sofabaton app); setting it offers the `mqtt` transport for X2 hubs, see [MQTT](#mqtt) |
+| `--mqtt-port` | `SOFABATON_MQTT_PORT` | `1883`, `8883` with TLS | broker port |
+| `--mqtt-username` | `SOFABATON_MQTT_USERNAME` | none | broker user name |
+| `--mqtt-password` | `SOFABATON_MQTT_PASSWORD` | none | broker password; prefer the environment variable or the file, a flag shows in the process list |
+| `--mqtt-password-file` | `SOFABATON_MQTT_PASSWORD_FILE` | none | file whose first line is the password (Docker and Kubernetes secrets) |
+| `--mqtt-tls` | `SOFABATON_MQTT_TLS=true` | off | connect over TLS |
+| `--mqtt-tls-ca` | `SOFABATON_MQTT_TLS_CA` | system store | CA certificate file to verify the broker with |
+| `--mqtt-tls-insecure` | `SOFABATON_MQTT_TLS_INSECURE=true` | off | do not verify the broker's certificate |
+| `--mqtt-client-id` | `SOFABATON_MQTT_CLIENT_ID` | `sofabaton-x-server-<random>` | MQTT client id |
+
+The `mqtt` settings are flags and environment variables **only**. They
+hold a secret, so `server.json` never carries them (a file that does stops
+the server with a message saying so), the control panel cannot write them,
+and the password is in nothing the server prints, logs or serves:
+`--print-settings` says `mqtt_password_set`, `GET /server/mqtt` has no
+password field.
 
 For example, save this as `server.json` in the selected data directory:
 
@@ -717,9 +733,41 @@ the callback device's, per key; `/wifi-devices/default` and
   does not have fails the job with `callback_update_declined`
   (`activity: ...`). `DELETE` asks for `?force=true` only for references
   the device's own slots did not make.
-- Every record and the create body carry `transport`. `"http"` is the
-  only value today and the list's `transports` says so; the field is
-  there so a second delivery method can arrive without changing shapes.
+- Every record and the create body carry `transport`: `"http"` or
+  `"mqtt"`. The list's `transports` says what a new device on this hub
+  may use, the preferred one first; see [MQTT](#mqtt). It is fixed at
+  deploy: changing it is a delete and a new device.
+
+### MQTT
+
+An X2 can deliver presses through an MQTT broker instead of calling the
+server: faster (about 130 ms at the median in our measurements), and with
+no callback listener, no callback address and no port 8060 involved. The
+device's command records are inert; at press time the hub publishes
+`{"device_id": <hub device id>, "key_id": <command id>}` to `<MAC>/up`
+(the MAC in upper-case hex, QoS 0, not retained) on **the broker set in
+the Sofabaton app**. Start the server with the same broker
+(`--mqtt-host`, see [Settings](#settings)) and:
+
+- `GET /hubs/{id}/wifi-devices` answers `transports: ["mqtt", "http"]`
+  for an X2 whose MAC is known, `["http"]` for every other hub and for a
+  server without a broker. `POST /wifi-devices` with `"transport":
+  "mqtt"` anywhere else is a `409 mqtt_unavailable` that says why.
+- An mqtt record has `target: null` and `mqtt_topic: "<MAC>/up"`. The
+  callback listener is only wanted while an `http` device exists.
+- The server subscribes to the topic while a device uses it (one
+  connection, one subscription per hub; `GET /server/mqtt` and the `mqtt`
+  block of `GET /server` show `configured`, `connected`, the topics and
+  the last error). It never publishes. It reconnects with backoff.
+- A press comes out as the same `press` message with `transport:
+  "mqtt"` and an empty `source`. `key_id` 1..10 is a short press of that
+  slot, 11..20 the long press. A retained message is never a press and is
+  dropped; so is a publish from a device the server does not manage (your
+  own MQTT devices made in the Sofabaton app share the topic).
+- Everything else is the same: in-place updates, slot bindings, stale and
+  redeploy, delete. There is no link test: whether the hub reaches the
+  broker is between the hub, the app and the broker. If presses do not
+  arrive, check the broker settings in the app first.
 
 In the panel, **Add** deploys an empty device at once and opens it. The
 detail view edits a draft (the device's name, the power ON / OFF commands

@@ -359,8 +359,18 @@ export function deviceStatus(device: WifiDeviceView, options: { deleting?: boole
 /** True when the device calls an address the server no longer answers on (a deployed address never moves in place). */
 export function targetMoved(device: WifiDeviceView): boolean {
   const now = device.effective_destination;
-  if (!now || device.device_id == null) return false;
+  // An mqtt device calls no address, so none can have moved.
+  if (!now || !device.target || device.device_id == null) return false;
   return now.host !== device.target.host || Number(now.port) !== Number(device.target.port);
+}
+
+/** Why an mqtt device's presses cannot arrive right now, or null. The broker is the operator's to
+ *  set up (the server's command line, the Sofabaton app); the panel only says what it sees. */
+export function mqttProblem(device: Pick<WifiDeviceView, "transport">, mqtt: { configured: boolean; connected: boolean; host: string | null; port: number | null; last_error: string | null } | null): string | null {
+  if (device.transport !== "mqtt" || !mqtt) return null;
+  if (!mqtt.configured) return "This device delivers its presses over MQTT, but the server was started without a broker (--mqtt-host or SOFABATON_MQTT_HOST), so they cannot arrive.";
+  if (!mqtt.connected) return `The server is not connected to the MQTT broker at ${mqtt.host}:${mqtt.port}${mqtt.last_error ? ` (${mqtt.last_error})` : ""}, so presses cannot arrive. It keeps trying.`;
+  return null;
 }
 
 // -- the press glow ----------------------------------------------------------------------------------

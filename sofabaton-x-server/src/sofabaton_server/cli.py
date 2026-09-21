@@ -56,6 +56,21 @@ def build_parser() -> argparse.ArgumentParser:
                     help="TCP port the hubs connect back to, shared by every hub (default 8200)")
     ap.add_argument("--app-discovery-port", type=int,
                     help="UDP port the official app discovers and calls the proxies on (default 8102; keep it for iOS)")
+    mqtt = ap.add_argument_group(
+        "MQTT (X2 Wifi Devices)",
+        "The broker an X2 publishes button presses to, the one set in the Sofabaton app. Flags and SOFABATON_MQTT_* "
+        "environment variables only: these are never read from or written to server.json. Prefer the environment "
+        "or --mqtt-password-file for the password; a flag is visible in the process list.",
+    )
+    mqtt.add_argument("--mqtt-host", help="broker address; setting it offers the mqtt transport for X2 hubs")
+    mqtt.add_argument("--mqtt-port", type=int, help="broker port (default 1883, 8883 with --mqtt-tls)")
+    mqtt.add_argument("--mqtt-username", help="broker user name")
+    mqtt.add_argument("--mqtt-password", help="broker password (better: SOFABATON_MQTT_PASSWORD or --mqtt-password-file)")
+    mqtt.add_argument("--mqtt-password-file", type=Path, help="file whose first line is the broker password (container secrets)")
+    mqtt.add_argument("--mqtt-tls", action="store_true", default=None, help="connect over TLS")
+    mqtt.add_argument("--mqtt-tls-ca", type=Path, help="CA certificate file to verify the broker with (default: the system store)")
+    mqtt.add_argument("--mqtt-tls-insecure", action="store_true", default=None, help="do not verify the broker's certificate")
+    mqtt.add_argument("--mqtt-client-id", help="MQTT client id (default: sofabaton-x-server-<random>)")
     ap.add_argument("--log-level", choices=("debug", "info", "warning", "error"), help="log level (default info)")
     ap.add_argument("--print-settings", action="store_true", help="print the effective settings as JSON and exit")
     return ap
@@ -77,6 +92,15 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         "callback_port": args.callback_port,
         "hub_listen_port": args.hub_listen_port,
         "app_discovery_port": args.app_discovery_port,
+        "mqtt_host": args.mqtt_host,
+        "mqtt_port": args.mqtt_port,
+        "mqtt_username": args.mqtt_username,
+        "mqtt_password": args.mqtt_password,
+        "mqtt_password_file": args.mqtt_password_file,
+        "mqtt_tls": args.mqtt_tls,
+        "mqtt_tls_ca": args.mqtt_tls_ca,
+        "mqtt_tls_insecure": args.mqtt_tls_insecure,
+        "mqtt_client_id": args.mqtt_client_id,
     }
     return load_settings(cli=cli)
 
