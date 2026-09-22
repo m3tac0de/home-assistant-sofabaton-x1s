@@ -21,7 +21,7 @@
         "type": "object"
       },
       "Activity": {
-        "description": "One activity from the hub's catalog.",
+        "description": "One activity from the hub's catalog.\n\n``sort`` is the hub's stored display position (the byte the app's and\n:meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the\nrecord carries none. ``activities()`` already lists in that order.",
         "properties": {
           "active": {
             "title": "Active",
@@ -38,6 +38,11 @@
           "needs_confirm": {
             "title": "Needs Confirm",
             "type": "boolean"
+          },
+          "sort": {
+            "default": 0,
+            "title": "Sort",
+            "type": "integer"
           }
         },
         "required": [
@@ -1148,7 +1153,7 @@
         "type": "object"
       },
       "Device": {
-        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known.",
+        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known. ``sort`` is the hub's\nstored display position (what :meth:`AsyncXProxy.reorder_devices`\nwrites), ``0`` when the record carries none; ``devices()`` already\nlists in that order.",
         "properties": {
           "brand": {
             "anyOf": [
@@ -1212,6 +1217,11 @@
               }
             ],
             "title": "Power State"
+          },
+          "sort": {
+            "default": 0,
+            "title": "Sort",
+            "type": "integer"
           }
         },
         "required": [

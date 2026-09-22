@@ -51,6 +51,7 @@ export class SofabatonServerPanel extends LitElement {
     _wifiDirty: { state: true },
     _pickerManual: { state: true },
     _pickerActionsHubId: { state: true },
+    _pickerConfirmRemove: { state: true },
     _pickerBusy: { state: true },
     _pickerAdding: { state: true },
     _pickerScanning: { state: true },
@@ -207,6 +208,7 @@ export class SofabatonServerPanel extends LitElement {
   private _wifiDirty = false;
   private _pickerManual = false;
   private _pickerActionsHubId: string | null = null;
+  private _pickerConfirmRemove: string | null = null;
   private _pickerBusy = new Set<string>();
   private _pickerAdding = false;
   private _pickerScanning = false;
@@ -381,6 +383,7 @@ export class SofabatonServerPanel extends LitElement {
     if (this._pickerOpen) {
       this._pickerManual = false;
       this._pickerActionsHubId = null;
+      this._pickerConfirmRemove = null;
       this._pickerError = null;
       void this.store.refreshSeen();
       void this._scanPicker();
@@ -410,7 +413,12 @@ export class SofabatonServerPanel extends LitElement {
   private async _pickerAct(hub: HubView, action: HubAction): Promise<void> {
     const id = hub.hub_id;
     if (this._pickerBusy.has(id)) return;
-    if (action === "remove" && !confirm(`Remove ${hubDisplayName(hub)}?\n\nThe server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
+    // Removal asks inline first (never a native confirm(): suppressed
+    // dialogs answer "cancel" silently); the confirm button calls back here.
+    if (action === "remove" && this._pickerConfirmRemove !== id) {
+      this._pickerConfirmRemove = id;
+      return;
+    }
     this._pickerBusy = new Set(this._pickerBusy).add(id);
     this._pickerError = null;
     try {
@@ -429,6 +437,7 @@ export class SofabatonServerPanel extends LitElement {
       const busy = new Set(this._pickerBusy);
       busy.delete(id);
       this._pickerBusy = busy;
+      if (action === "remove") this._pickerConfirmRemove = null;
     }
   }
 
@@ -588,6 +597,7 @@ export class SofabatonServerPanel extends LitElement {
                 open: this._pickerOpen,
                 manual: this._pickerManual,
                 actionsHubId: this._pickerActionsHubId,
+                confirmRemoveHubId: this._pickerConfirmRemove,
                 busy: this._pickerBusy,
                 adding: this._pickerAdding,
                 scanning: this._pickerScanning,
@@ -599,8 +609,12 @@ export class SofabatonServerPanel extends LitElement {
                   if (!this._confirmLeave({ hubId })) return;
                   this.store.selectHub(hubId);
                 },
-                onActions: (hubId) => { this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId; },
+                onActions: (hubId) => {
+                  this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId;
+                  this._pickerConfirmRemove = null;
+                },
                 onAction: (hub, action) => void this._pickerAct(hub, action),
+                onConfirmRemove: (hubId) => { this._pickerConfirmRemove = hubId; },
                 onAdd: (seen) => void this._pickerAdd({ ...seen.config, enabled: true }),
                 onManual: (show) => void this._showManual(show),
                 onSubmit: (event) => this._pickerSubmit(event),

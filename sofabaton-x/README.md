@@ -204,15 +204,19 @@ dataclasses (each with a `to_dict()`), cached if available, else fetched:
 
 | read                     | returns                                                                                  |
 | ------------------------ | ---------------------------------------------------------------------------------------- |
-| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`                       |
-| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior` |
+| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`, `sort`               |
+| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior`, `sort` |
 | `commands(device_id)`    | `list[Command]`: `command_id`, `label`                                                   |
 | `macros(activity_id)`    | `list[Macro]`: `command_id`, `label`                                                     |
 | `favorites(activity_id)` | `list[Favorite]`: `device_id`, `command_id`, `label`                                     |
 | `buttons(entity_id)`     | `list[Button]`: `button_code`, `name`, `device_id`, `command_id`, `long_press_device_id`, `long_press_command_id` |
 | `current_activity()`     | `{activity_id, name}` or `None` when idle                                                |
 
-Lists are sorted by id. `Device.power_state` is the hub's live power byte
+`activities()` and `devices()` come in the hub's display order, as the
+physical remote and the app show it: the stored sort byte (what
+`reorder_activities` / `reorder_devices` write, carried as `sort`) first,
+rows without one (`sort == 0`) after them by id. The other lists are
+sorted by id. `Device.power_state` is the hub's live power byte
 (0 off, 1 on) as of the last devices fetch, or `None` when the row carried
 no parseable record; the hub commits it with a short lag after a power
 command, so it is not an instantaneous read. `activities(refresh=True)`

@@ -133,12 +133,31 @@ def _marshal_callback(loop: asyncio.AbstractEventLoop, callback: Callable) -> Ca
     return relay
 
 
-def _activity_from_row(act_id: int, row: dict) -> Activity:
+def _sort_byte(row: Any) -> int:
+    """The record's display-order byte (body[6] of the shared device-record
+    schema); ``0`` when the row carries no stored record long enough."""
+
+    raw_body = row.get("raw_body") if isinstance(row, dict) else None
+    if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6:
+        return int(raw_body[6]) & 0xFF
+    return 0
+
+
+def _catalog_order_key(sort: int, entity_id: int) -> tuple[int, int, int]:
+    """Display order as the physical remote and the app show it: the
+    stored sort byte first, rows without one (``0``) after them by id.
+    The same rule orders the HA integration's remote-entity lists."""
+
+    return (0, sort, entity_id) if sort else (1, 0, entity_id)
+
+
+def _activity_from_row(act_id: int, row: dict, *, sort: int = 0) -> Activity:
     return Activity(
         activity_id=int(act_id),
         name=str(row.get("name") or ""),
         active=bool(row.get("active", False)),
         needs_confirm=bool(row.get("needs_confirm", False)),
+        sort=int(sort),
     )
 
 
@@ -160,6 +179,7 @@ def _device_from_row(dev_id: int, row: dict, hub_version: Optional[str]) -> Devi
         device_class_code=int(code) if isinstance(code, int) else None,
         power_state=power_state,
         idle_behavior=int(idle) if isinstance(idle, int) else None,
+        sort=_sort_byte(row),
     )
 
 
@@ -787,7 +807,12 @@ class AsyncXProxy:
     async def activities(
         self, *, refresh: bool = False, timeout: float = DEFAULT_FETCH_TIMEOUT
     ) -> list[Activity]:
-        """Return every activity in the hub's catalog, sorted by id.
+        """Return every activity in the hub's catalog, in display order.
+
+        The order is the one the physical remote and the app show: the
+        record's stored sort byte (what :meth:`reorder_activities`
+        writes, carried as ``Activity.sort``) first, rows without one
+        after them by id.
 
         ``refresh=True`` re-reads the list from the hub. The engine is
         fetch-then-prune: the cached catalog stays in place until a
@@ -800,14 +825,25 @@ class AsyncXProxy:
         rows = await self._catalog_rows(
             self._proxy.get_activities, "activities", refresh=refresh, timeout=timeout
         )
-        return [_activity_from_row(act_id, row) for act_id, row in sorted(dict(rows).items())]
+        # The getter returns the JSON export view, which strips the stored
+        # record body; the sort byte lives in that body, so read it from
+        # the engine's own state rows (keyed by the low id byte).
+        state_rows = await self.run(lambda: dict(self._proxy.state.entities("activity")))
+        items = []
+        for act_id, row in dict(rows).items():
+            state_row = state_rows.get(act_id, state_rows.get(int(act_id) & 0xFF))
+            items.append(_activity_from_row(act_id, row, sort=_sort_byte(state_row)))
+        return sorted(items, key=lambda a: _catalog_order_key(a.sort, a.activity_id))
 
     async def devices(
         self, *, refresh: bool = False, timeout: float = DEFAULT_FETCH_TIMEOUT
     ) -> list[Device]:
-        """Return every device in the hub's catalog, sorted by id.
+        """Return every device in the hub's catalog, in display order.
 
-        ``Device.power_state`` is projected from the row's stored record
+        The order is the one the physical remote and the app show: the
+        record's stored sort byte (what :meth:`reorder_devices` writes,
+        carried as ``Device.sort``) first, rows without one after them
+        by id. ``Device.power_state`` is projected from the row's stored record
         as of the last devices fetch (see :class:`Device`); pass
         ``refresh=True`` to re-read the list, and with it the power
         bytes, from the hub. Fetch-then-prune as for :meth:`activities`:
@@ -823,10 +859,8 @@ class AsyncXProxy:
         # so project from the engine's own state rows instead.
         rows = await self.run(lambda: dict(self._proxy.state.entities("device")))
         hub_version = self._proxy.hub_version
-        return [
-            _device_from_row(dev_id, row, hub_version)
-            for dev_id, row in sorted(rows.items())
-        ]
+        items = [_device_from_row(dev_id, row, hub_version) for dev_id, row in rows.items()]
+        return sorted(items, key=lambda d: _catalog_order_key(d.sort, d.device_id))
 
     async def commands(
         self, device_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT

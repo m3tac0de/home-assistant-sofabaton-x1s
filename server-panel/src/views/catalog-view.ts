@@ -156,15 +156,9 @@ export function buildCatalog(devices: Device[], activities: Activity[], snapshot
   const provenance = new Map<string, SnapshotEntity>();
   for (const e of snapshot?.devices ?? []) provenance.set(entryKey("device", e.device.device_id), e);
   for (const e of snapshot?.activities ?? []) provenance.set(entryKey("activity", e.device.device_id), e);
-  // The typed lists come in id order; the snapshot's arrays are in the hub's
-  // display order (the sort byte "Change order" writes), so the rows follow it.
-  // An entity the snapshot does not know yet goes last, in list order.
-  const rank = (kind: CatalogKind, id: number): number => {
-    const index = ((kind === "device" ? snapshot?.devices : snapshot?.activities) ?? []).findIndex((e) => e.device.device_id === id);
-    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
-  };
-  devices = [...devices].sort((x, y) => rank("device", x.device_id) - rank("device", y.device_id));
-  activities = [...activities].sort((x, y) => rank("activity", x.activity_id) - rank("activity", y.activity_id));
+  // Both typed lists arrive in the hub's display order (the sort byte
+  // "Change order" writes; the library lists like the physical remote),
+  // so the rows keep the lists' order as-is.
   const entries: CatalogEntry[] = [];
   for (const d of devices) {
     const p = provenance.get(entryKey("device", d.device_id));

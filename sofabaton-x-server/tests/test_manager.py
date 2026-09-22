@@ -68,6 +68,7 @@ def test_ready_event_rekeys_record_to_mac_and_relays_events(tmp_path: Path) -> N
         assert rec.config.mac == "E2:6A:44:86:1B:45" and rec.config.hub_version == "X1S"
         assert rec.last_seen is not None
         assert m.proxy("e26a44861b45") is proxy
+        assert proxy.advertised == 1          # the app can find the proxy
         with pytest.raises(HubNotFound):
             m.record("192.168.1.50")
         await m.stop()

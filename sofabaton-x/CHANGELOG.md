@@ -9,6 +9,20 @@ and date, update the README notice and install instructions, and start a new
 Unreleased section. Link breaking releases to their migration guidance.
 Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -->
 
+## Unreleased
+
+Changes since `sofabaton-x-v0.2.1`.
+
+- **`activities()` and `devices()` now list in the hub's display order**
+  (the stored sort byte that `reorder_activities` / `reorder_devices`
+  write, rows without one after them by id), the order the physical
+  remote, the app and the Home Assistant integration's remote entity
+  show. Both were sorted by id, so a hub whose activities or devices had
+  been reordered came out in the wrong sequence. `Activity` and `Device`
+  gain a `sort` field (`0` when the record carries none); `to_dict()`
+  includes it. Callers that relied on id order should sort by
+  `activity_id` / `device_id` themselves.
+
 ## 0.2.1 (2026-09-22)
 
 Changes since `sofabaton-x-v0.2.0`. This patch release includes a public

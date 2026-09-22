@@ -4,6 +4,25 @@ Changes to `sofabaton-x-server`, compared against its own release tags.
 Protocol-library changes are recorded in the
 [library changelog](../sofabaton-x/CHANGELOG.md).
 
+## Unreleased
+
+Changes since `sofabaton-x-server-v0.2.1`. Requires the library change
+below (unreleased `sofabaton-x`).
+
+- **`GET .../activities` and `GET .../devices` list in the hub's display
+  order** (what `PUT .../order` writes, as the remote and the app show
+  it) instead of id order, and each row carries that position as `sort`
+  (`0` when the record has none). The bundled web remote showed
+  reordered hubs in id order because it renders these lists as-is; it now
+  matches the physical remote and the Home Assistant card. Regenerate
+  clients from `openapi.json` to pick up the field; it is optional in
+  the schema so existing clients keep working.
+- **The official app finds the server's proxies again.** The server never
+  asked a hub's proxy to advertise itself over mDNS, so a hub fronted by
+  the server disappeared from the Sofabaton app. Each proxy now publishes
+  its advertisement once the hub's connect-time sync has read the banner,
+  the same way the Home Assistant integration does.
+
 ## 0.2.1 (2026-09-22)
 
 Changes since `sofabaton-x-server-v0.2.0`. Requires

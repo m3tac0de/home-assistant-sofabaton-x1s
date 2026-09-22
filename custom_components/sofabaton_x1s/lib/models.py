@@ -105,12 +105,18 @@ class HubInfo:
 
 @dataclass(frozen=True)
 class Activity:
-    """One activity from the hub's catalog."""
+    """One activity from the hub's catalog.
+
+    ``sort`` is the hub's stored display position (the byte the app's and
+    :meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the
+    record carries none. ``activities()`` already lists in that order.
+    """
 
     activity_id: int
     name: str
     active: bool
     needs_confirm: bool
+    sort: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -124,7 +130,10 @@ class Device:
     1 on) as of the last devices fetch; None when the row carried no
     parseable record. The hub commits it with a macro-runtime lag after a
     power fire, so it is not an instantaneous read. ``idle_behavior`` is
-    the device's power-behaviour mode when known.
+    the device's power-behaviour mode when known. ``sort`` is the hub's
+    stored display position (what :meth:`AsyncXProxy.reorder_devices`
+    writes), ``0`` when the record carries none; ``devices()`` already
+    lists in that order.
     """
 
     device_id: int
@@ -134,6 +143,7 @@ class Device:
     device_class_code: Optional[int]
     power_state: Optional[int]
     idle_behavior: Optional[int]
+    sort: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

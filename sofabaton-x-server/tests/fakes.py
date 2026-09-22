@@ -44,6 +44,7 @@ class FakeProxy:
         self.config = config
         self.started = False
         self.stops: list[bool] = []          # release_hub flag per stop()
+        self.advertised = 0                  # wait_until_discoverable calls
         self.mac: Optional[str] = None
         self.model = "X1S"
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -121,6 +122,10 @@ class FakeProxy:
     async def stop(self, *, release_hub: bool = False) -> None:
         self.started = False
         self.stops.append(release_hub)
+
+    async def wait_until_discoverable(self, timeout: float = 30.0) -> bool:
+        self.advertised += 1
+        return True
 
     # -- status --------------------------------------------------------------
 

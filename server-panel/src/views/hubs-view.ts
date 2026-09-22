@@ -18,6 +18,7 @@ export class SbPanelHubs extends LitElement {
     hubs: { attribute: false },
     hub: { attribute: false },
     _busy: { state: true },
+    _confirmRemove: { state: true },
     _firmware: { state: true },
   };
 
@@ -32,6 +33,7 @@ export class SbPanelHubs extends LitElement {
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .confirm { flex: 1 0 100%; margin: 0 0 4px; font-size: 13px; line-height: 1.5; }
     `,
   ];
 
@@ -40,12 +42,14 @@ export class SbPanelHubs extends LitElement {
   hubs: HubView[] = [];
   hub: HubView | null = null;
   private _busy = new Set<string>();
+  private _confirmRemove: string | null = null;
   private _firmware = "Not yet known";
   private _infoKey = "";
   private _infoSeq = 0;
 
   protected willUpdate(changed: PropertyValues): void {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+    if (this._confirmRemove !== null && this._confirmRemove !== this.hub?.hub_id) this._confirmRemove = null;
     const h = this.hub;
     const key = h ? `${h.hub_id}:${h.enabled}:${Boolean(h.status)}:${Boolean(h.status?.hub_connected)}` : "";
     if (key !== this._infoKey || changed.has("api")) {
@@ -80,10 +84,10 @@ export class SbPanelHubs extends LitElement {
 
   private async _act(hubId: string, action: LifecycleAction): Promise<void> {
     if (this._busy.has(hubId)) return;
-    if (
-      action === "remove" &&
-      !confirm(`Remove hub ${hubId}?\n\nThe server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.`)
-    ) {
+    // Removal asks inline first (never a native confirm(): suppressed
+    // dialogs answer "cancel" silently); the confirm button calls back here.
+    if (action === "remove" && this._confirmRemove !== hubId) {
+      this._confirmRemove = hubId;
       return;
     }
     const record = this.hubs.find((h) => h.hub_id === hubId) ?? null;
@@ -99,6 +103,7 @@ export class SbPanelHubs extends LitElement {
       const busy = new Set(this._busy);
       busy.delete(hubId);
       this._busy = busy;
+      if (action === "remove") this._confirmRemove = null;
     }
     this._emit("sb-hubs-changed");
   }
@@ -148,15 +153,21 @@ export class SbPanelHubs extends LitElement {
       <div class="headline"><span class="dot ${tone}"></span><span class="title">${hubDisplayName(h)}</span><span class="id mono">${h.config.name ? h.hub_id : ""}</span></div>
       <dl class="facts">${facts.map(([k, v]) => html`<div><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>
       <div class="actions" id="hub-actions">
+        ${this._confirmRemove === h.hub_id ? html`
+          <p class="confirm" id="remove-question">Remove <b>${hubDisplayName(h)}</b>? The server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.</p>
+          <button class="danger" id="remove-confirm" ?disabled=${busy} @click=${() => this._act(h.hub_id, "remove")}>${busy ? "Removing…" : "Remove"}</button>
+          <button ?disabled=${busy} @click=${() => { this._confirmRemove = null; }}>Cancel</button>
+        ` : html`
         ${!h.enabled ? html`<button class="primary" ?disabled=${busy} @click=${() => this._act(h.hub_id, "enable")}>Enable</button>` : nothing}
         ${h.enabled && !s ? html`<button class="primary" ?disabled=${busy} @click=${() => this._act(h.hub_id, "enable")}>Retry start</button>` : nothing}
         ${h.enabled ? html`<button ?disabled=${busy} @click=${() => this._act(h.hub_id, "disable")}>Disable</button>` : nothing}
         ${h.enabled && s ? html`<button id="resync-remote" ?disabled=${busy || !s.controllable || this.ctx?.free === false}
           title="Make the physical remotes run a full sync with the hub"
           @click=${() => this._resyncRemote(h.hub_id)}>Sync remote</button>` : nothing}
-        <button class="danger" ?disabled=${busy} @click=${() => this._act(h.hub_id, "remove")}>Remove</button>
+        <button class="danger" ?disabled=${busy} @click=${() => this._act(h.hub_id, "remove")}>Remove…</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
+        `}
       </div>
     `;
   }

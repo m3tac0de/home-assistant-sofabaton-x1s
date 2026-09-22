@@ -10148,6 +10148,7 @@ var HUB_PICKER_CSS = i`
   .picker-icon svg, .picker-manual-button svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .picker-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 12px; }
   .picker-actions button { min-height: 36px; font-size: 12px; }
+  .picker-confirm { flex: 1 0 100%; margin: 0 0 2px; font-size: 12px; line-height: 1.5; }
   .picker-seen { padding: 7px 10px 7px 14px; gap: 10px; min-height: 54px; }
   .picker-seen .menu-title { font-weight: 500; }
   .picker-seen .small { min-height: 36px; flex: 0 0 auto; color: var(--sbp-accent); }
@@ -10207,9 +10208,15 @@ function renderHubPicker(params) {
                     <button class="picker-icon" type="button" aria-label=${`Manage ${name}`} aria-expanded=${String(expanded)} @click=${() => params.onActions(hub.hub_id)}>${icon(mdiDotsHorizontal)}</button>
                   </div>
                   ${expanded ? b2`<div class="picker-actions" role="group" aria-label=${`Actions for ${name}`}>
-                    ${!hub.enabled || !hub.status ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : A}
-                    ${hub.enabled ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : A}
-                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Remove…</button>
+                    ${params.confirmRemoveHubId === hub.hub_id ? b2`
+                      <p class="picker-confirm" id="picker-remove-question">Remove <b>${name}</b>? The server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.</p>
+                      <button class="danger" id="picker-remove-confirm" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>${busy ? "Removing\u2026" : "Remove"}</button>
+                      <button ?disabled=${busy} @click=${() => params.onConfirmRemove(null)}>Cancel</button>
+                    ` : b2`
+                      ${!hub.enabled || !hub.status ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : A}
+                      ${hub.enabled ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : A}
+                      <button class="danger" ?disabled=${busy} @click=${() => params.onConfirmRemove(hub.hub_id)}>Remove…</button>
+                    `}
                   </div>` : A}
                 `;
   }) : b2`<p class="picker-empty">No hubs registered yet.</p>`}
@@ -12230,6 +12237,7 @@ var SofabatonServerPanel = class extends i4 {
     this._wifiDirty = false;
     this._pickerManual = false;
     this._pickerActionsHubId = null;
+    this._pickerConfirmRemove = null;
     this._pickerBusy = /* @__PURE__ */ new Set();
     this._pickerAdding = false;
     this._pickerScanning = false;
@@ -12381,6 +12389,7 @@ var SofabatonServerPanel = class extends i4 {
     if (this._pickerOpen) {
       this._pickerManual = false;
       this._pickerActionsHubId = null;
+      this._pickerConfirmRemove = null;
       this._pickerError = null;
       void this.store.refreshSeen();
       void this._scanPicker();
@@ -12407,9 +12416,10 @@ var SofabatonServerPanel = class extends i4 {
   async _pickerAct(hub, action) {
     const id = hub.hub_id;
     if (this._pickerBusy.has(id)) return;
-    if (action === "remove" && !confirm(`Remove ${hubDisplayName(hub)}?
-
-The server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
+    if (action === "remove" && this._pickerConfirmRemove !== id) {
+      this._pickerConfirmRemove = id;
+      return;
+    }
     this._pickerBusy = new Set(this._pickerBusy).add(id);
     this._pickerError = null;
     try {
@@ -12428,6 +12438,7 @@ The server stops its proxy and forgets its registration, cached state and web re
       const busy = new Set(this._pickerBusy);
       busy.delete(id);
       this._pickerBusy = busy;
+      if (action === "remove") this._pickerConfirmRemove = null;
     }
   }
   async _pickerAdd(body) {
@@ -12573,6 +12584,7 @@ The server stops its proxy and forgets its registration, cached state and web re
       open: this._pickerOpen,
       manual: this._pickerManual,
       actionsHubId: this._pickerActionsHubId,
+      confirmRemoveHubId: this._pickerConfirmRemove,
       busy: this._pickerBusy,
       adding: this._pickerAdding,
       scanning: this._pickerScanning,
@@ -12585,8 +12597,12 @@ The server stops its proxy and forgets its registration, cached state and web re
       },
       onActions: (hubId) => {
         this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId;
+        this._pickerConfirmRemove = null;
       },
       onAction: (hub, action) => void this._pickerAct(hub, action),
+      onConfirmRemove: (hubId) => {
+        this._pickerConfirmRemove = hubId;
+      },
       onAdd: (seen) => void this._pickerAdd({ ...seen.config, enabled: true }),
       onManual: (show) => void this._showManual(show),
       onSubmit: (event) => this._pickerSubmit(event),
@@ -12653,6 +12669,7 @@ SofabatonServerPanel.properties = {
   _wifiDirty: { state: true },
   _pickerManual: { state: true },
   _pickerActionsHubId: { state: true },
+  _pickerConfirmRemove: { state: true },
   _pickerBusy: { state: true },
   _pickerAdding: { state: true },
   _pickerScanning: { state: true },
@@ -17491,12 +17508,6 @@ function buildCatalog(devices, activities, snapshot) {
   const provenance = /* @__PURE__ */ new Map();
   for (const e6 of snapshot?.devices ?? []) provenance.set(entryKey("device", e6.device.device_id), e6);
   for (const e6 of snapshot?.activities ?? []) provenance.set(entryKey("activity", e6.device.device_id), e6);
-  const rank = (kind, id) => {
-    const index = ((kind === "device" ? snapshot?.devices : snapshot?.activities) ?? []).findIndex((e6) => e6.device.device_id === id);
-    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
-  };
-  devices = [...devices].sort((x2, y3) => rank("device", x2.device_id) - rank("device", y3.device_id));
-  activities = [...activities].sort((x2, y3) => rank("activity", x2.activity_id) - rank("activity", y3.activity_id));
   const entries = [];
   for (const d3 of devices) {
     const p4 = provenance.get(entryKey("device", d3.device_id));
@@ -22136,12 +22147,14 @@ var SbPanelHubs = class extends i4 {
     this.hubs = [];
     this.hub = null;
     this._busy = /* @__PURE__ */ new Set();
+    this._confirmRemove = null;
     this._firmware = "Not yet known";
     this._infoKey = "";
     this._infoSeq = 0;
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+    if (this._confirmRemove !== null && this._confirmRemove !== this.hub?.hub_id) this._confirmRemove = null;
     const h6 = this.hub;
     const key = h6 ? `${h6.hub_id}:${h6.enabled}:${Boolean(h6.status)}:${Boolean(h6.status?.hub_connected)}` : "";
     if (key !== this._infoKey || changed.has("api")) {
@@ -22170,9 +22183,8 @@ var SbPanelHubs = class extends i4 {
   // -- lifecycle actions ------------------------------------------------------
   async _act(hubId, action) {
     if (this._busy.has(hubId)) return;
-    if (action === "remove" && !confirm(`Remove hub ${hubId}?
-
-The server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.`)) {
+    if (action === "remove" && this._confirmRemove !== hubId) {
+      this._confirmRemove = hubId;
       return;
     }
     const record = this.hubs.find((h6) => h6.hub_id === hubId) ?? null;
@@ -22187,6 +22199,7 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
       const busy = new Set(this._busy);
       busy.delete(hubId);
       this._busy = busy;
+      if (action === "remove") this._confirmRemove = null;
     }
     this._emit("sb-hubs-changed");
   }
@@ -22236,15 +22249,23 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
       <div class="headline"><span class="dot ${tone}"></span><span class="title">${hubDisplayName(h6)}</span><span class="id mono">${h6.config.name ? h6.hub_id : ""}</span></div>
       <dl class="facts">${facts.map(([k2, v3]) => b2`<div><dt>${k2}</dt><dd>${v3}</dd></div>`)}</dl>
       <div class="actions" id="hub-actions">
+        ${this._confirmRemove === h6.hub_id ? b2`
+          <p class="confirm" id="remove-question">Remove <b>${hubDisplayName(h6)}</b>? The server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.</p>
+          <button class="danger" id="remove-confirm" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>${busy ? "Removing\u2026" : "Remove"}</button>
+          <button ?disabled=${busy} @click=${() => {
+      this._confirmRemove = null;
+    }}>Cancel</button>
+        ` : b2`
         ${!h6.enabled ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Enable</button>` : A}
         ${h6.enabled && !s7 ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Retry start</button>` : A}
         ${h6.enabled ? b2`<button ?disabled=${busy} @click=${() => this._act(h6.hub_id, "disable")}>Disable</button>` : A}
         ${h6.enabled && s7 ? b2`<button id="resync-remote" ?disabled=${busy || !s7.controllable || this.ctx?.free === false}
           title="Make the physical remotes run a full sync with the hub"
           @click=${() => this._resyncRemote(h6.hub_id)}>Sync remote</button>` : A}
-        <button class="danger" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>Remove</button>
+        <button class="danger" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>Remove…</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
+        `}
       </div>
     `;
   }
@@ -22255,6 +22276,7 @@ SbPanelHubs.properties = {
   hubs: { attribute: false },
   hub: { attribute: false },
   _busy: { state: true },
+  _confirmRemove: { state: true },
   _firmware: { state: true }
 };
 SbPanelHubs.styles = [
@@ -22268,6 +22290,7 @@ SbPanelHubs.styles = [
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .confirm { flex: 1 0 100%; margin: 0 0 4px; font-size: 13px; line-height: 1.5; }
     `
 ];
 function defineHubsView() {

@@ -1228,7 +1228,7 @@ def test_devices_project_power_state_from_stored_record() -> None:
     asyncio.run(main())
 
 
-def test_activities_carry_flags_and_sort_by_id() -> None:
+def test_activities_carry_flags_and_fall_back_to_id_order() -> None:
     async def main():
         fake = FakeProxy()
         fake.make_activities_ready({
@@ -1237,9 +1237,42 @@ def test_activities_carry_flags_and_sort_by_id() -> None:
         })
         proxy = _wrap(fake)
         acts = await proxy.activities()
+        # No stored sort byte anywhere: id order, as before.
         assert [a.activity_id for a in acts] == [101, 102]
         assert acts[1] == models.Activity(activity_id=102, name="Music", active=True, needs_confirm=True)
-        assert acts[0].to_dict() == {"activity_id": 101, "name": "TV", "active": False, "needs_confirm": False}
+        assert acts[0].to_dict() == {
+            "activity_id": 101, "name": "TV", "active": False, "needs_confirm": False, "sort": 0,
+        }
+
+    asyncio.run(main())
+
+
+def test_catalog_lists_follow_the_hub_display_order() -> None:
+    # The lists come out as the physical remote and the app show them:
+    # the record's sort byte (body[6]) first, rows without a stored order
+    # after them by id. The HA card's lists use the same rule; the REST
+    # lists and the web remote read these, so they now match it.
+    async def main():
+        fake = FakeProxy()
+        fake.hub_version = None  # no power projection in this test
+        body = lambda sort: bytes([0, 0, 0, 0, 0, 0, sort, 0])
+        fake.make_activities_ready({
+            101: {"name": "TV", "raw_body": body(2)},
+            102: {"name": "Music", "raw_body": body(1)},
+            103: {"name": "New"},
+        })
+        fake._ready["devices"] = {
+            5: {"name": "TV", "raw_body": body(3)},
+            6: {"name": "Amp", "raw_body": body(1)},
+            7: {"name": "Lamp", "raw_body": b"\x00"},  # too short for a sort byte
+            8: {"name": "Fan", "raw_body": body(2)},
+        }
+        proxy = _wrap(fake)
+        acts = await proxy.activities()
+        assert [(a.activity_id, a.sort) for a in acts] == [(102, 1), (101, 2), (103, 0)]
+        devs = await proxy.devices()
+        assert [(d.device_id, d.sort) for d in devs] == [(6, 1), (8, 2), (5, 3), (7, 0)]
+        assert devs[0].to_dict()["sort"] == 1
 
     asyncio.run(main())
 

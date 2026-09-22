@@ -344,7 +344,10 @@ For an executable refresh/preview/apply workflow, see
 Catalog reads (`.../activities`, `.../devices`, `.../devices/{did}/commands`,
 `.../entities/{eid}/buttons`, `.../activities/{aid}/macros` and `/favorites`)
 serve cached data when available and fetch missing detail when needed;
-an uncached read therefore requires control mode. `GET .../devices?refresh=true`
+an uncached read therefore requires control mode. `.../activities` and
+`.../devices` list in the hub's display order (what `PUT .../order` writes,
+as the remote and the app show it), each row carrying that position as
+`sort` (`0` when the record has none). `GET .../devices?refresh=true`
 re-reads the device list. `GET .../devices/{did}/power-state` is the one
 read that always goes to the hub: it re-reads the list and returns that
 device's power byte (`0` / `1`, `null` when the row has no parseable

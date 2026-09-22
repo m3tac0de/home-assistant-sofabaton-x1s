@@ -433,17 +433,16 @@ test.describe("control panel, hubs", () => {
     await expect(msg(page)).toHaveText("192.168.1.60: enabled");
     await expect(detail(page)).toContainText("connected, in control");
 
-    // Playwright dismisses dialogs unless a handler accepts them: the
-    // first Remove is cancelled and nothing is sent.
-    await actions(page).getByRole("button", { name: "Remove" }).click();
-    await page.waitForTimeout(200);
+    // Remove asks inline (no native dialog: a suppressed one answers
+    // "cancel" silently); Cancel sends nothing and restores the actions.
+    await actions(page).getByRole("button", { name: "Remove…" }).click();
+    await expect(page.locator("#remove-question")).toContainText("Remove 192.168.1.60?");
+    await actions(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(page.locator("#remove-question")).toHaveCount(0);
     expect(calls.some((c) => c.key === "DELETE /hubs/192.168.1.60")).toBe(false);
 
-    page.once("dialog", (dialog) => {
-      expect(dialog.message()).toContain("Remove hub 192.168.1.60?");
-      dialog.accept();
-    });
-    await actions(page).getByRole("button", { name: "Remove" }).click();
+    await actions(page).getByRole("button", { name: "Remove…" }).click();
+    await page.locator("#remove-confirm").click();
     await expect.poll(() => calls.some((c) => c.key === "DELETE /hubs/192.168.1.60")).toBe(true);
     await expect(msg(page)).toHaveText("192.168.1.60: removed");
     // The selection falls back to the remaining hub; its picker stays interactive.
@@ -1997,13 +1996,16 @@ test.describe("control panel, integrated picker", () => {
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
     await controls.getByRole("button", { name: "Disable", exact: true }).click();
     await expect(controls.getByRole("button", { name: "Enable", exact: true })).toBeEnabled();
+    // Remove asks inline, never through a native confirm(): a suppressed
+    // dialog (embedded panes, kiosk browsers) answers "cancel" silently.
     await controls.getByRole("button", { name: "Remove…", exact: true }).click();
+    await expect(page.locator("#picker-remove-question")).toContainText("cached state and web remote layout");
+    await controls.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.locator("#picker-remove-question")).toHaveCount(0);
+    await expect(controls.getByRole("button", { name: "Enable", exact: true })).toBeVisible();
     expect(calls.some((c) => c.key === `DELETE /hubs/${OFFICE.hub_id}`)).toBe(false);
-    page.once("dialog", (dialog) => {
-      expect(dialog.message()).toContain("cached state and web remote layout");
-      dialog.accept();
-    });
     await controls.getByRole("button", { name: "Remove…", exact: true }).click();
+    await page.locator("#picker-remove-confirm").click();
     await expect(options(page)).toHaveCount(1);
     // The stale registered_hub_id does not hide a newly unregistered advertisement.
     await expect(page.locator(".picker-seen")).toContainText("Office");

@@ -233,6 +233,8 @@ export interface Device {
   device_class_code: number | null;
   power_state: number | null;
   idle_behavior: number | null;
+  /** The hub's stored display position (0 = none); the list already comes in that order. */
+  sort: number;
 }
 
 export interface Command {
@@ -245,6 +247,8 @@ export interface Activity {
   name: string;
   active: boolean;
   needs_confirm: boolean;
+  /** The hub's stored display position (0 = none); the list already comes in that order. */
+  sort: number;
 }
 
 export interface Button {
