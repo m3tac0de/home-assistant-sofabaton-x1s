@@ -236,8 +236,10 @@ test.describe("control panel, responsive docks", () => {
       expect(await status.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       expect(await status.evaluate((el) => getComputedStyle(el).whiteSpace)).not.toBe("nowrap");
       await expect.poll(() => page.locator(".page").evaluate((el) => {
+        // The dock's height is reserved, plus the same gap the subtab row keeps under the top dock.
         const dock = el.querySelector("#bottom-dock");
-        return parseFloat(getComputedStyle(el).paddingBottom) >= dock.getBoundingClientRect().height + 15;
+        const gap = parseFloat(getComputedStyle(el.querySelector("#subtabs")).marginTop);
+        return gap > 0 && Math.abs(parseFloat(getComputedStyle(el).paddingBottom) - (dock.getBoundingClientRect().height + gap)) < 1;
       })).toBe(true);
 
       await page.mouse.move(0, 400);
@@ -1830,7 +1832,8 @@ test.describe("control panel, views", () => {
     await page.locator("#change-order").click();
     await expect(page.locator(".cache-reorder-hint")).toHaveText("Drag activities into the desired order, then sync to the hub.");
     await expect(page.locator("#catalog-footer .cache-footer-btn")).toHaveText(["Sync to Hub", "Cancel"]);
-    await expect(rows.nth(0).locator(".entity-edit")).toHaveCount(0);
+    await expect(rows.nth(0).locator(".entity-edit")).toBeDisabled();
+    await expect(rows.nth(0).locator(".entity-refresh")).toBeDisabled();
     await expect(page.locator("#catalog-refresh-all")).toBeDisabled();
     await rows.nth(0).focus();
     await page.keyboard.press("ArrowDown");
@@ -2366,6 +2369,55 @@ test.describe("control panel, backup", () => {
     await expect(page.locator("sb-panel-backup #backup-start")).toBeVisible();
     await expect(page.locator("sb-panel-backup #backup-complete")).toHaveCount(0);
     expect(calls.some((c) => c.key === "GET /hubs")).toBe(true);
+  });
+
+  test("every section fits between the docks: only the list scrolls, the action button stays on screen", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1000, height: 620 });
+    const long = bundle();
+    long.devices = Array.from({ length: 14 }, (_, i) => ({ ...long.devices[0], device: { ...long.devices[0].device, device_id: i + 1, name: `Device ${i + 1}` } }));
+    long.activities = Array.from({ length: 5 }, (_, i) => ({ ...long.activities[0], device: { ...long.activities[0].device, device_id: 101 + i, name: `Activity ${i + 1}` } }));
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.route(`${HUB}/snapshot`, (route) => json(route, 200, { snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, payload_profile: "structural", ...long, complete: true }));
+    await page.route(`${HUB}/jobs`, (route) => json(route, 200, []));
+    const view = page.locator("sb-panel-backup");
+    const fit = (buttonId) => view.evaluate((host, id) => {
+      const button = host.shadowRoot.getElementById(id).getBoundingClientRect();
+      const card = host.shadowRoot.querySelector(".selection-card");
+      const dock = document.querySelector("sofabaton-server-panel").shadowRoot.getElementById("bottom-dock");
+      return {
+        buttonAboveDock: button.bottom <= dock.getBoundingClientRect().top,
+        listScrolls: card.scrollHeight > card.clientHeight,
+        pageScrolls: document.scrollingElement.scrollHeight > window.innerHeight + 1,
+      };
+    }, buttonId);
+    const expected = { buttonAboveDock: true, listScrolls: true, pageScrolls: false };
+    // As on the card: scrolled part-way into the activities, their group header stays pinned to the top of the list.
+    const headerPinned = () => view.evaluate((host) => {
+      const card = host.shadowRoot.querySelector(".selection-card");
+      card.scrollTop = 60;
+      const header = card.querySelector(".selection-group-header");
+      return Math.abs(header.getBoundingClientRect().top - card.getBoundingClientRect().top - card.clientTop) < 1;
+    });
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/make`);
+    await view.locator(".compat-radio-option", { hasText: "Selected devices" }).click();
+    await expect(view.locator("#backup-device-list .selection-row")).toHaveCount(14);
+    expect(await fit("backup-start")).toEqual(expected);
+    await page.screenshot({ path: shot(testInfo, "backup-fit-make") });
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/edit`);
+    await view.locator("#edit-file-input").setInputFiles(asFile("long.json", long));
+    await expect(view.locator("#edit-list .edit-selection-row")).toHaveCount(19);
+    expect(await fit("edit-download")).toEqual(expected);
+    expect(await headerPinned()).toBe(true);
+    await page.screenshot({ path: shot(testInfo, "backup-fit-edit") });
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/restore`);
+    await view.locator("#restore-file-input").setInputFiles(asFile("long.json", long));
+    await expect(view.locator("#restore-list .selection-row")).toHaveCount(19);
+    expect(await fit("restore-start")).toEqual(expected);
+    expect(await headerPinned()).toBe(true);
+    await page.screenshot({ path: shot(testInfo, "backup-fit-restore") });
   });
 
   test("Make: a finished backup is picked up after a reload while its bundle is staged, and a failure is said in place", async ({ page }) => {

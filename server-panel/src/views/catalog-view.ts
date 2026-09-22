@@ -308,6 +308,7 @@ export class SbPanelCatalog extends LitElement {
       .entity-block--reorder .entity-summary { cursor: inherit; }
       .entity-block--reorder .entity-summary:hover { background: transparent; }
       .entity-block--reorder .entity-name-icon { color: var(--sbp-accent); }
+      .entity-block--reorder .entity-meta .icon-btn, .entity-block--reorder .entity-chevron { pointer-events: none; }
       .entity-block--reorder:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
       .entity-block.is-shifting { transition: transform 150ms ease; }
       .entity-block.is-dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
@@ -792,7 +793,12 @@ export class SbPanelCatalog extends LitElement {
           <span class="entity-name-icon">${icon(mdiDragVerticalVariant)}</span>
           <span class="entity-name-copy"><span class="entity-name-label">${e.name}</span><span class="entity-count">${count}</span></span>
         </span>
-        <span class="entity-meta">${badge(DEV_ID_BADGE, e.id)}</span>
+        <span class="entity-meta">
+          ${badge(DEV_ID_BADGE, e.id)}
+          <button class="icon-btn entity-edit" type="button" disabled tabindex="-1" aria-hidden="true">${icon(mdiWrench)}</button>
+          <button class="icon-btn entity-refresh" type="button" disabled tabindex="-1" aria-hidden="true">${icon(mdiRefresh)}</button>
+          <span class="entity-chevron">▼</span>
+        </span>
       </div>
     </div>`;
   }

@@ -65,8 +65,10 @@ export class SofabatonServerPanel extends LitElement {
       .page {
         --dock-surface: linear-gradient(180deg, color-mix(in srgb, var(--sbp-accent) 8%, var(--sbp-panel)), color-mix(in srgb, var(--sbp-accent) 4%, var(--sbp-panel)));
         --page-gutter: 16px;
+        /* The space above the subtab row and under the view: the same on both sides, so the panel sits evenly between the docks. */
+        --view-gap: 10px;
         max-width: 1040px; min-height: 100dvh; margin: 0 auto;
-        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + 16px);
+        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + var(--view-gap));
       }
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
@@ -109,7 +111,11 @@ export class SofabatonServerPanel extends LitElement {
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
-      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: 10px var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
+      /* The block space the shell adds around a view's content between the docks: the stage's padding, the view's
+         bottom border, and the page's padding over the bottom dock. A view that fits itself between the docks (the
+         Backup tab) subtracts it; keep it in step with those rules. */
+      .page { --view-chrome-block: calc(12px + 16px + 1px + var(--view-gap)); }
+      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: var(--view-gap) var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
       .subtabs::-webkit-scrollbar { display: none; }
       .subtab-btn { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 16px; border: 0; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 86%, transparent); border-radius: 0; background: transparent; color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
       .subtab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -120,7 +126,8 @@ export class SofabatonServerPanel extends LitElement {
       .subtab-btn.active { color: var(--sbp-text); background: transparent; box-shadow: inset 0 -3px 0 var(--sbp-accent); }
 
       /* -- the view and its scrim ------------------------------------------- */
-      .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
+      /* The view reaches down to the bottom dock's gap even when its content is short, as the card does in HA. */
+      .view { position: relative; margin: 0 var(--connected-inline); min-height: max(40vh, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-gap))); border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
       /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
       .stage[inert] { opacity: 0.5; pointer-events: none; }
@@ -172,14 +179,14 @@ export class SofabatonServerPanel extends LitElement {
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
         .brand-caption { display: none; }
-        .page { --page-gutter: 12px; }
+        .page { --page-gutter: 12px; --view-gap: 7px; }
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
         .hub-picker-btn { min-height: 40px; padding-inline: 9px; }
         .tab-btn { padding-inline: 6px; }
         .tabs-scroll { gap: 0; }
         .page { --connected-inline: 12px; }
-        .subtabs { min-height: 34px; margin-top: 7px; }
+        .subtabs { min-height: 34px; }
         /* Narrow: the label gets every pixel, as on the card; the icon is decorative. */
         .subtab-icon { display: none; }
         .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
@@ -191,6 +198,7 @@ export class SofabatonServerPanel extends LitElement {
         .dock:has(.dock-actions) .dock-right { justify-content: space-between; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
+        .page { --view-chrome-block: calc(12px + 12px + 12px + 1px + var(--view-gap)); }
       }
     `,
     HUB_PICKER_CSS,

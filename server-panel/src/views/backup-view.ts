@@ -125,8 +125,14 @@ export class SbPanelBackup extends LitElement {
       :host { display: block; container-type: inline-size; --bk-radius-sm: 10px; --bk-radius-md: 12px; --bk-radius-xl: 22px; }
       .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
       input[type="file"] { display: none; }
-      .backup-body, .restore-body, .edit-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      /* The view fits between the docks, as the card does in HA: only the list card gives up height (and scrolls), so the
+         action buttons under it stay on screen. Below the floor the page scrolls instead of squeezing the list away. */
+      .backup-panel { display: flex; flex-direction: column; max-height: max(300px, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-chrome-block, 0px))); }
+      .backup-body, .restore-body, .edit-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; flex: 0 1 auto; min-height: 0; }
       .backup-config-view, .restore-config-view, .edit-config-view { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      .backup-body > *, .restore-body > *, .edit-body > *, .backup-config-view > *, .restore-config-view > *, .edit-config-view > * { flex: 0 0 auto; }
+      .backup-body > .backup-config-view, .restore-body > .restore-config-view, .edit-body > .edit-config-view,
+      .backup-config-view > .selection-card, .restore-config-view > .selection-card, .edit-config-view > .selection-card { flex: 0 1 auto; min-height: 0; }
       .backup-drawer-sub { color: var(--sbp-muted); font-size: 13px; line-height: 1.5; }
       .backup-section-title { color: var(--sbp-text); font-size: 13px; font-weight: 700; }
 
@@ -147,10 +153,10 @@ export class SbPanelBackup extends LitElement {
       .backup-selected-count { color: var(--sbp-accent); font-size: 12px; font-weight: 700; }
       button.backup-link-btn { border: none; background: transparent; color: var(--sbp-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
       button.backup-link-btn:disabled { opacity: 0.48; cursor: default; }
-      .selection-card { border: 1px solid var(--sbp-line); border-radius: var(--bk-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 72%, transparent); overflow: hidden; min-width: 0; }
+      .selection-card { border: 1px solid var(--sbp-line); border-radius: var(--bk-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 72%, transparent); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; min-width: 0; }
       .selection-list { display: flex; flex-direction: column; }
       .selection-empty { padding: 16px 14px; font-size: 13px; color: var(--sbp-muted); }
-      .selection-group-header { display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 94%, white 6%); border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
+      .selection-group-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 94%, white 6%); border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
       .selection-group-header:first-child { border-top: none; }
       .selection-row { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); cursor: pointer; min-width: 0; }
       .selection-row:first-child { border-top: none; }
@@ -284,6 +290,8 @@ export class SbPanelBackup extends LitElement {
       () => this.requestUpdate(),
       (from, to) => this._moveTopLevel(kind, from, to),
       () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0,
+      () => 0,
+      () => this.renderRoot.querySelector<HTMLElement>("#edit-list")?.closest<HTMLElement>(".selection-card") ?? null,
     );
   }
 

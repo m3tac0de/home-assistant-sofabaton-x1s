@@ -12682,8 +12682,10 @@ SofabatonServerPanel.styles = [
       .page {
         --dock-surface: linear-gradient(180deg, color-mix(in srgb, var(--sbp-accent) 8%, var(--sbp-panel)), color-mix(in srgb, var(--sbp-accent) 4%, var(--sbp-panel)));
         --page-gutter: 16px;
+        /* The space above the subtab row and under the view: the same on both sides, so the panel sits evenly between the docks. */
+        --view-gap: 10px;
         max-width: 1040px; min-height: 100dvh; margin: 0 auto;
-        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + 16px);
+        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + var(--view-gap));
       }
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
@@ -12726,7 +12728,11 @@ SofabatonServerPanel.styles = [
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
-      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: 10px var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
+      /* The block space the shell adds around a view's content between the docks: the stage's padding, the view's
+         bottom border, and the page's padding over the bottom dock. A view that fits itself between the docks (the
+         Backup tab) subtracts it; keep it in step with those rules. */
+      .page { --view-chrome-block: calc(12px + 16px + 1px + var(--view-gap)); }
+      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: var(--view-gap) var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
       .subtabs::-webkit-scrollbar { display: none; }
       .subtab-btn { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 16px; border: 0; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 86%, transparent); border-radius: 0; background: transparent; color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
       .subtab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -12737,7 +12743,8 @@ SofabatonServerPanel.styles = [
       .subtab-btn.active { color: var(--sbp-text); background: transparent; box-shadow: inset 0 -3px 0 var(--sbp-accent); }
 
       /* -- the view and its scrim ------------------------------------------- */
-      .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
+      /* The view reaches down to the bottom dock's gap even when its content is short, as the card does in HA. */
+      .view { position: relative; margin: 0 var(--connected-inline); min-height: max(40vh, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-gap))); border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
       /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
       .stage[inert] { opacity: 0.5; pointer-events: none; }
@@ -12789,14 +12796,14 @@ SofabatonServerPanel.styles = [
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
         .brand-caption { display: none; }
-        .page { --page-gutter: 12px; }
+        .page { --page-gutter: 12px; --view-gap: 7px; }
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
         .hub-picker-btn { min-height: 40px; padding-inline: 9px; }
         .tab-btn { padding-inline: 6px; }
         .tabs-scroll { gap: 0; }
         .page { --connected-inline: 12px; }
-        .subtabs { min-height: 34px; margin-top: 7px; }
+        .subtabs { min-height: 34px; }
         /* Narrow: the label gets every pixel, as on the card; the icon is decorative. */
         .subtab-icon { display: none; }
         .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
@@ -12808,6 +12815,7 @@ SofabatonServerPanel.styles = [
         .dock:has(.dock-actions) .dock-right { justify-content: space-between; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
+        .page { --view-chrome-block: calc(12px + 12px + 12px + 1px + var(--view-gap)); }
       }
     `,
   HUB_PICKER_CSS
@@ -16327,14 +16335,24 @@ function jobStepMessage(job) {
 
 // server-panel/src/pointer-reorder.ts
 var PointerReorder = class {
-  constructor(rows, changed, moved, top = () => 0, gap = () => 0) {
+  constructor(rows, changed, moved, top = () => 0, gap = () => 0, scroller = () => null) {
     this.rows = rows;
     this.changed = changed;
     this.moved = moved;
     this.top = top;
     this.gap = gap;
+    this.scroller = scroller;
     this.state = null;
     this.handle = null;
+  }
+  scrollPos() {
+    const box = this.scroller();
+    return box ? box.scrollTop : window.scrollY;
+  }
+  /** The dragged row's offset: the pointer's travel plus what the rows scrolled under it since the start. */
+  dyAt(clientY) {
+    const drag = this.state;
+    return clientY - drag.startY + this.scrollPos() - drag.startScroll;
   }
   start(event, index) {
     if (event.button !== 0 || this.state) return;
@@ -16344,16 +16362,21 @@ var PointerReorder = class {
     this.handle = event.currentTarget;
     this.handle.setPointerCapture(event.pointerId);
     window.getSelection()?.removeAllRanges();
-    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
+    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY, startScroll: this.scrollPos() };
     this.changed();
   }
   move(event) {
     const drag = this.state;
     if (!drag || event.pointerId !== drag.pointerId) return;
     event.preventDefault();
-    if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
+    const box = this.scroller();
+    if (box) {
+      const rect = box.getBoundingClientRect();
+      if (event.clientY < rect.top + 32) box.scrollTop -= 10;
+      else if (event.clientY > rect.bottom - 32) box.scrollTop += 10;
+    } else if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
     else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
-    this.state = { ...drag, over: this.slot(event.clientY), dy: event.clientY - drag.startY };
+    this.state = { ...drag, over: this.slot(event.clientY), dy: this.dyAt(event.clientY) };
     this.changed();
   }
   offset(index) {
@@ -16375,7 +16398,7 @@ var PointerReorder = class {
     };
     const own = rects[drag.from];
     if (!own) return drag.from;
-    const centre = own.top - offset(drag.from) + own.height / 2 + clientY - drag.startY;
+    const centre = own.top - offset(drag.from) + own.height / 2 + this.dyAt(clientY);
     let over = drag.from;
     rects.forEach((rect, index) => {
       const mid = rect.top - offset(index) + rect.height / 2;
@@ -16753,7 +16776,9 @@ var SbPanelBackup = class extends i4 {
       () => Array.from(this.renderRoot.querySelectorAll(`.edit-selection-row[data-kind="${kind}"]`)),
       () => this.requestUpdate(),
       (from, to) => this._moveTopLevel(kind, from, to),
-      () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0
+      () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0,
+      () => 0,
+      () => this.renderRoot.querySelector("#edit-list")?.closest(".selection-card") ?? null
     );
   }
   // -- lifecycle ---------------------------------------------------------------------------------------
@@ -17357,8 +17382,14 @@ SbPanelBackup.styles = [
       :host { display: block; container-type: inline-size; --bk-radius-sm: 10px; --bk-radius-md: 12px; --bk-radius-xl: 22px; }
       .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
       input[type="file"] { display: none; }
-      .backup-body, .restore-body, .edit-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      /* The view fits between the docks, as the card does in HA: only the list card gives up height (and scrolls), so the
+         action buttons under it stay on screen. Below the floor the page scrolls instead of squeezing the list away. */
+      .backup-panel { display: flex; flex-direction: column; max-height: max(300px, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-chrome-block, 0px))); }
+      .backup-body, .restore-body, .edit-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; flex: 0 1 auto; min-height: 0; }
       .backup-config-view, .restore-config-view, .edit-config-view { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      .backup-body > *, .restore-body > *, .edit-body > *, .backup-config-view > *, .restore-config-view > *, .edit-config-view > * { flex: 0 0 auto; }
+      .backup-body > .backup-config-view, .restore-body > .restore-config-view, .edit-body > .edit-config-view,
+      .backup-config-view > .selection-card, .restore-config-view > .selection-card, .edit-config-view > .selection-card { flex: 0 1 auto; min-height: 0; }
       .backup-drawer-sub { color: var(--sbp-muted); font-size: 13px; line-height: 1.5; }
       .backup-section-title { color: var(--sbp-text); font-size: 13px; font-weight: 700; }
 
@@ -17379,10 +17410,10 @@ SbPanelBackup.styles = [
       .backup-selected-count { color: var(--sbp-accent); font-size: 12px; font-weight: 700; }
       button.backup-link-btn { border: none; background: transparent; color: var(--sbp-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
       button.backup-link-btn:disabled { opacity: 0.48; cursor: default; }
-      .selection-card { border: 1px solid var(--sbp-line); border-radius: var(--bk-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 72%, transparent); overflow: hidden; min-width: 0; }
+      .selection-card { border: 1px solid var(--sbp-line); border-radius: var(--bk-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 72%, transparent); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; min-width: 0; }
       .selection-list { display: flex; flex-direction: column; }
       .selection-empty { padding: 16px 14px; font-size: 13px; color: var(--sbp-muted); }
-      .selection-group-header { display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 94%, white 6%); border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
+      .selection-group-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 94%, white 6%); border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
       .selection-group-header:first-child { border-top: none; }
       .selection-row { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); cursor: pointer; min-width: 0; }
       .selection-row:first-child { border-top: none; }
@@ -17991,7 +18022,12 @@ var SbPanelCatalog = class extends i4 {
           <span class="entity-name-icon">${icon3(mdiDragVerticalVariant)}</span>
           <span class="entity-name-copy"><span class="entity-name-label">${e6.name}</span><span class="entity-count">${count}</span></span>
         </span>
-        <span class="entity-meta">${badge(DEV_ID_BADGE, e6.id)}</span>
+        <span class="entity-meta">
+          ${badge(DEV_ID_BADGE, e6.id)}
+          <button class="icon-btn entity-edit" type="button" disabled tabindex="-1" aria-hidden="true">${icon3(mdiWrench)}</button>
+          <button class="icon-btn entity-refresh" type="button" disabled tabindex="-1" aria-hidden="true">${icon3(mdiRefresh)}</button>
+          <span class="entity-chevron">▼</span>
+        </span>
       </div>
     </div>`;
   }
@@ -18158,6 +18194,7 @@ SbPanelCatalog.styles = [
       .entity-block--reorder .entity-summary { cursor: inherit; }
       .entity-block--reorder .entity-summary:hover { background: transparent; }
       .entity-block--reorder .entity-name-icon { color: var(--sbp-accent); }
+      .entity-block--reorder .entity-meta .icon-btn, .entity-block--reorder .entity-chevron { pointer-events: none; }
       .entity-block--reorder:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
       .entity-block.is-shifting { transition: transform 150ms ease; }
       .entity-block.is-dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
