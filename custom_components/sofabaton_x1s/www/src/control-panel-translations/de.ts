@@ -122,6 +122,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     entityStepActivityRename: "Aktivität wird umbenannt…", entityStepBindingDelete: "Tastenbelegung wird entfernt…", entityStepBindingWrite: "Tastenbelegungen werden geschrieben…",
     entityStepCommandAdd: (id: number | null) => (id == null ? "Befehl wird hinzugefügt…" : `Befehl wird auf Gerät ${id} hinzugefügt…`),
     entityStepCommandDelete: (id: number | null) => (id == null ? "Befehl wird entfernt…" : `Befehl wird auf Gerät ${id} entfernt…`),
+    entityStepCommandSortRewrite: (id: number | null) => (id == null ? "Befehlsreihenfolge wird aktualisiert…" : `Befehlsreihenfolge auf Gerät ${id} wird aktualisiert…`),
     entityStepCommandPayload: (id: number | null) => (id == null ? "Befehl wird aktualisiert…" : `Befehl wird auf Gerät ${id} aktualisiert…`),
     entityStepCommandRename: (id: number | null) => (id == null ? "Befehl wird umbenannt…" : `Befehl wird auf Gerät ${id} umbenannt…`),
     entityStepDeviceIp: "IP-Adresse wird aktualisiert…", entityStepDeviceRename: "Gerät wird umbenannt…",

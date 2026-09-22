@@ -1,12 +1,9 @@
-// The Hubs view (docs/internal/server-panel-plan.md, decision 6): the
-// selected hub's detail with its lifecycle actions, registration by
-// address, and the hubs discovered on the LAN. Talks to the server
-// through the PanelApi it is given and reports back through events the
-// shell listens to: sb-message, sb-hubs-changed, sb-select-hub, sb-open-view.
+// Hub settings retains the selected hub details and lifecycle actions.
+// Discovery and registration live in the top-dock hub picker.
+import { LitElement, html, nothing, css, type PropertyValues, type TemplateResult } from "lit";
 
-import { LitElement, html, nothing, css, type TemplateResult } from "lit";
-
-import { problemText, type HubCreate, type HubView, type PanelApi, type SeenHub } from "../panel-api";
+import { problemText, type HubView, type PanelApi } from "../panel-api";
+import type { HubContext } from "../panel-context";
 import { actionOutcome, formatWhen, hubDisplayName, hubState } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
@@ -17,12 +14,11 @@ type LifecycleAction = "enable" | "disable" | "remove";
 export class SbPanelHubs extends LitElement {
   static properties = {
     api: { attribute: false },
+    ctx: { attribute: false },
     hubs: { attribute: false },
     hub: { attribute: false },
-    seen: { attribute: false },
     _busy: { state: true },
-    _scanning: { state: true },
-    _adding: { state: true },
+    _firmware: { state: true },
   };
 
   static styles = [
@@ -36,23 +32,40 @@ export class SbPanelHubs extends LitElement {
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      form .row { max-width: 720px; }
     `,
   ];
 
   api!: PanelApi;
+  ctx: HubContext | null = null;
   hubs: HubView[] = [];
   hub: HubView | null = null;
-  seen: SeenHub[] = [];
   private _busy = new Set<string>();
-  private _scanning = false;
-  private _adding = false;
+  private _firmware = "Not yet known";
+  private _infoKey = "";
+  private _infoSeq = 0;
 
-  /** Focus the address field (the sidebar's "Add a hub" lands here). */
-  focusAddress(): void {
-    const input = this.renderRoot.querySelector<HTMLInputElement>("#add-host");
-    input?.focus();
-    input?.scrollIntoView({ block: "center" });
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+    const h = this.hub;
+    const key = h ? `${h.hub_id}:${h.enabled}:${Boolean(h.status)}:${Boolean(h.status?.hub_connected)}` : "";
+    if (key !== this._infoKey || changed.has("api")) {
+      this._infoKey = key;
+      const seq = ++this._infoSeq;
+      this._firmware = h?.enabled && h.status ? "Loading…" : "Not available";
+      if (h?.enabled && h.status && this.api) void this._loadFirmware(h.hub_id, seq);
+    }
+  }
+
+  private async _loadFirmware(hubId: string, seq: number): Promise<void> {
+    try {
+      const response = await this.api.hubInfo(hubId);
+      if (seq !== this._infoSeq) return;
+      const info = response.ok ? response.body : null;
+      this._firmware = info?.known && info.firmware_version != null
+        ? `v${info.firmware_version}` : response.ok ? "Not yet known" : "Not available";
+    } catch {
+      if (seq === this._infoSeq) this._firmware = "Not available";
+    }
   }
 
   private _emit(name: string, detail?: unknown): void {
@@ -90,125 +103,31 @@ export class SbPanelHubs extends LitElement {
     this._emit("sb-hubs-changed");
   }
 
-  private async _add(body: HubCreate): Promise<void> {
-    if (this._adding) return;
-    this._adding = true;
+  // The hub pushes writes to its remotes on its own; this is the manual
+  // trigger for a remote that missed them (the HA card's "Sync Remote").
+  private async _resyncRemote(hubId: string): Promise<void> {
+    if (this._busy.has(hubId)) return;
+    this._busy = new Set(this._busy).add(hubId);
     try {
-      const response = await this.api.addHub(body);
-      if (response.status === 201 && response.body) {
-        this._message(`added ${response.body.hub_id}${response.body.enabled ? "" : " (disabled)"}`);
-        this._emit("sb-select-hub", { hubId: response.body.hub_id });
-        const host = this.renderRoot.querySelector<HTMLInputElement>("#add-host");
-        const name = this.renderRoot.querySelector<HTMLInputElement>("#add-name");
-        if (host) host.value = "";
-        if (name) name.value = "";
-      } else if (response.status === 503) {
-        // The record was kept; select it so "Retry start" is in view.
-        const problem = response.body as { hub_id?: string | null; detail?: string | null } | null;
-        const hubId = problem?.hub_id || body.host;
-        this._message(`${hubId} is registered but its proxy did not start: ${problem?.detail ?? ""}. Fix the cause and press Retry start.`, false);
-        this._emit("sb-select-hub", { hubId });
-      } else {
-        this._message(problemText(response), false);
-      }
+      const response = await this.api.resyncRemote(hubId);
+      if (response.ok) this._message(`${hubId}: the remote is syncing with the hub`);
+      else this._message(`${hubId}: ${problemText(response)}`, false);
     } catch (err) {
       this._message(String(err), false);
     } finally {
-      this._adding = false;
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
     }
-    this._emit("sb-hubs-changed");
   }
-
-  private _submitAdd(event: Event): void {
-    event.preventDefault();
-    const host = this.renderRoot.querySelector<HTMLInputElement>("#add-host")?.value.trim() ?? "";
-    if (!host) return;
-    const name = this.renderRoot.querySelector<HTMLInputElement>("#add-name")?.value.trim() ?? "";
-    const disabled = this.renderRoot.querySelector<HTMLInputElement>("#add-disabled")?.checked ?? false;
-    void this._add({ host, ...(name ? { name } : {}), enabled: !disabled });
-  }
-
-  private async _scan(): Promise<void> {
-    if (this._scanning) return;
-    this._scanning = true;
-    try {
-      const response = await this.api.scan(5);
-      if (response.ok && Array.isArray(response.body)) this.seen = response.body;
-      else this._message(problemText(response), false);
-    } catch (err) {
-      this._message(String(err), false);
-    } finally {
-      this._scanning = false;
-    }
-    this._emit("sb-hubs-changed");
-  }
-
-  // -- render ---------------------------------------------------------------------
 
   render(): TemplateResult {
-    return html`
-      <div class="panel" id="hub-detail">${this._renderDetail()}</div>
-      <div class="panel">
-        <h2>Register a hub by address <span class="spacer"></span><span class="hint">one owner per hub: disable it in Home Assistant or another proxy first</span></h2>
-        <form id="hub-add" @submit=${this._submitAdd}>
-          <div class="row">
-            <div><input id="add-host" placeholder="192.168.1.50" autocomplete="off" required></div>
-            <div style="flex: 0 0 180px"><input id="add-name" placeholder="name (optional)"></div>
-            <button class="primary fixed" id="add-send" type="submit" ?disabled=${this._adding}>Add hub</button>
-          </div>
-          <div style="margin-top: 8px"><label class="inline"><input type="checkbox" id="add-disabled"> start disabled (register only, connect later)</label></div>
-          <div class="hint" style="margin-top: 8px">A hub added by address is re-keyed to its MAC after its first sync. Disable stops the proxy and hands the hub back to the app; Remove also forgets its cached state and remote layout. The hub itself is never changed.</div>
-        </form>
-      </div>
-      <div class="panel">
-        <h2>Discovered on the LAN <span class="hint" id="seen-note">${this._seenNote()}</span><span class="spacer"></span>
-          <button class="small" id="seen-scan" title="POST /discovery/scan: listen for hub advertisements for 5 seconds" ?disabled=${this._scanning} @click=${this._scan}>${this._scanning ? "scanning…" : "scan 5 s"}</button></h2>
-        ${this.seen.length
-          ? html`<div class="scroll-x">
-              <table class="list" id="seen-table">
-                <thead><tr><th>host</th><th>model</th><th>name</th><th>mac</th><th>seen</th><th></th></tr></thead>
-                <tbody>${this.seen.map((s) => this._renderSeen(s))}</tbody>
-              </table>
-            </div>`
-          : html`<div class="hint" id="seen-empty">Nothing advertised yet. Hubs announce themselves over mDNS; a scan asks again.</div>`}
-      </div>
-    `;
-  }
-
-  private _seenNote(): string {
-    if (!this.seen.length) return "";
-    return `(${this.seen.filter((s) => s.present).length} present)`;
-  }
-
-  /** The registered hub an advertisement belongs to: the server's answer, or a host / MAC match. */
-  private _registeredFor(s: SeenHub): string | null {
-    if (s.registered_hub_id) return s.registered_hub_id;
-    const c = s.config ?? ({} as SeenHub["config"]);
-    const mac = String(c.mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
-    const hit = this.hubs.find((h) => h.config.host === c.host || (mac && (h.hub_id === mac || String(h.config.mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "") === mac)));
-    return hit?.hub_id ?? null;
-  }
-
-  private _renderSeen(s: SeenHub): TemplateResult {
-    const c = s.config ?? ({} as SeenHub["config"]);
-    const registered = this._registeredFor(s);
-    return html`<tr>
-      <td class="mono">${c.host || "?"}</td>
-      <td>${c.hub_version || "?"}</td>
-      <td>${c.name || ""}</td>
-      <td class="mono sub">${c.mac || ""}</td>
-      <td class=${s.present ? "tone-ok" : "sub"} title="first seen ${formatWhen(s.first_seen)}, last seen ${formatWhen(s.last_seen)}">${s.present ? "present" : "gone"}</td>
-      <td class="act">
-        ${registered
-          ? html`<span class="sub">registered as ${registered}</span>`
-          : html`<button class="small primary" ?disabled=${this._adding} @click=${() => this._add({ ...c, enabled: true })}>Add</button>`}
-      </td>
-    </tr>`;
+    return html`<div class="panel" id="hub-detail">${this._renderDetail()}</div>`;
   }
 
   private _renderDetail(): TemplateResult {
     const h = this.hub;
-    if (!h) return html`<div class="hint">No hub selected. Register one below, then manage it here.</div>`;
+    if (!h) return html`<div class="hint">${this.hubs.length ? "No hub selected." : "No hubs registered yet."} Use the hub picker to find or add a hub. <button class="small" @click=${(event: Event) => { event.stopPropagation(); this._emit("sb-open-picker"); }}>Find or add a hub</button></div>`;
     const { text, tone } = hubState(h);
     const s = h.status;
     const busy = this._busy.has(h.hub_id);
@@ -217,6 +136,7 @@ export class SbPanelHubs extends LitElement {
       ["state", html`<span class="tone-${tone}">${text}</span>`],
       ["host", html`<span class="mono">${h.config.host}</span>`],
       ["model", model],
+      ["firmware version", this._firmware],
       ["hub id", html`<span class="mono">${h.hub_id}</span>`],
       ["mac", html`<span class="mono">${h.config.mac || "not yet known"}</span>`],
       ["last seen", formatWhen(h.last_seen)],
@@ -231,9 +151,12 @@ export class SbPanelHubs extends LitElement {
         ${!h.enabled ? html`<button class="primary" ?disabled=${busy} @click=${() => this._act(h.hub_id, "enable")}>Enable</button>` : nothing}
         ${h.enabled && !s ? html`<button class="primary" ?disabled=${busy} @click=${() => this._act(h.hub_id, "enable")}>Retry start</button>` : nothing}
         ${h.enabled ? html`<button ?disabled=${busy} @click=${() => this._act(h.hub_id, "disable")}>Disable</button>` : nothing}
+        ${h.enabled && s ? html`<button id="resync-remote" ?disabled=${busy || !s.controllable || this.ctx?.free === false}
+          title="Make the physical remotes run a full sync with the hub"
+          @click=${() => this._resyncRemote(h.hub_id)}>Sync remote</button>` : nothing}
         <button class="danger" ?disabled=${busy} @click=${() => this._act(h.hub_id, "remove")}>Remove</button>
-        <button @click=${() => this._emit("sb-open-view", { view: "catalog" })}>Open catalog</button>
-        <button @click=${() => this._emit("sb-open-view", { view: "remote" })}>Open remote</button>
+        <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
+        <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
       </div>
     `;
   }

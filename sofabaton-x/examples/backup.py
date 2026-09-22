@@ -68,7 +68,7 @@ async def main() -> None:
         #   # replace=False creates additional entities with new ids instead.
         #   result = await proxy.restore(bundle, replace=True)
         #   if not result.ok:
-        #       print("Restore stopped at", result.failed_at)
+        #       print("Restore stopped at", result.failed_at, "hub erased:", result.erased)
         #       print("Completed:", result.restored_devices, "devices,",
         #             result.restored_activities, "activities")
         #       print("Current snapshot:", (await proxy.snapshot()).to_dict())

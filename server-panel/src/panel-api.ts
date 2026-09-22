@@ -11,6 +11,16 @@ export interface RunningActivity {
   name?: string | null;
 }
 
+/** `GET /hubs/{id}/info`: identity from the connect banner; `known` false until read. */
+export interface HubInfo {
+  known: boolean;
+  model: string | null;
+  name: string | null;
+  mac: string | null;
+  firmware_version: number | null;
+  production_batch: string | null;
+}
+
 export interface HubStatus {
   hub_connected: boolean;
   app_connected: boolean;
@@ -32,7 +42,9 @@ export interface HubConfig {
   [key: string]: unknown;
 }
 
-/** One row of `GET /hubs` (openapi `HubView`). */
+/** One row of `GET /hubs` (openapi `HubView`). `active_job` is the job
+ *  queued or running on the hub now, `last_job` the newest finished one
+ *  (server panel state plan, decision 1); older fixtures may omit them. */
 export interface HubView {
   hub_id: string;
   enabled: boolean;
@@ -40,6 +52,10 @@ export interface HubView {
   added_at: string;
   last_seen: string | null;
   status: HubStatus | null;
+  active_job?: JobView | null;
+  last_job?: JobView | null;
+  /** The hub's own name from its banner; shown when no name was configured. */
+  hub_name?: string | null;
 }
 
 /** One row of `GET /discovery/hubs` (openapi `SeenHub`). */
@@ -62,13 +78,108 @@ export interface Problem {
   mode?: string | null;
 }
 
+/** `GET /server/callback-listener` (openapi `CallbackListener`), also embedded in `ServerInfo`. */
+export interface CallbackListener {
+  wanted?: boolean;
+  bound?: boolean;
+  bound_port?: number | null;
+  [key: string]: unknown;
+}
+
 export interface ServerInfo {
   version: string;
   library_version: string;
   api_version: string;
   instance_id?: string;
-  callback_listener?: { wanted?: boolean; bound?: boolean; bound_port?: number | null };
+  hubs?: number;
+  callback_listener?: CallbackListener;
+  [key: string]: unknown;
 }
+
+/** One command slot of a Wifi Device's spec (openapi `CallbackSlot`). */
+export interface WifiSlot {
+  label: string;
+  long_label?: string | null;
+  /** A favorite in each of `activities`. */
+  favorite?: boolean;
+  /** The hub button code bound to this command in each of `activities`. */
+  button?: number | null;
+  /** Also bind the slot's long record to that button's long press. */
+  long_press?: boolean;
+  activities?: number[];
+  /** The activity whose start performs this command (X1S, X2). */
+  input_activity_id?: number | null;
+}
+
+/** A Wifi Device's spec: what `POST` and `PUT /wifi-devices` take, whole (openapi `WifiDeviceRequest`). Hook slots are 1-based. */
+export interface WifiDeviceSpec {
+  name: string;
+  slots: WifiSlot[];
+  power_on_slot: number | null;
+  power_off_slot: number | null;
+  input_slots: number[];
+  brand?: string;
+}
+
+/** One managed Wifi Device as the server keeps it (openapi `CallbackDeviceView`). */
+export interface WifiDeviceView {
+  key: string;
+  transport: string;
+  device_id: number | null;
+  spec: WifiDeviceSpec;
+  /** The address the device calls; null for an mqtt device, which calls nothing. */
+  target: { host: string; port: number; action_id: string } | null;
+  /** An mqtt device's press topic on the broker, `<MAC>/up`. */
+  mqtt_topic?: string | null;
+  labels: Record<string, string>;
+  hub_version: string;
+  deployed_at: string | null;
+  adopted: boolean;
+  stale: boolean;
+  deployed: boolean;
+  pending?: { op: string; started_at: string } | null;
+  last_press?: { seq: number; received_at: string } | null;
+  effective_destination?: { host: string; port: number } | null;
+}
+
+/** `GET /hubs/{id}/wifi-devices` (openapi `WifiDeviceList`). */
+export interface WifiDeviceList {
+  devices: WifiDeviceView[];
+  max_devices: number;
+  /** How a press can reach the server; a chooser appears once there is more than one. */
+  transports: string[];
+  effective_destination?: { host: string; port: number } | null;
+}
+
+/** `GET /server/mqtt` (openapi `MqttView`): the server's broker connection. The broker is set on the
+ *  server's command line or in its environment only; the password is in no answer. */
+export interface MqttState {
+  configured: boolean;
+  /** A device uses the transport; the connection exists only then. */
+  wanted: boolean;
+  connected: boolean;
+  host: string | null;
+  port: number | null;
+  tls: boolean;
+  username: string | null;
+  topics: string[];
+  last_error: string | null;
+  connected_at: string | null;
+  next_retry_at: string | null;
+}
+
+/** One port in `GET /server/settings` (openapi `PortSetting`). */
+export interface PortSetting {
+  running: number;
+  configured: number;
+  default: number;
+  pinned: boolean;
+}
+
+export type ServerPortName = "hub_listen_port" | "app_discovery_port" | "callback_port";
+
+/** `GET|PUT /server/settings` (openapi `ServerSettingsView`). */
+export type ServerSettings = Record<ServerPortName, PortSetting> & { restart_required: boolean };
 
 export interface RemoteCardDocument {
   hub_id: string;
@@ -200,8 +311,37 @@ export interface JobView {
 
 export const TERMINAL_JOB_STATES: ReadonlySet<string> = new Set(["done", "failed", "cancelled"]);
 
+/** One row of `GET /hubs/{id}/applies` (openapi `ApplySummary`). */
+export interface ApplySummary {
+  apply_id: string;
+  hub_id: string;
+  status: string;
+  resumable: boolean;
+  job_id: string | null;
+  created_at: string;
+  updated_at: string;
+  runs?: number;
+  cursor?: number;
+  item_count?: number;
+  writes?: number;
+  [key: string]: unknown;
+}
+
 /** `POST /snapshot/refresh` body: one entity, or neither for the whole hub. */
 export type RefreshScope = { device_id: number } | { activity_id: number } | Record<string, never>;
+
+/** `GET .../commands/{cid}/payload`: the stored body and what the library could read from it. */
+export interface PayloadView {
+  kind: "raw" | "descriptive" | string;
+  hex: string;
+  descriptor: string | null;
+  carrier_hz: number | null;
+  /** The library's structured block for the classes it round-trips (`restore_data.decoded`'s shape); null when the body stays raw. */
+  decoded: { class: string; fields: Record<string, unknown>; trailer_hex?: string } | null;
+}
+
+/** One payload in any supported source format (exactly one field), for `POST /play`. */
+export type PayloadSpec = { hex: string } | { pronto: string } | { descriptor: string } | { timings_us: number[]; carrier_hz: number };
 
 /** The base the panel derives from its own URL: the page lives at `<base>/ui/`. */
 export function serverBaseFromPanelUrl(href: string): string {
@@ -275,6 +415,27 @@ export class PanelApi {
 
   serverInfo(): Promise<ApiResponse<ServerInfo>> {
     return this.request<ServerInfo>("GET", "server");
+  }
+
+  callbackListener(): Promise<ApiResponse<CallbackListener>> {
+    return this.request<CallbackListener>("GET", "server/callback-listener");
+  }
+
+  mqttState(): Promise<ApiResponse<MqttState>> {
+    return this.request<MqttState>("GET", "server/mqtt");
+  }
+
+  retryCallbackListener(): Promise<ApiResponse<CallbackListener>> {
+    return this.request<CallbackListener>("POST", "server/callback-listener/retry");
+  }
+
+  serverSettings(): Promise<ApiResponse<ServerSettings>> {
+    return this.request<ServerSettings>("GET", "server/settings");
+  }
+
+  /** Saves to server.json; the ports apply on the next server start. */
+  updateServerSettings(changes: Partial<Record<ServerPortName, number>>): Promise<ApiResponse<ServerSettings>> {
+    return this.request<ServerSettings>("PUT", "server/settings", { body: changes });
   }
 
   /** The operations from `openapi.json`, sorted by path then method. */
@@ -353,6 +514,61 @@ export class PanelApi {
     return this.request<SnapshotDocument>("GET", `${this._hub(hubId)}/snapshot`);
   }
 
+  hubInfo(hubId: string): Promise<ApiResponse<HubInfo>> {
+    return this.request<HubInfo>("GET", `${this._hub(hubId)}/info`);
+  }
+
+  /** A command's stored payload, read from the hub (404 `payload_not_found` when it has none). */
+  commandPayload(hubId: string, deviceId: number, commandId: number): Promise<ApiResponse<PayloadView>> {
+    return this.request<PayloadView>("GET", `${this._hub(hubId)}/devices/${deviceId}/commands/${commandId}/payload`);
+  }
+
+  /** Make the physical remotes run a full sync with the hub (409 while a job holds it). */
+  resyncRemote(hubId: string): Promise<ApiResponse<{ accepted: boolean; mode: string }>> {
+    return this.request<{ accepted: boolean; mode: string }>("POST", `${this._hub(hubId)}/resync-remote`);
+  }
+
+  /** Fire a payload from the hub's blaster once; nothing is saved. */
+  playPayload(hubId: string, spec: PayloadSpec): Promise<ApiResponse<{ accepted: boolean; mode: string }>> {
+    return this.request<{ accepted: boolean; mode: string }>("POST", `${this._hub(hubId)}/play`, { body: spec });
+  }
+
+  /** Write an edited device element (the snapshot's `devices[]` entry) as a job; `If-Match` carries the snapshot it was edited on. */
+  editDevice(hubId: string, deviceId: number, element: SnapshotEntity, snapshotId: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/devices/${deviceId}`, { body: element, headers: { "If-Match": `"${snapshotId}"` } });
+  }
+
+  /** Delete a device (a job); the hub cascades the removal into its activities. */
+  removeDevice(hubId: string, deviceId: number): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/devices/${deviceId}`);
+  }
+
+  /** Write an edited activity element as a job; `devices` are the device elements the edit touched (a new input entry), sent only when there are any. */
+  editActivity(hubId: string, activityId: number, element: SnapshotEntity, devices: SnapshotEntity[], snapshotId: string): Promise<ApiResponse<JobView>> {
+    const body = devices.length ? { ...element, devices } : element;
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/activities/${activityId}`, { body, headers: { "If-Match": `"${snapshotId}"` } });
+  }
+
+  /** Delete an activity (a job). */
+  removeActivity(hubId: string, activityId: number): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/activities/${activityId}`);
+  }
+
+  /** Create an empty activity (a job); the result carries the hub-assigned `activity_id`. */
+  addActivity(hubId: string, name: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/activities`, { body: { name } });
+  }
+
+  /** Create an empty device of a class the hub can create (a job); the result carries the hub-assigned `device_id`. */
+  addDevice(hubId: string, name: string, deviceClass: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass } });
+  }
+
+  /** Store the display order of every activity or device, once each (a job). */
+  reorderEntities(hubId: string, kind: "activity" | "device", order: number[]): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/${kind === "device" ? "devices" : "activities"}/order`, { body: { order } });
+  }
+
   devices(hubId: string): Promise<ApiResponse<Device[]>> {
     return this.request<Device[]>("GET", `${this._hub(hubId)}/devices`);
   }
@@ -384,6 +600,78 @@ export class PanelApi {
 
   job(hubId: string, jobId: string): Promise<ApiResponse<JobView>> {
     return this.request<JobView>("GET", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  /** Recent jobs on the hub, newest first. */
+  listJobs(hubId: string): Promise<ApiResponse<JobView[]>> {
+    return this.request<JobView[]>("GET", `${this._hub(hubId)}/jobs`);
+  }
+
+  cancelJob(hubId: string, jobId: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  // -- wifi devices (the Wifi Commands tab) -------------------------------------------------
+
+  wifiDevices(hubId: string): Promise<ApiResponse<WifiDeviceList>> {
+    return this.request<WifiDeviceList>("GET", `${this._hub(hubId)}/wifi-devices`);
+  }
+
+  /** Deploy a new Wifi Device (a job); the result is its record, with the key. */
+  createWifiDevice(hubId: string, spec: Omit<WifiDeviceSpec, "brand">, transport: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/wifi-devices`, { body: { ...spec, transport } });
+  }
+
+  /** Write a Wifi Device's whole spec in place (a job); the bindings made in the activity editor survive. */
+  updateWifiDevice(hubId: string, key: string, spec: Omit<WifiDeviceSpec, "brand">): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("PUT", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}`, { body: spec });
+  }
+
+  /** Remove a Wifi Device from the hub (a job); 409 `callback_device_referenced` unless `force`. */
+  removeWifiDevice(hubId: string, key: string, force = false): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("DELETE", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}`, force ? { query: "force=true" } : {});
+  }
+
+  /** Deploy a stale Wifi Device again from its stored spec (a job). */
+  redeployWifiDevice(hubId: string, key: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}/redeploy`);
+  }
+
+  // -- backup and restore ------------------------------------------------------------
+
+  /** Read a full, restorable bundle from the hub (a job); `deviceIds` limits it to those devices, without activities. */
+  startBackup(hubId: string, deviceIds: number[] | null = null): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/backup`, { body: deviceIds ? { device_ids: deviceIds } : {} });
+  }
+
+  /** Write a bundle onto the hub (a job, not cancellable); `replace` erases the hub first. */
+  startRestore(hubId: string, bundle: unknown, replace: boolean): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/restore`, { body: { bundle, replace } });
+  }
+
+  /** Where a finished backup's bundle downloads from, while the server still holds it. */
+  backupBundleUrl(hubId: string, jobId: string): string {
+    return this.url(`${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}/bundle`);
+  }
+
+  /** Done with a finished backup: the server drops its bundle now. */
+  dropBackupBundle(hubId: string, jobId: string): Promise<ApiResponse<never>> {
+    return this.request<never>("DELETE", `${this._hub(hubId)}/jobs/${encodeURIComponent(jobId)}/bundle`);
+  }
+
+  /** The hub's apply records, newest first, documents omitted. */
+  listApplies(hubId: string): Promise<ApiResponse<ApplySummary[]>> {
+    return this.request<ApplySummary[]>("GET", `${this._hub(hubId)}/applies`);
+  }
+
+  /** Continue a stopped or cancelled apply; the 202 body is the job. */
+  resumeApply(hubId: string, applyId: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}/resume`);
+  }
+
+  /** Forget an apply record. */
+  discardApply(hubId: string, applyId: string): Promise<ApiResponse<never>> {
+    return this.request<never>("DELETE", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}`);
   }
 
   /**

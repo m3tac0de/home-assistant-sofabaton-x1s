@@ -250,6 +250,7 @@ var TOOLS_CARD_STRINGS_DE = {
     entityStepBindingWrite: "Tastenbelegungen werden geschrieben\u2026",
     entityStepCommandAdd: (id) => id == null ? "Befehl wird hinzugef\xFCgt\u2026" : `Befehl wird auf Ger\xE4t ${id} hinzugef\xFCgt\u2026`,
     entityStepCommandDelete: (id) => id == null ? "Befehl wird entfernt\u2026" : `Befehl wird auf Ger\xE4t ${id} entfernt\u2026`,
+    entityStepCommandSortRewrite: (id) => id == null ? "Befehlsreihenfolge wird aktualisiert\u2026" : `Befehlsreihenfolge auf Ger\xE4t ${id} wird aktualisiert\u2026`,
     entityStepCommandPayload: (id) => id == null ? "Befehl wird aktualisiert\u2026" : `Befehl wird auf Ger\xE4t ${id} aktualisiert\u2026`,
     entityStepCommandRename: (id) => id == null ? "Befehl wird umbenannt\u2026" : `Befehl wird auf Ger\xE4t ${id} umbenannt\u2026`,
     entityStepDeviceIp: "IP-Adresse wird aktualisiert\u2026",

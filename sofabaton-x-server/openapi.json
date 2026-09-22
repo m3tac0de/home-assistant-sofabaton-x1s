@@ -109,6 +109,38 @@
         "title": "ActivityCreateRequest",
         "type": "object"
       },
+      "ActivityPayload": {
+        "additionalProperties": true,
+        "description": "An edited activity element, plus the device elements the edit touched.\n\nAn activity edit can reach into a device: picking an input for a\ndevice in the power-on sequence appends to that device's\n``input_record``. ``devices`` carries those ``devices[]`` elements;\nthey are spliced into the edited bundle next to the activity and the\nplanner's scope guard decides what is allowed (input records, the\nidle byte, command names).",
+        "properties": {
+          "device": {
+            "additionalProperties": true,
+            "title": "Device",
+            "type": "object"
+          },
+          "devices": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "devices[] elements this activity edit touched (e.g. a new input entry); optional",
+            "title": "Devices"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "title": "ActivityPayload",
+        "type": "object"
+      },
       "ApplyItemView": {
         "properties": {
           "completed_steps": {
@@ -758,6 +790,12 @@
             "title": "Hub Version",
             "type": "string"
           },
+          "key": {
+            "default": "default",
+            "description": "the record's key under /wifi-devices; the callback device is 'default'",
+            "title": "Key",
+            "type": "string"
+          },
           "labels": {
             "additionalProperties": {
               "type": "string"
@@ -774,6 +812,18 @@
                 "type": "null"
               }
             ]
+          },
+          "mqtt_topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "an mqtt device's press topic on the broker, `<MAC>/up`",
+            "title": "Mqtt Topic"
           },
           "pending": {
             "anyOf": [
@@ -795,13 +845,26 @@
             "type": "boolean"
           },
           "target": {
-            "$ref": "#/components/schemas/CallbackTargetView"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallbackTargetView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null for an mqtt device: it calls no address"
+          },
+          "transport": {
+            "default": "http",
+            "description": "how its presses reach the server: http or mqtt",
+            "title": "Transport",
+            "type": "string"
           }
         },
         "required": [
           "device_id",
           "spec",
-          "target",
           "labels",
           "hub_version",
           "deployed_at",
@@ -920,7 +983,46 @@
         "type": "object"
       },
       "CallbackSlot": {
+        "description": "One command slot: its labels and, optionally, where its command goes.\n\n``favorite`` and ``button`` apply in every activity of ``activities``;\nan update writes them in place and later removes only what an earlier\nspec put there. One slot per button and one slot per input activity.",
         "properties": {
+          "activities": {
+            "description": "activity ids; kept only while `favorite` or `button` is set",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "button": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "hub button code bound to this command in each of `activities`",
+            "title": "Button"
+          },
+          "favorite": {
+            "default": false,
+            "description": "a favorite in each of `activities`",
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "input_activity_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the activity whose start performs this command (X1S/X2)",
+            "title": "Input Activity Id"
+          },
           "label": {
             "maxLength": 30,
             "minLength": 1,
@@ -939,6 +1041,12 @@
             ],
             "description": "default: '<label> Long'",
             "title": "Long Label"
+          },
+          "long_press": {
+            "default": false,
+            "description": "also bind the slot's long record to that button's long press",
+            "title": "Long Press",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1910,8 +2018,18 @@
         "type": "object"
       },
       "HubView": {
-        "description": "What ``/hubs`` returns per hub: the record plus a status snapshot.",
+        "description": "What ``/hubs`` returns per hub: the record, a status snapshot and\nthe hub's jobs (``active_job``: the one queued or running now;\n``last_job``: the newest finished one, whatever its outcome), so a\nclient rebuilds \"what is this hub doing\" from the one list call\n(server panel state plan, decision 1). ``hub_name`` is the hub's own\nname from its banner, for display when ``config.name`` is not set.",
         "properties": {
+          "active_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "added_at": {
             "title": "Added At",
             "type": "string"
@@ -1926,6 +2044,27 @@
           "hub_id": {
             "title": "Hub Id",
             "type": "string"
+          },
+          "hub_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Name"
+          },
+          "last_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_seen": {
             "anyOf": [
@@ -2174,6 +2313,223 @@
         "title": "Macro",
         "type": "object"
       },
+      "MqttState": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "tls": {
+            "title": "Tls",
+            "type": "boolean"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "wanted": {
+            "title": "Wanted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "wanted",
+          "connected",
+          "host",
+          "port",
+          "tls",
+          "username",
+          "topics",
+          "last_error",
+          "connected_at",
+          "next_retry_at"
+        ],
+        "title": "MqttState",
+        "type": "object"
+      },
+      "MqttView": {
+        "description": "The server's broker connection. The settings come from the command line or the\nenvironment only, and the password is not part of any answer. ``wanted`` is true\nwhile a device uses the transport; the connection exists only then.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "tls": {
+            "title": "Tls",
+            "type": "boolean"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "wanted": {
+            "title": "Wanted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "wanted",
+          "connected",
+          "host",
+          "port",
+          "tls",
+          "username",
+          "topics",
+          "last_error",
+          "connected_at",
+          "next_retry_at"
+        ],
+        "title": "MqttView",
+        "type": "object"
+      },
       "NewCommandRequest": {
         "properties": {
           "command_id": {
@@ -2293,7 +2649,7 @@
         "type": "object"
       },
       "PayloadView": {
-        "description": "A stored payload: its kind, the hub body as hex, and what could be read from it.",
+        "description": "A stored payload: its kind, the hub body as hex, and what could be read from it.\n\n``kind`` follows the library's payload types: ``raw`` or\n``descriptive`` for an IR payload, ``network`` for a decoded network\ncommand (``wifi_ip`` / ``wifi_roku`` / ``wifi_hue`` / ``wifi_sonos``)\nand ``record`` for any other stored body (a Bluetooth key, a two-byte\n``wifi_mqtt`` record, an undecodable network body). Only IR payloads\ncan be fired with ``POST /play``. ``decoded`` is the library's\nstructured block for the payloads that have one (a descriptive IR\npayload, a network command, a ``wifi_mqtt`` record):\n``{\"class\", \"fields\", \"trailer_hex\"}`` as ``restore_data.decoded``\ncarries it; null when the body stays raw.",
         "properties": {
           "carrier_hz": {
             "anyOf": [
@@ -2305,6 +2661,18 @@
               }
             ],
             "title": "Carrier Hz"
+          },
+          "decoded": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decoded"
           },
           "descriptor": {
             "anyOf": [
@@ -2331,6 +2699,37 @@
           "hex"
         ],
         "title": "PayloadView",
+        "type": "object"
+      },
+      "PortSetting": {
+        "description": "One port: what runs now, what the next start will use, and where from.",
+        "properties": {
+          "configured": {
+            "description": "the value the next start uses (pinned, else server.json, else the default)",
+            "title": "Configured",
+            "type": "integer"
+          },
+          "default": {
+            "title": "Default",
+            "type": "integer"
+          },
+          "pinned": {
+            "description": "set by an environment variable or CLI flag; server.json cannot change it",
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "running": {
+            "title": "Running",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "running",
+          "configured",
+          "default",
+          "pinned"
+        ],
+        "title": "PortSetting",
         "type": "object"
       },
       "PressPage": {
@@ -2381,6 +2780,18 @@
           "device_id": {
             "title": "Device Id",
             "type": "integer"
+          },
+          "device_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the Wifi Device's key; null for an unknown device",
+            "title": "Device Key"
           },
           "hub_id": {
             "title": "Hub Id",
@@ -2788,6 +3199,16 @@
             "title": "Library Version",
             "type": "string"
           },
+          "mqtt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MqttState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -2811,6 +3232,77 @@
           "uptime_seconds"
         ],
         "title": "ServerInfo",
+        "type": "object"
+      },
+      "ServerSettingsUpdate": {
+        "description": "Body of ``PUT /server/settings``; omitted ports are left as they are.",
+        "properties": {
+          "app_discovery_port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Discovery Port"
+          },
+          "callback_port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Port"
+          },
+          "hub_listen_port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Listen Port"
+          }
+        },
+        "title": "ServerSettingsUpdate",
+        "type": "object"
+      },
+      "ServerSettingsView": {
+        "properties": {
+          "app_discovery_port": {
+            "$ref": "#/components/schemas/PortSetting"
+          },
+          "callback_port": {
+            "$ref": "#/components/schemas/PortSetting"
+          },
+          "hub_listen_port": {
+            "$ref": "#/components/schemas/PortSetting"
+          },
+          "restart_required": {
+            "title": "Restart Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hub_listen_port",
+          "app_discovery_port",
+          "callback_port",
+          "restart_required"
+        ],
+        "title": "ServerSettingsView",
         "type": "object"
       },
       "SnapshotChanged": {
@@ -3090,8 +3582,115 @@
         "title": "SyncPlanStepView",
         "type": "object"
       },
+      "WifiDeviceList": {
+        "description": "``GET /hubs/{id}/wifi-devices``: every managed Wifi Device of the hub,\nthe callback device (key ``default``) first.",
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/CallbackDeviceView"
+            },
+            "title": "Devices",
+            "type": "array"
+          },
+          "effective_destination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EffectiveDestination"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_devices": {
+            "title": "Max Devices",
+            "type": "integer"
+          },
+          "transports": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Transports",
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices",
+          "max_devices",
+          "transports"
+        ],
+        "title": "WifiDeviceList",
+        "type": "object"
+      },
+      "WifiDeviceRequest": {
+        "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there. ``mqtt``\nneeds an X2 and a server started with a broker (``--mqtt-host``): the\nhub then publishes the presses to the broker set in the Sofabaton\napp, no listener and no callback address involved.",
+        "properties": {
+          "input_slots": {
+            "description": "slots offered as activity-start inputs (X1S/X2)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Input Slots",
+            "type": "array"
+          },
+          "name": {
+            "default": "Server",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "power_off_slot": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Power Off Slot"
+          },
+          "power_on_slot": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "slot the hub fires when an activity powers on (X1S/X2)",
+            "title": "Power On Slot"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/CallbackSlot"
+            },
+            "maxItems": 10,
+            "title": "Slots",
+            "type": "array"
+          },
+          "transport": {
+            "default": "http",
+            "description": "one of the list's `transports`",
+            "enum": [
+              "http",
+              "mqtt"
+            ],
+            "title": "Transport",
+            "type": "string"
+          }
+        },
+        "title": "WifiDeviceRequest",
+        "type": "object"
+      },
       "WriteProgress": {
-        "description": "One progress report from a long-running operation (refresh, sync).\n\n``phase`` is the operation's own phase word (``preparing``, ``device``,\n``activity``, ``stale_check``, ``writing``, ``finalizing`` ...);\n``entity_kind`` / ``entity_id`` name the entity being worked on when\nthere is one; ``step_kind`` is the sync step kind while writing.",
+        "description": "One progress report from a long-running operation (refresh, sync).\n\n``phase`` is the operation's own phase word (``preparing``, ``device``,\n``activity``, ``stale_check``, ``writing``, ``reading_back``,\n``finalizing`` ...);\n``entity_kind`` / ``entity_id`` name the entity being worked on when\nthere is one; ``step_kind`` is the sync step kind while writing.",
         "properties": {
           "completed_steps": {
             "title": "Completed Steps",
@@ -3312,6 +3911,18 @@
             "title": "Device Id",
             "type": "integer"
           },
+          "device_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Device Key"
+          },
           "hub_id": {
             "title": "Hub Id",
             "type": "string"
@@ -3414,7 +4025,7 @@
   "info": {
     "description": "REST + WebSocket over the sofabaton-x library for Sofabaton X1 / X1S / X2 hubs. LAN service; no authentication in v1.\n\nWebSocket: `/api/v1/events` (optional `?hub_id=` filter, repeatable) streams WsHello once, then WsHubEvent / WsServerEvent / WsJobEvent / WsPress / WsDropped messages (see components).",
     "title": "sofabaton-x-server",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4170,7 +4781,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EntityPayload"
+                "$ref": "#/components/schemas/ActivityPayload"
               }
             }
           },
@@ -5128,7 +5739,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EntityPayload"
+                "$ref": "#/components/schemas/ActivityPayload"
               }
             }
           },
@@ -7197,7 +7808,7 @@
             "description": "Gateway Timeout"
           }
         },
-        "summary": "Read a command's stored IR payload from the hub",
+        "summary": "Read a command's stored payload from the hub (any device class)",
         "tags": [
           "payload"
         ]
@@ -8619,6 +9230,125 @@
         ]
       }
     },
+    "/api/v1/hubs/{hub_id}/jobs/{job_id}/bundle": {
+      "delete": {
+        "operationId": "dropBackupBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Drop a finished backup's bundle now (the client is done with it)",
+        "tags": [
+          "payload"
+        ]
+      },
+      "get": {
+        "operationId": "downloadBackupBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "The hub_bundle, as an attachment"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Download a finished backup's bundle as a file (while the server still holds it)",
+        "tags": [
+          "payload"
+        ]
+      }
+    },
     "/api/v1/hubs/{hub_id}/learn": {
       "post": {
         "operationId": "learnPayload",
@@ -9140,6 +9870,89 @@
         "summary": "Write a hub_bundle onto the hub as a job (destructive with replace; not cancellable)",
         "tags": [
           "payload"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/resync-remote": {
+      "post": {
+        "description": "The hub pushes configuration writes to its remotes on its own; this is the manual trigger for a remote that missed them. Refused with 409 while a job holds the hub: a trigger in the middle of a write restarts the remote's sync, and the writes that need one send it themselves when they finish.",
+        "operationId": "resyncRemote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Make the physical remotes run a full sync with the hub",
+        "tags": [
+          "hub"
         ]
       }
     },
@@ -9874,6 +10687,460 @@
         ]
       }
     },
+    "/api/v1/hubs/{hub_id}/wifi-devices": {
+      "get": {
+        "operationId": "listWifiDevices",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WifiDeviceList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "The hub's managed Wifi Devices",
+        "tags": [
+          "callbacks"
+        ]
+      },
+      "post": {
+        "operationId": "deployWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Deploy a new Wifi Device (a job); the result is its record, with the key",
+        "tags": [
+          "callbacks"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/wifi-devices/{key}": {
+      "delete": {
+        "operationId": "removeWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "remove even when activities still reference the device",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "remove even when activities still reference the device",
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Remove a Wifi Device from the hub and forget it (a job)",
+        "tags": [
+          "callbacks"
+        ]
+      },
+      "get": {
+        "operationId": "getWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallbackDeviceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "One Wifi Device record",
+        "tags": [
+          "callbacks"
+        ]
+      },
+      "put": {
+        "operationId": "updateWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Edit a Wifi Device in place (a job); declined drift fails the job",
+        "tags": [
+          "callbacks"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/wifi-devices/{key}/redeploy": {
+      "post": {
+        "operationId": "redeployWifiDevice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Deploy a stale Wifi Device again from its stored spec (a job)",
+        "tags": [
+          "callbacks"
+        ]
+      }
+    },
     "/api/v1/server": {
       "get": {
         "operationId": "getServerInfo",
@@ -9932,6 +11199,97 @@
           }
         },
         "summary": "Try to bind the callback listener now",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/mqtt": {
+      "get": {
+        "operationId": "getMqtt",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MqttView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "State of the MQTT broker connection (never the password)",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/settings": {
+      "get": {
+        "operationId": "getServerSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The hub listener, app discovery and callback ports",
+        "tags": [
+          "server"
+        ]
+      },
+      "put": {
+        "operationId": "updateServerSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Save port changes to server.json (applied on the next start)",
         "tags": [
           "server"
         ]

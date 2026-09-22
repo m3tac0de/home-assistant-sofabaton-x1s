@@ -741,7 +741,10 @@ export class SofabatonRemoteCard extends LitElement {
     }
     if (this._layoutSignatureCache === nextSignature) return;
     this._layoutSignatureCache = nextSignature;
-    if (this._prefersReducedMotion()) {
+    // The server shims keep selection and key state in JS properties;
+    // cloneNode reinitializes those controls to their defaults. Render
+    // the live layout directly instead of fading that incorrect clone.
+    if (this._store.backend?.kind === "server" || this._prefersReducedMotion()) {
       this._clearLayoutOverlay();
       return;
     }

@@ -3,9 +3,10 @@
 // or type a method and path, send, read the exact request and the raw
 // response; follow a 202's job; the last requests are kept as history.
 
-import { LitElement, html, css, type TemplateResult } from "lit";
+import { LitElement, html, css, type PropertyValues, type TemplateResult } from "lit";
 
 import type { ApiResponse, HubView, Operation, PanelApi } from "../panel-api";
+import type { HubContext } from "../panel-context";
 import { HISTORY_LIMIT, loadHistory, parseHeaderLines, prettyJson, saveHistory, type HistoryEntry } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
@@ -21,6 +22,7 @@ const TERMINAL_JOB = new Set(["done", "failed", "cancelled"]);
 export class SbPanelApi extends LitElement {
   static properties = {
     api: { attribute: false },
+    ctx: { attribute: false },
     hub: { attribute: false },
     operations: { attribute: false },
     _request: { state: true },
@@ -45,6 +47,7 @@ export class SbPanelApi extends LitElement {
   ];
 
   api!: PanelApi;
+  ctx: HubContext | null = null;
   hub: HubView | null = null;
   operations: Operation[] = [];
   private _request = "nothing sent yet";
@@ -55,6 +58,10 @@ export class SbPanelApi extends LitElement {
   private _sending = false;
   private _lastJob: LastJob | null = null;
   private _storage: Storage | null = null;
+
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
 
   connectedCallback(): void {
     super.connectedCallback();

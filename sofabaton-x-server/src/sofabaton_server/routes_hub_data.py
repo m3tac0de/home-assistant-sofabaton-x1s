@@ -269,3 +269,22 @@ async def find_remote(request: Request, hub_id: str) -> Accepted:
     proxy = _proxy(request, hub_id)
     ok = await proxy.find_remote()
     return await _accepted(request, proxy, hub_id, "find_remote", ok)
+
+
+@router.post("/resync-remote", operation_id="resyncRemote", response_model=Accepted,
+             summary="Make the physical remotes run a full sync with the hub",
+             description="The hub pushes configuration writes to its remotes on its own; this is the manual "
+                         "trigger for a remote that missed them. Refused with 409 while a job holds the hub: "
+                         "a trigger in the middle of a write restarts the remote's sync, and the writes that "
+                         "need one send it themselves when they finish.",
+             responses=_HUB_ERRORS)
+async def resync_remote(request: Request, hub_id: str) -> Accepted:
+    proxy = _proxy(request, hub_id)
+    runner = getattr(request.app.state, "job_runner", None)
+    active = runner.active(hub_id) if runner is not None else None
+    if active is not None and active.status in ("queued", "running"):
+        raise ApiProblem(409, "hub_job_running", "A job holds the hub",
+                         detail=f"job {active.job_id} ({active.kind}) is {active.status}; wait for it to finish",
+                         hub_id=hub_id)
+    ok = bool(await proxy.resync_remote())
+    return await _accepted(request, proxy, hub_id, "resync_remote", ok)

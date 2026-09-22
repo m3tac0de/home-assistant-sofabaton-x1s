@@ -250,6 +250,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     entityStepBindingWrite: "\u6B63\u5728\u5199\u5165\u6309\u952E\u5206\u914D\u2026",
     entityStepCommandAdd: (id) => id == null ? "\u6B63\u5728\u6DFB\u52A0\u547D\u4EE4\u2026" : `\u6B63\u5728\u8BBE\u5907 ${id} \u4E0A\u6DFB\u52A0\u547D\u4EE4\u2026`,
     entityStepCommandDelete: (id) => id == null ? "\u6B63\u5728\u5220\u9664\u547D\u4EE4\u2026" : `\u6B63\u5728\u8BBE\u5907 ${id} \u4E0A\u5220\u9664\u547D\u4EE4\u2026`,
+    entityStepCommandSortRewrite: (id) => id == null ? "\u6B63\u5728\u66F4\u65B0\u547D\u4EE4\u987A\u5E8F\u2026" : `\u6B63\u5728\u66F4\u65B0\u8BBE\u5907 ${id} \u4E0A\u7684\u547D\u4EE4\u987A\u5E8F\u2026`,
     entityStepCommandPayload: (id) => id == null ? "\u6B63\u5728\u66F4\u65B0\u547D\u4EE4\u2026" : `\u6B63\u5728\u8BBE\u5907 ${id} \u4E0A\u66F4\u65B0\u547D\u4EE4\u2026`,
     entityStepCommandRename: (id) => id == null ? "\u6B63\u5728\u91CD\u547D\u540D\u547D\u4EE4\u2026" : `\u6B63\u5728\u8BBE\u5907 ${id} \u4E0A\u91CD\u547D\u540D\u547D\u4EE4\u2026`,
     entityStepDeviceIp: "\u6B63\u5728\u66F4\u65B0 IP \u5730\u5740\u2026",

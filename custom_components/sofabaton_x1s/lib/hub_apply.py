@@ -661,15 +661,19 @@ class _Run:
                 self._emit_state()
             # Read the created entity so the working document holds the hub's
             # block and the entity is editable for its sync item.
+            # The create reads its entity back itself; only an adopted
+            # in-flight create, or a read-back that failed, is read here.
             entity_kind = "device" if kind == "add_device" else "activity"
-            try:
-                snap = await proxy.refresh(**{f"{entity_kind}_id": new_id})
-            except (FetchTimeoutError, HubNotConnectedError, HubBusyError) as err:
-                state.note_refresh(entity_kind, new_id)
-                item.status, item.failed_at = "uncertain", "reread"
-                item.message = f"created as {new_id} but could not be read back: {err}"
-                return
-            entity = snap.entity(entity_kind, new_id)
+            entity = (await proxy.snapshot()).entity(entity_kind, new_id)
+            if entity is None or not entity.complete:
+                try:
+                    snap = await proxy.refresh(**{f"{entity_kind}_id": new_id})
+                except (FetchTimeoutError, HubNotConnectedError, HubBusyError) as err:
+                    state.note_refresh(entity_kind, new_id)
+                    item.status, item.failed_at = "uncertain", "reread"
+                    item.message = f"created as {new_id} but could not be read back: {err}"
+                    return
+                entity = snap.entity(entity_kind, new_id)
             if entity is None or not entity.complete:
                 state.note_refresh(entity_kind, new_id)
                 item.status, item.failed_at = "uncertain", "reread"

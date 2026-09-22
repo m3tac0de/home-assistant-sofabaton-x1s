@@ -106,6 +106,9 @@ def test_control_accepted_and_refused(rig) -> None:
     r = client.post(f"{h}/find-remote")
     assert r.status_code == 200
 
+    r = client.post(f"{h}/resync-remote")
+    assert r.status_code == 200 and ("resync", ()) in proxy.sent
+
     r = client.post(f"{h}/activities/101/stop")
     assert r.status_code == 200 and client.get(f"{h}/activity").json() is None
 

@@ -1,5 +1,7 @@
 # Your first integration
 
+This guide targets **sofabaton-x-server 0.2.1 / API 1**.
+
 Start with **sofabaton-x-server**. It manages hub connections and provides
 HTTP and WebSocket APIs for clients in any language. Use its built-in
 management UI (the **control panel**) for setup, catalog browsing and
@@ -28,19 +30,20 @@ that hub there before registering it with this server.
 Use Python 3.11+ on a host on the hub's LAN:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
 sofabaton-x-server
 ```
 
 Open `http://<server>:8480/` (or `http://localhost:8480/` on that host).
 
-1. In **Hubs**, wait for the hub to appear, then add it. If it is missing,
-   confirm the app is fully closed and scan again. You can also enter the
-   physical hub's IP address; manual entry does not replace closing the app.
+1. Open the **hub picker** in the top dock, wait for the hub to appear,
+   then click **Add**. If it is missing, confirm the app is fully closed and
+   scan again. Use **Add by address…** to enter the physical hub's IP;
+   manual entry does not replace closing the app.
 2. Wait for the hub to be controllable with its catalogs ready.
 3. In **Remote**, test an activity or command. Its layout editor saves the
    remote's settings on the server.
-4. In **Catalog**, look up activity, device and command IDs. **Events** shows
+4. In **Hub**, look up activity, device and command IDs. **Events** shows
    the live stream; **API** lets you try requests and follow their jobs.
 
 Repeat these steps in the same panel for your other hubs.
@@ -88,7 +91,7 @@ below are examples: replace them with values from your own hub.
 
 ## 2. Send your first command
 
-In the panel's **Catalog** view, choose a device and copy its device ID
+In the panel's **Hub** view, choose a device and copy its device ID
 and a command ID. You can also list them from the starter client:
 
 ```sh
@@ -131,20 +134,24 @@ when you want buttons to trigger platform actions.
 ## 3. Receive your first remote press
 
 **The hub does not report ordinary IR or Bluetooth button presses.** To
-trigger your platform, a remote button must run a command on a *callback
-device*: a virtual device that calls the server. The server receives the
-HTTP call and forwards a WebSocket `press` event. Your client does not
-need an HTTP listener.
+trigger your platform, a remote button must run a command on a managed
+Wifi Device. It delivers the press to the server over HTTP or, on X2,
+MQTT. The server forwards a WebSocket `press` event. Your client does not
+need its own HTTP listener or MQTT subscription.
 
 ### Set up callbacks once
 
-The panel has no dedicated callback-device or button-binding editor in
-0.2.0. Use the setup command below, or the API view and
-[callback routes](platform-integration.md#10-button-events). Once a callback
-device exists, its commands can also be assigned in the official app.
-Keep this setup separate from your integration's normal startup.
+In **Wifi Commands**, add a Wifi Device, edit a slot, choose its physical
+button and activities, and use **Sync to Hub**. X2 can use MQTT when the
+server and the Sofabaton app are configured with the same broker; otherwise
+use HTTP. Your client receives the same WebSocket `press` events for both.
 
-Choose an existing activity ID in **Catalog** (or run the starter's
+The setup command below creates or reuses the legacy HTTP callback device
+(key `default`), which is also used by the Hubitat example. It does not
+select a keyed device created with the panel's Add button. Keep this setup
+separate from your integration's normal startup.
+
+Choose an existing activity ID in **Hub** (or run the starter's
 `activities` action). The following example uses activity `101` and
 `PLAY`. **It replaces that button's short and long assignments in that
 activity.** Choose a button you intend to reassign, then close the official
@@ -180,7 +187,9 @@ on the physical remote, and press the assigned button. A new setup prints
 uses command `11` and `press_type: "long"`; a short press uses command `1`.
 
 In `listen()`, replace the dispatch comment with your platform action.
-Match `hub_id`, `device_id`, `command_id` and `press_type`; labels are
+The listener prints presses from **all** managed Wifi Devices on the selected
+hub. Before dispatching real actions, match `hub_id`, `device_key` (for
+example `default`), `device_id`, `command_id` and `press_type`; labels are
 display text and can change. The example dispatches only
 `resolution: "deployed"` and prints other records for diagnosis.
 Activity changes arrive separately as
@@ -210,7 +219,7 @@ and optional setup/editing APIs.
 | Symptom | First check |
 | --- | --- |
 | Physical hub missing from discovery | Fully close the official app on all phones/tablets, then scan again. A hub connected directly to the app does not advertise. |
-| Client lists no registered hubs | Add one in the panel's Hubs view after closing the app. `--hub` only seeds a new data directory. |
+| Client lists no registered hubs | Add one in the panel's hub picker after closing the app. `--hub` only seeds a new data directory. |
 | `hub_not_found` | Re-read `/hubs`; an initial IP-based ID may have changed to the MAC. |
 | Not ready, `hub_busy` or `send_refused` | Close the official app; check hub connectivity and that no other proxy owns it. |
 | Send accepted, no equipment response | Verify the device/command pair and equipment reachability. |

@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 dependencies = [
-    "sofabaton-x>=0.2,<0.3",
+    "sofabaton-x>=0.2.1,<0.3",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
 ]
@@ -39,6 +39,7 @@ dev = ["pytest", "httpx", "websockets>=12"]
 [project.urls]
 Homepage = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x-server"
 Issues = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues"
+Changelog = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md"
 
 [project.scripts]
 sofabaton-x-server = "sofabaton_server.cli:main"

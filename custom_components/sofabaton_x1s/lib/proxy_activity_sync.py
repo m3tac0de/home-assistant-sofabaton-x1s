@@ -29,16 +29,21 @@ from .device_create import (
     ACK_STATUS_BYTE_OK,
     CreateStep,
     FAMILY_DEVICE_UPDATE,
+    FAMILY_INPUTS,
     build_macro_step,
     build_macro_step_record,
     run_create_sequence,
     synthesize_command_code,
+    build_key_sort_steps,
+    encode_command_sort_body,
 )
 from .commands import build_descriptive_ir_blob_body, split_play_blob_tail
 from .devices import build_device_create_payload, parse_device_record
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
+    DEVICE_CLASS_CODE_WIFI_MQTT,
+    DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_BY_CODE,
     FAMILY_FAV_DELETE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
@@ -49,7 +54,13 @@ from .protocol_const import (
 )
 
 _POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
-_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT = 12.0
+# A 0x0210 key delete runs a hub-side consistency sweep before it acks, and
+# at device scope that sweep's latency grows with the catalog: 12.1 s on an
+# X1 with 11 devices (one of them 47 commands) during bench_240 2026-09-16,
+# past the old 12 s window, with the hub then applying the delete anyway.
+# Same reason the command delete below and the family-0x09 device delete
+# wait longer than the 5 s default.
+_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT = 30.0
 
 
 def _power_macro_label(button_id: int) -> str | None:
@@ -1060,11 +1071,140 @@ class ActivitySyncMixin:
         return None
 
     def _sync_step_inputs_write(self, payload: Mapping[str, Any]) -> bool:
-        # Input-record rewrites are a device-side side-effect of the input
-        # picker; wired via the family-0x46 restore path. Not reachable from
-        # the live editor's v1 affordances, but handled defensively.
-        self._log.info("[ACTIVITY_SYNC] inputs_write for device %s (deferred to macro input refs)",
-                       payload.get("device_id"))
+        """Append the editor's new input entries to a device's inputs page.
+
+        "Set input" in an activity's power-on sequence may pick a command
+        the device does not list as an input yet; the editor then appends
+        an entry to the device's ``input_record``. This step makes the hub
+        agree, in the order the restore path uses:
+
+        1. a device that was never configured for inputs (``input_mode``
+           0: the hub rejects every inputs request for it) gets its head
+           record rewritten with ``input_mode`` 1 (direct inputs), the same
+           record write a rename uses;
+        2. the hub's own record is read and the new entries are appended to
+           it, so the control-key and favorite rows and every existing
+           entry are written back as the hub holds them;
+        3. the family-0x46 page is written and read back; the step fails
+           when the hub's record does not carry the new entries.
+
+        Only an append is written. Activities address an input by its
+        position in this list, so a removal or a reorder here would
+        silently re-point the other activities' input steps; those edits
+        (a deleted command's entry stays on the page) remain the documented
+        limitation and are a logged no-op.
+        """
+
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        if not dev_lo:
+            return False
+        desired = [dict(row) for row in payload.get("entries") or [] if isinstance(row, Mapping)]
+        desired.sort(key=lambda row: int(row.get("input_index", row.get("ordinal", 0)) or 0))
+        desired_ids = [int(row.get("command_id") or 0) & 0xFF for row in desired]
+
+        device = self.state.entities("device").get(dev_lo)
+        raw = device.get("raw_body") if isinstance(device, dict) else None
+        if not isinstance(raw, (bytes, bytearray)):
+            self._log.warning("[ACTIVITY_SYNC] inputs_write: no record body for dev=0x%02X", dev_lo)
+            return False
+        try:
+            config = parse_device_record(bytes(raw), hub_version=self.hub_version, entity_kind="device")
+        except (ValueError, TypeError):
+            self._log.exception("[ACTIVITY_SYNC] inputs_write: could not parse record dev=0x%02X", dev_lo)
+            return False
+
+        live: dict[str, Any] | None = None
+        if config.is_input_configured:
+            # A configured device may still hold no page at all (a source-list
+            # device nobody gave a source answers a bare 0x07): that is an
+            # empty page to append to. Only an unanswered request stops the
+            # step; without the hub's record an append could drop the entries
+            # it holds.
+            fetched = self.fetch_device_input_record(dev_lo, absent_as_empty=True)
+            if not isinstance(fetched, dict):
+                self._log.warning("[ACTIVITY_SYNC] inputs_write: could not read the inputs page dev=0x%02X", dev_lo)
+                return False
+            live = dict(fetched)
+        live_entries = [dict(row) for row in (live or {}).get("entries") or [] if isinstance(row, Mapping)]
+        live_ids = [int(row.get("command_id") or 0) & 0xFF for row in live_entries]
+
+        if desired_ids[: len(live_ids)] != live_ids:
+            self._log.info(
+                "[ACTIVITY_SYNC] inputs_write dev=0x%02X: not an append (hub %s, edit %s); "
+                "leaving the hub's inputs page as it is",
+                dev_lo, live_ids, desired_ids,
+            )
+            return True
+        added = desired[len(live_ids):]
+        if not added:
+            return True
+
+        if not config.is_input_configured:
+            try:
+                configured = replace(config, input_mode=1, device_id=dev_lo)
+                body = build_device_create_payload(configured, hub_version=self.hub_version)
+            except (ValueError, TypeError):
+                self._log.exception("[ACTIVITY_SYNC] inputs_write: could not rebuild record dev=0x%02X", dev_lo)
+                return False
+            self.reset_ack_queues()
+            result = run_create_sequence(self, [CreateStep(
+                label=f"inputs-mode[dev=0x{dev_lo:02X}]",
+                family=FAMILY_DEVICE_UPDATE,
+                payload=body,
+                ack_opcode=ACK_OPCODE_STATUS,
+                ack_first_byte=ACK_STATUS_BYTE_OK,
+            )])
+            if not result.success:
+                self._log.warning("[ACTIVITY_SYNC] inputs_write: hub rejected the input mode dev=0x%02X", dev_lo)
+                return False
+            if isinstance(device, dict):
+                device["raw_body"] = body[3:]
+                device["input_mode"] = 1
+                device["inputs_configured"] = True
+
+        record = dict(live or {})
+        next_ordinal = max((int(row.get("input_index", 0) or 0) for row in live_entries), default=0)
+        entries = list(live_entries)
+        for row in added:
+            next_ordinal += 1
+            entries.append({**row, "input_index": next_ordinal})
+        record["entries"] = entries
+        page, count = self._restore_input_payload(
+            device_id=dev_lo,
+            input_record=record,
+            inputs=[],
+            map_command_id=lambda value: (int(value) & 0xFF) or None if value is not None else None,
+        )
+        if page is None or count != len(entries):
+            self._log.warning("[ACTIVITY_SYNC] inputs_write: could not build the inputs page dev=0x%02X", dev_lo)
+            return False
+        self.reset_ack_queues()
+        result = run_create_sequence(self, [CreateStep(
+            label=f"inputs dev=0x{dev_lo:02X} count={count}",
+            family=FAMILY_INPUTS,
+            payload=page,
+            ack_opcode=ACK_OPCODE_STATUS,
+            ack_first_byte=ACK_STATUS_BYTE_OK,
+        )])
+        if not result.success:
+            self._log.warning("[ACTIVITY_SYNC] inputs_write: hub rejected the inputs page dev=0x%02X", dev_lo)
+            return False
+
+        written = self.fetch_device_input_record(dev_lo)
+        written_ids = [
+            int(row.get("command_id") or 0) & 0xFF
+            for row in (written or {}).get("entries") or []
+            if isinstance(row, Mapping)
+        ] if isinstance(written, dict) else []
+        if written_ids != [int(row.get("command_id") or 0) & 0xFF for row in entries]:
+            self._log.warning(
+                "[ACTIVITY_SYNC] inputs_write: the hub's inputs page reads back %s, expected %s (dev=0x%02X)",
+                written_ids, [int(row.get("command_id") or 0) & 0xFF for row in entries], dev_lo,
+            )
+            return False
+        self.state.device_input_records[dev_lo] = dict(written)
+        self._log.info("[ACTIVITY_SYNC] inputs_write dev=0x%02X: %d input(s) added, %d on the page",
+                       dev_lo, len(added), len(entries))
         return True
 
     def _sync_step_command_rename(self, payload: Mapping[str, Any]) -> bool:
@@ -1583,16 +1723,87 @@ class ActivitySyncMixin:
         # The device-scoped delete runs a hub-side consistency sweep before
         # acking, and its latency scales with catalog size (observed live on
         # X1: 4.2 s on a 7-device catalog 2026-07-17, 5.1 s on a 10-device
-        # catalog 2026-07-18 — past the old 5 s window). Same reason the
-        # family-0x09 device delete waits 120 s.
+        # catalog 2026-07-18, 12.1 s for the sibling key delete on an
+        # 11-device catalog 2026-09-16). Same reason the family-0x09 device
+        # delete waits 120 s.
         step = self._send_step(
             step_name=f"wifi-command-delete[dev=0x{dev_lo:02X} cmd=0x{cmd_lo:02X}]",
             family=FAMILY_FAV_DELETE,
             payload=bytes([dev_lo, cmd_lo]),
             ack_opcode=ACK_OPCODE_STATUS,
-            timeout=20.0,
+            timeout=_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT,
         )
         return step.ok
+
+    def _sync_step_command_sort_rewrite(self, payload: Mapping[str, Any]) -> bool:
+        """Rewrite a device's family-0x61 display-sort table after command
+        deletes.
+
+        The hub keeps a deleted command's slot in the table (X2 bench
+        2026-09-16), so mirror the app: re-read the table, drop the removed
+        ids, keep the survivors in their existing order with every other
+        surviving command folded in after them (the add path's policy), and
+        renumber 1..n. A table that positions nothing (absent, or only
+        0x00/0xFF sentinels) orders nothing and is left alone. Best-effort
+        like the add-side registration: the deletes have already landed, a
+        stale slot is cosmetic, so a failed rewrite is logged, not fatal.
+        """
+        dev_lo = int(payload.get("device_id") or 0) & 0xFF
+        removed = {int(cid) & 0xFF for cid in payload.get("removed_command_ids") or []}
+        if not dev_lo:
+            return False
+        table = self.fetch_device_key_sort(dev_lo) or {}
+        try:
+            raw = bytes.fromhex(str(table.get("msg_hex") or "").replace(" ", ""))
+        except ValueError:
+            raw = b""
+        pairs = [(raw[i], raw[i + 1]) for i in range(0, len(raw) - 1, 2)]
+        positioned = [
+            (cmd, pos) for cmd, pos in pairs
+            if cmd not in removed and 1 <= pos <= 0xFE
+        ]
+        if not positioned:
+            self._log.info(
+                "[DEVICE_SYNC] sort rewrite dev=0x%02X: table positions nothing; left alone",
+                dev_lo,
+            )
+            return True
+        positioned.sort(key=lambda pair: pair[1])
+        listed = {cmd for cmd, _ in positioned}
+        known: set[int] = set()
+        known.update(int(c) & 0xFF for c in (self.state.commands.get(dev_lo) or {}))
+        known.update(int(c) & 0xFF for c in (self.state.command_metadata.get(dev_lo) or {}))
+        ordered = [cmd for cmd, _ in positioned] + sorted(
+            c for c in known if c not in listed and c not in removed
+        )
+        new_pairs = [(cmd, index + 1) for index, cmd in enumerate(ordered)]
+        try:
+            steps = build_key_sort_steps(
+                device_id=dev_lo,
+                msg_hex=encode_command_sort_body(new_pairs).hex(),
+                ack_timeout=5.0,
+            )
+        except ValueError as exc:
+            self._log.warning("[DEVICE_SYNC] sort rewrite dev=0x%02X: could not build: %s", dev_lo, exc)
+            return True
+        self.reset_ack_queues()
+        result = run_create_sequence(self, steps)
+        if not result.success:
+            self._log.warning(
+                "[DEVICE_SYNC] sort rewrite %s dev=0x%02X (deleted command may keep a stale slot until the next reorder)",
+                "rejected" if result.rejected else "timed out",
+                dev_lo,
+            )
+            return True
+        bucket = self.state.command_metadata.setdefault(dev_lo, {})
+        for cmd, pos in new_pairs:
+            if cmd in bucket:
+                bucket[cmd] = {**(bucket.get(cmd) or {}), "sort_id": pos}
+        self._log.info(
+            "[DEVICE_SYNC] sort rewrite dev=0x%02X: %d entries, removed %s",
+            dev_lo, len(new_pairs), sorted(removed),
+        )
+        return True
 
     def _sync_step_wifi_power_config(self, payload: Mapping[str, Any]) -> bool:
         """Rewrite a wifi device's POWER_ON/POWER_OFF command rows (chunk 1).
@@ -1739,6 +1950,7 @@ class ActivitySyncMixin:
         device = self.state.entities("device").get(dev_lo)
         raw = device.get("raw_body") if isinstance(device, dict) else None
         wifi_power_state: tuple[int, int, int] | None = None
+        config = None
         if isinstance(raw, (bytes, bytearray)):
             try:
                 config = parse_device_record(
@@ -1746,7 +1958,49 @@ class ActivitySyncMixin:
                 )
                 wifi_power_state = (config.power_mode, config.power_style, config.tail_marker)
             except (ValueError, TypeError):
+                config = None
                 wifi_power_state = None
+
+        is_mqtt = (
+            config is not None and int(config.code_type) == DEVICE_CLASS_CODE_WIFI_MQTT
+        ) or (isinstance(device, dict) and device.get("device_class") == DEVICE_CLASS_WIFI_MQTT)
+        if is_mqtt:
+            # A wifi_mqtt head is not the callback head the builder below
+            # writes (code type 0x1C, or the Roku head on an X1). The X2
+            # keeps publishing the presses either way, since it goes by
+            # the command records (bench_250, 2026-09-21), but the device
+            # then reads back as wifi_ip with the wrong icon, and everything
+            # that goes by the class (backup and restore, the consumer's
+            # identity check) takes it for an HTTP device. Keep every field
+            # of the head the hub has and change the name and the brand
+            # only. Without a head to keep there is nothing safe to write.
+            if config is None:
+                self._log.warning(
+                    "[WIFI] head commit skipped for wifi_mqtt dev=0x%02X: no head record in the cache", dev_lo
+                )
+                return False
+            body = build_device_create_payload(
+                replace(
+                    config,
+                    name=new_name,
+                    brand=str(new_brand) if new_brand is not None else config.brand,
+                    device_id=dev_lo,
+                ),
+                hub_version=self.hub_version,
+            )
+            self.reset_ack_queues()
+            step = self._send_step(
+                step_name=f"wifi-head-commit[dev=0x{dev_lo:02X},mqtt]",
+                family=0x08,
+                payload=body,
+                ack_opcode=ACK_OPCODE_STATUS,
+                timeout=5.0,
+            )
+            if step.ok and isinstance(device, dict):
+                device["name"] = new_name
+                if new_brand is not None:
+                    device["brand"] = str(new_brand)
+            return step.ok
 
         ip_device = self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
         # A step that names the callback address pins it (the X1 Roku head

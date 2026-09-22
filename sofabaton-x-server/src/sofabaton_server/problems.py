@@ -20,6 +20,7 @@ section 7) lives here so every route uses the same table:
 | ``If-Match`` missing on a row edit         | 428    |
 | ``DocumentError`` (a whole-document edit)  | 422 (``dangling_reference``, ``out_of_scope``, ``invalid_request``) or 409 (``entity_not_editable``, ``snapshot_incomplete``) |
 | an apply that stopped (``ApplyStopped``)   | 409 before the first write, 502 after |
+| a backup bundle no longer held             | 410 (``bundle_expired``); 404 ``bundle_not_found`` when the job never had one |
 """
 
 from __future__ import annotations
@@ -68,9 +69,9 @@ class SyncFailed(RuntimeError):
 class RestoreFailed(RuntimeError):
     """A restore ran and the engine reported a failure (``RestoreResult.status == "failed"``).
 
-    502 when entities were restored before the failure (the hub holds a
-    partial restore; the rebased snapshot shows it), 409 when nothing
-    was written. The ``RestoreResult`` rides on the job as its ``result``.
+    502 when the hub was changed before the failure: entities were
+    restored (a partial restore; the rebased snapshot shows it) or a
+    replacing restore had already erased it. 409 when nothing was written. The ``RestoreResult`` rides on the job as its ``result``.
     """
 
     def __init__(self, result) -> None:
@@ -212,7 +213,8 @@ def problem_for(err: BaseException, hub_id: str) -> Optional[ApiProblem]:
                   else f"failed at {where[0]}" if where else "failed")
         return ApiProblem(status, "restore_failed", "The restore did not complete",
                           detail=f"{detail}; {err.result.restored_devices} device(s) and "
-                                 f"{err.result.restored_activities} activity(ies) were restored first",
+                                 f"{err.result.restored_activities} activity(ies) were restored first"
+                                 + ("; the hub had been erased for the replace" if err.result.erased else ""),
                           hub_id=hub_id)
     if isinstance(err, SyncFailed):
         status = 409 if err.result.wrote_nothing else 502

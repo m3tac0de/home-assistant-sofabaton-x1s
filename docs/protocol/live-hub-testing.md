@@ -1092,6 +1092,63 @@ device-scoped reuse of the existing `_send_step(family=FAMILY_FAV_DELETE,
 payload=[dev, cmd])` sender, no commit. Both hubs left clean (no bench
 devices remain).
 
+## ◇ Validated: command removal from any device via the live device editor (X1 + X1S + X2, 2026-09-16)
+
+`bench_240_command_delete_ha.py` (HA WS driver: sends exactly what the Hub
+tab's device editor sends — the edited bundle with the hub's reference
+cascade mirrored in, through `device/sync_plan` + `device/sync` — then
+reads the hub back). Follow-up to PR #287, which proposed a standalone
+per-command delete endpoint; the capability shipped through the batched
+plan instead (`allow_command_removal` opened to every device).
+
+- **X1S** device 10 "Soundbar" (IR) cmd 2 "Mute": 3 activity bindings +
+  1 device binding → plan `binding_delete, command_delete`; 17/17.
+- **X2** device 1 "MQTT test" (`wifi_mqtt`) cmd 1: no refs → plan
+  `command_delete`; 16/16. First family-0x10 command delete sent to an
+  X2; bare frame, ACK, six-command device read back as five.
+- **X1** device 8 "Emulated Roku" (wifi_roku, 47 commands) cmd 11 "Home":
+  activity binding + activity macro step (+ a device binding) → first run
+  FAILED at the device-scoped `binding_delete`: the 0x0210 key delete
+  acked after **12.08 s** (11-device catalog), past the 12 s window, and
+  the hub applied it anyway (binding gone on re-read, command still
+  there — the delete is last, so nothing else had been written).
+  `_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT` raised to 30 s (the command delete
+  now shares it); rerun 16/16, and device 10 "Sonos Arc" cmd 2 (6
+  activity bindings + device binding) 17/17 with the binding delete
+  acking at 11.2 s.
+- **X1** device 8 cmd 2 "PowerOff" (device power row): plan
+  `macro_write, command_delete` — the emptied POWER_OFF macro (0 steps)
+  is accepted by the hub; 17/17.
+- **X1** device 1 "Avstar" cmd 4 (inputs-page entry): plan `inputs_write,
+  command_delete`. The command is gone but the **inputs page keeps the
+  entry**: the live `inputs_write` step is a logged no-op (the page is a
+  restore-only family-0x46 write), and the hub does not cascade input
+  entries on a command delete. Known limitation; the editor still prunes
+  the entry in its working bundle (sync validation insists) and the
+  post-sync rebase shows the hub's entry again.
+- Every run: every other command survived, every activity read back
+  exactly as staged (favorites / binding legs / macro steps cascaded by
+  the hub, membership and power rows untouched), `blobs/fetch` agrees
+  with the structural bundle.
+- **Display-sort table (family 0x61) is NOT pruned by the hub on a
+  command delete** (`probe_x2_sort_after_delete.py`, X2 device 1): after
+  deleting command 2 the table still read `(2, 255) ...`. Two fixes:
+  (a) the add-side registration took the command-list record's 0xFF
+  "unpositioned" byte for a real position and wrote an all-0xFF table
+  with the new command at 0x00 (orders nothing); it now treats 0xFF like
+  0x00, and an add on a device with no positions writes `1..n` with the
+  new command last (verified: `(3,1) (4,2) (5,3) (6,4) (7,5) (8,6)`).
+  (b) a `command_sort_rewrite` plan step follows the deletes: re-read
+  the table, drop the removed ids, keep the surviving order, fold in any
+  unpositioned survivor, renumber `1..n`; a table that orders nothing is
+  left alone; a rejected write is logged, not fatal. Verified: deleting
+  command 3 from the table above read back `(4,1) (5,2) (6,3) (7,4)
+  (8,5)`. Positions only: command ids and every reference to them are
+  untouched (same shape as the activity-scope key-delete capture above,
+  "0x0210 + 0x61 reorder"). Only the X2 was available for this pass
+  (X1 + X1S entries were disabled in HA at the time); every device on
+  the X1 and X1S carries an empty table anyway, so the step no-ops there.
+
 ## ◇ Validated: remove device from one activity — power-macro rewrite (X1 + X1S, 2026-07-17)
 
 `bench_113_membership_remove.py` (in-place deploy program chunk 3).
@@ -2283,3 +2340,155 @@ separate headless browser.
 Not covered: macros (this hub has none on Watch TV), X1 and X2 (not in
 the run), a phone or tablet (desktop browser only), and a wheel install
 (the server ran from the editable install).
+
+## ◇ Validated: live inputs write, "Set input" on a new input (X1 + X1S, 2026-09-19)
+
+Found while live-checking the server panel's activity editor on the X1S
+and reproduced in the Home Assistant card: "Set input" in an activity's
+power-on sequence offers every command of the device. When the picked
+command was not yet on the device's inputs page, the editor appended an
+entry to the device's `input_record`, the plan carried `inputs_write`,
+and that step was a logged no-op. The sync reported success, the
+power-on macro got the input ordinal, the hub never got the entry. On a
+device that was never configured for inputs (`input_mode` 0) the hub
+also rejected the member step's inputs query ("input_cmd_id not found;
+proceeding without input").
+
+`_sync_step_inputs_write` now writes, in the restore path's order:
+
+1. `input_mode` 0 becomes 1 (direct inputs) through the head record
+   rewrite a rename uses (family `0x08` update for the device's own id);
+   the hub rejects every inputs request until then;
+2. the hub's own page is read and the new entries are appended to it, so
+   existing entries, control-key rows and favorite rows go back as the
+   hub holds them;
+3. the family-`0x46` page is written and read back; the step fails when
+   the read-back does not list the new entries (an ack is not proof).
+
+Only an append is written. Activities address an input by its position
+in this list, so a removal or a reorder would re-point other
+activities' input steps; those edits stay a logged no-op, which keeps
+the known limitation that a deleted command's entry stays on the page.
+
+`bench_241_inputs_write.py` (a trimmed clone of an IR device, forced to
+"inputs not configured" and without button bindings, deleted at the
+end), through `sync_device` so the planner runs too:
+
+| check | X1 (clone of "Fosmon") | X1S (clone of "TV") |
+| --- | --- | --- |
+| first input: one `inputs_write` step, success | ok | ok |
+| the hub's page lists the entry (isolated read) | `[(1, 1, 'Power')]` | `[(1, 1, '0')]` |
+| a full device capture reads the same page | ok | ok |
+| the head reads back `input_mode` 1, name and commands untouched | ok | ok |
+| append a second entry: both listed, in order | ok | ok |
+| an edit that removes an entry: success, page unchanged | ok | ok |
+| clone deleted and gone from the catalog | ok | ok |
+
+Problems: none on both hubs. End to end on the X1S through
+sofabaton-x-server's panel: a new IR device with one command, a new
+activity, Add device, Set input, one Sync (`inputs_write`,
+`member_replay`, two `macro_write`, `remote_sync`); the member step's
+inputs query then resolved and the power-on macro carries ordinal 1.
+
+A second defect surfaced in the same run, in the engine
+(`proxy_ack_waiters.notify_ack`): a device with no button bindings
+answers the buttons read with a bare `STATUS_ACK 0x07`. The handler
+finished the buttons burst first, which woke the capture thread; that
+thread armed and sent its inputs request before the handler reached its
+"is an inputs request waiting?" check, so the same byte latched a
+rejection for the inputs request (logged 1 ms after the request went
+out) and the real `0x47` page arrived 90 ms later with nobody waiting.
+A device capture therefore read "no inputs configured" while the hub
+held the page, and the next read (key sort) timed out behind the
+unattended burst. A byte that finished a read burst is now never
+attributed to the inputs request. `bench_240_inputs_probe.py` shows it:
+before the fix three isolated reads return the page and the capture
+returns none; after it the capture returns the page and no read times
+out. Regression test in `tests/test_ack_handling.py`; the step's unit
+tests are `tests/test_inputs_write_step.py`.
+
+Not covered: the X2 (not in the run), a device whose inputs page spans
+more than one 247-byte chunk (six or more entries on the X1S), and the
+non-direct input styles (`input_mode` 2 and 3), whose pages are appended
+to as read but were not exercised.
+
+
+## ◇ Measured: a wifi_mqtt device's head class does not gate its presses (X2, 2026-09-21)
+
+`bench_250_mqtt_head_commit.py`, on a sacrificial server-made `wifi_mqtt`
+device (brand `c0-...`), broker subscription on `FC012C39D390/up`, presses
+produced with `REQ_ACTIVATE` of the device's command 1:
+
+| Head on the hub | Read back | Press published |
+| --- | --- | --- |
+| as created (`code_type 0x20`, icon 8, `power (1, 0, 1)`) | `0x20` | yes, `key_id 1` |
+| rewritten as the in-place head commit wrote it until this date (`_build_wifi_device_payload`, `ip_device=True`: `code_type 0x1C`, icon 1) | `0x1C`, icon 1 | **yes**, twice |
+| original head written back | `0x20`, icon 8 | yes |
+
+The X2 resolves a press from the command record (library type 32), not from
+the device head's code type. The head rewrite is therefore functionally
+silent, which is why it was never noticed; what it changes is how the
+device reads back (`wifi_ip` instead of `wifi_mqtt`, the generic icon), and
+with that anything keyed on the class. The head commit now preserves a
+`wifi_mqtt` head (name and brand only). Not measured: a press from the
+physical remote with the rewritten head (the remote holds its own synced
+copy of the device).
+
+## ◇ Validated: sofabaton-x-server mqtt transport (X2, 2026-09-21)
+
+Through the control panel at :8482, server started with `--mqtt-host
+192.168.2.77` (credentials from a password file, nothing persisted):
+`transports: ["mqtt", "http"]` for the X2; deploy over MQTT = a `wifi_mqtt`
+device, brand `c0-<key>`, no callback target, no listener demand; the server
+connects to the broker and subscribes to `<MAC>/up` only while such a device
+exists; a press reaches the event stream as `transport: "mqtt"` with the
+slot's label, first glow in the panel 93 ms after the send (HTTP on the same
+day: 129 to 270 ms); command 12 is the long press of slot 2; an in-place
+sync with a device rename keeps the head `0x20` and presses keep arriving;
+a server restart restores the subscription from the record; delete ends the
+subscription and the connection. Hub left at its baseline.
+
+## ◇ Validated: one terminal remote-sync trigger for managed Wifi Devices (X1S, 2026-09-21)
+
+Through sofabaton-x-server at :8482 with only the X1S enabled, debug wire
+log. A deploy with a slot reference (slot 1 a favorite in activity 102):
+the create sends no `0x64` of its own, the references are written, the
+device and the activity are read back (6 favorites, 5 before), and then one
+`a5 5a 00 64` goes out as the last frame of the job; the hub answers
+`STATUS_ACK 0x00`. An in-place update (slot rename) ends the same way, one
+trigger after the read-back, acked `0x00`. An update with an unchanged spec
+sends none. `POST /resync-remote` while the update job ran: `409
+hub_job_running`, nothing on the wire; after it, from the panel's Sync
+remote button: accepted, trigger sent. Deleting the device sends no
+trigger (as before). Hub left at its baseline. Not covered: what the
+physical remote shows (nobody watched it), the X1, the X2 and the MQTT
+deploy path.
+
+## ◇ Validated: facade write read-back (X1S + X1, 2026-09-21)
+
+Through sofabaton-x-server at :8482, a scratchpad script comparing the
+cached snapshot against a fresh `POST /snapshot/refresh` after each write:
+a Wifi Device deploy with a favorite, a button and two activity
+memberships, an update that drops an activity and renames a slot, the
+delete, and an add/remove of a device and an activity. X1S: problems none,
+final snapshot id equal to the starting one. X1 (activities 107 + 101), run
+twice: problems none, and a whole-hub refresh afterwards left the snapshot
+id unchanged, so the cache the read-backs built equals the hub. Not
+covered: the X2.
+
+The X1 pass surfaced the favorites-order table growing: 107 read
+`fav1 fav2 fav2` with one favorite, 101 `fav1 fav1 fav1` with none, one
+more slot per Wifi cycle. The X1 keeps the order slot of a favorite a
+cascade removed and reuses the id, and our add wrote the read-back order
+(stale slot included) plus the new id. The X1S returns to its starting
+table on its own. The library's own `delete_favorite` had a second
+problem on this hub: the `0x0210` key delete acked after 21.5 s (11
+devices), past the 12 s window, so the hub applied the delete while the
+order rewrite that follows was skipped. After the fixes (one slot per id
+on read, the X1 add drops the reused id from the order it read back,
+projection filter, 30 s window): raw `fav1 fav2 fav2` / `fav1 fav1 fav1`
+project as `[1]` / none; one Wifi cycle shrank the raw tables to
+`fav1 fav2` / `fav1` instead of growing them; an add and a delete through
+`POST` / `DELETE /activities/{id}/favorites` left `fav1` / empty. Both
+activities clean at the end of the session. The X2's table was not
+checked.

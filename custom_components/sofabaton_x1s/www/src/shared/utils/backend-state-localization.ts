@@ -134,6 +134,7 @@ type EntityStepKey =
   | "entityStepCommandRename" | "entityStepDeviceIp" | "entityStepDeviceRename"
   | "entityStepFavoriteAdd" | "entityStepFavoriteDelete" | "entityStepFavoriteOrder"
   | "entityStepIdleBehavior" | "entityStepInputsWrite" | "entityStepMacroDelete"
+  | "entityStepCommandSortRewrite"
   | "entityStepMacroPowerOn" | "entityStepMacroPowerOff" | "entityStepMacroCustom"
   | "entityStepMemberReplay" | "entityStepRemoteSync";
 
@@ -143,6 +144,7 @@ export const ENTITY_SYNC_STEP_KINDS: Record<string, EntityStepKey> = {
   binding_write: "entityStepBindingWrite",
   command_add: "entityStepCommandAdd",
   command_delete: "entityStepCommandDelete",
+  command_sort_rewrite: "entityStepCommandSortRewrite",
   command_payload: "entityStepCommandPayload",
   command_rename: "entityStepCommandRename",
   device_ip: "entityStepDeviceIp",

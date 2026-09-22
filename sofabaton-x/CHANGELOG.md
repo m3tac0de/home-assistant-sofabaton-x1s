@@ -2,16 +2,130 @@
 
 Changes to the standalone `sofabaton-x` library, with migration guidance
 for applications using its public API. Server changes are documented
-separately in the [server documentation](../sofabaton-x-server/README.md).
+separately in the [server changelog](../sofabaton-x-server/CHANGELOG.md).
 
 <!-- Keep release notes here. Before pushing a release tag, add the version
 and date, update the README notice and install instructions, and start a new
 Unreleased section. Link breaking releases to their migration guidance.
 Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -->
 
-## Unreleased
+## 0.2.1 (2026-09-22)
 
-Nothing yet.
+Changes since `sofabaton-x-v0.2.0`. This patch release includes a public
+return-type correction; review the migration below even if you already
+use 0.2.0.
+
+### Migration from 0.2.0
+
+**`AsyncXProxy.read_payload()` no longer treats every command as IR.** Its
+return type is `CommandPayload | None`, where `CommandPayload` is the union
+of `IrPayload`, `NetworkCommand` and the new `CommandRecord`.
+
+- IR/RF bodies of at least 10 bytes remain `IrPayload`.
+- Decodable `wifi_ip`, `wifi_roku`, `wifi_hue` and `wifi_sonos` bodies are
+  `NetworkCommand`, preserving their opaque `trailer_hex` bytes.
+- Bluetooth, `wifi_mqtt`, undecodable network bodies and other bodies
+  shorter than 10 bytes are `CommandRecord`. Previously Bluetooth/MQTT
+  records could appear as `None`, and network records as misleading IR.
+- An unknown class with a body at least 10 bytes long falls back to
+  `IrPayload`; no stored body still returns `None`.
+
+Check the type before accessing `kind`, `descriptor`, `carrier_hz` or
+calling `play()`. All three payload types expose `blob`, `hex`, `to_dict()`
+and `to_command_row()`:
+
+```python
+from sofabaton import IrPayload
+
+payload = await proxy.read_payload(device_id, command_id)
+if payload is None:
+    print("No stored payload")
+elif isinstance(payload, IrPayload):
+    print(payload.kind, payload.carrier_hz)
+else:
+    print(payload.device_class, payload.hex)
+```
+
+`edits.add_command()` and `edits.set_command_payload()` accept
+`CommandRecord` when its class matches the target device. Passing an
+`IrPayload` to a Bluetooth device is now refused. `NetworkCommand.to_dict()`
+includes `trailer_hex`; `from_dict()` accepts it, defaulting to empty for
+older documents. `NetworkCommand.hex` is also available.
+
+`WifiDeployment.target` is now optional: it is `None` for MQTT deployments.
+Check `deployment.transport` before using HTTP target fields. Stored HTTP
+deployments without a transport field continue to load as HTTP.
+
+### Added
+
+- **X2 MQTT Wifi Devices:** `deploy_wifi_device(spec, transport="mqtt")`
+  creates a `wifi_mqtt` device without a callback host or port. The hub
+  publishes presses to `<MAC>/up` on the broker configured in the Sofabaton
+  app; the consumer must subscribe. The library does not connect to MQTT.
+- **Slot assignments in managed Wifi Devices:** `WifiSlotSpec` accepts
+  `favorite`, `button`, `long_press`, `activities` and `input_activity_id`.
+  `snapshot_from_spec()` derives favorites, device/activity button bindings,
+  memberships and activity inputs. Deploy applies references after creating
+  the device; update writes them in place. Removal is based on references
+  owned by the previous spec. Removing a spec-owned activity membership
+  also makes the hub drop that device's other rows in that activity.
+- `WifiDeviceSpec.has_references`, `without_references()` and
+  `WifiUpdateDeclined.reason == "activity"` for missing activities.
+  `input_slots_from_spec`, `BINDABLE_BUTTON_CODES` and transport constants
+  live in `sofabaton.wifi_device`; they are not package-root exports.
+- **Command removal:** `sync_device(..., allow_command_removal=True)` and
+  `build_device_sync_plan(..., allow_command_removal=True)` delete omitted
+  commands, let the hub cascade references and rewrite display order once.
+  Both default to refusing removals.
+- `RestoreResult.erased` records whether a replacing restore wiped the hub.
+  `wrote_nothing` is false after an erase even if no entity was restored.
+
+### Fixed
+
+- On-demand reads wait while backup, restore, erase, refresh or a
+  configuration write holds the hub, avoiding requests between write pages.
+  A replacing restore holds it across both erase and rebuild. Complete
+  cached reads still work; a wait that times out raises `FetchTimeoutError`.
+- Input edits now enable inputs on an unconfigured device, append new
+  entries to its existing inputs page and verify by reading it back.
+  **Existing input removals/reorders remain unapplied**, even when sync
+  reports success, because activities address inputs by position.
+- An empty button-binding reply no longer incorrectly rejects the next
+  inputs request, which could hide configured inputs and stall later reads.
+- Managed Wifi Device writes now end with one physical remote-sync trigger,
+  after every write. `update_wifi_device()` sent none, an MQTT deploy sent
+  none, and an HTTP deploy with slot assignments sent its trigger after the
+  create and then kept writing. An update that writes nothing sends none;
+  inside `batch_writes()` the trigger is coalesced with the batch's own.
+- Managed MQTT updates preserve the hub's `wifi_mqtt` head/class and icon
+  when changing name or brand. A missing cached head fails the step rather
+  than constructing an HTTP callback head.
+- Every `AsyncXProxy` write reads back what it changed before it returns,
+  so the cache matches the hub afterwards. The engine's one-shot writes
+  (favorites, memberships, device removal, the create pipelines) drop the
+  tables they invalidate and leave the re-read to their caller; the facade
+  had no such step, so a `deploy_wifi_device()` with slot assignments left
+  its activities reporting zero favorites while still `complete`. A device
+  write that renames, re-codes or deletes a command also re-reads every
+  activity naming that device. Progress reports carry a new `reading_back`
+  phase. An entity that cannot be read back is invalidated (it reads as
+  not fetched) rather than failing the write.
+- X1 favorites order. The X1 keeps the quick-access order slot of a
+  favorite that a cascade removed (a device delete, a membership removal)
+  and hands the freed id out again, and `command_to_favorite()` wrote the
+  stale slot back next to the new one, so one id came to hold several
+  slots and the table grew on every cycle. The order table is now read
+  with one slot per id, the X1 add no longer writes the stale slot back,
+  and ids naming neither a favorite nor a macro are left out of the
+  activity projection once both tables are read. `delete_favorite()` waits
+  30 s for the key-delete ack (was 12 s): the X1 answers after a
+  consistency sweep, 21 s with 11 devices, and the timeout skipped the
+  order rewrite that follows. The X1S cleans its own table; the X2 was
+  not checked.
+
+Hardware coverage and remaining limits are recorded in the
+[live-hub notes](../docs/protocol/live-hub-testing.md). These changes do not
+make writes atomic or add rollback after a partial failure.
 
 ## 0.2.0 (2026-09-16)
 

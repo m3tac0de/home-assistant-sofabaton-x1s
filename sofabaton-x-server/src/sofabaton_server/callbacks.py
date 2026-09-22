@@ -17,6 +17,14 @@ Four parts, all in this module:
   redeploy as job bodies, reconciliation of pending intents and orphans,
   stale detection on every snapshot change, and the press pipeline.
 
+Presses reach the server over one of two transports (server panel wifi
+commands plan, section 7). ``http``: the hub calls the listener above.
+``mqtt`` (X2 only): the device's records are inert and the hub publishes
+``{"device_id", "key_id"}`` to ``<MAC>/up`` on the broker set in the
+Sofabaton app; the server subscribes there (``mqtt_client``) while a
+device uses it, with the broker settings taken from the command line or
+the environment only. Both end in the same ``press``.
+
 The service never touches the engine; every hub operation goes through
 the library's facade (``deploy_wifi_device``, ``update_wifi_device``,
 ``remove_device``, ``read_payload``, ``snapshot``).
@@ -26,7 +34,9 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import logging
+import re
 import secrets
 from collections import deque
 from dataclasses import asdict, dataclass, field
@@ -42,9 +52,11 @@ from sofabaton import (
     WifiSlotSpec,
     WifiTarget,
 )
+from sofabaton.wifi_device import DEFAULT_WIFI_BRAND
 
 from .config import Settings
 from .manager import HubDisabled, HubManager, HubNotFound
+from .mqtt_client import MqttState, MqttSubscriber
 from .models import mac_key, now_iso
 
 log = logging.getLogger(__name__)
@@ -71,6 +83,31 @@ RETRY_MAX_SECONDS = 300.0
 Resolution = Literal["deployed", "stale", "unknown_slot", "unknown_device"]
 PendingOp = Literal["create", "update", "delete"]
 
+# Wifi Devices (docs/internal/server-panel-wifi-commands-plan.md, section
+# 2): a hub holds several managed devices, each under a key. The callback
+# device of the 0.2.0 API is the one under the reserved key, stored where
+# it always was; the others live in ``HubRecord.wifi_devices``.
+DEFAULT_DEVICE_KEY = "default"
+#: Records per hub, the default one included (the Home Assistant number).
+MAX_WIFI_DEVICES = 5
+#: Keyed devices carry the brand ``c0-<key>``. Home Assistant's managed
+#: devices are ``m3-<key>-<hash>``, so neither side takes the other's
+#: devices for its own, and the key never changes, so a rename still
+#: plans no head commit.
+SERVER_BRAND_PREFIX = "c0"
+#: How a press can reach the server. What a hub is offered depends on the
+#: hub and the settings, see ``CallbackService.transports_for``.
+TRANSPORT_HTTP = "http"
+TRANSPORT_MQTT = "mqtt"
+TRANSPORTS: tuple[str, ...] = (TRANSPORT_HTTP, TRANSPORT_MQTT)
+#: The only hub that publishes presses to a broker.
+MQTT_HUB_VERSION = "X2"
+_MAC_SHAPE = re.compile(r"^[0-9A-Fa-f]{2}([:-]?[0-9A-Fa-f]{2}){5}$")
+
+
+def brand_for_key(key: str) -> str:
+    return DEFAULT_WIFI_BRAND if key == DEFAULT_DEVICE_KEY else f"{SERVER_BRAND_PREFIX}-{key}"
+
 
 # -- the record -------------------------------------------------------------------
 
@@ -96,9 +133,13 @@ class CallbackRecord:
     stale: bool = False
     pending: Optional[dict[str, Any]] = None
     last_press: Optional[dict[str, Any]] = None
+    key: str = DEFAULT_DEVICE_KEY
+    transport: str = "http"
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "key": self.key,
+            "transport": self.transport,
             "device_id": self.device_id,
             "spec": dict(self.spec),
             "target": dict(self.target),
@@ -126,18 +167,23 @@ class CallbackRecord:
             stale=bool(data.get("stale", False)),
             pending=dict(data["pending"]) if isinstance(data.get("pending"), dict) else None,
             last_press=dict(data["last_press"]) if isinstance(data.get("last_press"), dict) else None,
+            key=str(data.get("key") or DEFAULT_DEVICE_KEY),
+            transport=str(data.get("transport") or "http"),
         )
 
     @classmethod
-    def from_deployment(cls, deployment: WifiDeployment, *, adopted: bool = False) -> "CallbackRecord":
+    def from_deployment(cls, deployment: WifiDeployment, *, adopted: bool = False,
+                        key: str = DEFAULT_DEVICE_KEY, transport: str = "http") -> "CallbackRecord":
         return cls(
             device_id=int(deployment.device_id),
             spec=deployment.spec.to_dict(),
-            target=deployment.target.to_dict(),
+            target=deployment.target.to_dict() if deployment.target is not None else {},
             labels=dict(deployment.labels),
             hub_version=deployment.hub_version,
             deployed_at=now_iso(),
             adopted=adopted,
+            key=key,
+            transport=transport,
         )
 
     def deployment(self) -> WifiDeployment:
@@ -146,9 +192,10 @@ class CallbackRecord:
         return WifiDeployment(
             device_id=int(self.device_id),
             spec=WifiDeviceSpec.from_dict(self.spec).normalized(),
-            target=WifiTarget.from_dict(self.target),
+            target=WifiTarget.from_dict(self.target) if self.transport != TRANSPORT_MQTT else None,
             labels=dict(self.labels),
             hub_version=self.hub_version,
+            transport=self.transport,
         )
 
     @property
@@ -157,6 +204,8 @@ class CallbackRecord:
 
     def view(self, *, effective_destination: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         out = self.to_dict()
+        if not out["target"]:
+            out["target"] = None                     # an mqtt device calls nothing
         out["deployed"] = self.device_id is not None and not self.stale
         if effective_destination is not None:
             out["effective_destination"] = effective_destination
@@ -181,6 +230,8 @@ class Press:
     transport: str
     source: str
     received_at: str
+    #: The key of the Wifi Device the press resolved to; None for ``unknown_device``.
+    device_key: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -545,6 +596,14 @@ class CallbackPortRefused(ValueError):
     """An X1 can only call port 8060."""
 
 
+class WifiDeviceLimit(RuntimeError):
+    """The hub already holds ``MAX_WIFI_DEVICES`` records."""
+
+
+class MqttUnavailable(RuntimeError):
+    """The mqtt transport was asked for where it cannot work; the message says why."""
+
+
 class CallbackService:
     """Everything callback-device related, one instance per server."""
 
@@ -557,6 +616,13 @@ class CallbackService:
         self._press_listeners: list[Callable[[Press], Any]] = []
         self._verify_tasks: dict[str, asyncio.Task] = {}
         self.listener = listener_factory(settings.callback_port, self.handle_callback, on_state=self._on_listener_state)
+        self.mqtt = MqttSubscriber(
+            host=settings.mqtt_host, port=settings.mqtt_effective_port, username=settings.mqtt_username,
+            password=settings.mqtt_password, tls=settings.mqtt_tls,
+            tls_ca=str(settings.mqtt_tls_ca) if settings.mqtt_tls_ca else None,
+            tls_insecure=settings.mqtt_tls_insecure, client_id=settings.mqtt_client_id,
+            on_message=self.handle_mqtt_message, on_state=self._on_listener_state,
+        )
         manager.on_hub_event(self._on_hub_event)
         manager.on_server_event(self._on_server_event)
 
@@ -566,46 +632,171 @@ class CallbackService:
         """After the hubs started: reconcile pending intents, then the listener."""
 
         for hub_id in self._manager.ids():
-            record = self.record(hub_id)
-            if record is None or record.pending is None:
-                continue
-            try:
-                proxy = self._manager.proxy(hub_id)
-            except (HubNotFound, HubDisabled):
-                log.info("hub %s: pending callback %s left for later (hub not running)", hub_id, record.pending.get("op"))
-                continue
-            try:
-                await self.reconcile(hub_id, proxy)
-            except Exception:  # noqa: BLE001
-                log.exception("hub %s: callback reconciliation at boot failed; left pending", hub_id)
+            for record in self.records(hub_id):
+                if record.pending is None:
+                    continue
+                try:
+                    proxy = self._manager.proxy(hub_id)
+                except (HubNotFound, HubDisabled):
+                    log.info("hub %s: pending callback %s left for later (hub not running)", hub_id, record.pending.get("op"))
+                    break
+                try:
+                    await self.reconcile(hub_id, proxy, key=record.key)
+                except Exception:  # noqa: BLE001
+                    log.exception("hub %s: callback reconciliation at boot failed; left pending", hub_id)
         await self.ensure_listener()
 
     async def stop(self) -> None:
         for task in list(self._verify_tasks.values()):
             task.cancel()
         await self.listener.stop()
+        await self.mqtt.stop()
 
     def on_press(self, listener: Callable[[Press], Any]) -> None:
         self._press_listeners.append(listener)
 
     # -- records -------------------------------------------------------------
 
-    def record(self, hub_id: str) -> Optional[CallbackRecord]:
+    def record(self, hub_id: str, key: str = DEFAULT_DEVICE_KEY) -> Optional[CallbackRecord]:
         try:
-            raw = self._manager.record(hub_id).callback_device
+            row = self._manager.record(hub_id)
         except HubNotFound:
             return None
-        return CallbackRecord.from_dict(raw) if isinstance(raw, dict) else None
+        raw = row.callback_device if key == DEFAULT_DEVICE_KEY else row.wifi_devices.get(key)
+        if not isinstance(raw, dict):
+            return None
+        record = CallbackRecord.from_dict(raw)
+        record.key = key
+        return record
 
-    def save(self, hub_id: str, record: Optional[CallbackRecord]) -> None:
-        self._manager.record(hub_id).callback_device = record.to_dict() if record is not None else None
+    def records(self, hub_id: str) -> list[CallbackRecord]:
+        """Every managed device of the hub: the default one first, then by key order of creation."""
+
+        try:
+            row = self._manager.record(hub_id)
+        except HubNotFound:
+            return []
+        keys = ([DEFAULT_DEVICE_KEY] if isinstance(row.callback_device, dict) else []) + list(row.wifi_devices)
+        return [record for record in (self.record(hub_id, key) for key in keys) if record is not None]
+
+    def _store(self, hub_id: str, record: Optional[CallbackRecord], key: str) -> None:
+        row = self._manager.record(hub_id)
+        if key == DEFAULT_DEVICE_KEY:
+            row.callback_device = record.to_dict() if record is not None else None
+        elif record is None:
+            row.wifi_devices.pop(key, None)
+        else:
+            row.wifi_devices[key] = record.to_dict()
+
+    def save(self, hub_id: str, record: Optional[CallbackRecord], key: Optional[str] = None) -> None:
+        """Persist ``record`` under its own key; ``None`` drops the record under ``key``."""
+
+        self._store(hub_id, record, record.key if record is not None else (key or DEFAULT_DEVICE_KEY))
         self._manager.persist()
 
+    def new_key(self, hub_id: str) -> str:
+        taken = {record.key for record in self.records(hub_id)}
+        while True:
+            key = secrets.token_hex(4)
+            if key not in taken:
+                return key
+
+    def check_limit(self, hub_id: str) -> None:
+        if len(self.records(hub_id)) >= MAX_WIFI_DEVICES:
+            raise WifiDeviceLimit(f"a hub holds at most {MAX_WIFI_DEVICES} Wifi Devices")
+
     def wanted(self) -> bool:
-        return any(self.record(hub_id) is not None for hub_id in self._manager.ids())
+        """The listener is needed while a device calls it; an mqtt device never does."""
+
+        return any(record.transport != TRANSPORT_MQTT for hub_id in self._manager.ids() for record in self.records(hub_id))
 
     async def ensure_listener(self) -> None:
+        """Bring both ingresses in line with the records: the listener, and the broker subscriptions."""
+
         await self.listener.set_wanted(self.wanted())
+        await self.mqtt.set_topics(set(self._mqtt_topics()))
+
+    # -- mqtt ---------------------------------------------------------------------
+
+    def mqtt_state(self) -> MqttState:
+        return self.mqtt.state()
+
+    def mqtt_topic_for(self, hub_id: str) -> Optional[str]:
+        """``<MAC>/up``, the MAC in upper-case hex: the form the hub publishes on (a lower-case
+        topic stays silent). None while the hub's MAC is not known."""
+
+        try:
+            row = self._manager.record(hub_id)
+        except HubNotFound:
+            return None
+        for candidate in (row.config.mac, hub_id):
+            # A hub id is the MAC once known and the host before that; only the MAC shape counts
+            # (an address like 192.168.100.250 is twelve hex digits too).
+            if _MAC_SHAPE.match(str(candidate or "").strip()):
+                return f"{mac_key(str(candidate)).upper()}/up"
+        return None
+
+    def _mqtt_topics(self) -> dict[str, str]:
+        """topic -> hub id, for every enabled hub with a device on the mqtt transport."""
+
+        topics: dict[str, str] = {}
+        for hub_id in self._manager.ids():
+            if not self._manager.record(hub_id).enabled:
+                continue
+            if any(record.transport == TRANSPORT_MQTT for record in self.records(hub_id)):
+                topic = self.mqtt_topic_for(hub_id)
+                if topic is not None:
+                    topics[topic] = hub_id
+        return topics
+
+    def mqtt_unavailable_reason(self, hub_id: str, hub_version: Optional[str]) -> Optional[str]:
+        if not self.mqtt.configured:
+            return "the server has no MQTT broker (start it with --mqtt-host or SOFABATON_MQTT_HOST)"
+        if str(hub_version or "") != MQTT_HUB_VERSION:
+            return f"only an {MQTT_HUB_VERSION} publishes presses to a broker; this hub is {hub_version or 'of an unknown model'}"
+        if self.mqtt_topic_for(hub_id) is None:
+            return "the hub's MAC is not known yet, so its topic is not either"
+        return None
+
+    def transports_for(self, hub_id: str, hub_version: Optional[str]) -> list[str]:
+        """What a new device on this hub may use, the preferred one first (mqtt is the faster
+        delivery where it exists, as in the Home Assistant card)."""
+
+        if self.mqtt_unavailable_reason(hub_id, hub_version) is None:
+            return [TRANSPORT_MQTT, TRANSPORT_HTTP]
+        return [TRANSPORT_HTTP]
+
+    def handle_mqtt_message(self, topic: str, payload: bytes, retain: bool) -> None:
+        """One publish on a subscribed topic. A retained message is never a press: the hub retains
+        nothing, so it is a broker or a bridge replaying an old one. A device that is not ours is
+        someone's own MQTT device from the Sofabaton app, and none of our business."""
+
+        if retain:
+            log.debug("mqtt: dropped a retained message on %s", topic)
+            return
+        hub_id = self._mqtt_topics().get(topic)
+        if hub_id is None:
+            return
+        try:
+            data = json.loads(payload.decode("utf-8"))
+            device_id, key_id = int(data["device_id"]), int(data["key_id"])
+        except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+            log.info("mqtt: %s: not a press: %r", topic, payload[:80])
+            return
+        record = next((row for row in self.records(hub_id)
+                       if row.transport == TRANSPORT_MQTT and row.device_id == device_id), None)
+        if record is None:
+            log.debug("mqtt: %s: device %s is not a server-managed mqtt device", topic, device_id)
+            return
+        # The hub publishes the command id of the record it executed; our layout puts the long
+        # records at slot + WIFI_SLOT_COUNT, so the id read back says which press it was.
+        if 1 <= key_id <= WIFI_SLOT_COUNT:
+            parsed = ParsedPath(action_id="", device_id=device_id, slot_index=key_id - 1, press_type="short")
+        elif WIFI_SLOT_COUNT < key_id <= 2 * WIFI_SLOT_COUNT:
+            parsed = ParsedPath(action_id="", device_id=device_id, slot_index=key_id - WIFI_SLOT_COUNT - 1, press_type="long")
+        else:
+            parsed = ParsedPath(action_id="", device_id=device_id, slot_index=key_id - 1, press_type="short")
+        self._record_press(hub_id, parsed, "", transport=TRANSPORT_MQTT)
 
     def listener_state(self) -> ListenerState:
         return self.listener.state()
@@ -615,9 +806,9 @@ class CallbackService:
     def action_id_for(self, hub_id: str) -> str:
         """The hub's action id as the library builds callback paths: its MAC."""
 
-        record = self.record(hub_id)
-        if record is not None and record.action_id:
-            return record.action_id
+        for record in self.records(hub_id):
+            if record.action_id:
+                return record.action_id
         try:
             config = self._manager.record(hub_id).config
         except HubNotFound:
@@ -691,13 +882,13 @@ class CallbackService:
                 return forwarded.split(",", 1)[0].strip()
         return source_ip
 
-    def _record_press(self, hub_id: str, parsed: ParsedPath, source: str) -> Press:
-        record = self.record(hub_id)
+    def _record_press(self, hub_id: str, parsed: ParsedPath, source: str, *, transport: str = TRANSPORT_HTTP) -> Press:
+        record = next((row for row in self.records(hub_id) if row.device_id == parsed.device_id), None)
         slot = parsed.slot_index + 1
         command_id: Optional[int] = None
         label: Optional[str] = None
         resolution: Resolution
-        if record is None or record.device_id != parsed.device_id:
+        if record is None:
             resolution = "unknown_device"
         else:
             if 1 <= slot <= WIFI_SLOT_COUNT:
@@ -711,14 +902,14 @@ class CallbackService:
         press = self.ring.append(
             hub_id,
             device_id=parsed.device_id, command_id=command_id, slot=slot if command_id is not None else None,
-            label=label, press_type=parsed.press_type, resolution=resolution, transport="http",
-            source=source, received_at=now_iso(),
+            label=label, press_type=parsed.press_type, resolution=resolution, transport=transport,
+            source=source, received_at=now_iso(), device_key=record.key if record is not None else None,
         )
-        if record is not None and record.device_id == parsed.device_id:
+        if record is not None:
             record.last_press = {"seq": press.seq, "received_at": press.received_at}
             # In memory only: a press must not cost a hubs.json write.
-            self._manager.record(hub_id).callback_device = record.to_dict()
-        log.info("callback: hub %s device %s slot %s %s -> %s", hub_id, parsed.device_id, slot,
+            self._store(hub_id, record, record.key)
+        log.info("%s press: hub %s device %s slot %s %s -> %s", transport, hub_id, parsed.device_id, slot,
                  parsed.press_type, resolution)
         for listener in list(self._press_listeners):
             try:
@@ -729,10 +920,9 @@ class CallbackService:
 
     # -- deploy / update / remove / redeploy (job bodies) ---------------------------
 
-    def spec_from_body(self, body: dict[str, Any]) -> WifiDeviceSpec:
+    def spec_from_body(self, body: dict[str, Any], *, key: str = DEFAULT_DEVICE_KEY) -> WifiDeviceSpec:
         slots = tuple(
-            WifiSlotSpec(label=str(row.get("label") or ""), long_label=row.get("long_label"))
-            if isinstance(row, dict) else WifiSlotSpec(label=str(row))
+            WifiSlotSpec.from_dict(row) if isinstance(row, dict) else WifiSlotSpec(label=str(row))
             for row in (body.get("slots") or ())
         )
         return WifiDeviceSpec(
@@ -741,6 +931,7 @@ class CallbackService:
             power_on_slot=body.get("power_on_slot"),
             power_off_slot=body.get("power_off_slot"),
             input_slots=tuple(body.get("input_slots") or ()),
+            brand=brand_for_key(key),
         ).normalized()
 
     def check_port(self, hub_version: Optional[str]) -> None:
@@ -750,16 +941,21 @@ class CallbackService:
                 f"an X1 hub always calls back on port {X1_CALLBACK_PORT}; the listener uses {port}"
             )
 
-    async def deploy(self, hub_id: str, proxy: AsyncXProxy, spec: WifiDeviceSpec) -> CallbackRecord:
+    async def deploy(self, hub_id: str, proxy: AsyncXProxy, spec: WifiDeviceSpec, *,
+                     key: str = DEFAULT_DEVICE_KEY, transport: str = "http") -> CallbackRecord:
         """Job body: reconcile, adopt an orphan, else create; persist around the write."""
 
-        existing = self.record(hub_id)
+        existing = self.record(hub_id, key)
         if existing is not None and existing.device_id is not None:
             raise CallbackDeviceExists("a callback device is already deployed on this hub")
-        adopted = await self.reconcile(hub_id, proxy, spec_hint=spec)
+        if existing is None:
+            self.check_limit(hub_id)
+        adopted = await self.reconcile(hub_id, proxy, key=key, spec_hint=spec)
         if adopted is not None and adopted.device_id is not None:
             await self.ensure_listener()
             return adopted
+        if transport == TRANSPORT_MQTT:
+            return await self._deploy_mqtt(hub_id, proxy, spec, key=key)
         # The listener comes up before the target is computed, so the port
         # baked into the records is the one actually bound (a failed bind
         # falls back to the configured port and the retry loop takes over).
@@ -768,7 +964,7 @@ class CallbackService:
         self.check_port((await proxy.status()).hub_version)
         pending = CallbackRecord(device_id=None, spec=spec.to_dict(),
                                  target={"host": host, "port": port, "action_id": self.action_id_for(hub_id)},
-                                 pending={"op": "create", "started_at": now_iso()})
+                                 pending={"op": "create", "started_at": now_iso()}, key=key, transport=transport)
         self.save(hub_id, pending)
         try:
             deployment = await proxy.deploy_wifi_device(spec, host=host, port=port)
@@ -777,13 +973,29 @@ class CallbackService:
             # deploy or boot whether the hub took the device after all.
             await self.ensure_listener()
             raise
-        record = CallbackRecord.from_deployment(deployment)
+        record = CallbackRecord.from_deployment(deployment, key=key, transport=transport)
         self.save(hub_id, record)
         await self.ensure_listener()
         return record
 
-    async def update(self, hub_id: str, proxy: AsyncXProxy, spec: WifiDeviceSpec) -> CallbackRecord:
-        record = self.record(hub_id)
+    async def _deploy_mqtt(self, hub_id: str, proxy: AsyncXProxy, spec: WifiDeviceSpec, *, key: str) -> CallbackRecord:
+        """An mqtt device names no address: no listener, no target, no port rule."""
+
+        reason = self.mqtt_unavailable_reason(hub_id, (await proxy.status()).hub_version)
+        if reason is not None:
+            raise MqttUnavailable(reason)
+        pending = CallbackRecord(device_id=None, spec=spec.to_dict(), target={},
+                                 pending={"op": "create", "started_at": now_iso()}, key=key, transport=TRANSPORT_MQTT)
+        self.save(hub_id, pending)
+        deployment = await proxy.deploy_wifi_device(spec, transport=TRANSPORT_MQTT)
+        record = CallbackRecord.from_deployment(deployment, key=key, transport=TRANSPORT_MQTT)
+        self.save(hub_id, record)
+        await self.ensure_listener()
+        return record
+
+    async def update(self, hub_id: str, proxy: AsyncXProxy, spec: WifiDeviceSpec, *,
+                     key: str = DEFAULT_DEVICE_KEY, progress: Optional[Callable[..., Any]] = None) -> CallbackRecord:
+        record = self.record(hub_id, key)
         if record is None or record.device_id is None:
             raise CallbackDeviceMissing(hub_id)
         if record.stale:
@@ -791,53 +1003,89 @@ class CallbackService:
         record.pending = {"op": "update", "started_at": now_iso(), "spec": spec.to_dict()}
         self.save(hub_id, record)
         try:
-            deployment = await proxy.update_wifi_device(record.deployment(), spec)
+            deployment = await proxy.update_wifi_device(record.deployment(), spec, progress=progress)
         finally:
             # Whatever happened, the next update resumes through the
             # library's drift rule; the intent has no other use.
-            fresh = self.record(hub_id)
+            fresh = self.record(hub_id, key)
             if fresh is not None and fresh.pending is not None and fresh.pending.get("op") == "update":
                 fresh.pending = None
                 self.save(hub_id, fresh)
-        updated = CallbackRecord.from_deployment(deployment)
+        updated = CallbackRecord.from_deployment(deployment, key=key, transport=record.transport)
         updated.deployed_at = record.deployed_at
         updated.adopted = record.adopted
         updated.last_press = record.last_press
         self.save(hub_id, updated)
         return updated
 
-    def references(self, snapshot: Any, device_id: int) -> list[dict[str, Any]]:
+    @staticmethod
+    def owned_references(spec: Optional[WifiDeviceSpec]) -> dict[int, dict[str, set[int]]]:
+        """What the spec's own slots put into activities, per activity: the
+        favorited command ids and the claimed buttons. A delete takes these
+        with it by design (wifi commands plan, section 6), so they never ask
+        for ``force``; an activity that appears here is one the spec joined."""
+
+        owned: dict[int, dict[str, set[int]]] = {}
+        if spec is None:
+            return owned
+        for index, slot in enumerate(spec.normalized().slots, start=1):
+            for activity_id in slot.activities:
+                mine = owned.setdefault(int(activity_id), {"favorites": set(), "buttons": set()})
+                if slot.favorite:
+                    mine["favorites"].add(index)
+                if slot.button is not None:
+                    mine["buttons"].add(int(slot.button))
+            if slot.input_activity_id is not None:
+                owned.setdefault(int(slot.input_activity_id), {"favorites": set(), "buttons": set()})
+        return owned
+
+    def references(self, snapshot: Any, device_id: int, *, spec: Optional[WifiDeviceSpec] = None) -> list[dict[str, Any]]:
         """Activities in the snapshot that name the device: membership,
         favorites, bindings, macro steps. Unfetched activities cannot be
-        scanned and are reported as ``complete: False``."""
+        scanned and are reported as ``complete: False``.
 
+        The steps a membership itself puts into an activity's power macros
+        (power on, input, power off) are the membership, not a macro
+        reference. With ``spec``, only what its slots did not put there is
+        reported, row by row: a favorite or a button the spec does not
+        name is foreign even in an activity the spec joined."""
+
+        owned = self.owned_references(spec)
+        power_macros = (0xC6, 0xC7)
         found: list[dict[str, Any]] = []
         for payload in (snapshot.bundle.get("activities") or []):
             if not isinstance(payload, dict):
                 continue
             block = payload.get("device") or {}
+            activity_id = int(block.get("device_id") or 0)
+            mine = owned.get(activity_id)
             kinds: list[str] = []
-            if device_id in [int(m) for m in payload.get("referenced_source_device_ids") or []]:
+            if device_id in [int(m) for m in payload.get("referenced_source_device_ids") or []] and mine is None:
                 kinds.append("member")
-            if any(int(s.get("device_id") or 0) == device_id for s in payload.get("favorite_slots") or []):
+            if any(int(s.get("device_id") or 0) == device_id
+                   and (mine is None or int(s.get("command_id") or 0) not in mine["favorites"])
+                   for s in payload.get("favorite_slots") or []):
                 kinds.append("favorite")
-            if any(int(r.get("device_id") or 0) == device_id or int(r.get("long_press_device_id") or 0) == device_id
+            if any((int(r.get("device_id") or 0) == device_id or int(r.get("long_press_device_id") or 0) == device_id)
+                   and (mine is None or int(r.get("button_id") or 0) not in mine["buttons"])
                    for r in payload.get("button_bindings") or []):
                 kinds.append("binding")
             if any(int(step.get("device_id") or 0) == device_id
-                   for macro in payload.get("macros") or [] for step in macro.get("steps") or []):
+                   for macro in payload.get("macros") or []
+                   if int(macro.get("button_id", macro.get("key_id", 0)) or 0) not in power_macros
+                   for step in macro.get("steps") or []):
                 kinds.append("macro")
             if kinds:
-                found.append({"activity_id": int(block.get("device_id") or 0), "name": block.get("name"),
+                found.append({"activity_id": activity_id, "name": block.get("name"),
                               "kinds": kinds, "complete": bool(payload.get("complete", False))})
         return found
 
-    async def remove(self, hub_id: str, proxy: AsyncXProxy) -> dict[str, Any]:
-        record = self.record(hub_id)
+    async def remove(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY) -> dict[str, Any]:
+        record = self.record(hub_id, key)
         if record is None:
             raise CallbackDeviceMissing(hub_id)
         device_id = record.device_id
-        removed: dict[str, Any] = {"device_id": device_id, "hub_device_removed": False}
+        removed: dict[str, Any] = {"key": key, "device_id": device_id, "hub_device_removed": False}
         if device_id is not None:
             snap = await proxy.snapshot()
             present = snap.entity("device", device_id) is not None
@@ -847,29 +1095,30 @@ class CallbackService:
                 result = await proxy.remove_device(device_id)
                 removed["hub_device_removed"] = True
                 removed["impacted_activity_ids"] = list(result.impacted_activity_ids)
-        self.save(hub_id, None)
-        self.ring.forget(hub_id)
+        self.save(hub_id, None, key)
+        if not self.records(hub_id):
+            self.ring.forget(hub_id)
         await self.ensure_listener()
         return removed
 
-    async def redeploy(self, hub_id: str, proxy: AsyncXProxy) -> CallbackRecord:
-        record = self.record(hub_id)
+    async def redeploy(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY) -> CallbackRecord:
+        record = self.record(hub_id, key)
         if record is None or record.device_id is None:
             raise CallbackDeviceMissing(hub_id)
         if not record.stale:
             raise CallbackDeviceNotStale("the callback device is not stale")
         spec = WifiDeviceSpec.from_dict(record.spec).normalized()
         # The device may have come back under a verified identity.
-        if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id)):
+        if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id), transport=record.transport):
             record.stale = False
             self.save(hub_id, record)
             return record
-        self.save(hub_id, None)
-        return await self.deploy(hub_id, proxy, spec)
+        self.save(hub_id, None, key)
+        return await self.deploy(hub_id, proxy, spec, key=key, transport=record.transport)
 
     # -- reconciliation and identity ------------------------------------------------
 
-    async def reconcile(self, hub_id: str, proxy: AsyncXProxy, *,
+    async def reconcile(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY,
                         spec_hint: Optional[WifiDeviceSpec] = None) -> Optional[CallbackRecord]:
         """Settle a pending intent, or adopt an orphan the server forgot.
 
@@ -877,9 +1126,13 @@ class CallbackService:
         Runs inside a job, before every deploy and at boot.
         """
 
-        record = self.record(hub_id)
+        record = self.record(hub_id, key)
         action_id = self.action_id_for(hub_id)
         if record is None:
+            if key != DEFAULT_DEVICE_KEY:
+                # A keyed device is born with a fresh key in its brand, so no
+                # device on the hub can be its orphan.
+                return None
             # No record at all: any device carrying our callback path is an
             # orphan (a lost data directory, a crash before the first save),
             # whatever it is called; the requested name does not narrow it.
@@ -890,10 +1143,11 @@ class CallbackService:
         op = str(pending.get("op") or "")
         if op == "create":
             spec = WifiDeviceSpec.from_dict(pending.get("spec") or record.spec).normalized()
-            adopted = await self._adopt(hub_id, proxy, action_id, name=spec.name, spec=spec)
+            adopted = await self._adopt(hub_id, proxy, action_id, name=spec.name, spec=spec,
+                                        key=key, transport=record.transport)
             if adopted is None:
                 log.info("hub %s: the pending callback create never landed; dropping it", hub_id)
-                self.save(hub_id, None)
+                self.save(hub_id, None, key)
                 return None
             return adopted
         if op == "update":
@@ -904,7 +1158,7 @@ class CallbackService:
             snap = await proxy.snapshot()
             if record.device_id is not None and snap.entity("device", record.device_id) is None:
                 log.info("hub %s: the pending callback delete had landed; dropping the record", hub_id)
-                self.save(hub_id, None)
+                self.save(hub_id, None, key)
                 return None
             record.pending = None
             self.save(hub_id, record)
@@ -914,37 +1168,49 @@ class CallbackService:
         return record
 
     async def _adopt(self, hub_id: str, proxy: AsyncXProxy, action_id: str, *,
-                     name: Optional[str], spec: Optional[WifiDeviceSpec] = None) -> Optional[CallbackRecord]:
+                     name: Optional[str], spec: Optional[WifiDeviceSpec] = None,
+                     key: str = DEFAULT_DEVICE_KEY, transport: str = "http") -> Optional[CallbackRecord]:
         """Find a device the server created and forgot; take it over by identity."""
 
         snap = await proxy.snapshot()
+        held = {row.device_id for row in self.records(hub_id) if row.key != key and row.device_id is not None}
         candidates = []
         for payload in snap.bundle.get("devices") or []:
             block = (payload or {}).get("device") or {}
-            if str(block.get("brand") or "") != (spec.brand if spec else "m3tac0de"):
+            if str(block.get("brand") or "") != (spec.brand if spec else brand_for_key(key)):
+                continue
+            if int(block.get("device_id") or 0) in held:
                 continue
             if name is not None and str(block.get("name") or "") != name:
                 continue
             candidates.append((int(block.get("device_id") or 0), payload))
         for device_id, payload in candidates:
-            blob = await self._identity_blob(proxy, device_id, action_id)
-            if blob is None:
-                continue
+            if transport == TRANSPORT_MQTT:
+                # Inert records carry no path to recognise; the brand carries the record's own key
+                # and the class says what kind of device it is, which is identity enough.
+                if str(((payload or {}).get("device") or {}).get("device_class") or "") != "wifi_mqtt":
+                    continue
+                target: Optional[WifiTarget] = None
+            else:
+                blob = await self._identity_blob(proxy, device_id, action_id)
+                if blob is None:
+                    continue
+                host, port = self._target_from_blob(blob, payload, proxy)
+                target = WifiTarget(host=host, port=port, action_id=action_id)
             adopted_spec = spec or self._spec_from_live(payload)
             labels = self._labels_from_live(payload, adopted_spec)
-            host, port = self._target_from_blob(blob, payload, proxy)
             deployment = WifiDeployment(
-                device_id=device_id, spec=adopted_spec,
-                target=WifiTarget(host=host, port=port, action_id=action_id),
-                labels=labels, hub_version=str((await proxy.status()).hub_version or ""),
+                device_id=device_id, spec=adopted_spec, target=target,
+                labels=labels, hub_version=str((await proxy.status()).hub_version or ""), transport=transport,
             )
-            record = CallbackRecord.from_deployment(deployment, adopted=True)
+            record = CallbackRecord.from_deployment(deployment, adopted=True, key=key, transport=transport)
             self.save(hub_id, record)
             log.info("hub %s: adopted callback device %s by identity", hub_id, device_id)
             return record
         return None
 
-    async def _verify_identity(self, proxy: AsyncXProxy, device_id: int, spec: WifiDeviceSpec, action_id: str) -> bool:
+    async def _verify_identity(self, proxy: AsyncXProxy, device_id: int, spec: WifiDeviceSpec, action_id: str, *,
+                               transport: str = TRANSPORT_HTTP) -> bool:
         snap = await proxy.snapshot()
         entity = snap.entity("device", device_id)
         if entity is None:
@@ -955,6 +1221,8 @@ class CallbackService:
                 continue
             if str(block.get("brand") or "") != spec.brand or str(block.get("name") or "") != spec.name:
                 return False
+            if transport == TRANSPORT_MQTT:
+                return str(block.get("device_class") or "") == "wifi_mqtt"
             return await self._identity_blob(proxy, device_id, action_id) is not None
         return False
 
@@ -982,7 +1250,7 @@ class CallbackService:
             for i in range(1, WIFI_SLOT_COUNT + 1)
         )
         return WifiDeviceSpec(name=str(block.get("name") or "Server"), slots=slots,
-                              brand=str(block.get("brand") or "m3tac0de")).normalized()
+                              brand=str(block.get("brand") or DEFAULT_WIFI_BRAND)).normalized()
 
     @staticmethod
     def _labels_from_live(payload: dict[str, Any], spec: WifiDeviceSpec) -> dict[int, str]:
@@ -1023,8 +1291,7 @@ class CallbackService:
     def _on_hub_event(self, hub_id: str, event: HubEvent) -> None:
         if event.kind != "snapshot_changed":
             return
-        record = self.record(hub_id)
-        if record is None or record.device_id is None or record.pending is not None:
+        if not any(row.device_id is not None and row.pending is None for row in self.records(hub_id)):
             return
         try:
             proxy = self._manager.proxy(hub_id)
@@ -1036,8 +1303,13 @@ class CallbackService:
         self._verify_tasks[hub_id] = asyncio.create_task(self._check_stale(hub_id, proxy), name=f"callback-stale:{hub_id}")
 
     async def _check_stale(self, hub_id: str, proxy: AsyncXProxy) -> None:
+        for row in self.records(hub_id):
+            if row.device_id is not None and row.pending is None:
+                await self._check_stale_one(hub_id, proxy, row.key)
+
+    async def _check_stale_one(self, hub_id: str, proxy: AsyncXProxy, key: str) -> None:
         try:
-            record = self.record(hub_id)
+            record = self.record(hub_id, key)
             if record is None or record.device_id is None:
                 return
             snap = await proxy.snapshot()
@@ -1050,8 +1322,9 @@ class CallbackService:
             elif present and record.stale:
                 # The same numeric id is not proof; verify before clearing.
                 spec = WifiDeviceSpec.from_dict(record.spec).normalized()
-                if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id)):
-                    fresh = self.record(hub_id)
+                if await self._verify_identity(proxy, record.device_id, spec, self.action_id_for(hub_id),
+                                               transport=record.transport):
+                    fresh = self.record(hub_id, key)
                     if fresh is not None and fresh.stale:
                         fresh.stale = False
                         self.save(hub_id, fresh)
@@ -1075,5 +1348,5 @@ class CallbackService:
 
     def _on_listener_state(self, kind: str) -> None:
         for hub_id in self._manager.ids():
-            if self.record(hub_id) is not None:
+            if self.records(hub_id):
                 self._manager.emit_server_event(kind, hub_id)

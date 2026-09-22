@@ -16,16 +16,15 @@ import asyncio
 import logging
 import uuid
 from collections import deque
-from dataclasses import asdict, dataclass, field
-from typing import Any, Awaitable, Callable, Literal, Optional
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Optional
 
 from sofabaton import WriteProgress
 
-from .models import Problem, now_iso
+from .models import JobStatus, JobView, Problem, now_iso
 
 log = logging.getLogger(__name__)
 
-JobStatus = Literal["queued", "running", "done", "failed", "cancelled"]
 ACTIVE: frozenset[str] = frozenset({"queued", "running"})
 KEEP_FINISHED = 20
 
@@ -48,26 +47,6 @@ class JobNotFound(KeyError):
 
 class JobNotCancellable(RuntimeError):
     """The job exists but cannot be interrupted (or already finished)."""
-
-
-@dataclass
-class JobView:
-    """One job as the API shows it."""
-
-    job_id: str
-    hub_id: str
-    kind: str
-    status: JobStatus
-    cancellable: bool
-    created_at: str
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
-    progress: Optional[WriteProgress] = None
-    result: Optional[dict[str, Any]] = None
-    error: Optional[Problem] = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
 
 
 @dataclass
@@ -101,6 +80,12 @@ class JobRunner:
             except Exception:  # noqa: BLE001
                 log.exception("job listener failed")
 
+    def announce(self, view: JobView) -> None:
+        """Tell the listeners a finished job's record changed (a staged
+        backup bundle was downloaded, dropped or expired)."""
+
+        self._emit(view)
+
     # -- queries -------------------------------------------------------------
 
     def get(self, hub_id: str, job_id: str) -> JobView:
@@ -115,6 +100,14 @@ class JobRunner:
     def active(self, hub_id: str) -> Optional[JobView]:
         job_id = self._active.get(hub_id)
         return self._jobs[job_id].view if job_id in self._jobs else None
+
+    def last_finished(self, hub_id: str) -> Optional[JobView]:
+        """The newest job on the hub that reached a terminal status, or None."""
+
+        for view in self.list(hub_id):
+            if view.status not in ACTIVE:
+                return view
+        return None
 
     # -- lifecycle -----------------------------------------------------------
 

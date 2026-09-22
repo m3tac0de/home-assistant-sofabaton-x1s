@@ -1,8 +1,9 @@
 # sofabaton-x-server
 
-> **0.2.0 is the first release.** The API is versioned (`api 1`) and the
-> OpenAPI document is committed; before 1.0 a minor release may still
-> change the surface, and the release notes say when it does.
+> **This README describes 0.2.1, API 1.** Read the
+> [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md#021-2026-09-22)
+> for payload-response and backup-retention changes from 0.2.0. The OpenAPI
+> document is committed; regenerate clients when adopting this release.
 
 REST + WebSocket server over the [sofabaton-x](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/README.md)
 library for **Sofabaton X1 / X1S / X2** hubs, with a built-in management UI
@@ -11,7 +12,7 @@ events in a browser. Automation platforms (Homey, Hubitat, openHAB, …)
 connect to the same HTTP/WebSocket API; the server manages the hub
 connections and persistence.
 
-The current version is **0.2.0**, built against sofabaton-x 0.2.x. It
+Version **0.2.1** requires **sofabaton-x >=0.2.1,<0.3**. It
 covers hub discovery and management, reads and control, the event
 stream, button events, configuration editing, IR payloads, backup /
 restore / erase, a web remote and a control panel.
@@ -42,7 +43,7 @@ and you have tested control. Disable any existing proxy for that hub first.
 Install from PyPI (Python 3.11+; the library comes with it):
 
 ```
-python -m pip install "sofabaton-x-server>=0.2,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
 sofabaton-x-server
 ```
 
@@ -50,9 +51,10 @@ From a checkout, install both packages from the repository root instead:
 `python -m pip install . ./sofabaton-x-server`.
 
 Open the control panel at `http://<server>:8480/` (it lives at `/ui/`).
-Use `localhost` when browsing on the server host. Its Hubs view lists the
-hubs advertised on the LAN with an Add button, takes an address by hand,
-and enables, disables and removes hubs later (see
+Use `localhost` when browsing on the server host. Open the hub picker to
+see registered hubs and hubs discovered on the LAN. Add a discovered hub
+with its Add button, or choose **Add by address…** for manual registration.
+Each registered hub's **⋯** actions enable, disable or remove it (see
 [Control panel](#control-panel)). If the hub is missing, make sure the app
 is fully closed and scan again. Keep the data directory (default `./data`)
 across restarts. `--hub <physical IP>` is an alternative for seeding the
@@ -168,8 +170,26 @@ variables, then flags; each layer overrides the one before.
 | `--tls-cert` / `--tls-key` | `SOFABATON_TLS_CERT` / `_KEY` | none | bring your own certificate (a reverse proxy is the usual way) |
 | `--callback-host` | `SOFABATON_CALLBACK_HOST` | routed local IP per hub | IPv4 address the hubs call back on for callback devices (see Button events); set the host's LAN address inside a container on a bridge network |
 | `--callback-port` | `SOFABATON_CALLBACK_PORT` | `8060` | port of the callback listener; the X1 can call no other |
+| `--hub-listen-port` | `SOFABATON_HUB_LISTEN_PORT` | `8200` | TCP port the hubs connect back to, shared by every hub |
+| `--app-discovery-port` | `SOFABATON_APP_DISCOVERY_PORT` | `8102` | UDP port the official app discovers and calls the proxies on; keep it for iOS |
 | no flag (`server.json`: `apply_keep`) | `SOFABATON_APPLY_KEEP` | `20` | retained terminal apply records per hub, including stopped/cancelled ones |
 | `--log-level` | `SOFABATON_LOG_LEVEL` | `info` | |
+| `--mqtt-host` | `SOFABATON_MQTT_HOST` | none | the MQTT broker an X2 publishes button presses to (the one set in the Sofabaton app); setting it offers the `mqtt` transport for X2 hubs, see [MQTT](#mqtt) |
+| `--mqtt-port` | `SOFABATON_MQTT_PORT` | `1883`, `8883` with TLS | broker port |
+| `--mqtt-username` | `SOFABATON_MQTT_USERNAME` | none | broker user name |
+| `--mqtt-password` | `SOFABATON_MQTT_PASSWORD` | none | broker password; prefer the environment variable or the file, a flag shows in the process list |
+| `--mqtt-password-file` | `SOFABATON_MQTT_PASSWORD_FILE` | none | file whose first line is the password (Docker and Kubernetes secrets) |
+| `--mqtt-tls` | `SOFABATON_MQTT_TLS=true` | off | connect over TLS |
+| `--mqtt-tls-ca` | `SOFABATON_MQTT_TLS_CA` | system store | CA certificate file to verify the broker with |
+| `--mqtt-tls-insecure` | `SOFABATON_MQTT_TLS_INSECURE=true` | off | do not verify the broker's certificate |
+| `--mqtt-client-id` | `SOFABATON_MQTT_CLIENT_ID` | `sofabaton-x-server-<random>` | MQTT client id |
+
+The `mqtt` settings are flags and environment variables **only**. They
+hold a secret, so `server.json` never carries them (a file that does stops
+the server with a message saying so), the control panel cannot write them,
+and the password is in nothing the server prints, logs or serves:
+`--print-settings` says `mqtt_password_set`, `GET /server/mqtt` has no
+password field.
 
 For example, save this as `server.json` in the selected data directory:
 
@@ -187,6 +207,15 @@ Choose that directory with `--data-dir` or `SOFABATON_DATA_DIR` before the
 file is loaded. An existing empty `hubs.json` is respected: seed hubs are
 not re-added. `--print-settings` prints effective settings and exits.
 
+The three host-side ports (`hub_listen_port`, `app_discovery_port`,
+`callback_port`) are also editable from the control panel's Server page,
+over `GET /server/settings` and `PUT /server/settings`. A change is
+written to `server.json` and applies on the next start. A port set by an
+environment variable or a flag wins over the file, so it shows as pinned
+and the API refuses to change it (409 `setting_pinned`). The server ports
+replace the per-hub `hub_listen_port` / `app_discovery_port` values: one
+listener serves every hub.
+
 ## Security
 
 **No authentication in v1.** The server is a LAN service in the same
@@ -202,19 +231,29 @@ play calls return their acceptance immediately.
 ## Control panel
 
 Open `<server base URL>/ui/`. The root `/` and legacy `/harness` redirect
-there. The sidebar lists registered hubs and their state.
+there. The hub picker in the top dock lists registered hubs and their state,
+with unregistered discoveries in a separate group. Opening it scans the LAN;
+the scan button repeats discovery. Older discoveries are marked when no
+longer present. **Add by address…** accepts an address, an optional name and
+the option to start disabled. The **⋯** actions on registered hubs enable,
+disable, retry a failed start or remove them. Removing a hub requires
+confirmation and forgets cached state and the saved remote layout.
 
 | View | What users can do |
 | --- | --- |
-| **Hubs** | Add discovered hubs or enter an address; inspect status; enable, disable, retry a failed start or remove a registration. Removal also forgets its cached state and remote layout. |
-| **Catalog** | Browse devices, activities, commands, buttons, macros and favorites with their IDs. Fetch missing detail or explicitly refresh one entity or the whole hub. It does not edit configuration. |
+| **Hub settings** (cog menu) | Inspect the selected hub's details and status; enable, disable, retry a failed start or remove its registration. Discovery and registration are in the hub picker. |
+| **Hub** | Activities and Devices, navigated as the HA control panel card's Hub tab: one row per entity opens as a drawer with its cached rows (a device's commands; an activity's favorites, macros and bound buttons), one drawer open at a time, DevID / ComID badges naming what `POST /send` takes as `entity_id` and `command_id`, a refresh button per row and Refresh all in the header. Reads come from the server's cache; a refresh reads the hub as a job. Edit devices and activities in place: names, commands and payloads, buttons, favorites, macros, membership, power sequences and inputs. Review the draft, then Sync to Hub; deleting a command also removes its hub references. |
+| **Wifi Commands** | Wifi Devices, as the HA control panel card's Wifi Commands tab without its Actions: add a Wifi Device, give each of its ten command slots a name, a favorite, a physical button with its long press, the activities those apply to and the activity it is the input of, choose the commands the hub performs when it powers the device on or off, Sync to Hub, delete. A press on the physical remote lights the device's row and the command's tile. See [Wifi Commands](#wifi-commands). |
+| **Backup** | Make, Edit and Restore, as the HA control panel card's Backup tab. Make reads the entire hub or selected devices into a bundle and offers it as a download for five minutes. Edit opens a backup file in the browser (devices, activities, commands, payloads, buttons, order, hub name) and downloads the result; nothing is sent to the hub, and the loaded file is kept in the browser for an hour. Restore loads a file, picks the activities and devices to write (an activity brings the devices it uses) and optionally erases the hub first. The server keeps no backup archive: the downloaded file is the backup. |
 | **Remote** | Control the selected hub and edit its saved remote layout. |
 | **API** | Select an OpenAPI operation or enter a method/path, send a request, inspect the response and follow a returned job. `{hub_id}` uses the selected hub. |
 | **Events** | Inspect the live WebSocket stream, filter by hub/text and identify callback presses. It reconnects after a server restart. |
 
-There is no dedicated callback-device, binding or full-configuration editor
-in 0.2.0. Use the starter's setup command or the API view for those writes;
-deployed callback commands can also be assigned in the official app.
+The Wifi Commands tab manages the server's Wifi Devices, the 0.2.0 callback
+device included, down to the favorites, buttons and inputs of each command.
+The Hub tab's activity editor, or the official app, binds their commands
+like any device's for everything else (macro steps, another device's
+activity).
 
 The panel supports light and dark themes. Like the API, it has no built-in
 authentication: anyone who can open it can control and change the hub.
@@ -255,10 +294,19 @@ DELETE /hubs/{id}/ui/remote-card        back to the card's defaults
 The document holds the same keys as the Home Assistant card's YAML,
 minus `entity`, `theme` and Home Assistant actions (custom favourites
 that call a Home Assistant action are dropped; those that name a hub
-command stay). The control panel's Remote view (`/ui/`) shows the
-remote next to an editor for this document and applies a saved document
-to the remote at once; a Home Assistant user can paste the card's YAML
-converted to JSON. The page never stores anything in the browser.
+command stay). Open **Remote → Layout** in the control panel (`/ui/`)
+for the visual editor: general options, styling, default and per-activity
+or per-device layouts, and device shortcuts. Drag the handles to reorder
+groups, or focus a handle and use the arrow keys. The preview updates as
+you edit and does not send commands to the hub. **Save** stores the shared
+configuration; other open web remotes pick it up when reloaded.
+
+The **JSON** editor remains available for custom favourites and advanced
+options, or to paste the Home Assistant card's YAML converted to JSON.
+Switching between editors preserves additional configuration keys.
+**Reset to defaults** deletes the hub's stored configuration. Unsaved
+edits are local to the current view and are not retained after switching
+hubs or reloading the page.
 
 **Icons.** The page bundles the icons the card itself uses plus a set of
 common `mdi:` names for favourites and shortcuts; an icon outside that
@@ -355,7 +403,15 @@ restore and erase. Follow
 it on the event stream (`job_event` messages carry the full record:
 `status`, the last `progress`, the `result` or a `Problem` in `error`)
 or poll `GET /hubs/{id}/jobs/{job_id}`; `GET /hubs/{id}/jobs` lists
-recent ones. One job runs per hub at a time (`409 hub_job_running`). Reads
+recent ones, and every hub view (`GET /hubs`, `GET /hubs/{id}`) carries
+`active_job` (queued or running now) and `last_job` (the newest finished
+one, whatever its outcome), so one list call tells a client what each
+hub is doing. One exception to "the full record": a backup's `bundle`
+runs to megabytes, so only `GET /hubs/{id}/jobs/{job_id}` and the
+download route carry it; the stream, the job list and the hub views show
+the rest of that result (see [IR payloads, backup, restore](#ir-payloads-backup-restore)).
+A finished backup job is announced again on the stream when its bundle is
+downloaded, dropped or expires. One job runs per hub at a time (`409 hub_job_running`). Reads
 are not rejected merely because a job runs, but a read that needs hub
 traffic can wait or fail; keep the hub idle during IR learning.
 Check the job's `cancellable` field before requesting cancellation with
@@ -401,7 +457,17 @@ Two shapes, both jobs:
   `activities[]` or `devices[]` element of the snapshot, preview with
   `POST .../plan`, then `PUT` it back with `If-Match` (required: `428`
   without it, `412` when the snapshot moved). Only the named entity may
-  differ from the snapshot (`422 out_of_scope`).
+  differ from the snapshot (`422 out_of_scope`). One exception: an
+  activity edit that picks an input for a device appends to that
+  device's `input_record`, so `PUT /activities/{aid}` (and its plan
+  route) accepts an optional `devices` list next to the activity's own
+  fields, holding the `devices[]` elements the edit touched. They are
+  applied with the activity in the same job; only a device's input
+  record, idle behaviour and command names may differ. A device PUT and
+  its plan preview allow command removal: omitted commands are deleted,
+  their references are cascaded by the hub and display order is rewritten.
+  Input writes append entries; removal and reordering of existing input
+  entries are not applied, even if the job succeeds.
 
 `If-Match` compares the cached configuration revision. Sync-based row edits
 and intents also re-read the target before writing, but compare only
@@ -501,11 +567,28 @@ A code in any format your platform has (`{"pronto": ...}`,
 once with `POST /hubs/{id}/play`, saved as a new command with `POST
 .../devices/{did}/commands`, or written over an existing one with `PUT
 .../commands/{cid}/payload`; `GET .../commands/{cid}/payload` reads what
-the hub holds. `POST /hubs/{id}/learn` arms the hub's receiver and
-returns the captured code as the job result.
+the hub holds for a command of any device class, with `kind` `raw` or
+`descriptive` (IR), `network` (a decoded wifi request) or `record` (a
+Bluetooth key, a `wifi_mqtt` record). Only IR payloads play. `POST /hubs/{id}/learn` arms the hub's receiver and
+returns the captured code as the job result. The play, command-create and
+command-payload PUT routes accept **IR formats only**; the GET payload
+response is not a valid write body. For non-IR edits, use command-row
+`restore_data` in a device or whole-document PUT, preserving the stored
+metadata and class-appropriate fields.
 
-`POST /hubs/{id}/backup` returns a full, restorable bundle in the completed
-job's `result.bundle` (minutes; keep that whole bundle as a file).
+`POST /hubs/{id}/backup` reads a full, restorable bundle as a job
+(minutes). The server keeps no backup archive: it holds the finished
+bundle in memory for **five minutes** so the client can take it, and the
+file the client saves is the backup. While it is held, read it from the
+job record (`GET /hubs/{id}/jobs/{job_id}`, `result.bundle`) or download
+it as a file with `GET /hubs/{id}/jobs/{job_id}/bundle` (an attachment
+named `<date>_<time>_<hub name>.json`; as often as needed). Drop it early
+with `DELETE /hubs/{id}/jobs/{job_id}/bundle` once saved. Another backup
+on the same hub replaces it at once, so a hub never holds more than one
+bundle. Next to `bundle`, the result carries `filename`, `activities` and
+`devices` (counts), `captured_at`, `payload_profile`, `bundle_available`,
+`bundle_expires_at`, `bundle_downloaded` and `bundle_expired`; after the
+bundle is gone the download route answers `410 bundle_expired`.
 `POST /hubs/{id}/restore` with
 `{"bundle": ..., "replace": true}` erases first and then writes the
 bundle back. The bundle and its entity references are validated before erase.
@@ -516,9 +599,14 @@ restorable. Keep the complete full-backup bundle, not just its job header.
 `POST /hubs/{id}/erase` and a replacing restore are whole-hub destructive
 operations. Device/activity deletion and payload replacement can also remove
 existing configuration. A failed restore is not rolled back: inspect its
-result (`failed_at`, restored counts, `device_id_map`, `snapshot_id`) and the
-current snapshot before recovery. Automatically retrying an additive restore
-can create duplicates. If a write request times out, check the hub's jobs
+result (`failed_at`, restored counts, `device_id_map`, `snapshot_id`, and
+`erased`: a replacing restore that fails after its erase leaves an empty or
+partial hub, reported as `502`) and the current snapshot before recovery.
+Choose recovery after inspecting that state. Repeating a replacing restore
+erases again; an additive retry can duplicate entities. While a restore,
+sync or another exclusive configuration operation holds a hub, a read that
+needs hub traffic waits instead of interrupting it. The read answers
+`504 hub_timeout` if that wait times out. If a write request times out, check the hub's jobs
 before submitting it again.
 
 ## Button events
@@ -554,14 +642,16 @@ Every deploy writes all ten slots (unnamed ones are `Button n`), each as
 a short and a long press record: command ids `1..10` and `11..20`. Bind
 them like any command with the generic routes (`PUT
 /hubs/{id}/activities/{aid}/buttons/{button}`, favorites, activity membership); an
-in-place update never touches those bindings. On the X1S and X2,
+in-place update preserves independently created bindings except when a
+new slot assignment replaces the same button, or removing a spec-owned
+activity membership makes the hub drop that device's rows. On the X1S and X2,
 `power_on_slot` / `power_off_slot` fire when an activity powers on or
 off and `input_slots` are offered as activity-start inputs; the X1
 ignores both (its firmware fires one power and one input callback per
 transition regardless) and always calls port 8060.
 
 Presses arrive as `press` messages on `/events` and in `GET
-/hubs/{id}/presses`. Both carry the same `seq`, a counter of this server
+/hubs/{id}/presses`. Both carry `device_key` and the same `seq`, a counter of this server
 instance; de-duplicate across the two channels by it, and after a
 reconnect or a `dropped` message fetch `?after=<last seq you saw>`.
 `expired: true` means presses newer than that were already evicted from
@@ -604,6 +694,109 @@ before every deploy the server reconciles it, and a device it created
 but forgot (a crash before the save, a lost data directory) is adopted
 by that same identity check instead of being created twice
 (`adopted: true` on the record).
+
+## Wifi Commands
+
+A hub can hold several of these managed devices. The callback device
+above is one of them, under the reserved key `default`; the others are
+**Wifi Devices**, each under a key the server mints, and the control
+panel's Wifi Commands tab is built on them:
+
+```
+GET  /hubs/{id}/wifi-devices                  {devices, max_devices, transports, effective_destination}
+POST /hubs/{id}/wifi-devices                  deploy a new one (a job); the result is its record, with its `key`
+GET  /hubs/{id}/wifi-devices/{key}            one record
+PUT  /hubs/{id}/wifi-devices/{key}            the complete desired spec, in place (a job)
+DELETE /hubs/{id}/wifi-devices/{key}          remove it (409 while activities reference it; ?force=true)
+POST /hubs/{id}/wifi-devices/{key}/redeploy   a stale one again from its stored spec
+```
+
+Bodies, records, jobs, problem types, stale detection and recovery are
+the callback device's, per key; `/wifi-devices/default` and
+`/callback-device` are the same record. What the keys add:
+
+- A hub holds at most `max_devices` records (5, the callback device
+  included); one more is a `409 wifi_device_limit`.
+- A keyed device carries the brand `c0-<key>` on the hub. The Home
+  Assistant integration marks its own Wifi Devices `m3-<key>-<hash>`, so
+  a hub that has met both never has one side adopt, edit or delete the
+  other's devices. The two are not interchangeable: a device made here
+  does nothing in Home Assistant and the reverse.
+- A `press` carries `device_key`, the key of the device it resolved to
+  (`null` for an `unknown_device`), next to `device_id` and `slot`.
+- A slot can say where its command goes, as a slot of the Home Assistant
+  card does. Next to `label` and `long_label`: `favorite` and `button` (a
+  hub button code, the `button_code` of `GET .../buttons`) apply in every
+  activity of `activities`; `long_press` also binds the slot's long
+  record (command `slot + 10`) to that button's long press;
+  `input_activity_id` makes the command that activity's input, performed
+  while it starts (X1S/X2). One slot per button and one slot per input
+  activity; a power slot cannot also be an input. Invalid IDs and
+  conflicting claims are `422`. Normalization clears `activities` when
+  neither `favorite` nor `button` is set, and clears `long_press` without
+  a button. The update writes these in place with the rest of the spec: the device
+  joins the activities it names, and its own page gets the buttons, which
+  is what lets an activity pick it as its volume or navigation device.
+  Ownership is by history: the server removes a favorite, a button or a
+  membership only when an earlier spec of this device put it there. A new
+  slot assignment can replace an existing button assignment. One consequence to
+  know: a spec that stops naming an activity leaves it, and the hub then
+  drops every row of the device in that activity. An activity id the hub
+  does not have fails the job with `callback_update_declined`
+  (`activity: ...`). `DELETE` asks for `?force=true` only for references
+  the device's own slots did not make.
+- Every record and the create body carry `transport`: `"http"` or
+  `"mqtt"`. The list's `transports` says what a new device on this hub
+  may use, the preferred one first; see [MQTT](#mqtt). It is fixed at
+  deploy: changing it is a delete and a new device. The POST default is
+  `"http"`, even when `transports` lists MQTT first; send `"transport":
+  "mqtt"` explicitly. PUT ignores `transport` and retains the deployed one.
+  `POST /callback-device` always deploys HTTP.
+
+### MQTT
+
+An X2 can deliver presses through an MQTT broker instead of calling the
+server. It needs
+no callback listener, no callback address and no port 8060 involved. The
+device's command records are inert; at press time the hub publishes
+`{"device_id": <hub device id>, "key_id": <command id>}` to `<MAC>/up`
+(the MAC in upper-case hex, QoS 0, not retained) on **the broker set in
+the Sofabaton app**. Start the server with the same broker
+(`--mqtt-host`, see [Settings](#settings)) and:
+
+- `GET /hubs/{id}/wifi-devices` answers `transports: ["mqtt", "http"]`
+  for an X2 whose MAC is known, `["http"]` for every other hub and for a
+  server without a broker. `POST /wifi-devices` with `"transport":
+  "mqtt"` anywhere else is a `409 mqtt_unavailable` that says why.
+- An mqtt record has `target: null` and `mqtt_topic: "<MAC>/up"`. The
+  callback listener is only wanted while an `http` device exists.
+- The server subscribes to the topic while a device uses it (one
+  connection, one subscription per hub; `GET /server/mqtt` and the `mqtt`
+  block of `GET /server` show `configured`, `connected`, the topics and
+  the last error). It never publishes. It reconnects with backoff.
+- A press comes out as the same `press` message with `transport:
+  "mqtt"` and an empty `source`. `key_id` 1..10 is a short press of that
+  slot, 11..20 the long press. A retained message is never a press and is
+  dropped; so is a publish from a device the server does not manage (your
+  own MQTT devices made in the Sofabaton app share the topic).
+- Everything else is the same: in-place updates, slot bindings, stale and
+  redeploy, delete. There is no link test: whether the hub reaches the
+  broker is between the hub, the app and the broker. If presses do not
+  arrive, check the broker settings in the app first.
+
+In the panel, **Add** deploys an empty device at once and opens it. The
+detail view edits a draft (the device's name, the power ON / OFF commands
+and, per slot, the card's dialog: name, favorite, physical button, long
+press, activities, activity input) and **Sync to Hub** writes it in place
+with one `PUT`. Taking a button another slot holds moves it; taking one
+another Wifi Device holds also clears it from that device, with a second
+`PUT` after the first. A slot nobody touched (`Button n`) shows as **Make
+Command**; clearing a slot returns it to that. The tiles carry the card's
+meta line: a heart, the button's icon, the long-press icon and "in N
+activities", or the power or input role. A device the hub lost shows **Missing from hub** and
+offers **Redeploy**. The line under the slots says which address the
+device calls; when the server's address has changed since the deploy, or
+the listener is not running, the view says so there.
 
 ## Discovery
 
@@ -649,8 +842,8 @@ JSON objects discriminated by `type`:
 | `hello` | once on connect: `server_version`, `api_version`, `instance_id`, `hubs` (`hub_id`, `enabled`) |
 | `hub_event` | `hub_id` and the library `event` (`seq`, `kind`, `payload`): `activity_changed`, `activity_list_updated`, `hub_state`, `app_state`, `status_changed`, `catalog_ready`, `snapshot_changed`, `ota` |
 | `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`) |
-| `job_event` | `hub_id` and the full `job` record on every transition: queued, running, each progress report, done / failed / cancelled |
-| `press` | a button press the hub delivered to the callback listener: `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
+| `job_event` | `hub_id` and the `job` record, excluding a backup's `result.bundle`, on every transition: queued, running, each progress report, done / failed / cancelled |
+| `press` | a button press delivered over HTTP or MQTT: `device_key`, `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
 | `dropped` | `count` of older messages discarded because this client fell behind; sent before the next message that gets through |
 
 `hub_event.event.seq` is the library's per-proxy counter, passed through
@@ -720,11 +913,14 @@ npx tsc --noEmit -p sofabaton-x-server/codegen-smoke/tsconfig.json
 
 Unit tests and schema checks do not establish live hub compatibility.
 The [live-hub testing notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/live-hub-testing.md) record
-hardware coverage; the document-write bench covers library operations on
-X1/X1S, with X2 and the corresponding server-route bench still pending.
+hardware coverage. The document-write bench covers X1/X1S library
+operations; its equivalent X2 run remains pending. Separate server checks
+cover the X1S web remote and activity input editing, and X2 MQTT deployment,
+presses, rename, restart and deletion. They do not cover every route or firmware.
 
 To release: set `__version__` in `src/sofabaton_server/__init__.py`, update
-the documentation, and push the tag `sofabaton-x-server-vX.Y.Z`.
+the documentation and changelog (replace the pending release heading with
+the release date), regenerate `openapi.json` with the pinned toolchain, and push the tag `sofabaton-x-server-vX.Y.Z`.
 The release workflow re-runs the tests, checks the tag against the
 version and publishes to PyPI; a compatible `sofabaton-x` version must be
 on PyPI first (see the repository's CONTRIBUTING).

@@ -40,6 +40,7 @@ UI_PREFIX = "/ui/remote"
 _PANEL_ASSETS: dict[str, str] = {
     "index.html": "text/html; charset=utf-8",
     "panel.js": "text/javascript; charset=utf-8",
+    "manifest.webmanifest": "application/manifest+json",
 }
 _REMOTE_ASSETS: dict[str, str] = {
     "index.html": "text/html; charset=utf-8",

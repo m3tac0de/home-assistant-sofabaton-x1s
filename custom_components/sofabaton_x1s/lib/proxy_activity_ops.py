@@ -46,7 +46,12 @@ from .protocol_const import (
 
 log = logging.getLogger("x1proxy")
 
-_FAV_DELETE_ACK_TIMEOUT = 12.0
+# The 0x0210 key delete acks after a hub-side consistency sweep whose latency
+# grows with the catalog. 12 s was too short on an X1 with 11 devices (live
+# 2026-09-21: the hub applied the delete, the ack came late, and the order
+# rewrite that follows never ran, leaving the favorite's slot in the 0x61
+# table). Same window as the sync engine's key delete.
+_FAV_DELETE_ACK_TIMEOUT = 30.0
 
 
 # Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
@@ -1257,7 +1262,12 @@ class ActivityOpsMixin:
         #     macros are in a separate namespace and are not included here.
         #     Verified against captured traffic (log 02_x1s_add_6_favorites).
         if self.hub_version == HUB_VERSION_X1:
-            ordered_ids = x1_existing_fav_ids + ([new_fav_id] if new_fav_id is not None else [])
+            # The hub hands out the id it just assigned only when no live
+            # entry holds it, so that id in the order it read back is the slot
+            # of an entry a cascade removed (the X1 keeps those). Listing it
+            # again would give one id two slots, and one more on every reuse.
+            ordered_ids = [fav_id for fav_id in x1_existing_fav_ids if fav_id != new_fav_id]
+            ordered_ids += [new_fav_id] if new_fav_id is not None else []
             if not ordered_ids:
                 ordered_ids = [1]  # last-resort fallback
             stage_payload = self._build_favorites_reorder_payload(act_lo, ordered_ids)

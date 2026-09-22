@@ -20,6 +20,10 @@ type WsHello = components["schemas"]["WsHello"];
 type WsHubEvent = components["schemas"]["WsHubEvent"];
 type WsServerEvent = components["schemas"]["WsServerEvent"];
 type WsDropped = components["schemas"]["WsDropped"];
+type WsJobEvent = components["schemas"]["WsJobEvent"];
+type WsPress = components["schemas"]["WsPress"];
+type WifiDeviceList = components["schemas"]["WifiDeviceList"];
+type PayloadView = components["schemas"]["PayloadView"];
 
 // Every operation the platform guide relies on must exist under its stable id.
 type _RequiredOperations = [
@@ -45,6 +49,9 @@ type _RequiredOperations = [
   operations["findRemote"],
   operations["listDiscoveredHubs"],
   operations["scanForHubs"],
+  operations["getCommandPayload"],
+  operations["downloadBackupBundle"],
+  operations["dropBackupBundle"],
 ];
 
 // The paths a hand-written client would hit.
@@ -55,10 +62,13 @@ type _RequiredPaths = [
   paths["/api/v1/hubs/{hub_id}/activities/{activity_id}/start"]["post"],
   paths["/api/v1/hubs/{hub_id}/send"]["post"],
   paths["/api/v1/discovery/hubs"]["get"],
+  paths["/api/v1/hubs/{hub_id}/wifi-devices"]["get"],
+  paths["/api/v1/hubs/{hub_id}/wifi-devices"]["post"],
+  paths["/api/v1/server/mqtt"]["get"],
 ];
 
 // A minimal typed client surface, the shape a platform integration wraps.
-type WsMessage = WsHello | WsHubEvent | WsServerEvent | WsDropped;
+type WsMessage = WsHello | WsHubEvent | WsServerEvent | WsJobEvent | WsPress | WsDropped;
 
 function describeHub(hub: HubView): string {
   const status: HubStatus | null | undefined = hub.status;
@@ -88,6 +98,11 @@ function onMessage(message: WsMessage): string {
       return `${message.hub_id} ${message.kind}`;
     case "dropped":
       return `dropped ${message.count}`;
+    case "job_event":
+      // Backup bundles are fetched separately; they aren't in the event.
+      return `${message.hub_id} job=${message.job.job_id} ${message.job.status}`;
+    case "press":
+      return `${message.hub_id} ${message.device_key ?? "unknown"} ${message.transport} ${message.slot} ${message.press_type}`;
     default:
       return "unknown";
   }
@@ -101,5 +116,16 @@ function seenKey(seen: SeenHub): string {
   return `${seen.key} present=${seen.present} registered=${seen.registered_hub_id ?? "no"}`;
 }
 
-export const _exercised = [describeHub, powerOfDevice, activityLabel, isProblem, onMessage, accepted, seenKey];
+function wifiDestinations(list: WifiDeviceList): string[] {
+  return list.devices.map(device => device.transport === "mqtt"
+    ? device.mqtt_topic ?? "unknown topic"
+    : device.target ? `${device.target.host}:${device.target.port}` : "not deployed");
+}
+
+function describePayload(payload: PayloadView): string {
+  // network/record payloads cannot be sent to the IR-only /play endpoint.
+  return `${payload.kind}: ${payload.hex} decoded=${JSON.stringify(payload.decoded)}`;
+}
+
+export const _exercised = [describeHub, powerOfDevice, activityLabel, isProblem, onMessage, accepted, seenKey, wifiDestinations, describePayload];
 export type { _RequiredOperations, _RequiredPaths };

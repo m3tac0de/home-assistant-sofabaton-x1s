@@ -573,6 +573,19 @@ class BackupExportMixin:
                 act_lo in self._macros_complete,
             ]
         )
+        # The X1 keeps the order slot of an entry a cascade removed (a device
+        # delete, a membership removal). With the keymap and the macros both
+        # read, an id that is neither a favorite nor a macro is such a
+        # leftover: it names nothing, and the hub hands the id out again.
+        # While either table is missing the order stays as read.
+        if act_lo in self.state.buttons and act_lo in self._macros_complete:
+            live_ids = {int(row["button_id"]) & 0xFF for row in favorite_rows}
+            live_ids |= {int(row["button_id"]) & 0xFF for row in macro_rows}
+            live_ids |= {
+                int(macro.get("command_id", 0)) & 0xFF
+                for macro in self.state.get_activity_macros(act_lo)
+            }
+            favorites_order = [fav_id for fav_id in favorites_order if fav_id in live_ids]
 
         payload = _bx.assemble_activity_backup(
             activity_block=activity_block,

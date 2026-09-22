@@ -112,6 +112,58 @@ def test_row_edit_refuses_unfetched_entity_and_out_of_scope_edit(tmp_path: Path)
         device["commands"].append({"command_id": 9, "name": "Ghost"})
         r = client.post(f"{H}/devices/1/plan", json=device)
         assert r.status_code == 422 and r.json()["type"] == "out_of_scope"
+        # Dropping a command is in scope on a device (the card's live editor deletes commands): one delete
+        # per removed id and one rewrite of the display-sort table, and the write asks the library for it.
+        device = copy.deepcopy(next(d for d in doc["devices"] if d["device"]["device_id"] == 1))
+        removed = device["commands"].pop()
+        r = client.post(f"{H}/devices/1/plan", json=device)
+        assert r.status_code == 200, r.text
+        kinds = [step["kind"] for step in r.json()["steps"]]
+        assert kinds == ["command_delete", "command_sort_rewrite"], kinds
+        r = client.put(f"{H}/devices/1", json=device, headers={"If-Match": etag})
+        assert r.status_code == 202, r.text
+        _wait(client, r.json()["job_id"])
+        assert proxy.last_allow_command_removal is True
+        assert removed["command_id"] not in [c["command_id"] for c in proxy.syncs[-1]["edited"]["devices"][0]["commands"]]
+
+
+def test_activity_edit_carries_the_device_elements_it_touched(tmp_path: Path) -> None:
+    """Picking an input in the power-on sequence appends to a device's input_record: the PUT carries that device."""
+
+    client, factory = _rig(tmp_path)
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        proxy = factory.latest(HOST)
+        proxy.fetched = {1, 2, 101, 102}
+        doc, etag = _snapshot(client)
+        activity = copy.deepcopy(_activity(doc, 101))
+        device = copy.deepcopy(next(d for d in doc["devices"] if d["device"]["device_id"] == 1))
+        record = dict(device.get("input_record") or {})
+        record["entries"] = [*(record.get("entries") or []), {"command_id": 1, "name": "HDMI 1"}]
+        device["input_record"] = record
+
+        plan = client.post(f"{H}/activities/101/plan", json={**activity, "devices": [device]})
+        assert plan.status_code == 200, plan.text
+        assert "inputs_write" in [s["kind"] for s in plan.json()["steps"]]
+
+        r = client.put(f"{H}/activities/101", json={**activity, "devices": [device]}, headers={"If-Match": etag})
+        assert r.status_code == 202, r.text
+        _wait(client, r.json()["job_id"])
+        edited = proxy.syncs[-1]["edited"]
+        assert next(d for d in edited["devices"] if d["device"]["device_id"] == 1)["input_record"]["entries"][-1]["name"] == "HDMI 1"
+        assert "devices" not in _activity(edited, 101)          # the list never lands inside the activity element
+
+        # A touched device outside the planner's allowed fields is out of scope; an unknown one is refused.
+        doc, etag = _snapshot(client)
+        activity = copy.deepcopy(_activity(doc, 101))
+        renamed = copy.deepcopy(next(d for d in doc["devices"] if d["device"]["device_id"] == 1))
+        renamed["device"]["name"] = "Other"
+        r = client.post(f"{H}/activities/101/plan", json={**activity, "devices": [renamed]})
+        assert r.status_code == 422 and r.json()["type"] == "out_of_scope"
+        ghost = copy.deepcopy(renamed)
+        ghost["device"]["device_id"] = 77
+        r = client.post(f"{H}/activities/101/plan", json={**activity, "devices": [ghost]})
+        assert r.status_code == 422 and r.json()["type"] == "invalid_request"
 
 
 def test_intents_derive_the_edit_from_the_snapshot(tmp_path: Path) -> None:

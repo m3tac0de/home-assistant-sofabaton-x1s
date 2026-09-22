@@ -5,7 +5,6 @@
 
 import { LitElement, html, nothing, unsafeCSS, type TemplateResult } from "lit";
 import {
-  LAYOUT_KEYS,
   SHORTCUT_SLOTS,
   channelGroupEnabled,
   deviceModeEnabledInConfig,
@@ -21,6 +20,8 @@ import {
   type ShortcutSlot,
 } from "./remote-card-layout";
 import {
+  editorGroupVisible,
+  resetEditorLayout,
   applyLayoutConfigPatch,
   applyShortcutSlotPatch,
   channelTogglePatch,
@@ -28,7 +29,6 @@ import {
   commandsTogglePatch,
   powerEnabled,
   powerTogglePatch,
-  deviceStoredLayerKey,
   deviceToggleEnabledForEditor,
   deviceTogglePatch,
   dvrTogglePatch,
@@ -577,23 +577,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
   // ---------- group order ----------
 
   private _isEditorGroupVisible(key: string, isEditorX2: boolean): boolean {
-    if (!isEditorX2 && key === "abc") return false;
-    const selection = this._layoutSelectionKey();
-    // Shortcuts is a device-mode-only group: listed (and orderable) for
-    // device selections, never on the activity side.
-    if (key === "shortcuts") return isDeviceLayoutKey(selection);
-    const asRows = mfAsRowsForEditor(this._config, selection);
-    if (isDeviceLayoutKey(selection)) {
-      // Device layouts render ONE commands construct: the drawer row when
-      // tabs, the macros_row slot when inline rows; favorites_row never.
-      if (key === "macro_favorites") return !asRows;
-      if (key === "macros_row") return asRows;
-      if (key === "favorites_row") return false;
-      return true;
-    }
-    if (key === "macro_favorites") return !asRows;
-    if (key === "macros_row" || key === "favorites_row") return asRows;
-    return true;
+    return editorGroupVisible(this._config, this._layoutSelectionKey(), key, isEditorX2);
   }
 
   private _moveGroupByVisibleIndex(fromVisible: number, toVisible: number): void {
@@ -634,51 +618,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
   }
 
   private _resetGroupOrder(): void {
-    // Reset = "back to built-in defaults", stored as the ABSENCE of keys: the
-    // relevant layer is deleted (or, for the base layout, its keys are), so
-    // saved YAML shrinks instead of materializing the whole default set.
-    const selection = this._layoutSelectionKey();
-    let next: RemoteCardConfig;
-    if (isDeviceLayoutKey(selection)) {
-      next = this._withDeviceModeBlock((block) => {
-        const layouts = {
-          ...((block.layouts as Record<string, unknown> | undefined) || {}),
-        };
-        delete layouts[deviceStoredLayerKey(selection)];
-        if (Object.keys(layouts).length) {
-          block.layouts = layouts;
-        } else {
-          delete block.layouts;
-        }
-      });
-    } else if (selection !== "default") {
-      next = { ...this._config };
-      const layouts = { ...(next.layouts || {}) };
-      delete layouts[selection];
-      if (Number.isFinite(Number(selection))) {
-        delete layouts[String(Number(selection))];
-      }
-      if (Object.keys(layouts).length) {
-        next.layouts = layouts;
-      } else {
-        delete next.layouts;
-      }
-    } else {
-      next = { ...this._config };
-      for (const key of LAYOUT_KEYS) {
-        delete next[key];
-      }
-      if (next.layouts && typeof next.layouts === "object") {
-        const layouts = { ...next.layouts };
-        delete layouts.default;
-        if (Object.keys(layouts).length) {
-          next.layouts = layouts;
-        } else {
-          delete next.layouts;
-        }
-      }
-    }
-    this._config = next;
+    this._config = resetEditorLayout(this._config, this._layoutSelectionKey()) as RemoteCardConfig;
     this._fireChanged();
     this.requestUpdate();
   }

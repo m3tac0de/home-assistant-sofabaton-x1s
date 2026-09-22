@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -115,3 +117,76 @@ def test_failed_proxy_start_is_503_and_enable_retries(tmp_path: Path) -> None:
         r = client.post(f"{HUBS}/192.168.1.70/enable")
         assert r.status_code == 200 and r.json()["status"]["mode"] == "control"
         assert len(factory.built["192.168.1.70"]) == 3
+
+
+def _wait_job(client: TestClient, hub: str, job_id: str, *, status=("done", "failed", "cancelled"), timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        job = client.get(f"{HUBS}/{hub}/jobs/{job_id}").json()
+        if job["status"] in status:
+            return job
+        time.sleep(0.01)
+    raise AssertionError(f"job {job_id} did not reach {status}: {job}")
+
+
+def test_hub_views_carry_the_active_and_last_job(tmp_path: Path) -> None:
+    """One list call says what each hub is doing (server panel state plan,
+    decision 1): ``active_job`` while a job runs, ``last_job`` once it
+    finished, both null on a fresh hub and on a disabled one."""
+
+    factory = Factory()
+    with _client(tmp_path, factory) as client:
+        client.post(HUBS, json={"host": "192.168.1.50"})
+        fresh = client.get(f"{HUBS}/192.168.1.50").json()
+        assert fresh["active_job"] is None and fresh["last_job"] is None
+
+        proxy = factory.latest("192.168.1.50")
+        proxy.refresh_gate = client.portal.call(asyncio.Event)
+        job_id = client.post(f"{HUBS}/192.168.1.50/snapshot/refresh").json()["job_id"]
+        _wait_job(client, "192.168.1.50", job_id, status=("running",))
+
+        listed = client.get(HUBS).json()[0]
+        assert listed["active_job"]["job_id"] == job_id and listed["active_job"]["status"] == "running"
+        assert listed["active_job"]["kind"] == "refresh" and listed["active_job"]["progress"]["phase"]
+        assert listed["last_job"] is None
+
+        client.portal.call(proxy.refresh_gate.set)
+        _wait_job(client, "192.168.1.50", job_id)
+        one = client.get(f"{HUBS}/192.168.1.50").json()
+        assert one["active_job"] is None
+        assert one["last_job"]["job_id"] == job_id and one["last_job"]["status"] == "done"
+        assert one["last_job"]["finished_at"]
+
+        # A second, refused start leaves no trace; a failed job is still "last".
+        proxy.refresh_gate = None
+        failing = client.post(f"{HUBS}/192.168.1.50/snapshot/refresh", json={"device_id": 999})
+        if failing.status_code == 202:
+            last = _wait_job(client, "192.168.1.50", failing.json()["job_id"])
+            assert client.get(f"{HUBS}/192.168.1.50").json()["last_job"]["job_id"] == last["job_id"]
+
+        # The disabled view keeps the job history: the runner outlives the proxy.
+        disabled = client.post(f"{HUBS}/192.168.1.50/disable").json()
+        assert disabled["status"] is None and disabled["last_job"]["job_id"] is not None
+
+
+def test_hub_views_carry_the_hubs_own_name(tmp_path: Path) -> None:
+    """The banner name is learned on the first ready sync, shown as
+    ``hub_name`` next to the configured ``config.name``, and kept on the
+    record so a disabled hub (no proxy) still has it."""
+
+    factory = Factory()
+    with _client(tmp_path, factory) as client:
+        client.post(HUBS, json={"host": "192.168.1.50"})
+        assert client.get(HUBS).json()[0]["hub_name"] is None
+        proxy = factory.latest("192.168.1.50")
+        client.portal.call(proxy.ready, "E2:6A:44:86:1B:45")
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and client.get(HUBS).json()[0]["hub_id"] != "e26a44861b45":
+            time.sleep(0.01)
+        view = client.get(f"{HUBS}/e26a44861b45").json()
+        assert view["hub_name"] == "X1 HUB" and view["config"]["name"] is None
+        disabled = client.post(f"{HUBS}/e26a44861b45/disable").json()
+        assert disabled["status"] is None and disabled["hub_name"] == "X1 HUB"
+    # Persisted: a restart reads it back without a banner.
+    with _client(tmp_path, Factory()) as client:
+        assert client.get(f"{HUBS}/e26a44861b45").json()["hub_name"] == "X1 HUB"

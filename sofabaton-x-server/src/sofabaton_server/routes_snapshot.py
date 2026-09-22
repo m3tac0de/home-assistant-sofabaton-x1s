@@ -26,7 +26,7 @@ from sofabaton import AsyncXProxy, HubSnapshot
 from . import API_PREFIX
 from .jobs import JobConflict, JobNotCancellable, JobNotFound, JobRunner, JobView
 from .manager import HubDisabled, HubManager, HubNotFound
-from .models import Problem
+from .models import Problem, light_job
 from .problems import ApiProblem, hub_disabled, hub_errors, hub_not_found
 
 log = logging.getLogger(__name__)
@@ -251,7 +251,7 @@ async def list_jobs(request: Request, hub_id: str) -> list[JobView]:
         _manager(request).record(hub_id)
     except HubNotFound:
         raise hub_not_found(hub_id) from None
-    return _jobs(request).list(hub_id)
+    return [light_job(view) for view in _jobs(request).list(hub_id)]
 
 
 @router.get("/jobs/{job_id}", operation_id="getJob", response_model=JobView,

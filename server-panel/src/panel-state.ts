@@ -1,9 +1,10 @@
 // Pure helpers for the control panel: what a hub record means in one
-// phrase, names, dates, the views and their hash routing, the theme
-// choice, and the little persisted preferences. No DOM, so the node
+// phrase, names, dates, the theme choice, and the little persisted
+// preferences (the routes live in panel-route.ts). No DOM, so the node
 // tests cover them directly.
 
-import type { HubView } from "./panel-api";
+import type { HubView, SeenHub } from "./panel-api";
+import { isHubTab, normalizeSub, SUBTABS, type HubTab } from "./panel-route";
 
 export type Tone = "ok" | "warn" | "err" | "off";
 
@@ -17,8 +18,20 @@ export function hubState(hub: HubView): { text: string; tone: Tone } {
   return { text: s.catalog_ready ? "connected, in control" : "connected, first sync running", tone: "ok" };
 }
 
-export function hubDisplayName(hub: Pick<HubView, "hub_id" | "config">): string {
-  return hub.config?.name || hub.hub_id;
+/** The configured name, else the hub's own banner name, else its id. */
+export function hubDisplayName(hub: Pick<HubView, "hub_id" | "config" | "hub_name">): string {
+  return hub.config?.name || hub.hub_name || hub.hub_id;
+}
+
+/** Match advertisements against current registrations, including address-to-MAC rekeys.
+ * A stale discovery reference must not hide a hub after it is unregistered. */
+export function unregisteredHubs(seen: SeenHub[], hubs: HubView[]): SeenHub[] {
+  const macKey = (value: unknown) => String(value ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+  return seen.filter((s) => !hubs.some((h) => {
+    const mac = macKey(s.config.mac);
+    return h.hub_id === s.registered_hub_id || h.config.host === s.config.host ||
+      Boolean(mac && (mac === macKey(h.config.mac) || mac === h.hub_id));
+  }));
 }
 
 /** A local date-time, or "never". */
@@ -34,19 +47,6 @@ export function actionOutcome(action: "enable" | "disable" | "remove", record: H
   return action === "disable" ? "disabled" : "removed";
 }
 
-export const VIEWS = ["hubs", "catalog", "remote", "api", "events"] as const;
-export type ViewName = (typeof VIEWS)[number];
-
-export function isView(value: unknown): value is ViewName {
-  return typeof value === "string" && (VIEWS as readonly string[]).includes(value);
-}
-
-/** `#remote` -> "remote"; anything else -> the fallback. */
-export function viewFromHash(hash: string, fallback: ViewName = "hubs"): ViewName {
-  const name = hash.replace(/^#/, "");
-  return isView(name) ? name : fallback;
-}
-
 export const THEMES = ["auto", "light", "dark"] as const;
 export type ThemeChoice = (typeof THEMES)[number];
 
@@ -58,23 +58,28 @@ export function nextTheme(current: ThemeChoice): ThemeChoice {
   return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
 }
 
+/** What a bare URL is filled in from (state plan, decision 9): the last
+ *  hub, tab and subtab, and the theme. */
 export interface PanelPrefs {
   hub: string | null;
-  view: ViewName;
+  tab: HubTab;
+  sub: string;
   theme: ThemeChoice;
 }
 
 const PREFS_KEY = "sofabaton-panel";
 
 export function loadPrefs(storage: Pick<Storage, "getItem"> | null): PanelPrefs {
-  const prefs: PanelPrefs = { hub: null, view: "hubs", theme: "auto" };
+  const prefs: PanelPrefs = { hub: null, tab: "hub", sub: SUBTABS.hub[0], theme: "auto" };
   if (!storage) return prefs;
   try {
     const raw = storage.getItem(PREFS_KEY);
     if (!raw) return prefs;
-    const data = JSON.parse(raw) as Partial<PanelPrefs>;
+    const data = JSON.parse(raw) as Partial<PanelPrefs> & { view?: string };
     if (typeof data.hub === "string") prefs.hub = data.hub;
-    if (isView(data.view)) prefs.view = data.view;
+    if (isHubTab(data.tab)) prefs.tab = data.tab;
+    else if (data.view === "remote") prefs.tab = "remote";   // the first panel's preference
+    prefs.sub = normalizeSub(prefs.tab, typeof data.sub === "string" ? data.sub : null);
     if (isTheme(data.theme)) prefs.theme = data.theme;
   } catch {
     // A broken or blocked storage is the same as none.

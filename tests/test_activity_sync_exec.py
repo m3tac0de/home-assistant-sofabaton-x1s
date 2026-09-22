@@ -108,6 +108,10 @@ class FakeProxy(ActivitySyncMixin):
     def _register_command_in_device_sort(self, **kwargs):
         self.calls.append(("command_sort", (), kwargs))
 
+    def _sync_step_command_sort_rewrite(self, payload):
+        self.calls.append(("command_sort_rewrite", (), dict(payload)))
+        return True
+
     def _edited_command_data_hex(self, restore_data, command_id):
         # Raw-edit path by default (returns None → executor uses data_hex);
         # the decoded re-encode is covered by test_restore_edited_commands.

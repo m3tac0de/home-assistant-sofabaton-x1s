@@ -4444,6 +4444,44 @@ def test_command_to_favorite_x1_can_skip_existing_order_query(monkeypatch) -> No
     ]
 
 
+def test_command_to_favorite_x1_lists_a_reused_fav_id_once(monkeypatch) -> None:
+    """The X1 keeps the order slot of a favorite a cascade removed and hands
+    its id out again. The stage payload is the order read back plus the new
+    id, so the leftover slot must go, or the id holds two slots and one more
+    on every reuse (found live 2026-09-21)."""
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        hub_version=HUB_VERSION_X1,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    # Favorite 1 is live; slot 2 is what a device delete left behind.
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda act_id: [(0x01, 0x01), (0x02, 0x02)])
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+    # The hub assigns the freed id 2 to the new favorite.
+    monkeypatch.setattr(
+        proxy, "wait_for_ack_any", lambda candidates, *, timeout=5.0, not_before=None: (0x013E, b"\x02")
+    )
+    monkeypatch.setattr(proxy, "clear_entity_cache", lambda *args, **kwargs: None)
+
+    steps: list[tuple[int, bytes]] = []
+
+    def _send_step(*, step_name, family, payload, ack_opcode, timeout=5.0):
+        steps.append((family, payload))
+        return SendStepResult(outcome=AckOutcome.acked)
+
+    monkeypatch.setattr(proxy, "_send_step", _send_step)
+
+    result = proxy.command_to_favorite(0x6B, 0x0C, 0x01, refresh_after_write=False)
+
+    assert result is not None and result["fav_id"] == 2
+    stage = next(payload for family, payload in steps if family == 0x61)
+    assert stage == proxy._build_favorites_reorder_payload(0x6B, [1, 2])
+
+
 def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -4471,7 +4509,7 @@ def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
         "status": "success",
     }
     assert steps == [
-        ("fav-delete-10[act=0x66 fav=0x04]", 0x10, bytes([0x66, 0x04]), 12.0),
+        ("fav-delete-10[act=0x66 fav=0x04]", 0x10, bytes([0x66, 0x04]), 30.0),
         ("fav-delete-reorder-61[act=0x66]", 0x61, bytes.fromhex("01 00 01 01 00 01 66 02 01 06 02 73"), 5.0),
         ("fav-delete-commit-65[act=0x66]", 0x65, b"\x66", 5.0),
     ]

@@ -115,6 +115,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     entityStepActivityRename: "Renombrando la actividad…", entityStepBindingDelete: "Borrando una asignación de botón…", entityStepBindingWrite: "Escribiendo las asignaciones de botones…",
     entityStepCommandAdd: (id: number | null) => (id == null ? "Añadiendo un comando…" : `Añadiendo un comando en el dispositivo ${id}…`),
     entityStepCommandDelete: (id: number | null) => (id == null ? "Eliminando un comando…" : `Eliminando un comando en el dispositivo ${id}…`),
+    entityStepCommandSortRewrite: (id: number | null) => (id == null ? "Actualizando el orden de los comandos…" : `Actualizando el orden de los comandos en el dispositivo ${id}…`),
     entityStepCommandPayload: (id: number | null) => (id == null ? "Actualizando un comando…" : `Actualizando un comando en el dispositivo ${id}…`),
     entityStepCommandRename: (id: number | null) => (id == null ? "Renombrando un comando…" : `Renombrando un comando en el dispositivo ${id}…`),
     entityStepDeviceIp: "Actualizando la dirección IP…", entityStepDeviceRename: "Renombrando el dispositivo…",

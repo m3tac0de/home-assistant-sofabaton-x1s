@@ -148,6 +148,152 @@ def test_command_defs_match_the_ha_deploy_shape() -> None:
 
 
 # ---------------------------------------------------------------------------
+# where a slot's command goes (server panel wifi commands plan, section 6)
+# ---------------------------------------------------------------------------
+
+VOL_UP, VOL_DOWN, MUTE = 0xB6, 0xB9, 0xB8
+
+
+def _routed_spec() -> "WifiDeviceSpec":
+    return WifiDeviceSpec(name="Lights", power_on_slot=4, slots=(
+        WifiSlotSpec("On", favorite=True, button=VOL_UP, long_press=True, activities=(102, 101, 101)),
+        WifiSlotSpec("Off", button=VOL_DOWN, activities=(101,)),
+        WifiSlotSpec("Scene", input_activity_id=101),
+        WifiSlotSpec("Power"),
+    ))
+
+
+def test_slot_references_normalize_and_round_trip() -> None:
+    norm = _routed_spec().normalized()
+    on, off, scene = norm.slots[0], norm.slots[1], norm.slots[2]
+    assert (on.favorite, on.button, on.long_press, on.activities) == (True, VOL_UP, True, (101, 102))
+    assert (off.favorite, off.button, off.long_press, off.activities) == (False, VOL_DOWN, False, (101,))
+    assert scene.input_activity_id == 101 and scene.activities == ()
+    assert norm.normalized() == norm and WifiDeviceSpec.from_dict(norm.to_dict()).normalized() == norm
+    assert norm.has_references and not WifiDeviceSpec(name="Plain").normalized().has_references
+    # A record written before slots had references reads back as a plain slot.
+    assert WifiSlotSpec.from_dict({"label": "Old", "long_label": None}).normalized(1) == WifiSlotSpec("Old", "Old Long")
+    # Long press means nothing without a button; an activity list only while a favorite or a button holds it (#258).
+    loose = WifiSlotSpec("X", long_press=True, activities=(101,)).normalized(1)
+    assert loose.long_press is False and loose.activities == ()
+    # The input list: what the spec lists, then the input-activity slots, in slot order.
+    assert wifi_device.input_slots_from_spec(norm) == (3,)
+    listed = WifiDeviceSpec(name="L", input_slots=(5, 3), slots=(WifiSlotSpec("a"), WifiSlotSpec("b", input_activity_id=9),
+                                                                  WifiSlotSpec("c", input_activity_id=8))).normalized()
+    assert wifi_device.input_slots_from_spec(listed) == (5, 3, 2)
+    bare = norm.without_references()
+    assert not bare.has_references and bare.input_slots == (3,) and bare.power_on_slot == 4
+    assert [s.label for s in bare.slots[:3]] == ["On", "Off", "Scene"]
+
+
+@pytest.mark.parametrize(
+    "slots",
+    [
+        (WifiSlotSpec("a", button=VOL_UP), WifiSlotSpec("b", button=VOL_UP)),              # one slot per button
+        (WifiSlotSpec("a", input_activity_id=101), WifiSlotSpec("b", input_activity_id=101)),   # one input per activity
+        (WifiSlotSpec("a", button=0xC6),),                                                  # the power macros are not buttons
+        (WifiSlotSpec("a", button=7),),
+        (WifiSlotSpec("a", favorite=True, activities=(0,)),),
+        (WifiSlotSpec("a", input_activity_id="nope"),),
+    ],
+)
+def test_slot_references_refuse_what_the_card_refuses(slots) -> None:
+    with pytest.raises(ValueError):
+        WifiDeviceSpec(name="x", slots=slots).normalized()
+    with pytest.raises(ValueError):                                                         # a power hook is never an input
+        WifiDeviceSpec(name="x", power_off_slot=1, slots=(WifiSlotSpec("a", input_activity_id=101),)).normalized()
+
+
+def test_snapshot_from_spec_derives_the_references_as_the_ha_adapter_does() -> None:
+    snap = wifi_device.snapshot_from_spec(_routed_spec(), device_id=12, hub_version="X1S")
+    assert snap.input_command_ids == (3,) and snap.power_on_command_id == 4
+    assert sorted(snap.activities) == [101, 102]
+    a101, a102 = snap.activities[101], snap.activities[102]
+    assert a101.input_ordinal == 1 and a102.input_ordinal == 0
+    assert dict(a101.favorites) == {1: 0} and dict(a102.favorites) == {1: 0}
+    assert a101.bindings == ((VOL_UP, 1, 1 + N), (VOL_DOWN, 2, None)) and a102.bindings == ((VOL_UP, 1, 1 + N),)
+    assert snap.device_bindings == ((VOL_UP, 1, 1 + N), (VOL_DOWN, 2, None))
+
+    # The same device written as a Home Assistant command config expands to the same references.
+    ha = wifi_inplace_plan.desired_snapshot_from_config(
+        {"commands": [
+            {"name": "On", "add_as_favorite": True, "hard_button": "volup", "long_press_enabled": True, "activities": ["101", "102"]},
+            {"name": "Off", "hard_button": "voldn", "activities": ["101"]},
+            {"name": "Scene", "input_activity_id": "101"},
+            {"name": "Power"},
+        ], "power_on_command_id": 4},
+        device_id=12, device_name="Lights", brand="m3tac0de", hard_button_codes={"volup": VOL_UP, "voldn": VOL_DOWN},
+    )
+    assert {k: (v.input_ordinal, dict(v.favorites), v.bindings) for k, v in ha.activities.items()} == \
+           {k: (v.input_ordinal, dict(v.favorites), v.bindings) for k, v in snap.activities.items()}
+    assert ha.device_bindings == snap.device_bindings and ha.input_command_ids == snap.input_command_ids
+
+    # An X1 keeps the favorites and buttons and drops the input, as it drops every hook.
+    x1 = wifi_device.snapshot_from_spec(_routed_spec(), device_id=12, hub_version="X1")
+    assert x1.input_command_ids == () and x1.activities[101].input_ordinal == 0
+    assert x1.activities[101].bindings == a101.bindings
+
+
+def test_the_planner_writes_what_a_slot_names_and_removes_only_what_a_spec_put_there() -> None:
+    plain = WifiDeviceSpec(name="Lights", slots=(WifiSlotSpec("On"), WifiSlotSpec("Off")))
+    routed = WifiDeviceSpec(name="Lights", slots=(
+        WifiSlotSpec("On", favorite=True, button=VOL_UP, long_press=True, activities=(101,)), WifiSlotSpec("Off")))
+    snap = lambda spec: wifi_device.snapshot_from_spec(spec, device_id=12, hub_version="X1S")  # noqa: E731
+    base = snap(plain)
+
+    plan = wifi_inplace_plan.build_wifi_inplace_plan(base, snap(routed), deployed=snap(plain))
+    kinds = [(s.kind, s.payload.get("activity_id"), s.payload.get("button_id"), s.payload.get("command_id")) for s in plan.steps]
+    assert kinds == [
+        ("binding_write", 12, VOL_UP, 1),                     # the device's own page
+        ("member_replay", 101, None, None),                   # joins the activity
+        ("favorite_add", 101, None, 1),
+        ("binding_write", 101, VOL_UP, 1),
+    ]
+    assert plan.steps[-1].payload["long_press_command_id"] == 1 + N
+
+    # The live device as that spec left it, plus a MUTE binding made in the activity editor.
+    refs = snap(routed).activities[101]
+    live = wifi_inplace_plan.ManagedWifiSnapshot(
+        device_id=12, device_name="Lights", brand="m3tac0de", slots=base.slots, device_bindings=snap(routed).device_bindings,
+        activities={101: wifi_inplace_plan.WifiActivityRefs(activity_id=101, favorites={1: 7}, member_count=2,
+                                                            bindings=refs.bindings + ((MUTE, 2, None),))})
+    # Dropping the button while the favorite stays: our binding goes, the foreign one is never planned away.
+    favorite_only = WifiDeviceSpec(name="Lights", slots=(WifiSlotSpec("On", favorite=True, activities=(101,)), WifiSlotSpec("Off")))
+    trimmed = wifi_inplace_plan.build_wifi_inplace_plan(live, snap(favorite_only), deployed=snap(routed))
+    removed = [(s.kind, s.payload.get("activity_id"), s.payload.get("button_id")) for s in trimmed.steps]
+    assert removed == [("binding_delete", 12, VOL_UP), ("binding_delete", 101, VOL_UP)]
+    # A spec that no longer names the activity at all leaves it, as the Home Assistant path does: the
+    # membership we made is removed (the hub cascades the device's rows there), never an activity we did not join.
+    back = wifi_inplace_plan.build_wifi_inplace_plan(live, snap(plain), deployed=snap(routed))
+    assert [(s.kind, s.payload.get("activity_id")) for s in back.steps] == [("binding_delete", 12), ("membership_remove", 101)]
+    foreign = wifi_inplace_plan.build_wifi_inplace_plan(live, snap(plain), deployed=snap(plain))
+    assert foreign.steps == ()
+    # The same spec again plans nothing.
+    assert wifi_inplace_plan.build_wifi_inplace_plan(live, snap(routed), deployed=snap(routed)).steps == ()
+
+
+def test_a_deployment_knows_its_transport_and_an_mqtt_one_has_no_target() -> None:
+    spec = WifiDeviceSpec(name="Lights", slots=(WifiSlotSpec("On"),)).normalized()
+    mqtt = WifiDeployment(device_id=12, spec=spec, target=None, labels=wifi_device.labels_from_spec(spec),
+                          hub_version="X2", transport="mqtt")
+    assert mqtt.to_dict()["target"] is None and mqtt.to_dict()["transport"] == "mqtt"
+    assert WifiDeployment.from_dict(mqtt.to_dict()) == mqtt
+    # A record from before transports existed is an http one, target and all.
+    http = WifiDeployment(device_id=12, spec=spec, target=WifiTarget("192.168.1.10", 8060, "aabbccddeeff"), hub_version="X1S")
+    old = {k: v for k, v in http.to_dict().items() if k != "transport"}
+    assert WifiDeployment.from_dict(old) == http and http.transport == "http"
+    with pytest.raises(ValueError):
+        WifiDeployment(device_id=12, spec=spec, target=None)                 # http needs its target
+    with pytest.raises(ValueError):
+        WifiDeployment(device_id=12, spec=spec, target=None, transport="carrier pigeon")
+    # No target host: a rename plans a head commit that names no address.
+    a = wifi_device.snapshot_from_spec(spec, device_id=12, hub_version="X2")
+    b = wifi_device.snapshot_from_spec(WifiDeviceSpec(name="Lamps", slots=spec.slots), device_id=12, hub_version="X2")
+    plan = wifi_inplace_plan.build_wifi_inplace_plan(a, b, deployed=a)
+    assert [s.kind for s in plan.steps] == ["wifi_head_commit"] and "ip_address" not in plan.steps[0].payload
+
+
+# ---------------------------------------------------------------------------
 # the planner carries the callback address into the head commit
 # ---------------------------------------------------------------------------
 
@@ -301,3 +447,33 @@ def test_edit_helpers_refuse_a_class_mismatch_before_planning() -> None:
         edits.add_command(base, 5, ir, "Wrong")                 # IR on a wifi_ip device
     added, _ = edits.add_command(base, 7, ir, "Fine")           # IR on the TV still works
     assert _device_plan(base, added, 7)[0][0] == "command_add"
+
+
+def test_command_records_save_back_on_a_device_of_their_class() -> None:
+    base = _bundle()
+    base["devices"].append(_wifi_device_entry(8, "bluetooth", {1: "Home"}))
+    base["devices"].append(_wifi_device_entry(9, "wifi_mqtt", {1: "Up"}))
+    key = _pkg.CommandRecord("bluetooth", bytes([0x07, 0x00, 0x27]))
+    added, slot = edits.add_command(base, 8, key, "Back")
+    plan = _device_plan(base, added, 8)
+    assert slot == 2 and [k for k, _ in plan] == ["command_add"]
+    rd = plan[0][1]["restore_data"]
+    assert rd["data_hex"] == "070027" and rd["library_type"] == 0x03 and rd["new"]
+
+    replaced = edits.set_command_payload(base, 9, 1, _pkg.CommandRecord("wifi_mqtt", bytes([0x09, 0x01])))
+    plan = _device_plan(base, replaced, 9)
+    assert [k for k, _ in plan] == ["command_payload"]
+    assert plan[0][1]["restore_data"]["data_hex"] == "0901" and plan[0][1]["restore_data"]["library_type"] == 0x20
+
+    with pytest.raises(ValueError):
+        edits.add_command(base, 9, key, "Wrong")                # a Bluetooth key on a wifi_mqtt device
+    with pytest.raises(ValueError):
+        edits.add_command(base, 8, _pkg.IrPayload.from_descriptor("P:NEC1 D:4 S:5 F:21"), "Wrong")   # IR on Bluetooth
+
+
+def test_network_command_trailer_round_trips() -> None:
+    cmd = NetworkCommand("wifi_roku", {"path": "keypress/Home"}, "F1")
+    assert cmd.trailer_hex == "f1" and cmd.blob.endswith(b"\xf1") and cmd.hex == cmd.blob.hex(" ")
+    assert NetworkCommand.from_dict(cmd.to_dict()) == cmd
+    assert cmd.decoded["trailer_hex"] == "f1"
+    assert _pkg.payloads.payload_from_body("wifi_roku", cmd.blob) == cmd

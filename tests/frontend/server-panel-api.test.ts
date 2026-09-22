@@ -86,6 +86,7 @@ test("the lifecycle and document routes hit the documented paths", async () => {
   await api.remoteCardDocument("h");
   await api.putRemoteCardDocument("h", { show_dpad: true });
   await api.deleteRemoteCardDocument("h");
+  await api.resyncRemote("h");
   assert.deepEqual(
     calls.map((c) => `${c.init?.method} ${c.url.slice("http://host/api/v1".length)}`),
     [
@@ -97,6 +98,7 @@ test("the lifecycle and document routes hit the documented paths", async () => {
       "GET /hubs/h/ui/remote-card",
       "PUT /hubs/h/ui/remote-card",
       "DELETE /hubs/h/ui/remote-card",
+      "POST /hubs/h/resync-remote",
     ],
   );
   assert.equal(calls[4].init?.body, '{"timeout":7}');

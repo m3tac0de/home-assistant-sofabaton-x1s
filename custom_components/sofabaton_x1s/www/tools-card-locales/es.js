@@ -249,6 +249,7 @@ var TOOLS_CARD_STRINGS_ES = {
     entityStepBindingWrite: "Escribiendo las asignaciones de botones\u2026",
     entityStepCommandAdd: (id) => id == null ? "A\xF1adiendo un comando\u2026" : `A\xF1adiendo un comando en el dispositivo ${id}\u2026`,
     entityStepCommandDelete: (id) => id == null ? "Eliminando un comando\u2026" : `Eliminando un comando en el dispositivo ${id}\u2026`,
+    entityStepCommandSortRewrite: (id) => id == null ? "Actualizando el orden de los comandos\u2026" : `Actualizando el orden de los comandos en el dispositivo ${id}\u2026`,
     entityStepCommandPayload: (id) => id == null ? "Actualizando un comando\u2026" : `Actualizando un comando en el dispositivo ${id}\u2026`,
     entityStepCommandRename: (id) => id == null ? "Renombrando un comando\u2026" : `Renombrando un comando en el dispositivo ${id}\u2026`,
     entityStepDeviceIp: "Actualizando la direcci\xF3n IP\u2026",

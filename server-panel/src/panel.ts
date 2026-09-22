@@ -10,10 +10,17 @@ import { installRemoteWebShims } from "../../remote-card/src/shims/index";
 import "../../remote-card/src/remote-card-translations";
 import { definePanel } from "./panel-element";
 import { defineApiView } from "./views/api-view";
+import { defineBackupView } from "./views/backup-view";
 import { defineCatalogView } from "./views/catalog-view";
+import { defineActivityEditor } from "./views/activity-editor";
+import { defineDeviceEditor } from "./views/device-editor";
+import { definePayloadDialog } from "./views/payload-dialog";
 import { defineEventsView } from "./views/events-view";
 import { defineHubsView } from "./views/hubs-view";
+import { defineRemoteEditor } from "./views/remote-editor";
 import { defineRemoteView } from "./views/remote-view";
+import { defineServerView } from "./views/server-view";
+import { defineWifiDevicesView } from "./views/wifi-devices-view";
 
 export function bootstrapServerPanel(): void {
   installRemoteWebShims();
@@ -21,9 +28,16 @@ export function bootstrapServerPanel(): void {
   if (!customElements.get(TYPE)) customElements.define(TYPE, SofabatonRemoteCard);
   defineHubsView();
   defineCatalogView();
+  defineDeviceEditor();
+  defineActivityEditor();
+  definePayloadDialog();
+  defineRemoteEditor();
   defineRemoteView();
   defineApiView();
   defineEventsView();
+  defineServerView();
+  defineBackupView();
+  defineWifiDevicesView();
   definePanel();
 }
 

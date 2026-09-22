@@ -289,6 +289,37 @@ export function groupOrderListForEditor(
   return normalizedGroupOrder(layout?.group_order);
 }
 
+/** The same editable rows in HA and in the standalone server panel. */
+export function editorGroupVisible(config: Record<string, any>, selection: string, key: string, isX2: boolean): boolean {
+  if (!isX2 && key === "abc") return false;
+  const device = isDeviceLayoutKey(selection);
+  if (key === "shortcuts") return device;
+  const rows = mfAsRowsForEditor(config, selection);
+  if (key === "macro_favorites") return !rows;
+  if (key === "macros_row") return rows;
+  if (key === "favorites_row") return !device && rows;
+  return true;
+}
+
+/** Reset the selected layer without deleting sibling layouts or shortcuts. */
+export function resetEditorLayout(config: Record<string, any>, selection: string): Record<string, any> {
+  const next = { ...config };
+  if (isDeviceLayoutKey(selection)) {
+    const block = { ...(next.device_mode || {}) };
+    const layouts = { ...(block.layouts || {}) };
+    delete layouts[deviceStoredLayerKey(selection)];
+    setOrDelete(block, "layouts", layouts);
+    setOrDelete(next, "device_mode", block);
+  } else {
+    const layouts = { ...(next.layouts || {}) };
+    delete layouts[selection];
+    if (selection === "default") for (const key of LAYOUT_KEYS) delete next[key];
+    else if (Number.isFinite(Number(selection))) delete layouts[String(Number(selection))];
+    setOrDelete(next, "layouts", layouts);
+  }
+  return next;
+}
+
 export function groupLabel(key: string) {
   return str().groups[key] || key;
 }

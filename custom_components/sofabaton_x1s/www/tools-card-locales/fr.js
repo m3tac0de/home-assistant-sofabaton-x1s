@@ -250,6 +250,7 @@ var TOOLS_CARD_STRINGS_FR = {
     entityStepBindingWrite: "\xC9criture des attributions de touches\u2026",
     entityStepCommandAdd: (id) => id == null ? "Ajout d\u2019une commande\u2026" : `Ajout d\u2019une commande sur l\u2019appareil ${id}\u2026`,
     entityStepCommandDelete: (id) => id == null ? "Suppression d\u2019une commande\u2026" : `Suppression d\u2019une commande sur l\u2019appareil ${id}\u2026`,
+    entityStepCommandSortRewrite: (id) => id == null ? "Mise \xE0 jour de l\u2019ordre des commandes\u2026" : `Mise \xE0 jour de l\u2019ordre des commandes sur l\u2019appareil ${id}\u2026`,
     entityStepCommandPayload: (id) => id == null ? "Mise \xE0 jour d\u2019une commande\u2026" : `Mise \xE0 jour d\u2019une commande sur l\u2019appareil ${id}\u2026`,
     entityStepCommandRename: (id) => id == null ? "Renommage d\u2019une commande\u2026" : `Renommage d\u2019une commande sur l\u2019appareil ${id}\u2026`,
     entityStepDeviceIp: "Mise \xE0 jour de l\u2019adresse IP\u2026",

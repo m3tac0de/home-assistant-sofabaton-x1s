@@ -5,7 +5,8 @@ The Python server runs on a separate computer; Hubitat connects to its REST
 API and WebSocket. No Home Assistant, MQTT broker, Maker API token or inbound
 Hubitat HTTP endpoint is needed.
 
-**Example for server 0.2.0 / API 1.** The sources are compiled and behavior-tested with
+**Example for server 0.2.1 / API 1.**
+The sources are compiled and behavior-tested with
 Groovy 2.4.21 and a simulated Hubitat environment. Installation, Hubitat's
 sandbox, actual asynchronous HTTP/WebSocket behavior, and physical devices
 still require validation on a Hubitat hub. Do not interpret the local tests
@@ -26,7 +27,10 @@ as hardware certification.
 
 This example follows the recommended integration scope: consume registered
 hubs and callback devices, and keep setup in the server's control panel.
-Use its Catalog view to find command IDs and its Remote view for the full
+The button device consumes only `/callback-device` (Wifi Device key
+`default`). It ignores other keyed devices, including ones created by the
+panel's Add button; use the starter setup below to create `default` first.
+Use its Hub view to find command IDs and its Remote view for the full
 remote and layout editor. The instructions below cover the separate,
 one-time callback setup needed to receive button presses.
 
@@ -45,12 +49,13 @@ Home Assistant or another proxy, disable it there before registering it here.
 On the server host:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
 sofabaton-x-server
 ```
 
-Open `http://<server>:8480/` and add the physical hub in **Hubs**. If it
-does not appear, check that the official app is closed and scan again.
+Open `http://<server>:8480/` and add the physical hub through the **hub picker**
+in the top dock. If it does not appear, check that the official app is closed
+and scan again.
 Wait until the hub has a stable MAC ID
 and `catalog_ready: true`. After setup, the official app can connect
 through the proxy; close it again before sending commands or changing
@@ -148,7 +153,8 @@ are shared across the hub: the same slot assigned in different activities
 produces the same Hubitat button number. Use different slots when different
 actions are required. No release or double-tap events are synthesized.
 
-For additional slots, use the
+For additional slots, edit that same default device in the panel's
+**Wifi Commands** tab, use the
 [callback API](../../docs/platform-integration.md#10-button-events) and
 server configuration routes, or bind the deployed callback commands in
 the official app. Preserve the complete callback specification when editing
@@ -180,7 +186,7 @@ generates an event, even if the button number equals the previous one.
   concurrent remote activity change during that interval cannot be fully
   guarded by a client.
 
-For direct command sending, find IDs in the panel's **Catalog** view (or
+For direct command sending, find IDs in the panel's **Hub** view (or
 the starter client's `devices` and `commands --device <id>` actions), then use the hub device's
 `sendCommand(entityId, commandId)` command in Hubitat. Device and command
 IDs must always stay paired. `startActivity(activityId)` and `findRemote()`

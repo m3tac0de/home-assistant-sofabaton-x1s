@@ -6,10 +6,10 @@ exposure; everything it does against a hub goes through ``sofabaton``
 root names, never the engine. Plan: docs/internal/sofabaton-x-server-plan.md.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # The API contract version advertised in mDNS TXT and reported by
-# GET /api/v1/server. Bumps only when the OpenAPI document changes in a
-# way generated clients must know about.
+# GET /api/v1/server. Tracks the API generation, not each schema revision;
+# clients should regenerate types from the OpenAPI document for a new release.
 API_VERSION = "1"
 API_PREFIX = "/api/v1"

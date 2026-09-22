@@ -20,6 +20,20 @@ from .protocol_const import (
 )
 
 
+def one_slot_per_fav_id(pairs: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """A family-0x61 order table with every quick-access id holding one slot.
+
+    The X1 keeps the slot of an entry a cascade removed (a device delete, a
+    membership removal) and hands the freed id out again, so one id can come
+    back holding several slots (found live 2026-09-21: an activity with one
+    favorite read fav1 fav2 fav2). An id is one entry: keep its last slot,
+    which is where the add that reused the id put it.
+    """
+
+    last_slot = {fav_id: slot for fav_id, slot in pairs}
+    return list(dict.fromkeys(pair for pair in pairs if last_slot[pair[0]] == pair[1]))
+
+
 def normalize_device_entry(
     device: dict[str, Any] | None,
     *,

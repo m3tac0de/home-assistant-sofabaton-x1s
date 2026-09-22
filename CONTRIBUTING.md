@@ -178,7 +178,7 @@ The integration and the library are **versioned independently**:
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | HA integration        | `custom_components/sofabaton_x1s/manifest.json` (plus the badge in `README.md`) | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). |
 | `sofabaton-x` library | `custom_components/sofabaton_x1s/lib/version.py`                                | Pushing a tag `sofabaton-x-vX.Y.Z`. `sofabaton-x-release.yml` verifies the tag matches `version.py`, runs the tests, builds, and publishes to PyPI via trusted publishing.                        |
-| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2,<0.3` in its `pyproject.toml`) must be on PyPI first. |
+| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.1,<0.3` in its `pyproject.toml`) must be on PyPI first. |
 
 Library stability contract: names exported from the package root
 (`sofabaton.__all__`) follow semver; everything else is internal. Changes to
@@ -191,7 +191,10 @@ Library release checklist (run it with every integration release that
 touches `lib/`, so the PyPI package never falls behind the engine):
 
 1. Bump `custom_components/sofabaton_x1s/lib/version.py` (minor for any
-   surface change before 1.0; patch for engine-only fixes).
+   surface change before 1.0; patch for engine-only fixes). The planned
+   0.2.1 release is an explicit exception: its corrected non-IR payload
+   return types require the migration in the library changelog. Do not
+   treat this exception as a patch-compatibility guarantee.
 2. Update `sofabaton-x/README.md` for anything the surface gained or lost,
    and `tests/lib/test_public_api.py` for root exports. Record changes and
    migration guidance in `sofabaton-x/CHANGELOG.md` under the version and date.
@@ -214,7 +217,10 @@ Server release checklist (after the library it depends on is on PyPI):
    renders it outside the repository).
 4. `pytest sofabaton-x-server/tests -q`, `npm run test:frontend`, and the
    Playwright specs `server-panel.spec.js` and `web-remote.spec.js`.
-5. Update the server documentation, commit, then
+5. Update `sofabaton-x-server/CHANGELOG.md` with changes since its previous
+   tag and any client migration steps. Finalize the pending release dates
+   in both changelogs and update their README/guide links and preparation
+   notices. Update the server documentation, commit, then
    `git tag sofabaton-x-server-vX.Y.Z && git push origin sofabaton-x-server-vX.Y.Z`.
    Confirm the publishing workflow succeeded and the version is available
    on PyPI. No GitHub Release is created.

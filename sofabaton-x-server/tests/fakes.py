@@ -208,6 +208,10 @@ class FakeProxy:
         self.sent.append(("find", ()))
         return not self.refuse
 
+    async def resync_remote(self) -> bool:
+        self.sent.append(("resync", ()))
+        return not self.refuse
+
     # -- snapshot / state document (phase 3) -----------------------------------
 
     def _entity(self, kind: str, entity_id: int, name: str) -> dict:
@@ -299,7 +303,8 @@ class FakeProxy:
     async def sync_activity(self, *, baseline, edited, activity_id, progress=None, snapshot_id=None):
         return await self._sync("activity", baseline, edited, activity_id, progress, snapshot_id)
 
-    async def sync_device(self, *, baseline, edited, device_id, progress=None, snapshot_id=None):
+    async def sync_device(self, *, baseline, edited, device_id, progress=None, snapshot_id=None, allow_command_removal=False):
+        self.last_allow_command_removal = allow_command_removal
         return await self._sync("device", baseline, edited, device_id, progress, snapshot_id)
 
     async def _sync(self, kind, baseline, edited, entity_id, progress, snapshot_id):
@@ -441,7 +446,8 @@ class FakeProxy:
         if loop is not None:
             loop.create_task(_later())
 
-    def place_wifi_device(self, device_id: int, spec, *, host: str, port: int, brand: str = "m3tac0de") -> None:
+    def place_wifi_device(self, device_id: int, spec, *, host: str = "", port: int = 0, brand: str = "m3tac0de",
+                          device_class: str = "wifi_ip") -> None:
         """Make the snapshot show a managed wifi device with our callback records
         (what adoption and the identity check look at)."""
 
@@ -449,17 +455,20 @@ class FakeProxy:
         from sofabaton.wifi_device import labels_from_spec
         normalized = spec.normalized()
         if all(d.device_id != device_id for d in self.devices_data):
-            self.devices_data.append(Device(device_id=device_id, name=normalized.name, brand=brand, device_class="wifi_ip",
-                                            device_class_code=0x1C, power_state=None, idle_behavior=None))
+            self.devices_data.append(Device(device_id=device_id, name=normalized.name, brand=brand, device_class=device_class,
+                                            device_class_code=0x20 if device_class == "wifi_mqtt" else 0x1C,
+                                            power_state=None, idle_behavior=None))
         self.fetched.add(device_id)
-        self.device_blocks[device_id] = {"brand": brand, "device_class": "wifi_ip", "name": normalized.name}
+        self.device_blocks[device_id] = {"brand": brand, "device_class": device_class, "name": normalized.name}
         labels = labels_from_spec(normalized)
         self.device_commands[device_id] = [{"command_id": cid, "name": label} for cid, label in sorted(labels.items())]
+        if device_class == "wifi_mqtt":
+            return                                   # inert records: nothing on the device names the server
         path = f"/launch/{self._action_id()}/{device_id}/0/short"
         text = f"POST {path} HTTP/1.1" + CRLF + f"Host:{host}:{port}" + CRLF + "Content-Type:application/x-www-form-urlencoded" + CRLF + CRLF
         self.payloads[(device_id, 1)] = IrPayload.from_bytes(text.encode("ascii"))
 
-    async def deploy_wifi_device(self, spec, *, host, port):
+    async def deploy_wifi_device(self, spec, *, host=None, port=None, transport="http"):
         from sofabaton import WifiDeployment, WifiTarget
         from sofabaton.wifi_device import labels_from_spec
         await self._intent("deploy_wifi_device", spec.normalized().name, host, port)
@@ -467,8 +476,15 @@ class FakeProxy:
             raise self.wifi_deploy_error
         normalized = spec.normalized()
         new_id = max([d.device_id for d in self.devices_data] + [0]) + 1
-        self.wifi_deploys.append({"device_id": new_id, "spec": normalized, "host": host, "port": port})
-        self.place_wifi_device(new_id, normalized, host=host, port=port)
+        self.wifi_deploys.append({"device_id": new_id, "spec": normalized, "host": host, "port": port, "transport": transport})
+        if transport == "mqtt":
+            if self.model != "X2":
+                raise ValueError("the mqtt transport exists on the X2 only")
+            self.place_wifi_device(new_id, normalized, brand=normalized.brand, device_class="wifi_mqtt")
+            self._emit_snapshot_changed(device_ids=(new_id,))
+            return WifiDeployment(device_id=new_id, spec=normalized, target=None, labels=labels_from_spec(normalized),
+                                  hub_version=self.model, transport="mqtt")
+        self.place_wifi_device(new_id, normalized, host=host, port=port, brand=normalized.brand)
         self._emit_snapshot_changed(device_ids=(new_id,))
         return WifiDeployment(device_id=new_id, spec=normalized, target=WifiTarget(host, port, self._action_id()),
                               labels=labels_from_spec(normalized), hub_version=self.model)
@@ -486,7 +502,7 @@ class FakeProxy:
         self.device_blocks.setdefault(deployment.device_id, {})["name"] = normalized.name
         self._emit_snapshot_changed(device_ids=(deployment.device_id,))
         return WifiDeployment(device_id=deployment.device_id, spec=normalized, target=deployment.target,
-                              labels=labels, hub_version=self.model)
+                              labels=labels, hub_version=self.model, transport=deployment.transport)
 
     async def remove_activity(self, activity_id):
         await self._intent("remove_activity", activity_id)
@@ -551,7 +567,8 @@ class FakeProxy:
         if self.restore_gate is not None:
             await self.restore_gate.wait()
         if self.restore_failure is not None:
-            return RestoreResult.from_engine(self.restore_failure, snapshot_id=(await self.snapshot()).snapshot_id)
+            return RestoreResult.from_engine(self.restore_failure, snapshot_id=(await self.snapshot()).snapshot_id,
+                                             erased=bool(replace))
         # The engine's real shape: lists of per-entity records.
         return RestoreResult.from_engine(
             {"status": "success", "device_id_map": {"1": 9},

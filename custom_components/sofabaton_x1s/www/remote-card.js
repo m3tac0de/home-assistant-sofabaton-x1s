@@ -1331,6 +1331,33 @@ function groupOrderListForEditor(config, selection) {
   const layout = layoutConfigForSelection(config, selection);
   return normalizedGroupOrder(layout?.group_order);
 }
+function editorGroupVisible(config, selection, key, isX2) {
+  if (!isX2 && key === "abc") return false;
+  const device = isDeviceLayoutKey(selection);
+  if (key === "shortcuts") return device;
+  const rows = mfAsRowsForEditor(config, selection);
+  if (key === "macro_favorites") return !rows;
+  if (key === "macros_row") return rows;
+  if (key === "favorites_row") return !device && rows;
+  return true;
+}
+function resetEditorLayout(config, selection) {
+  const next = { ...config };
+  if (isDeviceLayoutKey(selection)) {
+    const block = { ...next.device_mode || {} };
+    const layouts = { ...block.layouts || {} };
+    delete layouts[deviceStoredLayerKey(selection)];
+    setOrDelete(block, "layouts", layouts);
+    setOrDelete(next, "device_mode", block);
+  } else {
+    const layouts = { ...next.layouts || {} };
+    delete layouts[selection];
+    if (selection === "default") for (const key of LAYOUT_KEYS) delete next[key];
+    else if (Number.isFinite(Number(selection))) delete layouts[String(Number(selection))];
+    setOrDelete(next, "layouts", layouts);
+  }
+  return next;
+}
 function groupLabel(key) {
   return str().groups[key] || key;
 }
@@ -4217,19 +4244,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
   }
   // ---------- group order ----------
   _isEditorGroupVisible(key, isEditorX2) {
-    if (!isEditorX2 && key === "abc") return false;
-    const selection = this._layoutSelectionKey();
-    if (key === "shortcuts") return isDeviceLayoutKey(selection);
-    const asRows = mfAsRowsForEditor(this._config, selection);
-    if (isDeviceLayoutKey(selection)) {
-      if (key === "macro_favorites") return !asRows;
-      if (key === "macros_row") return asRows;
-      if (key === "favorites_row") return false;
-      return true;
-    }
-    if (key === "macro_favorites") return !asRows;
-    if (key === "macros_row" || key === "favorites_row") return asRows;
-    return true;
+    return editorGroupVisible(this._config, this._layoutSelectionKey(), key, isEditorX2);
   }
   _moveGroupByVisibleIndex(fromVisible, toVisible) {
     const isEditorX2 = this._isEditorX2();
@@ -4262,48 +4277,7 @@ var SofabatonRemoteCardEditor = class extends i4 {
     this._updateLayoutConfig({ group_order: next });
   }
   _resetGroupOrder() {
-    const selection = this._layoutSelectionKey();
-    let next;
-    if (isDeviceLayoutKey(selection)) {
-      next = this._withDeviceModeBlock((block) => {
-        const layouts = {
-          ...block.layouts || {}
-        };
-        delete layouts[deviceStoredLayerKey(selection)];
-        if (Object.keys(layouts).length) {
-          block.layouts = layouts;
-        } else {
-          delete block.layouts;
-        }
-      });
-    } else if (selection !== "default") {
-      next = { ...this._config };
-      const layouts = { ...next.layouts || {} };
-      delete layouts[selection];
-      if (Number.isFinite(Number(selection))) {
-        delete layouts[String(Number(selection))];
-      }
-      if (Object.keys(layouts).length) {
-        next.layouts = layouts;
-      } else {
-        delete next.layouts;
-      }
-    } else {
-      next = { ...this._config };
-      for (const key of LAYOUT_KEYS) {
-        delete next[key];
-      }
-      if (next.layouts && typeof next.layouts === "object") {
-        const layouts = { ...next.layouts };
-        delete layouts.default;
-        if (Object.keys(layouts).length) {
-          next.layouts = layouts;
-        } else {
-          delete next.layouts;
-        }
-      }
-    }
-    this._config = next;
+    this._config = resetEditorLayout(this._config, this._layoutSelectionKey());
     this._fireChanged();
     this.requestUpdate();
   }
@@ -8865,7 +8839,7 @@ var SofabatonRemoteCard = class extends i4 {
     }
     if (this._layoutSignatureCache === nextSignature) return;
     this._layoutSignatureCache = nextSignature;
-    if (this._prefersReducedMotion()) {
+    if (this._store.backend?.kind === "server" || this._prefersReducedMotion()) {
       this._clearLayoutOverlay();
       return;
     }

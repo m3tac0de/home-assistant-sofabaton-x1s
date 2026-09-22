@@ -648,6 +648,47 @@ test("the offline backup editor never locks a managed Wifi Device", () => {
   assert.ok(element._editDetailSectionItems("device").length > 0);
 });
 
+// ── Live command removal on every device ──────────────────────────────
+
+test("live editor offers command delete on a regular device", () => {
+  const element = createLiveDeviceEditor(); // device 1 = plain IR, live
+  const row = templateText(element._renderDeviceCommandRow({ deviceId: 1, commandId: 10, label: "Power" }));
+  assert.ok(row.includes("mdi:trash-can-outline"));
+  assert.ok(row.includes(TOOLS_CARD_STRINGS.backup.deleteCommandAria));
+});
+
+test("live command delete mirrors the hub cascade but keeps activity membership", () => {
+  const element = createLiveDeviceEditor();
+  const changes = collectBundleChanges(element);
+  element._confirmDeleteTarget = { kind: "command", deviceId: 1, commandId: 10 };
+  element._confirmDeleteLabel = "Power";
+  element._confirmDelete();
+
+  const next = changes.at(-1)!;
+  const device = next.devices.find((d) => d.device?.device_id === 1)!;
+  assert.deepEqual(device.commands?.map((c) => c.command_id), []);
+  const act = next.activities.find((a) => a.device?.device_id === 101)!;
+  // Favorite + user-macro step on (1, 10) are gone, like the hub's cascade …
+  assert.deepEqual(act.favorite_slots, []);
+  assert.deepEqual(act.macros?.find((m) => m.button_id === 3)?.steps, []);
+  // … while membership (power rows + linked-device mirror) is untouched, so
+  // the device sync's scope guard still accepts the activity.
+  assert.deepEqual(act.referenced_source_device_ids, [1]);
+  assert.equal(act.macros?.find((m) => m.button_id === 198)?.steps?.length, 2);
+  assert.equal(act.macros?.find((m) => m.button_id === 199)?.steps?.length, 1);
+  assert.equal(element._confirmDeleteTarget, null);
+});
+
+test("offline command delete still reconciles activity membership", () => {
+  const element = createEditor("X1S", "device"); // backup mode, device 1
+  const changes = collectBundleChanges(element);
+  element._confirmDeleteTarget = { kind: "command", deviceId: 1, commandId: 10 };
+  element._confirmDeleteLabel = "Power";
+  element._confirmDelete();
+  const act = changes.at(-1)!.activities.find((a) => a.device?.device_id === 101)!;
+  assert.deepEqual(act.referenced_source_device_ids, []);
+});
+
 // ── IR8: payload editor format tabs ────────────────────────────────────
 
 function irLiveEditor(model: "X1" | "X1S" | "X2" = "X1S"): EditorElement {

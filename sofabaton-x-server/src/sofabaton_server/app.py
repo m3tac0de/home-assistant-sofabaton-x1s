@@ -17,6 +17,8 @@ from fastapi import FastAPI
 
 from . import API_PREFIX, API_VERSION, __version__
 from .callbacks import CallbackService, ListenerState
+from .mqtt_client import MqttState
+from .backup_stage import BackupStage
 from .config import Settings
 from .discovery import DiscoveryService
 from .jobs import JobRunner
@@ -29,6 +31,7 @@ from .routes_edit import router as edit_router
 from .routes_hub_data import router as hub_data_router
 from .routes_hubs import router as hubs_router
 from .routes_payload import router as payload_router
+from .routes_settings import router as settings_router
 from .routes_snapshot import router as snapshot_router
 from .store import ApplyStore
 from .routes_ui import router as ui_router, ui_pages_router
@@ -57,12 +60,15 @@ class ServerInfo:
     # Minted at boot; the press sequence and ring belong to it.
     instance_id: str = ""
     callback_listener: ListenerState | None = None
+    # The broker connection for X2 Wifi Devices on the mqtt transport; never the password.
+    mqtt: MqttState | None = None
 
 
 def create_app(settings: Settings | None = None, *, manager: Optional[HubManager] = None,
                discovery: Optional[DiscoveryService] = None,
                ws_queue_size: Optional[int] = None,
-               callbacks: Optional[CallbackService] = None) -> FastAPI:
+               callbacks: Optional[CallbackService] = None,
+               backup_keep_seconds: Optional[float] = None) -> FastAPI:
     """Build the application. ``manager`` is injectable for tests; by
     default one is created from the settings and started with the app."""
 
@@ -71,6 +77,9 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     hub_manager = manager or HubManager(settings)
     discovery_service = discovery or DiscoveryService(settings, hub_manager)
     job_runner = JobRunner(problem_for=problem_body)
+    hub_manager.jobs = job_runner
+    # Before the event relay: a finished backup is announced with its expiry set.
+    backup_stage = BackupStage(job_runner, **({"keep_seconds": backup_keep_seconds} if backup_keep_seconds is not None else {}))
     callback_service = callbacks or CallbackService(hub_manager, settings)
 
     @asynccontextmanager
@@ -85,6 +94,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
             yield
         finally:
             await job_runner.shutdown()
+            backup_stage.close()
             await callback_service.stop()
             await hub_manager.stop()
             await discovery_service.stop()
@@ -111,6 +121,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     app.state.hub_manager = hub_manager
     app.state.discovery = discovery_service
     app.state.job_runner = job_runner
+    app.state.backup_stage = backup_stage
     app.state.apply_store = ApplyStore(settings.data_dir, keep=settings.apply_keep)
     relay = EventRelay(hub_manager, jobs=job_runner, **({"maxsize": ws_queue_size} if ws_queue_size else {}))
     relay.instance_id = callback_service.ring.instance_id
@@ -121,6 +132,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     app.include_router(hubs_router)
     app.include_router(callbacks_router)
     app.include_router(callback_listener_router)
+    app.include_router(settings_router)
     app.include_router(hub_data_router)
     app.include_router(snapshot_router)
     app.include_router(edit_router)
@@ -150,9 +162,11 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
             hubs=_hub_count(app),
             uptime_seconds=round(time.monotonic() - started, 1),
             base_url=settings.advertise_url,
-            features=(["discovery"] if discovery_service.enabled else []) + ["callbacks"],
+            features=(["discovery"] if discovery_service.enabled else []) + ["callbacks"]
+                     + (["mqtt"] if callback_service.mqtt.configured else []),
             instance_id=callback_service.ring.instance_id,
             callback_listener=callback_service.listener_state(),
+            mqtt=callback_service.mqtt_state(),
         )
 
     return app

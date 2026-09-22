@@ -1,12 +1,13 @@
-// The Catalog view's pure parts (docs/internal/server-panel-plan.md, P6):
-// merging the typed rows with the snapshot's provenance, the job phrase,
-// and the API client's catalog routes plus job following over a fake fetch.
+// The Hub tab's Activities / Devices view, pure parts: merging the typed
+// rows with the snapshot's provenance and table counts, the card's count
+// line, the bound-button filter, the job phrase, and the API client's
+// catalog routes plus job following over a fake fetch.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { PanelApi, type JobView, type SnapshotDocument } from "../../server-panel/src/panel-api";
-import { buildCatalog, jobPhrase } from "../../server-panel/src/views/catalog-view";
+import { boundButtons, buildCatalog, countLine, countsFromSnapshot, entryKey, jobPhrase, movedIds, workingOrder } from "../../server-panel/src/views/catalog-view";
 
 const DEVICES = [
   { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2 },
@@ -19,24 +20,72 @@ const SNAPSHOT: SnapshotDocument = {
   engine_generation: 3,
   complete: false,
   payload_profile: "x1s",
-  devices: [{ kind: "device", device: { device_id: 1, name: "TV" }, complete: true, editable: true, fetched_at: "2026-09-16T09:00:00Z" }],
-  activities: [{ kind: "activity", device: { device_id: 101, name: "Watch TV" }, complete: false, editable: false, fetched_at: "2026-09-16T09:30:00Z" }],
+  devices: [{ kind: "device", device: { device_id: 1, name: "TV" }, complete: true, editable: true, fetched_at: "2026-09-16T09:00:00Z", commands: [{ command_id: 1 }, { command_id: 17 }] }],
+  activities: [{ kind: "activity", device: { device_id: 101, name: "Watch TV" }, complete: false, editable: false, fetched_at: "2026-09-16T09:30:00Z", favorite_slots: [{}], macros: [], button_bindings: [{}, {}, {}] }],
 };
 
-test("buildCatalog lists devices then activities, with the snapshot's provenance where it has any", () => {
+test("buildCatalog lists devices then activities, with the snapshot's provenance and table counts where it has any", () => {
   const entries = buildCatalog(DEVICES, ACTIVITIES, SNAPSHOT);
   assert.deepEqual(
-    entries.map((e) => [e.kind, e.id, e.name, e.complete, e.fetched_at]),
+    entries.map((e) => [e.kind, e.id, e.name, e.complete, e.fetched_at, e.counts]),
     [
-      ["device", 1, "TV", true, "2026-09-16T09:00:00Z"],
-      ["device", 7, "Amp", false, null],
-      ["activity", 101, "Watch TV", false, "2026-09-16T09:30:00Z"],
+      ["device", 1, "TV", true, "2026-09-16T09:00:00Z", { commands: 2 }],
+      ["device", 7, "Amp", false, null, null],
+      ["activity", 101, "Watch TV", false, "2026-09-16T09:30:00Z", { favorites: 1, macros: 0, buttons: 3 }],
     ],
   );
   assert.equal(entries[0].device?.brand, "Sony");
   assert.equal(entries[2].activity?.active, true);
-  // Without a snapshot nothing is marked fetched.
-  assert.ok(buildCatalog(DEVICES, ACTIVITIES, null).every((e) => !e.complete && e.fetched_at === null));
+  assert.equal(entryKey(entries[2].kind, entries[2].id), "activity:101");
+  // Without a snapshot nothing is marked fetched and nothing is counted.
+  assert.ok(buildCatalog(DEVICES, ACTIVITIES, null).every((e) => !e.complete && e.fetched_at === null && e.counts === null));
+});
+
+test("the rows follow the snapshot's display order (what Change order writes), not the typed lists' id order", () => {
+  const activities = [101, 102, 103].map((id) => ({ activity_id: id, name: `A${id}`, active: false, needs_confirm: false }));
+  const row = (id: number) => ({ kind: "activity", device: { device_id: id }, complete: true, editable: true, fetched_at: null });
+  const snapshot = { ...SNAPSHOT, activities: [row(102), row(101)] } as SnapshotDocument;
+  // 103 is not in the snapshot yet (just created): it goes last.
+  assert.deepEqual(buildCatalog([], activities, snapshot).map((e) => e.id), [102, 101, 103]);
+  assert.deepEqual(buildCatalog([], activities, null).map((e) => e.id), [101, 102, 103]);
+  assert.deepEqual(workingOrder([{ id: 1 }, { id: 2 }, { id: 3 }], [3, 9, 1]).map((e) => e.id), [3, 1, 2]);
+  assert.deepEqual(movedIds([1, 2, 3], 0, 2), [2, 3, 1]);
+  assert.deepEqual(movedIds([1, 2, 3], 0, 5), [1, 2, 3]);
+});
+
+test("countsFromSnapshot reads the bundle's tables and stays null for a structural profile", () => {
+  assert.deepEqual(countsFromSnapshot("device", { kind: "device", device: { device_id: 1 }, complete: true, editable: true, fetched_at: null, commands: [] }), { commands: 0 });
+  assert.equal(countsFromSnapshot("device", { kind: "device", device: { device_id: 1 }, complete: true, editable: true, fetched_at: null }), null);
+  assert.deepEqual(countsFromSnapshot("activity", { kind: "activity", device: { device_id: 101 }, complete: true, editable: true, fetched_at: null, macros: [{}] }), { favorites: 0, macros: 1, buttons: 0 });
+  assert.equal(countsFromSnapshot("activity", undefined), null);
+});
+
+test("countLine is the card's wording, singular and plural", () => {
+  assert.equal(countLine("device", { commands: 1 }), "1 cmd");
+  assert.equal(countLine("device", { commands: 12 }), "12 cmds");
+  assert.equal(countLine("activity", { favorites: 1, macros: 0, buttons: 2 }), "1 fav / 0 macros / 2 buttons");
+  assert.equal(countLine("activity", { favorites: 2, macros: 1, buttons: 1 }), "2 favs / 1 macro / 1 button");
+  assert.equal(countLine("device", null), null);
+});
+
+test("activity summaries exclude internal power sequences while counting user macros", () => {
+  const activity = { ...SNAPSHOT.activities[0], macros: [
+    { button_id: 198, name: "POWER_ON", steps: [{ device_id: 1, command_id: 1 }] },
+    { button_id: 199, name: "POWER_OFF", steps: [] },
+  ] };
+  assert.equal(countsFromSnapshot("activity", activity)?.macros, 0);
+  assert.equal(countsFromSnapshot("activity", { ...activity, macros: [...activity.macros,
+    { button_id: 1, name: "Movie time", steps: [] }, { button_id: 2, name: "Lights", steps: [] },
+  ] })?.macros, 2);
+});
+
+test("boundButtons keeps the buttons the hub maps to a command", () => {
+  const rows = [
+    { button_code: 151, name: "OK", device_id: 1, command_id: 9 },
+    { button_code: 152, name: "Back", device_id: null, command_id: null },
+    { button_code: 153, name: "Menu", device_id: null, command_id: 3 },
+  ];
+  assert.deepEqual(boundButtons(rows).map((b) => b.button_code), [151, 153]);
 });
 
 test("jobPhrase carries the status and the step count when there is one", () => {
