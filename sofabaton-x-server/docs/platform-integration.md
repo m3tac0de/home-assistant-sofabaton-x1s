@@ -1,7 +1,7 @@
 # Integrating an automation platform with sofabaton-x-server
 
-> Written for sofabaton-x-server 0.2.1 (`api 1`, release preparation).
-> Read the [upgrade notes](../CHANGELOG.md#021-unreleased), particularly
+> Written for sofabaton-x-server 0.2.1 (`api 1`).
+> Read the [upgrade notes](../CHANGELOG.md#021-2026-09-22), particularly
 > the payload-response and backup-retention changes, and regenerate
 > clients from this release's OpenAPI document.
 

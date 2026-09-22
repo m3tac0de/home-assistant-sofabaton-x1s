@@ -1,8 +1,8 @@
 # sofabaton-x — Python Library
 
-> **This README describes 0.2.1 (release preparation).** Despite the patch
-> version, `read_payload()` changes its return types for non-IR commands.
-> Read the [0.2.1 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-unreleased)
+> **This README describes 0.2.1.** Despite the patch version,
+> `read_payload()` changes its return types for non-IR commands.
+> Read the [0.2.1 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22)
 > before upgrading from 0.2.0. Consumers on 0.1.x also need the
 > [0.2.0 migration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#020-2026-09-16).
 
@@ -72,12 +72,12 @@ Home Assistant integration provide their own listeners on top.
 
 ## Install
 
-The PyPI command below requires 0.2.1 to have been published. Until then,
-install this checkout with `python -m pip install .` from the repository root.
-
 ```
 python -m pip install "sofabaton-x>=0.2.1,<0.3"
 ```
+
+From a checkout, run `python -m pip install .` from the repository root
+instead.
 
 For existing applications still on the 0.1.x API, stay on that series
 until you have migrated:

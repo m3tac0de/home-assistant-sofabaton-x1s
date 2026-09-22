@@ -1,7 +1,6 @@
 # Your first integration
 
-This guide targets **sofabaton-x-server 0.2.1 / API 1**. Until 0.2.1 is
-published, use the checkout installation below.
+This guide targets **sofabaton-x-server 0.2.1 / API 1**.
 
 Start with **sofabaton-x-server**. It manages hub connections and provides
 HTTP and WebSocket APIs for clients in any language. Use its built-in

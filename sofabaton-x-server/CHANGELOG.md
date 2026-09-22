@@ -4,10 +4,10 @@ Changes to `sofabaton-x-server`, compared against its own release tags.
 Protocol-library changes are recorded in the
 [library changelog](../sofabaton-x/CHANGELOG.md).
 
-## 0.2.1 (Unreleased)
+## 0.2.1 (2026-09-22)
 
-Changes since `sofabaton-x-server-v0.2.0`. The release date will be set when
-publishing. Requires **sofabaton-x >=0.2.1,<0.3**; publish the library first.
+Changes since `sofabaton-x-server-v0.2.0`. Requires
+**sofabaton-x >=0.2.1,<0.3**; publish the library first.
 The API prefix and advertised API generation remain `/api/v1` and `1`.
 
 ### Upgrade notes
@@ -32,6 +32,9 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
   and may have `transport: "mqtt"` with an empty `source`. The existing
   `/callback-device` routes still address only key `default` and create
   HTTP devices. Existing stored HTTP records remain readable.
+- Job progress events can report `phase: "reading_back"` after the write
+  phases, while the server reads the changed entities back from the hub.
+  Treat the phase word as open-ended.
 - A replacing restore that erases the hub and then fails before rebuilding
   any entity now reports `error.status: 502`, `error.type: "restore_failed"`
   and `result.erased: true`, instead of a 409 implying
@@ -84,6 +87,14 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
 - Wifi Device deploys and updates end with one remote-sync trigger after
   their last write, through the library fix. Updates and MQTT deploys sent
   none before; an HTTP deploy with slot assignments sent it too early.
+- Every write job reads the entities it changed back from the hub before
+  it completes, so hub views and snapshots match the hub. A Wifi Device
+  deploy with slot assignments previously left its activities showing
+  zero favorites in the Hub view until a manual refresh.
+- X1 activities no longer list a favorite twice, or carry the order slots
+  of favorites removed by a cascade, after Wifi Device and favorite edits;
+  a favorite delete waits 30 s for the hub's ack instead of reporting
+  failure while the hub applied it.
 
 The [guides](docs/getting-started.md) and examples target this release.
 The Hubitat example still consumes only the default callback device;

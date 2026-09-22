@@ -5,8 +5,7 @@ The Python server runs on a separate computer; Hubitat connects to its REST
 API and WebSocket. No Home Assistant, MQTT broker, Maker API token or inbound
 Hubitat HTTP endpoint is needed.
 
-**Example for server 0.2.1 / API 1.** Until 0.2.1 is published, install
-both packages from a repository checkout as described in the server README.
+**Example for server 0.2.1 / API 1.**
 The sources are compiled and behavior-tested with
 Groovy 2.4.21 and a simulated Hubitat environment. Installation, Hubitat's
 sandbox, actual asynchronous HTTP/WebSocket behavior, and physical devices

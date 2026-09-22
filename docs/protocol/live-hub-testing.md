@@ -2463,3 +2463,32 @@ remote button: accepted, trigger sent. Deleting the device sends no
 trigger (as before). Hub left at its baseline. Not covered: what the
 physical remote shows (nobody watched it), the X1, the X2 and the MQTT
 deploy path.
+
+## ◇ Validated: facade write read-back (X1S + X1, 2026-09-21)
+
+Through sofabaton-x-server at :8482, a scratchpad script comparing the
+cached snapshot against a fresh `POST /snapshot/refresh` after each write:
+a Wifi Device deploy with a favorite, a button and two activity
+memberships, an update that drops an activity and renames a slot, the
+delete, and an add/remove of a device and an activity. X1S: problems none,
+final snapshot id equal to the starting one. X1 (activities 107 + 101), run
+twice: problems none, and a whole-hub refresh afterwards left the snapshot
+id unchanged, so the cache the read-backs built equals the hub. Not
+covered: the X2.
+
+The X1 pass surfaced the favorites-order table growing: 107 read
+`fav1 fav2 fav2` with one favorite, 101 `fav1 fav1 fav1` with none, one
+more slot per Wifi cycle. The X1 keeps the order slot of a favorite a
+cascade removed and reuses the id, and our add wrote the read-back order
+(stale slot included) plus the new id. The X1S returns to its starting
+table on its own. The library's own `delete_favorite` had a second
+problem on this hub: the `0x0210` key delete acked after 21.5 s (11
+devices), past the 12 s window, so the hub applied the delete while the
+order rewrite that follows was skipped. After the fixes (one slot per id
+on read, the X1 add drops the reused id from the order it read back,
+projection filter, 30 s window): raw `fav1 fav2 fav2` / `fav1 fav1 fav1`
+project as `[1]` / none; one Wifi cycle shrank the raw tables to
+`fav1 fav2` / `fav1` instead of growing them; an add and a delete through
+`POST` / `DELETE /activities/{id}/favorites` left `fav1` / empty. Both
+activities clean at the end of the session. The X2's table was not
+checked.

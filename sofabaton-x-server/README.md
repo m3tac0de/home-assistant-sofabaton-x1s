@@ -1,7 +1,7 @@
 # sofabaton-x-server
 
-> **This README describes 0.2.1 (release preparation), API 1.** Read the
-> [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md#021-unreleased)
+> **This README describes 0.2.1, API 1.** Read the
+> [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md#021-2026-09-22)
 > for payload-response and backup-retention changes from 0.2.0. The OpenAPI
 > document is committed; regenerate clients when adopting this release.
 
@@ -40,8 +40,7 @@ setup.** A hub connected directly to the app stops advertising, so the
 server cannot discover it. Keep the app closed until the hub is registered
 and you have tested control. Disable any existing proxy for that hub first.
 
-Install from PyPI after 0.2.1 is published (Python 3.11+; the library comes
-with it). Before publication, use the checkout command below:
+Install from PyPI (Python 3.11+; the library comes with it):
 
 ```
 python -m pip install "sofabaton-x-server>=0.2.1,<0.3"

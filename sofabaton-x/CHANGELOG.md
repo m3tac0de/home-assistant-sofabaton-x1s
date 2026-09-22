@@ -9,11 +9,11 @@ and date, update the README notice and install instructions, and start a new
 Unreleased section. Link breaking releases to their migration guidance.
 Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -->
 
-## 0.2.1 (Unreleased)
+## 0.2.1 (2026-09-22)
 
-Changes since `sofabaton-x-v0.2.0`. The release date will be set when
-publishing. This patch release includes a public return-type correction;
-review the migration below even if you already use 0.2.0.
+Changes since `sofabaton-x-v0.2.0`. This patch release includes a public
+return-type correction; review the migration below even if you already
+use 0.2.0.
 
 ### Migration from 0.2.0
 
@@ -100,6 +100,28 @@ deployments without a transport field continue to load as HTTP.
 - Managed MQTT updates preserve the hub's `wifi_mqtt` head/class and icon
   when changing name or brand. A missing cached head fails the step rather
   than constructing an HTTP callback head.
+- Every `AsyncXProxy` write reads back what it changed before it returns,
+  so the cache matches the hub afterwards. The engine's one-shot writes
+  (favorites, memberships, device removal, the create pipelines) drop the
+  tables they invalidate and leave the re-read to their caller; the facade
+  had no such step, so a `deploy_wifi_device()` with slot assignments left
+  its activities reporting zero favorites while still `complete`. A device
+  write that renames, re-codes or deletes a command also re-reads every
+  activity naming that device. Progress reports carry a new `reading_back`
+  phase. An entity that cannot be read back is invalidated (it reads as
+  not fetched) rather than failing the write.
+- X1 favorites order. The X1 keeps the quick-access order slot of a
+  favorite that a cascade removed (a device delete, a membership removal)
+  and hands the freed id out again, and `command_to_favorite()` wrote the
+  stale slot back next to the new one, so one id came to hold several
+  slots and the table grew on every cycle. The order table is now read
+  with one slot per id, the X1 add no longer writes the stale slot back,
+  and ids naming neither a favorite nor a macro are left out of the
+  activity projection once both tables are read. `delete_favorite()` waits
+  30 s for the key-delete ack (was 12 s): the X1 answers after a
+  consistency sweep, 21 s with 11 devices, and the timeout skipped the
+  order rewrite that follows. The X1S cleans its own table; the X2 was
+  not checked.
 
 Hardware coverage and remaining limits are recorded in the
 [live-hub notes](../docs/protocol/live-hub-testing.md). These changes do not
