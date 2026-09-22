@@ -7656,6 +7656,7 @@ var mdiNetflix = "M6.5,2H10.5L13.44,10.83L13.5,2H17.5V22C16.25,21.78 14.87,21.64
 var mdiNintendoGameBoy = "M7 1C5.9 1 5 1.9 5 3V21C5 22.11 5.9 23 7 23H14C16.76 23 19 20.76 19 18V3C19 1.9 18.11 1 17 1H7M8 4H16V11H8V4M9 14H10V16H12V17H10V19H9V17H7V16H9V14M16 15C16.55 15 17 15.45 17 16C17 16.55 16.55 17 16 17C15.45 17 15 16.55 15 16C15 15.45 15.45 15 16 15M14 17C14.55 17 15 17.45 15 18C15 18.55 14.55 19 14 19C13.45 19 13 18.55 13 18C13 17.45 13.45 17 14 17Z";
 var mdiNintendoSwitch = "M10.04,20.4H7.12C6.19,20.4 5.3,20 4.64,19.36C4,18.7 3.6,17.81 3.6,16.88V7.12C3.6,6.19 4,5.3 4.64,4.64C5.3,4 6.19,3.62 7.12,3.62H10.04V20.4M7.12,2A5.12,5.12 0 0,0 2,7.12V16.88C2,19.71 4.29,22 7.12,22H11.65V2H7.12M5.11,8C5.11,9.04 5.95,9.88 7,9.88C8.03,9.88 8.87,9.04 8.87,8C8.87,6.96 8.03,6.12 7,6.12C5.95,6.12 5.11,6.96 5.11,8M17.61,11C18.72,11 19.62,11.89 19.62,13C19.62,14.12 18.72,15 17.61,15C16.5,15 15.58,14.12 15.58,13C15.58,11.89 16.5,11 17.61,11M16.88,22A5.12,5.12 0 0,0 22,16.88V7.12C22,4.29 19.71,2 16.88,2H13.65V22H16.88Z";
 var mdiNumeric = "M4,17V9H2V7H6V17H4M22,15C22,16.11 21.1,17 20,17H16V15H20V13H18V11H20V9H16V7H20A2,2 0 0,1 22,9V10.5A1.5,1.5 0 0,1 20.5,12A1.5,1.5 0 0,1 22,13.5V15M14,15V17H8V13C8,11.89 8.9,11 10,11H12V9H8V7H12A2,2 0 0,1 14,9V11C14,12.11 13.1,13 12,13H10V15H14Z";
+var mdiOpenInNew = "M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z";
 var mdiPalette = "M17.5,12A1.5,1.5 0 0,1 16,10.5A1.5,1.5 0 0,1 17.5,9A1.5,1.5 0 0,1 19,10.5A1.5,1.5 0 0,1 17.5,12M14.5,8A1.5,1.5 0 0,1 13,6.5A1.5,1.5 0 0,1 14.5,5A1.5,1.5 0 0,1 16,6.5A1.5,1.5 0 0,1 14.5,8M9.5,8A1.5,1.5 0 0,1 8,6.5A1.5,1.5 0 0,1 9.5,5A1.5,1.5 0 0,1 11,6.5A1.5,1.5 0 0,1 9.5,8M6.5,12A1.5,1.5 0 0,1 5,10.5A1.5,1.5 0 0,1 6.5,9A1.5,1.5 0 0,1 8,10.5A1.5,1.5 0 0,1 6.5,12M12,3A9,9 0 0,0 3,12A9,9 0 0,0 12,21A1.5,1.5 0 0,0 13.5,19.5C13.5,19.11 13.35,18.76 13.11,18.5C12.88,18.23 12.73,17.88 12.73,17.5A1.5,1.5 0 0,1 14.23,16H16A5,5 0 0,0 21,11C21,6.58 16.97,3 12,3Z";
 var mdiPaletteOutline = "M12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2C17.5,2 22,6 22,11A6,6 0 0,1 16,17H14.2C13.9,17 13.7,17.2 13.7,17.5C13.7,17.6 13.8,17.7 13.8,17.8C14.2,18.3 14.4,18.9 14.4,19.5C14.5,20.9 13.4,22 12,22M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C12.3,20 12.5,19.8 12.5,19.5C12.5,19.3 12.4,19.2 12.4,19.1C12,18.6 11.8,18.1 11.8,17.5C11.8,16.1 12.9,15 14.3,15H16A4,4 0 0,0 20,11C20,7.1 16.4,4 12,4M6.5,10C7.3,10 8,10.7 8,11.5C8,12.3 7.3,13 6.5,13C5.7,13 5,12.3 5,11.5C5,10.7 5.7,10 6.5,10M9.5,6C10.3,6 11,6.7 11,7.5C11,8.3 10.3,9 9.5,9C8.7,9 8,8.3 8,7.5C8,6.7 8.7,6 9.5,6M14.5,6C15.3,6 16,6.7 16,7.5C16,8.3 15.3,9 14.5,9C13.7,9 13,8.3 13,7.5C13,6.7 13.7,6 14.5,6M17.5,10C18.3,10 19,10.7 19,11.5C19,12.3 18.3,13 17.5,13C16.7,13 16,12.3 16,11.5C16,10.7 16.7,10 17.5,10Z";
 var mdiPause = "M14,19H18V5H14M6,19H10V5H6V19Z";
@@ -7779,6 +7780,7 @@ var mdiVideoInputHdmi = "M18,7V4A2,2 0 0,0 16,2H8A2,2 0 0,0 6,4V7H5V13L8,19V22H1
 var mdiVideoInputSvideo = "M8,11.5A1.5,1.5 0 0,0 6.5,10A1.5,1.5 0 0,0 5,11.5A1.5,1.5 0 0,0 6.5,13A1.5,1.5 0 0,0 8,11.5M15,6.5A1.5,1.5 0 0,0 13.5,5H10.5A1.5,1.5 0 0,0 9,6.5A1.5,1.5 0 0,0 10.5,8H13.5A1.5,1.5 0 0,0 15,6.5M8.5,15A1.5,1.5 0 0,0 7,16.5A1.5,1.5 0 0,0 8.5,18A1.5,1.5 0 0,0 10,16.5A1.5,1.5 0 0,0 8.5,15M12,1A11,11 0 0,0 1,12A11,11 0 0,0 12,23A11,11 0 0,0 23,12A11,11 0 0,0 12,1M12,21C7.04,21 3,16.96 3,12C3,7.04 7.04,3 12,3C16.96,3 21,7.04 21,12C21,16.96 16.96,21 12,21M17.5,10A1.5,1.5 0 0,0 16,11.5A1.5,1.5 0 0,0 17.5,13A1.5,1.5 0 0,0 19,11.5A1.5,1.5 0 0,0 17.5,10M15.5,15A1.5,1.5 0 0,0 14,16.5A1.5,1.5 0 0,0 15.5,18A1.5,1.5 0 0,0 17,16.5A1.5,1.5 0 0,0 15.5,15Z";
 var mdiVideoOff = "M3.27,2L2,3.27L4.73,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16C16.2,18 16.39,17.92 16.54,17.82L19.73,21L21,19.73M21,6.5L17,10.5V7A1,1 0 0,0 16,6H9.82L21,17.18V6.5Z";
 var mdiVideoVintage = "M18,14.5V11A1,1 0 0,0 17,10H16C18.24,8.39 18.76,5.27 17.15,3C15.54,0.78 12.42,0.26 10.17,1.87C9.5,2.35 8.96,3 8.6,3.73C6.25,2.28 3.17,3 1.72,5.37C0.28,7.72 1,10.8 3.36,12.25C3.57,12.37 3.78,12.5 4,12.58V21A1,1 0 0,0 5,22H17A1,1 0 0,0 18,21V17.5L22,21.5V10.5L18,14.5M13,4A2,2 0 0,1 15,6A2,2 0 0,1 13,8A2,2 0 0,1 11,6A2,2 0 0,1 13,4M6,6A2,2 0 0,1 8,8A2,2 0 0,1 6,10A2,2 0 0,1 4,8A2,2 0 0,1 6,6Z";
+var mdiViewDashboardEditOutline = "M21 13.1C20.9 13.1 20.7 13.2 20.6 13.3L19.6 14.3L21.7 16.4L22.7 15.4C22.9 15.2 22.9 14.8 22.7 14.6L21.4 13.3C21.3 13.2 21.2 13.1 21 13.1M19.1 14.9L13 20.9V23H15.1L21.2 16.9L19.1 14.9M21 3H13V9H21V3M19 7H15V5H19V7M13 18.06V11H21V11.1C20.24 11.1 19.57 11.5 19.19 11.89L18.07 13H15V16.07L13 18.06M11 3H3V13H11V3M9 11H5V5H9V11M11 20.06V15H3V21H11V20.06M9 19H5V17H9V19Z";
 var mdiVolumeHigh = "M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z";
 var mdiVolumeLow = "M7,9V15H11L16,20V4L11,9H7Z";
 var mdiVolumeMedium = "M5,9V15H9L14,20V4L9,9M18.5,12C18.5,10.23 17.5,8.71 16,7.97V16C17.5,15.29 18.5,13.76 18.5,12Z";
@@ -10238,7 +10240,9 @@ var SUBTAB_ICONS = {
   make: mdiContentSaveMoveOutline,
   edit: mdiPencilBoxOutline,
   restore: mdiDatabaseImportOutline,
-  "wifi/devices": mdiWifi
+  "wifi/devices": mdiWifi,
+  card: mdiRemote,
+  layout: mdiViewDashboardEditOutline
 };
 function renderTabBar(params) {
   const route = params.route;
@@ -22946,6 +22950,14 @@ var SbPanelRemote = class extends i4 {
     this._fitObserver = null;
     this._fitFrame = null;
     this._onWindowResize = () => this._fit();
+    /** The web remote page for this hub in a window of its own (a plain click; modified clicks and a blocked popup keep the link's default). */
+    this._openRemote = (ev) => {
+      const hubId = this.hub?.hub_id;
+      if (!hubId || ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
+      const height = Math.min(window.screen.availHeight || 900, Math.round((this._natural || 780) + 80));
+      const popup = window.open(this.api.remoteUrl(hubId), `sofabaton-remote-${hubId}`, `popup=yes,width=440,height=${height}`);
+      if (popup) ev.preventDefault();
+    };
   }
   connectedCallback() {
     super.connectedCallback();
@@ -23039,7 +23051,7 @@ var SbPanelRemote = class extends i4 {
       this._draft = response.body.document || {};
       this._document = response.body.document;
       this._documentText = this._document ? JSON.stringify(this._document, null, 2) : "";
-      this._setStatus(this._document ? `stored document (updated ${formatWhen(response.body.updated_at)})` : "no document stored: the card uses its defaults");
+      this._setStatus("");
     } else {
       this._document = null;
       this._documentText = "";
@@ -23145,26 +23157,6 @@ var SbPanelRemote = class extends i4 {
       if (generation === this._generation) this._busy = false;
     }
   }
-  async _reload() {
-    const hubId = this._mountedFor;
-    if (!hubId || this._busy) return;
-    const generation = this._generation;
-    this._busy = true;
-    try {
-      const response = await this.api.remoteCardDocument(hubId);
-      if (generation !== this._generation) return;
-      if (!response.ok || !response.body) {
-        this._setStatus(problemText(response), false);
-        return;
-      }
-      this._apply(response.body.document);
-      this._setStatus(response.body.document ? `stored document (updated ${formatWhen(response.body.updated_at)})` : "no document stored: the card uses its defaults");
-    } catch (err) {
-      if (generation === this._generation) this._setStatus(String(err), false);
-    } finally {
-      if (generation === this._generation) this._busy = false;
-    }
-  }
   async _reset() {
     const hubId = this._mountedFor;
     if (!hubId || this._busy) return;
@@ -23198,16 +23190,16 @@ var SbPanelRemote = class extends i4 {
         <div class="fit" id="remote-frame">
           ${this._banner ? b2`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
           ${busy ? b2`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
-          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div></div>
+          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div>
+            ${hub ? b2`<a class="open-link" id="remote-open" href=${this.api.remoteUrl(hub.hub_id)} target="_blank" rel="noopener" @click=${this._openRemote}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiOpenInNew}></path></svg>Open</a>` : ""}
+          </div>
         </div>
         <div class="dock-probe" aria-hidden="true"></div>
     `;
   }
   _renderLayout(hub) {
-    const dirty = this._documentText !== (this._document ? JSON.stringify(this._document, null, 2) : "");
     return b2`
       <div class="layout-content">
-        <h2>Remote configuration <span class="spacer"></span><span class="hint">${dirty ? "Unsaved changes" : "Saved configuration"}</span></h2>
         <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save.</div>
         <div class="layout-grid">
           <div class="editor">
@@ -23215,7 +23207,12 @@ var SbPanelRemote = class extends i4 {
               <div class="mode-tabs" aria-label="Configuration editor">
                 <button id="remote-visual" aria-pressed=${this._mode === "visual"} @click=${() => this._switchMode("visual")}>Visual editor</button>
                 <button id="remote-json" aria-pressed=${this._mode === "json"} @click=${() => this._switchMode("json")}>JSON</button>
+                <span class="doc-actions">
+                  <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._save}>${this._busy ? "Working\u2026" : "Save"}</button>
+                  <button class="danger" id="remote-delete" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._reset}>Reset to defaults</button>
+                </span>
               </div>
+              <p class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status" role="status">${this._status}</p>
               ${this._mode === "visual" ? b2`
                 <sb-panel-remote-editor ?inert=${!hub || !this._loaded || this._busy} .selection=${this._selection} .config=${this._draft} .backend=${this._backend} .snapshot=${this._snapshot}
                   @document-changed=${(ev) => {
@@ -23238,18 +23235,10 @@ var SbPanelRemote = class extends i4 {
     }}>Update preview</button>`}
             </fieldset>
           </div>
-          <aside class="preview"><h3>Preview</h3><p class="hint">Preview only — buttons do not control the hub.</p>
+          <aside class="preview"><p class="hint">Preview only — buttons do not control the hub.</p>
             <div class="frame"><div class="stage" id="stage" inert></div></div>
           </aside>
         </div>
-        <footer class="layout-actions" aria-label="Remote configuration actions">
-            <div class="actions">
-              <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._save}>${this._busy ? "Working\u2026" : "Save"}</button>
-              <button id="remote-load" ?disabled=${!hub || this._busy} @click=${this._reload}>Reload document</button>
-              <button class="danger" id="remote-delete" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._reset}>Reset to defaults</button>
-            </div>
-            <p class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status" role="status">${this._status}</p>
-        </footer>
       </div>`;
   }
 };
@@ -23280,7 +23269,12 @@ SbPanelRemote.styles = [
       .fit { max-width: 420px; margin: 0 auto; }
       .fit .stage { padding: 0; }
       .fit .banner, .fit .busy-note { margin: 0 0 10px; }
-      #stage-box { margin: 0 auto; }
+      #stage-box { margin: 0 auto; position: relative; }
+      /* Open the web remote in its own window: beside the card, outside its box so the fit is untouched; above it on a phone. */
+      .open-link { position: absolute; top: 0; left: calc(100% + 12px); display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 6px; background: var(--sbp-panel); color: var(--sbp-text); font-size: 13px; text-decoration: none; white-space: nowrap; }
+      .open-link:hover { border-color: var(--sbp-accent); }
+      .open-link .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
+      @media (max-width: 640px) { .fit { padding-top: 44px; } .open-link { left: auto; right: 0; top: -44px; } }
       /* Laid out at the full width, then scaled into the box. */
       .fit .stage.is-scaled { width: calc(100% / var(--fit-scale)); transform: scale(var(--fit-scale)); transform-origin: 0 0; }
       .stage { padding: 10px; }
@@ -23292,20 +23286,17 @@ SbPanelRemote.styles = [
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
       textarea { min-height: 380px; margin-top: 10px; }
       .layout-content { min-width: 0; }
-      .layout-content h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-      .layout-content h2 .hint { font-weight: 400; }
       .layout-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 380px); gap: 20px; align-items: start; }
       .preview { position: sticky; top: calc(var(--top-dock-height, 0px) + 12px); min-width: 0; }
-      .preview h3 { margin-top: 0; }
       .preview .frame { max-width: none; }
       .preview .stage { overflow: auto; }
       .editor { min-width: 0; }
-      .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; }
+      .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
+      .mode-tabs .doc-actions { margin-left: auto; display: flex; gap: 8px; }
       .mode-tabs button[aria-pressed=true] { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .08); }
       fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-      .actions { flex-wrap: wrap; }
-      .layout-actions { position: sticky; bottom: var(--bottom-dock-height, 56px); z-index: 20; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--sbp-line); background: var(--dock-surface, var(--sbp-panel)); box-shadow: 0 -3px 8px #00000008; }
-      .layout-actions .msg { margin: 8px 0 0; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; max-height: 15dvh; overflow-y: auto; }
+      /* Always in flow: toggling this line's display left the editor (an inline-size container) at zero height in Chrome until the next relayout. */
+      .editor .msg { margin: 8px 0 0; min-height: 17px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
       @media (max-width: 900px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .preview .frame { max-width: 420px; } }
 
     `

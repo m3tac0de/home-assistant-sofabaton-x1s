@@ -825,6 +825,14 @@ test.describe("control panel, views", () => {
     // The real card is mounted over the mocked server, with the stored document applied.
     const card = page.locator("#stage sofabaton-virtual-remote");
     await expect(card).toBeVisible();
+    // Both subtabs carry an icon; Open beside the card opens the web remote for this hub in a window of its own.
+    await expect(page.locator('#subtabs button[data-sub="card"] .subtab-icon')).toHaveCount(1);
+    await expect(page.locator('#subtabs button[data-sub="layout"] .subtab-icon')).toHaveCount(1);
+    const open = page.locator("#remote-open");
+    await expect(open).toHaveAttribute("href", /\/ui\/remote\/\?hub=e26a44861b45$/);
+    const [popup] = await Promise.all([page.waitForEvent("popup"), open.click()]);
+    expect(popup.url()).toMatch(/\/ui\/remote\/\?hub=e26a44861b45$/);
+    await popup.close();
     await expect(card.locator("ha-select.sb-activity-select >> visible=true").first().locator(".value")).toHaveText("Watch TV");
     await expect(card.locator(".dpad >> visible=true")).toHaveCount(0);
     await page.screenshot({ path: shot(testInfo, "remote"), fullPage: true });
@@ -833,7 +841,7 @@ test.describe("control panel, views", () => {
     await expect(page).toHaveURL(/#\/e26a44861b45\/remote\/layout$/);
     await page.click("#remote-json");
     await expect(page.locator("#remote-doc")).toHaveValue(/"show_dpad": false/);
-    await expect(page.locator("#remote-status")).toContainText("stored document");
+    await expect(page.locator("#remote-status")).toHaveText("");
     // Saving a document applies it to the mounted card at once.
     await page.fill("#remote-doc", '{"show_dpad": true}');
     await page.click("#remote-save");
@@ -1062,33 +1070,33 @@ test.describe("control panel, views", () => {
     await expect(editor.locator(".stepper output")).toHaveText("3");
   });
 
-  test("remote configuration actions stay above the dock while scrolling", async ({ page }, testInfo) => {
+  test("remote configuration actions sit at the right of the editor mode row", async ({ page }, testInfo) => {
     await mockServer(page, { hubs: [LIVING], seen: [] });
     await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
     const editor = page.locator("sb-panel-remote-editor");
     await expect(editor.locator("details")).toHaveCount(3);
     await expect(editor.locator("details[open]")).toHaveCount(0);
-    const assertActionsVisible = async () => {
-      const dock = await page.locator("#bottom-dock").boundingBox();
-      for (const id of ["remote-save", "remote-load", "remote-delete"]) {
-        const button = page.locator(`#${id}`);
-        await expect(button).toBeInViewport({ ratio: 1 });
-        const bounds = await button.boundingBox();
-        expect(bounds.y + bounds.height).toBeLessThanOrEqual(dock.y);
-      }
-    };
-    await assertActionsVisible();
-    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
-    await page.evaluate(() => window.scrollTo(0, 300));
-    await assertActionsVisible();
-    await page.screenshot({ path: shot(testInfo, "remote-sticky-actions") });
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await assertActionsVisible();
+    // No sticky footer, no reload button, no preview heading: Save and Reset share the Visual editor / JSON row, right-aligned.
+    await expect(page.locator("#remote-load")).toHaveCount(0);
+    await expect(page.locator("footer.layout-actions")).toHaveCount(0);
+    await expect(page.locator(".preview h3")).toHaveCount(0);
+    const json = await page.locator("#remote-json").boundingBox();
+    const save = await page.locator("#remote-save").boundingBox();
+    const reset = await page.locator("#remote-delete").boundingBox();
+    const editorBox = await page.locator(".editor").boundingBox();
+    if (page.viewportSize().width >= 700) {
+      // One row on a desktop; the phone wraps the actions under the mode buttons.
+      expect(Math.abs(save.y - json.y)).toBeLessThan(2);
+      expect(Math.abs(reset.y - json.y)).toBeLessThan(2);
+      expect(save.x).toBeGreaterThan(json.x + json.width);
+    }
+    expect(reset.x).toBeGreaterThan(save.x + save.width);
+    expect(reset.x + reset.width).toBeGreaterThan(editorBox.x + editorBox.width - 4);
+    await page.screenshot({ path: shot(testInfo, "remote-mode-row-actions") });
     await page.click("#remote-json");
     await page.fill("#remote-doc", "{invalid");
     await page.click("#remote-save");
     await expect(page.locator("#remote-status")).toContainText("not valid JSON");
-    await assertActionsVisible();
     await page.fill("#remote-doc", "{}");
     await page.click("#remote-visual");
     await expect(editor.locator("details[open]")).toHaveCount(0);
@@ -1124,7 +1132,7 @@ test.describe("control panel, views", () => {
     await pickHub(page, OFFICE.hub_id);
     await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).not.toBeChecked();
     finish();
-    await expect(page.locator("#remote-status")).toContainText("stored document");
+    await expect(page.locator("#remote-status")).toHaveText("");
     await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).not.toBeChecked();
   });
 

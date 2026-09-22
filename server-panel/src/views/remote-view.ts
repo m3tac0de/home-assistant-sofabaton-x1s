@@ -5,6 +5,7 @@
 // the standalone web remote picks it up on its next load.
 
 import { LitElement, html, css, type PropertyValues, type TemplateResult } from "lit";
+import { mdiOpenInNew } from "@mdi/js";
 
 import { ServerRemoteBackend } from "../../../remote-card/src/backend/server-backend";
 import type { SofabatonRemoteCard } from "../../../remote-card/src/remote-card-element";
@@ -57,7 +58,12 @@ export class SbPanelRemote extends LitElement {
       .fit { max-width: 420px; margin: 0 auto; }
       .fit .stage { padding: 0; }
       .fit .banner, .fit .busy-note { margin: 0 0 10px; }
-      #stage-box { margin: 0 auto; }
+      #stage-box { margin: 0 auto; position: relative; }
+      /* Open the web remote in its own window: beside the card, outside its box so the fit is untouched; above it on a phone. */
+      .open-link { position: absolute; top: 0; left: calc(100% + 12px); display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 6px; background: var(--sbp-panel); color: var(--sbp-text); font-size: 13px; text-decoration: none; white-space: nowrap; }
+      .open-link:hover { border-color: var(--sbp-accent); }
+      .open-link .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
+      @media (max-width: 640px) { .fit { padding-top: 44px; } .open-link { left: auto; right: 0; top: -44px; } }
       /* Laid out at the full width, then scaled into the box. */
       .fit .stage.is-scaled { width: calc(100% / var(--fit-scale)); transform: scale(var(--fit-scale)); transform-origin: 0 0; }
       .stage { padding: 10px; }
@@ -69,20 +75,17 @@ export class SbPanelRemote extends LitElement {
       .banner { margin: 10px 10px 0; padding: 8px 12px; border-radius: 8px; background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12); color: var(--sbp-err); font-size: 13px; }
       textarea { min-height: 380px; margin-top: 10px; }
       .layout-content { min-width: 0; }
-      .layout-content h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-      .layout-content h2 .hint { font-weight: 400; }
       .layout-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 380px); gap: 20px; align-items: start; }
       .preview { position: sticky; top: calc(var(--top-dock-height, 0px) + 12px); min-width: 0; }
-      .preview h3 { margin-top: 0; }
       .preview .frame { max-width: none; }
       .preview .stage { overflow: auto; }
       .editor { min-width: 0; }
-      .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; }
+      .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
+      .mode-tabs .doc-actions { margin-left: auto; display: flex; gap: 8px; }
       .mode-tabs button[aria-pressed=true] { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .08); }
       fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-      .actions { flex-wrap: wrap; }
-      .layout-actions { position: sticky; bottom: var(--bottom-dock-height, 56px); z-index: 20; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--sbp-line); background: var(--dock-surface, var(--sbp-panel)); box-shadow: 0 -3px 8px #00000008; }
-      .layout-actions .msg { margin: 8px 0 0; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; max-height: 15dvh; overflow-y: auto; }
+      /* Always in flow: toggling this line's display left the editor (an inline-size container) at zero height in Chrome until the next relayout. */
+      .editor .msg { margin: 8px 0 0; min-height: 17px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
       @media (max-width: 900px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .preview .frame { max-width: 420px; } }
 
     `,
@@ -179,6 +182,15 @@ export class SbPanelRemote extends LitElement {
     this._scale = Math.min(1, Math.max(MIN_FIT_SCALE, Math.floor((room / natural) * 1000) / 1000));
   }
 
+  /** The web remote page for this hub in a window of its own (a plain click; modified clicks and a blocked popup keep the link's default). */
+  private _openRemote = (ev: MouseEvent): void => {
+    const hubId = this.hub?.hub_id;
+    if (!hubId || ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
+    const height = Math.min(window.screen.availHeight || 900, Math.round((this._natural || 780) + 80));
+    const popup = window.open(this.api.remoteUrl(hubId), `sofabaton-remote-${hubId}`, `popup=yes,width=440,height=${height}`);
+    if (popup) ev.preventDefault();
+  };
+
   private _unmount(): void {
     this._generation++;
     this._loaded = false;
@@ -214,7 +226,7 @@ export class SbPanelRemote extends LitElement {
       this._draft = response.body.document || {};
       this._document = response.body.document;
       this._documentText = this._document ? JSON.stringify(this._document, null, 2) : "";
-      this._setStatus(this._document ? `stored document (updated ${formatWhen(response.body.updated_at)})` : "no document stored: the card uses its defaults");
+      this._setStatus("");
     } else {
       this._document = null;
       this._documentText = "";
@@ -334,27 +346,6 @@ export class SbPanelRemote extends LitElement {
     }
   }
 
-  private async _reload(): Promise<void> {
-    const hubId = this._mountedFor;
-    if (!hubId || this._busy) return;
-    const generation = this._generation;
-    this._busy = true;
-    try {
-      const response = await this.api.remoteCardDocument(hubId);
-      if (generation !== this._generation) return;
-      if (!response.ok || !response.body) {
-        this._setStatus(problemText(response), false);
-        return;
-      }
-      this._apply(response.body.document);
-      this._setStatus(response.body.document ? `stored document (updated ${formatWhen(response.body.updated_at)})` : "no document stored: the card uses its defaults");
-    } catch (err) {
-      if (generation === this._generation) this._setStatus(String(err), false);
-    } finally {
-      if (generation === this._generation) this._busy = false;
-    }
-  }
-
   private async _reset(): Promise<void> {
     const hubId = this._mountedFor;
     if (!hubId || this._busy) return;
@@ -390,17 +381,17 @@ export class SbPanelRemote extends LitElement {
         <div class="fit" id="remote-frame">
           ${this._banner ? html`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
           ${busy ? html`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
-          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div></div>
+          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div>
+            ${hub ? html`<a class="open-link" id="remote-open" href=${this.api.remoteUrl(hub.hub_id)} target="_blank" rel="noopener" @click=${this._openRemote}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiOpenInNew}></path></svg>Open</a>` : ""}
+          </div>
         </div>
         <div class="dock-probe" aria-hidden="true"></div>
     `;
   }
 
   private _renderLayout(hub: HubView | null): TemplateResult {
-    const dirty = this._documentText !== (this._document ? JSON.stringify(this._document, null, 2) : "");
     return html`
       <div class="layout-content">
-        <h2>Remote configuration <span class="spacer"></span><span class="hint">${dirty ? "Unsaved changes" : "Saved configuration"}</span></h2>
         <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save.</div>
         <div class="layout-grid">
           <div class="editor">
@@ -408,7 +399,12 @@ export class SbPanelRemote extends LitElement {
               <div class="mode-tabs" aria-label="Configuration editor">
                 <button id="remote-visual" aria-pressed=${this._mode === "visual"} @click=${() => this._switchMode("visual")}>Visual editor</button>
                 <button id="remote-json" aria-pressed=${this._mode === "json"} @click=${() => this._switchMode("json")}>JSON</button>
+                <span class="doc-actions">
+                  <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._save}>${this._busy ? "Working…" : "Save"}</button>
+                  <button class="danger" id="remote-delete" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._reset}>Reset to defaults</button>
+                </span>
               </div>
+              <p class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status" role="status">${this._status}</p>
               ${this._mode === "visual" ? html`
                 <sb-panel-remote-editor ?inert=${!hub || !this._loaded || this._busy} .selection=${this._selection} .config=${this._draft} .backend=${this._backend} .snapshot=${this._snapshot}
                   @document-changed=${(ev: CustomEvent<{ document: Record<string, unknown> }>) => { ev.stopPropagation(); this._edit(ev.detail.document); }}
@@ -418,18 +414,10 @@ export class SbPanelRemote extends LitElement {
                 <button @click=${() => { const parsed = this._readDocument(); if (parsed) this._edit(parsed); }}>Update preview</button>`}
             </fieldset>
           </div>
-          <aside class="preview"><h3>Preview</h3><p class="hint">Preview only — buttons do not control the hub.</p>
+          <aside class="preview"><p class="hint">Preview only — buttons do not control the hub.</p>
             <div class="frame"><div class="stage" id="stage" inert></div></div>
           </aside>
         </div>
-        <footer class="layout-actions" aria-label="Remote configuration actions">
-            <div class="actions">
-              <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._save}>${this._busy ? "Working…" : "Save"}</button>
-              <button id="remote-load" ?disabled=${!hub || this._busy} @click=${this._reload}>Reload document</button>
-              <button class="danger" id="remote-delete" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._reset}>Reset to defaults</button>
-            </div>
-            <p class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status" role="status">${this._status}</p>
-        </footer>
       </div>`;
   }
 

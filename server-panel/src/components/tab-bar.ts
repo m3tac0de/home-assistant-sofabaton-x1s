@@ -7,7 +7,7 @@
 // HA control panel card's tab bar.
 
 import { html, nothing, type TemplateResult } from "lit";
-import { mdiAudioVideo, mdiCogOutline, mdiChevronDown, mdiChevronUp, mdiContentSaveMoveOutline, mdiDatabaseImportOutline, mdiPencilBoxOutline, mdiPlayCircleOutline, mdiWifi } from "@mdi/js";
+import { mdiAudioVideo, mdiCogOutline, mdiChevronDown, mdiChevronUp, mdiContentSaveMoveOutline, mdiDatabaseImportOutline, mdiPencilBoxOutline, mdiPlayCircleOutline, mdiRemote, mdiViewDashboardEditOutline, mdiWifi } from "@mdi/js";
 
 import { HUB_TABS, SUBTABS, TAB_LABELS, TOOL_LABELS, TOOL_PAGES, TOOL_SUBTABS, subtabLabel, type HubTab, type Route, type ToolPage } from "../panel-route";
 import type { ThemeChoice } from "../panel-state";
@@ -20,6 +20,8 @@ const SUBTAB_ICONS: Record<string, string> = {
   edit: mdiPencilBoxOutline,
   restore: mdiDatabaseImportOutline,
   "wifi/devices": mdiWifi,
+  card: mdiRemote,
+  layout: mdiViewDashboardEditOutline,
 };
 
 export function renderTabBar(params: {

@@ -305,9 +305,9 @@ configuration; other open web remotes pick it up when reloaded.
 The **JSON** editor remains available for custom favourites and advanced
 options, or to paste the Home Assistant card's YAML converted to JSON.
 Switching between editors preserves additional configuration keys.
-**Reload document** discards local edits; **Reset to defaults** deletes
-the hub's stored configuration. Unsaved edits are local to the current
-view and are not retained after switching hubs or reloading the page.
+**Reset to defaults** deletes the hub's stored configuration. Unsaved
+edits are local to the current view and are not retained after switching
+hubs or reloading the page.
 
 **Icons.** The page bundles the icons the card itself uses plus a set of
 common `mdi:` names for favourites and shortcuts; an icon outside that
