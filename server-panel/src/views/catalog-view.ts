@@ -19,6 +19,7 @@ import { creatableDeviceClasses } from "../../../custom_components/sofabaton_x1s
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
 import {
+  jobOutcomeText,
   problemText,
   type Activity,
   type Button,
@@ -189,11 +190,11 @@ export function boundButtons(buttons: Button[]): Button[] {
   return buttons.filter((b) => b.device_id != null || b.command_id != null);
 }
 
-/** The progress phrase for a running refresh job. */
+/** The progress phrase for a running refresh job: "Queued", "Refreshing 2/5". */
 export function jobPhrase(job: JobView): string {
+  if (job.status === "queued") return "Queued…";
   const p = job.progress;
-  const steps = p && p.total_steps != null ? ` ${p.completed_steps ?? 0}/${p.total_steps}` : "";
-  return `${job.status}${steps}`;
+  return p && p.total_steps != null ? `Refreshing ${p.completed_steps ?? 0}/${p.total_steps}` : "Refreshing…";
 }
 
 /** The card's icon per device class. */
@@ -564,11 +565,11 @@ export class SbPanelCatalog extends LitElement {
   private async _refreshScope(scope: RefreshScope, key: string, label: string): Promise<void> {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
-    this._refresh = { key, text: "starting…" };
+    this._refresh = { key, text: "Starting…" };
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
-        this._notice = `refresh ${label}: ${problemText(started)}`;
+        this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
@@ -576,12 +577,11 @@ export class SbPanelCatalog extends LitElement {
           this._refresh = { key, text: jobPhrase(j) };
         },
       });
-      if (!job) this._notice = `refresh ${label}: the job could not be followed`;
-      else if (job.status !== "done") this._notice = `refresh ${label}: ${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+      if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
       else this._notice = null;
       if (job) this._lastJobId = job.job_id;
     } catch (err) {
-      this._notice = `refresh ${label}: ${String(err)}`;
+      this._notice = `Refreshing ${label} failed: ${String(err)}`;
     } finally {
       this._refresh = null;
     }
@@ -638,8 +638,7 @@ export class SbPanelCatalog extends LitElement {
       } else {
         const job = await this.api.followJob(hubId, started.body.job_id);
         if (job) this._lastJobId = job.job_id;
-        if (!job) error = "the job could not be followed";
-        else if (job.status !== "done") error = `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+        error = jobOutcomeText(job);
       }
     } catch (err) {
       error = String(err);
@@ -677,7 +676,7 @@ export class SbPanelCatalog extends LitElement {
       if (started.status !== 202 || !started.body) return fail(problemText(started));
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (job) this._lastJobId = job.job_id;
-      if (!job || job.status !== "done") return fail(job ? `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}` : "the job could not be followed");
+      if (!job || job.status !== "done") return fail(jobOutcomeText(job) ?? "Did not finish");
       const id = Number(job.result?.[dialog.kind === "device" ? "device_id" : "activity_id"]);
       if (!Number.isInteger(id) || id <= 0) return fail(dialog.kind === "device" ? "The hub did not return the new device id." : "The hub did not return the new activity id.");
       // The editor needs the entity read in full; a failed read is covered by its own needs-refresh guard.

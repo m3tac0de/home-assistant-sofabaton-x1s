@@ -87,13 +87,14 @@ test("boundButtons keeps the buttons the hub maps to a command", () => {
   assert.deepEqual(boundButtons(rows).map((b) => b.button_code), [151, 153]);
 });
 
-test("jobPhrase carries the status and the step count when there is one", () => {
+test("jobPhrase says what the refresh is doing and its step count, never the raw status", () => {
   const job = (status: string, progress: JobView["progress"]): JobView => ({
     job_id: "j", hub_id: "h", kind: "refresh", status, cancellable: false, created_at: "t", started_at: null, finished_at: null, progress, result: null, error: null,
   });
-  assert.equal(jobPhrase(job("queued", null)), "queued");
-  assert.equal(jobPhrase(job("running", { completed_steps: 2, total_steps: 5 })), "running 2/5");
-  assert.equal(jobPhrase(job("running", { total_steps: 5 })), "running 0/5");
+  assert.equal(jobPhrase(job("queued", null)), "Queued…");
+  assert.equal(jobPhrase(job("running", null)), "Refreshing…");
+  assert.equal(jobPhrase(job("running", { completed_steps: 2, total_steps: 5 })), "Refreshing 2/5");
+  assert.equal(jobPhrase(job("running", { total_steps: 5 })), "Refreshing 0/5");
 });
 
 test("the catalog routes and refresh scopes hit the documented paths; followJob polls to a terminal state", async () => {
@@ -142,7 +143,7 @@ test("the catalog routes and refresh scopes hit the documented paths; followJob 
   const seen: string[] = [];
   const job = await api.followJob("h", "j1", { intervalMs: 1, onUpdate: (j) => seen.push(jobPhrase(j)), sleep: async () => {} });
   assert.equal(job?.status, "done");
-  assert.deepEqual(seen, ["running 1/3", "running 2/3", "done 3/3"]);
+  assert.deepEqual(seen, ["Refreshing 1/3", "Refreshing 2/3", "Refreshing 3/3"]);
 
   // The poll budget bounds a job that never ends.
   polls = -1000;

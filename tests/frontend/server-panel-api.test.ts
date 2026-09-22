@@ -105,10 +105,11 @@ test("the lifecycle and document routes hit the documented paths", async () => {
   assert.equal(calls[6].init?.body, '{"document":{"show_dpad":true}}');
 });
 
-test("problemText reads type and detail, falling back to the status", () => {
+test("problemText reads title and detail, humanizing the type only without a title, falling back to the status", () => {
   const mk = (status: number, body: unknown): ApiResponse => ({ ok: false, status, statusText: "", headers: [], text: "", body });
-  assert.equal(problemText(mk(409, { type: "hub_conflict", title: "Hub already registered", status: 409, detail: "hub already registered as x" })), "hub_conflict: hub already registered as x");
-  assert.equal(problemText(mk(404, { type: "hub_not_found", title: "Unknown hub", status: 404, detail: null })), "hub_not_found");
+  assert.equal(problemText(mk(409, { type: "hub_conflict", title: "Hub already registered", status: 409, detail: "hub already registered as x" })), "Hub already registered: hub already registered as x");
+  assert.equal(problemText(mk(404, { type: "hub_not_found", title: "Unknown hub", status: 404, detail: null })), "Unknown hub");
+  assert.equal(problemText(mk(404, { type: "hub_not_found", status: 404 })), "Hub not found");
   assert.equal(problemText(mk(500, { title: "Boom", status: 500 })), "Boom");
   assert.equal(problemText(mk(502, null)), "HTTP 502");
   assert.equal(problemText(mk(503, "text")), "HTTP 503");

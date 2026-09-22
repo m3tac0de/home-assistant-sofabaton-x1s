@@ -352,13 +352,32 @@ export function serverBaseFromPanelUrl(href: string): string {
   return serverBaseFromPageUrl(href, "/ui/");
 }
 
-/** A Problem body as one line (`type: detail`); anything else by status. */
+/** "hub_not_found" as "Hub not found": the last resort when a Problem carries no title. */
+export function humanizeSlug(slug: string): string {
+  const words = slug.replace(/[_-]+/gu, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "";
+}
+
+/** A Problem as one line (`title: detail`); its machine `type` only when it has no title. */
+export function problemSummary(problem: Partial<Problem> | null | undefined): string {
+  if (!problem) return "";
+  const head = problem.title || (problem.type ? humanizeSlug(problem.type) : "");
+  return [head, problem.detail].filter((part): part is string => Boolean(part)).join(": ");
+}
+
+/** A Problem body as one line (`title: detail`); anything else by status. */
 export function problemText(response: ApiResponse): string {
   const body = response.body as Partial<Problem> | null;
   if (!body || typeof body !== "object") return `HTTP ${response.status}`;
-  const head = body.type || body.title;
-  const parts = [head, body.detail].filter((part): part is string => Boolean(part));
-  return parts.join(": ") || `HTTP ${response.status}`;
+  return problemSummary(body) || `HTTP ${response.status}`;
+}
+
+/** Why a followed job did not finish, as one line; null when it did. */
+export function jobOutcomeText(job: JobView | null): string | null {
+  if (!job) return "The job could not be followed";
+  if (job.status === "done") return null;
+  if (job.error) return problemSummary(job.error) || "Failed";
+  return job.status === "cancelled" ? "Cancelled" : job.status === "failed" ? "Failed" : "Did not finish";
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;

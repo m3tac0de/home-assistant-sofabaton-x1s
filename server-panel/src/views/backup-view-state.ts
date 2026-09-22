@@ -6,7 +6,7 @@
 
 import type { BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { validateBackupBundle } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
-import { TERMINAL_JOB_STATES, type JobView } from "../panel-api";
+import { TERMINAL_JOB_STATES, humanizeSlug, type JobView } from "../panel-api";
 
 export type BackupSectionId = "make" | "edit" | "restore";
 export type BackupEditTargetKind = "activity" | "device";
@@ -77,7 +77,7 @@ export function jobRunning(job: JobView | null): boolean {
 export function jobFailureText(job: JobView | null, fallback: string): string | null {
   if (!job || job.status !== "failed") return null;
   const problem = job.error;
-  return String(problem?.detail || problem?.title || problem?.type || fallback);
+  return String(problem?.detail || problem?.title || (problem?.type ? humanizeSlug(problem.type) : "") || fallback);
 }
 
 export function jobProgressMessage(job: JobView | null): string {

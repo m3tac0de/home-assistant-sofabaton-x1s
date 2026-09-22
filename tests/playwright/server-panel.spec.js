@@ -680,7 +680,7 @@ test.describe("control panel, shell", () => {
       route.fulfill({ status: 204 });
     });
     await page.goto(PAGE);
-    await expect(page.locator("#dock-status")).toHaveText("An apply stopped (stopped); resume or discard it");
+    await expect(page.locator("#dock-status")).toHaveText("An apply stopped partway; resume or discard it");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--warn/);
     // Discard asks first; a dismissed dialog sends nothing.
     await page.click("#dock-discard");

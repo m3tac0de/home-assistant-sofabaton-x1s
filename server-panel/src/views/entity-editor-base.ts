@@ -26,7 +26,7 @@ import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../cu
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 import { applyBundleDelete } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { jobStepMessage, renderOperationProgress } from "../components/operation-progress";
-import { problemText, type ApiResponse, type HubInfo, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
+import { jobOutcomeText, problemText, type ApiResponse, type HubInfo, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
 import { activeJob, type Gate } from "../panel-selectors";
 import type { PanelStore } from "../panel-store";
@@ -376,7 +376,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     }
     const job = await this.api.followJob(hubId, started.body.job_id);
     if (job && job.status === "done") return null;
-    const message = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
+    const message = jobOutcomeText(job) ?? "Did not finish";
     const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
     return { stale, message };
   }
@@ -465,7 +465,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (!job || job.status !== "done") {
-        this._deleteError = `Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.detail || job.error.type}` : ""}`;
+        this._deleteError = `Delete failed: ${job?.error?.detail || jobOutcomeText(job)}`;
         return;
       }
       this.store.discardDraft(hubId);

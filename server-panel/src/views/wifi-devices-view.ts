@@ -55,7 +55,7 @@ import {
 
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
-import { problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
+import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import type { HubContext } from "../panel-context";
 import type { Gate } from "../panel-selectors";
 import { PANEL_BASE_CSS } from "../panel-styles";
@@ -145,10 +145,7 @@ function icon(path: string, cls = ""): TemplateResult {
 }
 
 function jobFailure(job: JobView | null): string | null {
-  if (!job) return "the job could not be followed";
-  if (job.status === "done") return null;
-  const problem = job.error;
-  return problem ? [problem.title || problem.type, problem.detail].filter(Boolean).join(": ") : job.status;
+  return jobOutcomeText(job);
 }
 
 export class SbPanelWifiDevices extends LitElement {

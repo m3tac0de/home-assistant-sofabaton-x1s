@@ -10980,12 +10980,25 @@ var TERMINAL_JOB_STATES = /* @__PURE__ */ new Set(["done", "failed", "cancelled"
 function serverBaseFromPanelUrl(href) {
   return serverBaseFromPageUrl(href, "/ui/");
 }
+function humanizeSlug(slug) {
+  const words = slug.replace(/[_-]+/gu, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "";
+}
+function problemSummary(problem) {
+  if (!problem) return "";
+  const head = problem.title || (problem.type ? humanizeSlug(problem.type) : "");
+  return [head, problem.detail].filter((part) => Boolean(part)).join(": ");
+}
 function problemText(response) {
   const body = response.body;
   if (!body || typeof body !== "object") return `HTTP ${response.status}`;
-  const head = body.type || body.title;
-  const parts = [head, body.detail].filter((part) => Boolean(part));
-  return parts.join(": ") || `HTTP ${response.status}`;
+  return problemSummary(body) || `HTTP ${response.status}`;
+}
+function jobOutcomeText(job) {
+  if (!job) return "The job could not be followed";
+  if (job.status === "done") return null;
+  if (job.error) return problemSummary(job.error) || "Failed";
+  return job.status === "cancelled" ? "Cancelled" : job.status === "failed" ? "Failed" : "Did not finish";
 }
 var PanelApi = class {
   constructor(baseUrl, fetchImpl) {
@@ -11306,6 +11319,13 @@ var JOB_LABELS = {
   refresh_entity: "Refreshing from the hub",
   sync_device: "Syncing the device to the hub",
   sync_activity: "Syncing the activity to the hub",
+  add_device: "Adding the device",
+  remove_device: "Deleting the device",
+  add_activity: "Adding the activity",
+  remove_activity: "Deleting the activity",
+  reorder_devices: "Reordering the devices",
+  reorder_activities: "Reordering the activities",
+  rename_hub: "Renaming the hub",
   sync_hub: "Applying the document",
   resume_apply: "Resuming the apply",
   backup: "Backing up the hub",
@@ -11322,7 +11342,7 @@ var JOB_LABELS = {
   redeploy_wifi_device: "Redeploying the Wifi Device"
 };
 function jobLabel(kind) {
-  return JOB_LABELS[kind] ?? kind;
+  return JOB_LABELS[kind] ?? humanizeSlug(kind);
 }
 function jobProgress(job) {
   const p4 = job?.progress ?? null;
@@ -11381,7 +11401,7 @@ function noticeForJob(job, at) {
   const label = jobHeadline(job);
   if (job.status === "failed") {
     const problem = job.error;
-    const head = problem?.title || problem?.type || "failed";
+    const head = problemSummary(problem ? { ...problem, detail: null } : null) || "failed";
     return { tone: "error", label: `${label}: ${head}`, detail: problem?.detail ?? null, jobId: job.job_id, sticky: true, at };
   }
   if (job.status === "cancelled") return { tone: "neutral", label: `${label}: cancelled`, detail: null, jobId: job.job_id, sticky: false, at };
@@ -11405,7 +11425,7 @@ function dockModel(snapshot, runtime, view = {}) {
   }
   if (runtime?.notice) return { kind: "notice", notice: runtime.notice };
   const stopped = runtime?.stoppedApplies[0];
-  if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `An apply stopped (${stopped.status}); ${stopped.resumable ? "resume or discard it" : "discard it"}` };
+  if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `${stopped.status === "cancelled" ? "An apply was cancelled partway" : "An apply stopped partway"}; ${stopped.resumable ? "resume or discard it" : "discard it"}` };
   const draft = draftFor(runtime);
   if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
@@ -12060,9 +12080,7 @@ var PanelStore = class {
   }
 };
 function problemLine(response) {
-  const body = response.body;
-  if (body && typeof body === "object" && (body.type || body.detail)) return [body.type, body.detail].filter(Boolean).join(": ");
-  return `HTTP ${response.status}`;
+  return problemText(response);
 }
 function loadAcks(storage) {
   if (!storage) return {};
@@ -16461,7 +16479,7 @@ function jobRunning(job) {
 function jobFailureText(job, fallback) {
   if (!job || job.status !== "failed") return null;
   const problem = job.error;
-  return String(problem?.detail || problem?.title || problem?.type || fallback);
+  return String(problem?.detail || problem?.title || (problem?.type ? humanizeSlug(problem.type) : "") || fallback);
 }
 function jobProgressMessage(job) {
   const message = job?.progress?.message;
@@ -17565,9 +17583,9 @@ function boundButtons(buttons) {
   return buttons.filter((b3) => b3.device_id != null || b3.command_id != null);
 }
 function jobPhrase(job) {
+  if (job.status === "queued") return "Queued\u2026";
   const p4 = job.progress;
-  const steps = p4 && p4.total_steps != null ? ` ${p4.completed_steps ?? 0}/${p4.total_steps}` : "";
-  return `${job.status}${steps}`;
+  return p4 && p4.total_steps != null ? `Refreshing ${p4.completed_steps ?? 0}/${p4.total_steps}` : "Refreshing\u2026";
 }
 function deviceClassIconPath(deviceClass) {
   switch (String(deviceClass ?? "").trim().toLowerCase()) {
@@ -17647,8 +17665,7 @@ var SbPanelCatalog = class extends i4 {
         } else {
           const job = await this.api.followJob(hubId, started.body.job_id);
           if (job) this._lastJobId = job.job_id;
-          if (!job) error = "the job could not be followed";
-          else if (job.status !== "done") error = `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+          error = jobOutcomeText(job);
         }
       } catch (err) {
         error = String(err);
@@ -17679,7 +17696,7 @@ var SbPanelCatalog = class extends i4 {
         if (started.status !== 202 || !started.body) return fail(problemText(started));
         const job = await this.api.followJob(hubId, started.body.job_id);
         if (job) this._lastJobId = job.job_id;
-        if (!job || job.status !== "done") return fail(job ? `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}` : "the job could not be followed");
+        if (!job || job.status !== "done") return fail(jobOutcomeText(job) ?? "Did not finish");
         const id = Number(job.result?.[dialog.kind === "device" ? "device_id" : "activity_id"]);
         if (!Number.isInteger(id) || id <= 0) return fail(dialog.kind === "device" ? "The hub did not return the new device id." : "The hub did not return the new activity id.");
         const snapshot = await this.api.snapshot(hubId);
@@ -17861,11 +17878,11 @@ var SbPanelCatalog = class extends i4 {
   async _refreshScope(scope, key, label) {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
-    this._refresh = { key, text: "starting\u2026" };
+    this._refresh = { key, text: "Starting\u2026" };
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
-        this._notice = `refresh ${label}: ${problemText(started)}`;
+        this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
@@ -17873,12 +17890,11 @@ var SbPanelCatalog = class extends i4 {
           this._refresh = { key, text: jobPhrase(j2) };
         }
       });
-      if (!job) this._notice = `refresh ${label}: the job could not be followed`;
-      else if (job.status !== "done") this._notice = `refresh ${label}: ${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+      if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
       else this._notice = null;
       if (job) this._lastJobId = job.job_id;
     } catch (err) {
-      this._notice = `refresh ${label}: ${String(err)}`;
+      this._notice = `Refreshing ${label} failed: ${String(err)}`;
     } finally {
       this._refresh = null;
     }
@@ -18880,7 +18896,7 @@ var SbPanelEntityEditor = class extends i4 {
     }
     const job = await this.api.followJob(hubId, started.body.job_id);
     if (job && job.status === "done") return null;
-    const message = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
+    const message = jobOutcomeText(job) ?? "Did not finish";
     const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
     return { stale, message };
   }
@@ -18950,7 +18966,7 @@ var SbPanelEntityEditor = class extends i4 {
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (!job || job.status !== "done") {
-        this._deleteError = `Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.detail || job.error.type}` : ""}`;
+        this._deleteError = `Delete failed: ${job?.error?.detail || jobOutcomeText(job)}`;
         return;
       }
       this.store.discardDraft(hubId);
@@ -23922,10 +23938,7 @@ function icon6(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
 }
 function jobFailure(job) {
-  if (!job) return "the job could not be followed";
-  if (job.status === "done") return null;
-  const problem = job.error;
-  return problem ? [problem.title || problem.type, problem.detail].filter(Boolean).join(": ") : job.status;
+  return jobOutcomeText(job);
 }
 var SbPanelWifiDevices = class extends i4 {
   constructor() {
