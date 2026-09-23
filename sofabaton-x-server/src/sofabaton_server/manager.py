@@ -268,6 +268,33 @@ class HubManager:
         self._emit_server("hub_disabled", hub_id)
         return record
 
+    async def set_proxy_enabled(self, hub_id: str, enabled: bool) -> HubRecord:
+        """Let the official app reach this hub through the server, or not.
+
+        Stored in the record's config (``proxy_enabled``), so it survives a
+        restart and a disable/enable. A running proxy switches in place:
+        off unregisters its app discovery (mDNS and the shared UDP demuxer,
+        which closes its socket once no proxy is registered); an app
+        session already attached stays until the app disconnects.
+        """
+
+        async with self._transition:
+            record = self.record(hub_id)
+            changed = record.config.proxy_enabled != enabled
+            if changed:
+                record.config = dataclasses.replace(record.config, proxy_enabled=enabled)
+                self._persist()
+            proxy = self._proxies.get(hub_id)
+            if proxy is not None:
+                # The engine keeps the banner identity while off, so enable
+                # re-advertises at once on a connected hub (or at its next
+                # ready sync); no wait here, under the transition lock.
+                await (proxy.enable_proxy() if enabled else proxy.disable_proxy())
+        if changed:
+            self._emit_server("hub_proxy_enabled" if enabled else "hub_proxy_disabled", hub_id)
+        log.info("hub %s: app proxy %s", hub_id, "enabled" if enabled else "disabled")
+        return record
+
     # -- internals -----------------------------------------------------------
 
     def _find_by_identity(self, config: HubConfig) -> Optional[HubRecord]:

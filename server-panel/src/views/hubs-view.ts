@@ -108,6 +108,25 @@ export class SbPanelHubs extends LitElement {
     this._emit("sb-hubs-changed");
   }
 
+  // The app proxy: whether the official app can reach this hub through
+  // the server. Stored per hub; the hub itself stays connected either way.
+  private async _setProxy(hubId: string, enabled: boolean): Promise<void> {
+    if (this._busy.has(hubId)) return;
+    this._busy = new Set(this._busy).add(hubId);
+    try {
+      const response = await this.api.setHubProxy(hubId, enabled);
+      if (response.ok) this._message(`${hubId}: app proxy ${enabled ? "on" : "off"}`);
+      else this._message(`${hubId}: ${problemText(response)}`, false);
+    } catch (err) {
+      this._message(String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
+    }
+    this._emit("sb-hubs-changed");
+  }
+
   // The hub pushes writes to its remotes on its own; this is the manual
   // trigger for a remote that missed them (the HA card's "Sync Remote").
   private async _resyncRemote(hubId: string): Promise<void> {
@@ -136,6 +155,7 @@ export class SbPanelHubs extends LitElement {
     const { text, tone } = hubState(h);
     const s = h.status;
     const busy = this._busy.has(h.hub_id);
+    const proxyOn = h.config.proxy_enabled !== false;
     const model = h.config.hub_version || s?.hub_version || "unknown";
     const facts: [string, TemplateResult | string][] = [
       ["state", html`<span class="tone-${tone}">${text}</span>`],
@@ -147,6 +167,9 @@ export class SbPanelHubs extends LitElement {
       ["last seen", formatWhen(h.last_seen)],
       ["added", formatWhen(h.added_at)],
       ["cache", s ? `${s.devices_cached} devices · ${s.activities_cached} activities` : "no proxy running"],
+      ["app proxy", proxyOn
+        ? (s?.app_connected ? "on, the app is connected" : "on")
+        : (s?.app_connected ? "off, the app stays until it disconnects" : "off")],
       ["running activity", s?.running_activity ? String(s.running_activity.name || s.running_activity.activity_id) : "none"],
     ];
     return html`
@@ -161,6 +184,9 @@ export class SbPanelHubs extends LitElement {
         ${!h.enabled ? html`<button class="primary" ?disabled=${busy} @click=${() => this._act(h.hub_id, "enable")}>Enable</button>` : nothing}
         ${h.enabled && !s ? html`<button class="primary" ?disabled=${busy} @click=${() => this._act(h.hub_id, "enable")}>Retry start</button>` : nothing}
         ${h.enabled ? html`<button ?disabled=${busy} @click=${() => this._act(h.hub_id, "disable")}>Disable</button>` : nothing}
+        <button id="proxy-toggle" ?disabled=${busy}
+          title=${proxyOn ? "Stop offering this hub to the official Sofabaton app" : "Let the official Sofabaton app reach this hub through the server"}
+          @click=${() => this._setProxy(h.hub_id, !proxyOn)}>${proxyOn ? "Turn app proxy off" : "Turn app proxy on"}</button>
         ${h.enabled && s ? html`<button id="resync-remote" ?disabled=${busy || !s.controllable || this.ctx?.free === false}
           title="Make the physical remotes run a full sync with the hub"
           @click=${() => this._resyncRemote(h.hub_id)}>Sync remote</button>` : nothing}

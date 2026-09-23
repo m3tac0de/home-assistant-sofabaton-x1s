@@ -39,6 +39,8 @@ export interface HubConfig {
   name?: string | null;
   hub_version?: string | null;
   mac?: string | null;
+  /** Whether the official app can reach the hub through the server (absent = on). */
+  proxy_enabled?: boolean;
   [key: string]: unknown;
 }
 
@@ -497,6 +499,10 @@ export class PanelApi {
 
   disableHub(hubId: string): Promise<ApiResponse<HubView>> {
     return this.request<HubView>("POST", `hubs/${encodeURIComponent(hubId)}/disable`);
+  }
+
+  setHubProxy(hubId: string, enabled: boolean): Promise<ApiResponse<HubView>> {
+    return this.request<HubView>("POST", `hubs/${encodeURIComponent(hubId)}/proxy/${enabled ? "enable" : "disable"}`);
   }
 
   removeHub(hubId: string): Promise<ApiResponse<never>> {

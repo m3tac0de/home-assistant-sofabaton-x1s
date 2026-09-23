@@ -131,6 +131,18 @@ function makeRoutes(state) {
       if (state.jobRuns) return problem(409, "hub_job_running", "job j1 (restore) is running; wait for it to finish", { hub_id: id });
       return { status: 200, body: { accepted: true, mode: "control" } };
     },
+    "POST /hubs/{id}/proxy/enable": (_body, id) => {
+      const hub = find(id); if (!hub) return problem(404, "hub_not_found", null, { hub_id: id });
+      hub.config = { ...hub.config, proxy_enabled: true };
+      if (hub.status) hub.status = { ...hub.status, proxy_enabled: true };
+      return { status: 200, body: hub };
+    },
+    "POST /hubs/{id}/proxy/disable": (_body, id) => {
+      const hub = find(id); if (!hub) return problem(404, "hub_not_found", null, { hub_id: id });
+      hub.config = { ...hub.config, proxy_enabled: false };
+      if (hub.status) hub.status = { ...hub.status, proxy_enabled: false };
+      return { status: 200, body: hub };
+    },
     "DELETE /hubs/{id}": (_body, id) => {
       if (!find(id)) return problem(404, "hub_not_found", null, { hub_id: id });
       state.hubs = state.hubs.filter((h) => h.hub_id !== id);
@@ -163,7 +175,7 @@ async function mockServer(page, state) {
     let handler = routes[`${method} ${rel}`];
     let id = null;
     if (!handler) {
-      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
+      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/proxy\/enable|\/proxy\/disable|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
       if (m) { id = m[1]; handler = routes[`${method} /hubs/{id}${m[2] || ""}`]; }
     }
     calls.push({ key: `${method} ${rel}`, body });
@@ -471,6 +483,19 @@ test.describe("control panel, hubs", () => {
     await actions(page).getByRole("button", { name: "Disable" }).click();
     await expect(actions(page).getByRole("button", { name: "Enable" })).toBeVisible();
     await expect(actions(page).getByRole("button", { name: "Sync remote" })).toHaveCount(0);
+  });
+
+  test("the app proxy toggles per hub and the detail shows its state", async ({ page }) => {
+    const { calls } = await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/setup`);
+    await expect(detail(page)).toContainText("app proxyon");
+    await actions(page).getByRole("button", { name: "Turn app proxy off" }).click();
+    await expect.poll(() => calls.some((c) => c.key === "POST /hubs/e26a44861b45/proxy/disable")).toBe(true);
+    await expect(msg(page)).toHaveText("e26a44861b45: app proxy off");
+    await expect(detail(page)).toContainText("app proxyoff");
+    await actions(page).getByRole("button", { name: "Turn app proxy on" }).click();
+    await expect.poll(() => calls.some((c) => c.key === "POST /hubs/e26a44861b45/proxy/enable")).toBe(true);
+    await expect(actions(page).getByRole("button", { name: "Turn app proxy off" })).toBeVisible();
   });
 
   test("a discovered hub is added with its advertised configuration", async ({ page }) => {

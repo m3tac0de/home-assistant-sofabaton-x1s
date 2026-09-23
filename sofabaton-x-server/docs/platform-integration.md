@@ -114,6 +114,14 @@ Disable/remove are refused with
 409 `hub_job_running` while a job owns the hub; wait for it, or request
 cancellation if its `cancellable` flag is true.
 
+`config.proxy_enabled` is a second, independent switch: whether the
+official app can reach the hub through the server.
+`POST /api/v1/hubs/{id}/proxy/disable` stops offering it (the hub stays
+connected and controllable) and `/proxy/enable` offers it again; both
+return the hub view, are kept across restarts, and are announced as
+`hub_proxy_disabled` / `hub_proxy_enabled`. An app session already attached
+stays until the app disconnects.
+
 ## 4. Read and control
 
 Everything is keyed on `(entity_id, command_id)`: activities have ids

@@ -95,6 +95,29 @@ async def enable_hub(request: Request, hub_id: str) -> HubView:
         raise hub_start_failed(err.hub_id, err.cause) from err
 
 
+@router.post("/{hub_id}/proxy/enable", operation_id="enableHubProxy", response_model=HubView,
+             summary="Let the official app reach the hub through the server",
+             responses={404: {"model": Problem}})
+async def enable_hub_proxy(request: Request, hub_id: str) -> HubView:
+    return await _set_proxy(request, hub_id, True)
+
+
+@router.post("/{hub_id}/proxy/disable", operation_id="disableHubProxy", response_model=HubView,
+             summary="Stop offering the hub to the official app",
+             responses={404: {"model": Problem}})
+async def disable_hub_proxy(request: Request, hub_id: str) -> HubView:
+    return await _set_proxy(request, hub_id, False)
+
+
+async def _set_proxy(request: Request, hub_id: str, enabled: bool) -> HubView:
+    manager = manager_of(request)
+    try:
+        await manager.set_proxy_enabled(hub_id, enabled)
+        return await manager.view(hub_id)
+    except HubNotFound:
+        raise hub_not_found(hub_id) from None
+
+
 @router.post("/{hub_id}/disable", operation_id="disableHub", response_model=HubView,
              summary="Disconnect a hub but keep its configuration",
              responses={404: {"model": Problem}, 409: {"model": Problem}})

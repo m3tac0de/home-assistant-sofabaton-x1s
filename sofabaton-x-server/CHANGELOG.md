@@ -9,6 +9,13 @@ Protocol-library changes are recorded in the
 Changes since `sofabaton-x-server-v0.2.1`. Requires the library change
 below (unreleased `sofabaton-x`).
 
+- **App proxy switch per hub.** `POST /hubs/{id}/proxy/disable` and
+  `/proxy/enable` (and **Turn app proxy off/on** in the panel's Hub
+  settings) decide whether the official app can reach a hub through the
+  server, without disconnecting the hub. Stored as the record's
+  `config.proxy_enabled`, announced as `hub_proxy_disabled` /
+  `hub_proxy_enabled`. With the proxy off for every hub, the app
+  discovery listener (UDP 8102) closes.
 - **Documentation:** lead with browser-based hub management, add a user
   getting-started guide and management guide, and separate the integration
   starter, deployment and API references. The integration guide now follows

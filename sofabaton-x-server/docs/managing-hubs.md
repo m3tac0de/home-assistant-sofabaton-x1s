@@ -140,6 +140,13 @@ selected hub's details and connection state. Removing a registration
 forgets the server's cached state and saved web remote layout; it is
 different from erasing the hub's devices and activities.
 
+**Turn app proxy off** in **Hub settings** stops offering that hub to the
+official Sofabaton app while the server keeps controlling it; **Turn app
+proxy on** offers it again. The choice is kept per hub. An app that is
+already connected stays until it disconnects. With the proxy off for
+every hub, the server stops listening for the app altogether (its UDP
+discovery port, 8102 by default, is closed).
+
 **Server settings** in the cog menu shows server status and listener
 settings. Port changes apply after restarting the server. Values supplied
 through environment variables or command-line flags are pinned and must

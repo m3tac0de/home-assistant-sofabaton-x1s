@@ -43,6 +43,7 @@ class FakeProxy:
     def __init__(self, config: HubConfig) -> None:
         self.config = config
         self.started = False
+        self.proxy_enabled = config.proxy_enabled
         self.stops: list[bool] = []          # release_hub flag per stop()
         self.advertised = 0                  # wait_until_discoverable calls
         self.mac: Optional[str] = None
@@ -136,7 +137,7 @@ class FakeProxy:
             controllable=self.started and not self.refuse,
             mode="observe" if (self.started and self.refuse) else ("control" if self.started else "disconnected"),
             hub_version=self.model,
-            proxy_enabled=True,
+            proxy_enabled=self.proxy_enabled,
             running_activity=self.running,
             activities_cached=len(self.activities_data),
             devices_cached=len(self.devices_data),
@@ -216,6 +217,12 @@ class FakeProxy:
     async def resync_remote(self) -> bool:
         self.sent.append(("resync", ()))
         return not self.refuse
+
+    async def enable_proxy(self) -> None:
+        self.proxy_enabled = True
+
+    async def disable_proxy(self) -> None:
+        self.proxy_enabled = False
 
     # -- snapshot / state document (phase 3) -----------------------------------
 

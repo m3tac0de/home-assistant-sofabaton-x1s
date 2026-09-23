@@ -11094,6 +11094,9 @@ var PanelApi = class {
   disableHub(hubId) {
     return this.request("POST", `hubs/${encodeURIComponent(hubId)}/disable`);
   }
+  setHubProxy(hubId, enabled) {
+    return this.request("POST", `hubs/${encodeURIComponent(hubId)}/proxy/${enabled ? "enable" : "disable"}`);
+  }
   removeHub(hubId) {
     return this.request("DELETE", `hubs/${encodeURIComponent(hubId)}`);
   }
@@ -22260,6 +22263,24 @@ var SbPanelHubs = class extends i4 {
     }
     this._emit("sb-hubs-changed");
   }
+  // The app proxy: whether the official app can reach this hub through
+  // the server. Stored per hub; the hub itself stays connected either way.
+  async _setProxy(hubId, enabled) {
+    if (this._busy.has(hubId)) return;
+    this._busy = new Set(this._busy).add(hubId);
+    try {
+      const response = await this.api.setHubProxy(hubId, enabled);
+      if (response.ok) this._message(`${hubId}: app proxy ${enabled ? "on" : "off"}`);
+      else this._message(`${hubId}: ${problemText(response)}`, false);
+    } catch (err) {
+      this._message(String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
+    }
+    this._emit("sb-hubs-changed");
+  }
   // The hub pushes writes to its remotes on its own; this is the manual
   // trigger for a remote that missed them (the HA card's "Sync Remote").
   async _resyncRemote(hubId) {
@@ -22289,6 +22310,7 @@ var SbPanelHubs = class extends i4 {
     const { text, tone } = hubState(h6);
     const s7 = h6.status;
     const busy = this._busy.has(h6.hub_id);
+    const proxyOn = h6.config.proxy_enabled !== false;
     const model = h6.config.hub_version || s7?.hub_version || "unknown";
     const facts = [
       ["state", b2`<span class="tone-${tone}">${text}</span>`],
@@ -22300,6 +22322,7 @@ var SbPanelHubs = class extends i4 {
       ["last seen", formatWhen(h6.last_seen)],
       ["added", formatWhen(h6.added_at)],
       ["cache", s7 ? `${s7.devices_cached} devices \xB7 ${s7.activities_cached} activities` : "no proxy running"],
+      ["app proxy", proxyOn ? s7?.app_connected ? "on, the app is connected" : "on" : s7?.app_connected ? "off, the app stays until it disconnects" : "off"],
       ["running activity", s7?.running_activity ? String(s7.running_activity.name || s7.running_activity.activity_id) : "none"]
     ];
     return b2`
@@ -22316,6 +22339,9 @@ var SbPanelHubs = class extends i4 {
         ${!h6.enabled ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Enable</button>` : A}
         ${h6.enabled && !s7 ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Retry start</button>` : A}
         ${h6.enabled ? b2`<button ?disabled=${busy} @click=${() => this._act(h6.hub_id, "disable")}>Disable</button>` : A}
+        <button id="proxy-toggle" ?disabled=${busy}
+          title=${proxyOn ? "Stop offering this hub to the official Sofabaton app" : "Let the official Sofabaton app reach this hub through the server"}
+          @click=${() => this._setProxy(h6.hub_id, !proxyOn)}>${proxyOn ? "Turn app proxy off" : "Turn app proxy on"}</button>
         ${h6.enabled && s7 ? b2`<button id="resync-remote" ?disabled=${busy || !s7.controllable || this.ctx?.free === false}
           title="Make the physical remotes run a full sync with the hub"
           @click=${() => this._resyncRemote(h6.hub_id)}>Sync remote</button>` : A}

@@ -114,6 +114,8 @@ The server provides a local proxy so the official Sofabaton app can still
 connect. While the app is connected through it, the server observes the
 session and pauses its own control commands and configuration writes.
 Close the app when you want to control or edit through the server again.
+To keep the app away from a hub, use **Turn app proxy off** in **Hub
+settings**.
 
 If you changed configuration in the app, refresh the affected devices or
 activities in **Hub** before editing them in the panel.

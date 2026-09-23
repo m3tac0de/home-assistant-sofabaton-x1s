@@ -86,12 +86,26 @@ def test_add_disabled_hub_does_not_start_it(tmp_path: Path) -> None:
         assert r.status_code == 201 and r.json()["enabled"] is False and r.json()["status"] is None
         assert "192.168.1.60" not in factory.built
 
+def test_proxy_toggle_over_http(tmp_path: Path) -> None:
+    factory = Factory()
+    with _client(tmp_path, factory) as client:
+        client.post(HUBS, json={"host": "192.168.1.50"})
+        r = client.post(f"{HUBS}/192.168.1.50/proxy/disable")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["config"]["proxy_enabled"] is False and body["status"]["proxy_enabled"] is False
+        assert factory.latest("192.168.1.50").stops == []     # the hub stays connected
+        r = client.post(f"{HUBS}/192.168.1.50/proxy/enable")
+        assert r.json()["config"]["proxy_enabled"] is True and r.json()["status"]["proxy_enabled"] is True
+        assert client.post(f"{HUBS}/nope/proxy/disable").status_code == 404
+
 
 def test_openapi_lists_hub_operations_with_named_components(tmp_path: Path) -> None:
     with _client(tmp_path, Factory()) as client:
         spec = client.get(f"{API_PREFIX}/openapi.json").json()
     ops = {op["operationId"] for path in spec["paths"].values() for op in path.values()}
-    assert {"listHubs", "addHub", "getHub", "removeHub", "enableHub", "disableHub"} <= ops
+    assert {"listHubs", "addHub", "getHub", "removeHub", "enableHub", "disableHub",
+            "enableHubProxy", "disableHubProxy"} <= ops
     schemas = spec["components"]["schemas"]
     assert {"HubView", "HubConfig", "HubStatus", "HubCreate", "Problem"} <= set(schemas)
 
