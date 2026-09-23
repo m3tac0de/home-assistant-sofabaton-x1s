@@ -1,5 +1,5 @@
-# Packaging metadata for "sofabaton-x-server": a REST + WebSocket server
-# over the sofabaton-x library. Second distribution of this repository
+# Packaging metadata for "sofabaton-x-server": a hub management application
+# with a web remote and local API over the sofabaton-x library. Second distribution
 # (docs/internal/sofabaton-x-server-plan.md, decision 7); the library is
 # the only thing it knows about hubs.
 
@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sofabaton-x-server"
 dynamic = ["version"]
-description = "REST + WebSocket server over the sofabaton-x library for Sofabaton X1 / X1S / X2 hubs"
+description = "Self-hosted hub management, web remote and local API for Sofabaton X1 / X1S / X2"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -19,6 +19,7 @@ keywords = ["sofabaton", "x1", "x1s", "x2", "universal-remote", "rest", "websock
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",

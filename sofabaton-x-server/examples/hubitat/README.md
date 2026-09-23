@@ -41,8 +41,8 @@ While it is connected directly to the hub, the hub does not advertise and
 the server cannot discover it. Keep the app closed through registration
 and the first control test.
 
-Follow the [server setup](../../README.md#run) and
-[starter guide](../../docs/getting-started.md). Run one server for all your
+Follow the [server setup](../../docs/getting-started.md) and
+[integration starter](../../docs/first-integration.md). Run one server for all your
 hubs and connect Hubitat to that server. If a hub is already managed by
 Home Assistant or another proxy, disable it there before registering it here.
 
@@ -71,7 +71,7 @@ The server currently has no built-in authentication. Keep it on a trusted
 LAN. Hubitat connects to TCP 8480 by default. Callback presses also require
 the physical SofaBaton hub to reach TCP 8060 **on the server**, while the
 server's normal discovery and hub-connection ports must remain reachable.
-For containers, use the documented [Linux host-network recipe](../../README.md#docker).
+For containers, use the documented [Linux host-network recipe](../../docs/running-server.md#docker).
 
 ## 2. Install the Hubitat code
 
@@ -122,7 +122,7 @@ the old child devices.
 must execute a callback command that calls the server. The server forwards
 that call to Hubitat over WebSocket.
 
-The [first-press walkthrough](../../docs/getting-started.md#3-receive-your-first-remote-press)
+The [first-press walkthrough](../../docs/first-integration.md#3-receive-your-first-remote-press)
 provides a runnable setup command. For example, from the repository root:
 
 ```sh

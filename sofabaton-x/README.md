@@ -19,7 +19,7 @@ This is the protocol engine extracted from the
 the integration is its reference consumer.
 
 **Building your first integration? Start with the
-[server starter guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/getting-started.md).**
+[server starter guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/first-integration.md).**
 The server manages this library and supplies a management UI, web remote
 and HTTP/WebSocket APIs. Your platform can select registered hubs and map
 actions and events without rebuilding setup or remote screens. Use the
@@ -524,7 +524,7 @@ and inspect the hub, then construct a new edit against the reconciled
 snapshot when the intended changes are clear. There is no rollback.
 
 The server adds persistent apply records but has further
-[restart and retry limitations](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/README.md#recovery-and-retention).
+[restart and retry limitations](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/api-reference.md#recovery-and-retention).
 
 ### Edit helpers
 

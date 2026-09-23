@@ -2,7 +2,7 @@
 """Use a registered hub: send commands and watch state or remote presses.
 
 Register and manage hubs in the server's control panel first. See
-docs/getting-started.md. This client uses HTTP/WebSocket, not a hub connection.
+docs/first-integration.md. This client uses HTTP/WebSocket, not a hub connection.
 The listen action additionally uses websockets (included with the server's
 uvicorn[standard] dependency). Optional one-time setup writes a callback device if missing and
 replaces both bindings of the explicitly selected activity button.

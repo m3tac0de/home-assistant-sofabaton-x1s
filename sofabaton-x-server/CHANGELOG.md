@@ -9,6 +9,9 @@ Protocol-library changes are recorded in the
 Changes since `sofabaton-x-server-v0.2.1`. Requires the library change
 below (unreleased `sofabaton-x`).
 
+- **Documentation:** lead with browser-based hub management, add a user
+  getting-started guide and management guide, and separate the integration
+  starter, deployment and API references.
 - **`GET .../activities` and `GET .../devices` list in the hub's display
   order** (what `PUT .../order` writes, as the remote and the app show
   it) instead of id order, and each row carries that position as `sort`
@@ -115,7 +118,7 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
   a favorite delete waits 30 s for the hub's ack instead of reporting
   failure while the hub applied it.
 
-The [guides](docs/getting-started.md) and examples target this release.
+The [guides](docs/first-integration.md) and examples target this release.
 The Hubitat example still consumes only the default callback device;
 it does not create button devices for the keyed Wifi Devices.
 See the [live-hub notes](../docs/protocol/live-hub-testing.md) for hardware

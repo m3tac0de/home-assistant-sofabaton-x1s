@@ -12,7 +12,7 @@ your client from [`../openapi.json`](../openapi.json); this page covers what
 the document cannot say.
 
 For a first implementation, begin with
-[your first integration](getting-started.md). Let users set up hubs in the
+[your first integration](first-integration.md). Let users set up hubs in the
 server's control panel, then select those registered hubs in your platform.
 You can deliver activity switches, command actions and remote-button
 automations without implementing hub registration or a configuration editor.
@@ -273,7 +273,7 @@ cancellable, as are document writes (`sync_hub` / `resume_apply`) between
 items. The current entity/item is drained before cancellation completes.
 Single-entity refreshes, row edits, intents, callback writes, backup,
 restore and erase run to completion. Wait for terminal status before
-another job. The [server operation table](../README.md#jobs) is the
+another job. The [server operation table](api-reference.md#jobs) is the
 cancellation reference.
 
 Only recent jobs are retained, in memory. Persist the hub id and any
@@ -324,7 +324,7 @@ compare every name, payload or device-head field. A detected difference
 fails with `sync_failed` at `stale_check`. Server row edits use non-strict
 preflight: an unreadable/incomplete read can allow the write to proceed.
 Whole-document sync requires complete live reads, but uses the same
-limited table comparisons. See [write validation](../README.md#writes).
+limited table comparisons. See [write validation](api-reference.md#writes).
 Whole-entity intents use their own validation, not this same baseline comparison.
 An edit also needs `editable: true`; refresh the entity if necessary.
 
@@ -449,7 +449,7 @@ can omit an in-flight write, and records left `queued`/`running` after a
 restart are not accepted by the resume route. The original idempotent PUT
 can also fail `412` before its key is recognized. Preserve the record and
 reconcile hub state before another edit. The
-[recovery and retention reference](../README.md#recovery-and-retention)
+[recovery and retention reference](api-reference.md#recovery-and-retention)
 explains eligible resume states, idempotency boundaries and pruning of
 stopped/cancelled records.
 
@@ -514,7 +514,7 @@ work without a callback device.
 
 The panel's **Wifi Commands** tab manages keyed Wifi Devices and their
 slot assignments; **Hub** edits activities and their bindings. The
-[starter setup command](getting-started.md#3-receive-your-first-remote-press)
+[starter setup command](first-integration.md#3-receive-your-first-remote-press)
 creates or reuses the HTTP callback device under the reserved `default` key.
 Deployed commands can also be assigned in the official app. If you choose to manage callbacks in your client:
 
@@ -576,7 +576,7 @@ indexes are **0..9**. Short command IDs are `1..10`, long IDs `11..20`.
 Inside a container on a bridge network the hubs cannot reach the
 server's own address; the operator sets `--callback-host` to the Docker
 host's LAN address and publishes the callback port. These settings alone
-do not solve discovery or hub dial-back: see the [Linux deployment recipe](../README.md#docker).
+do not solve discovery or hub dial-back: see the [Linux deployment recipe](running-server.md#docker).
 Show `target` (the destination already deployed) and
 `effective_destination` (what a new deploy would use now) from the record
 when a deploy produces no presses, and the listener state from `GET /api/v1/server` when
@@ -609,8 +609,8 @@ ignores transport and keeps the deployed choice. MQTT records have
 `transport: "mqtt"` and `source: ""`, with the same sequence, history and
 resolution rules as HTTP. The server subscribes for presses only; it does
 not publish commands or consume MQTT activity-state messages.
-See the README's [Wifi Commands](../README.md#wifi-commands) and
-[MQTT settings](../README.md#mqtt).
+See the reference for [Wifi Commands](api-reference.md#wifi-commands) and
+[MQTT settings](api-reference.md#mqtt).
 
 ## 11. Give users a remote
 
