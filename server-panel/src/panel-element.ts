@@ -110,6 +110,9 @@ export class SofabatonServerPanel extends LitElement {
       .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 12px 8px 10px; min-width: 44px; }
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
+      .cog-wrap { position: relative; display: inline-flex; }
+      .update-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 2px var(--sbp-panel); }
+      .badge-update { background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-accent); }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
       /* The block space the shell adds around a view's content between the docks: the stage's padding, the view's
          bottom border, and the page's padding over the bottom dock. A view that fits itself between the docks (the
@@ -636,6 +639,7 @@ export class SofabatonServerPanel extends LitElement {
             cogOpen: this._cogOpen,
             theme: s.theme,
             eventCount: s.stream.messageCount,
+            updateAvailable: s.server.info?.update?.status === "update_available",
             subCounts: route.kind === "hub" && route.tab === "hub" && ctx.hub?.status
               ? { activities: ctx.hub.status.activities_cached, devices: ctx.hub.status.devices_cached }
               : undefined,

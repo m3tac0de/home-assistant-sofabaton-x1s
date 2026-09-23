@@ -70,6 +70,12 @@ class Settings:
     # Terminal apply records kept per hub: success, stopped and cancelled
     # all count, including resumable records. Queued/running are not pruned.
     apply_keep: int = 20
+    # Check PyPI for a newer sofabaton-x-server release once a day. Off by
+    # default: with it off the server makes no update-related request on
+    # its own; the control panel's button (POST /server/updates/check)
+    # performs one check without enabling this. server.json and the
+    # environment set it; the panel writes it to server.json.
+    update_check: bool = False
     # The MQTT broker an X2 publishes its Wifi Device presses to (the one
     # set in the Sofabaton app). With a host set, the mqtt transport is
     # offered for X2 hubs and the server subscribes to `<MAC>/up` while a
@@ -111,6 +117,8 @@ class Settings:
             object.__setattr__(self, "callback_host", host or None)
         if isinstance(self.apply_keep, bool) or not isinstance(self.apply_keep, int) or self.apply_keep < 0:
             raise ValueError(f"apply_keep must be a non-negative integer, got {self.apply_keep!r}")
+        if not isinstance(self.update_check, bool):
+            raise ValueError(f"update_check must be true or false, got {self.update_check!r}")
         host = str(self.mqtt_host or "").strip()
         object.__setattr__(self, "mqtt_host", host or None)
         for name in ("mqtt_username", "mqtt_client_id"):
@@ -185,7 +193,7 @@ def _coerce(name: str, value: Any) -> Any:
         return None
     if name in ("port", "callback_port", "hub_listen_port", "app_discovery_port", "apply_keep", "mqtt_port"):
         return int(value)
-    if name in ("mqtt_tls", "mqtt_tls_insecure"):
+    if name in ("mqtt_tls", "mqtt_tls_insecure", "update_check"):
         if isinstance(value, str):
             word = value.strip().lower()
             if word in ("1", "true", "yes", "on"):

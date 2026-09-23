@@ -9,6 +9,17 @@ Protocol-library changes are recorded in the
 Changes since `sofabaton-x-server-v0.2.1`. Requires the library change
 below (unreleased `sofabaton-x`).
 
+- **Update check.** `GET /server/updates`, `POST /server/updates/check`
+  and `PUT /server/updates` (and **Updates** on the panel's Server page:
+  **Check for updates**, **Automatically check once a day**) ask PyPI
+  whether a newer `sofabaton-x-server` release exists and compare versions
+  locally. Off by default; the daily check is the `update_check` setting
+  (`server.json`, `SOFABATON_UPDATE_CHECK`), kept with its last outcome
+  in `update-check.json`. A check sends nothing about the installation,
+  installs nothing, and a failed one never reads as up to date. `GET
+  /server` carries the result as `update`; a finished check is announced
+  as a `server_event` of kind `update_check` with an empty `hub_id`. A
+  found update shows as a dot on the panel's cog menu.
 - **App proxy switch per hub.** `POST /hubs/{id}/proxy/disable` and
   `/proxy/enable` (and **Turn app proxy off/on** in the panel's Hub
   settings) decide whether the official app can reach a hub through the

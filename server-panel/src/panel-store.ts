@@ -495,6 +495,11 @@ export class PanelStore {
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
         return;
+      case "server_event":
+        // An update check finished (either source): the indicator reads GET /server.
+        if (data.kind === "update_check") void this._loadServer();
+        else if (isHubRefreshTrigger(data)) this.refreshSoon();
+        return;
       default:
         if (isHubRefreshTrigger(data)) this.refreshSoon();
     }

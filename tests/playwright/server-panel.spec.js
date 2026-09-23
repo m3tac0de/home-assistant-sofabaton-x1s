@@ -87,8 +87,25 @@ function cardRoutes(id) {
 // the remote-card document and what the card itself reads.
 function makeRoutes(state) {
   const find = (id) => state.hubs.find((h) => h.hub_id === id);
+  const UPDATE_LINKS = { release_notes_url: "https://example.test/changelog", upgrade_url: "https://example.test/upgrade", pypi_url: "https://example.test/pypi" };
+  if (!state.update) {
+    state.update = { installed_version: "0.2.0", status: "not_checked", latest_version: null, checked_at: null, checked_by: null, error: null, automatic: false, automatic_pinned: false, next_check_at: null, checking: false, ...UPDATE_LINKS };
+  }
+  const announceUpdateCheck = () => {
+    for (const ws of state.sockets ?? []) ws.send(JSON.stringify({ type: "server_event", hub_id: "", kind: "update_check" }));
+  };
   return {
-    "GET /server": () => ({ status: 200, body: { version: "0.2.0", library_version: "0.2.0", api_version: "1", instance_id: "i1", callback_listener: { wanted: false, bound: false } } }),
+    "GET /server": () => ({ status: 200, body: { version: "0.2.0", library_version: "0.2.0", api_version: "1", instance_id: "i1", callback_listener: { wanted: false, bound: false }, update: state.update } }),
+    "GET /server/updates": () => ({ status: 200, body: state.update }),
+    "POST /server/updates/check": () => {
+      state.update = { ...state.update, status: "update_available", latest_version: "0.2.2", checked_at: "2026-09-23T12:00:00+00:00", checked_by: "manual" };
+      announceUpdateCheck();
+      return { status: 200, body: state.update };
+    },
+    "PUT /server/updates": (body) => {
+      state.update = { ...state.update, automatic: Boolean(body.automatic), next_check_at: body.automatic ? "2026-09-24T12:00:00+00:00" : null };
+      return { status: 200, body: state.update };
+    },
     "GET /openapi.json": () => ({ status: 200, body: { paths: { "/api/v1/hubs/{hub_id}/status": { get: { operationId: "getStatus", summary: "Status" } } } } }),
     "GET /hubs": () => ({ status: 200, body: state.hubs }),
     "GET /discovery/hubs": () => ({ status: 200, body: state.seen }),
@@ -188,6 +205,7 @@ async function mockServer(page, state) {
     await route.fulfill({ status: answer.status, contentType: "application/json", body: JSON.stringify(answer.body) });
   });
   const sockets = [];
+  state.sockets = sockets;
   await page.routeWebSocket(`**${API}/events**`, (ws) => {
     sockets.push(ws);
     ws.send(JSON.stringify({ type: "hello", server_version: "0.2.0", api_version: "1", hubs: state.hubs.map((h) => ({ hub_id: h.hub_id, enabled: h.enabled })), instance_id: "i1" }));
@@ -548,7 +566,7 @@ test.describe("control panel, hubs", () => {
 
 test.describe("control panel, shell", () => {
   test("tabs and subtabs route by hash, the cog menu opens the tool pages, the theme cycles", async ({ page }) => {
-    await mockServer(page, { hubs: [LIVING], seen: [] });
+    const { calls } = await mockServer(page, { hubs: [LIVING], seen: [] });
     await page.goto(PAGE);
     await expect(page.locator("#view-hub")).toBeVisible();
     await expect(page.locator('#tabs button[data-tab="hub"]')).toHaveClass(/active/);
@@ -588,6 +606,25 @@ test.describe("control panel, shell", () => {
     await expect(page).toHaveURL(/#\/server\/status$/);
     await expect(page.locator("#server-meta")).toContainText("server 0.2.0 · library 0.2.0");
     await expect(page.locator("#server-detail")).toContainText("live");
+
+    // The update check: off and unchecked until asked; one check finds a release, the cog gets its dot.
+    await expect(page.locator("#update-status")).toHaveText("Not checked.");
+    await expect(page.locator("#update-checked")).toHaveText("Never");
+    await expect(page.locator("#update-installed")).toHaveText("0.2.0");
+    await expect(page.locator("#update-dot")).toHaveCount(0);
+    await expect(page.locator("#update-auto")).not.toBeChecked();
+    expect(calls.filter((c) => c.key.startsWith("POST /server/updates")).length).toBe(0);
+    await page.click("#update-check");
+    await expect(page.locator("#update-status")).toContainText("Update available: 0.2.2");
+    await expect(page.locator("#update-links a")).toHaveCount(3);
+    await expect(page.locator("#update-checked")).toContainText("2026");
+    await expect(page.locator("#update-dot")).toBeVisible();
+    await page.click("#cog-btn");
+    await expect(page.locator("#update-badge")).toHaveText("update available");
+    await page.click("#cog-btn");
+    await page.check("#update-auto");
+    await expect(page.locator("#update-next")).toContainText("2026");
+    expect(calls.filter((c) => c.key === "PUT /server/updates").map((c) => c.body)).toEqual([{ automatic: true }]);
 
     // A tab click from a tool page returns to the hub route; the back button walks the history.
     await page.click('#tabs button[data-tab="hub"]');

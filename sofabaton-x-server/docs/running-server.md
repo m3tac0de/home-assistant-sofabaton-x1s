@@ -148,6 +148,7 @@ variables, then flags; each layer overrides the one before.
 | `--hub-listen-port` | `SOFABATON_HUB_LISTEN_PORT` | `8200` | TCP port the hubs connect back to, shared by every hub |
 | `--app-discovery-port` | `SOFABATON_APP_DISCOVERY_PORT` | `8102` | UDP port the official app discovers and calls the proxies on; keep it for iOS |
 | no flag (`server.json`: `apply_keep`) | `SOFABATON_APPLY_KEEP` | `20` | retained terminal apply records per hub, including stopped/cancelled ones |
+| no flag (`server.json`: `update_check`) | `SOFABATON_UPDATE_CHECK` | `false` | check PyPI once a day for a newer server release, see [Update check](#update-check); the control panel's Server page writes it |
 | `--log-level` | `SOFABATON_LOG_LEVEL` | `info` | |
 | `--mqtt-host` | `SOFABATON_MQTT_HOST` | none | the MQTT broker an X2 publishes button presses to (the one set in the Sofabaton app); setting it offers the `mqtt` transport for X2 hubs, see [MQTT](api-reference.md#mqtt) |
 | `--mqtt-port` | `SOFABATON_MQTT_PORT` | `1883`, `8883` with TLS | broker port |
@@ -227,6 +228,38 @@ save a hub backup, and retain a copy of the server's data directory. Stop
 the server, install the selected release in the same Python environment
 (or rebuild the Docker image), then restart with the same data directory
 and settings. Confirm your hubs reconnect and test the web remote.
+
+### Update check
+
+The server can tell you when a newer release is on PyPI; it never
+installs one. On the control panel's Server page, **Check for updates**
+performs one check, and **Automatically check once a day** turns on a
+daily check (`update_check` in `server.json`; `SOFABATON_UPDATE_CHECK=true`
+in the environment sets it too, and then pins it). Off by default: the
+server then makes no update-related request on its own, not at startup
+and not when the panel opens, and the button enables nothing.
+
+A check fetches the project's public release list from
+[PyPI's JSON API](https://docs.pypi.org/api/json/) and compares versions
+locally. Nothing about the installation is sent: no hub information, no
+configuration, not the installed version, no identifier. Pre-releases and
+yanked releases never count. The outcome is kept in `update-check.json`
+in the data directory, so a restart keeps the last-checked time and the
+daily cadence (an hour after a failed check, a day after a good one).
+
+The status is one of not checked, no newer release found as of the last
+check, update available (with links to the changelog, the upgrade steps
+above and the release on PyPI) and could not check. A failed check never
+reads as up to date. A found update shows as a dot on the panel's cog
+menu and a badge on its Server entry.
+
+Over the API: `GET /server/updates` reports the last check and the
+schedule, `POST /server/updates/check` performs one check now, and `PUT
+/server/updates` with `{"automatic": true}` or `false` sets the daily
+check (409 `setting_pinned` when the environment set it). `GET /server`
+carries the same block as `update`, and a finished check is announced on
+the event stream as a `server_event` of kind `update_check` with an empty
+`hub_id`.
 
 For connection problems, start with the
 [setup troubleshooting table](getting-started.md#if-something-does-not-work).

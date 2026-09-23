@@ -34,8 +34,10 @@ from .routes_payload import router as payload_router
 from .routes_settings import router as settings_router
 from .routes_snapshot import router as snapshot_router
 from .store import ApplyStore
+from .routes_updates import router as updates_router
+from .updates import UpdateChecker, UpdateStatus
 from .routes_ui import router as ui_router, ui_pages_router
-from .ws import WS_MESSAGE_TYPES, EventRelay, WsPress, router as events_router
+from .ws import WS_MESSAGE_TYPES, EventRelay, WsPress, WsServerEvent, router as events_router
 
 # ``sofabaton`` is the library's import name (PyPI: sofabaton-x). Only
 # its version is needed at the skeleton stage; the hub manager (S1) is
@@ -62,13 +64,16 @@ class ServerInfo:
     callback_listener: ListenerState | None = None
     # The broker connection for X2 Wifi Devices on the mqtt transport; never the password.
     mqtt: MqttState | None = None
+    # The last PyPI update check (GET /server/updates says the same); answering this fetches nothing.
+    update: UpdateStatus | None = None
 
 
 def create_app(settings: Settings | None = None, *, manager: Optional[HubManager] = None,
                discovery: Optional[DiscoveryService] = None,
                ws_queue_size: Optional[int] = None,
                callbacks: Optional[CallbackService] = None,
-               backup_keep_seconds: Optional[float] = None) -> FastAPI:
+               backup_keep_seconds: Optional[float] = None,
+               update_checker: Optional[UpdateChecker] = None) -> FastAPI:
     """Build the application. ``manager`` is injectable for tests; by
     default one is created from the settings and started with the app."""
 
@@ -81,6 +86,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     # Before the event relay: a finished backup is announced with its expiry set.
     backup_stage = BackupStage(job_runner, **({"keep_seconds": backup_keep_seconds} if backup_keep_seconds is not None else {}))
     callback_service = callbacks or CallbackService(hub_manager, settings)
+    checker = update_checker or UpdateChecker(settings)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -90,9 +96,12 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
         # Then the callback devices: pending intents reconcile against
         # the running hubs, and the listener comes up when any exist.
         await callback_service.start()
+        # Last, and a schedule only: no request leaves unless update_check is on.
+        await checker.start()
         try:
             yield
         finally:
+            await checker.stop()
             await job_runner.shutdown()
             backup_stage.close()
             await callback_service.stop()
@@ -128,11 +137,15 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     callback_service.on_press(lambda press: relay.publish(press.hub_id, WsPress(**press.to_dict())))
     app.state.event_relay = relay
     app.state.callbacks = callback_service
+    app.state.update_checker = checker
+    # A finished check (either source) tells open panels to re-read GET /server.
+    checker.on_result(lambda _result: relay.publish("", WsServerEvent(hub_id="", kind="update_check")))
     install_problem_handler(app)
     app.include_router(hubs_router)
     app.include_router(callbacks_router)
     app.include_router(callback_listener_router)
     app.include_router(settings_router)
+    app.include_router(updates_router)
     app.include_router(hub_data_router)
     app.include_router(snapshot_router)
     app.include_router(edit_router)
@@ -167,6 +180,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
             instance_id=callback_service.ring.instance_id,
             callback_listener=callback_service.listener_state(),
             mqtt=callback_service.mqtt_state(),
+            update=checker.status(),
         )
 
     return app

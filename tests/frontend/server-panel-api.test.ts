@@ -41,6 +41,29 @@ test("urls are built under the API root, with the query normalised", () => {
   assert.equal(api.remoteUrl(null), "http://host:8480/ui/remote/");
 });
 
+test("the update check: status, one check now, the daily switch", async () => {
+  const status = { installed_version: "0.2.1", status: "not_checked", latest_version: null, checked_at: null, automatic: false };
+  const { calls, fetchImpl } = fakeFetch((url, init) => {
+    if (init?.method === "POST") return { status: 200, body: { ...status, status: "update_available", latest_version: "0.2.2" } };
+    if (init?.method === "PUT") return { status: 200, body: { ...status, automatic: true } };
+    return { status: 200, body: status };
+  });
+  const api = new PanelApi("http://host", fetchImpl);
+  assert.equal((await api.updateStatus()).body?.status, "not_checked");
+  assert.equal(calls[0].url, "http://host/api/v1/server/updates");
+  assert.equal(calls[0].init?.method, "GET");
+  const checked = await api.checkForUpdates();
+  assert.equal(checked.body?.latest_version, "0.2.2");
+  assert.equal(calls[1].url, "http://host/api/v1/server/updates/check");
+  assert.equal(calls[1].init?.method, "POST");
+  assert.equal(calls[1].init?.body, undefined);
+  const daily = await api.configureUpdateCheck(true);
+  assert.equal(daily.body?.automatic, true);
+  assert.equal(calls[2].url, "http://host/api/v1/server/updates");
+  assert.equal(calls[2].init?.method, "PUT");
+  assert.equal(calls[2].init?.body, '{"automatic":true}');
+});
+
 test("a JSON body is serialised with its content type; a raw body is sent as typed", async () => {
   const { calls, fetchImpl } = fakeFetch(() => ({ status: 201, body: { hub_id: "h" } }));
   const api = new PanelApi("http://host", fetchImpl);

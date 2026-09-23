@@ -10318,7 +10318,7 @@ function renderTabBar(params) {
   const route = params.route;
   const onTool = route.kind === "tool";
   const pageItem = (page) => b2`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
-    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? b2` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : A}</span></span>
+    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? b2` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : A}${page === "server" && params.updateAvailable ? b2` <span class="badge badge-update" id="update-badge">update available</span>` : A}</span></span>
   </button>`;
   return b2`
     <div class="tabs" id="tabs">
@@ -10330,8 +10330,8 @@ function renderTabBar(params) {
   )}
       </div>
       <div class="tab-menu" id="cog">
-        <button class="tab-btn tab-btn--menu ${onTool ? "active" : ""} ${params.cogOpen ? "is-open" : ""}" id="cog-btn" type="button" aria-label=${onTool ? `Setup and tools: ${TOOL_LABELS[route.page]}` : "Setup and tools"} aria-haspopup="menu" aria-expanded=${String(params.cogOpen)} title="setup and tools" @click=${params.onToggleCog}>
-          <svg class="cog-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiCogOutline}></path></svg><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.cogOpen ? mdiChevronUp : mdiChevronDown}></path></svg>
+        <button class="tab-btn tab-btn--menu ${onTool ? "active" : ""} ${params.cogOpen ? "is-open" : ""}" id="cog-btn" type="button" aria-label=${onTool ? `Setup and tools: ${TOOL_LABELS[route.page]}` : "Setup and tools"} aria-haspopup="menu" aria-expanded=${String(params.cogOpen)} title=${params.updateAvailable ? "setup and tools (a server update is available)" : "setup and tools"} @click=${params.onToggleCog}>
+          <span class="cog-wrap"><svg class="cog-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiCogOutline}></path></svg>${params.updateAvailable ? b2`<span class="update-dot" id="update-dot" role="img" aria-label="Server update available"></span>` : A}</span><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.cogOpen ? mdiChevronUp : mdiChevronDown}></path></svg>
         </button>
         ${params.cogOpen ? b2`<div class="menu cog-menu" id="cog-menu" role="menu">
               ${TOOL_PAGES.filter((page) => page !== "server").map(pageItem)}
@@ -11127,6 +11127,17 @@ var PanelApi = class {
   updateServerSettings(changes) {
     return this.request("PUT", "server/settings", { body: changes });
   }
+  updateStatus() {
+    return this.request("GET", "server/updates");
+  }
+  /** One check against PyPI now; enables nothing, downloads nothing. */
+  checkForUpdates() {
+    return this.request("POST", "server/updates/check");
+  }
+  /** The daily automatic check, saved to server.json (409 when the environment pinned it). */
+  configureUpdateCheck(automatic) {
+    return this.request("PUT", "server/updates", { body: { automatic } });
+  }
   /** The operations from `openapi.json`, sorted by path then method. */
   async operations() {
     const response = await this.request(
@@ -11637,7 +11648,7 @@ function summarizeMessage(data) {
 }
 var HUB_EVENT_KINDS = /* @__PURE__ */ new Set(["catalog_ready", "hub_state", "app_state", "status_changed"]);
 function isHubRefreshTrigger(data) {
-  if (data.type === "server_event") return true;
+  if (data.type === "server_event") return data.kind !== "update_check";
   if (data.type === "hub_event") {
     const event = data.event;
     return Boolean(event?.kind && HUB_EVENT_KINDS.has(event.kind));
@@ -11944,6 +11955,10 @@ var PanelStore = class {
       }
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      case "server_event":
+        if (data.kind === "update_check") void this._loadServer();
+        else if (isHubRefreshTrigger(data)) this.refreshSoon();
         return;
       default:
         if (isHubRefreshTrigger(data)) this.refreshSoon();
@@ -12704,6 +12719,7 @@ var SofabatonServerPanel = class extends i4 {
       cogOpen: this._cogOpen,
       theme: s7.theme,
       eventCount: s7.stream.messageCount,
+      updateAvailable: s7.server.info?.update?.status === "update_available",
       subCounts: route.kind === "hub" && route.tab === "hub" && ctx.hub?.status ? { activities: ctx.hub.status.activities_cached, devices: ctx.hub.status.devices_cached } : void 0,
       onTab: (tab) => this._goTab(tab),
       onSub: (sub) => this._goSub(sub),
@@ -12815,6 +12831,9 @@ SofabatonServerPanel.styles = [
       .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 12px 8px 10px; min-width: 44px; }
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
+      .cog-wrap { position: relative; display: inline-flex; }
+      .update-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 2px var(--sbp-panel); }
+      .badge-update { background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-accent); }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
       /* The block space the shell adds around a view's content between the docks: the stage's padding, the view's
          bottom border, and the page's padding over the bottom dock. A view that fits itself between the docks (the
@@ -23667,6 +23686,11 @@ var PORT_FIELDS = [
   }
 ];
 var PORT_PATTERN = /^\d+$/;
+function localTime(iso) {
+  if (!iso) return "";
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
+}
 var SbPanelServer = class extends i4 {
   constructor() {
     super(...arguments);
@@ -23683,10 +23707,21 @@ var SbPanelServer = class extends i4 {
     this._portStatus = "";
     this._portError = false;
     this._saving = false;
+    this._update = null;
+    this._checking = false;
+    this._updateSaving = false;
+    this._updateMsg = "";
   }
   connectedCallback() {
     super.connectedCallback();
     void this._loadPorts();
+  }
+  willUpdate(changed) {
+    if (changed.has("info")) {
+      const fromStore = this.info?.update ?? null;
+      const mine = this._update;
+      if (fromStore && (!mine || (fromStore.checked_at ?? "") > (mine.checked_at ?? ""))) this._update = fromStore;
+    }
   }
   async _loadPorts() {
     if (!this.api) return;
@@ -23791,6 +23826,91 @@ var SbPanelServer = class extends i4 {
       </div>
     `;
   }
+  // -- updates -----------------------------------------------------------------------------
+  async _checkForUpdates() {
+    if (this._checking) return;
+    this._checking = true;
+    this._updateMsg = "";
+    try {
+      const response = await this.api.checkForUpdates();
+      if (response.ok && response.body) this._update = response.body;
+      else this._updateMsg = problemText(response);
+    } catch (err) {
+      this._updateMsg = String(err);
+    } finally {
+      this._checking = false;
+    }
+  }
+  async _setAutomatic(event) {
+    const box = event.target;
+    const wanted = box.checked;
+    if (this._updateSaving) return;
+    this._updateSaving = true;
+    this._updateMsg = "";
+    try {
+      const response = await this.api.configureUpdateCheck(wanted);
+      if (response.ok && response.body) this._update = response.body;
+      else {
+        box.checked = !wanted;
+        this._updateMsg = problemText(response);
+      }
+    } catch (err) {
+      box.checked = !wanted;
+      this._updateMsg = String(err);
+    } finally {
+      this._updateSaving = false;
+    }
+  }
+  _renderUpdates() {
+    const u6 = this._update;
+    const installed = u6?.installed_version ?? this.info?.version ?? "?";
+    const checked = u6?.checked_at ? `${localTime(u6.checked_at)}${u6.checked_by === "automatic" ? " (automatic)" : ""}` : "Never";
+    let line = "";
+    let cls = "";
+    switch (u6?.status) {
+      case "update_available":
+        cls = "available";
+        line = `Update available: ${u6.latest_version}`;
+        break;
+      case "up_to_date":
+        line = `No newer release found as of ${localTime(u6.checked_at)}.`;
+        break;
+      case "failed":
+        cls = "failed";
+        line = `Couldn't check${u6.error ? `: ${u6.error}` : ""}.`;
+        break;
+      default:
+        line = "Not checked.";
+    }
+    const links = u6?.status === "update_available" ? b2`<div class="update-links" id="update-links">
+          <a href=${u6.release_notes_url} target="_blank" rel="noopener">Release notes</a>
+          <a href=${u6.upgrade_url} target="_blank" rel="noopener">Update instructions</a>
+          <a href=${u6.pypi_url} target="_blank" rel="noopener">PyPI</a>
+        </div>` : "";
+    const busy = this._checking || u6?.checking === true;
+    return b2`
+      <div class="panel updates" id="server-updates">
+        <h2>Updates</h2>
+        <dl class="facts">
+          <div><dt>installed version</dt><dd id="update-installed">${installed}</dd></div>
+          <div><dt>last checked</dt><dd id="update-checked">${checked}</dd></div>
+          ${u6?.next_check_at ? b2`<div><dt>next check</dt><dd id="update-next">${localTime(u6.next_check_at)}</dd></div>` : ""}
+        </dl>
+        <div class="update-line ${cls}" id="update-status" data-status=${u6?.status ?? "not_checked"}>${line}</div>
+        ${links}
+        <div class="actions">
+          <button class="small" id="update-check" ?disabled=${busy || !this.reachable} @click=${this._checkForUpdates} title="POST /server/updates/check">${busy ? "checking\u2026" : "Check for updates"}</button>
+          <span class="msg msg-err" id="update-msg">${this._updateMsg}</span>
+        </div>
+        <label class="auto" for="update-auto">
+          <input id="update-auto" type="checkbox" .checked=${u6?.automatic === true} ?disabled=${!u6 || u6.automatic_pinned || this._updateSaving || !this.reachable} @change=${this._setAutomatic} />
+          <span>Automatically check once a day</span>
+          ${u6?.automatic_pinned ? b2`<span class="note">set by an environment variable</span>` : ""}
+        </label>
+        <div class="hint">Checks contact PyPI for public release information. No hub information, configuration, installed version or installation identifier is sent. Checking never downloads or installs anything.</div>
+      </div>
+    `;
+  }
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
   }
@@ -23839,6 +23959,7 @@ var SbPanelServer = class extends i4 {
         </div>
         <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The MQTT broker is where an X2's Wifi Devices on the mqtt transport publish their presses; it is set with <span class="mono">--mqtt-host</span> or <span class="mono">SOFABATON_MQTT_*</span> when the server starts, never stored, and connected only while a device uses it. The event stream is this page's live feed from the server.</div>
       </div>
+      ${this._renderUpdates()}
       ${this._renderPorts()}
     `;
   }
@@ -23857,7 +23978,11 @@ SbPanelServer.properties = {
   _portDraft: { state: true },
   _portStatus: { state: true },
   _portError: { state: true },
-  _saving: { state: true }
+  _saving: { state: true },
+  _update: { state: true },
+  _checking: { state: true },
+  _updateSaving: { state: true },
+  _updateMsg: { state: true }
 };
 SbPanelServer.styles = [
   PANEL_BASE_CSS,
@@ -23871,6 +23996,14 @@ SbPanelServer.styles = [
       .port input { max-width: 160px; }
       .port .hint { margin-top: 4px; }
       .port .note { color: var(--sbp-muted); font-size: 12px; margin-left: 8px; }
+      .updates dl { margin: 0 0 10px; }
+      .update-line { margin: 8px 0; font-size: 13px; }
+      .update-line.available { color: var(--sbp-accent); font-weight: 600; }
+      .update-line.failed { color: var(--sbp-err); }
+      .update-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; margin: 4px 0 8px; }
+      .update-links a { color: var(--sbp-accent); }
+      .auto { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; font-size: 13px; }
+      .auto input { width: auto; margin: 0; }
     `
 ];
 function defineServerView() {

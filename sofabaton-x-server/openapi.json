@@ -3223,6 +3223,16 @@
             "title": "Name",
             "type": "string"
           },
+          "update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "uptime_seconds": {
             "title": "Uptime Seconds",
             "type": "number"
@@ -3590,6 +3600,139 @@
           "label"
         ],
         "title": "SyncPlanStepView",
+        "type": "object"
+      },
+      "UpdateCheckSettings": {
+        "description": "Body of ``PUT /server/updates``.",
+        "properties": {
+          "automatic": {
+            "title": "Automatic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "automatic"
+        ],
+        "title": "UpdateCheckSettings",
+        "type": "object"
+      },
+      "UpdateStatus": {
+        "description": "What ``GET /server/updates`` (and the ``update`` block of ``GET /server``) says.\n\n``status`` is the verdict of the last check against the version running\nnow: ``not_checked`` (none on record), ``up_to_date`` (the last check\nfound nothing newer), ``update_available`` (``latest_version`` is\nnewer), ``failed`` (the last check did not get an answer; ``error``\nsays why, and nothing is known about newer releases).",
+        "properties": {
+          "automatic": {
+            "title": "Automatic",
+            "type": "boolean"
+          },
+          "automatic_pinned": {
+            "title": "Automatic Pinned",
+            "type": "boolean"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "checked_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual",
+                  "automatic"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked By"
+          },
+          "checking": {
+            "title": "Checking",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "installed_version": {
+            "title": "Installed Version",
+            "type": "string"
+          },
+          "latest_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Version"
+          },
+          "next_check_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Check At"
+          },
+          "pypi_url": {
+            "title": "Pypi Url",
+            "type": "string"
+          },
+          "release_notes_url": {
+            "title": "Release Notes Url",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "not_checked",
+              "up_to_date",
+              "update_available",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "upgrade_url": {
+            "title": "Upgrade Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "installed_version",
+          "status",
+          "latest_version",
+          "checked_at",
+          "checked_by",
+          "error",
+          "automatic",
+          "automatic_pinned",
+          "next_check_at",
+          "checking",
+          "release_notes_url",
+          "upgrade_url",
+          "pypi_url"
+        ],
+        "title": "UpdateStatus",
         "type": "object"
       },
       "WifiDeviceList": {
@@ -4007,6 +4150,7 @@
         "type": "object"
       },
       "WsServerEvent": {
+        "description": "A server lifecycle event. ``hub_id`` is empty for a server-wide kind\n(``update_check``); a ``?hub_id=`` filter never receives those.",
         "properties": {
           "hub_id": {
             "title": "Hub Id",
@@ -11404,6 +11548,107 @@
           }
         },
         "summary": "Save port changes to server.json (applied on the next start)",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/updates": {
+      "get": {
+        "operationId": "getUpdateStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The last update check against PyPI and the automatic schedule",
+        "tags": [
+          "server"
+        ]
+      },
+      "put": {
+        "operationId": "configureUpdateCheck",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCheckSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Turn the daily automatic update check on or off (saved to server.json)",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/updates/check": {
+      "post": {
+        "operationId": "checkForUpdates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check PyPI for a newer release now (one check; nothing is downloaded or installed)",
         "tags": [
           "server"
         ]

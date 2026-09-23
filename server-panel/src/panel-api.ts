@@ -88,6 +88,26 @@ export interface CallbackListener {
   [key: string]: unknown;
 }
 
+/** `GET /server/updates` (openapi `UpdateStatus`), also the `update` block of `ServerInfo`: the last
+ *  PyPI check judged against the running version. `failed` means nothing is known about newer
+ *  releases; it never reads as up to date. */
+export interface UpdateStatus {
+  installed_version: string;
+  status: "not_checked" | "up_to_date" | "update_available" | "failed";
+  latest_version: string | null;
+  checked_at: string | null;
+  checked_by: "manual" | "automatic" | null;
+  error: string | null;
+  /** The daily automatic check (server.json `update_check`); pinned = set by the environment. */
+  automatic: boolean;
+  automatic_pinned: boolean;
+  next_check_at: string | null;
+  checking: boolean;
+  release_notes_url: string;
+  upgrade_url: string;
+  pypi_url: string;
+}
+
 export interface ServerInfo {
   version: string;
   library_version: string;
@@ -95,6 +115,7 @@ export interface ServerInfo {
   instance_id?: string;
   hubs?: number;
   callback_listener?: CallbackListener;
+  update?: UpdateStatus | null;
   [key: string]: unknown;
 }
 
@@ -461,6 +482,20 @@ export class PanelApi {
   /** Saves to server.json; the ports apply on the next server start. */
   updateServerSettings(changes: Partial<Record<ServerPortName, number>>): Promise<ApiResponse<ServerSettings>> {
     return this.request<ServerSettings>("PUT", "server/settings", { body: changes });
+  }
+
+  updateStatus(): Promise<ApiResponse<UpdateStatus>> {
+    return this.request<UpdateStatus>("GET", "server/updates");
+  }
+
+  /** One check against PyPI now; enables nothing, downloads nothing. */
+  checkForUpdates(): Promise<ApiResponse<UpdateStatus>> {
+    return this.request<UpdateStatus>("POST", "server/updates/check");
+  }
+
+  /** The daily automatic check, saved to server.json (409 when the environment pinned it). */
+  configureUpdateCheck(automatic: boolean): Promise<ApiResponse<UpdateStatus>> {
+    return this.request<UpdateStatus>("PUT", "server/updates", { body: { automatic } });
   }
 
   /** The operations from `openapi.json`, sorted by path then method. */

@@ -152,6 +152,13 @@ settings. Port changes apply after restarting the server. Values supplied
 through environment variables or command-line flags are pinned and must
 be changed there. See [Running the server](running-server.md).
 
+The same page holds the update check. **Check for updates** asks PyPI
+once whether a newer server release exists; **Automatically check once a
+day** keeps doing so. A found update shows as a dot on the cog menu with
+links to the release notes and upgrade steps. Nothing is installed for
+you, and nothing about your installation is sent; see
+[Update check](running-server.md#update-check).
+
 For diagnosis or integration development, open **Debug → Event stream**
 to inspect live events, or **Debug → API console** to make API requests
 and follow their progress. Neither is needed for everyday hub management.

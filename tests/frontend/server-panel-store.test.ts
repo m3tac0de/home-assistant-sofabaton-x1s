@@ -130,9 +130,10 @@ class FakeApi {
   applies: ApplySummary[] = [];
   calls: string[] = [];
   cancelled: string[] = [];
+  update: unknown = null;
   serverInfo = async () => {
     this.calls.push("server");
-    return ok({ version: "0.2.0", library_version: "0.2.0", api_version: "1", instance_id: "i1" });
+    return ok({ version: "0.2.0", library_version: "0.2.0", api_version: "1", instance_id: "i1", update: this.update });
   };
   operations = async () => {
     this.calls.push("operations");
@@ -392,6 +393,25 @@ test("lifecycle frames reload the list once per burst; other frames do not", asy
   await clock.advance(300);
   assert.equal(api.count("hubs"), before + 1);
   assert.equal(store.snapshot.stream.messageCount, 4);
+  store.disconnect();
+});
+
+test("an update_check frame re-reads the server info and leaves the hub list alone", async () => {
+  const { api, clock, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  const hubsBefore = api.count("hubs");
+  const serverBefore = api.count("server");
+  assert.equal(store.snapshot.server.info?.update, null);
+  api.update = { status: "update_available", installed_version: "0.2.0", latest_version: "0.2.2", checked_at: "2026-09-23T12:00:00+00:00" };
+  socket().push({ type: "server_event", hub_id: "", kind: "update_check" });
+  await flush();
+  assert.equal(api.count("server"), serverBefore + 1);
+  assert.equal((store.snapshot.server.info?.update as { status?: string } | null)?.status, "update_available");
+  await clock.advance(300);
+  assert.equal(api.count("hubs"), hubsBefore, "no hub list reload for a server-wide event");
   store.disconnect();
 });
 

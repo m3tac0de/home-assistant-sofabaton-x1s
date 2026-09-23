@@ -24,6 +24,16 @@ components. Job results and editable entity tables contain open objects;
 clients must interpret them according to the operation. Errors are one shape,
 `Problem` (`type`, `title`, `status`, `detail`, `hub_id`, `mode`).
 
+`GET /server/updates` reports the last update check against PyPI
+(installed and newest release, `status` one of `not_checked`,
+`up_to_date`, `update_available`, `failed`, and the daily schedule);
+`POST /server/updates/check` performs one check now, and `PUT
+/server/updates` with `{"automatic": true|false}` turns the daily check on
+or off (saved to `server.json`; 409 `setting_pinned` when the environment
+set it). `GET /server` carries the same block as `update`. Notification
+only: nothing is downloaded or installed, and a check sends nothing about
+the installation to PyPI. See [Update check](running-server.md#update-check).
+
 Paths beginning `/hubs`, `/server` or `/events` below are relative to
 `/api/v1`. `{id}` and `{hub_id}` both mean the registered hub ID, not a
 device or activity ID. An ellipsis (`...`) abbreviates the preceding
@@ -552,7 +562,7 @@ JSON objects discriminated by `type`:
 | --- | --- |
 | `hello` | once on connect: `server_version`, `api_version`, `instance_id`, `hubs` (`hub_id`, `enabled`) |
 | `hub_event` | `hub_id` and the library `event` (`seq`, `kind`, `payload`): `activity_changed`, `activity_list_updated`, `hub_state`, `app_state`, `status_changed`, `catalog_ready`, `snapshot_changed`, `ota` |
-| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`) |
+| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`) |
 | `job_event` | `hub_id` and the `job` record, excluding a backup's `result.bundle`, on every transition: queued, running, each progress report, done / failed / cancelled |
 | `press` | a button press delivered over HTTP or MQTT: `device_key`, `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
 | `dropped` | `count` of older messages discarded because this client fell behind; sent before the next message that gets through |
