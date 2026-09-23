@@ -1,7 +1,7 @@
 # Server development
 
 For building the application and publishing releases. To build a client,
-start with [your first integration](first-integration.md).
+start with [Build an integration](first-integration.md).
 
 The web remote (`src/sofabaton_server/ui/remote/`) and the control
 panel (`src/sofabaton_server/ui/panel/`) are built from the repository's

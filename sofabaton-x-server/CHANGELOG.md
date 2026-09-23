@@ -11,7 +11,11 @@ below (unreleased `sofabaton-x`).
 
 - **Documentation:** lead with browser-based hub management, add a user
   getting-started guide and management guide, and separate the integration
-  starter, deployment and API references.
+  starter, deployment and API references. The integration guide now follows
+  activity controls and state synchronization before optional commands and
+  triggers. Its Python client adds activity start/stop and status inspection;
+  legacy callback setup moves to `examples/provision_callback.py` for the
+  Hubitat example (replacing the starter's `setup-presses` action).
 - **`GET .../activities` and `GET .../devices` list in the hub's display
   order** (what `PUT .../order` writes, as the remote and the app show
   it) instead of id order, and each row carries that position as `sort`

@@ -112,7 +112,7 @@ place on buttons, favorites or in activity behavior.
 An integration must receive the event and run the action in your
 automation platform. Creating a Wifi Device alone does not create that
 automation. See the [Hubitat example](../examples/hubitat/README.md) or
-[your first integration](first-integration.md#3-receive-your-first-remote-press).
+[Build an integration](first-integration.md#5-add-remote-button-automation-triggers).
 
 HTTP delivery works on all supported hub models and needs the hub to
 reach the server's callback listener, normally TCP **8060**. X1 always
@@ -121,7 +121,7 @@ broker as the hub in the official app. MQTT configuration belongs to
 [server startup settings](running-server.md#settings).
 
 You can manage up to five Wifi Devices per hub, including the legacy
-callback device used by the starter example. A device missing from the
+callback device used by the Hubitat example. A device missing from the
 hub shows **Missing from hub** and offers **Redeploy**. For HTTP devices,
 check the destination shown below the slots if the server's address has
 changed or presses do not arrive.

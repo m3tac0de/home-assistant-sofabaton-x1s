@@ -3,10 +3,12 @@
 import importlib.util
 import io
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,6 +22,12 @@ from fakes import Factory, no_network_discovery
 spec = importlib.util.spec_from_file_location("starter_example", Path(__file__).parents[1] / "examples/starter.py")
 starter = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(starter)
+
+spec = importlib.util.spec_from_file_location(
+    "provision_example", Path(__file__).parents[1] / "examples/provision_callback.py")
+provision = importlib.util.module_from_spec(spec)
+with patch.dict(sys.modules, {"starter": starter}):
+    spec.loader.exec_module(provision)
 
 HUB_ID = "e26a44861b45"
 HUB = "/hubs/" + HUB_ID
@@ -62,10 +70,56 @@ def test_catalog_selection_and_send_use_the_selected_pair(rig, capsys):
     assert len([r for r in requests if r.method == "POST"]) == 1
 
 
+def test_activity_controls_and_reported_state(rig, capsys):
+    client, proxy, requests = rig
+    starter.run(client, SimpleNamespace(action="activities", hub_id=HUB_ID))
+    activity_id = json.loads(capsys.readouterr().out)[0]["activity_id"]
+    starter.run(client, SimpleNamespace(action="start", hub_id=HUB_ID, activity=activity_id))
+    capsys.readouterr()
+    starter.run(client, SimpleNamespace(action="status", hub_id=HUB_ID))
+    assert json.loads(capsys.readouterr().out)["status"]["running_activity"]["activity_id"] == activity_id
+    starter.run(client, SimpleNamespace(action="stop", hub_id=HUB_ID, activity=activity_id))
+    capsys.readouterr()
+    starter.run(client, SimpleNamespace(action="status", hub_id=HUB_ID))
+    assert json.loads(capsys.readouterr().out)["status"]["running_activity"] is None
+    assert proxy.sent == [("start", (activity_id,)), ("stop", (activity_id,))]
+    writes = [r for r in requests if r.method != "GET"]
+    assert len(writes) == 2
+    assert all(r.method == "POST" and r.data is None for r in writes)
+    assert not proxy.wifi_deploys
+
+
+def test_status_and_cached_catalog_are_readable_while_app_owns_control(rig, capsys):
+    client, proxy, requests = rig
+    proxy.refuse = True
+    starter.run(client, SimpleNamespace(action="status", hub_id=HUB_ID))
+    assert json.loads(capsys.readouterr().out)["status"]["mode"] == "observe"
+    starter.run(client, SimpleNamespace(action="activities", hub_id=HUB_ID))
+    assert json.loads(capsys.readouterr().out)
+    assert all(r.method == "GET" for r in requests)
+
+
+def test_disabled_hub_status_is_still_readable(rig, capsys):
+    client, proxy, requests = rig
+    client.request("POST", HUB + "/disable")
+    starter.run(client, SimpleNamespace(action="status", hub_id=HUB_ID))
+    status = json.loads(capsys.readouterr().out)
+    assert status["enabled"] is False and status["status"] is None
+
+
+def test_control_refused_after_readiness_check_is_not_retried(rig, monkeypatch):
+    client, proxy, requests = rig
+    monkeypatch.setattr(client, "ready", lambda hub: setattr(proxy, "refuse", True))
+    with pytest.raises(starter.ApiError) as error:
+        starter.run(client, SimpleNamespace(action="start", hub_id=HUB_ID, activity=101))
+    assert error.value.status == 409
+    assert len([r for r in requests if r.method == "POST"]) == 1
+
+
 def test_setup_follows_jobs_binds_returned_id_and_reuses_device(rig):
     client, proxy, requests = rig
-    starter.setup_presses(client, HUB, 101, "PLAY")
-    starter.setup_presses(client, HUB, 101, "PLAY")
+    provision.setup_presses(client, HUB, 101, "PLAY")
+    provision.setup_presses(client, HUB, 101, "PLAY")
     assert len(proxy.wifi_deploys) == 1
     device_id = proxy.wifi_deploys[0]["device_id"]
     snapshot = client.request("GET", HUB + "/snapshot")
@@ -81,7 +135,7 @@ def test_failed_deploy_is_not_retried_or_followed_by_binding(rig):
     client, proxy, requests = rig
     proxy.reject_intents = True
     with pytest.raises(RuntimeError, match="Job did not succeed"):
-        starter.setup_presses(client, HUB, 101, "PLAY")
+        provision.setup_presses(client, HUB, 101, "PLAY")
     assert len([r for r in requests if r.method == "POST"]) == 1
     assert not any(r.method == "PUT" for r in requests)
 
@@ -89,14 +143,14 @@ def test_failed_deploy_is_not_retried_or_followed_by_binding(rig):
 def test_unknown_activity_stops_before_creating_a_callback(rig):
     client, proxy, requests = rig
     with pytest.raises(RuntimeError, match="Unknown activity"):
-        starter.setup_presses(client, HUB, 199, "PLAY")
+        provision.setup_presses(client, HUB, 199, "PLAY")
     assert not any(r.method != "GET" for r in requests)
 
 
 def test_unknown_hub_is_not_mistaken_for_missing_callback(rig):
     client, proxy, requests = rig
     with pytest.raises(starter.ApiError) as error:
-        starter.setup_presses(client, "/hubs/unknown", 101, "PLAY")
+        provision.setup_presses(client, "/hubs/unknown", 101, "PLAY")
     assert error.value.problem["type"] == "hub_not_found"
     assert not any(r.method != "GET" for r in requests)
 
@@ -106,8 +160,9 @@ def test_listener_uses_prefix_and_dispatches_only_deployed_presses(monkeypatch, 
 
     frames = [
         {"type": "hello", "instance_id": "test-instance"},
-        {"type": "hub_event", "event": {"kind": "activity_changed"}},
-        {"type": "press", "resolution": "deployed", "label": "Demo", "press_type": "short"},
+        {"type": "hub_event", "event": {"kind": "activity_changed", "payload": {"activity_id": 102, "name": "Music"}}},
+        {"type": "hub_event", "event": {"kind": "activity_changed", "payload": {"activity_id": None, "name": None}}},
+        {"type": "press", "device_key": "a1b2c3d4", "resolution": "deployed", "label": "Demo", "press_type": "short"},
         {"type": "press", "resolution": "stale", "label": "Old", "press_type": "long"},
         {"type": "dropped", "count": 1},
     ]
@@ -125,5 +180,7 @@ def test_listener_uses_prefix_and_dispatches_only_deployed_presses(monkeypatch, 
     output = capsys.readouterr().out
     assert "Connected to server instance test-instance" in output
     assert '"kind": "activity_changed"' in output
+    assert "ACTIVITY: 102 (Music)" in output
+    assert "ACTIVITY: None (None)" in output
     assert "PRESS: Demo (short)" in output and "PRESS: Old" not in output
     assert "Events were lost" in output

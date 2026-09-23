@@ -1,189 +1,379 @@
-# Your first integration
+# Build an integration with Sofabaton X Server
 
-This guide targets **sofabaton-x-server 0.2.1 / API 1**.
+Build a client that exposes hub activities, commands and automation
+triggers in your platform. The server already manages hub connections,
+configuration, backups and the web remote. Your client can consume those
+capabilities over HTTP and WebSocket, in any language.
 
-Start with **sofabaton-x-server**. It manages hub connections and provides
-HTTP and WebSocket APIs for clients in any language. Use its built-in
-management UI (the **control panel**) for setup, catalog browsing and
-diagnostics, and its web remote for everyday control.
+This guide uses **API 1**, with **server 0.2.1** as its released baseline.
+Use the [OpenAPI document](../openapi.json) for complete schemas and the
+[changelog](../CHANGELOG.md) for release-specific changes.
 
-Your integration can stay small: let users select an already registered
-hub, expose the actions and state your platform needs, and map remote
-callback presses to automations. Link to the server for management and
-the remote UI. Hub discovery, registration and configuration editors are
-optional features for your client.
+## Decide what your integration owns
 
-## 1. Set up the server
+A useful first integration lets a user select a registered hub, start and
+stop its activities, and see changes made with the physical remote.
+Command actions and remote-button automation triggers can follow.
 
-Follow [Getting started](getting-started.md) to install the server, register
-your hubs and test control in the browser. Run one server for all your
-hubs; your client uses that server's address. Keep the official app closed
-while testing commands or configuration writes.
+| The server handles | Your integration handles |
+| --- | --- |
+| Hub discovery, registration and connections | Connecting to a server and selecting registered hubs |
+| Device, activity and Wifi Device configuration | Platform controls, state and automation triggers |
+| The management UI and web remote | Links to those interfaces |
+| HTTP or MQTT delivery from managed Wifi Devices | Consuming their WebSocket press events |
 
-For development, **Hub** shows activity, device and command IDs. Under the
-cog menu, **Debug → Event stream** shows live events and **Debug → API
-console** lets you try requests and follow their jobs.
+Users should complete [server setup](getting-started.md) first. If no hubs
+are registered, link them to `<server base URL>/ui/` and let them reload
+your hub selection afterwards. Removing your integration should remove
+its own entities and selections, leaving shared server registrations and
+Wifi Devices in place.
 
-### Connect your client
+The examples below use `http://192.168.1.10:8480` and hub
+`e26a44861b45`. Replace these and all activity/device/command IDs with
+values from your server. **JSON responses are excerpts showing the fields
+used in the walkthrough**, unless stated otherwise.
 
-Ask for the **server base URL**, for example `http://192.168.1.10:8480`,
-then list registered hubs with `GET /api/v1/hubs`. Let the user choose one
-and store its `hub_id`. Wait for the stable MAC form (such as
-`e26a44861b45`); an initial IP-based ID can change after the first connection.
+## 1. Connect to a server and select hubs
 
-The [starter client](../examples/starter.py) makes these calls visible.
-The commands below run from a repository checkout; the examples are not
-installed as commands by pip. They default to `http://localhost:8480`:
+Ask for the **server base URL**, not the physical hub address. Preserve a
+reverse-proxy prefix if present; exclude `/api/v1` from the saved base URL.
+Automatic server discovery over mDNS is optional.
 
-```sh
-python sofabaton-x-server/examples/starter.py hubs
+Validate the connection:
+
+```http
+GET /api/v1/server
 ```
 
-For another host, put `--server` **before the action**:
+```json
+{
+  "version": "0.2.1",
+  "api_version": "1",
+  "instance_id": "example-server-instance"
+}
+```
+
+Check the API generation before using its contract. Keep `instance_id`
+for event tracking: it changes when the server restarts. Then list
+**registered** hubs:
+
+```http
+GET /api/v1/hubs
+```
+
+```json
+[
+  {
+    "hub_id": "e26a44861b45",
+    "hub_name": "Living room",
+    "config": {"name": null},
+    "enabled": true
+  }
+]
+```
+
+Offer the hubs for selection, using `config.name` when set, then
+`hub_name`, then the ID as a fallback. Store IDs, not display names.
+Use the stable MAC-based hub ID; a newly registered hub can initially have
+a host-based ID that changes on connection. Handle `hub_rekeyed` by
+reloading registrations and updating the selection.
+
+One server supports multiple hubs. One WebSocket can receive events for
+all selected hubs. See [server discovery and URL rules](platform-integration.md#1-find-the-server)
+for mDNS, proxy prefixes and generated-client configuration.
+
+## 2. Expose activity controls
+
+Read the selected hub's activity catalog:
+
+```http
+GET /api/v1/hubs/e26a44861b45/activities
+```
+
+```json
+[
+  {"activity_id": 101, "name": "Watch TV", "active": false},
+  {"activity_id": 102, "name": "Listen to music", "active": false}
+]
+```
+
+Create a platform control for each activity the user selects. Key it by
+server, hub and activity ID; use the name as its label. You might expose
+a selector or individual activity switches, depending on your platform.
+
+To start Watch TV, send this request with no body:
+
+```http
+POST /api/v1/hubs/e26a44861b45/activities/101/start
+```
+
+The acceptance response is:
+
+```json
+{"accepted": true, "mode": "control"}
+```
+
+To stop that activity, use
+`POST /api/v1/hubs/e26a44861b45/activities/101/stop`, also with no body.
+For switch-style controls, only send a stop when the user turns off the
+currently running activity; receiving state updates for other switches
+must not generate additional commands.
+
+**Acceptance is not the final activity state or proof that the equipment
+responded.** Confirm state through status and events. These control calls
+do not require snapshots, configuration writes or jobs.
+
+## 3. Keep platform state synchronized
+
+Subscribe to the event stream **before** reading initial status:
+
+```text
+ws://192.168.1.10:8480/api/v1/events?hub_id=e26a44861b45
+```
+
+Use `wss` for an HTTPS server. Repeat `hub_id` to select multiple hubs,
+or omit the filter for all hubs. The opening `hello` message includes
+`api_version`, `instance_id` and hub summaries; it does not contain full
+activity state.
+
+Read initial state with:
+
+```http
+GET /api/v1/hubs/e26a44861b45/status
+```
+
+```json
+{
+  "hub_id": "e26a44861b45",
+  "enabled": true,
+  "status": {
+    "hub_connected": true,
+    "app_connected": false,
+    "mode": "control",
+    "controllable": true,
+    "catalog_ready": true,
+    "running_activity": {"activity_id": 101, "name": "Watch TV"}
+  }
+}
+```
+
+Set your activity selector to 101, or mark its switch on and the others
+off. An available hub with `running_activity: null` has no running
+activity. Keep availability separate from activity state:
+
+| Observed state | Platform behavior |
+| --- | --- |
+| Server unreachable, hub disabled, `status: null`, or `hub_connected: false` | Mark unavailable; do not treat last-known activity as current or infer that the equipment is off |
+| `mode: "observe"` / `controllable: false` while the official app is connected | Continue displaying reported state, but disable sending and explain that the app owns control |
+| Connected with `catalog_ready: false` | Show initialization; wait before offering catalog-dependent controls |
+| Connected, controllable and ready | Offer controls, while still handling refusals from individual requests |
+
+An activity change arrives as:
+
+```json
+{
+  "type": "hub_event",
+  "hub_id": "e26a44861b45",
+  "event": {
+    "seq": 42,
+    "kind": "activity_changed",
+    "payload": {
+      "activity_id": 102,
+      "previous_activity_id": 101,
+      "name": "Listen to music"
+    }
+  }
+}
+```
+
+Update the platform to activity 102, regardless of whether your client,
+the physical remote or another client caused the change. A null
+`activity_id` means no activity is running. Do not send another command
+in response to this state update.
+
+Also handle `hub_state`, `app_state`, `status_changed` and
+`catalog_ready` by reconciling availability and control status.
+On `activity_list_updated`, reload the activity list. Handle registration
+changes from `server_event`: disable/remove makes a selected hub
+unavailable; enable/rekey requires reloading its state.
+
+Events can arrive while an HTTP read is in flight. Reconcile those events
+with the response so an older read cannot overwrite newer state. For
+example, track a local revision for the state being fetched; if relevant
+events change it during a read, discard that response and schedule a new
+read. That local revision is separate from the server's sequence counters.
+
+**First milestone:** start an activity from your platform, then switch
+activities with the physical remote and see your platform update. Do
+this before adding command actions or button triggers.
+
+## 4. Add command actions
+
+Let users browse devices and each device's commands:
+
+```http
+GET /api/v1/hubs/e26a44861b45/devices
+GET /api/v1/hubs/e26a44861b45/devices/7/commands
+```
+
+The command list uses labels for display and IDs for sending:
+
+```json
+[
+  {"command_id": 3, "label": "Volume up"},
+  {"command_id": 4, "label": "Volume down"}
+]
+```
+
+Keep the device and command IDs together. To send device 7's command 3:
+
+```http
+POST /api/v1/hubs/e26a44861b45/send
+Content-Type: application/json
+
+{"entity_id": 7, "command_id": 3}
+```
+
+It returns the same acceptance shape as activity control. Generic IR
+commands do not provide confirmation that the target equipment acted.
+Do not automatically retry a timed-out send: the command may already
+have taken effect.
+
+<a id="3-receive-your-first-remote-press"></a>
+
+## 5. Add remote-button automation triggers
+
+The hub does **not** report ordinary IR or Bluetooth button presses.
+To trigger your platform, a remote button must execute a command on a
+managed **Wifi Device**.
+
+Have the user configure a Wifi Device and its assignments in
+[the panel's Wifi Commands tab](managing-hubs.md#wifi-commands), synchronize
+it to the hub, and let the physical remote finish synchronizing. Your
+client can list the configured devices with:
+
+```http
+GET /api/v1/hubs/e26a44861b45/wifi-devices
+```
+
+Offer entries from the response's `devices` array. Each record provides
+a `key`, hub `device_id` and command `labels`; store the selected
+identity and command mapping. Treat stale or undeployed records as
+needing attention in the panel. Do not assume the key is `default`.
+
+The same WebSocket used for activity state delivers presses. For example:
+
+```json
+{
+  "type": "press",
+  "seq": 18,
+  "hub_id": "e26a44861b45",
+  "device_key": "a1b2c3d4",
+  "device_id": 8,
+  "command_id": 1,
+  "slot": 1,
+  "label": "Movie lights",
+  "press_type": "short",
+  "resolution": "deployed",
+  "transport": "http",
+  "source": "192.168.1.50",
+  "received_at": "2026-09-23T12:00:00+00:00"
+}
+```
+
+Map this to a platform button event or automation trigger. Match the
+selected hub, device key, deployed device ID, command ID and press type;
+labels can change and should not be identifiers. Dispatch
+`resolution: "deployed"`; report other resolutions for diagnosis rather
+than firing an unrecognized action. Re-read the device record after
+redeployment before adopting a changed hub device ID.
+
+HTTP and X2 MQTT delivery produce the same press interface. Your client
+does not need an inbound HTTP listener or a separate MQTT subscription.
+Delivery setup and broker settings belong to the server and hub.
+
+Test by pressing the assigned button in the selected activity and
+observing the platform trigger. Activity changes remain separate
+`hub_event` messages and need no Wifi Device.
+
+<a id="before-shipping-your-integration"></a>
+
+## 6. Prepare for real use
+
+- **Reconnect and reconcile.** Reconnect with backoff. After reconnecting,
+  a `dropped` message or a hub-event sequence gap, reload registrations,
+  status and the catalogs your client uses. Hub events have no replay.
+  Respect changes made in the panel; do not automatically re-register or
+  enable a hub.
+- **Separate event counters.** `hub_event.event.seq` belongs to a hub's
+  proxy and resets when that proxy is recreated. `press.seq` belongs to
+  the server instance. Deduplicate presses by `(instance_id, seq)` and
+  reset press tracking when the instance changes.
+- **Choose a missed-press policy.** Either skip missed triggers or use the
+  bounded `GET /hubs/{id}/presses?after=<seq>` history. Account for expired
+  history and avoid unexpectedly executing old actions on reconnection.
+- **Handle failures at the request.** Readiness can change between a
+  status check and a send. A `409` with `send_refused` or `hub_busy`
+  should cause you to read status and explain the refusal. Handle
+  disabled/removed hubs and connection failures as availability changes.
+  Do not blindly retry commands with uncertain outcomes.
+- **Link to management.** Offer `<server base URL>/ui/` and
+  `<server base URL>/ui/remote/?hub=<URL-encoded hub ID>`. Keep shared hub
+  configuration in the server unless your integration explicitly offers
+  configuration editing.
+- **Support the deployment.** The server has no built-in authentication.
+  If the operator uses an authenticating reverse proxy, your client must
+  support its authentication for both HTTP and WebSocket connections.
+
+See the [platform integration guide](platform-integration.md) for precise
+[error handling](platform-integration.md#4-read-and-control),
+[event recovery](platform-integration.md#5-events) and optional editing
+workflows. The [API reference](api-reference.md) and
+[OpenAPI document](../openapi.json) describe the full surface.
+
+## Optional runnable Python example
+
+The [starter client](../examples/starter.py) lets you inspect these
+exchanges without implementing a platform client first. Python is not
+required by your integration; use your platform's own HTTP/WebSocket tools.
+
+From a repository checkout, with Python 3.11+, run:
 
 ```sh
+python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 server
 python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 hubs
+python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 activities
+python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 status
 ```
 
-Pass the server's address, not the physical hub's. Exclude `/api/v1` from
-the base URL; preserve a reverse-proxy prefix if there is one. All IDs
-below are examples: replace them with values from your own hub.
-
-## 2. Send your first command
-
-In the panel's **Hub** view, choose a device and copy its device ID
-and a command ID. You can also list them from the starter client:
+For listening, install `websockets>=12` in the client environment (it is
+already included with the server installation). In one terminal:
 
 ```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 devices
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 commands --device 7
+python -m pip install "websockets>=12"
+python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 listen
 ```
 
-Keep the **device ID and command ID together**. If device `7`, command `3`
-is the command you want to test, send it:
+In another, start and stop an activity:
 
 ```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 send --device 7 --command 3
+python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 start --activity 101
+python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 stop --activity 101
 ```
 
-This calls `POST /api/v1/hubs/{hub_id}/send` with
-`{"entity_id":7,"command_id":3}`. The response
-`{"accepted":true,"mode":"control"}` confirms acceptance for sending;
-check the equipment for the physical result. No snapshot, backup or job
-is needed for a send.
+The listener prints activity changes and presses from all managed Wifi
+Devices on the selected hub. Try the physical remote too. Use
+`devices`, `commands --device 7`, `send --device 7 --command 3` and
+`wifi-devices` to inspect the optional capabilities.
 
-### What your integration needs
+The script sends real control commands, but does not provision devices or
+edit button assignments. It prints events rather than maintaining a
+complete platform state model, does not automatically retry requests, and
+stops on disconnect. Implement the lifecycle behavior above in your client.
 
-Implement the operations your platform exposes. Paths below are relative
-to `<server base URL>/api/v1`.
-
-| Need | Call or link |
-| --- | --- |
-| Select a registered hub | `GET /hubs` |
-| Read availability and current activity | `GET /hubs/{id}/status`; read `enabled` and the nested `status` (which can be null) |
-| Offer activity switches | `GET /hubs/{id}/activities`; use `POST /hubs/{id}/activities/{aid}/start` and `POST /hubs/{id}/activities/{aid}/stop` |
-| Send a selected command | `POST /hubs/{id}/send` with `entity_id` and `command_id` |
-| Update state and receive callbacks | WebSocket `/events?hub_id={id}`; handle `hub_event`, `server_event` and `press` |
-| Open management | `<server base URL>/ui/` |
-| Open the remote | `<server base URL>/ui/remote/?hub={id}` (URL-encode the hub ID) |
-
-An activity-only integration needs no callback device; continue to
-[Before shipping](#before-shipping-your-integration). Add remote presses
-when you want buttons to trigger platform actions.
-
-## 3. Receive your first remote press
-
-**The hub does not report ordinary IR or Bluetooth button presses.** To
-trigger your platform, a remote button must run a command on a managed
-Wifi Device. It delivers the press to the server over HTTP or, on X2,
-MQTT. The server forwards a WebSocket `press` event. Your client does not
-need its own HTTP listener or MQTT subscription.
-
-### Set up callbacks once
-
-In **Wifi Commands**, add a Wifi Device, edit a slot, choose its physical
-button and activities, and use **Sync to Hub**. X2 can use MQTT when the
-server and the Sofabaton app are configured with the same broker; otherwise
-use HTTP. Your client receives the same WebSocket `press` events for both.
-
-The setup command below creates or reuses the legacy HTTP callback device
-(key `default`), which is also used by the Hubitat example. It does not
-select a keyed device created with the panel's Add button. Keep this setup
-separate from your integration's normal startup.
-
-Choose an existing activity ID in **Hub** (or run the starter's
-`activities` action). The following example uses activity `101` and
-`PLAY`. **It replaces that button's short and long assignments in that
-activity.** Choose a button you intend to reassign, then close the official
-app before running:
-
-```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 setup-presses --activity 101 --button PLAY
-```
-
-The script creates a callback device if missing, or reuses its first slot
-and existing labels. It waits for each job to finish and prints the
-device ID, labels and deployed destination. `202 Accepted` starts a job;
-only `status: "done"` means the setup succeeded.
-
-The hub must reach the server's callback listener on TCP **8060** by
-default; your client uses the API/WebSocket port **8480**. The X1 always
-uses 8060. Allow the physical remote to finish synchronizing its configuration.
-
-### Listen and dispatch
-
-The listener uses `websockets`, included with the server installation.
-On a separate client machine, install it with
-`python -m pip install "websockets>=12"`. Other starter actions use only
-Python's standard library.
-
-```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 listen
-```
-
-Wait for `Connected to server instance …`, select the chosen activity
-on the physical remote, and press the assigned button. A new setup prints
-`PRESS: Demo (short)` along with the complete event. Holding the button
-uses command `11` and `press_type: "long"`; a short press uses command `1`.
-
-In `listen()`, replace the dispatch comment with your platform action.
-The listener prints presses from **all** managed Wifi Devices on the selected
-hub. Before dispatching real actions, match `hub_id`, `device_key` (for
-example `default`), `device_id`, `command_id` and `press_type`; labels are
-display text and can change. The example dispatches only
-`resolution: "deployed"` and prints other records for diagnosis.
-Activity changes arrive separately as
-`hub_event` with `event.kind: "activity_changed"`.
-
-## Before shipping your integration
-
-- Reconnect with backoff and re-read selected hubs, status and the catalogs
-  you use. Handle hubs disabled, removed or changed through the panel.
-  Keep last-known state separate from availability.
-- Check failures even after a readiness check: the official app can take
-  control between requests. Do not automatically retry a timed-out control
-  command; its physical effect may already have happened.
-- Choose a missed-press policy. The starter stops on disconnect. Production
-  clients can use bounded press history, or deliberately skip missed actions
-  to avoid executing old button presses. De-duplicate by `(instance_id, seq)`
-  and reset tracking after a server restart. See the
-  [event lifecycle](platform-integration.md#5-events).
-
-The [Hubitat example](../examples/hubitat/README.md) demonstrates this small
-integration scope with activity switches, command sending and button events.
-The [platform guide](platform-integration.md) covers the production contract
-and optional setup/editing APIs.
-
-## If something does not work
-
-| Symptom | First check |
-| --- | --- |
-| Physical hub missing from discovery | Fully close the official app on all phones/tablets, then scan again. A hub connected directly to the app does not advertise. |
-| Client lists no registered hubs | Add one in the panel's hub picker after closing the app. `--hub` only seeds a new data directory. |
-| `hub_not_found` | Re-read `/hubs`; an initial IP-based ID may have changed to the MAC. |
-| Not ready, `hub_busy` or `send_refused` | Close the official app; check hub connectivity and that no other proxy owns it. |
-| Send accepted, no equipment response | Verify the device/command pair and equipment reachability. |
-| Setup job fails | Inspect the job's `error` and partial `result` before another write. |
-| Listening, but no press arrives | Check the assignment, selected activity and remote sync; inspect the callback record's `target` and `GET /api/v1/server/callback-listener` (`bound`). Another service may own port 8060. |
-
-See the [deployment and networking guide](running-server.md) for ports and firewalls.
+The [Hubitat example](../examples/hubitat/README.md) illustrates platform
+entities and reconnection handling, but currently consumes only the legacy
+`default` callback device. Its separate
+[callback provisioning example](callback-provisioning.md) exists for that
+limitation; it is not a prerequisite for integrating with panel-configured
+Wifi Devices. The Hubitat README describes its validation limits.

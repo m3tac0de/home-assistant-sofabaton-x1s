@@ -12,7 +12,7 @@ your client from [`../openapi.json`](../openapi.json); this page covers what
 the document cannot say.
 
 For a first implementation, begin with
-[your first integration](first-integration.md). Let users set up hubs in the
+[Build an integration](first-integration.md). Let users set up hubs in the
 server's control panel, then select those registered hubs in your platform.
 You can deliver activity switches, command actions and remote-button
 automations without implementing hub registration or a configuration editor.
@@ -514,7 +514,7 @@ work without a callback device.
 
 The panel's **Wifi Commands** tab manages keyed Wifi Devices and their
 slot assignments; **Hub** edits activities and their bindings. The
-[starter setup command](first-integration.md#3-receive-your-first-remote-press)
+[optional provisioning example](callback-provisioning.md)
 creates or reuses the HTTP callback device under the reserved `default` key.
 Deployed commands can also be assigned in the official app. If you choose to manage callbacks in your client:
 

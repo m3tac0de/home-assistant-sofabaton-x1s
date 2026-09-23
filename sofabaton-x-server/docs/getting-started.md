@@ -5,7 +5,7 @@ backup. You can do all of this in the browser after installation; no
 Home Assistant installation or integration code is needed.
 
 If you are building a client, continue with
-[your first integration](first-integration.md) once your hub is working.
+[Build an integration](first-integration.md) once your hub is working.
 
 ## Before you start
 

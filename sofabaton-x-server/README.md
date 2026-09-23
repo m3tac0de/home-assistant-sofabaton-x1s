@@ -144,7 +144,7 @@ configure their hubs in the panel, then select those hubs in your client.
 Your integration can focus on controls, state and automations, and link
 back to management and the web remote.
 
-- [Your first integration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/first-integration.md): a runnable starter for hub selection, commands and remote presses.
+- [Build an integration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/first-integration.md): activity controls, synchronized state, command actions and remote-button triggers, with an optional runnable client.
 - [Platform integration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/platform-integration.md): production behavior, errors, reconnection and optional editing flows.
 - [API reference](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/api-reference.md): snapshots, jobs, writes, recovery, IR payloads, backups, discovery and events.
 - [OpenAPI document](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/openapi.json): the committed contract for generated clients. A running server also serves interactive docs at `/api/v1/docs`.

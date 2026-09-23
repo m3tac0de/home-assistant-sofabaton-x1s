@@ -1,7 +1,7 @@
 # Server API reference
 
 Reference for HTTP/WebSocket clients. Start with
-[your first integration](first-integration.md) for a working client, or
+[Build an integration](first-integration.md) for a working client, or
 [Getting started](getting-started.md) to use the management application.
 The API generation is **1**; see the [changelog](../CHANGELOG.md) for release changes.
 
@@ -13,7 +13,7 @@ The API generation is **1**; see the [changelog](../CHANGELOG.md) for release ch
 ## API
 
 For a minimal client, use hub selection, status, control and events as
-described in the [starter guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/first-integration.md).
+described in the [integration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/first-integration.md).
 The sections below are a reference for optional features as well as the
 core API; implementing the full surface is not required.
 
