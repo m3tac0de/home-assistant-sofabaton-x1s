@@ -52,18 +52,19 @@ export class SbPanelRemote extends LitElement {
     PANEL_BASE_CSS,
     css`
       :host { display: block; height: 100%; }
-      .frame { max-width: 420px; margin: 0 auto; }
-      .frame { background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); overflow: hidden; }
-      /* The card subtab: the bare card, centred. The notices keep the full width while the card's box narrows with the scale. */
-      .fit { max-width: 420px; margin: 0 auto; }
+      /* The remote on a tinted well with a lift, in both subtabs: a white card on a white panel otherwise reads as one surface. The shadow sits on the card's host, sized to the card by the card's own --remote-max-width, and grows back against the fit scale. */
+      .well { background: color-mix(in srgb, var(--sbp-text) 4%, transparent); border-radius: 14px; }
+      #stage > sofabaton-virtual-remote { max-width: var(--remote-max-width, 360px); margin: 0 auto; border-radius: var(--ha-card-border-radius, 12px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 calc(12px / var(--fit-scale, 1)) calc(36px / var(--fit-scale, 1)) rgba(0, 0, 0, 0.16); }
+      /* The card subtab: the bare card, centred on a full-width well; the notices sit above it. */
+      .fit { position: relative; padding: 20px 20px 28px; }
       .fit .stage { padding: 0; }
-      .fit .banner, .fit .busy-note { margin: 0 0 10px; }
-      #stage-box { margin: 0 auto; position: relative; }
-      /* Open the web remote in its own window: beside the card, outside its box so the fit is untouched; above it on a phone. */
-      .open-link { position: absolute; top: 0; left: calc(100% + 12px); display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 6px; background: var(--sbp-panel); color: var(--sbp-text); font-size: 13px; text-decoration: none; white-space: nowrap; }
+      .notes .banner, .notes .busy-note { margin: 0 0 10px; }
+      #stage-box { margin: 0 auto; }
+      /* Open the web remote in its own window: the well's corner, outside the card's box so the fit is untouched; the well makes room for it on a phone. */
+      .open-link { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 6px; background: var(--sbp-panel); color: var(--sbp-text); font-size: 13px; text-decoration: none; white-space: nowrap; }
       .open-link:hover { border-color: var(--sbp-accent); }
       .open-link .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
-      @media (max-width: 640px) { .fit { padding-top: 44px; } .open-link { left: auto; right: 0; top: -44px; } }
+      @media (max-width: 640px) { .fit { padding-top: 56px; } }
       /* Laid out at the full width, then scaled into the box. */
       .fit .stage.is-scaled { width: calc(100% / var(--fit-scale)); transform: scale(var(--fit-scale)); transform-origin: 0 0; }
       .stage { padding: 10px; }
@@ -76,9 +77,9 @@ export class SbPanelRemote extends LitElement {
       textarea { min-height: 380px; margin-top: 10px; }
       .layout-content { min-width: 0; }
       .layout-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 380px); gap: 20px; align-items: start; }
-      .preview { position: sticky; top: calc(var(--top-dock-height, 0px) + 12px); min-width: 0; }
-      .preview .frame { max-width: none; }
-      .preview .stage { overflow: auto; }
+      /* Level with the editor's button row (.mode-tabs margin). */
+      .preview { position: sticky; top: calc(var(--top-dock-height, 0px) + 12px); min-width: 0; margin-top: 14px; }
+      .preview .stage { padding: 20px 20px 28px; overflow: auto; }
       .editor { min-width: 0; }
       .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
       .mode-tabs .doc-actions { margin-left: auto; display: flex; gap: 8px; }
@@ -86,7 +87,7 @@ export class SbPanelRemote extends LitElement {
       fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
       /* Always in flow: toggling this line's display left the editor (an inline-size container) at zero height in Chrome until the next relayout. */
       .editor .msg { margin: 8px 0 0; min-height: 17px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
-      @media (max-width: 900px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .preview .frame { max-width: 420px; } }
+      @media (max-width: 900px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .preview .well { max-width: 420px; margin: 0 auto; } }
 
     `,
   ];
@@ -378,12 +379,13 @@ export class SbPanelRemote extends LitElement {
     const scale = this._scale;
     const scaled = scale < 1 && this._natural > 0;
     return html`
-        <div class="fit" id="remote-frame">
+        ${this._banner || busy ? html`<div class="notes">
           ${this._banner ? html`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
           ${busy ? html`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
-          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div>
-            ${hub ? html`<a class="open-link" id="remote-open" href=${this.api.remoteUrl(hub.hub_id)} target="_blank" rel="noopener" @click=${this._openRemote}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiOpenInNew}></path></svg>Open</a>` : ""}
-          </div>
+        </div>` : ""}
+        <div class="fit well" id="remote-frame">
+          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : html`<div class="hint">Pick a hub above.</div>`}</div></div>
+          ${hub ? html`<a class="open-link" id="remote-open" href=${this.api.remoteUrl(hub.hub_id)} target="_blank" rel="noopener" @click=${this._openRemote}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiOpenInNew}></path></svg>Open</a>` : ""}
         </div>
         <div class="dock-probe" aria-hidden="true"></div>
     `;
@@ -392,7 +394,7 @@ export class SbPanelRemote extends LitElement {
   private _renderLayout(hub: HubView | null): TemplateResult {
     return html`
       <div class="layout-content">
-        <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save.</div>
+        <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save; its buttons do not control the hub.</div>
         <div class="layout-grid">
           <div class="editor">
             <fieldset ?disabled=${!hub || !this._loaded || this._busy}>
@@ -414,8 +416,8 @@ export class SbPanelRemote extends LitElement {
                 <button @click=${() => { const parsed = this._readDocument(); if (parsed) this._edit(parsed); }}>Update preview</button>`}
             </fieldset>
           </div>
-          <aside class="preview"><p class="hint">Preview only — buttons do not control the hub.</p>
-            <div class="frame"><div class="stage" id="stage" inert></div></div>
+          <aside class="preview">
+            <div class="well"><div class="stage" id="stage" inert></div></div>
           </aside>
         </div>
       </div>`;
