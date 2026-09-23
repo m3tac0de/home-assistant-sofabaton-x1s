@@ -938,6 +938,18 @@ Known hardcoded remote button codes:
 | `0x9B` | 155 | `DVR` |
 | `0x9C` | 156 | `PLAY` |
 | `0x9D` | 157 | `GUIDE` |
+| `0x9E` | 158 | `NUM_ENTER` |
+| `0x9F` | 159 | `NUM_0` |
+| `0xA0` | 160 | `NUM_DASH` |
+| `0xA1` | 161 | `NUM_9` |
+| `0xA2` | 162 | `NUM_8` |
+| `0xA3` | 163 | `NUM_7` |
+| `0xA4` | 164 | `NUM_6` |
+| `0xA5` | 165 | `NUM_5` |
+| `0xA6` | 166 | `NUM_4` |
+| `0xA7` | 167 | `NUM_3` |
+| `0xA8` | 168 | `NUM_2` |
+| `0xA9` | 169 | `NUM_1` |
 | `0xAE` | 174 | `UP` |
 | `0xAF` | 175 | `LEFT` |
 | `0xB0` | 176 | `OK` |
@@ -963,4 +975,6 @@ Known hardcoded remote button codes:
 
 Observed note:
 - `0x97` - `0x9D` appear only on X2 remote layouts
+- `0x9E` - `0xA9` are the X2's on-screen numeric keypad (E, 0, -, then 9 down to 1). The app binds them per device and per activity like hard buttons, and the hub returns them as ordinary 18-byte rows in the same `REQ_BUTTONS` (`0x023C`) stream (captured on a bound X2 device, 2026-09-23).
 - `0xAE` - `0xC7` are shared across X1, X1S, and X2
+- The X2 also returns rows for `0xAB`, `0xC2` and `0xC3` on devices (bound to the device's Power, Power on and Power off commands). They are not modelled and the parser drops them.

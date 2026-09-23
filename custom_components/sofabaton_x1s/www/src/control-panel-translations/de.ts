@@ -51,7 +51,7 @@ export const TOOLS_CARD_STRINGS_DE = {
       `Auf diesem Hub ist Firmware-Version ${installed} installiert. Version ${required} oder neuer ist für Funktionen der Sofabaton-Steuerzentrale erforderlich, die die Hub-Konfiguration ändern. Aktualisiere den Hub mit der Sofabaton-App. Diese Funktion wird automatisch wieder verfügbar, sobald der Hub die aktualisierte Firmware-Version meldet.`,
   },
   buttonNames: {
-    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Beenden", 0x9b: "DVR", 0x9c: "Wiedergabe", 0x9d: "Guide",
+    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Beenden", 0x9b: "DVR", 0x9c: "Wiedergabe", 0x9d: "Guide", 0x9e: "Eingabe (E)", 0x9f: "0", 0xa0: "Strich (-)", 0xa1: "9", 0xa2: "8", 0xa3: "7", 0xa4: "6", 0xa5: "5", 0xa6: "4", 0xa7: "3", 0xa8: "2", 0xa9: "1",
     0xae: "Nach oben", 0xaf: "Nach links", 0xb0: "OK", 0xb1: "Nach rechts", 0xb2: "Nach unten", 0xb3: "Zurück", 0xb4: "Home", 0xb5: "Menü",
     0xb6: "Lautstärke +", 0xb7: "Kanal +", 0xb8: "Stumm", 0xb9: "Lautstärke -", 0xba: "Kanal -", 0xbb: "Zurückspulen", 0xbc: "Pause", 0xbd: "Vorspulen",
     0xbe: "Rot", 0xbf: "Grün", 0xc0: "Gelb", 0xc1: "Blau", 0xc6: "Einschalten", 0xc7: "Ausschalten",
@@ -184,7 +184,7 @@ export const TOOLS_CARD_STRINGS_DE = {
       roleCleared: (group: string) => `${group} nicht mehr zugewiesen.`, shortcutAdded: (name: string) => `"${name}" hinzugefügt.`, shortcutRemoved: (name: string) => `"${name}" entfernt.`,
       shortcutRenamed: (oldName: string, newName: string) => `"${oldName}" in "${newName}" umbenannt.`, shortcutsReordered: "Verknüpfungen neu geordnet.",
       idleChanged: (device: string, label: string) => `Leerlaufverhalten von "${device}" → ${label}.`, commandRenamed: (oldName: string, newName: string, device: string) => `Befehl "${oldName}" auf "${device}" in "${newName}" umbenannt.`,
-      roleGroups: { volume: "Lautstärketasten", navigation: "Navigationstasten", playback: "Wiedergabetasten", channels: "Kanaltasten" },
+      roleGroups: { volume: "Lautstärketasten", navigation: "Navigationstasten", playback: "Wiedergabetasten", channels: "Kanaltasten", numpad: "Ziffernblocktasten" },
       idleShort: { 0: "nicht festgelegt", 1: "schaltet sich im Leerlauf aus", 2: "schaltet sich nie aus", 3: "bleibt eingeschaltet", 4: "wird nicht vom Hub verwaltet" },
     },
     deviceReview: {
@@ -263,7 +263,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     activityRunningSub: "Welches Gerät jede Fernbedienungstaste in dieser Aktivität steuert.", activityShortcutsTitle: "Verknüpfungen auf dem Display der Fernbedienung",
     activityShortcutsSubSortable: "Befehle und Makros auf dem Display der Fernbedienung. Ziehe den Griff, um sie neu zu ordnen.", activityShortcutsSubStatic: "Befehle und Makros auf dem Display der Fernbedienung. Verwende die Verschiebetasten, um sie neu zu ordnen.",
     activityShortcutsEmpty: "Noch keine Verknüpfungen. Füge einen Befehl oder ein Makro hinzu.", roleVolume: "Lautstärketasten steuern", roleNavigation: "Navigations- und OK-Tasten steuern", rolePlayback: "Wiedergabetasten steuern",
-    roleChannels: "Kanaltasten steuern", roleNotUsed: "Nicht verwendet", roleCustom: "Benutzerdefiniert", roleCustomized: (name: string) => `${name} (angepasst)`, roleMappedNote: (bound: number, total: number) => `${bound} von ${total} ${total === 1 ? "Taste" : "Tasten"} belegt`,
+    roleChannels: "Kanaltasten steuern", roleNumpad: "Ziffernblock steuern", roleNotUsed: "Nicht verwendet", roleCustom: "Benutzerdefiniert", roleCustomized: (name: string) => `${name} (angepasst)`, roleMappedNote: (bound: number, total: number) => `${bound} von ${total} ${total === 1 ? "Taste" : "Tasten"} belegt`,
     roleOptionNoMapping: (name: string) => `${name} — keine Tastenbelegung`, roleMenuAria: (roleLabel: string) => `Gerät auswählen für: ${roleLabel}`, roleConfirmTitle: "Benutzerdefinierte Tastenbelegung ersetzen?",
     roleConfirmBody: "Diese Gruppe enthält Tastenbelegungen, die nicht aus der Standardbelegung eines einzelnen Geräts stammen. Eine Belegung hier ersetzt sie.", roleConfirmReplace: "Ersetzen", roleConfirmCancel: "Abbrechen",
     customizeButtonsToggle: "Einzelne Tasten anpassen", bindingsViewTitle: "Einzelne Tasten", bindingsConfiguredCount: (count: number) => `${count} konfiguriert`, bindingsNoneConfigured: "Keine einzelnen Tasten angepasst",
@@ -362,7 +362,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     buttonCatalog: {
       up: "Nach oben", down: "Nach unten", left: "Nach links", right: "Nach rechts", ok: "OK", home: "Home", back: "Zurück", menu: "Menü", volumeUp: "Lautstärke +", volumeDown: "Lautstärke -",
       mute: "Stumm", channelUp: "Kanal +", channelDown: "Kanal -", rewind: "Zurückspulen", pause: "Pause", forward: "Vorspulen", red: "Rot", green: "Grün", yellow: "Gelb", blue: "Blau",
-      exit: "Beenden", dvr: "DVR", play: "Wiedergabe", guide: "Guide", navigation: "Navigation", volumeChannel: "Lautstärke & Kanal", transport: "Wiedergabe", colour: "Farbe", extra: "Extra",
+      exit: "Beenden", dvr: "DVR", play: "Wiedergabe", guide: "Guide", navigation: "Navigation", volumeChannel: "Lautstärke & Kanal", transport: "Wiedergabe", colour: "Farbe", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Strich (-)", numEnter: "Eingabe (E)", numpad: "Ziffernblock",
       unknown: (code: string) => `Taste 0x${code}`,
     },
     powerOn: "Einschalten", powerOff: "Ausschalten", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`, inputStepLabel: (device: string, input: string) => `Eingang · ${device}: ${input}`,

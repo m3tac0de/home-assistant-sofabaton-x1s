@@ -34,6 +34,23 @@ class ButtonName:
     PLAY = 0x9C
     GUIDE = 0x9D
 
+    # X2-only on-screen numeric keypad (E, 0, -, then 9 down to 1). The
+    # remote shows it behind a soft button; the app binds every key like a
+    # hard button and the hub stores them as ordinary keymap rows (bench
+    # capture of a bound device, 2026-09-23).
+    NUM_ENTER = 0x9E
+    NUM_0 = 0x9F
+    NUM_DASH = 0xA0
+    NUM_9 = 0xA1
+    NUM_8 = 0xA2
+    NUM_7 = 0xA3
+    NUM_6 = 0xA4
+    NUM_5 = 0xA5
+    NUM_4 = 0xA6
+    NUM_3 = 0xA7
+    NUM_2 = 0xA8
+    NUM_1 = 0xA9
+
     # Shared X1/X1S/X2 keys (existing)
     UP = 0xAE
     DOWN = 0xB2
@@ -64,6 +81,22 @@ BUTTONNAME_BY_CODE = {
     for k, v in ButtonName.__dict__.items()
     if isinstance(v, int) and k.isupper() and not k.startswith("_")
 }
+
+#: The X2 numeric keypad, in keypad order (1-9, 0, -, E).
+X2_NUMPAD_BUTTON_CODES = (
+    ButtonName.NUM_1,
+    ButtonName.NUM_2,
+    ButtonName.NUM_3,
+    ButtonName.NUM_4,
+    ButtonName.NUM_5,
+    ButtonName.NUM_6,
+    ButtonName.NUM_7,
+    ButtonName.NUM_8,
+    ButtonName.NUM_9,
+    ButtonName.NUM_0,
+    ButtonName.NUM_DASH,
+    ButtonName.NUM_ENTER,
+)
 
 
 # A→H requests (from client to hub)
@@ -597,6 +630,7 @@ __all__ = [
     "SYNC1",
     "ButtonName",
     "BUTTONNAME_BY_CODE",
+    "X2_NUMPAD_BUTTON_CODES",
     "DEVICE_CLASS_IR",
     "DEVICE_CLASS_BLUETOOTH",
     "DEVICE_CLASS_WIFI_HUE",

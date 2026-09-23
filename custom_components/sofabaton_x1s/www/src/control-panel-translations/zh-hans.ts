@@ -72,7 +72,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
       `此 Hub 当前固件版本为 ${installed}。要使用控制面板中修改 Hub 配置的功能，请先使用 Sofabaton 应用通过蓝牙将 Hub 固件升级至 ${required} 或更高版本。Hub 上报新固件版本后，此功能将自动恢复。`,
   },
   buttonNames: {
-    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "退出", 0x9b: "DVR", 0x9c: "播放", 0x9d: "节目指南",
+    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "退出", 0x9b: "DVR", 0x9c: "播放", 0x9d: "节目指南", 0x9e: "确认 (E)", 0x9f: "0", 0xa0: "横线 (-)", 0xa1: "9", 0xa2: "8", 0xa3: "7", 0xa4: "6", 0xa5: "5", 0xa6: "4", 0xa7: "3", 0xa8: "2", 0xa9: "1",
     0xae: "上", 0xaf: "左", 0xb0: "确定", 0xb1: "右", 0xb2: "下", 0xb3: "返回", 0xb4: "主页", 0xb5: "菜单",
     0xb6: "音量 +", 0xb7: "频道 +", 0xb8: "静音", 0xb9: "音量 -", 0xba: "频道 -", 0xbb: "快退", 0xbc: "暂停", 0xbd: "快进",
     0xbe: "红", 0xbf: "绿", 0xc0: "黄", 0xc1: "蓝", 0xc6: "开机", 0xc7: "关机",
@@ -218,7 +218,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
       shortcutRenamed: (oldName: string, newName: string) => `已将“${oldName}”重命名为“${newName}”。`, shortcutsReordered: "已调整快捷项顺序。",
       idleChanged: (device: string, label: string) => `“${device}”的闲置行为 → ${label}。`,
       commandRenamed: (oldName: string, newName: string, device: string) => `已将“${device}”上的命令“${oldName}”重命名为“${newName}”。`,
-      roleGroups: { volume: "音量按键", navigation: "导航按键", playback: "播放按键", channels: "频道按键" },
+      roleGroups: { volume: "音量按键", navigation: "导航按键", playback: "播放按键", channels: "频道按键", numpad: "数字键盘按键" },
       idleShort: { 0: "未设置", 1: "闲置时关闭", 2: "永不关闭", 3: "保持开启", 4: "不由 Hub 管理" },
     },
     deviceReview: {
@@ -305,7 +305,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     activityShortcutsSubSortable: "显示在遥控器屏幕上的命令和宏。拖动把手调整顺序。",
     activityShortcutsSubStatic: "显示在遥控器屏幕上的命令和宏。使用移动按钮调整顺序。",
     activityShortcutsEmpty: "暂无快捷项。请添加命令或宏。", roleVolume: "音量按键控制", roleNavigation: "导航和确定按键控制",
-    rolePlayback: "播放按键控制", roleChannels: "频道按键控制", roleNotUsed: "未使用", roleCustom: "自定义", roleCustomized: (name: string) => `${name}（自定义）`,
+    rolePlayback: "播放按键控制", roleChannels: "频道按键控制", roleNumpad: "数字键盘控制", roleNotUsed: "未使用", roleCustom: "自定义", roleCustomized: (name: string) => `${name}（自定义）`,
     roleMappedNote: (bound: number, total: number) => `已分配 ${bound}/${total} 个按键`, roleOptionNoMapping: (name: string) => `${name} — 无按键分配`, roleMenuAria: (roleLabel: string) => `为${roleLabel}选择设备`,
     roleConfirmTitle: "替换自定义按键设置？", roleConfirmBody: "此按键组包含并非来自单一设备默认映射的自定义分配。在此选择设备会替换这些分配。",
     roleConfirmReplace: "替换", roleConfirmCancel: "取消", customizeButtonsToggle: "自定义单个按键", bindingsViewTitle: "单个按键",
@@ -403,7 +403,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     buttonCatalog: {
       up: "上", down: "下", left: "左", right: "右", ok: "确定", home: "主页", back: "返回", menu: "菜单", volumeUp: "音量 +", volumeDown: "音量 -",
       mute: "静音", channelUp: "频道 +", channelDown: "频道 -", rewind: "快退", pause: "暂停", forward: "快进", red: "红", green: "绿", yellow: "黄", blue: "蓝",
-      exit: "退出", dvr: "DVR", play: "播放", guide: "节目指南", navigation: "导航", volumeChannel: "音量和频道", transport: "播放", colour: "彩色按键", extra: "其他",
+      exit: "退出", dvr: "DVR", play: "播放", guide: "节目指南", navigation: "导航", volumeChannel: "音量和频道", transport: "播放", colour: "彩色按键", extra: "其他", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "横线 (-)", numEnter: "确认 (E)", numpad: "数字键盘",
       unknown: (code: string) => `按键 0x${code}`,
     },
     powerOn: "开机", powerOff: "关机", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`,

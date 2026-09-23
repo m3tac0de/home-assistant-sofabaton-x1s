@@ -48,7 +48,7 @@ export const TOOLS_CARD_STRINGS_ES = {
       `Este hub tiene instalada la versión de firmware ${installed}. La versión ${required} es la versión mínima compatible con las funciones del Panel de control que modifican la configuración del hub. Actualiza el hub con la aplicación Sofabaton. Esta función volverá a estar disponible automáticamente cuando el hub comunique la versión de firmware actualizada.`,
   },
   buttonNames: {
-    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Salir", 0x9b: "DVR", 0x9c: "Reproducir", 0x9d: "Guía",
+    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Salir", 0x9b: "DVR", 0x9c: "Reproducir", 0x9d: "Guía", 0x9e: "Intro (E)", 0x9f: "0", 0xa0: "Guion (-)", 0xa1: "9", 0xa2: "8", 0xa3: "7", 0xa4: "6", 0xa5: "5", 0xa6: "4", 0xa7: "3", 0xa8: "2", 0xa9: "1",
     0xae: "Arriba", 0xaf: "Izquierda", 0xb0: "OK", 0xb1: "Derecha", 0xb2: "Abajo", 0xb3: "Atrás", 0xb4: "Inicio", 0xb5: "Menú",
     0xb6: "Vol +", 0xb7: "Canal +", 0xb8: "Silencio", 0xb9: "Vol -", 0xba: "Canal -", 0xbb: "Retroceder", 0xbc: "Pausa", 0xbd: "Avance rápido",
     0xbe: "Rojo", 0xbf: "Verde", 0xc0: "Amarillo", 0xc1: "Azul", 0xc6: "Encender", 0xc7: "Apagar",
@@ -175,7 +175,7 @@ export const TOOLS_CARD_STRINGS_ES = {
       roleCustomized: (group: string) => `${group} personalizados.`, roleCleared: (group: string) => `${group} ya no están asignados.`, shortcutAdded: (name: string) => `Se añadió «${name}».`, shortcutRemoved: (name: string) => `Se eliminó «${name}».`,
       shortcutRenamed: (oldName: string, newName: string) => `Se cambió el nombre de «${oldName}» a «${newName}».`, shortcutsReordered: "Se reordenaron los accesos directos.",
       idleChanged: (device: string, label: string) => `Comportamiento en inactividad de «${device}» → ${label}.`, commandRenamed: (oldName: string, newName: string, device: string) => `El comando «${oldName}» de «${device}» cambió de nombre a «${newName}».`,
-      roleGroups: { volume: "Botones de volumen", navigation: "Botones de navegación", playback: "Botones de reproducción", channels: "Botones de canal" },
+      roleGroups: { volume: "Botones de volumen", navigation: "Botones de navegación", playback: "Botones de reproducción", channels: "Botones de canal", numpad: "Botones del teclado numérico" },
       idleShort: { 0: "sin definir", 1: "se apaga cuando está inactivo", 2: "nunca se apaga", 3: "permanece encendido", 4: "no gestionado por el hub" },
     },
     deviceReview: {
@@ -248,7 +248,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     activityRunningSub: "Qué dispositivo controla cada botón del mando a distancia en esta actividad.", activityShortcutsTitle: "Accesos directos en la pantalla del mando a distancia",
     activityShortcutsSubSortable: "Comandos y macros mostrados en la pantalla del mando a distancia. Arrastra el tirador para reordenarlos.", activityShortcutsSubStatic: "Comandos y macros mostrados en la pantalla del mando a distancia. Usa los botones de movimiento para reordenarlos.",
     activityShortcutsEmpty: "Todavía no hay accesos directos. Añade un comando o una macro.", roleVolume: "Control de botones de volumen", roleNavigation: "Control de botones de navegación y OK", rolePlayback: "Control de botones de reproducción",
-    roleChannels: "Control de botones de canal", roleNotUsed: "No utilizado", roleCustom: "Personalizado", roleCustomized: (name: string) => `${name} (personalizado)`, roleMappedNote: (bound: number, total: number) => `${bound} de ${total} ${total === 1 ? "botón asignado" : "botones asignados"}`,
+    roleChannels: "Control de botones de canal", roleNumpad: "Control del teclado numérico", roleNotUsed: "No utilizado", roleCustom: "Personalizado", roleCustomized: (name: string) => `${name} (personalizado)`, roleMappedNote: (bound: number, total: number) => `${bound} de ${total} ${total === 1 ? "botón asignado" : "botones asignados"}`,
     roleOptionNoMapping: (name: string) => `${name} — sin asignación de botones`, roleMenuAria: (roleLabel: string) => `Elige un dispositivo para: ${roleLabel}`, roleConfirmTitle: "¿Reemplazar la configuración personalizada de botones?",
     roleConfirmBody: "Este grupo tiene asignaciones de botones que no proceden de la asignación estándar de un único dispositivo. Al asignarlo aquí se reemplazarán.", roleConfirmReplace: "Reemplazar", roleConfirmCancel: "Cancelar",
     customizeButtonsToggle: "Personalizar botones individuales", bindingsViewTitle: "Botones individuales", bindingsConfiguredCount: (count: number) => `${count} ${count === 1 ? "configurado" : "configurados"}`, bindingsNoneConfigured: "Ningún botón personalizado",
@@ -347,7 +347,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     buttonCatalog: {
       up: "Arriba", down: "Abajo", left: "Izquierda", right: "Derecha", ok: "OK", home: "Inicio", back: "Atrás", menu: "Menú", volumeUp: "Volumen +", volumeDown: "Volumen -", mute: "Silencio",
       channelUp: "Canal +", channelDown: "Canal -", rewind: "Retroceder", pause: "Pausa", forward: "Avance rápido", red: "Rojo", green: "Verde", yellow: "Amarillo", blue: "Azul",
-      exit: "Salir", dvr: "DVR", play: "Reproducir", guide: "Guía", navigation: "Navegación", volumeChannel: "Volumen y canal", transport: "Reproducción", colour: "Color", extra: "Extra",
+      exit: "Salir", dvr: "DVR", play: "Reproducir", guide: "Guía", navigation: "Navegación", volumeChannel: "Volumen y canal", transport: "Reproducción", colour: "Color", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Guion (-)", numEnter: "Intro (E)", numpad: "Teclado numérico",
       unknown: (code: string) => `Botón 0x${code}`,
     },
     powerOn: "Encender", powerOff: "Apagar", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`, inputStepLabel: (device: string, input: string) => `Entrada · ${device}: ${input}`,

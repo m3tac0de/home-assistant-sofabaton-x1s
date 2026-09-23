@@ -1794,6 +1794,18 @@ var TOOLS_CARD_STRINGS_EN = {
     155: "DVR",
     156: "Play",
     157: "Guide",
+    158: "Enter (E)",
+    159: "0",
+    160: "Dash (-)",
+    161: "9",
+    162: "8",
+    163: "7",
+    164: "6",
+    165: "5",
+    166: "4",
+    167: "3",
+    168: "2",
+    169: "1",
     174: "Up",
     175: "Left",
     176: "OK",
@@ -2123,7 +2135,8 @@ var TOOLS_CARD_STRINGS_EN = {
         volume: "Volume buttons",
         navigation: "Navigation buttons",
         playback: "Playback buttons",
-        channels: "Channel buttons"
+        channels: "Channel buttons",
+        numpad: "Number pad buttons"
       },
       idleShort: {
         0: "not set",
@@ -2362,6 +2375,7 @@ var TOOLS_CARD_STRINGS_EN = {
     roleNavigation: "Navigation and OK control",
     rolePlayback: "Playback buttons control",
     roleChannels: "Channel buttons control",
+    roleNumpad: "Number pad control",
     roleNotUsed: "Not used",
     roleCustom: "Custom",
     roleCustomized: (name) => `${name} (customized)`,
@@ -2536,11 +2550,24 @@ var TOOLS_CARD_STRINGS_EN = {
       dvr: "DVR",
       play: "Play",
       guide: "Guide",
+      num0: "0",
+      num1: "1",
+      num2: "2",
+      num3: "3",
+      num4: "4",
+      num5: "5",
+      num6: "6",
+      num7: "7",
+      num8: "8",
+      num9: "9",
+      numDash: "Dash (-)",
+      numEnter: "Enter (E)",
       navigation: "Navigation",
       volumeChannel: "Volume & channel",
       transport: "Playback",
       colour: "Color",
       extra: "Extra",
+      numpad: "Number pad",
       unknown: (code) => `Button 0x${code}`
     },
     powerOn: "Power on",
@@ -7603,7 +7630,8 @@ var ROLE_ICONS = {
   volume: "mdi:volume-high",
   navigation: "mdi:gamepad-round-outline",
   playback: "mdi:play-pause",
-  channels: "mdi:pound"
+  channels: "mdi:pound",
+  numpad: "mdi:dialpad"
 };
 function roleLabel(group) {
   switch (group) {
@@ -7615,6 +7643,8 @@ function roleLabel(group) {
       return S3.rolePlayback;
     case "channels":
       return S3.roleChannels;
+    case "numpad":
+      return S3.roleNumpad;
   }
 }
 function roleTriggerLabel(role) {
@@ -9877,14 +9907,31 @@ function x2ExtraButtonCatalog() {
     { code: 157, name: S5.guide, group: S5.extra }
   ];
 }
+function x2NumpadButtonCatalog() {
+  const S5 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 169, name: S5.num1, group: S5.numpad },
+    { code: 168, name: S5.num2, group: S5.numpad },
+    { code: 167, name: S5.num3, group: S5.numpad },
+    { code: 166, name: S5.num4, group: S5.numpad },
+    { code: 165, name: S5.num5, group: S5.numpad },
+    { code: 164, name: S5.num6, group: S5.numpad },
+    { code: 163, name: S5.num7, group: S5.numpad },
+    { code: 162, name: S5.num8, group: S5.numpad },
+    { code: 161, name: S5.num9, group: S5.numpad },
+    { code: 159, name: S5.num0, group: S5.numpad },
+    { code: 160, name: S5.numDash, group: S5.numpad },
+    { code: 158, name: S5.numEnter, group: S5.numpad }
+  ];
+}
 function bundleButtonCatalog(bundle) {
   if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
-    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()];
+    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()];
   }
   return sharedButtonCatalog();
 }
 function buttonName2(code) {
-  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()].find((entry) => entry.code === Number(code));
+  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()].find((entry) => entry.code === Number(code));
   return known?.name ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
 }
 function deviceNameFor(bundle, deviceId) {
@@ -10058,13 +10105,15 @@ var ACTIVITY_ROLE_GROUPS = [
   "volume",
   "navigation",
   "playback",
-  "channels"
+  "channels",
+  "numpad"
 ];
 var ROLE_GROUP_BUTTON_IDS = {
   volume: [182, 185, 184],
   navigation: [174, 178, 175, 177, 176, 179, 180, 181],
   playback: [156, 188, 187, 189],
-  channels: [183, 186]
+  channels: [183, 186],
+  numpad: [169, 168, 167, 166, 165, 164, 163, 162, 161, 159, 160, 158]
 };
 function roleGroupButtons(bundle, group) {
   const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
@@ -10085,7 +10134,7 @@ function roleMappableButtonCount(bundle, deviceId, group) {
 }
 function activityRoleAssignments(bundle, activityId) {
   const activity = findBundleActivity(bundle, activityId);
-  return ACTIVITY_ROLE_GROUPS.map((group) => {
+  return ACTIVITY_ROLE_GROUPS.filter((group) => roleGroupButtons(bundle, group).length > 0).map((group) => {
     const buttons = roleGroupButtons(bundle, group);
     const totalCount = buttons.length;
     const groupSet = new Set(buttons);

@@ -1212,7 +1212,13 @@ class KeymapHandler(BaseFrameHandler):
                 hub_version=proxy.hub_version,
             )
             for act_lo, row_stream, row_count in completed:
-                proxy.state.replace_keymap_rows(act_lo, row_stream)
+                dropped = proxy.state.replace_keymap_rows(act_lo, row_stream)
+                if dropped:
+                    proxy._log.debug(
+                        "[KEYMAP] act=0x%02X dropped unmodelled rows: %s",
+                        act_lo,
+                        ", ".join(f"0x{c:02X}" for c in dropped),
+                    )
                 keys = [
                     f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
                     for c in sorted(proxy.state.buttons.get(act_lo, set()))

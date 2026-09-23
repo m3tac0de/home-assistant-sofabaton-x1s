@@ -562,7 +562,7 @@ function bindingBundle() {
 
 test("bundleButtonCatalog adapts to hub model", () => {
   assert.equal(bundleButtonCatalog({ ...bindingBundle(), hub: { version: "X1S" } }).length, 20);
-  assert.equal(bundleButtonCatalog(bindingBundle()).length, 27); // X2 adds 7 extended keys
+  assert.equal(bundleButtonCatalog(bindingBundle()).length, 39); // X2 adds 7 extended keys + the 12-key number pad
 });
 
 test("activityButtonBindingItems resolves labels and long-press, sorted by button id", () => {
@@ -1333,8 +1333,38 @@ test("activityRoleAssignments reports unused groups with model-aware totals", ()
     ["playback", "unused", 3],
     ["channels", "unused", 2],
   ]);
-  // X2 exposes the Play key, growing the playback group to 4.
+  // X2 exposes the Play key, growing the playback group to 4, and adds the
+  // number pad as a fifth group; X1/X1S never list it.
   assert.equal(roleFor(roleBundle("X2"), "playback").totalCount, 4);
+  assert.deepEqual(
+    activityRoleAssignments(roleBundle("X2"), 101).map((r) => [r.group, r.totalCount]),
+    [["volume", 3], ["navigation", 8], ["playback", 4], ["channels", 2], ["numpad", 12]],
+  );
+});
+
+test("numpad role copies a device's digit bindings on X2", () => {
+  const bundle = roleBundle("X2");
+  bundle.devices.push({
+    device: { device_id: 11, name: "AVC" },
+    commands: [{ command_id: 4, name: "0" }, { command_id: 5, name: "1" }, { command_id: 118, name: "Ok/select" }],
+    button_bindings: [
+      { button_id: 0x9F, command_id: 4 },
+      { button_id: 0xA9, command_id: 5 },
+      { button_id: 0x9E, command_id: 118 },
+    ],
+  } as never);
+  assert.equal(roleMappableButtonCount(bundle, 11, "numpad"), 3);
+  const next = setActivityRoleDevice(bundle, 101, "numpad", 11);
+  const rows = next.activities[0].button_bindings!;
+  assert.deepEqual(
+    rows.map((r) => [r.button_id, r.device_id, r.command_id, r.button_name]),
+    // Rows are kept sorted by button id.
+    [[0x9E, 11, 118, "Enter (E)"], [0x9F, 11, 4, "0"], [0xA9, 11, 5, "1"]],
+  );
+  const role = activityRoleAssignments(next, 101).find((r) => r.group === "numpad")!;
+  assert.equal(role.state, "device");
+  assert.equal(role.boundCount, 3);
+  assert.equal(role.totalCount, 12);
 });
 
 test("setActivityRoleDevice copies the device-mode mapping, long press included", () => {

@@ -7602,6 +7602,7 @@ var mdiCurtainsClosed = "M23 3H1V1H23V3M2 22H11V4H2V22M22 4H13V22H22V4Z";
 var mdiDatabaseImportOutline = "M8.84 12L3.92 16.92L2.5 15.5L5 13H0V11H5L2.5 8.5L3.92 7.08L8.84 12M12 3C8.59 3 5.68 4.07 4.53 5.57L5 6L6.03 7.07C6 7.05 6 7 6 7C6 6.5 8.13 5 12 5S18 6.5 18 7 15.87 9 12 9C9.38 9 7.58 8.31 6.68 7.72L9.8 10.84C10.5 10.94 11.24 11 12 11C14.39 11 16.53 10.47 18 9.64V12.45C16.7 13.4 14.42 14 12 14C11.04 14 10.1 13.9 9.24 13.73L7.59 15.37C8.91 15.77 10.41 16 12 16C14.28 16 16.39 15.55 18 14.77V17C18 17.5 15.87 19 12 19S6 17.5 6 17V16.96L5 18L4.54 18.43C5.69 19.93 8.6 21 12 21C16.41 21 20 19.21 20 17V7C20 4.79 16.42 3 12 3Z";
 var mdiDatabaseRefreshOutline = "M6 12.45V9.64C7.47 10.47 9.61 11 12 11S16.53 10.47 18 9.64V12.03C18.17 12 18.33 12 18.5 12C19 12 19.5 12.07 20 12.18V7C20 4.79 16.42 3 12 3S4 4.79 4 7V17C4 19.21 7.59 21 12 21C12.17 21 12.33 21 12.5 21C12.24 20.37 12.09 19.7 12.03 19L12 19C8.13 19 6 17.5 6 17V14.77C7.61 15.55 9.72 16 12 16C12.17 16 12.34 16 12.5 16C12.85 15.18 13.34 14.46 13.95 13.86C13.32 13.95 12.67 14 12 14C9.58 14 7.3 13.4 6 12.45M12 5C15.87 5 18 6.5 18 7S15.87 9 12 9 6 7.5 6 7 8.13 5 12 5M18 18.5L19.77 16.73C19.32 16.28 18.69 16 18 16C16.62 16 15.5 17.12 15.5 18.5S16.62 21 18 21C18.82 21 19.54 20.61 20 20H21.71C21.12 21.47 19.68 22.5 18 22.5C15.79 22.5 14 20.71 14 18.5S15.79 14.5 18 14.5C19.11 14.5 20.11 14.95 20.83 15.67L22 14.5V18.5H18Z";
 var mdiDesktopTower = "M8,2H16A2,2 0 0,1 18,4V20A2,2 0 0,1 16,22H8A2,2 0 0,1 6,20V4A2,2 0 0,1 8,2M8,4V6H16V4H8M16,8H8V10H16V8M16,18H14V20H16V18Z";
+var mdiDialpad = "M12,19A2,2 0 0,0 10,21A2,2 0 0,0 12,23A2,2 0 0,0 14,21A2,2 0 0,0 12,19M6,1A2,2 0 0,0 4,3A2,2 0 0,0 6,5A2,2 0 0,0 8,3A2,2 0 0,0 6,1M6,7A2,2 0 0,0 4,9A2,2 0 0,0 6,11A2,2 0 0,0 8,9A2,2 0 0,0 6,7M6,13A2,2 0 0,0 4,15A2,2 0 0,0 6,17A2,2 0 0,0 8,15A2,2 0 0,0 6,13M18,5A2,2 0 0,0 20,3A2,2 0 0,0 18,1A2,2 0 0,0 16,3A2,2 0 0,0 18,5M12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17A2,2 0 0,0 14,15A2,2 0 0,0 12,13M18,13A2,2 0 0,0 16,15A2,2 0 0,0 18,17A2,2 0 0,0 20,15A2,2 0 0,0 18,13M18,7A2,2 0 0,0 16,9A2,2 0 0,0 18,11A2,2 0 0,0 20,9A2,2 0 0,0 18,7M12,7A2,2 0 0,0 10,9A2,2 0 0,0 12,11A2,2 0 0,0 14,9A2,2 0 0,0 12,7M12,1A2,2 0 0,0 10,3A2,2 0 0,0 12,5A2,2 0 0,0 14,3A2,2 0 0,0 12,1Z";
 var mdiDisc = "M12,14C10.89,14 10,13.1 10,12C10,10.89 10.89,10 12,10C13.11,10 14,10.89 14,12A2,2 0 0,1 12,14M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiDiscPlayer = "M14.5,10.37C15.54,10.37 16.38,9.53 16.38,8.5C16.38,7.46 15.54,6.63 14.5,6.63C13.46,6.63 12.63,7.46 12.63,8.5A1.87,1.87 0 0,0 14.5,10.37M14.5,1A7.5,7.5 0 0,1 22,8.5C22,10.67 21.08,12.63 19.6,14H9.4C7.93,12.63 7,10.67 7,8.5C7,4.35 10.36,1 14.5,1M6,21V22H4V21H2V15H22V21H20V22H18V21H6M4,18V19H13V18H4M15,17V19H17V17H15M19,17A1,1 0 0,0 18,18A1,1 0 0,0 19,19A1,1 0 0,0 20,18A1,1 0 0,0 19,17Z";
 var mdiDishwasher = "M18,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V4A2,2 0 0,0 18,2M10,4A1,1 0 0,1 11,5A1,1 0 0,1 10,6A1,1 0 0,1 9,5A1,1 0 0,1 10,4M7,4A1,1 0 0,1 8,5A1,1 0 0,1 7,6A1,1 0 0,1 6,5A1,1 0 0,1 7,4M18,20H6V8H18V20M14.67,15.33C14.69,16.03 14.41,16.71 13.91,17.21C12.86,18.26 11.15,18.27 10.09,17.21C9.59,16.71 9.31,16.03 9.33,15.33C9.4,14.62 9.63,13.94 10,13.33C10.37,12.5 10.81,11.73 11.33,11L12,10C13.79,12.59 14.67,14.36 14.67,15.33";
@@ -13223,6 +13224,18 @@ var TOOLS_CARD_STRINGS_EN = {
     155: "DVR",
     156: "Play",
     157: "Guide",
+    158: "Enter (E)",
+    159: "0",
+    160: "Dash (-)",
+    161: "9",
+    162: "8",
+    163: "7",
+    164: "6",
+    165: "5",
+    166: "4",
+    167: "3",
+    168: "2",
+    169: "1",
     174: "Up",
     175: "Left",
     176: "OK",
@@ -13552,7 +13565,8 @@ var TOOLS_CARD_STRINGS_EN = {
         volume: "Volume buttons",
         navigation: "Navigation buttons",
         playback: "Playback buttons",
-        channels: "Channel buttons"
+        channels: "Channel buttons",
+        numpad: "Number pad buttons"
       },
       idleShort: {
         0: "not set",
@@ -13791,6 +13805,7 @@ var TOOLS_CARD_STRINGS_EN = {
     roleNavigation: "Navigation and OK control",
     rolePlayback: "Playback buttons control",
     roleChannels: "Channel buttons control",
+    roleNumpad: "Number pad control",
     roleNotUsed: "Not used",
     roleCustom: "Custom",
     roleCustomized: (name) => `${name} (customized)`,
@@ -13965,11 +13980,24 @@ var TOOLS_CARD_STRINGS_EN = {
       dvr: "DVR",
       play: "Play",
       guide: "Guide",
+      num0: "0",
+      num1: "1",
+      num2: "2",
+      num3: "3",
+      num4: "4",
+      num5: "5",
+      num6: "6",
+      num7: "7",
+      num8: "8",
+      num9: "9",
+      numDash: "Dash (-)",
+      numEnter: "Enter (E)",
       navigation: "Navigation",
       volumeChannel: "Volume & channel",
       transport: "Playback",
       colour: "Color",
       extra: "Extra",
+      numpad: "Number pad",
       unknown: (code) => `Button 0x${code}`
     },
     powerOn: "Power on",
@@ -16087,14 +16115,31 @@ function x2ExtraButtonCatalog() {
     { code: 157, name: S9.guide, group: S9.extra }
   ];
 }
+function x2NumpadButtonCatalog() {
+  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 169, name: S9.num1, group: S9.numpad },
+    { code: 168, name: S9.num2, group: S9.numpad },
+    { code: 167, name: S9.num3, group: S9.numpad },
+    { code: 166, name: S9.num4, group: S9.numpad },
+    { code: 165, name: S9.num5, group: S9.numpad },
+    { code: 164, name: S9.num6, group: S9.numpad },
+    { code: 163, name: S9.num7, group: S9.numpad },
+    { code: 162, name: S9.num8, group: S9.numpad },
+    { code: 161, name: S9.num9, group: S9.numpad },
+    { code: 159, name: S9.num0, group: S9.numpad },
+    { code: 160, name: S9.numDash, group: S9.numpad },
+    { code: 158, name: S9.numEnter, group: S9.numpad }
+  ];
+}
 function bundleButtonCatalog(bundle) {
   if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
-    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()];
+    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()];
   }
   return sharedButtonCatalog();
 }
 function buttonName(code) {
-  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()].find((entry) => entry.code === Number(code));
+  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()].find((entry) => entry.code === Number(code));
   return known?.name ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
 }
 function deviceNameFor(bundle, deviceId) {
@@ -16268,13 +16313,15 @@ var ACTIVITY_ROLE_GROUPS = [
   "volume",
   "navigation",
   "playback",
-  "channels"
+  "channels",
+  "numpad"
 ];
 var ROLE_GROUP_BUTTON_IDS = {
   volume: [182, 185, 184],
   navigation: [174, 178, 175, 177, 176, 179, 180, 181],
   playback: [156, 188, 187, 189],
-  channels: [183, 186]
+  channels: [183, 186],
+  numpad: [169, 168, 167, 166, 165, 164, 163, 162, 161, 159, 160, 158]
 };
 function roleGroupButtons(bundle, group) {
   const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
@@ -16295,7 +16342,7 @@ function roleMappableButtonCount(bundle, deviceId, group) {
 }
 function activityRoleAssignments(bundle, activityId) {
   const activity = findBundleActivity(bundle, activityId);
-  return ACTIVITY_ROLE_GROUPS.map((group) => {
+  return ACTIVITY_ROLE_GROUPS.filter((group) => roleGroupButtons(bundle, group).length > 0).map((group) => {
     const buttons = roleGroupButtons(bundle, group);
     const totalCount = buttons.length;
     const groupSet = new Set(buttons);
@@ -19206,7 +19253,8 @@ var ROLE_ICONS = {
   volume: mdiVolumeHigh,
   navigation: mdiGamepadRoundOutline,
   playback: mdiPlayPause,
-  channels: mdiPound
+  channels: mdiPound,
+  numpad: mdiDialpad
 };
 function roleLabel(group) {
   switch (group) {
@@ -19218,6 +19266,8 @@ function roleLabel(group) {
       return B2.rolePlayback;
     case "channels":
       return B2.roleChannels;
+    case "numpad":
+      return B2.roleNumpad;
   }
 }
 function roleTriggerLabel(role) {

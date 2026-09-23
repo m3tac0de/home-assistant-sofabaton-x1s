@@ -49,7 +49,7 @@ export const TOOLS_CARD_STRINGS_FR = {
       `Ce hub utilise la version ${installed} du firmware. La version ${required} ou ultérieure est requise pour les fonctions du panneau de contrôle qui modifient la configuration du hub. Mettez à jour le hub à l’aide de l’application Sofabaton. Cette fonction sera de nouveau disponible automatiquement lorsque le hub aura signalé la version mise à jour du firmware.`,
   },
   buttonNames: {
-    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Quitter", 0x9b: "DVR", 0x9c: "Lecture", 0x9d: "Guide",
+    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Quitter", 0x9b: "DVR", 0x9c: "Lecture", 0x9d: "Guide", 0x9e: "Entrée (E)", 0x9f: "0", 0xa0: "Tiret (-)", 0xa1: "9", 0xa2: "8", 0xa3: "7", 0xa4: "6", 0xa5: "5", 0xa6: "4", 0xa7: "3", 0xa8: "2", 0xa9: "1",
     0xae: "Haut", 0xaf: "Gauche", 0xb0: "OK", 0xb1: "Droite", 0xb2: "Bas", 0xb3: "Retour", 0xb4: "Accueil", 0xb5: "Menu",
     0xb6: "Volume +", 0xb7: "Chaîne +", 0xb8: "Muet", 0xb9: "Volume -", 0xba: "Chaîne -", 0xbb: "Retour rapide", 0xbc: "Pause", 0xbd: "Avance rapide",
     0xbe: "Rouge", 0xbf: "Vert", 0xc0: "Jaune", 0xc1: "Bleu", 0xc6: "Allumer", 0xc7: "Éteindre",
@@ -178,7 +178,7 @@ export const TOOLS_CARD_STRINGS_FR = {
       roleCleared: (group: string) => `${group} ne sont plus attribuées.`, shortcutAdded: (name: string) => `« ${name} » ajouté.`, shortcutRemoved: (name: string) => `« ${name} » supprimé.`,
       shortcutRenamed: (oldName: string, newName: string) => `« ${oldName} » renommé en « ${newName} ».`, shortcutsReordered: "Raccourcis réorganisés.",
       idleChanged: (device: string, label: string) => `Comportement d’inactivité de « ${device} » → ${label}.`, commandRenamed: (oldName: string, newName: string, device: string) => `Commande « ${oldName} » renommée en « ${newName} » sur « ${device} ».`,
-      roleGroups: { volume: "Touches de volume", navigation: "Touches de navigation", playback: "Touches de lecture", channels: "Touches de chaîne" },
+      roleGroups: { volume: "Touches de volume", navigation: "Touches de navigation", playback: "Touches de lecture", channels: "Touches de chaîne", numpad: "Touches du pavé numérique" },
       idleShort: { 0: "non défini", 1: "s’éteint en cas d’inactivité", 2: "ne s’éteint jamais", 3: "reste allumé", 4: "non géré par le hub" },
     },
     deviceReview: {
@@ -251,7 +251,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     activityRunningSub: "L’appareil que contrôle chaque touche de la télécommande dans cette activité.", activityShortcutsTitle: "Raccourcis sur l’écran de la télécommande",
     activityShortcutsSubSortable: "Commandes et macros affichées sur l’écran de la télécommande. Faites glisser la poignée pour les réorganiser.", activityShortcutsSubStatic: "Commandes et macros affichées sur l’écran de la télécommande. Utilisez les boutons de déplacement pour les réorganiser.",
     activityShortcutsEmpty: "Aucun raccourci pour le moment. Ajoutez une commande ou une macro.", roleVolume: "Les touches de volume contrôlent", roleNavigation: "Les touches de navigation et OK contrôlent", rolePlayback: "Les touches de lecture contrôlent",
-    roleChannels: "Les touches de chaîne contrôlent", roleNotUsed: "Non utilisé", roleCustom: "Personnalisé", roleCustomized: (name: string) => `${name} (personnalisé)`, roleMappedNote: (bound: number, total: number) => `${bound} ${bound > 1 ? "touches attribuées" : "touche attribuée"} sur ${total}`,
+    roleChannels: "Les touches de chaîne contrôlent", roleNumpad: "Le pavé numérique contrôle", roleNotUsed: "Non utilisé", roleCustom: "Personnalisé", roleCustomized: (name: string) => `${name} (personnalisé)`, roleMappedNote: (bound: number, total: number) => `${bound} ${bound > 1 ? "touches attribuées" : "touche attribuée"} sur ${total}`,
     roleOptionNoMapping: (name: string) => `${name} — aucune correspondance de touches`, roleMenuAria: (roleLabel: string) => `Choisir un appareil pour : ${roleLabel}`, roleConfirmTitle: "Remplacer la configuration personnalisée des touches ?",
     roleConfirmBody: "Ce groupe contient des attributions de touches qui ne proviennent pas de la correspondance standard d’un seul appareil. Une attribution ici les remplacera.", roleConfirmReplace: "Remplacer", roleConfirmCancel: "Annuler",
     customizeButtonsToggle: "Personnaliser les touches individuellement", bindingsViewTitle: "Touches individuelles", bindingsConfiguredCount: (count: number) => `${count} ${count > 1 ? "configurées" : "configurée"}`, bindingsNoneConfigured: "Aucune touche personnalisée",
@@ -350,7 +350,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     buttonCatalog: {
       up: "Haut", down: "Bas", left: "Gauche", right: "Droite", ok: "OK", home: "Accueil", back: "Retour", menu: "Menu", volumeUp: "Volume +", volumeDown: "Volume -", mute: "Muet",
       channelUp: "Chaîne +", channelDown: "Chaîne -", rewind: "Retour rapide", pause: "Pause", forward: "Avance rapide", red: "Rouge", green: "Vert", yellow: "Jaune", blue: "Bleu",
-      exit: "Quitter", dvr: "DVR", play: "Lecture", guide: "Guide", navigation: "Navigation", volumeChannel: "Volume et chaînes", transport: "Lecture", colour: "Couleur", extra: "Extra",
+      exit: "Quitter", dvr: "DVR", play: "Lecture", guide: "Guide", navigation: "Navigation", volumeChannel: "Volume et chaînes", transport: "Lecture", colour: "Couleur", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Tiret (-)", numEnter: "Entrée (E)", numpad: "Pavé numérique",
       unknown: (code: string) => `Touche 0x${code}`,
     },
     powerOn: "Allumer", powerOff: "Éteindre", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`, inputStepLabel: (device: string, input: string) => `Entrée · ${device} : ${input}`,
