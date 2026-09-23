@@ -141,6 +141,8 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     openOnCurrentActivity: "当前活动",
     macrosFavoritesAsRows: "将宏/收藏显示为行",
     commandsAsRows: "将命令显示为行",
+    favoriteDeviceNames: "显示设备名称",
+    rowOptions: (groupLabel: string) => `${groupLabel}选项`,
     visibleRows: "可见行",
     moveGroupUp: (groupLabel: string) => `将${groupLabel}上移`,
     moveGroupDown: (groupLabel: string) => `将${groupLabel}下移`,

@@ -823,6 +823,43 @@ export const REMOTE_CARD_CSS = `
         text-overflow: ellipsis;
       }
 
+      /* Favorites device name band (show_favorite_device_names): a narrow
+         strip along the top edge, clipped by the card's radius; the content
+         below recentres in the remaining height. */
+      .drawer-btn {
+        --sb-device-band-h: 14px;
+      }
+      .drawer-btn__device {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--sb-device-band-h);
+        padding: 0 6px;
+        box-sizing: border-box;
+        background: color-mix(in srgb, var(--sb-key-label-color, var(--primary-color)) 16%, transparent);
+        color: color-mix(in srgb, var(--primary-text-color) 80%, transparent);
+        font-size: 9px;
+        font-weight: 500;
+        line-height: var(--sb-device-band-h);
+        letter-spacing: 0.02em;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+      .drawer-btn--custom .drawer-btn__device {
+        padding: 0 12px;
+        text-align: start;
+      }
+      .drawer-btn--banded .drawer-btn__inner--stack {
+        padding-top: calc(var(--sb-device-band-h) + 2px);
+      }
+      .drawer-btn--banded .drawer-btn__inner--row {
+        padding-top: var(--sb-device-band-h);
+      }
+
 
       /* Active state for buttons */
       .macroFavoritesButton.active-tab {
@@ -1178,6 +1215,18 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-layout-switch-item.is-disabled { opacity: 0.45; pointer-events: none; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          /* Row options ("..." beside the drag handle): the panel drops out
+             inside the row, spanning its grid, like the Shortcuts slot
+             panel, so ha-sortable drags it along. While any row has one, every
+             row reserves the button's slot so the switch columns stay aligned. */
+          .sb-row-tail { display: flex; align-items: center; gap: 6px; justify-self: end; }
+          .sb-row-menu-spacer { width: 32px; height: 32px; flex: 0 0 auto; }
+          .sb-row-menu-btn { color: var(--secondary-text-color); }
+          .sb-row-menu-btn ha-icon { --mdc-icon-size: 20px; }
+          .sb-row-menu-btn.is-open { border-color: var(--primary-color); color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
+          .sb-row-menu-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          /* These labels explain the switch next to them — translations can be long, so wrap instead of ellipsing. */
+          .sb-row-menu-panel .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
           .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
           /* This label explains the switch next to it — translations can be long, so wrap instead of ellipsing. */
           .sb-mf-rows-row .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }

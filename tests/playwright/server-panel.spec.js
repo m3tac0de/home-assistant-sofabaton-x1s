@@ -1023,9 +1023,20 @@ test.describe("control panel, views", () => {
     await selectRemoteLayout(layout, "device:1");
     await expect(editor.locator('[data-group="dpad"] input')).not.toBeChecked();
     await editor.locator('[data-group="dpad"] input').check();
-    await editor.locator(".slots button").first().click();
-    await editor.getByLabel("Shortcut icon", { exact: true }).fill("mdi:home");
-    await editor.getByLabel("Shortcut command", { exact: true }).selectOption("9");
+    // Shortcuts mirror the HA editor: the three slot buttons sit on the row, the open slot drops its panel out of the row.
+    const shortcutsRow = editor.locator('[data-group="shortcuts"]');
+    await expect(shortcutsRow.locator(".shortcut-slot")).toHaveCount(3);
+    await shortcutsRow.getByRole("button", { name: "Left shortcut", exact: true }).click();
+    await expect(shortcutsRow.locator(".shortcut-panel")).toHaveCount(1);
+    const iconField = shortcutsRow.getByRole("combobox", { name: "Icon", exact: true });
+    await iconField.fill("hom");
+    await expect(shortcutsRow.locator(".icon-option").first()).toHaveText("mdi:home");
+    await shortcutsRow.locator(".icon-option").first().click();
+    await expect(iconField).toHaveValue("mdi:home");
+    const commandSelect = shortcutsRow.locator("ha-select.shortcut-command");
+    await expect(commandSelect.locator(".value")).toHaveText("");
+    await selectRemoteLayout(commandSelect, "9");
+    await expect(shortcutsRow.locator(".shortcut-slot.is-configured")).toHaveCount(1);
     await page.click("#remote-save");
     await expect(page.locator("#remote-status")).toContainText("saved");
     expect(state.document).toMatchObject({
@@ -1039,6 +1050,13 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-status")).toContainText("saved");
     expect(state.document.device_mode.layouts["1"]).toBeUndefined();
     expect(state.document.device_mode.shortcuts["1"].left.command_id).toBe(9);
+    // The panel's Reset clears the stored slot and stays open for a new pick.
+    await shortcutsRow.getByRole("button", { name: "Reset", exact: true }).click();
+    await expect(shortcutsRow.locator(".shortcut-panel")).toHaveCount(1);
+    await expect(shortcutsRow.locator(".shortcut-slot.is-configured")).toHaveCount(0);
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    expect(state.document.device_mode.shortcuts).toBeUndefined();
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: shot(testInfo, "remote-device-layout"), fullPage: true });
   });
@@ -1088,9 +1106,23 @@ test.describe("control panel, views", () => {
     await editor.locator("summary").filter({ hasText: "Layout options" }).press("Enter");
     await expect(editor.locator("details[open]")).toHaveCount(1);
     await expect(general).not.toHaveAttribute("open", "");
+    // Device names live in the Macros/Favorites row's "..." panel; rows mode
+    // keeps its own control under the list.
+    await expect(editor.locator(".rows-control").getByRole("switch", { name: "Macros/Favorites as rows", exact: true })).toHaveCount(1);
+    const menu = editor.getByRole("button", { name: "Macros/Favorites options" });
+    await expect(editor.locator(".menu-btn")).toHaveCount(1);
+    await menu.click();
+    await expect(menu).toHaveAttribute("aria-expanded", "true");
+    await editor.getByRole("switch", { name: "Show device names", exact: true }).check();
+    await expect(editor.getByRole("switch", { name: "Show device names", exact: true })).toBeChecked();
     const increment = editor.getByRole("button", { name: "More visible rows" });
     await expect(increment).toBeDisabled();
     await editor.getByRole("switch", { name: "Macros/Favorites as rows", exact: true }).check();
+    // The combined row splits in two; the panel follows onto the Favorites
+    // row, and the Macros row has no menu (macros carry no device).
+    await expect(editor.getByRole("button", { name: "Favorites row options" })).toHaveAttribute("aria-expanded", "true");
+    await expect(editor.getByRole("button", { name: "Macros row options" })).toHaveCount(0);
+    await expect(editor.getByRole("switch", { name: "Show device names", exact: true })).toBeChecked();
     await expect(increment).toBeEnabled();
     await increment.click();
     await expect(editor.locator(".stepper output")).toHaveText("3");

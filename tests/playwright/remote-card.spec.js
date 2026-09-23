@@ -381,6 +381,47 @@ test.describe("remote card playwright harness", () => {
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-favorites-open.png");
   });
 
+  test("favorites carry their device name in a top band, in the drawer and as rows", async ({ page }) => {
+    await mountCard(page, "favorite_device_names");
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    await expect(page.locator(".mf-overlay--favorites")).toHaveClass(/open/);
+    const bands = page.locator(".mf-overlay--favorites .drawer-btn__device");
+    await expect(bands).toHaveText([
+      "Living Room Home Theater Receiver Zone 2 (Denon AVR-X3800H)",
+      "Living Room Home Theater Receiver Zone 2 (Denon AVR-X3800H)",
+      "Television",
+      "Soundbar",
+    ]);
+    // Device 9 is not in the devices attribute: that favorite has no band.
+    await expect(page.locator(".mf-overlay--favorites .drawer-btn:not(.drawer-btn--banded) .name")).toHaveText(["Disney+"]);
+    const geometry = await bands.first().evaluate((band) => {
+      const button = band.closest(".drawer-btn").getBoundingClientRect();
+      const box = band.getBoundingClientRect();
+      const name = band.parentElement.querySelector(".name").getBoundingClientRect();
+      return {
+        ellipsed: band.scrollWidth > band.clientWidth,
+        atTop: Math.abs(box.top - button.top) < 1.5,
+        fullWidth: Math.abs(box.width - button.width) < 3,
+        nameBelow: name.top >= box.bottom,
+        nameInside: name.bottom <= button.bottom,
+      };
+    });
+    expect(geometry).toEqual({ ellipsed: true, atTop: true, fullWidth: true, nameBelow: true, nameInside: true });
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-favorites-device-names.png");
+
+    await mountCard(page, "favorite_device_names", {
+      layouts: { default: { show_favorite_device_names: true, mf_as_rows: true } },
+    });
+    await expect(page.locator(".inline-drawer-row--favorites .drawer-btn__device")).toHaveCount(4);
+    await expect(page.locator(".inline-drawer-row--macros .drawer-btn__device")).toHaveCount(0);
+
+    // Off by default: the same data renders no band.
+    await mountCard(page, "favorite_device_names", { layouts: { default: {} } });
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    await expect(page.locator(".mf-overlay--favorites .drawer-btn")).toHaveCount(5);
+    await expect(page.locator(".drawer-btn__device")).toHaveCount(0);
+  });
+
   test("captures loading visual baseline", async ({ page }) => {
     await mountCard(page, "loading");
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-loading.png");

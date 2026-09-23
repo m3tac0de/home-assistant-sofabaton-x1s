@@ -150,6 +150,8 @@ export const REMOTE_CARD_STRINGS_ES = {
     openOnCurrentActivity: "Actividad actual",
     macrosFavoritesAsRows: "Macros/favoritos como filas",
     commandsAsRows: "Comandos como filas",
+    favoriteDeviceNames: "Mostrar nombres de dispositivos",
+    rowOptions: (groupLabel: string) => `Opciones de ${groupLabel}`,
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel: string) => `Mover ${groupLabel} hacia arriba`,
     moveGroupDown: (groupLabel: string) => `Mover ${groupLabel} hacia abajo`,

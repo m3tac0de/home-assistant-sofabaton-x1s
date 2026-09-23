@@ -1417,7 +1417,8 @@ var LAYOUT_KEYS = [
   "show_favorites_button",
   "show_device_toggle",
   "mf_as_rows",
-  "mf_row_visible_rows"
+  "mf_row_visible_rows",
+  "show_favorite_device_names"
 ];
 var DEVICE_LAYOUT_PREFIX = "device:";
 function deviceLayoutKey(deviceId) {
@@ -1601,6 +1602,9 @@ function favoritesButtonEnabled(layout) {
     return layout.show_favorites_button;
   }
   return true;
+}
+function favoriteDeviceNamesEnabled(layout) {
+  return layout?.show_favorite_device_names === true;
 }
 function mfAsRows(layout) {
   return layout?.mf_as_rows === true;
@@ -1880,6 +1884,8 @@ var REMOTE_CARD_STRINGS_EN = {
     openOnCurrentActivity: "Current activity",
     macrosFavoritesAsRows: "Macros/Favorites as rows",
     commandsAsRows: "Commands as rows",
+    favoriteDeviceNames: "Show device names",
+    rowOptions: (groupLabel) => `${groupLabel} options`,
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel) => `Move ${groupLabel} up`,
     moveGroupDown: (groupLabel) => `Move ${groupLabel} down`,
@@ -2830,6 +2836,43 @@ var REMOTE_CARD_CSS = `
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      /* Favorites device name band (show_favorite_device_names): a narrow
+         strip along the top edge, clipped by the card's radius; the content
+         below recentres in the remaining height. */
+      .drawer-btn {
+        --sb-device-band-h: 14px;
+      }
+      .drawer-btn__device {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--sb-device-band-h);
+        padding: 0 6px;
+        box-sizing: border-box;
+        background: color-mix(in srgb, var(--sb-key-label-color, var(--primary-color)) 16%, transparent);
+        color: color-mix(in srgb, var(--primary-text-color) 80%, transparent);
+        font-size: 9px;
+        font-weight: 500;
+        line-height: var(--sb-device-band-h);
+        letter-spacing: 0.02em;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+      .drawer-btn--custom .drawer-btn__device {
+        padding: 0 12px;
+        text-align: start;
+      }
+      .drawer-btn--banded .drawer-btn__inner--stack {
+        padding-top: calc(var(--sb-device-band-h) + 2px);
+      }
+      .drawer-btn--banded .drawer-btn__inner--row {
+        padding-top: var(--sb-device-band-h);
       }
 
 
@@ -6673,11 +6716,15 @@ function customFavoriteButtonModel(favorite, fallbackDeviceId) {
 }
 
 // remote-card/src/sections/macro-favorites.ts
+function deviceBand(name) {
+  return name ? b2`<div class="drawer-btn__device" title=${name}>${name}</div>` : A;
+}
 function renderDrawerButton(params, item, type) {
   const model = drawerButtonModel(item, type, params.currentActivityId);
+  const deviceName = type === "favorites" && params.favoriteDeviceName && Number.isFinite(model.deviceId) ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn"
+      class="drawer-btn${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       ${primaryActionRef(() => {
@@ -6685,6 +6732,7 @@ function renderDrawerButton(params, item, type) {
     params.onDrawerItem({ model, itemType: type, rawItem: item });
   })}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--stack">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -6694,14 +6742,16 @@ function renderDrawerButton(params, item, type) {
 }
 function renderCustomFavoriteButton(params, favorite) {
   const model = customFavoriteButtonModel(favorite, params.currentActivityId);
+  const deviceName = params.favoriteDeviceName && !model.action && favorite.device_id != null ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn drawer-btn--custom"
+      class="drawer-btn drawer-btn--custom${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       style="grid-column: 1 / -1;"
       ${primaryActionRef(() => params.onCustomFavorite({ model, rawFavorite: favorite }))}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--row">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -7702,6 +7752,7 @@ var SofabatonRemoteCard = class extends i4 {
       favorites: derived.favorites,
       customFavorites: derived.customFavorites,
       currentActivityId: store.currentActivityId(),
+      favoriteDeviceName: favoriteDeviceNamesEnabled(layoutConfig) ? (deviceId) => store.deviceNameForId(deviceId) ?? "" : null,
       renderMacrosContent: store.activeDrawer === "macros" || this._closingDrawer === "macros",
       renderFavoritesContent: store.activeDrawer === "favorites" || this._closingDrawer === "favorites",
       containerRef: this._mfContainerRef,
@@ -9037,7 +9088,7 @@ var SbHaSelect = class extends HTMLElement {
       label: (item.textContent ?? "").trim(),
       defaultLayout: item.classList.contains("sb-option-default")
     }));
-    if (!this._options.some((option) => option.value === current)) {
+    if (current !== "" && !this._options.some((option) => option.value === current)) {
       this._value = this._options[0]?.value ?? "";
     }
     this._renderValue();
@@ -9396,6 +9447,8 @@ var REMOTE_CARD_STRINGS_AR = {
     openOnCurrentActivity: "\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u062D\u0627\u0644\u064A",
     macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
     commandsAsRows: "\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0641\u064A \u0635\u0641\u0648\u0641",
+    favoriteDeviceNames: "\u0625\u0638\u0647\u0627\u0631 \u0623\u0633\u0645\u0627\u0621 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    rowOptions: (groupLabel) => `\u062E\u064A\u0627\u0631\u0627\u062A ${groupLabel}`,
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
@@ -9612,6 +9665,8 @@ var REMOTE_CARD_STRINGS_DE = {
     openOnCurrentActivity: "Aktuelle Aktivit\xE4t",
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
     commandsAsRows: "Befehle als Zeilen",
+    favoriteDeviceNames: "Ger\xE4tenamen anzeigen",
+    rowOptions: (groupLabel) => `Optionen f\xFCr ${groupLabel}`,
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel) => `${groupLabel} nach oben verschieben`,
     moveGroupDown: (groupLabel) => `${groupLabel} nach unten verschieben`,
@@ -9807,6 +9862,8 @@ var REMOTE_CARD_STRINGS_ES = {
     openOnCurrentActivity: "Actividad actual",
     macrosFavoritesAsRows: "Macros/favoritos como filas",
     commandsAsRows: "Comandos como filas",
+    favoriteDeviceNames: "Mostrar nombres de dispositivos",
+    rowOptions: (groupLabel) => `Opciones de ${groupLabel}`,
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel) => `Mover ${groupLabel} hacia arriba`,
     moveGroupDown: (groupLabel) => `Mover ${groupLabel} hacia abajo`,
@@ -10002,6 +10059,8 @@ var REMOTE_CARD_STRINGS_FR = {
     openOnCurrentActivity: "Activit\xE9 en cours",
     macrosFavoritesAsRows: "Macros/favoris sous forme de lignes",
     commandsAsRows: "Commandes sous forme de lignes",
+    favoriteDeviceNames: "Afficher les noms des appareils",
+    rowOptions: (groupLabel) => `Options de ${groupLabel}`,
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel) => `D\xE9placer ${groupLabel} vers le haut`,
     moveGroupDown: (groupLabel) => `D\xE9placer ${groupLabel} vers le bas`,
@@ -10196,6 +10255,8 @@ var REMOTE_CARD_STRINGS_NL = {
     openOnCurrentActivity: "Huidige activiteit",
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
     commandsAsRows: "Commando's als rijen",
+    favoriteDeviceNames: "Apparaatnamen tonen",
+    rowOptions: (groupLabel) => `Opties voor ${groupLabel}`,
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel) => `Verplaats ${groupLabel} omhoog`,
     moveGroupDown: (groupLabel) => `Verplaats ${groupLabel} omlaag`,
@@ -10390,6 +10451,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     openOnCurrentActivity: "\u5F53\u524D\u6D3B\u52A8",
     macrosFavoritesAsRows: "\u5C06\u5B8F/\u6536\u85CF\u663E\u793A\u4E3A\u884C",
     commandsAsRows: "\u5C06\u547D\u4EE4\u663E\u793A\u4E3A\u884C",
+    favoriteDeviceNames: "\u663E\u793A\u8BBE\u5907\u540D\u79F0",
+    rowOptions: (groupLabel) => `${groupLabel}\u9009\u9879`,
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel) => `\u5C06${groupLabel}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel) => `\u5C06${groupLabel}\u4E0B\u79FB`,

@@ -38,6 +38,7 @@ export const LAYOUT_KEYS = [
   "show_device_toggle",
   "mf_as_rows",
   "mf_row_visible_rows",
+  "show_favorite_device_names",
 ] as const;
 
 // ---------- device-mode config (docs/internal/device-mode-plan.md §5) ----------
@@ -377,6 +378,16 @@ export function favoritesButtonEnabled(layout: Record<string, any> | null | unde
     return layout.show_favorites_button;
   }
   return true;
+}
+
+/**
+ * Favorites carry the name of the device their command targets in a band
+ * along the button's top edge. Activity side only (device layouts hold one
+ * device's own commands); names resolve from the `devices` attribute, so the
+ * band silently stays off where that attribute is absent.
+ */
+export function favoriteDeviceNamesEnabled(layout: Record<string, any> | null | undefined) {
+  return layout?.show_favorite_device_names === true;
 }
 
 export function mfAsRows(layout: Record<string, any> | null | undefined) {

@@ -10,6 +10,7 @@ import {
   selectItemTagName,
   selectValueCompat,
 } from "../remote-card-compat";
+import { MF_MENU_KEYS } from "../remote-card-editor-layout";
 import { str } from "../remote-card-strings";
 import type { HassLike } from "../remote-card-types";
 import { renderEditorExpander } from "./expander";
@@ -68,6 +69,13 @@ export interface GroupOrderSectionParams {
   onSetMedia: (enabled: boolean) => void;
   onSetDvr: (enabled: boolean) => void;
   onSetGroupEnabled: (key: string, enabled: boolean) => void;
+  /** Group-order row whose "..." options panel is open, if any. */
+  rowMenuKey: string | null;
+  onToggleRowMenu: (key: string) => void;
+  /** The `devices` attribute is there to resolve names (x1s + cache on). */
+  favoriteDeviceNamesAvailable: boolean;
+  favoriteDeviceNames: boolean;
+  onSetFavoriteDeviceNames: (enabled: boolean) => void;
   onSetMfAsRows: (enabled: boolean) => void;
   onSetMfRowVisibleRows: (value: number) => void;
   onMoveGroupByKey: (key: string, delta: number) => void;
@@ -240,6 +248,53 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
     </div>
   `;
 
+  // The "..." options on a favorites row (combined or split): device names
+  // on the favorites. Only where the names can resolve; as-rows mode stays
+  // in its own row under the list.
+  const menuAvailable = !params.isDeviceSelection && params.favoriteDeviceNamesAvailable;
+  const hasRowMenu = (key: string): boolean =>
+    menuAvailable && MF_MENU_KEYS.has(key);
+
+  const rowMenuPanel = (key: string): TemplateResult => html`
+    <div class="sb-row-menu-panel" id=${`sb-row-menu-${key}`}>
+      ${renderSwitchItem(
+        str().editor.favoriteDeviceNames,
+        params.favoriteDeviceNames,
+        params.onSetFavoriteDeviceNames,
+      )}
+    </div>
+  `;
+
+  const rowMenuButton = (key: string): TemplateResult => {
+    if (!hasRowMenu(key)) {
+      return menuAvailable
+        ? html`<div class="sb-row-menu-spacer" aria-hidden="true"></div>`
+        : html``;
+    }
+    const open = params.rowMenuKey === key;
+    const label = params.groupLabel(key);
+    return html`
+      <button
+        type="button"
+        class="sb-icon-btn sb-row-menu-btn${open ? " is-open" : ""}"
+        aria-label=${str().editor.rowOptions(label)}
+        aria-expanded=${open ? "true" : "false"}
+        aria-controls=${`sb-row-menu-${key}`}
+        @click=${(ev: Event) => {
+          stopEvent(ev);
+          params.onToggleRowMenu(key);
+        }}
+      >
+        <ha-icon icon="mdi:dots-horizontal"></ha-icon>
+      </button>
+    `;
+  };
+
+  const rowTail = (key: string, index: number): TemplateResult => html`
+    <div class="sb-row-tail">${rowMenuButton(key)}${moveControl(key, index)}</div>
+    ${params.rowMenuKey === key && hasRowMenu(key) ? rowMenuPanel(key) : nothing}
+  `;
+
   const moveControl = (key: string, index: number): TemplateResult => {
     if (params.sortableReady) {
       return html`
@@ -339,7 +394,7 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       `;
       return html`
         <div class="sb-layout-row sb-layout-row-order">
-          ${cells}${moveControl(key, index)}${params.shortcutsPanel}
+          ${cells}${rowTail(key, index)}${params.shortcutsPanel}
         </div>
       `;
     } else {
@@ -351,7 +406,7 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       `;
     }
     return html`
-      <div class="sb-layout-row sb-layout-row-order">${cells}${moveControl(key, index)}</div>
+      <div class="sb-layout-row sb-layout-row-order">${cells}${rowTail(key, index)}</div>
     `;
   };
 

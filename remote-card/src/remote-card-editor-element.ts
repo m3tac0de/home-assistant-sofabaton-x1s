@@ -42,6 +42,9 @@ import {
   layoutConfigForSelection,
   layoutSelectionNote,
   macroTogglePatch,
+  favoriteDeviceNamesForEditor,
+  favoriteDeviceNamesPatch,
+  MF_MENU_KEYS,
   mfAsRowsForEditor,
   mfAsRowsPatch,
   mfRowVisibleRowsForEditor,
@@ -188,6 +191,26 @@ export class SofabatonRemoteCardEditor extends LitElement {
         this._editorKeymaps[key] = { status: "error", commands: [] };
       })
       .then(() => this.requestUpdate());
+  }
+
+  /** Group-order row whose "..." options panel is folded out, if any. */
+  private _rowMenuKey: string | null = null;
+
+  private _toggleRowMenu(key: string): void {
+    this._rowMenuKey = this._rowMenuKey === key ? null : key;
+    this.requestUpdate();
+  }
+
+  /**
+   * "As rows" swaps the combined macro_favorites row for the macros_row /
+   * favorites_row pair (and back); an open "..." panel follows the
+   * favorites onto the row that replaces its own.
+   */
+  private _setMfAsRows(enabled: boolean): void {
+    if (this._rowMenuKey && MF_MENU_KEYS.has(this._rowMenuKey)) {
+      this._rowMenuKey = enabled ? "favorites_row" : "macro_favorites";
+    }
+    this._updateLayoutConfig(mfAsRowsPatch(enabled));
   }
 
   private _clearShortcutPanel(): void {
@@ -570,6 +593,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
     if (selection === this._layoutSelectionKey()) return;
     this._layoutSelection = selection;
     this._clearShortcutPanel();
+    this._rowMenuKey = null;
     this._setPreviewActivityForSelection(selection);
     this.requestUpdate();
   }
@@ -855,7 +879,18 @@ export class SofabatonRemoteCardEditor extends LitElement {
             const patch = groupEnabledPatch(key, v);
             if (patch) this._updateLayoutConfig(patch);
           },
-          onSetMfAsRows: (v) => this._updateLayoutConfig(mfAsRowsPatch(v)),
+          rowMenuKey: this._rowMenuKey,
+          onToggleRowMenu: (key) => this._toggleRowMenu(key),
+          // Names resolve from the `devices` attribute: our integration with
+          // the persistent cache on, like every other device-aware feature.
+          favoriteDeviceNamesAvailable: deviceCapable,
+          favoriteDeviceNames: favoriteDeviceNamesForEditor(
+            this._config,
+            this._layoutSelectionKey(),
+          ),
+          onSetFavoriteDeviceNames: (v) =>
+            this._updateLayoutConfig(favoriteDeviceNamesPatch(v)),
+          onSetMfAsRows: (v) => this._setMfAsRows(v),
           onSetMfRowVisibleRows: (v) =>
             this._updateLayoutConfig(mfRowVisibleRowsPatch(v)),
           onMoveGroupByKey: (key, delta) => this._moveGroupByKey(key, delta),

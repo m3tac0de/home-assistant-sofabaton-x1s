@@ -262,7 +262,11 @@ export class SbHaSelect extends HTMLElement {
       label: (item.textContent ?? "").trim(),
       defaultLayout: item.classList.contains("sb-option-default"),
     }));
-    if (!this._options.some((option) => option.value === current)) {
+    // An empty value is "nothing selected" and shows blank, as HA's
+    // ha-select does (the shortcut command field before a choice, the
+    // activity row while unavailable). A stale non-empty value falls back
+    // to the first option.
+    if (current !== "" && !this._options.some((option) => option.value === current)) {
       this._value = this._options[0]?.value ?? "";
     }
     this._renderValue();

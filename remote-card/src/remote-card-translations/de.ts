@@ -149,6 +149,8 @@ const REMOTE_CARD_STRINGS_DE = {
     openOnCurrentActivity: "Aktuelle Aktivität",
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
     commandsAsRows: "Befehle als Zeilen",
+    favoriteDeviceNames: "Gerätenamen anzeigen",
+    rowOptions: (groupLabel: string) => `Optionen für ${groupLabel}`,
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel: string) => `${groupLabel} nach oben verschieben`,
     moveGroupDown: (groupLabel: string) =>

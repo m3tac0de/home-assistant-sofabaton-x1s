@@ -53,6 +53,7 @@ const ICONS = {
   "mdi:arrow-right-bold": iconSvg(`<path d="M19 12l-7-6v4H5v4h7v4z" fill="currentColor" stroke="none"></path>`),
   "mdi:chevron-up": iconSvg(`<path d="M6 15l6-6 6 6"></path>`),
   "mdi:chevron-down": iconSvg(`<path d="M6 9l6 6 6-6"></path>`),
+  "mdi:dots-horizontal": iconSvg(`<circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="18" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>`),
   "mdi:chevron-left": iconSvg(`<path d="M15 6l-6 6 6 6"></path>`),
   "mdi:chevron-right": iconSvg(`<path d="M9 6l6 6-6 6"></path>`),
   "mdi:arrow-u-left-top": iconSvg(`<path d="M9 9l-4 4 4 4"></path><path d="M5 13h8a5 5 0 015 5v1"></path>`),
@@ -816,6 +817,26 @@ scenarios.device_keymap_missing = (() => {
   // the keymap WS stub answers cache_miss for it.
   base.states[remoteEntityId].attributes.devices.push({ id: 3, name: "Blu-ray", device_class: "ir" });
   base.config = { device_mode: { open_device: 3 } };
+  return base;
+})();
+
+// Favorites device name band: favorites spread over three devices, one
+// with a name long enough to ellipse, one favorite on a device the
+// `devices` attribute does not know (no band).
+scenarios.favorite_device_names = (() => {
+  const base = clone(scenarios.device_mode);
+  const attributes = base.states[remoteEntityId].attributes;
+  attributes.devices.push({ id: 3, name: "Living Room Home Theater Receiver Zone 2 (Denon AVR-X3800H)", device_class: "ir" });
+  attributes.favorite_keys = {
+    101: [
+      { command_id: 600, name: "Netflix", device_id: 3 },
+      { command_id: 601, name: "YouTube", device_id: 3 },
+      { command_id: 602, name: "HDMI 1", device_id: 1 },
+      { command_id: 603, name: "Night mode", device_id: 2 },
+      { command_id: 604, name: "Disney+", device_id: 9 },
+    ],
+  };
+  base.config = { layouts: { default: { show_favorite_device_names: true } } };
   return base;
 })();
 

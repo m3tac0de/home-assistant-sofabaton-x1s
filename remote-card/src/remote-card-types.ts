@@ -33,6 +33,8 @@ export interface RemoteCardLayoutConfig {
   /** Render macros/favorites as inline rows instead of drawer tabs. */
   mf_as_rows?: boolean;
   mf_row_visible_rows?: number;
+  /** Device name band on favorites buttons (x1s integration, default off). */
+  show_favorite_device_names?: boolean;
 }
 
 /**

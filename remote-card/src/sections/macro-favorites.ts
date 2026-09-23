@@ -43,6 +43,11 @@ export interface MacroFavoritesParams {
   favorites: Array<Record<string, unknown>>;
   customFavorites: Array<Record<string, unknown>>;
   currentActivityId: number | null;
+  /**
+   * Resolves a favorite's target device to its name for the top band; null
+   * while the layout has device names off. "" (unknown device) = no band.
+   */
+  favoriteDeviceName?: ((deviceId: number) => string) | null;
   renderMacrosContent: boolean;
   renderFavoritesContent: boolean;
   onToggleMacros: () => void;
@@ -63,15 +68,25 @@ export interface MacroFavoritesParams {
   favoritesOverlayRef?: Ref<HTMLElement>;
 }
 
+function deviceBand(name: string): TemplateResult | typeof nothing {
+  return name
+    ? html`<div class="drawer-btn__device" title=${name}>${name}</div>`
+    : nothing;
+}
+
 export function renderDrawerButton(
   params: MacroFavoritesParams,
   item: Record<string, unknown>,
   type: string,
 ): TemplateResult {
   const model = drawerButtonModel(item, type, params.currentActivityId) as DrawerItemModel;
+  const deviceName =
+    type === "favorites" && params.favoriteDeviceName && Number.isFinite(model.deviceId)
+      ? params.favoriteDeviceName(model.deviceId)
+      : "";
   return html`
     <ha-card
-      class="drawer-btn"
+      class="drawer-btn${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       ${primaryActionRef(() => {
@@ -79,6 +94,7 @@ export function renderDrawerButton(
         params.onDrawerItem({ model, itemType: type, rawItem: item });
       })}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--stack">
         ${model.icon
           ? html`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>`
@@ -94,14 +110,22 @@ export function renderCustomFavoriteButton(
   favorite: Record<string, unknown>,
 ): TemplateResult {
   const model = customFavoriteButtonModel(favorite, params.currentActivityId) as CustomFavoriteModel;
+  // Only custom favorites that name their hub device carry the band: an
+  // action favorite has no device, and a bare command_id targets the
+  // current activity rather than a device.
+  const deviceName =
+    params.favoriteDeviceName && !model.action && favorite.device_id != null
+      ? params.favoriteDeviceName(model.deviceId)
+      : "";
   return html`
     <ha-card
-      class="drawer-btn drawer-btn--custom"
+      class="drawer-btn drawer-btn--custom${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       style="grid-column: 1 / -1;"
       ${primaryActionRef(() => params.onCustomFavorite({ model, rawFavorite: favorite }))}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--row">
         ${model.icon
           ? html`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>`

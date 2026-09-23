@@ -782,7 +782,8 @@ var LAYOUT_KEYS = [
   "show_favorites_button",
   "show_device_toggle",
   "mf_as_rows",
-  "mf_row_visible_rows"
+  "mf_row_visible_rows",
+  "show_favorite_device_names"
 ];
 var DEVICE_LAYOUT_PREFIX = "device:";
 var DEVICE_DEFAULT_LAYOUT_KEY = "device:default";
@@ -983,6 +984,9 @@ function favoritesButtonEnabled(layout) {
     return layout.show_favorites_button;
   }
   return true;
+}
+function favoriteDeviceNamesEnabled(layout) {
+  return layout?.show_favorite_device_names === true;
 }
 function mfAsRows(layout) {
   return layout?.mf_as_rows === true;
@@ -1274,6 +1278,8 @@ var REMOTE_CARD_STRINGS_EN = {
     openOnCurrentActivity: "Current activity",
     macrosFavoritesAsRows: "Macros/Favorites as rows",
     commandsAsRows: "Commands as rows",
+    favoriteDeviceNames: "Show device names",
+    rowOptions: (groupLabel2) => `${groupLabel2} options`,
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
     moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
@@ -2224,6 +2230,43 @@ var REMOTE_CARD_CSS = `
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      /* Favorites device name band (show_favorite_device_names): a narrow
+         strip along the top edge, clipped by the card's radius; the content
+         below recentres in the remaining height. */
+      .drawer-btn {
+        --sb-device-band-h: 14px;
+      }
+      .drawer-btn__device {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--sb-device-band-h);
+        padding: 0 6px;
+        box-sizing: border-box;
+        background: color-mix(in srgb, var(--sb-key-label-color, var(--primary-color)) 16%, transparent);
+        color: color-mix(in srgb, var(--primary-text-color) 80%, transparent);
+        font-size: 9px;
+        font-weight: 500;
+        line-height: var(--sb-device-band-h);
+        letter-spacing: 0.02em;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+      .drawer-btn--custom .drawer-btn__device {
+        padding: 0 12px;
+        text-align: start;
+      }
+      .drawer-btn--banded .drawer-btn__inner--stack {
+        padding-top: calc(var(--sb-device-band-h) + 2px);
+      }
+      .drawer-btn--banded .drawer-btn__inner--row {
+        padding-top: var(--sb-device-band-h);
       }
 
 
@@ -6091,11 +6134,15 @@ function customFavoriteButtonModel(favorite, fallbackDeviceId) {
 }
 
 // remote-card/src/sections/macro-favorites.ts
+function deviceBand(name) {
+  return name ? b2`<div class="drawer-btn__device" title=${name}>${name}</div>` : A;
+}
 function renderDrawerButton(params, item, type) {
   const model = drawerButtonModel(item, type, params.currentActivityId);
+  const deviceName = type === "favorites" && params.favoriteDeviceName && Number.isFinite(model.deviceId) ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn"
+      class="drawer-btn${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       ${primaryActionRef(() => {
@@ -6103,6 +6150,7 @@ function renderDrawerButton(params, item, type) {
     params.onDrawerItem({ model, itemType: type, rawItem: item });
   })}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--stack">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -6112,14 +6160,16 @@ function renderDrawerButton(params, item, type) {
 }
 function renderCustomFavoriteButton(params, favorite) {
   const model = customFavoriteButtonModel(favorite, params.currentActivityId);
+  const deviceName = params.favoriteDeviceName && !model.action && favorite.device_id != null ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn drawer-btn--custom"
+      class="drawer-btn drawer-btn--custom${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       style="grid-column: 1 / -1;"
       ${primaryActionRef(() => params.onCustomFavorite({ model, rawFavorite: favorite }))}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--row">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -7120,6 +7170,7 @@ var SofabatonRemoteCard = class extends i4 {
       favorites: derived.favorites,
       customFavorites: derived.customFavorites,
       currentActivityId: store.currentActivityId(),
+      favoriteDeviceName: favoriteDeviceNamesEnabled(layoutConfig) ? (deviceId) => store.deviceNameForId(deviceId) ?? "" : null,
       renderMacrosContent: store.activeDrawer === "macros" || this._closingDrawer === "macros",
       renderFavoritesContent: store.activeDrawer === "favorites" || this._closingDrawer === "favorites",
       containerRef: this._mfContainerRef,
@@ -8425,7 +8476,7 @@ var SbHaSelect = class extends HTMLElement {
       label: (item.textContent ?? "").trim(),
       defaultLayout: item.classList.contains("sb-option-default")
     }));
-    if (!this._options.some((option) => option.value === current)) {
+    if (current !== "" && !this._options.some((option) => option.value === current)) {
       this._value = this._options[0]?.value ?? "";
     }
     this._renderValue();
@@ -8784,6 +8835,8 @@ var REMOTE_CARD_STRINGS_AR = {
     openOnCurrentActivity: "\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u062D\u0627\u0644\u064A",
     macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
     commandsAsRows: "\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0641\u064A \u0635\u0641\u0648\u0641",
+    favoriteDeviceNames: "\u0625\u0638\u0647\u0627\u0631 \u0623\u0633\u0645\u0627\u0621 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    rowOptions: (groupLabel2) => `\u062E\u064A\u0627\u0631\u0627\u062A ${groupLabel2}`,
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
@@ -9000,6 +9053,8 @@ var REMOTE_CARD_STRINGS_DE = {
     openOnCurrentActivity: "Aktuelle Aktivit\xE4t",
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
     commandsAsRows: "Befehle als Zeilen",
+    favoriteDeviceNames: "Ger\xE4tenamen anzeigen",
+    rowOptions: (groupLabel2) => `Optionen f\xFCr ${groupLabel2}`,
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
     moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
@@ -9195,6 +9250,8 @@ var REMOTE_CARD_STRINGS_ES = {
     openOnCurrentActivity: "Actividad actual",
     macrosFavoritesAsRows: "Macros/favoritos como filas",
     commandsAsRows: "Comandos como filas",
+    favoriteDeviceNames: "Mostrar nombres de dispositivos",
+    rowOptions: (groupLabel2) => `Opciones de ${groupLabel2}`,
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
     moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
@@ -9390,6 +9447,8 @@ var REMOTE_CARD_STRINGS_FR = {
     openOnCurrentActivity: "Activit\xE9 en cours",
     macrosFavoritesAsRows: "Macros/favoris sous forme de lignes",
     commandsAsRows: "Commandes sous forme de lignes",
+    favoriteDeviceNames: "Afficher les noms des appareils",
+    rowOptions: (groupLabel2) => `Options de ${groupLabel2}`,
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
     moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
@@ -9584,6 +9643,8 @@ var REMOTE_CARD_STRINGS_NL = {
     openOnCurrentActivity: "Huidige activiteit",
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
     commandsAsRows: "Commando's als rijen",
+    favoriteDeviceNames: "Apparaatnamen tonen",
+    rowOptions: (groupLabel2) => `Opties voor ${groupLabel2}`,
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
     moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
@@ -9778,6 +9839,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     openOnCurrentActivity: "\u5F53\u524D\u6D3B\u52A8",
     macrosFavoritesAsRows: "\u5C06\u5B8F/\u6536\u85CF\u663E\u793A\u4E3A\u884C",
     commandsAsRows: "\u5C06\u547D\u4EE4\u663E\u793A\u4E3A\u884C",
+    favoriteDeviceNames: "\u663E\u793A\u8BBE\u5907\u540D\u79F0",
+    rowOptions: (groupLabel2) => `${groupLabel2}\u9009\u9879`,
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
@@ -22470,6 +22533,7 @@ var ACTIVITY_LAYOUT_DEFAULTS = Object.freeze({
   show_device_toggle: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  show_favorite_device_names: false,
   group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
 });
 var sameLayoutValue = (a4, b3) => JSON.stringify(a4) === JSON.stringify(b3);
@@ -22649,6 +22713,16 @@ function mfAsRowsForEditor(config, selection) {
 function mfRowVisibleRowsForEditor(config, selection) {
   return mfRowVisibleRows(layoutConfigForSelection(config, selection));
 }
+var MF_MENU_KEYS = /* @__PURE__ */ new Set([
+  "macro_favorites",
+  "favorites_row"
+]);
+function favoriteDeviceNamesForEditor(config, selection) {
+  return favoriteDeviceNamesEnabled(layoutConfigForSelection(config, selection));
+}
+function favoriteDeviceNamesPatch(enabled) {
+  return { show_favorite_device_names: !!enabled };
+}
 function mfAsRowsPatch(enabled) {
   return { mf_as_rows: !!enabled };
 }
@@ -22691,15 +22765,21 @@ function longPressGroupLabel(group) {
 }
 
 // server-panel/src/views/remote-editor.ts
+var ICON_NAMES = Object.keys(MDI_ICON_PATHS).sort();
 var SbPanelRemoteEditor = class extends i4 {
   constructor() {
     super(...arguments);
     this.config = {};
     this.backend = null;
     this.selection = "default";
+    /** Group row whose "..." options panel is folded out, if any. */
+    this._menu = null;
     this._slot = null;
     this._icon = "";
     this._command = "";
+    /** Icon picker list open + keyboard-active row (shortcut panel). */
+    this._iconOpen = false;
+    this._iconActive = -1;
     this._keymaps = /* @__PURE__ */ new Map();
     this._announcement = "";
     this._sorter = new PointerReorder(
@@ -22716,12 +22796,17 @@ var SbPanelRemoteEditor = class extends i4 {
   willUpdate(changed) {
     if (changed.has("selection")) {
       this._sorter.cancel();
-      this._slot = null;
+      this._closeSlot();
+      this._menu = null;
     }
     if (changed.has("backend")) {
       this._keymaps.clear();
-      this._slot = null;
+      this._closeSlot();
       this._sorter.cancel();
+    }
+    if (changed.has("selection") || changed.has("backend")) {
+      const id = parseDeviceLayoutKey(this.selection);
+      if (id != null) void this._loadCommands(id);
     }
   }
   _emit(config) {
@@ -22744,7 +22829,7 @@ var SbPanelRemoteEditor = class extends i4 {
   _select(value) {
     this._sorter.cancel();
     this.selection = value;
-    this._slot = null;
+    this._closeSlot();
     this.dispatchEvent(new CustomEvent("layout-selected", { detail: { selection: value }, bubbles: true, composed: true }));
   }
   _visible(key) {
@@ -22778,7 +22863,10 @@ var SbPanelRemoteEditor = class extends i4 {
     const rows = mfAsRowsForEditor(c7, s7);
     const order = groupOrderListForEditor(c7, s7).filter((key) => this._visible(key));
     const toggle = (label, value, patch) => this._toggle(label, value, (v3) => this._patch(patch(v3)));
+    const slotDevice = parseDeviceLayoutKey(s7);
+    const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d3) => Number(d3.id) === slotDevice);
     const cells = (key) => {
+      if (key === "shortcuts") return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${slotsOn ? this._slotStrip(slotDevice) : A}`;
       if (device && (key === "macro_favorites" || key === "macros_row")) return b2`${toggle(e6.commands, commandsEnabled(c7, s7), commandsTogglePatch)}${toggle(e6.power, powerEnabled(c7, s7), powerTogglePatch)}`;
       if (key === "macro_favorites") return b2`${toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch)}${toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch)}`;
       if (key === "macros_row") return toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch);
@@ -22788,10 +22876,23 @@ var SbPanelRemoteEditor = class extends i4 {
       return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
         ${key === "activity" && deviceModeEnabledInConfig(c7) ? this._toggle(e6.modeToggle, isGroupEnabled(c7, s7, key) && deviceToggleEnabledForEditor(c7, s7), (v3) => this._patch(deviceTogglePatch(v3)), "", !isGroupEnabled(c7, s7, key)) : A}`;
     };
+    const menuAvailable = !device && editorDevicesFromState(this.snapshot).length > 0;
+    const hasMenu = (key) => menuAvailable && MF_MENU_KEYS.has(key);
+    const menu = (key) => b2`<div class="row-menu" id=${`row-menu-${key}`}>
+      ${toggle(e6.favoriteDeviceNames, favoriteDeviceNamesForEditor(c7, s7), favoriteDeviceNamesPatch)}
+    </div>`;
+    const menuButton = (key) => {
+      if (!hasMenu(key)) return menuAvailable ? b2`<span class="menu-spacer" aria-hidden="true"></span>` : A;
+      return b2`<button class="menu-btn" type="button" aria-label=${e6.rowOptions(groupLabel(key))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
+        @click=${() => {
+        this._menu = this._menu === key ? null : key;
+      }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDotsHorizontal}></path></svg></button>`;
+    };
     return b2`
       ${c4(order, (key) => key, (key, index) => b2`
         <div data-group=${key} class="group ${this._sorter.state?.from === index ? "dragging" : this._sorter.state ? "shifting" : ""}" style=${`transform: ${this._sorter.transform(index) || "none"}`}>
           <div class="group-options">${cells(key)}</div>
+          ${menuButton(key)}
           <button class="handle" type="button" aria-label=${`Move ${groupLabel(key)}`} title="Drag to reorder (arrow keys move the group)"
             @pointerdown=${(ev) => this._sorter.start(ev, index)} @pointermove=${(ev) => this._sorter.move(ev)}
             @pointerup=${(ev) => this._sorter.end(ev)} @pointercancel=${(ev) => this._sorter.cancel(ev)}
@@ -22803,11 +22904,15 @@ var SbPanelRemoteEditor = class extends i4 {
         this._move(index, index + (ev.key === "ArrowUp" ? -1 : 1));
       }
     }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDragVerticalVariant}></path></svg></button>
+          ${this._menu === key && hasMenu(key) ? menu(key) : A}
+          ${key === "shortcuts" && slotsOn && this._slot ? this._slotPanel(slotDevice) : A}
         </div>`)}
       <div class="hint notice" role="status" aria-live="polite">${this._announcement}</div>
-      ${parseDeviceLayoutKey(s7) != null ? this._shortcuts() : A}
       <div class="rows-control">
-        ${this._toggle(device ? e6.commandsAsRows : e6.macrosFavoritesAsRows, rows, (v3) => this._patch(mfAsRowsPatch(v3)))}
+        ${this._toggle(device ? e6.commandsAsRows : e6.macrosFavoritesAsRows, rows, (v3) => {
+      if (this._menu && MF_MENU_KEYS.has(this._menu)) this._menu = v3 ? "favorites_row" : "macro_favorites";
+      this._patch(mfAsRowsPatch(v3));
+    })}
         <div class="stepper" aria-disabled=${!rows}><span>${e6.visibleRows}</span>
           <button type="button" aria-label="Fewer visible rows" ?disabled=${!rows || mfRowVisibleRowsForEditor(c7, s7) <= MIN_ROW_VISIBLE_ROWS} @click=${() => this._patch(mfRowVisibleRowsPatch(mfRowVisibleRowsForEditor(c7, s7) - 1))}>−</button>
           <output aria-label=${e6.visibleRows}>${mfRowVisibleRowsForEditor(c7, s7)}</output>
@@ -22822,63 +22927,164 @@ var SbPanelRemoteEditor = class extends i4 {
   async _loadCommands(id) {
     if (this._keymaps.has(id) || !this.backend) return;
     const backend = this.backend;
-    this._keymaps.set(id, { status: "Loading commands\u2026", commands: [] });
+    this._keymaps.set(id, { status: "loading", commands: [] });
     this.requestUpdate();
     try {
       const response = await backend.deviceKeymap(id);
       if (this.backend !== backend) return;
-      const commands = (response?.keymap?.commands || []).map((c7) => ({ command_id: Number(c7.command_id), name: String(c7.name || c7.command_id) })).filter((c7) => Number.isFinite(c7.command_id));
-      this._keymaps.set(id, { status: commands.length ? "" : "No cached commands available. Sync this hub's catalog and retry.", commands });
+      if (!response?.keymap) {
+        this._keymaps.set(id, { status: "cache_miss", commands: [] });
+      } else {
+        const commands = (response.keymap.commands || []).map((c7) => ({ command_id: Number(c7.command_id), name: String(c7.name || "") })).filter((c7) => Number.isFinite(c7.command_id) && c7.name).sort((a4, b3) => a4.name.localeCompare(b3.name));
+        this._keymaps.set(id, { status: "ready", commands });
+      }
     } catch {
       if (this.backend !== backend) return;
-      this._keymaps.set(id, { status: "Could not load commands. Retry when the hub is available.", commands: [] });
+      this._keymaps.set(id, { status: "error", commands: [] });
     }
     this.requestUpdate();
   }
-  _openSlot(slot) {
+  // ---------- Shortcuts row: slot strip + drop-out panel (HA editor parity) ----------
+  _closeSlot() {
+    this._slot = null;
+    this._icon = "";
+    this._command = "";
+    this._iconOpen = false;
+    this._iconActive = -1;
+  }
+  _toggleSlot(slot) {
+    if (this._slot === slot) {
+      this._closeSlot();
+      return;
+    }
     const id = parseDeviceLayoutKey(this.selection);
-    this._slot = this._slot === slot ? null : slot;
     const stored = deviceShortcutsFromConfig(this.config, id)[slot];
-    this._icon = stored?.icon || "";
+    this._slot = slot;
+    this._icon = stored?.icon ?? "";
     this._command = stored ? String(stored.command_id) : "";
-    if (this._slot) void this._loadCommands(id);
+    this._iconOpen = false;
+    this._iconActive = -1;
+    void this._loadCommands(id);
   }
-  _writeSlot() {
+  /**
+   * Draft edit: the slot is written (and the preview updates) the moment
+   * both fields are valid; an incomplete draft leaves the stored slot alone.
+   */
+  _draft(icon7, command) {
+    this._icon = icon7;
+    this._command = command;
     const id = parseDeviceLayoutKey(this.selection);
-    if (id == null || !this._slot || !this._icon.trim() || !this._command) return;
-    this._emit(applyShortcutSlotPatch(this.config, id, this._slot, { icon: this._icon.trim(), command_id: Number(this._command) }).nextConfig);
+    const commandId = command !== "" && Number.isFinite(Number(command)) ? Number(command) : null;
+    if (id == null || !this._slot || !icon7.trim() || commandId == null) return;
+    const next = applyShortcutSlotPatch(this.config, id, this._slot, { icon: icon7.trim(), command_id: commandId }).nextConfig;
+    if (JSON.stringify(next) !== JSON.stringify(this.config)) this._emit(next);
   }
-  _shortcuts() {
+  /** Reset clears the stored slot and the draft; the panel stays open. */
+  _resetSlot() {
     const id = parseDeviceLayoutKey(this.selection);
+    if (id == null || !this._slot) return;
+    this._icon = "";
+    this._command = "";
+    this._iconOpen = false;
+    this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
+  }
+  _slotStrip(id) {
+    const e6 = str().editor;
     const stored = deviceShortcutsFromConfig(this.config, id);
+    const label = (slot) => slot === "left" ? e6.shortcutSlotLeft : slot === "middle" ? e6.shortcutSlotMiddle : e6.shortcutSlotRight;
+    return b2`<div class="shortcut-strip">${SHORTCUT_SLOTS.map((slot) => {
+      const icon7 = stored[slot]?.icon ?? null;
+      const open = this._slot === slot;
+      return b2`<button type="button" class="shortcut-slot ${icon7 ? "is-configured" : ""} ${open ? "is-open" : ""}" aria-label=${label(slot)} aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSlot(slot)}>${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : A}</button>`;
+    })}</div>`;
+  }
+  _slotPanel(id) {
+    const e6 = str().editor;
     const keymap = this._keymaps.get(id);
-    const commands = keymap?.commands || [];
-    return b2`<h3>Device shortcuts</h3><div class="slots">${SHORTCUT_SLOTS.map((slot) => b2`
-      <button type="button" aria-pressed=${this._slot === slot} @click=${() => this._openSlot(slot)}>${stored[slot] ? b2`<ha-icon icon=${stored[slot].icon}></ha-icon>` : "+"} ${slot}</button>`)}</div>
-      ${this._slot ? b2`<div class="slot-editor">
-        <div class="field"><label><span class="field-label">Icon (for example mdi:home)</span><input aria-label="Shortcut icon" placeholder="mdi:home" .value=${l4(this._icon)} @input=${(ev) => {
-      this._icon = ev.target.value;
-      this._writeSlot();
-    }}></label></div>
-        ${this._selectField("Shortcut command", this._command, [
-      { value: "", label: "Choose a command" },
-      ...this._command && !commands.some((c7) => String(c7.command_id) === this._command) ? [{ value: this._command, label: `Command ${this._command} (stored)` }] : [],
-      ...commands.map((c7) => ({ value: String(c7.command_id), label: c7.name }))
-    ], (v3) => {
-      this._command = v3;
-      this._writeSlot();
-    })}
-        ${keymap?.status ? b2`<div class="hint">${keymap.status}</div>${keymap.status.startsWith("Loading") ? A : b2`<button @click=${() => {
-      this._keymaps.delete(id);
-      void this._loadCommands(id);
-    }}>Retry commands</button>`}` : A}
-        <div class="hint">Both an icon and a command are needed to update this slot.</div>
-        <button @click=${() => {
-      this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
-      this._icon = "";
-      this._command = "";
-    }}>Clear shortcut</button>
-      </div>` : A}`;
+    const status = keymap?.status ?? "loading";
+    if (status !== "ready") {
+      const note = status === "loading" ? e6.shortcutsCommandsLoading : status === "cache_miss" ? "This device's commands are not cached yet. Refresh this device in the Hub tab, then retry." : "Could not load this device's commands. Retry when the hub is available.";
+      return b2`<div class="shortcut-panel"><div class="shortcut-note">${note}</div>
+        ${status === "loading" ? A : b2`<div class="shortcut-panel-footer"><button type="button" @click=${() => {
+        this._keymaps.delete(id);
+        void this._loadCommands(id);
+      }}>Retry</button></div>`}</div>`;
+    }
+    const options = keymap.commands.map((c7) => ({ value: String(c7.command_id), label: c7.name }));
+    if (this._command && !options.some((o8) => o8.value === this._command)) options.push({ value: this._command, label: e6.shortcutCommandMissing(this._command) });
+    return b2`<div class="shortcut-panel">
+      ${this._iconPicker()}
+      <ha-select class="shortcut-command" .label=${e6.shortcutCommand} .value=${this._command}
+        @selected=${(ev) => {
+      ev.stopPropagation();
+      this._draft(this._icon, ev.detail.value);
+    }}>
+        ${options.map((o8) => b2`<mwc-list-item .value=${o8.value}>${o8.label}</mwc-list-item>`)}
+      </ha-select>
+      <div class="shortcut-panel-footer"><button type="button" @click=${() => this._resetSlot()}>${e6.shortcutReset}</button></div>
+    </div>`;
+  }
+  /**
+   * The HA icon selector as a combo box: a text field with the icon drawn in
+   * front of it and a filtered list of icons underneath. The list offers
+   * the icons this bundle ships (the web remote renders only those); any
+   * other mdi name can still be typed.
+   */
+  _iconPicker() {
+    const e6 = str().editor;
+    const icon7 = this._icon.trim();
+    const query = icon7.toLowerCase().replace(/^mdi:/, "");
+    const matches = this._iconOpen ? ICON_NAMES.filter((name) => name.includes(query)).slice(0, 80) : [];
+    const pick = (name) => {
+      this._draft(`mdi:${name}`, this._command);
+      this._iconOpen = false;
+      this._iconActive = -1;
+    };
+    const onKey = (ev) => {
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        if (!this._iconOpen) {
+          this._iconOpen = true;
+          this._iconActive = -1;
+          return;
+        }
+        if (!matches.length) return;
+        this._iconActive = ev.key === "ArrowDown" ? Math.min(matches.length - 1, this._iconActive + 1) : Math.max(0, this._iconActive - 1);
+      } else if (ev.key === "Enter" && this._iconOpen && this._iconActive >= 0 && matches[this._iconActive]) {
+        ev.preventDefault();
+        pick(matches[this._iconActive]);
+      } else if (ev.key === "Escape" && this._iconOpen) {
+        ev.preventDefault();
+        this._iconOpen = false;
+        this._iconActive = -1;
+      }
+    };
+    return b2`<div class="icon-picker">
+      <div class="field"><label><span class="field-label">${e6.shortcutIcon}</span>
+        <div class="icon-field">
+          ${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : b2`<span class="icon-blank" aria-hidden="true"></span>`}
+          <input role="combobox" aria-label=${e6.shortcutIcon} aria-autocomplete="list" aria-expanded=${this._iconOpen ? "true" : "false"} aria-controls="icon-options"
+            autocomplete="off" spellcheck="false" .value=${l4(this._icon)}
+            @focus=${() => {
+      this._iconOpen = true;
+      this._iconActive = -1;
+    }}
+            @blur=${() => {
+      this._iconOpen = false;
+      this._iconActive = -1;
+    }}
+            @input=${(ev) => {
+      this._iconOpen = true;
+      this._iconActive = -1;
+      this._draft(ev.target.value, this._command);
+    }}
+            @keydown=${onKey}>
+        </div></label></div>
+      ${matches.length ? b2`<div class="icon-options" id="icon-options" role="listbox" aria-label=${e6.shortcutIcon}>${matches.map((name, index) => b2`
+        <button type="button" role="option" class="icon-option ${index === this._iconActive ? "is-active" : ""}" aria-selected=${icon7 === `mdi:${name}` ? "true" : "false"}
+          @pointerdown=${(ev) => ev.preventDefault()} @click=${() => pick(name)}><ha-icon icon=${`mdi:${name}`}></ha-icon><span>mdi:${name}</span></button>`)}</div>` : A}
+    </div>`;
   }
   render() {
     const c7 = this.config, e6 = str().editor;
@@ -22939,9 +23145,12 @@ SbPanelRemoteEditor.properties = {
   backend: { attribute: false },
   snapshot: { attribute: false },
   selection: { state: true },
+  _menu: { state: true },
   _slot: { state: true },
   _icon: { state: true },
-  _command: { state: true }
+  _command: { state: true },
+  _iconOpen: { state: true },
+  _iconActive: { state: true }
 };
 SbPanelRemoteEditor.styles = [PANEL_BASE_CSS, i`
     :host { display: block; min-width: 0; container-type: inline-size; }
@@ -22996,6 +23205,12 @@ SbPanelRemoteEditor.styles = [PANEL_BASE_CSS, i`
     .handle .mdi { width: 20px; height: 20px; }
     .dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px #0003; }
     .shifting { transition: transform 120ms ease; }
+    .group { flex-wrap: wrap; }
+    .menu-btn, .menu-spacer { width: 32px; height: 32px; flex: 0 0 auto; }
+    .menu-btn { display: grid; place-items: center; padding: 0; border-radius: 10px; color: var(--sbp-muted); background: transparent; }
+    .menu-btn .mdi { width: 20px; height: 20px; }
+    .menu-btn[aria-expanded=true] { border-color: var(--sbp-accent); color: var(--sbp-accent); }
+    .row-menu { flex: 1 0 100%; display: flex; flex-direction: column; gap: 4px; margin: 2px 0 4px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-text) 3%, var(--sbp-panel)); }
     .rows-control { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 6px 10px; margin-top: 10px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-text) 3%, var(--sbp-panel)); }
     .stepper { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sbp-muted); }
     .stepper[aria-disabled=true] { opacity: .45; }
@@ -23003,11 +23218,30 @@ SbPanelRemoteEditor.styles = [PANEL_BASE_CSS, i`
     .stepper output { min-width: 24px; text-align: center; font-size: 14px; font-weight: 600; }
     .layout-footer { display: flex; justify-content: flex-end; margin-top: 10px; }
     .layout-footer button { border-radius: 12px; }
-    .slots { display: flex; gap: 8px; margin: 12px 0; }
-    .slots button { flex: 1; min-width: 0; text-transform: capitalize; }
-    .slots button[aria-pressed=true] { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .1); }
-    .slot-editor { border: 1px solid var(--sbp-line); padding: 12px; border-radius: 8px; }
-    .slot-editor button { margin-top: 12px; }
+    /* Shortcuts row (device layouts): the HA card's slot strip and drop-out
+       panel. The three mini buttons fill the row's second cell; the open
+       slot's panel wraps below inside the same row, with a caret under the
+       button that opened it. */
+    .shortcut-strip { display: inline-flex; gap: 8px; min-width: 0; align-self: center; }
+    .shortcut-slot { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 1 auto; width: 40px; min-width: 26px; height: 30px; padding: 0; border: 1px dashed var(--sbp-muted); border-radius: 8px; background: color-mix(in srgb, var(--sbp-text) 5%, transparent); color: var(--sbp-accent); }
+    .shortcut-slot.is-configured { border-style: solid; background: var(--sbp-panel); }
+    .shortcut-slot.is-open { border-color: var(--sbp-accent); box-shadow: 0 0 0 1px var(--sbp-accent) inset; }
+    .shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--sbp-accent); pointer-events: none; }
+    .shortcut-slot ha-icon { --mdc-icon-size: 18px; }
+    .shortcut-panel { flex: 1 0 100%; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; padding: 10px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; background: color-mix(in srgb, var(--sbp-text) 4%, var(--sbp-panel)); }
+    .shortcut-panel .field { margin: 0; }
+    .shortcut-panel-footer { display: flex; justify-content: flex-end; }
+    .shortcut-panel-footer button { border-radius: 12px; }
+    .shortcut-note { font-size: 12px; color: var(--sbp-muted); line-height: 1.35; }
+    .icon-picker { position: relative; }
+    .icon-field { display: flex; align-items: center; gap: 8px; padding: 0 16px 0 12px; }
+    .icon-field ha-icon, .icon-field .icon-blank { flex: 0 0 auto; width: 24px; height: 24px; --mdc-icon-size: 24px; color: var(--sbp-text); }
+    .icon-field input { padding-left: 0; padding-right: 0; }
+    .icon-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 60; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; margin-top: 2px; padding: 4px; border: 1px solid var(--sbp-line); border-radius: 0 0 6px 6px; background: var(--sbp-panel); box-shadow: 0 8px 24px #0003; }
+    .icon-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 4px; background: transparent; color: var(--sbp-text); font-size: 14px; text-align: start; }
+    .icon-option ha-icon { --mdc-icon-size: 22px; flex: 0 0 auto; }
+    .icon-option:hover, .icon-option.is-active { background: rgba(var(--sbp-accent-rgb), .1); }
+    .icon-option[aria-selected=true] { color: var(--sbp-accent); }
     .notice { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     @container (max-width: 340px) { .group-options { gap: 6px; } .group { gap: 4px; } .group .option { gap: 5px; font-size: 12px; } .group input[type=checkbox] { width: 38px; } .group input[type=checkbox]:checked::before { transform: translateX(14px); } }
   `];

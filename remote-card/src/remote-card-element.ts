@@ -11,6 +11,7 @@ import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import {
   SHORTCUT_SLOTS,
   deviceShortcutsFromConfig,
+  favoriteDeviceNamesEnabled,
   favoritesButtonEnabled,
   macrosButtonEnabled,
   mfAsRows,
@@ -931,6 +932,9 @@ export class SofabatonRemoteCard extends LitElement {
       favorites: derived.favorites,
       customFavorites: derived.customFavorites,
       currentActivityId: store.currentActivityId(),
+      favoriteDeviceName: favoriteDeviceNamesEnabled(layoutConfig)
+        ? (deviceId) => store.deviceNameForId(deviceId) ?? ""
+        : null,
       renderMacrosContent:
         store.activeDrawer === "macros" || this._closingDrawer === "macros",
       renderFavoritesContent:

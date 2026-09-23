@@ -157,6 +157,8 @@ export const REMOTE_CARD_STRINGS_AR = {
     openOnCurrentActivity: "النشاط الحالي",
     macrosFavoritesAsRows: "عرض وحدات الماكرو والمفضلات في صفوف",
     commandsAsRows: "عرض الأوامر في صفوف",
+    favoriteDeviceNames: "إظهار أسماء الأجهزة",
+    rowOptions: (groupLabel: string) => `خيارات ${groupLabel}`,
     visibleRows: "الصفوف المرئية",
     moveGroupUp: (groupLabel: string) =>
       `نقل ${isolate(groupLabel)} إلى الأعلى`,

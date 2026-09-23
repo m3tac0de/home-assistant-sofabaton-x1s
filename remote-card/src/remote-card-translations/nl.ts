@@ -145,6 +145,8 @@ const REMOTE_CARD_STRINGS_NL = {
     openOnCurrentActivity: "Huidige activiteit",
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
     commandsAsRows: "Commando's als rijen",
+    favoriteDeviceNames: "Apparaatnamen tonen",
+    rowOptions: (groupLabel: string) => `Opties voor ${groupLabel}`,
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel: string) => `Verplaats ${groupLabel} omhoog`,
     moveGroupDown: (groupLabel: string) => `Verplaats ${groupLabel} omlaag`,
