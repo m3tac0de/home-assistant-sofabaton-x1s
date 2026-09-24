@@ -13,6 +13,17 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 Changes since `sofabaton-x-v0.2.1`.
 
+- **Firmware floor verdicts on `HubStatus` and `HubInfo`.** Both gain
+  `firmware_version`, `firmware_min_supported`, `firmware_unsupported`
+  (the hub's firmware is below the supported floor: such firmware ACKs
+  writes and silently drops them, so a client should block its write
+  surfaces) and `firmware_outdated` (below the recommended floor: ask for
+  an update, block nothing); `HubInfo` also carries
+  `firmware_min_recommended`. They apply the existing
+  `MIN_SUPPORTED_FIRMWARE` / `MIN_RECOMMENDED_FIRMWARE` tables to the
+  banner, classified the way the engine classified the hub, and are
+  `False` / `None` until the banner is known or for an unknown hub line.
+  Additive: existing fields and `to_dict()` keys are unchanged.
 - **`activities()` and `devices()` now list in the hub's display order**
   (the stored sort byte that `reorder_activities` / `reorder_devices`
   write, rows without one after them by id), the order the physical

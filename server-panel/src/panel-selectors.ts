@@ -48,6 +48,23 @@ export const GATE_LABELS: Record<Exclude<Gate, "pass">, string> = {
   first_sync: "First sync running",
 };
 
+// -- the firmware floor ------------------------------------------------------------------
+
+export interface FirmwareFloor {
+  installed: number | "?";
+  required: number | "?";
+}
+
+/** The hub's firmware is below the library's supported floor (`status.firmware_unsupported`,
+ *  computed by the server): such a hub ACKs writes and silently drops them, so the
+ *  write surfaces (the editors, Wifi Commands, Backup) show the HA card's block in
+ *  their place. Reads stay open, which is why this is not a gate. */
+export function firmwareFloor(hub: HubView | null | undefined): FirmwareFloor | null {
+  const status = hub?.status;
+  if (!status?.firmware_unsupported) return null;
+  return { installed: status.firmware_version ?? "?", required: status.firmware_min_supported ?? "?" };
+}
+
 // -- busy ------------------------------------------------------------------------------
 
 export type Busy = { kind: "job"; job: JobView } | { kind: "local"; key: string; label: string } | null;

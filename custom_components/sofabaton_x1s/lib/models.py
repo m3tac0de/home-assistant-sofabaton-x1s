@@ -70,6 +70,14 @@ class HubStatus:
     # True once the connect-time initial sync (banner, devices,
     # activities) has completed for the current hub session.
     catalog_ready: bool = False
+    # The firmware floor verdicts, from the banner (hub_versions): "outdated"
+    # only asks for an update, "unsupported" means the hub ACKs writes and
+    # silently drops them, so a client blocks its write surfaces on it.
+    # False until the banner is known; an unknown hub line never blocks.
+    firmware_version: Optional[int] = None
+    firmware_min_supported: Optional[int] = None
+    firmware_unsupported: bool = False
+    firmware_outdated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -80,7 +88,9 @@ class HubInfo:
     """Identity of the physical hub, as read from its connect banner.
 
     ``known`` is False until the banner has been read at least once; the
-    other fields are then None.
+    other fields are then None. The ``firmware_*`` verdicts are the
+    library's floors (:mod:`hub_versions`) applied to the reported
+    version, the same ones :class:`HubStatus` carries.
     """
 
     known: bool
@@ -89,6 +99,10 @@ class HubInfo:
     mac: Optional[str]
     firmware_version: Optional[int]
     production_batch: Optional[str]
+    firmware_min_supported: Optional[int] = None
+    firmware_min_recommended: Optional[int] = None
+    firmware_unsupported: bool = False
+    firmware_outdated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

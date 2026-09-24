@@ -45,7 +45,8 @@ import {
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { problemText, type HubView, type JobView, type PanelApi } from "../panel-api";
 import type { HubContext } from "../panel-context";
-import type { Gate } from "../panel-selectors";
+import { firmwareFloor, type Gate } from "../panel-selectors";
+import { FIRMWARE_BLOCK_CSS, renderFirmwareBlock } from "../components/firmware-block";
 import type { PanelStore } from "../panel-store";
 import { OPERATION_PROGRESS_CSS, renderOperationProgress } from "../components/operation-progress";
 import { PANEL_BASE_CSS } from "../panel-styles";
@@ -121,6 +122,7 @@ export class SbPanelBackup extends LitElement {
   static styles = [
     PANEL_BASE_CSS,
     OPERATION_PROGRESS_CSS,
+    FIRMWARE_BLOCK_CSS,
     css`
       :host { display: block; container-type: inline-size; --bk-radius-sm: 10px; --bk-radius-md: 12px; --bk-radius-xl: 22px; }
       .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
@@ -750,6 +752,9 @@ export class SbPanelBackup extends LitElement {
 
   render(): TemplateResult {
     if (!this._hub) return html`<div class="panel"><div class="hint">${P.pickHub}</div></div>`;
+    // The card's whole-tab block (a restore to such a hub would be ACKed and dropped; the card blocks Make and Edit with it).
+    const floor = firmwareFloor(this._hub);
+    if (floor) return html`<div class="backup-panel" id="backup-view" data-section=${this.section}>${renderFirmwareBlock(floor, TOOLS_CARD_STRINGS.availability.backupUnavailable, "backup-firmware-block")}</div>`;
     if (this.section === "edit" && this._detail && this._detailExists()) return this._renderDetail(this._detail);
     const body = this.section === "edit" ? this._renderEdit() : this.section === "restore" ? this._renderRestore() : this._renderMake();
     return html`<div class="backup-panel" id="backup-view" data-section=${this.section}>${body}</div>`;

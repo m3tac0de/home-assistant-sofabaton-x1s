@@ -2387,6 +2387,22 @@ test.describe("control panel, backup", () => {
     });
   }
 
+  test("a hub below the firmware floor shows the card's block on every backup section", async ({ page }) => {
+    const state = { hubs: [{ ...LIVING, status: { ...CONTROL, firmware_version: 2, firmware_min_supported: 5, firmware_unsupported: true, firmware_outdated: true } }], seen: [] };
+    await mockServer(page, state);
+    await snapshotRoute(page);
+    await page.goto(`${PAGE}#/e26a44861b45/backup/make`);
+    const view = page.locator("sb-panel-backup");
+    await expect(view.locator("#backup-firmware-block")).toContainText("Backup unavailable");
+    await expect(view.locator("#backup-firmware-block")).toContainText("running firmware version 2. Version 5 or newer");
+    await expect(view.locator("#backup-start")).toHaveCount(0);
+    await page.click('#subtabs .subtab-btn:has-text("Restore")');
+    await expect(page).toHaveURL(/#\/e26a44861b45\/backup\/restore$/);
+    await expect(view.locator("#backup-firmware-block")).toBeVisible();
+    await page.click('#subtabs .subtab-btn:has-text("Edit")');
+    await expect(view.locator("#backup-firmware-block")).toBeVisible();
+  });
+
   test("Make: scope and devices, one backup job, the staged bundle downloads, expires and is dropped on Complete", async ({ page }, testInfo) => {
     const state = { hubs: [LIVING], seen: [] };
     const { calls, sockets } = await mockServer(page, state);
@@ -2807,6 +2823,25 @@ test.describe("control panel, wifi commands", () => {
   }
 
   const view = (page) => page.locator("sb-panel-wifi-devices");
+
+  test("a hub below the firmware floor shows the card's block in place of the tab, and the tab opens once the hub reports newer firmware", async ({ page }, testInfo) => {
+    const state = { hubs: [{ ...LIVING, status: { ...CONTROL, firmware_version: 2, firmware_min_supported: 5, firmware_unsupported: true, firmware_outdated: true } }, OFFICE], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    await page.route(`${H}/wifi-devices`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ devices: [wifiDevice()], max_devices: 5, transports: ["http"], effective_destination: null }) }));
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    const block = view(page).locator("#wifi-firmware-block");
+    await expect(block).toContainText("Automation unavailable");
+    await expect(block).toContainText("running firmware version 2. Version 5 or newer is required");
+    await expect(view(page).locator("#wifi-add")).toHaveCount(0);
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);         // not a gate: the shell does not scrim
+    await page.screenshot({ path: shot(testInfo, "wifi-firmware-block") });
+
+    // The hub row says the firmware is fine now: the roster takes the block's place.
+    state.hubs[0] = { ...LIVING, status: { ...CONTROL, firmware_version: 5, firmware_min_supported: 5, firmware_unsupported: false, firmware_outdated: false } };
+    for (const ws of sockets) ws.send(JSON.stringify({ type: "hub_event", hub_id: LIVING.hub_id, event: { kind: "hub_state", seq: 1 } }));
+    await expect(block).toHaveCount(0);
+    await expect(view(page).locator("#wifi-add")).toBeVisible();
+  });
 
   test("the tab, the roster, and creating a Wifi Device that opens in its detail view", async ({ page }, testInfo) => {
     const { calls } = await wifiServer(page, []);

@@ -19,6 +19,10 @@ export interface HubInfo {
   mac: string | null;
   firmware_version: number | null;
   production_batch: string | null;
+  firmware_min_supported?: number | null;
+  firmware_min_recommended?: number | null;
+  firmware_unsupported?: boolean;
+  firmware_outdated?: boolean;
 }
 
 export interface HubStatus {
@@ -32,6 +36,13 @@ export interface HubStatus {
   activities_cached: number;
   devices_cached: number;
   catalog_ready: boolean;
+  /** The library's firmware floor verdicts from the banner: `firmware_unsupported`
+   *  means the hub ACKs writes and drops them (the write surfaces block on it),
+   *  `firmware_outdated` only asks for an update. Absent on older servers. */
+  firmware_version?: number | null;
+  firmware_min_supported?: number | null;
+  firmware_unsupported?: boolean;
+  firmware_outdated?: boolean;
 }
 
 export interface HubConfig {

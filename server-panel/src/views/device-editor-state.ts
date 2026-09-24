@@ -2,23 +2,14 @@
 // section 6). The HA card's bundle helpers are imported from the card's
 // tree by the editor itself; this module holds what the panel adds: the
 // snapshot-to-bundle view, the draft scope, the name sanitiser copied from
-// the card's edit-detail-view (the card keeps it inside its Lit element),
-// the firmware floor and the Wifi Events pairing arithmetic.
+// the card's edit-detail-view (the card keeps it inside its Lit element)
+// and the Wifi Events pairing arithmetic. The firmware floor is the
+// server's verdict (`firmwareFloor` in panel-selectors), not a mirrored table.
 
 import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import type { Draft } from "../panel-store";
 import type { SnapshotDocument } from "../panel-api";
 import { entityDraftData, entityDraftScope, entityElement, withEntityElement } from "./entity-editor-state";
-
-/** The library's `MIN_SUPPORTED_FIRMWARE` (lib/hub_versions.py), mirrored: below it the hub drops writes. */
-export const MIN_SUPPORTED_FIRMWARE: Record<string, number> = { X1: 17, X1S: 5, X2: 5 };
-
-/** The installed and required versions when the hub's firmware is below the floor; null when it is fine or unknown. */
-export function firmwareUnsupported(hubVersion: string | null | undefined, firmware: number | null | undefined): { installed: number; required: number } | null {
-  const required = MIN_SUPPORTED_FIRMWARE[String(hubVersion ?? "").toUpperCase()];
-  if (required === undefined || firmware == null) return null;
-  return firmware < required ? { installed: firmware, required } : null;
-}
 
 /** The snapshot document is the library's `hub_bundle` with the header merged in; the card's helpers read it as one. */
 export function snapshotAsBundle(snapshot: SnapshotDocument): BackupBundlePayload {

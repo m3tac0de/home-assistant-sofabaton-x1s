@@ -57,7 +57,8 @@ import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www
 
 import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import type { HubContext } from "../panel-context";
-import type { Gate } from "../panel-selectors";
+import { firmwareFloor, type Gate } from "../panel-selectors";
+import { FIRMWARE_BLOCK_CSS, renderFirmwareBlock } from "../components/firmware-block";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import {
@@ -175,6 +176,7 @@ export class SbPanelWifiDevices extends LitElement {
   static styles = [
     PANEL_BASE_CSS,
     EDITOR_CSS,
+    FIRMWARE_BLOCK_CSS,
     css`
       /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
       .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
@@ -1225,6 +1227,9 @@ export class SbPanelWifiDevices extends LitElement {
 
   render(): TemplateResult {
     if (!this.ctx?.hub) return html`<div class="wifi-state">${TOOLS_CARD_STRINGS.common.noHubsFound}</div>`;
+    // The card's whole-tab block: a deploy to such a hub would be ACKed and dropped.
+    const floor = firmwareFloor(this.ctx.hub);
+    if (floor) return renderFirmwareBlock(floor, TOOLS_CARD_STRINGS.availability.automationUnavailable, "wifi-firmware-block");
     const device = this._device;
     let body: TemplateResult;
     if (this.deviceKey && device && this._draft) body = this._renderDetail(device, this._draft);

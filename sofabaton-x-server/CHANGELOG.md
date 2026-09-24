@@ -9,6 +9,17 @@ Protocol-library changes are recorded in the
 Changes since `sofabaton-x-server-v0.2.1`. Requires the library change
 below (unreleased `sofabaton-x`).
 
+- **Firmware floor on the hub row.** `HubStatus` (in `GET /hubs`,
+  `GET /hubs/{id}/status` and the stream's hub rows) carries the
+  library's `firmware_version`, `firmware_min_supported`,
+  `firmware_unsupported` and `firmware_outdated`; `GET /hubs/{id}/info`
+  adds `firmware_min_recommended`. The server refuses nothing on them:
+  a hub below the supported floor ACKs writes and drops them, so a
+  client should block its own write surfaces. The panel now does, like
+  the Home Assistant card: the device and activity editors, the Wifi
+  Commands tab and the Backup tab show "update the hub" in their place
+  while `firmware_unsupported` is set (the editors previously compared
+  `/info` against a copy of the floor table; the two tabs were open).
 - **Update check.** `GET /server/updates`, `POST /server/updates/check`
   and `PUT /server/updates` (and **Updates** on the panel's Server page:
   **Check for updates**, **Automatically check once a day**) ask PyPI

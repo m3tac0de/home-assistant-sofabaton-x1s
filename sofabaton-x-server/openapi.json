@@ -1717,8 +1717,40 @@
         "type": "object"
       },
       "HubInfo": {
-        "description": "Identity of the physical hub, as read from its connect banner.\n\n``known`` is False until the banner has been read at least once; the\nother fields are then None.",
+        "description": "Identity of the physical hub, as read from its connect banner.\n\n``known`` is False until the banner has been read at least once; the\nother fields are then None. The ``firmware_*`` verdicts are the\nlibrary's floors (:mod:`hub_versions`) applied to the reported\nversion, the same ones :class:`HubStatus` carries.",
         "properties": {
+          "firmware_min_recommended": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware Min Recommended"
+          },
+          "firmware_min_supported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware Min Supported"
+          },
+          "firmware_outdated": {
+            "default": false,
+            "title": "Firmware Outdated",
+            "type": "boolean"
+          },
+          "firmware_unsupported": {
+            "default": false,
+            "title": "Firmware Unsupported",
+            "type": "boolean"
+          },
           "firmware_version": {
             "anyOf": [
               {
@@ -1813,6 +1845,38 @@
           "devices_cached": {
             "title": "Devices Cached",
             "type": "integer"
+          },
+          "firmware_min_supported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware Min Supported"
+          },
+          "firmware_outdated": {
+            "default": false,
+            "title": "Firmware Outdated",
+            "type": "boolean"
+          },
+          "firmware_unsupported": {
+            "default": false,
+            "title": "Firmware Unsupported",
+            "type": "boolean"
+          },
+          "firmware_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware Version"
           },
           "hub_connected": {
             "title": "Hub Connected",

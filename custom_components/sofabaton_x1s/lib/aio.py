@@ -42,7 +42,15 @@ from .errors import (
     WifiUpdateFailed,
 )
 from .hub_listener import release_hub_from_listener
-from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X2, HVER_BY_HUB_VERSION
+from .hub_versions import (
+    HUB_VERSION_X1,
+    HUB_VERSION_X2,
+    HVER_BY_HUB_VERSION,
+    MIN_RECOMMENDED_FIRMWARE,
+    MIN_SUPPORTED_FIRMWARE,
+    firmware_is_outdated,
+    firmware_is_unsupported,
+)
 from .commands import hub_command_label
 from .wifi_inplace_plan import baseline_snapshot_from_bundle, build_wifi_inplace_plan
 from .wifi_device import (
@@ -1053,9 +1061,30 @@ class AsyncXProxy:
                 activities_cached=len(acts or {}),
                 devices_cached=len(devs or {}),
                 catalog_ready=self._catalog_ready,
+                **self._firmware_verdict(self._proxy.get_banner_info()),
             )
 
         return await self.run(_read)
+
+    def _firmware_verdict(self, banner: dict, *, floors: bool = False) -> dict[str, Any]:
+        """The firmware floor verdicts for a banner, as ``HubStatus`` fields.
+
+        Classified the way the engine did (``hub_version``), falling back
+        to the banner's model; ``floors=True`` adds the recommended floor
+        for :class:`HubInfo`. An unknown line or version never blocks.
+        """
+
+        hub_version = self._proxy.hub_version or (banner or {}).get("model")
+        installed = (banner or {}).get("firmware_version")
+        verdict: dict[str, Any] = {
+            "firmware_version": installed,
+            "firmware_min_supported": MIN_SUPPORTED_FIRMWARE.get(hub_version or ""),
+            "firmware_unsupported": firmware_is_unsupported(hub_version, installed),
+            "firmware_outdated": firmware_is_outdated(hub_version, installed),
+        }
+        if floors:
+            verdict["firmware_min_recommended"] = MIN_RECOMMENDED_FIRMWARE.get(hub_version or "")
+        return verdict
 
     async def hub_info(self, *, refresh: bool = False) -> HubInfo:
         """Return the hub's identity as read from its connect banner.
@@ -1084,8 +1113,8 @@ class AsyncXProxy:
                 model=info.get("model"),
                 name=info.get("name") or None,
                 mac=info.get("mac"),
-                firmware_version=info.get("firmware_version"),
                 production_batch=info.get("production_batch"),
+                **self._firmware_verdict(info, floors=True),
             )
 
         cached = await self.run(self._proxy.get_banner_info)

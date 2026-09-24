@@ -10,6 +10,7 @@ import {
   busyFor,
   connectivityFor,
   dockModel,
+  firmwareFloor,
   gateFor,
   hubsSummary,
   interactionFor,
@@ -108,6 +109,17 @@ test("gates, in the order the panel checks them", () => {
   assert.equal(gateFor(snapshot([r]), runtime(hub({ status: { catalog_ready: false } }))), "first_sync");
   assert.equal(gateFor(snapshot([r]), r), "pass");
   assert.equal(gateFor(snapshot([]), null), "pass");
+});
+
+test("the firmware floor is the server's verdict, never a gate", () => {
+  const r = runtime();
+  assert.equal(firmwareFloor(hub()), null, "older servers omit the verdict: nothing blocks");
+  assert.equal(firmwareFloor(hub({ status: { firmware_unsupported: false, firmware_outdated: true, firmware_version: 4 } })), null, "outdated only nags");
+  const old = hub({ status: { firmware_unsupported: true, firmware_outdated: true, firmware_version: 2, firmware_min_supported: 5 } });
+  assert.deepEqual(firmwareFloor(old), { installed: 2, required: 5 });
+  assert.deepEqual(firmwareFloor(hub({ status: { firmware_unsupported: true } })), { installed: "?", required: "?" });
+  assert.equal(firmwareFloor(null), null);
+  assert.equal(gateFor(snapshot([r]), runtime(old)), "pass", "reads stay open below the floor");
 });
 
 test("busy: a live job first, then a local call, else nothing; a finished active_job does not count", () => {

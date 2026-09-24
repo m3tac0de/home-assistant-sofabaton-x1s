@@ -104,6 +104,7 @@ class FakeProxy:
         self.advertised: list[tuple[dict, str]] = []
         self.mdns_txt: dict[str, str] = {}
         self.hub_version = "X1"
+        self.banner_firmware = None
         self.real_hub_ip = "1.2.3.4"
         # Structural detail per entity (what a backup-grade fetch leaves
         # behind): kind -> id -> list of binding rows. ``pending_detail`` is
@@ -385,7 +386,12 @@ class FakeProxy:
         return ({}, self.banner_known)
 
     def get_banner_info(self) -> dict:
-        return {"model": "X1S", "name": "Living Room"} if self.banner_known else {}
+        if not self.banner_known:
+            return {}
+        banner = {"model": "X1S", "name": "Living Room"}
+        if self.banner_firmware is not None:
+            banner["firmware_version"] = self.banner_firmware
+        return banner
 
     def update_discovery_identity(self, *, mdns_txt, hub_version):
         # Publishing the advertisement; record what identity we advertised.
@@ -1177,6 +1183,42 @@ def test_hub_info_cached_then_refresh_then_busy() -> None:
             pass
         else:
             raise AssertionError("expected HubBusyError")
+
+    asyncio.run(main())
+
+
+def test_firmware_floor_verdicts_on_status_and_info() -> None:
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+
+        # No banner yet: nothing is known, so nothing blocks.
+        st = await proxy.status()
+        assert st.firmware_version is None and not st.firmware_unsupported and not st.firmware_outdated
+        assert st.firmware_min_supported == 17     # the engine classified the hub as an X1
+
+        # Below the X1 floor (17): the hub ACKs writes and drops them.
+        fake.banner_known = True
+        fake.banner_firmware = 16
+        st = await proxy.status()
+        assert st.firmware_version == 16 and st.firmware_unsupported and st.firmware_outdated
+        info = await proxy.hub_info()
+        assert info.firmware_version == 16 and info.firmware_unsupported and info.firmware_outdated
+        assert info.firmware_min_supported == 17 and info.firmware_min_recommended == 17
+        assert info.to_dict()["firmware_unsupported"] is True
+
+        # At the floor: clean.
+        fake.banner_firmware = 17
+        st = await proxy.status()
+        assert not st.firmware_unsupported and not st.firmware_outdated
+        assert not (await proxy.hub_info()).firmware_unsupported
+
+        # An unclassified hub line never blocks, whatever the banner says.
+        fake.hub_version = None
+        fake.banner_firmware = 1
+        fake.get_banner_info = lambda: {"model": "Y9", "firmware_version": 1}
+        st = await proxy.status()
+        assert st.firmware_version == 1 and st.firmware_min_supported is None and not st.firmware_unsupported
 
     asyncio.run(main())
 

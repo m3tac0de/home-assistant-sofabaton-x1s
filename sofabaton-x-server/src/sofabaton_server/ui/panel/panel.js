@@ -11373,6 +11373,11 @@ var GATE_LABELS = {
   app_holds_hub: "The Sofabaton app holds the hub",
   first_sync: "First sync running"
 };
+function firmwareFloor(hub) {
+  const status = hub?.status;
+  if (!status?.firmware_unsupported) return null;
+  return { installed: status.firmware_version ?? "?", required: status.firmware_min_supported ?? "?" };
+}
 function activeJob(hub) {
   const job = hub?.active_job ?? null;
   return job && !TERMINAL_JOB_STATES.has(job.status) ? job : null;
@@ -16440,6 +16445,27 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   }
 }
 
+// server-panel/src/components/firmware-block.ts
+var FIRMWARE_BLOCK_STRINGS = {
+  body: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required for features that change the hub configuration, because older firmware accepts the writes and silently discards them. Update the hub using the Sofabaton app. This tab becomes available automatically after the hub reports the updated firmware version.`
+};
+var FIRMWARE_BLOCK_CSS = i`
+  .firmware-block { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.55; }
+  .firmware-block-icon { color: var(--sbp-muted); }
+  .firmware-block-icon .mdi { width: 40px; height: 40px; }
+  .firmware-block-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
+  .firmware-block-body { max-width: 420px; font-size: 13px; }
+`;
+function renderFirmwareBlock(floor, title, id) {
+  return b2`
+    <div class="firmware-block" id=${id} role="status">
+      <div class="firmware-block-icon"><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiChip}></path></svg></div>
+      <div class="firmware-block-title">${title}</div>
+      <div class="firmware-block-body">${FIRMWARE_BLOCK_STRINGS.body(floor.installed, floor.required)}</div>
+    </div>
+  `;
+}
+
 // server-panel/src/components/operation-progress.ts
 var OPERATION_PROGRESS_CSS = i`
   .progress-shell { border: 1px solid var(--sbp-line); border-radius: 16px; padding: 18px; background: transparent; color: var(--sbp-text); }
@@ -16733,12 +16759,6 @@ function secondsToByte(value) {
 }
 
 // server-panel/src/views/device-editor-state.ts
-var MIN_SUPPORTED_FIRMWARE = { X1: 17, X1S: 5, X2: 5 };
-function firmwareUnsupported(hubVersion, firmware) {
-  const required = MIN_SUPPORTED_FIRMWARE[String(hubVersion ?? "").toUpperCase()];
-  if (required === void 0 || firmware == null) return null;
-  return firmware < required ? { installed: firmware, required } : null;
-}
 function snapshotAsBundle(snapshot) {
   const doc = snapshot;
   return {
@@ -17239,6 +17259,8 @@ var SbPanelBackup = class extends i4 {
   // -- render -------------------------------------------------------------------------------------------------------
   render() {
     if (!this._hub) return b2`<div class="panel"><div class="hint">${P2.pickHub}</div></div>`;
+    const floor = firmwareFloor(this._hub);
+    if (floor) return b2`<div class="backup-panel" id="backup-view" data-section=${this.section}>${renderFirmwareBlock(floor, TOOLS_CARD_STRINGS.availability.backupUnavailable, "backup-firmware-block")}</div>`;
     if (this.section === "edit" && this._detail && this._detailExists()) return this._renderDetail(this._detail);
     const body = this.section === "edit" ? this._renderEdit() : this.section === "restore" ? this._renderRestore() : this._renderMake();
     return b2`<div class="backup-panel" id="backup-view" data-section=${this.section}>${body}</div>`;
@@ -17532,6 +17554,7 @@ SbPanelBackup.properties = {
 SbPanelBackup.styles = [
   PANEL_BASE_CSS,
   OPERATION_PROGRESS_CSS,
+  FIRMWARE_BLOCK_CSS,
   i`
       :host { display: block; container-type: inline-size; --bk-radius-sm: 10px; --bk-radius-md: 12px; --bk-radius-xl: 22px; }
       .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
@@ -18798,7 +18821,6 @@ var SbPanelEntityEditor = class extends i4 {
     this._snapshot = null;
     this._baseline = null;
     this._working = null;
-    this._info = null;
     this._callbackDeviceId = null;
     this._exitConfirm = null;
     this._syncing = false;
@@ -18881,6 +18903,9 @@ var SbPanelEntityEditor = class extends i4 {
       this._stage = "loading";
       this._notice = null;
       void this._load();
+    } else if (changed.has("ctx") && this._stage === "guard_firmware" && !firmwareFloor(this._hub)) {
+      this._stage = "loading";
+      void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       this._working = this._baseline ? structuredClone(this._baseline) : null;
     }
@@ -18908,7 +18933,7 @@ var SbPanelEntityEditor = class extends i4 {
     if (this._offline) return this._working?.hub?.version ?? null;
     return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
   }
-  // -- loading: the snapshot, the banner (firmware floor), the callback device -------------------------
+  // -- loading: the snapshot, the callback device; the firmware floor is the server's verdict on the hub ---
   async _load(options = {}) {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
@@ -18916,13 +18941,11 @@ var SbPanelEntityEditor = class extends i4 {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
-    const [snapshot, info, callback] = await Promise.all([
+    const [snapshot, callback] = await Promise.all([
       this.api.snapshot(hubId),
-      this.api.hubInfo(hubId).catch(() => null),
       this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
     ]);
     if (seq !== this._loadSeq) return;
-    this._info = info?.ok ? info.body : null;
     this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
     if (!snapshot.ok || !snapshot.body) {
       this._notice = problemText(snapshot);
@@ -18930,7 +18953,7 @@ var SbPanelEntityEditor = class extends i4 {
       return;
     }
     this._snapshot = snapshot.body;
-    if (firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version)) {
+    if (firmwareFloor(this._hub)) {
       this._stage = "guard_firmware";
       return;
     }
@@ -19124,7 +19147,7 @@ var SbPanelEntityEditor = class extends i4 {
       case "loading":
         return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S9.loading}</div></div></div>`;
       case "guard_firmware": {
-        const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
+        const floor = firmwareFloor(this._hub);
         return this._renderGuard(mdiChip, S9.firmwareUnsupportedTitle, S9.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-firmware");
       }
       case "needs_refresh":
@@ -19202,7 +19225,6 @@ SbPanelEntityEditor.properties = {
   _snapshot: { state: true },
   _baseline: { state: true },
   _working: { state: true },
-  _info: { state: true },
   _callbackDeviceId: { state: true },
   _exitConfirm: { state: true },
   _syncing: { state: true },
@@ -25211,6 +25233,8 @@ var SbPanelWifiDevices = class extends i4 {
   }
   render() {
     if (!this.ctx?.hub) return b2`<div class="wifi-state">${TOOLS_CARD_STRINGS.common.noHubsFound}</div>`;
+    const floor = firmwareFloor(this.ctx.hub);
+    if (floor) return renderFirmwareBlock(floor, TOOLS_CARD_STRINGS.availability.automationUnavailable, "wifi-firmware-block");
     const device = this._device;
     let body;
     if (this.deviceKey && device && this._draft) body = this._renderDetail(device, this._draft);
@@ -25244,6 +25268,7 @@ SbPanelWifiDevices.properties = {
 SbPanelWifiDevices.styles = [
   PANEL_BASE_CSS,
   EDITOR_CSS,
+  FIRMWARE_BLOCK_CSS,
   i`
       /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
       .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
