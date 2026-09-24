@@ -159,6 +159,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     channel: "Channel",
     mediaControls: "Playback",
     dvr: "DVR",
+    numpad: "Number pad",
     resetDefaultLayout: "Reset layout",
     shortcutSlotLeft: "Left shortcut",
     shortcutSlotMiddle: "Middle shortcut",
@@ -220,6 +221,19 @@ export const REMOTE_CARD_STRINGS_EN = {
     a: "A",
     b: "B",
     c: "C",
+    // X2 on-screen keypad; digits and dash stay untranslated like A/B/C.
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter",
   } as Record<string, string>,
 };
 

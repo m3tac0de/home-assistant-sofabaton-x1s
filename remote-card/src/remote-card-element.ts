@@ -15,6 +15,8 @@ import {
   favoritesButtonEnabled,
   macrosButtonEnabled,
   mfAsRows,
+  NUMPAD_KEY_IDS,
+  numpadEnabled,
   mfRowVisibleRows,
   normalizedGroupOrder,
   keyStyleFromConfig,
@@ -103,6 +105,11 @@ export class SofabatonRemoteCard extends LitElement {
 
   // Imperative-edge state (mirrors the legacy fields)
   private _drawerUp = false;
+  // Number pad face behind the D-pad (docs/internal/numpad-plan.md §2.4):
+  // transient, never saved; reset on any page change or when the gate
+  // stops passing.
+  private _numpadOpen = false;
+  private _numpadPageKey: string | null = null;
   private _drawerResetTimer: ReturnType<typeof setTimeout> | null = null;
   private _drawerContentResetTimer: ReturnType<typeof setTimeout> | null = null;
   private _closingDrawer: "macros" | "favorites" | "commands" | null = null;
@@ -133,6 +140,7 @@ export class SofabatonRemoteCard extends LitElement {
   private readonly _activityRowRef: Ref<HTMLElement> = createRef();
   private readonly _loadIndicatorRef: Ref<HTMLElement> = createRef();
   private readonly _mfContainerRef: Ref<HTMLElement> = createRef();
+  private readonly _dpadRef: Ref<HTMLElement> = createRef();
   private readonly _macrosOverlayRef: Ref<HTMLElement> = createRef();
   private readonly _favoritesOverlayRef: Ref<HTMLElement> = createRef();
   private readonly _commandsOverlayRef: Ref<HTMLElement> = createRef();
@@ -319,6 +327,16 @@ export class SofabatonRemoteCard extends LitElement {
 
         if (!(clickedInOverlay || clickedInToggleRow)) {
           this._setActiveDrawer(null);
+        }
+      }
+
+      if (this._numpadOpen) {
+        const dpad = this._dpadRef.value;
+        if (!(dpad && path.includes(dpad))) {
+          // The tap is not swallowed: like the drawers, tapping Volume while
+          // the pad is open both closes it and sends volume.
+          this._numpadOpen = false;
+          this.requestUpdate();
         }
       }
 
@@ -538,10 +556,18 @@ export class SofabatonRemoteCard extends LitElement {
     this._store.setDevice(Number.isFinite(deviceId as number) ? deviceId : null);
   }
 
+  private _openNumpad(): void {
+    if (this._numpadOpen) return;
+    this._numpadOpen = true;
+    this._fireEvent("haptic", "light");
+    this.requestUpdate();
+  }
+
   private _handleModeToggle(): void {
     if (this._editMode) return;
     this._fireEvent("haptic", "light");
     this._setActiveDrawer(null);
+    this._numpadOpen = false;
     this._store.toggleMode();
   }
 
@@ -892,6 +918,25 @@ export class SofabatonRemoteCard extends LitElement {
       this._drawerMeasurePending = Boolean(store.activeDrawer);
     }
 
+    // Number pad availability (docs/internal/numpad-plan.md §4): X2 on the
+    // x1s integration (the official one maps no numeric keys), the layout
+    // switch on, and at least one keypad key bound on the current page.
+    // With the D-pad off the keypad stands on its own in the D-pad's slot.
+    // The edit preview drops the data gate so the switch visualizes like
+    // every other layout toggle.
+    const numpadAvailable =
+      derived.isX2 &&
+      !store.isHubIntegration() &&
+      numpadEnabled(layoutConfig) &&
+      (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
+    const numpadPageKey = `${derived.mode}:${
+      deviceMode ? (derived.deviceId ?? "") : (derived.activityId ?? "")
+    }`;
+    if (!numpadAvailable || numpadPageKey !== this._numpadPageKey) {
+      this._numpadOpen = false;
+    }
+    this._numpadPageKey = numpadPageKey;
+
     const keyParams: KeyGroupsParams = {
       isX2: derived.isX2,
       buttonVisibility: runtimeButtonVisibility({
@@ -1159,7 +1204,13 @@ export class SofabatonRemoteCard extends LitElement {
           itemCount: derived.customFavorites.length + derived.favorites.length,
           emptyText: str().card.noFavorites,
         }) : nothing,
-      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad)),
+      dpad: () =>
+        renderDpad(keyParams, Boolean(layoutConfig.show_dpad), {
+          available: numpadAvailable,
+          open: this._numpadOpen,
+          hostRef: this._dpadRef,
+          onOpen: () => this._openNumpad(),
+        }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
       media: () => renderMedia(keyParams, mediaEnabled),

@@ -36,6 +36,13 @@ export interface GroupOrderSectionParams {
   channelEnabled: boolean;
   mediaEnabled: boolean;
   dvrEnabled: boolean;
+  /**
+   * X2 on the x1s integration only: the Number pad switch on the D-pad row
+   * (docs/internal/numpad-plan.md). Independent of the D-pad switch: with
+   * the D-pad off the keypad stands on its own in that slot.
+   */
+  showNumpadSwitch: boolean;
+  numpadEnabled: boolean;
   /** A device layout ("device:*") is selected: mf rows become Commands. */
   isDeviceSelection: boolean;
   commandsEnabled: boolean;
@@ -68,6 +75,7 @@ export interface GroupOrderSectionParams {
   onSetChannel: (enabled: boolean) => void;
   onSetMedia: (enabled: boolean) => void;
   onSetDvr: (enabled: boolean) => void;
+  onSetNumpad: (enabled: boolean) => void;
   onSetGroupEnabled: (key: string, enabled: boolean) => void;
   /** Group-order row whose "..." options panel is open, if any. */
   rowMenuKey: string | null;
@@ -374,6 +382,13 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       cells = html`
         ${renderSwitchItem(str().editor.volume, params.volumeEnabled, params.onSetVolume)}
         ${renderSwitchItem(str().editor.channel, params.channelEnabled, params.onSetChannel)}
+      `;
+    } else if (key === "dpad" && params.showNumpadSwitch) {
+      cells = html`
+        ${renderSwitchItem(params.groupLabel(key), params.isGroupEnabled(key), (val) =>
+          params.onSetGroupEnabled(key, val),
+        )}
+        ${renderSwitchItem(str().editor.numpad, params.numpadEnabled, params.onSetNumpad)}
       `;
     } else if (key === "media") {
       cells = html`

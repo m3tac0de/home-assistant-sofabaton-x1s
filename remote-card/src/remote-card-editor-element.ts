@@ -32,6 +32,8 @@ import {
   deviceToggleEnabledForEditor,
   deviceTogglePatch,
   dvrTogglePatch,
+  numpadEnabledForEditor,
+  numpadTogglePatch,
   editorActivitiesFromState,
   editorDevicesFromState,
   favoritesTogglePatch,
@@ -845,6 +847,10 @@ export class SofabatonRemoteCardEditor extends LitElement {
           channelEnabled: channelGroupEnabled(layoutCfg),
           mediaEnabled: mediaGroupEnabled(layoutCfg),
           dvrEnabled: dvrGroupEnabled(layoutCfg),
+          // The official integration maps no numeric keys, so the standalone
+          // card never shows the keypad nor its switch.
+          showNumpadSwitch: isEditorX2 && this._isX1sIntegrationForEditor(),
+          numpadEnabled: numpadEnabledForEditor(this._config, this._layoutSelectionKey()),
           isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
           shortcutsStrip,
           shortcutsPanel,
@@ -875,6 +881,7 @@ export class SofabatonRemoteCardEditor extends LitElement {
             if (patch) this._updateLayoutConfig(patch);
           },
           onSetDvr: (v) => this._updateLayoutConfig(dvrTogglePatch(v)),
+          onSetNumpad: (v) => this._updateLayoutConfig(numpadTogglePatch(v)),
           onSetGroupEnabled: (key, v) => {
             const patch = groupEnabledPatch(key, v);
             if (patch) this._updateLayoutConfig(patch);

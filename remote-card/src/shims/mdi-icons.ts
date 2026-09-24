@@ -3,7 +3,7 @@
 // mdi path data for the web remote's icon shim: every "mdi:" name the card
 // references (a test fails when one is missing) plus a curated set a user
 // may pick for custom favourites and device shortcuts. Named imports keep
-// the bundle to just these 323 paths.
+// the bundle to just these 324 paths.
 
 import {
   mdiAccount,
@@ -97,6 +97,7 @@ import {
   mdiCurtains,
   mdiCurtainsClosed,
   mdiDesktopTower,
+  mdiDialpad,
   mdiDisc,
   mdiDiscPlayer,
   mdiDishwasher,
@@ -424,6 +425,7 @@ export const MDI_ICON_PATHS: Record<string, string> = {
   "curtains": mdiCurtains,
   "curtains-closed": mdiCurtainsClosed,
   "desktop-tower": mdiDesktopTower,
+  "dialpad": mdiDialpad,
   "disc": mdiDisc,
   "disc-player": mdiDiscPlayer,
   "dishwasher": mdiDishwasher,
@@ -681,6 +683,7 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "circle",
   "close-circle-outline",
   "cogs",
+  "dialpad",
   "dots-horizontal",
   "drag-vertical-variant",
   "fast-forward",

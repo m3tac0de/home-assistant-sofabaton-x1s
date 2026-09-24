@@ -55,6 +55,7 @@ const ICONS = {
   "mdi:chevron-down": iconSvg(`<path d="M6 9l6 6 6-6"></path>`),
   "mdi:dots-horizontal": iconSvg(`<circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="18" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>`),
   "mdi:chevron-left": iconSvg(`<path d="M15 6l-6 6 6 6"></path>`),
+  "mdi:dialpad": iconSvg(`<circle cx="6" cy="5" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="18" cy="5" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="6" cy="10" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="12" cy="10" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="18" cy="10" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="6" cy="15" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="12" cy="15" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="18" cy="15" r="1.7" fill="currentColor" stroke="none"></circle><circle cx="12" cy="20" r="1.7" fill="currentColor" stroke="none"></circle>`),
   "mdi:chevron-right": iconSvg(`<path d="M9 6l6 6-6 6"></path>`),
   "mdi:arrow-u-left-top": iconSvg(`<path d="M9 9l-4 4 4 4"></path><path d="M5 13h8a5 5 0 015 5v1"></path>`),
   "mdi:home": iconSvg(`<path d="M4 11.5L12 5l8 6.5" fill="currentColor" stroke="none"></path><path d="M7 11v8h4v-5h2v5h4v-8" fill="currentColor" stroke="none"></path>`),
@@ -725,6 +726,19 @@ const scenarios = {
     },
   },
 };
+
+// An X2 on our integration with the on-screen keypad bound on the running
+// activity (docs/internal/numpad-plan.md): the D-pad carries the flip.
+scenarios.numpad = (() => {
+  const base = clone(scenarios.active);
+  const attrs = base.states[remoteEntityId].attributes;
+  attrs.hub_version = "X2";
+  attrs.assigned_keys = {
+    101: [...COMMAND_IDS, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169],
+    102: [174, 175, 176, 177, 178, 179, 180, 181, 187, 188, 189],
+  };
+  return base;
+})();
 
 scenarios.device_mode = (() => {
   const base = clone(scenarios.active);

@@ -20,6 +20,7 @@ import {
   mfAsRows,
   mfRowVisibleRows,
   normalizedGroupOrder,
+  numpadEnabled,
   normalizedShortcutSlot,
   parseDeviceLayoutKey,
   type ShortcutSlot,
@@ -133,6 +134,7 @@ const ACTIVITY_LAYOUT_DEFAULTS: Record<string, unknown> = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_macros_button: true,
   show_favorites_button: true,
   show_device_toggle: true,
@@ -461,6 +463,18 @@ export function volumeTogglePatch(enabled: boolean) {
 
 export function channelTogglePatch(enabled: boolean) {
   return { show_channel: !!enabled };
+}
+
+/** The Number pad switch on the D-pad row (docs/internal/numpad-plan.md). */
+export function numpadEnabledForEditor(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+): boolean {
+  return numpadEnabled(layoutConfigForSelection(config, selection));
+}
+
+export function numpadTogglePatch(enabled: boolean) {
+  return { show_numpad: !!enabled };
 }
 
 export function dvrTogglePatch(enabled: boolean) {

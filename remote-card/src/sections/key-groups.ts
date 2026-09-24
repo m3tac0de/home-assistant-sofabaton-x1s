@@ -3,8 +3,10 @@
 // rendered declaratively around create-once <sb-key-button> hosts.
 
 import { html, nothing, type TemplateResult } from "lit";
-import { ID } from "../remote-card-layout";
+import { ref, type Ref } from "lit/directives/ref.js";
+import { ID, NUMPAD_KEY_IDS } from "../remote-card-layout";
 import { midModeState, mediaModeState } from "../remote-card-runtime-display";
+import { str } from "../remote-card-strings";
 import { automationAssistLabelForKey } from "../remote-card-ui-helpers";
 import "../components/sb-key-button";
 
@@ -28,6 +30,7 @@ export const X2_ONLY_KEY_IDS = new Set<number>([
   ID.DVR,
   ID.PLAY,
   ID.GUIDE,
+  ...NUMPAD_KEY_IDS,
 ]);
 
 const DPAD_KEYS: KeySpec[] = [
@@ -38,6 +41,24 @@ const DPAD_KEYS: KeySpec[] = [
   { key: "ok", id: ID.OK, cmd: ID.OK, label: "", icon: "mdi:circle", extraClass: "area-ok okKey", size: "big" },
   { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
   { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" },
+];
+
+// The X2's on-screen keypad, phone order (docs/internal/numpad-plan.md
+// §2.3). "E" is the remote's own Enter glyph, language neutral like A/B/C;
+// the assist label resolves to str().keys.numenter via the key fallback.
+export const NUMPAD_KEYS: KeySpec[] = [
+  { key: "num1", id: ID.NUM_1, cmd: ID.NUM_1, label: "1", icon: "", size: "small" },
+  { key: "num2", id: ID.NUM_2, cmd: ID.NUM_2, label: "2", icon: "", size: "small" },
+  { key: "num3", id: ID.NUM_3, cmd: ID.NUM_3, label: "3", icon: "", size: "small" },
+  { key: "num4", id: ID.NUM_4, cmd: ID.NUM_4, label: "4", icon: "", size: "small" },
+  { key: "num5", id: ID.NUM_5, cmd: ID.NUM_5, label: "5", icon: "", size: "small" },
+  { key: "num6", id: ID.NUM_6, cmd: ID.NUM_6, label: "6", icon: "", size: "small" },
+  { key: "num7", id: ID.NUM_7, cmd: ID.NUM_7, label: "7", icon: "", size: "small" },
+  { key: "num8", id: ID.NUM_8, cmd: ID.NUM_8, label: "8", icon: "", size: "small" },
+  { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
+  { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
+  { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" },
 ];
 
 const NAV_KEYS: KeySpec[] = [
@@ -138,9 +159,78 @@ function renderKey(params: KeyGroupsParams, spec: KeySpec): TemplateResult | typ
   `;
 }
 
-export function renderDpad(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {
-  if (!visible) return nothing;
-  return html`<div class="dpad">${DPAD_KEYS.map((k) => renderKey(params, k))}</div>`;
+/**
+ * Number pad behind the D-pad (docs/internal/numpad-plan.md). `available`
+ * is the card's gate (X2, x1s integration, layout switch, a bound key or
+ * the edit preview); without it the group renders the plain D-pad and
+ * nothing else changes.
+ */
+export interface DpadNumpadParams {
+  available: boolean;
+  open: boolean;
+  /** The group element, so the outside-close handler can exempt it. */
+  hostRef?: Ref<HTMLElement>;
+  /**
+   * A tap on the small round toggle in the D-pad's dead corner. Open-only:
+   * with the keypad up, taps inside the group never close it, only the
+   * outside-close handler does. The rest of the frame is inert, so a
+   * fat-fingered direction key never flips the face.
+   */
+  onOpen: () => void;
+}
+
+export function renderDpad(
+  params: KeyGroupsParams,
+  visible: boolean,
+  numpad: DpadNumpadParams | null = null,
+): TemplateResult | typeof nothing {
+  const ready = Boolean(numpad?.available);
+  if (!visible) {
+    // D-pad off, number pad on: the keypad stands on its own in the D-pad's
+    // slot, in flow, no flip and no hint. Nothing at all without the gate.
+    if (!ready) return nothing;
+    return html`
+      <div class="dpad dpad--numpad-only" ${numpad?.hostRef ? ref(numpad.hostRef) : nothing}>
+        <div class="dpad-face dpad-face--numpad">
+          ${NUMPAD_KEYS.map((k) => renderKey(params, k))}
+        </div>
+      </div>
+    `;
+  }
+  const open = ready && Boolean(numpad?.open);
+  const className = [
+    "dpad",
+    ready ? "dpad--numpad-ready" : "",
+    open ? "dpad--numpad-open" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  // The keys face stays in flow and sets the group's height; the keypad
+  // face sits on top inside the same padding, so the rows below never move
+  // (Q1). `inert` keeps the hidden face out of tab order and hit testing.
+  return html`
+    <div class=${className} ${numpad?.hostRef ? ref(numpad.hostRef) : nothing}>
+      <div class="dpad-face dpad-face--keys" ?inert=${open}>
+        ${DPAD_KEYS.map((k) => renderKey(params, k))}
+      </div>
+      ${ready
+        ? html`
+            <div class="dpad-face dpad-face--numpad" ?inert=${!open}>
+              ${NUMPAD_KEYS.map((k) => renderKey(params, k))}
+            </div>
+            <button
+              type="button"
+              class="dpad-numpad-toggle"
+              aria-label=${str().editor.numpad}
+              ?inert=${open}
+              @click=${() => numpad!.onOpen()}
+            >
+              <ha-icon icon="mdi:dialpad" aria-hidden="true"></ha-icon>
+            </button>
+          `
+        : nothing}
+    </div>
+  `;
 }
 
 export function renderNavRow(params: KeyGroupsParams, visible: boolean): TemplateResult | typeof nothing {

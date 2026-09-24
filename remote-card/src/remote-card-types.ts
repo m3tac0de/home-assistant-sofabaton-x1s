@@ -24,6 +24,7 @@ export interface RemoteCardLayoutConfig {
   show_dvr?: boolean;
   show_colors?: boolean;
   show_abc?: boolean;
+  show_numpad?: boolean;
   /** null = default (shown); explicit boolean toggles the macros drawer tab. */
   show_macros_button?: boolean | null;
   /** null = default (shown); explicit boolean toggles the favorites drawer tab. */
@@ -56,6 +57,7 @@ export interface DeviceLayoutConfig {
   show_dvr?: boolean;
   show_colors?: boolean;
   show_abc?: boolean;
+  show_numpad?: boolean;
   /** Toggles the Commands drawer (default shown). */
   show_commands_button?: boolean;
   /** Toggles the device Power button when power control is configured (default shown). */

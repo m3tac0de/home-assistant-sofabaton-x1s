@@ -778,6 +778,7 @@ var LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_macros_button",
   "show_favorites_button",
   "show_device_toggle",
@@ -810,6 +811,7 @@ var DEVICE_LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_commands_button",
   "show_power_button",
   "show_device_toggle",
@@ -877,6 +879,7 @@ var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_commands_button: true,
   show_power_button: true,
   show_device_toggle: true,
@@ -1074,8 +1077,43 @@ var ID = {
   RED: 190,
   GREEN: 191,
   YELLOW: 192,
-  BLUE: 193
+  BLUE: 193,
+  // X2-only on-screen numeric keypad (docs/internal/numpad-plan.md). The
+  // hub numbers them E-first (158) down to 1 (169); the card lays them out
+  // in phone order.
+  NUM_ENTER: 158,
+  NUM_0: 159,
+  NUM_DASH: 160,
+  NUM_9: 161,
+  NUM_8: 162,
+  NUM_7: 163,
+  NUM_6: 164,
+  NUM_5: 165,
+  NUM_4: 166,
+  NUM_3: 167,
+  NUM_2: 168,
+  NUM_1: 169
 };
+var NUMPAD_KEY_IDS = Object.freeze([
+  ID.NUM_1,
+  ID.NUM_2,
+  ID.NUM_3,
+  ID.NUM_4,
+  ID.NUM_5,
+  ID.NUM_6,
+  ID.NUM_7,
+  ID.NUM_8,
+  ID.NUM_9,
+  ID.NUM_0,
+  ID.NUM_DASH,
+  ID.NUM_ENTER
+]);
+function numpadEnabled(layout) {
+  if (typeof layout?.show_numpad === "boolean") {
+    return layout.show_numpad;
+  }
+  return true;
+}
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
 var HARD_BUTTON_ID_MAP = {
   up: ID.UP,
@@ -1289,6 +1327,7 @@ var REMOTE_CARD_STRINGS_EN = {
     channel: "Channel",
     mediaControls: "Playback",
     dvr: "DVR",
+    numpad: "Number pad",
     resetDefaultLayout: "Reset layout",
     shortcutSlotLeft: "Left shortcut",
     shortcutSlotMiddle: "Middle shortcut",
@@ -1347,7 +1386,20 @@ var REMOTE_CARD_STRINGS_EN = {
     blue: "Blue",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    // X2 on-screen keypad; digits and dash stay untranslated like A/B/C.
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 var TRANSLATIONS = {};
@@ -2279,6 +2331,10 @@ var REMOTE_CARD_CSS = `
       /* D-pad cluster */
       .dpad {
         padding: 12px;
+        position: relative;
+        perspective: 900px;
+      }
+      .dpad-face--keys {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-areas:
@@ -2294,6 +2350,65 @@ var REMOTE_CARD_CSS = `
       .dpad .area-ok { grid-area: ok; }
       .dpad .area-right { grid-area: right; }
       .dpad .area-down { grid-area: down; }
+
+      /* Number pad face (docs/internal/numpad-plan.md). The keys face stays
+         in flow and sets the group's height; the keypad face is laid over
+         it inside the same padding, twelve square keys in four rows, so the
+         rows below never move (Q1). A tap on the frame flips, a tap
+         anywhere else flips back (the card's outside-close handler). */
+      .dpad--numpad-ready {
+        cursor: pointer;
+      }
+      .dpad-face {
+        backface-visibility: hidden;
+        transition:
+          transform 320ms ease,
+          opacity 200ms ease;
+      }
+      .dpad-face--numpad {
+        position: absolute;
+        inset: 12px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(4, minmax(0, 1fr));
+        gap: 6px 10px;
+        align-items: stretch;
+        justify-items: center;
+        transform: rotateX(-180deg);
+        opacity: 0;
+        --sb-key-font-size: clamp(11px, 5.5cqw, 40px);
+      }
+      .dpad-face--numpad .key {
+        width: auto;
+        height: 100%;
+      }
+      .dpad--numpad-open .dpad-face--keys {
+        transform: rotateX(180deg);
+        opacity: 0;
+      }
+      .dpad--numpad-open .dpad-face--numpad {
+        transform: rotateX(0);
+        opacity: 1;
+      }
+      .dpad-numpad-hint {
+        position: absolute;
+        right: 8px;
+        bottom: 6px;
+        --mdc-icon-size: 14px;
+        color: var(--sb-key-label-color, var(--primary-color));
+        opacity: 0.45;
+        pointer-events: none;
+        transition: opacity 200ms ease;
+      }
+      .dpad--numpad-open .dpad-numpad-hint {
+        opacity: 0;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dpad-face,
+        .dpad-numpad-hint {
+          transition: none;
+        }
+      }
 
       /* The UI follows the locale direction, but these are spatial controls:
          changing language must never swap the physical Left/Right keys or the
@@ -4142,6 +4257,21 @@ var RemoteCardStore = class {
     if (!enabled.length) return true;
     return enabled.some((entry) => entry.command === Number(id));
   }
+  /**
+   * True when any of `ids` is bound on the current page. Unlike isEnabled
+   * this fails CLOSED without data: it gates an affordance (the number pad
+   * hint), not a key, so "unknown" must not render it.
+   */
+  anyKeyBound(ids) {
+    if (this._mode === "device") {
+      const entry = this.deviceKeymapState();
+      if (!entry || entry.status !== "ready") return false;
+      return ids.some((id) => entry.buttons.includes(id));
+    }
+    if (this.enabledButtonsInvalid) return false;
+    const enabled = this.enabledButtons();
+    return ids.some((id) => enabled.some((entry) => entry.command === id));
+  }
   commandTarget(id) {
     const enabled = this.enabledButtons();
     const match = enabled.find((entry) => entry.command === Number(id));
@@ -5951,7 +6081,8 @@ var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.EXIT,
   ID.DVR,
   ID.PLAY,
-  ID.GUIDE
+  ID.GUIDE,
+  ...NUMPAD_KEY_IDS
 ]);
 var DPAD_KEYS = [
   { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
@@ -5961,6 +6092,20 @@ var DPAD_KEYS = [
   { key: "ok", id: ID.OK, cmd: ID.OK, label: "", icon: "mdi:circle", extraClass: "area-ok okKey", size: "big" },
   { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
   { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" }
+];
+var NUMPAD_KEYS = [
+  { key: "num1", id: ID.NUM_1, cmd: ID.NUM_1, label: "1", icon: "", size: "small" },
+  { key: "num2", id: ID.NUM_2, cmd: ID.NUM_2, label: "2", icon: "", size: "small" },
+  { key: "num3", id: ID.NUM_3, cmd: ID.NUM_3, label: "3", icon: "", size: "small" },
+  { key: "num4", id: ID.NUM_4, cmd: ID.NUM_4, label: "4", icon: "", size: "small" },
+  { key: "num5", id: ID.NUM_5, cmd: ID.NUM_5, label: "5", icon: "", size: "small" },
+  { key: "num6", id: ID.NUM_6, cmd: ID.NUM_6, label: "6", icon: "", size: "small" },
+  { key: "num7", id: ID.NUM_7, cmd: ID.NUM_7, label: "7", icon: "", size: "small" },
+  { key: "num8", id: ID.NUM_8, cmd: ID.NUM_8, label: "8", icon: "", size: "small" },
+  { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
+  { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
+  { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -6024,9 +6169,46 @@ function renderKey(params, spec) {
     ></sb-key-button>
   `;
 }
-function renderDpad(params, visible) {
+function isKeyButtonEvent(ev) {
+  const path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
+  return path.some(
+    (node) => typeof node === "object" && node !== null && node.tagName === "SB-KEY-BUTTON"
+  );
+}
+function renderDpad(params, visible, numpad = null) {
   if (!visible) return A;
-  return b2`<div class="dpad">${DPAD_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+  const ready = Boolean(numpad?.available);
+  const open = ready && Boolean(numpad?.open);
+  const className = [
+    "dpad",
+    ready ? "dpad--numpad-ready" : "",
+    open ? "dpad--numpad-open" : ""
+  ].filter(Boolean).join(" ");
+  const onFrameClick = ready ? (ev) => {
+    if (isKeyButtonEvent(ev)) return;
+    numpad.onFrameTap();
+  } : void 0;
+  return b2`
+    <div
+      class=${className}
+      ${numpad?.hostRef ? n5(numpad.hostRef) : A}
+      @click=${onFrameClick}
+    >
+      <div class="dpad-face dpad-face--keys" ?inert=${open}>
+        ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
+      </div>
+      ${ready ? b2`
+            <div class="dpad-face dpad-face--numpad" ?inert=${!open}>
+              ${NUMPAD_KEYS.map((k2) => renderKey(params, k2))}
+            </div>
+            <ha-icon
+              class="dpad-numpad-hint"
+              icon="mdi:dialpad"
+              aria-hidden="true"
+            ></ha-icon>
+          ` : A}
+    </div>
+  `;
 }
 function renderNavRow(params, visible) {
   if (!visible) return A;
@@ -6548,6 +6730,11 @@ var SofabatonRemoteCard = class extends i4 {
     this._editMode = false;
     // Imperative-edge state (mirrors the legacy fields)
     this._drawerUp = false;
+    // Number pad face behind the D-pad (docs/internal/numpad-plan.md §2.4):
+    // transient, never saved; reset on any page change or when the gate
+    // stops passing.
+    this._numpadOpen = false;
+    this._numpadPageKey = null;
     this._drawerResetTimer = null;
     this._drawerContentResetTimer = null;
     this._closingDrawer = null;
@@ -6575,6 +6762,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._activityRowRef = e5();
     this._loadIndicatorRef = e5();
     this._mfContainerRef = e5();
+    this._dpadRef = e5();
     this._macrosOverlayRef = e5();
     this._favoritesOverlayRef = e5();
     this._commandsOverlayRef = e5();
@@ -6721,6 +6909,13 @@ var SofabatonRemoteCard = class extends i4 {
         const clickedInToggleRow = this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
         if (!(clickedInOverlay || clickedInToggleRow)) {
           this._setActiveDrawer(null);
+        }
+      }
+      if (this._numpadOpen) {
+        const dpad = this._dpadRef.value;
+        if (!(dpad && path.includes(dpad))) {
+          this._numpadOpen = false;
+          this.requestUpdate();
         }
       }
       if (this._store.activityMenuOpen) {
@@ -6878,10 +7073,16 @@ var SofabatonRemoteCard = class extends i4 {
     const deviceId = String(value) === "" ? null : Number(value);
     this._store.setDevice(Number.isFinite(deviceId) ? deviceId : null);
   }
+  _toggleNumpad() {
+    this._numpadOpen = !this._numpadOpen;
+    this._fireEvent("haptic", "light");
+    this.requestUpdate();
+  }
   _handleModeToggle() {
     if (this._editMode) return;
     this._fireEvent("haptic", "light");
     this._setActiveDrawer(null);
+    this._numpadOpen = false;
     this._store.toggleMode();
   }
   _syncLoadIndicator() {
@@ -7132,6 +7333,12 @@ var SofabatonRemoteCard = class extends i4 {
       this._drawerMeasureSignature = drawerMeasureSignature;
       this._drawerMeasurePending = Boolean(store.activeDrawer);
     }
+    const numpadAvailable = derived.isX2 && !store.isHubIntegration() && Boolean(layoutConfig.show_dpad) && numpadEnabled(layoutConfig) && (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
+    const numpadPageKey = `${derived.mode}:${deviceMode ? derived.deviceId ?? "" : derived.activityId ?? ""}`;
+    if (!numpadAvailable || numpadPageKey !== this._numpadPageKey) {
+      this._numpadOpen = false;
+    }
+    this._numpadPageKey = numpadPageKey;
     const keyParams = {
       isX2: derived.isX2,
       buttonVisibility: runtimeButtonVisibility({
@@ -7327,7 +7534,12 @@ var SofabatonRemoteCard = class extends i4 {
         itemCount: derived.customFavorites.length + derived.favorites.length,
         emptyText: str().card.noFavorites
       }) : A,
-      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad)),
+      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad), {
+        available: numpadAvailable,
+        open: this._numpadOpen,
+        hostRef: this._dpadRef,
+        onFrameTap: () => this._toggleNumpad()
+      }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
       media: () => renderMedia(keyParams, mediaEnabled),
@@ -7953,6 +8165,7 @@ var MDI_ICON_PATHS = {
   "curtains": mdiCurtains,
   "curtains-closed": mdiCurtainsClosed,
   "desktop-tower": mdiDesktopTower,
+  "dialpad": mdiDialpad,
   "disc": mdiDisc,
   "disc-player": mdiDiscPlayer,
   "dishwasher": mdiDishwasher,
@@ -8847,6 +9060,7 @@ var REMOTE_CARD_STRINGS_AR = {
     channel: "\u0627\u0644\u0642\u0646\u0627\u0629",
     mediaControls: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
     dvr: DVR,
+    numpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
     resetDefaultLayout: "\u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     shortcutSlotLeft: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u064A\u0633\u0631",
     shortcutSlotMiddle: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u0648\u0633\u0637",
@@ -8905,7 +9119,19 @@ var REMOTE_CARD_STRINGS_AR = {
     blue: "\u0623\u0632\u0631\u0642",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "\u0625\u062F\u062E\u0627\u0644"
   }
 };
 registerRemoteCardTranslation("ar", REMOTE_CARD_STRINGS_AR);
@@ -9065,6 +9291,7 @@ var REMOTE_CARD_STRINGS_DE = {
     channel: "Kanal",
     mediaControls: "Wiedergabe",
     dvr: "DVR",
+    numpad: "Ziffernblock",
     resetDefaultLayout: "Layout zur\xFCcksetzen",
     shortcutSlotLeft: "Linke Verkn\xFCpfung",
     shortcutSlotMiddle: "Mittlere Verkn\xFCpfung",
@@ -9123,7 +9350,19 @@ var REMOTE_CARD_STRINGS_DE = {
     blue: "Blau",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 registerRemoteCardTranslation("de", REMOTE_CARD_STRINGS_DE);
@@ -9262,6 +9501,7 @@ var REMOTE_CARD_STRINGS_ES = {
     channel: "Canal",
     mediaControls: "Reproducci\xF3n",
     dvr: "DVR",
+    numpad: "Teclado num\xE9rico",
     resetDefaultLayout: "Restablecer dise\xF1o",
     shortcutSlotLeft: "Acceso directo izquierdo",
     shortcutSlotMiddle: "Acceso directo central",
@@ -9320,7 +9560,19 @@ var REMOTE_CARD_STRINGS_ES = {
     blue: "Azul",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Intro"
   }
 };
 registerRemoteCardTranslation("es", REMOTE_CARD_STRINGS_ES);
@@ -9459,6 +9711,7 @@ var REMOTE_CARD_STRINGS_FR = {
     channel: "Cha\xEEne",
     mediaControls: "Lecture",
     dvr: "DVR",
+    numpad: "Pav\xE9 num\xE9rique",
     resetDefaultLayout: "R\xE9initialiser",
     shortcutSlotLeft: "Raccourci gauche",
     shortcutSlotMiddle: "Raccourci central",
@@ -9517,7 +9770,19 @@ var REMOTE_CARD_STRINGS_FR = {
     blue: "Bleu",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Entr\xE9e"
   }
 };
 registerRemoteCardTranslation("fr", REMOTE_CARD_STRINGS_FR);
@@ -9655,6 +9920,7 @@ var REMOTE_CARD_STRINGS_NL = {
     channel: "Kanaal",
     mediaControls: "Afspelen",
     dvr: "DVR",
+    numpad: "Cijfertoetsen",
     resetDefaultLayout: "Indeling resetten",
     shortcutSlotLeft: "Linker snelkoppeling",
     shortcutSlotMiddle: "Middelste snelkoppeling",
@@ -9713,7 +9979,19 @@ var REMOTE_CARD_STRINGS_NL = {
     blue: "Blauw",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 registerRemoteCardTranslation("nl", REMOTE_CARD_STRINGS_NL);
@@ -9851,6 +10129,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     channel: "\u9891\u9053",
     mediaControls: "\u64AD\u653E",
     dvr: "DVR",
+    numpad: "\u6570\u5B57\u952E\u76D8",
     resetDefaultLayout: "\u91CD\u7F6E\u5E03\u5C40",
     shortcutSlotLeft: "\u5DE6\u4FA7\u5FEB\u6377\u6309\u952E",
     shortcutSlotMiddle: "\u4E2D\u95F4\u5FEB\u6377\u6309\u952E",
@@ -9909,7 +10188,19 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     blue: "\u84DD",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "\u786E\u5B9A"
   }
 };
 registerRemoteCardTranslation("zh-hans", REMOTE_CARD_STRINGS_ZH_HANS);
@@ -22619,6 +22910,7 @@ var ACTIVITY_LAYOUT_DEFAULTS = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_macros_button: true,
   show_favorites_button: true,
   show_device_toggle: true,

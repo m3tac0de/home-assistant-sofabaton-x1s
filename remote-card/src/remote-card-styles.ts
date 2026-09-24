@@ -870,6 +870,10 @@ export const REMOTE_CARD_CSS = `
       /* D-pad cluster */
       .dpad {
         padding: 12px;
+        position: relative;
+        perspective: 900px;
+      }
+      .dpad-face--keys {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-areas:
@@ -885,6 +889,113 @@ export const REMOTE_CARD_CSS = `
       .dpad .area-ok { grid-area: ok; }
       .dpad .area-right { grid-area: right; }
       .dpad .area-down { grid-area: down; }
+
+      /* Number pad face (docs/internal/numpad-plan.md). The keys face stays
+         in flow and sets the group's height; the keypad face is laid over
+         it inside the same padding, twelve square keys in four rows, so the
+         rows below never move (Q1). The small round toggle in the dead
+         corner flips; a tap anywhere outside the group flips back (the
+         card's outside-close handler). */
+      .dpad-face {
+        backface-visibility: hidden;
+        transition:
+          transform 320ms ease,
+          opacity 200ms ease;
+      }
+      .dpad-face--numpad {
+        position: absolute;
+        inset: 12px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(4, minmax(0, 1fr));
+        gap: 6px 10px;
+        align-items: stretch;
+        justify-items: center;
+        transform: rotateX(-180deg);
+        opacity: 0;
+        --sb-key-font-size: clamp(11px, 5.5cqw, 40px);
+      }
+      .dpad-face--numpad .key {
+        width: auto;
+        height: 100%;
+      }
+      .dpad--numpad-open .dpad-face--keys {
+        transform: rotateX(180deg);
+        opacity: 0;
+      }
+      .dpad--numpad-open .dpad-face--numpad {
+        transform: rotateX(0);
+        opacity: 1;
+      }
+      /* The button is the hit box: the visible ring is drawn 8px inside
+         it, so a finger that lands a little off the circle (the corner is
+         dead space anyway) still opens the pad. The ring sits 10px from
+         the frame, as before. */
+      .dpad-numpad-toggle {
+        position: absolute;
+        right: 2px;
+        bottom: 2px;
+        box-sizing: content-box;
+        width: clamp(26px, 7cqw, 34px);
+        height: clamp(26px, 7cqw, 34px);
+        margin: 0;
+        padding: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        border: 0;
+        background: transparent;
+        color: var(--sb-key-label-color, var(--primary-color));
+        opacity: 0.45;
+        cursor: pointer;
+        --mdc-icon-size: 16px;
+        font-size: 16px;
+        line-height: 1;
+        -webkit-tap-highlight-color: transparent;
+        transition: opacity 200ms ease;
+      }
+      .dpad-numpad-toggle::before {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 50%;
+        border: 1px solid currentColor;
+        pointer-events: none;
+      }
+      .dpad-numpad-toggle:hover,
+      .dpad-numpad-toggle:focus-visible {
+        opacity: 0.85;
+        outline: none;
+      }
+      .dpad--numpad-open .dpad-numpad-toggle {
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* D-pad off, number pad on: the keypad is the group. */
+      .dpad--numpad-only {
+        perspective: none;
+      }
+      .dpad--numpad-only .dpad-face--numpad {
+        position: static;
+        inset: auto;
+        transform: none;
+        opacity: 1;
+        gap: 10px;
+        align-items: center;
+        justify-items: stretch;
+        --sb-key-font-size: clamp(11px, 7cqw, 50px);
+      }
+      .dpad--numpad-only .dpad-face--numpad .key {
+        width: 100%;
+        height: auto;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dpad-face,
+        .dpad-numpad-toggle {
+          transition: none;
+        }
+      }
 
       /* The UI follows the locale direction, but these are spatial controls:
          changing language must never swap the physical Left/Right keys or the
